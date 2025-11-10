@@ -216,20 +216,21 @@ export class ServicePreviewL1ListServer extends CollabLitElement {
         if (!item) return;
 
         if (status === 'on') {
-            
+            item.status = 'on';
             onServer(item);
 
         } else if (status === 'off') {
 
-            
+            item.status = 'off';
             offServer(item);
 
         } else if (status === 'restarting') {
 
-            
+            item.status = 'restarting';
             restartServer(item);
         }
 
+        this.requestUpdate();
     }
 
     
