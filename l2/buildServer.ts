@@ -19,7 +19,7 @@ export async function build(info: InfoBuild):Promise<string> {
 
 }
 
-async function loadEsbuild() {
+export async function loadEsbuild() {
     if ((mls as any).esbuild) {
         esBuild = (mls as any).esbuild;
     } else if (!(mls as any).esbuildInLoad) await initializeEsBuild();
