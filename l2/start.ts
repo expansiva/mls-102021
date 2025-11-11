@@ -1,7 +1,7 @@
 /// <mls shortName="start" project="102021" enhancement="_blank" />
 
 import { getProjectConfig } from './_100554_libCommom';
-import { build, InfoBuild } from './_102021_buildServer';
+import { build, InfoBuild, loadEsbuild } from './_102021_buildServer';
 
 let iframes: Record<string, IServer> = {};
 export let servers: Record<string, IServer> = {};
@@ -11,7 +11,8 @@ let body = document.querySelector('body') as HTMLElement;
 
 export async function start(project: number, startServers: 'all' | 'none' | string = 'none') {
 
-    if (listItens.length > 0) return; 
+    if (listItens) return;
+    await loadEsbuild();
     const m = await getProjectConfig(project);
     const array: IListItem[] = [];
 
