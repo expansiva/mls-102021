@@ -1,11 +1,11 @@
-/// <mls shortName="updateUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
+/// <mls shortName="uppUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
 
-import * as layer3 from "../layer_3_use_cases/updateUser.js";
+import * as layer3 from "../layer_3_use_cases/uppUser.js";
 import { UserRecord } from "../layer_4_entities/user.js"; 
 import { Ctx } from "../common/local.js";
 import { ResponseBase } from "../global.js"; 
 
-export async function updateUser(ctx: Ctx, data: Record<string, any> | undefined): Promise<ResponseBase> {
+export async function uppUser(ctx: Ctx, data: Record<string, any> | undefined): Promise<ResponseBase> {
 
     const ret: ResponseBase = {
         statusCode: 200,
@@ -17,7 +17,7 @@ export async function updateUser(ctx: Ctx, data: Record<string, any> | undefined
     try {
 
         if (!data) throw new Error('[layer2UpdateUser]:Into the data');
-        ret.data = await layer3.updateUser(ctx, data as UserRecord);
+        ret.data = await layer3.uppUser(ctx, data as UserRecord);
         return ret;
 
     } catch (e: any) {

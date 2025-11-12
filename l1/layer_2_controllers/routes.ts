@@ -3,9 +3,9 @@
 import { RequestBase, ResponseBase } from "../global.js";
 import { Ctx } from "../common/local.js"; 
 import { addUser } from "./addUser.js";
-import { updateUser } from "./updateUser.js"; 
-import { delUser } from "./deleteUser.js"; 
-import { getListUser } from "./getListUser.js"; 
+import { uppUser } from "./uppUser.js"; 
+import { delUser } from "./delUser.js"; 
+import { listUser } from "./listUser.js"; 
 
 export async function exec(ctx:Ctx ,param: RequestBase): Promise<ResponseBase> { 
 
@@ -23,10 +23,10 @@ export async function exec(ctx:Ctx ,param: RequestBase): Promise<ResponseBase> {
 
     switch (param.action) { 
 
-        case ('UserAdd'): return await addUser(ctx, args);
-        case ('UserUpd'): return await updateUser(ctx, args);
-        case ('UserDelById'): return await delUser(ctx, args);
-        case ('UserGetList'): return await getListUser(ctx, args);
+        case ('addUser'): return await addUser(ctx, args);
+        case ('uppUser'): return await uppUser(ctx, args);
+        case ('delUser'): return await delUser(ctx, args);
+        case ('listUser'): return await listUser(ctx, args);
 
         default: return {
             statusCode: 400,
