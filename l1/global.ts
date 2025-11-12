@@ -23,26 +23,26 @@ export interface ResponseBase{
     error?:string
 }
 
-type ActionTypes = 'UserAdd' | 'UserUpd' |  'UserDelById' | 'UserGetList';
+type ActionTypes = 'addUser' | 'uppUser' |  'delUser' | 'listUser';
 
 //----------REQUEST--------------
 
 export interface RequestUserAdd extends RequestBase {
-  action: 'UserAdd',
+  action: 'addUser',
   params: UserRecord
 }
 
 export interface RequestUserUpd extends RequestBase {
-  action: 'UserUpd',
+  action: 'uppUser',
   params: UserRecord
 }
 
 export interface RequestUserDelById extends RequestBase {
-  action: 'UserDelById',
+  action: 'delUser',
   params: { id: number }
 }
 
 export interface RequestUserGetList extends RequestBase {
-  action: 'UserGetList',
+  action: 'listUser',
   params: { filter: string }
 }
