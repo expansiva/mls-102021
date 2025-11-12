@@ -1,10 +1,10 @@
-/// <mls shortName="getListUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
+/// <mls shortName="listUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
 
-import * as layer3 from "../layer_3_use_cases/getListUser.js";
+import * as layer3 from "../layer_3_use_cases/listUser.js";
 import { Ctx } from "../common/local.js";
 import { ResponseBase } from "../global.js"; 
 
-export async function getListUser(ctx: Ctx, data: Record<string, any> | undefined): Promise<ResponseBase> {
+export async function listUser(ctx: Ctx, data: Record<string, any> | undefined): Promise<ResponseBase> {
 
     const ret: ResponseBase = {
         statusCode: 200,
@@ -15,7 +15,7 @@ export async function getListUser(ctx: Ctx, data: Record<string, any> | undefine
 
     try {
 
-        ret.data = await layer3.getListUser(ctx);
+        ret.data = await layer3.listUser(ctx);
         return ret;
 
     } catch (e: any) {

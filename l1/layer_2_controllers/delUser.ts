@@ -1,6 +1,6 @@
-/// <mls shortName="deleteUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
+/// <mls shortName="delUser" project="102021" folder="layer_2_controllers" enhancement="_blank" groupName="layer_2_controllers" />
 
-import * as layer3 from "../layer_3_use_cases/deleteUser.js";
+import * as layer3 from "../layer_3_use_cases/delUser.js";
 import { Ctx } from "../common/local.js";
 import { ResponseBase } from "../global.js"; 
 
@@ -16,7 +16,7 @@ export async function delUser(ctx: Ctx, data: Record<string, any> | undefined): 
     try {
 
         if (!data || !data.id) throw new Error('[layer2DeleteUser]:Into in id');
-        ret.data = await layer3.deleteUser(ctx, data.id);
+        ret.data = await layer3.delUser(ctx, data.id);
         return ret;
 
     } catch (e: any) {

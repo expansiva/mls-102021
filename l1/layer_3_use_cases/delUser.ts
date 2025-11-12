@@ -1,0 +1,9 @@
+/// <mls shortName="delUser" project="102021" folder="layer_3_use_cases" enhancement="_blank" groupName="layer_3_use_cases" />
+
+import { Ctx } from "../common/local.js";
+
+export async function delUser(ctx:Ctx, id: number): Promise<boolean | null> {
+    
+    return await ctx.io.user.del(id);
+
+}
