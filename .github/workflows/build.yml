@@ -12,6 +12,8 @@ on:
       - 'l5/**'
       - 'l6/**'
       - 'l7/**'
+      - 'README.md'
+      - 'readme.md'
 jobs:
   build:
     runs-on: ubuntu-latest
