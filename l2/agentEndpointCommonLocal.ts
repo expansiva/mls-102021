@@ -7,11 +7,15 @@ import {
     notifyTaskChange,
     notifyThreadChange,
     updateStepStatus,
+    getNextPendentStep,
+    getNextPendingStepByAgentName
 } from "./_100554_aiAgentHelper";
 
 import {
     startNewAiTask,
+    startNewInteractionInAiTask,
     executeNextStep,
+    addNewStep
 } from "./_100554_aiAgentOrchestration";
 
 import { addFile } from './_102021_agentEndpointHelper'
@@ -47,11 +51,24 @@ export function createAgent(): IAgent {
 const _beforePrompt = async (context: mls.msg.ExecutionContext): Promise<void> => {
     const taskTitle = "Planning...";
     if (!context || !context.message) throw new Error("Invalid context");
-    if (context.task) throw new Error("this agent cannot execute with anothers agentes")
-    let prompt = context.message.content.replace('@@agentEndpointCommonLocal', '').trim();
-    const inputs: any = await getPrompts(prompt);
-    await startNewAiTask(agentName, taskTitle, context.message.content, context.message.threadId, context.message.senderId, inputs, context, _afterPrompt);
-    return;
+    if (!context.task) {
+        let prompt = context.message.content.replace('@@agentEndpointCommonLocal', '').trim();
+        const inputs: any = await getPrompts(prompt);
+        await startNewAiTask(agentName, taskTitle, context.message.content, context.message.threadId, context.message.senderId, inputs, context, _afterPrompt);
+        return;
+    }
+
+    const pageMemory = context.task?.iaCompressed?.longMemory as any;
+
+    if (!pageMemory || !pageMemory.info) throw new Error(`[${agentName}]: Not found page memory `);
+
+    const step: mls.msg.AIAgentStep | null = getNextPendingStepByAgentName(context.task, agentName);
+    if (!step) throw new Error(`[${agentName}] beforePrompt: No pending step found for this agent.`);
+
+    context = await updateStepStatus(context, step.stepId, "in_progress");
+    const data = pageMemory.info;
+    const inputs = await getPrompts(data);
+    await startNewInteractionInAiTask(agentName, taskTitle, inputs, context, _afterPrompt, step.stepId);
 }
 
 const _afterPrompt = async (context: mls.msg.ExecutionContext): Promise<void> => {
@@ -60,9 +77,8 @@ const _afterPrompt = async (context: mls.msg.ExecutionContext): Promise<void> =>
     if (!step) throw new Error(`[${agentName}] afterPrompt: No in progress interaction found.`);
     context = await updateStepStatus(context, step.stepId, "completed");
 
-    await addFile(context);
+    await addFile(context, true); 
     notifyTaskChange(context);
-    await executeNextStep(context);
 }
 
 async function getPrompts(userPrompt: string): Promise<mls.msg.IAMessageInputType[]> {

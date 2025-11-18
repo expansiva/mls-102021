@@ -7,11 +7,14 @@ import {
     notifyTaskChange,
     notifyThreadChange,
     updateStepStatus,
+    getNextPendentStep,
+    appendLongTermMemory
 } from "./_100554_aiAgentHelper";
 
 import {
     startNewAiTask,
     executeNextStep,
+    addNewStep
 } from "./_100554_aiAgentOrchestration";
 
 
@@ -57,9 +60,35 @@ const _afterPrompt = async (context: mls.msg.ExecutionContext): Promise<void> =>
     if (!context || !context.message || !context.task) throw new Error("Invalid context");
     const step: mls.msg.AIAgentStep | null = getNextInProgressStepByAgentName(context.task, agentName);
     if (!step) throw new Error(`[${agentName}] afterPrompt: No in progress interaction found.`);
+    
+    await nextStep(context);
     context = await updateStepStatus(context, step.stepId, "completed");
-    notifyTaskChange(context);
-    await executeNextStep(context);
+
+}
+
+async function nextStep(context: mls.msg.ExecutionContext) {
+    if (!context.task) throw new Error(`[${agentName}]: nextStep not found task`);
+    const step = getNextPendentStep(context.task) as mls.msg.AIPayload | null;
+
+    if (!step || step.type !== 'flexible' || !step.result) throw new Error(`[${agentName}]: ` + 'Invalid step in update defs, type: "' + step?.type + '"');
+
+    if (typeof step.result === 'string' || !step.result.info) return;
+
+    await appendLongTermMemory(context, {"info": JSON.stringify(step.result.info)});
+
+    const newStep: mls.msg.AIPayload = {
+        agentName: 'agentEndpointLayer4Entity',
+        prompt: JSON.stringify(step.result.info),
+        status: 'pending',
+        stepId: step.stepId + 1,
+        interaction: null,
+        nextSteps: null,
+        rags: null,
+        type: 'agent'
+    }
+
+    await addNewStep(context, step.stepId, [newStep]);
+
 }
 
 async function getPrompts(userPrompt:string): Promise<mls.msg.IAMessageInputType[]> {

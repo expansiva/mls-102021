@@ -5,7 +5,7 @@ import {
     updateStepStatus,
 } from "./_100554_aiAgentHelper";
 
-export async function addFile(context: mls.msg.ExecutionContext) {
+export async function addFile(context: mls.msg.ExecutionContext, updStatus:boolean = false) {
 
     if (!context || !context.task) throw new Error('Not found context to create files');
     const step = getNextPendentStep(context.task);
@@ -31,7 +31,7 @@ export async function addFile(context: mls.msg.ExecutionContext) {
         console.info('criar')
     }
 
-    context = await updateStepStatus(context, step.stepId, "completed");
+    if(updStatus) context = await updateStepStatus(context, step.stepId, "completed");
 
 
 }
