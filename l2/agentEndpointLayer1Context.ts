@@ -88,7 +88,7 @@ async function nextStep(context: mls.msg.ExecutionContext) {
     if (!step || step.type !== 'flexible' || !step.result) throw new Error(`[${agentName}]: ` + 'Invalid step in update defs, type: "' + step?.type + '"');
 
     const newStep: mls.msg.AIPayload = {
-        agentName: 'agentEndpointCommonLocal',
+        agentName: 'agentEndpointGlobal',
         prompt: 'ok',
         status: 'pending',
         stepId: step.stepId + 1,
