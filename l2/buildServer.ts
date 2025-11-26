@@ -81,7 +81,7 @@ async function compileWithEsbuild(info: IJSONDependence, storFile: mls.stor.IFil
             const sf = mls.stor.files[p];
             if (!sf || sf.level !== 1 || sf.extension != '.ts' || sf.project !== storFile.project) return '';
             
-            if (storDist && new Date(sf.updatedAt || '') > new Date(storDist.updatedAt || '')) needCompile = true;
+            if (storDist && (!storDist.updatedAt || new Date(sf.updatedAt || '') > new Date(storDist.updatedAt || ''))) needCompile = true;
             
             const verify = `/_${sf.project}_${sf.folder ? sf.folder + '/' : ''}${sf.shortName}`;
             const name = './' + (sf.folder ? sf.folder + '/' : '') + sf.shortName + '.js';
@@ -193,7 +193,7 @@ async function generateOutput(project: number, srcBuild: string) {
     let storFilesDist = getDistStorFile(project);
     if (!storFilesDist) storFilesDist = await createStorFileOutput({ project, shortName: 'serverRunTime', folder: newDistFolder, ext: '.js' }, srcBuild);
     else await mls.stor.localStor.setContent(storFilesDist, { contentType: 'string', content: srcBuild });
-    storFilesDist.updatedAt = new Date().toISOString();
+    //storFilesDist.updatedAt = new Date().toISOString();
 
 }
 

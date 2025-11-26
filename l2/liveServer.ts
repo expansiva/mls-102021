@@ -80,7 +80,7 @@ export class ServicePreviewL1ListServer extends CollabLitElement {
         } else if (item.status === 'restarting') {
 
             clsBadge = 'badge--restart';
-            textBadge = '<span class="spinner" aria-hidden="true"></span> Restarting';
+            textBadge = ' Restarting';
             disabled = true;
             attr = 'aria-disabled';
         }
