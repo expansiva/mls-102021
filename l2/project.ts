@@ -5,7 +5,7 @@ export const projectConfig = {
 
     masterBackEnd: {
         build: '_102021_buildServer',
-        start: '_102021_start',
+        start: '_102021_/l2/start.js',
         serverView: '_102021_liveServer'
     },
 
