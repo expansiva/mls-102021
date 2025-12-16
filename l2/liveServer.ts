@@ -128,7 +128,6 @@ export class ServicePreviewL1ListServer extends CollabLitElement {
 
 
     private async init() {
-
         this.listItens = Object.values(servers);
 
     }
