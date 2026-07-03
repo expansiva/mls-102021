@@ -5,7 +5,7 @@ Documento auto-contido (não depende de outros arquivos).
 
 ## Propósito
 
-Olhar o `statusBackend` dos owners e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover os **artefatos de backend** do módulo a partir da **ontologia + operations/workflows/rules** (a intenção) e dos contratos BFF de cada página (o contrato com o frontend). Materializa os `.defs.ts → .ts`. No fim, muda o `statusBackend`. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tabela, um usecase, um adapter, um arquivo). Idempotente.
+Olhar o `l5/{module}/todoBackend.defs.ts` e **fazer só o que está pendente** (um "to-be"): criar/atualizar/remover os **artefatos de backend** do módulo a partir da **ontologia + operations/workflows/rules** (a intenção) e dos contratos BFF de cada página (o contrato com o frontend). Materializa os `.defs.ts → .ts`. No fim, muda o status no `todoBackend`. Pode ser chamado **a qualquer momento** e fazer **um único item** (uma tabela, um usecase, um adapter, um arquivo). Idempotente.
 
 A partir desta versão o backend é organizado em **3 camadas, modelo hexagonal (ports & adapters)** — antes eram 4. Ver "Arquitetura de 3 camadas".
 
@@ -28,10 +28,10 @@ A partir desta versão o backend é organizado em **3 camadas, modelo hexagonal 
 - **Ontology** = entidades de dado → entidade de domínio (`layer_3_domain`) + tabela (`adapters/persistence`) derivada dela.
 - **Page contract (BFF commands)** = contato com o frontend → controller HTTP + rota (`adapters/http`).
 
-**Status de reconciliação (DOIS campos independentes no item de Workflow/Operation):**
-`statusFrontend` e `statusBackend`, cada um com o enum `toCreate | toUpdate | toRemove | inProgress | done`.
-Este worker lê/escreve **apenas `statusBackend`**; o `agentChangeFrontend` cuida do `statusFrontend`.
-São independentes — sem ordem obrigatória entre os dois workers nem ambiguidade de status único.
+**Status de reconciliação (arquivos de trabalho por camada):**
+`l5/{module}/todoFrontend.defs.ts` e `l5/{module}/todoBackend.defs.ts`, cada um com owners `workflow | operation` e status `toCreate | toUpdate | toRemove | inProgress | done`.
+Este worker lê/escreve **apenas `todoBackend`**; o `agentChangeFrontend` cuida do `todoFrontend`.
+O L4 é read-only para este agente. Se owners legados ainda tiverem `statusBackend` inline, esse campo é ignorado para decisão de trabalho; divergência inline × todo vira warning.
 
 **Espaço de IDs:** o backend resolve tabelas a partir dos **ids de ontologia** das operations/entities. **Nunca** confiar em nomes de agregado.
 
@@ -160,28 +160,28 @@ O `l1` (backend) conversa com o frontend via **BFF**: cada **página** tem funç
 
 ## Responsabilidade deste agente
 
-1. **Varrer** os owners (Operations/Workflows/Ontology e contratos BFF quando existirem) com `statusBackend` ≠ `done` — ou processar **um item específico** recebido como argumento.
+1. **Varrer** os owners (Operations/Workflows/Ontology e contratos BFF quando existirem) cujo `todoBackend` esteja pendente — ou processar **um item específico** recebido como argumento.
 2. Para cada item pendente:
    - `toCreate` / `toUpdate`: derivar/atualizar os artefatos das 3 camadas — entidade de domínio (+ value-objects/rules/events quando aplicável), port + adapter de persistência, tabela(s)/métrica(s), usecase(s), controller HTTP + rota (BFF), e **materializar** (`.defs.ts → .ts`).
    - `toRemove`: remover/deprecar artefato + `.ts` materializado (cascata; **cuidado com dados** — marcar `deprecated` e exigir confirmação antes de drop real de tabela).
-3. **Mudar o `statusBackend`** do item ao concluir.
+3. **Mudar o status no `todoBackend`** do item ao concluir.
 
 ## Steps (alto nível, sem implementação)
 
-- `scan-pending` — lista owners com `statusBackend` pendente (ou recebe 1 item).
+- `scan-pending` — lista owners com `todoBackend` pendente (ou recebe 1 item).
 - `plan-artifacts` — do conjunto pendente, planeja os artefatos das 3 camadas e o índice de persistência (com os guardrails acima). Mantém o loop critic/repair endurecido.
 - `generate-backend` (por item) — domínio / port / adapter de persistência (tabela) / usecase / controller+rota (BFF).
 - `materialize` — chama a materialização L1 existente (`.defs.ts → .ts`), respeitando a ordem por dependência.
-- `flip-status` — marca `statusBackend = inProgress` ao iniciar e `statusBackend = done` ao concluir.
+- `flip-status` — marca `todoBackend.status = inProgress` ao iniciar e `todoBackend.status = done` ao concluir.
 
 ## Entrada / Saída
 
-- **Entrada:** intenção do módulo (ontologia + operations/workflows + rules + `statusBackend`) e contrato BFF por página quando já existir. Opcional: um item específico (tabela/usecase/entity/adapter) para processar só ele.
-- **Saída:** artefatos de backend em `l1/{module}` (3 camadas) criados/atualizados/removidos, materializados em `.ts`, e `statusBackend` dos itens processados atualizado.
+- **Entrada:** intenção do módulo (ontologia + operations/workflows + rules), `l5/{module}/todoBackend.defs.ts` e contrato BFF por página quando já existir. Opcional: um item específico (tabela/usecase/entity/adapter) para processar só ele.
+- **Saída:** artefatos de backend em `l1/{module}` (3 camadas) criados/atualizados/removidos, materializados em `.ts`, e `todoBackend` dos itens processados atualizado.
 
-## Status (statusBackend)
+## Status (`todoBackend`)
 
-Pega itens com `statusBackend` ≠ `done`; ao iniciar seta `statusBackend = inProgress`; ao concluir marca `statusBackend = done`. **Independente do frontend:** o `agentChangeFrontend` controla o `statusFrontend` separadamente, então não há ordem obrigatória entre os dois workers nem a antiga ambiguidade do status único. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem com `statusFrontend = toCreate` e `statusBackend = toCreate`.
+Pega itens com `todoBackend.status` pendente; ao iniciar seta `inProgress`; ao concluir marca `done`. **Independente do frontend:** o `agentChangeFrontend` controla o `todoFrontend` separadamente, então não há ordem obrigatória entre os dois workers nem colisão de escrita no L4. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem nos dois todos como `toCreate`.
 
 ## O que este agente NÃO faz
 

@@ -136,7 +136,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
       : `l1 defs=${l1Defs}; 0 warnings.`;
     return [
-      enqueueNext(context, parentStep, step, 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar statusBackend', {}),
+      enqueueNext(context, parentStep, step, 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),
     ];
   } catch (error) {

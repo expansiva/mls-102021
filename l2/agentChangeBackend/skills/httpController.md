@@ -44,8 +44,11 @@ export const routes: ControllerRoute[] = [
   — the leading `/` is required by the path alias; NEVER emit `_{project}_/l2/...` without it.
 - One exported `BffHandler` const per command, named `{module}{Pascal(command)}Handler`. NEVER add an
   explicit return type after the arrow (`BffHandler` already encodes it).
-- Read input from `request.params` (cast to the usecase Input); boundary validation only (required
-  fields, basic shape) → `AppError('VALIDATION_ERROR', …, 400)`. Business rules belong to the usecase.
+- Build input from `request.params` plus declared runtime/context resolutions in `data.handlers[].contextResolution`.
+  Boundary validation only checks public/request fields from `data.handlers[].inputContract` whose
+  `required:true` and whose source is not resolved by `systemDefault`, `currentWorkspace` or
+  `actorSession`. Never require an id manually when the L4 contract resolves it from context. Business
+  rules belong to the usecase.
 - Import the usecase function named by `usecaseRef` + its Input type (`inputTypeName` when given); call
   it; wrap the result in `ok(...)`. The imported name MUST match `usecaseRef` exactly — do not rename it
   to the command or the page.

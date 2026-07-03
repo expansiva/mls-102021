@@ -1,13 +1,13 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/agentCbLockOwners.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Deterministic: set statusBackend = inProgress for the validated toCreate owners (the only status
+// Deterministic: set todoBackend = inProgress for the validated toCreate owners (the only status
 // mutation before successful completion). Then continue to the aggregate index (LLM planning).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, setOwnerStatusBackend, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, setTodoBackendStatus, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 
 export function createAgent(): IAgentAsync {
-  return { agentName: 'agentCbLockOwners', agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Deterministic statusBackend toCreate -> inProgress lock', visibility: 'private', beforePromptStep };
+  return { agentName: 'agentCbLockOwners', agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Deterministic todoBackend toCreate -> inProgress lock', visibility: 'private', beforePromptStep };
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -15,7 +15,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const scan = await readBackendScan(['toCreate']);
     let locked = 0;
     for (const owner of scan.owners) {
-      if (await setOwnerStatusBackend(owner, 'inProgress')) locked++;
+      if (await setTodoBackendStatus(owner, 'inProgress')) locked++;
     }
     return [
       enqueueNext(context, parentStep, step, 'cb-aggregate-index', 'agentCbAggregateIndex', 'Planejar agregados', {}),

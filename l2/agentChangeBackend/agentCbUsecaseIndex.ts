@@ -23,7 +23,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   // Only operations become usecases/commands; workflows are orchestration, not backend owners.
   const owners = scan.owners.filter(o => o.kind === 'operation').map(o => ({ ownerId: o.id, kind: o.kind, entity: o.entity, reads: o.reads, writes: o.writes, rulesApplied: o.rulesApplied }));
   const aggregates = scan.aggregates.map(a => ({ aggregateId: a.aggregateId, rootEntity: a.rootEntity }));
-  const human = `## Pending owners (statusBackend != done)\n${JSON.stringify(owners, null, 2)}\n\n## Aggregates (port targets)\n${JSON.stringify(aggregates, null, 2)}\n\nOne usecase per owner; ports = the aggregates it reads/writes.`;
+  const human = `## Pending owners (todoBackend status != done)\n${JSON.stringify(owners, null, 2)}\n\n## Aggregates (port targets)\n${JSON.stringify(aggregates, null, 2)}\n\nOne usecase per owner; ports = the aggregates it reads/writes.`;
   return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ""), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
 

@@ -3,17 +3,17 @@
 // Stage 3 backend reconciler — ROOT, with a small CLI. v1 is autonomous and create-only.
 // The root LLM is SKIPPED (AgentIntentAddMessageAI.skipRootLLM) — bootstrap is deterministic.
 // Usage (type after the agent mention):
-//   /rebuild all   reset statusBackend of ALL owners -> toCreate, then regenerate defs AND materialize
+//   /rebuild all   reset todoBackend of ALL owners -> toCreate, then regenerate defs AND materialize
 //                  the .ts (files overwritten in place by saveDefs — no manual delete needed)
 //   /rebuild defs  reset ALL owners -> toCreate and regenerate the .defs.ts ONLY (NO .ts materialization)
-//   /run           generate for pending owners (statusBackend = toCreate | inProgress), no reset
-//   (empty mention) same as /run: scan l4 for toCreate owners and materialize the stale/missing .ts
+//   /run           generate for pending owners (todoBackend = toCreate | inProgress), no reset
+//   (empty mention) same as /run: scan todoBackend for toCreate owners and materialize stale/missing .ts
 //   /help          print help (a result step) and stop
 // See spec.md + flow.json in this folder.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  readBackendScan, setOwnerStatusBackend, createAgentStepPayload, createUpdateStatusIntent, logPrefix,
+  readBackendScan, setTodoBackendStatus, createAgentStepPayload, createUpdateStatusIntent, logPrefix,
 } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 
 const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
@@ -81,14 +81,14 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     try {
       const scan = await readBackendScan(ALL_STATUSES);
       for (const owner of scan.owners) {
-        if (await setOwnerStatusBackend(owner, 'toCreate')) reset++;
+        if (await setTodoBackendStatus(owner, 'toCreate')) reset++;
       }
     } catch (e) {
       console.error(`${logPrefix(agent)} ${cmd} reset failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  const scanStep = createAgentStepPayload('cb-scan', 'agentCbScanCreateOwners', 'Scan l4 (statusBackend = toCreate)', { planId: 'cb-scan' }, [], 'sequential', 'waiting_human_input');
+  const scanStep = createAgentStepPayload('cb-scan', 'agentCbScanCreateOwners', 'Scan todoBackend (status = toCreate)', { planId: 'cb-scan' }, [], 'sequential', 'waiting_human_input');
   return [addMessageAI, createBootstrapAddStepIntent(context, scanStep)];
 }
 
@@ -127,10 +127,10 @@ const HELP = `agentChangeBackend — CLI
 Uso: @@changeBackend <comando>
 
 Comandos:
-- /rebuild all  : reseta statusBackend de TODOS os owners para toCreate e regenera o backend — defs E materialização dos .ts (arquivos sobrescritos in place; sem deletar).
+- /rebuild all  : reseta todoBackend de TODOS os owners para toCreate e regenera o backend — defs E materialização dos .ts (arquivos sobrescritos in place; sem deletar).
 - /rebuild defs : reseta TODOS os owners para toCreate e regenera SOMENTE os .defs.ts (NÃO materializa os .ts).
-- /run          : gera os owners pendentes (statusBackend = toCreate | inProgress) sem resetar; materializa os .ts faltando/desatualizados.
-- (sem comando) : igual ao /run — varre o l4 por owners toCreate e materializa os .ts antigos/ausentes.
+- /run          : gera os owners pendentes (todoBackend = toCreate | inProgress) sem resetar; materializa os .ts faltando/desatualizados.
+- (sem comando) : igual ao /run — varre o todoBackend por owners toCreate e materializa os .ts antigos/ausentes.
 - /help         : mostra esta ajuda.
 
 Qualquer outro comando (texto não reconhecido) mostra esta ajuda.`;

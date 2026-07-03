@@ -77,6 +77,10 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     reads: o.reads,
     writes: o.writes,
     rulesApplied: o.rulesApplied,
+    accessPattern: o.accessPattern ?? null,
+    inputs: o.inputs,
+    contextResolution: o.contextResolution,
+    acceptanceAssertions: o.acceptanceAssertions,
     ports: portRefs.filter(id => roots.has(id) && !mdmIds.has(id)),
     mdmRefs: rawRefs.filter(id => mdmIds.has(id)),
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
@@ -129,7 +133,7 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `owner not found: ${ownerId}`)];
   if (owner.kind !== 'operation') return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `skip ${ownerId}: workflows generate no usecase`)];
   const item = buildOwnerItem(owner, deriveMaps(scan));
-  const human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS (camelCase, derived from entityFields + opKind). A usecase MAY expose several functions with different IO.`;
+  const human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession resolutions into required user input. A usecase MAY expose several functions with different IO.`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the ownerId) so the runtime
   // (continueBeforePrompt → findBeforePromptStep by parentStepId+args) matches it. step.prompt is not
   // yet set to the arg on the first beforePromptStep of a parallel child.
@@ -205,6 +209,15 @@ owner's "entity" is a child embedded in a parent aggregate (its parent is "paren
 from "entity"), the operation works through the PARENT port — load the parent, mutate the embedded child
 in its collection, save the parent. NEVER invent a child repository. "steps" are guidance, not a
 contract: the contract is input/output/ports.
+
+Use the L4 v2 contract directly:
+- accessPattern.kind decides the function shape: list returns a collection/projection, getById requires
+  the declared keyField, lookup is a short selector, commandInput mutates from the declared payload.
+- inputs[] is the public BFF/usecase input surface. Required fields come from inputs[].required.
+- contextResolution[] is not extra user input. systemDefault values use ctx.clock/ctx.idGenerator;
+  currentWorkspace/actorSession values come from RequestContext metadata when available; selectedEntity,
+  routeParam and previousStepOutput are accepted only when represented by declared inputs.
+- Never require an id manually when the L4 contract says it is resolved by context.
 
 Entities in "mdmRefs" are master data in the shared 102034 store: there is NO port for them — reference
 them BY ID (the id is an input field) and read by id via ctx.data.mdmDocument.get({ mdmId }). Never put

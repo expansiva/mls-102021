@@ -54,6 +54,10 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
 - Build the `{inputTypeName}` / `{outputTypeName}` interfaces from the function's EXPLICIT
   `data.functions[].input[]` / `output[]` fields (name + type, `?` when `required:false`) — do NOT
   invent fields. Export both interfaces (the controller imports them).
+- The planned function IO was derived from the L4 v2 contract. Preserve that boundary: `accessPattern`
+  decides list/get/lookup/commandInput, `inputs[]` decides public required fields, and
+  `contextResolution[]` values from `systemDefault`, `currentWorkspace` or `actorSession` are resolved
+  from `RequestContext`/platform helpers, not required as user-entered params.
 - Resolve every repository with `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. NEVER import
   an adapter. Import record/union types and invariants from the domain entity.
 - Apply `rulesApplied`: validate via domain invariants; throw `AppError('VALIDATION_ERROR'|'CONFLICT', …)`.

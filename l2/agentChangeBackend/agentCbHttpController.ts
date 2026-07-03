@@ -82,13 +82,31 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // the usecase never produced (the orderFlow-class break). Fallback to the ownerId only if the defs
       // are missing/unparsed.
       const fns = usecaseFns.get(ownerId) || [];
-      const handlers: { handlerName: string; command: string; usecaseRef: string; inputTypeName?: string; kind: string }[] = [];
+      const handlers: {
+        handlerName: string;
+        command: string;
+        usecaseRef: string;
+        inputTypeName?: string;
+        kind: string;
+        inputContract?: unknown[];
+        contextResolution?: unknown[];
+        accessPattern?: unknown;
+      }[] = [];
       const routes: { key: string; handlerName: string }[] = [];
       if (fns.length > 1) {
         // A usecase exposing several functions -> one command/route per function (1:1 function<->command).
         for (const fn of fns) {
           const handlerName = `${module}${capitalize(fn.functionName)}Handler`;
-          handlers.push({ handlerName, command: fn.functionName, usecaseRef: fn.functionName, inputTypeName: fn.inputTypeName, kind: fn.kind || owner.opKind || 'command' });
+          handlers.push({
+            handlerName,
+            command: fn.functionName,
+            usecaseRef: fn.functionName,
+            inputTypeName: fn.inputTypeName,
+            kind: fn.kind || owner.opKind || 'command',
+            inputContract: owner.inputs,
+            contextResolution: owner.contextResolution,
+            accessPattern: owner.accessPattern,
+          });
           routes.push({ key: `${module}.${routePageId}.${fn.functionName}`, handlerName });
         }
         // L4 is the source of truth for the BFF contract: the canonical bffName route MUST
@@ -97,14 +115,31 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const canonicalKey = owner.bffName || `${module}.${routePageId}.${owner.commandName || ownerId}`;
         if (!routes.some(r => r.key === canonicalKey)) {
           const dispatcherName = `${module}${capitalize(owner.commandName || ownerId)}Handler`;
-          handlers.push({ handlerName: dispatcherName, command: owner.commandName || ownerId, usecaseRef: fns.map(f => f.functionName).join(' | '), kind: 'dispatcher' });
+          handlers.push({
+            handlerName: dispatcherName,
+            command: owner.commandName || ownerId,
+            usecaseRef: fns.map(f => f.functionName).join(' | '),
+            kind: 'dispatcher',
+            inputContract: owner.inputs,
+            contextResolution: owner.contextResolution,
+            accessPattern: owner.accessPattern,
+          });
           routes.push({ key: canonicalKey, handlerName: dispatcherName });
         }
       } else {
         const fn = fns[0];
         const handlerName = `${module}${capitalize(ownerId)}Handler`;
         const routeKey = owner.bffName || `${module}.${routePageId}.${owner.commandName || ownerId}`;
-        handlers.push({ handlerName, command: owner.commandName || ownerId, usecaseRef: fn?.functionName || ownerId, inputTypeName: fn?.inputTypeName, kind: fn?.kind || owner.opKind || 'command' });
+        handlers.push({
+          handlerName,
+          command: owner.commandName || ownerId,
+          usecaseRef: fn?.functionName || ownerId,
+          inputTypeName: fn?.inputTypeName,
+          kind: fn?.kind || owner.opKind || 'command',
+          inputContract: owner.inputs,
+          contextResolution: owner.contextResolution,
+          accessPattern: owner.accessPattern,
+        });
         routes.push({ key: routeKey, handlerName });
       }
       const data = {

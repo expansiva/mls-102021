@@ -1,8 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/cbShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Shared plumbing for the agentChangeBackend flow (Stage 3 backend reconciler, v1 autonomous
-// create-only). Backend-specific logic (l4 scan, aggregate derivation, JSONB persistence plan, l1
-// file-info builders, statusBackend mutation) lives here. The generic planner/LLM-envelope helpers
+// create-only). Backend-specific logic (l4 scan + l5 todoBackend status, aggregate derivation,
+// JSONB persistence plan, l1 file-info builders) lives here. The generic planner/LLM-envelope helpers
 // and the .defs.ts writer are reused from the agentNewSolution2 toolkit (ns2Extract/ns2Artifacts);
 // those are generic infra that should eventually move to _102027_ (collabCommon). See flow.json.
 
@@ -56,6 +56,16 @@ export function asArray(value: unknown): Record<string, unknown>[] {
 export type ExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
 export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 export type EntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
+export type L4ContextSource =
+  | 'userInput'
+  | 'actorSession'
+  | 'currentWorkspace'
+  | 'selectedEntity'
+  | 'activeLifecycleInstance'
+  | 'workflowState'
+  | 'routeParam'
+  | 'previousStepOutput'
+  | 'systemDefault';
 
 // Persistence intent for kind:"event" entities (set by agentNewSolution2). Drives whether Stage 3
 // gives the event a durable table (telemetry/audit) or routes it to the outbox (reaction).
@@ -66,6 +76,34 @@ export const DEFAULT_EVENT_RETENTION_DAYS = 90; // telemetry default when the on
 export type CbFileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 
 // ── domain model of a scan ─────────────────────────────────────────────────────
+
+export interface CbAccessPattern {
+  kind: string;
+  description: string;
+  entity?: string;
+  keyField?: string;
+  filters?: string[];
+  sort?: string[];
+  pagination?: string;
+  selection?: string;
+  output?: string[];
+}
+
+export interface CbOperationInput {
+  inputId: string;
+  fieldRef: string;
+  required: boolean;
+  source: string;
+  description: string;
+}
+
+export interface CbContextResolution {
+  inputId?: string;
+  targetRef: string;
+  source: string;
+  originRef: string;
+  description: string;
+}
 
 export interface CbOwner {
   kind: 'operation' | 'workflow';
@@ -79,7 +117,16 @@ export interface CbOwner {
   reads: string[];
   writes: string[];
   rulesApplied: string[];
+  accessPattern?: CbAccessPattern;
+  inputs: CbOperationInput[];
+  contextResolution: CbContextResolution[];
+  acceptanceAssertions: string[];
+  /** Status from l5/{module}/todoBackend.defs.ts. This is the only source of generation state. */
+  todoStatus: string;
+  /** Deprecated compatibility alias for prompts that still print owners as statusBackend. */
   statusBackend: string;
+  /** Legacy inline status read from l4 only to warn about divergence; never used for decisions. */
+  inlineStatusBackend: string;
   moduleName: string;
 }
 
@@ -122,11 +169,12 @@ export interface CbEventTarget {
 export interface CbScan {
   project: number;
   moduleNames: string[];
-  owners: CbOwner[];          // statusBackend = toCreate only
+  owners: CbOwner[];          // todoBackend status in requested statuses
   entities: CbEntity[];
   relationships: CbRelationship[];
   aggregates: CbAggregate[];  // derived baseline (the LLM index may refine)
   events: CbEventTarget[];    // kind:"event" entities, classified by eventPolicy
+  warnings: string[];
 }
 
 // ── deterministic l4 scan ──────────────────────────────────────────────────────
@@ -139,6 +187,7 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
   const entities: CbEntity[] = [];
   const relationships: CbRelationship[] = [];
   const rawOwners: { kind: 'operation' | 'workflow'; obj: Record<string, unknown> }[] = [];
+  const warnings: string[] = [];
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
@@ -174,9 +223,40 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
   }
 
   const moduleFallback = moduleNames.size === 1 ? Array.from(moduleNames)[0] : 'unknown';
-  const owners = rawOwners
+  const allOwners = rawOwners
     .map(({ kind, obj }) => ownerFrom(kind, obj, entityToModule, moduleFallback))
-    .filter((o): o is CbOwner => !!o && wanted.has(o.statusBackend));
+    .filter((o): o is CbOwner => !!o);
+  const todoState = await readBackendTodoState(project);
+  if (rawOwners.length > 0 && todoState.files === 0) {
+    throw new Error('l5/{module}/todoBackend.defs.ts not found; backend generation status must come from todoBackend, not inline l4 statusBackend.');
+  }
+  const l4OwnerKeys = new Set(allOwners.map(ownerKey));
+  const missingTodo: string[] = [];
+  for (const owner of allOwners) {
+    const todoOwner = todoState.ownersByKey.get(ownerKey(owner));
+    if (!todoOwner) {
+      missingTodo.push(`${owner.kind}:${owner.id}`);
+      continue;
+    }
+    owner.todoStatus = todoOwner.status;
+    owner.statusBackend = todoOwner.status;
+    owner.moduleName = todoOwner.moduleName || owner.moduleName;
+    if (owner.inlineStatusBackend && owner.inlineStatusBackend !== todoOwner.status) {
+      warnings.push(`${owner.kind}:${owner.id} inline statusBackend=${owner.inlineStatusBackend} ignored; todoBackend=${todoOwner.status}`);
+    }
+  }
+  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !l4OwnerKeys.has(key));
+  if (missingTodo.length || extraTodo.length || todoState.errors.length) {
+    const parts = [
+      ...todoState.errors,
+      ...(missingTodo.length ? [`todoBackend missing l4 owner(s): ${missingTodo.slice(0, 12).join(', ')}`] : []),
+      ...(extraTodo.length ? [`todoBackend has owner(s) absent from l4: ${extraTodo.slice(0, 12).join(', ')}`] : []),
+    ];
+    throw new Error(parts.join('; '));
+  }
+  for (const moduleName of todoState.moduleNames) moduleNames.add(moduleName);
+  warnings.push(...todoState.warnings);
+  const owners = allOwners.filter(o => wanted.has(o.todoStatus));
 
   // Roots that operations own (entity + writes) across ALL operations regardless of status — the
   // aggregate boundaries must be stable even when only some owners are pending (toCreate).
@@ -189,7 +269,74 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
 
   const aggregates = deriveAggregates(entities, relationships, operatedRootIds);
   const events = deriveEventTargets(entities, relationships);
-  return { project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships, aggregates, events };
+  return { project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships, aggregates, events, warnings };
+}
+
+interface CbTodoOwner {
+  ownerType: 'operation' | 'workflow';
+  ownerId: string;
+  status: string;
+  moduleName: string;
+}
+
+interface CbTodoState {
+  files: number;
+  moduleNames: string[];
+  ownersByKey: Map<string, CbTodoOwner>;
+  warnings: string[];
+  errors: string[];
+}
+
+function ownerKey(owner: Pick<CbOwner, 'kind' | 'id'>): string {
+  return `${owner.kind}:${owner.id}`;
+}
+
+function todoOwnerKey(ownerType: string, ownerId: string): string {
+  return `${ownerType}:${ownerId}`;
+}
+
+async function readBackendTodoState(project: number): Promise<CbTodoState> {
+  const ownersByKey = new Map<string, CbTodoOwner>();
+  const moduleNames = new Set<string>();
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let files = 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
+    files++;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!isRecord(parsed)) {
+      errors.push(`invalid todoBackend defs at l5/${String(file.folder || '')}/todoBackend.defs.ts`);
+      continue;
+    }
+    const layer = readString(parsed.layer);
+    if (layer && layer !== 'backend') warnings.push(`todoBackend ${String(file.folder || '')} has layer=${layer}; treating as backend by filename`);
+    const moduleName = readString(parsed.moduleName) || String(file.folder || '');
+    if (moduleName) moduleNames.add(moduleName);
+    const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
+    for (const raw of owners) {
+      const ownerType = readString(raw.ownerType);
+      const ownerId = readString(raw.ownerId);
+      const status = readString(raw.status);
+      if ((ownerType !== 'operation' && ownerType !== 'workflow') || !ownerId) {
+        errors.push(`todoBackend ${moduleName || String(file.folder || '')} has invalid owner entry`);
+        continue;
+      }
+      if (!isOwnerStatus(status)) {
+        errors.push(`todoBackend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`);
+        continue;
+      }
+      const key = todoOwnerKey(ownerType, ownerId);
+      if (ownersByKey.has(key)) warnings.push(`duplicate todoBackend owner ${key}; first entry kept`);
+      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName });
+    }
+  }
+  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+}
+
+function isOwnerStatus(status: string): status is OwnerStatus {
+  return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
 }
 
 // Read the optional event classification from an ontology def (shape-safe; ignores malformed input).
@@ -276,9 +423,53 @@ function ownerFrom(
     reads,
     writes,
     rulesApplied: readStringArray(obj.rulesApplied),
-    statusBackend: readString(obj.statusBackend) || '',
+    accessPattern: readAccessPattern(obj.accessPattern),
+    inputs: readOperationInputs(obj.inputs),
+    contextResolution: readContextResolution(obj.contextResolution),
+    acceptanceAssertions: readStringArray(obj.acceptanceAssertions),
+    todoStatus: '',
+    statusBackend: '',
+    inlineStatusBackend: readString(obj.statusBackend),
     moduleName,
   };
+}
+
+function readAccessPattern(value: unknown): CbAccessPattern | undefined {
+  if (!isRecord(value)) return undefined;
+  const kind = readString(value.kind);
+  const description = readString(value.description);
+  if (!kind && !description) return undefined;
+  return {
+    kind,
+    description,
+    ...(readString(value.entity) ? { entity: readString(value.entity) } : {}),
+    ...(readString(value.keyField) ? { keyField: readString(value.keyField) } : {}),
+    ...(readStringArray(value.filters).length ? { filters: readStringArray(value.filters) } : {}),
+    ...(readStringArray(value.sort).length ? { sort: readStringArray(value.sort) } : {}),
+    ...(readString(value.pagination) ? { pagination: readString(value.pagination) } : {}),
+    ...(readString(value.selection) ? { selection: readString(value.selection) } : {}),
+    ...(readStringArray(value.output).length ? { output: readStringArray(value.output) } : {}),
+  };
+}
+
+function readOperationInputs(value: unknown): CbOperationInput[] {
+  return Array.isArray(value) ? value.filter(isRecord).map(raw => ({
+    inputId: readString(raw.inputId),
+    fieldRef: readString(raw.fieldRef),
+    required: raw.required === true,
+    source: readString(raw.source),
+    description: readString(raw.description),
+  })).filter(input => !!input.inputId || !!input.fieldRef) : [];
+}
+
+function readContextResolution(value: unknown): CbContextResolution[] {
+  return Array.isArray(value) ? value.filter(isRecord).map(raw => ({
+    ...(readString(raw.inputId) ? { inputId: readString(raw.inputId) } : {}),
+    targetRef: readString(raw.targetRef),
+    source: readString(raw.source),
+    originRef: readString(raw.originRef),
+    description: readString(raw.description),
+  })).filter(item => !!item.targetRef || !!item.originRef) : [];
 }
 
 // ── aggregate derivation (baseline; the LLM index agent may refine) ────────────
@@ -457,24 +648,26 @@ export async function saveDefs(fileInfo: CbFileInfo, exportName: string, data: u
   return ref;
 }
 
-// ── statusBackend mutation (deterministic) ─────────────────────────────────────
+// ── todoBackend mutation (deterministic) ───────────────────────────────────────
 
-/** Read the owner's l4 .defs.ts, set statusBackend, and rewrite it preserving the export name. */
-export async function setOwnerStatusBackend(owner: CbOwner, status: OwnerStatus): Promise<boolean> {
-  const folder = owner.kind === 'operation' ? 'operations' : 'workflows';
+/** Update only l5/{module}/todoBackend.defs.ts. l4 owner defs are read-only for this agent. */
+export async function setTodoBackendStatus(owner: CbOwner, status: OwnerStatus): Promise<boolean> {
   const project = mls.actualProject || 0;
   for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
-    if (file.extension !== '.defs.ts' || String(file.folder || '') !== folder) continue;
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
     const content = String(await file.getContent());
     const parsed = parseDefsSource(content);
-    const idField = owner.kind === 'operation' ? 'operationId' : 'workflowId';
-    if (!isRecord(parsed) || readString(parsed[idField]) !== owner.id) continue;
+    if (!isRecord(parsed)) continue;
+    const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
+    const todoOwner = owners.find(raw => readString(raw.ownerType) === owner.kind && readString(raw.ownerId) === owner.id);
+    if (!todoOwner) continue;
     const exportName = readExportName(content);
     if (!exportName) return false;
-    parsed.statusBackend = status;
+    todoOwner.status = status;
+    parsed.updatedAt = new Date().toISOString();
     await saveDefs(
-      { project, level: 4, folder, shortName: String(file.shortName || toSafeShortName(owner.id)), extension: '.defs.ts' },
+      { project, level: 5, folder: String(file.folder || owner.moduleName), shortName: 'todoBackend', extension: '.defs.ts' },
       exportName,
       parsed,
     );

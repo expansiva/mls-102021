@@ -1,13 +1,13 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/agentCbFinalizeStatus.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Deterministic: set statusBackend = done for the owners processed in this run (statusFrontend
-// untouched). Then continue to the final summary.
+// Deterministic: set todoBackend = done for the owners processed in this run. Then continue to the
+// final summary.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, setOwnerStatusBackend, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, setTodoBackendStatus, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 
 export function createAgent(): IAgentAsync {
-  return { agentName: 'agentCbFinalizeStatus', agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Deterministic statusBackend inProgress -> done', visibility: 'private', beforePromptStep };
+  return { agentName: 'agentCbFinalizeStatus', agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Deterministic todoBackend inProgress -> done', visibility: 'private', beforePromptStep };
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -15,7 +15,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const scan = await readBackendScan(['inProgress']);
     let done = 0;
     for (const owner of scan.owners) {
-      if (await setOwnerStatusBackend(owner, 'done')) done++;
+      if (await setTodoBackendStatus(owner, 'done')) done++;
     }
     return [
       enqueueNext(context, parentStep, step, 'cb-final-summary', 'agentCbFinalSummary', 'Resumo do run', { ownersDone: done }),
