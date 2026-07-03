@@ -60,9 +60,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // Collect materialized .ts outputs (not the .defs.ts / .d.ts) for the completeness check, and
       // record their module-local l1 imports for the cross-file resolution check below.
       if (file.extension === '.ts' && !shortName0.endsWith('.defs') && !shortName0.endsWith('.d')) {
+        const content = String(await file.getContent());
         tsSet.add(`${folder0}::${shortName0.toLowerCase()}`);
-        for (const req of collectL1Imports(String(await file.getContent()), project)) {
+        for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
+        }
+        const compact = content.replace(/\s+/g, ' ');
+        if (/mdmEntityIndex\.findMany\(\s*\{[^}]*where\s*:\s*\{[^}]*\b(entityType|entityId|productId|warehouseId)\s*:/.test(compact)) {
+          importReqs.push({
+            from: `${folder0}/${shortName0}`,
+            key: '__invalid_mdm_index_filter__',
+            target: 'mdmEntityIndex uses invented fields; use MdmEntityIndexRecord fields and load module data from mdmDocument.details',
+          });
+        }
+        if (/mdmRelationship/.test(content) && /\b(source_entity_|target_entity_)/.test(content)) {
+          importReqs.push({
+            from: `${folder0}/${shortName0}`,
+            key: '__invalid_mdm_relationship_shape__',
+            target: 'mdmRelationship uses invented source_entity/target_entity fields; use MdmRelationshipRecord fromId/toId/type',
+          });
         }
         continue;
       }
@@ -122,6 +138,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // .ts. Root guard for hallucinated modules (e.g. importing layer_3_domain/rules/* — rules live
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
     for (const req of importReqs) {
+      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__') {
+        missing.push(`platform contract violation -> ${req.from}.ts: ${req.target}`);
+        continue;
+      }
       if (!tsSet.has(req.key)) missing.push(`import unresolved -> ${req.from}.ts imports '${req.target}' which was not generated`);
     }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];

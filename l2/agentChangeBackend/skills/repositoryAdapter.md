@@ -92,6 +92,19 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
 - The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')`.
 - `orderBy` is always `{ field: '<column>', direction: 'asc'|'desc' }`. `getById` throws `NOT_FOUND`.
 - MDM-backed reads: resolve via `ctx.data.mdmEntityIndex` / `ctx.data.mdmDocument`; never a local table.
+  Use the real 102034 contracts, not invented index fields:
+  - import `type { MdmEntityIndexRecord, MdmRelationshipRecord } from '/_102034_/l1/mdm/module.js'`
+    when you need typed MDM rows.
+  - `MdmEntityIndexRecord` fields are `mdmId`, `subtype`, `name`, `status`, `docType`, `docId`,
+    `countryCode`, `tags`, `searchVector`, `mergedInto`, `dynamoPk`, `createdAt`, `updatedAt`.
+    It does NOT have `entityId`, `entityType`, `productId`, `warehouseId` or module-specific fields.
+  - For module-specific MDM attributes, first query by a real indexed field such as
+    `{ subtype: 'Product' } satisfies Partial<MdmEntityIndexRecord>`, then load documents with
+    `ctx.data.mdmDocument.get({ mdmId: row.mdmId })` or `getMany({ mdmIds })` and inspect
+    `doc.details.<module>`.
+  - `MdmRelationshipRecord` fields are `id`, `fromId`, `toId`, `type`, `role`, `metadata`,
+    `isBidirectional`, `validFrom`, `validTo`, `status`, `createdAt`, `updatedAt`. It does NOT have
+    `source_entity_id`, `target_entity_id`, `source_entity_type` or `target_entity_type`.
 - Multi-table writes (e.g. + event/metric) wrap in `ctx.data.runInTransaction(async (tx) => { ... })`.
 - Append-only EVENT adapters (`data.appendOnlyEvent === true`): implement the event port over its table —
   `append(record)` does a single `insert({ record: toRow(record) })` (NEVER `update`/`delete`), and the

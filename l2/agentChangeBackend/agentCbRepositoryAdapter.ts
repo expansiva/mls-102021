@@ -40,7 +40,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const plan = planTableColumns(ev.fields || [], entityIds);
     return { entityId: ev.entityId, embeddedMembers: [] as string[], mdmRefs: [] as string[], columns: plan.indexed.map(c => c.fieldId), detailsFields: plan.details, appendOnlyEvent: true };
   });
-  const human = `## Aggregates (column vs details split + embedded + mdm refs)\n${JSON.stringify(items, null, 2)}\n\n## Append-only event adapters\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one adapter per aggregate AND per event implementing I{Entity}Repository: map domain <-> row — only "columns" are real columns (snake_case), "detailsFields" + "embeddedMembers" go inside the details JSONB; resolve mdmRefs via 102034. Event adapters implement append (insert one row, no update/delete) + the read finders. ctx.data ONLY here.`;
+  const human = `## Aggregates (column vs details split + embedded + mdm refs)\n${JSON.stringify(items, null, 2)}\n\n## Append-only event adapters\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one adapter per aggregate AND per event implementing I{Entity}Repository: map domain <-> row — only "columns" are real columns (snake_case), "detailsFields" + "embeddedMembers" go inside the details JSONB; resolve mdmRefs via 102034. For MDM, use only the real 102034 shapes: MdmEntityIndexRecord has mdmId/subtype/name/status/etc.; module-specific fields live in mdmDocument.details.<module>, never in mdmEntityIndex. MdmRelationshipRecord uses fromId/toId/type, never source_entity_* or target_entity_*. Event adapters implement append (insert one row, no update/delete) + the read finders. ctx.data ONLY here.`;
   return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ""), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
 
@@ -87,6 +87,14 @@ const systemPrompt = `
 You are ${AGENT_NAME} (hexagonal layer_1_external/adapters/persistence). For each aggregate produce the
 adapter implementing I{Entity}Repository: map the domain aggregate <-> table row (real columns +
 details JSONB holding non-indexed fields and child collections), resolve mdmRefs through the shared
-102034 MDM runtime (NO local MDM table). ctx.data is allowed ONLY here. Call "{{toolName}}"; result.items
-= array. No prose.
+102034 MDM runtime (NO local MDM table). ctx.data is allowed ONLY here.
+
+Critical MDM contract:
+- Never invent MDM index fields. mdmEntityIndex rows are MdmEntityIndexRecord with mdmId/subtype/name/
+  status/docType/docId/countryCode/tags/searchVector/mergedInto/dynamoPk/createdAt/updatedAt only.
+- Product/menu/stock/table custom fields are in mdmDocument.details.<module>, not mdmEntityIndex.
+- mdmRelationship rows are MdmRelationshipRecord with fromId/toId/type, not source_entity_* or
+  target_entity_*.
+
+Call "{{toolName}}"; result.items = array. No prose.
 `;
