@@ -35,17 +35,23 @@ export function createAgent(): IAgentAsync {
   return { agentName: AGENT_NAME, agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Adversarial critic: usecase defs vs L4 contract; routes error findings to the repair loop', visibility: 'private', beforePromptStep, afterPromptStep };
 }
 
-/** The judge run number carried in the step args ({ judgeRun: n }); defaults to 1. */
-function judgeRunOf(step: mls.msg.AIAgentStep): number {
+/** Step args: { judgeRun: n, owners?: [...] }. On re-verification runs (n > 1) `owners` scopes the
+ * judge MECHANICALLY to the usecases that were just repaired — cheaper and faster than re-judging
+ * everything, and a clean pass on the repaired subset is what the re-run must prove. */
+function judgeArgsOf(step: mls.msg.AIAgentStep): { judgeRun: number; owners: string[] } {
   try {
     const p = JSON.parse(String(step.prompt || '{}'));
-    if (p && typeof p.judgeRun === 'number' && p.judgeRun > 0) return p.judgeRun;
-  } catch { /* default */ }
-  return 1;
+    return {
+      judgeRun: p && typeof p.judgeRun === 'number' && p.judgeRun > 0 ? p.judgeRun : 1,
+      owners: p && Array.isArray(p.owners) ? p.owners.filter((o: unknown): o is string => typeof o === 'string' && !!o) : [],
+    };
+  } catch {
+    return { judgeRun: 1, owners: [] };
+  }
 }
 
-/** Read the saved usecase defs data for each operation owner ({} when missing). */
-async function readUsecaseDefsByOwner(scan: CbScan): Promise<Map<string, Record<string, unknown> | null>> {
+/** Read the saved usecase defs data for the given operation owners (null when missing). */
+async function readUsecaseDefsByOwner(scan: CbScan, operations: CbOwner[]): Promise<Map<string, Record<string, unknown> | null>> {
   const project = scan.project;
   const byShortName = new Map<string, Record<string, unknown>>();
   for (const file of Object.values(mls.stor.files) as any[]) {
@@ -55,11 +61,18 @@ async function readUsecaseDefsByOwner(scan: CbScan): Promise<Map<string, Record<
     if (isRecord(parsed.data)) byShortName.set(String(file.shortName || '').toLowerCase(), parsed.data as Record<string, unknown>);
   }
   const out = new Map<string, Record<string, unknown> | null>();
-  for (const owner of scan.owners) {
-    if (owner.kind !== 'operation') continue;
+  for (const owner of operations) {
     out.set(owner.id, byShortName.get(lowerFirst(owner.id).toLowerCase()) ?? null);
   }
   return out;
+}
+
+/** The operation owners in scope for this judge run (all on run 1; only the repaired subset after). */
+function scopedOperations(scan: CbScan, step: mls.msg.AIAgentStep): { judgeRun: number; operations: CbOwner[] } {
+  const { judgeRun, owners } = judgeArgsOf(step);
+  let operations = scan.owners.filter(o => o.kind === 'operation');
+  if (judgeRun > 1 && owners.length) operations = operations.filter(o => owners.includes(o.id));
+  return { judgeRun, operations };
 }
 
 /** Deterministic pre-findings: an operation owner whose usecase .defs.ts is missing entirely. */
@@ -92,14 +105,14 @@ function ownerContract(o: CbOwner) {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const scan = await readBackendScan(['toCreate', 'inProgress']);
-    const operations = scan.owners.filter(o => o.kind === 'operation');
+    const { judgeRun, operations } = scopedOperations(scan, step);
     if (!operations.length) {
       return [
         enqueueNext(context, parentStep, step, 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no operation owners to judge'),
       ];
     }
-    const defsByOwner = await readUsecaseDefsByOwner(scan);
+    const defsByOwner = await readUsecaseDefsByOwner(scan, operations);
     const pairs = operations.map(o => ({
       l4Contract: ownerContract(o),
       generatedUsecaseDefs: defsByOwner.get(o.id) ?? null,
@@ -113,8 +126,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       '## Pairs to judge (L4 contract = source of truth vs generated usecase defs)',
       JSON.stringify(pairs, null, 2),
       '',
+      judgeRun > 1 ? `NOTE: re-verification run — only the ${operations.length} repaired usecase(s) are being judged.` : '',
       `Judge every pair. Call ${TOOL_NAME} with the findings (empty array when everything is coherent).`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
     return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ''), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -125,12 +139,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const judgeRun = judgeRunOf(step);
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const scan = await readBackendScan(['toCreate', 'inProgress']);
-    const operationIds = new Set(scan.owners.filter(o => o.kind === 'operation').map(o => o.id));
+    const { judgeRun, operations } = scopedOperations(scan, step);
+    const operationIds = new Set(operations.map(o => o.id));
 
     // LLM findings + deterministic missing-defs findings; out-of-scope is discarded by design (§2).
     const raw = Array.isArray((out.result as any).findings) ? (out.result as any).findings.filter(isRecord) : [];
@@ -143,7 +157,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         ...(readString(f.suggestion) ? { suggestion: readString(f.suggestion) } : {}),
       }))
       .filter((f: CbJudgeFinding) => !!f.message && f.type !== 'fora_de_escopo');
-    const detFindings = missingDefsFindings(await readUsecaseDefsByOwner(scan));
+    const detFindings = missingDefsFindings(await readUsecaseDefsByOwner(scan, operations));
     const findings = [...detFindings, ...llmFindings];
 
     const warnings = findings.filter(f => f.severity !== 'error');
@@ -180,8 +194,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       state.judgeRuns = judgeRun;
       await saveRepairState(state);
       const repairPlanId = `cb-usecase-repair-r${judgeRun}`;
-      intents.push(createParallelStepIntent(context, parentStep, repairPlanId, 'agentCbUsecase', 'Reparar usecases {{completed}}/{{total}}, falhas {{failed}}', [...errorsByOwner.keys()], [], 10));
-      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-judge-r${judgeRun + 1}`, AGENT_NAME, 'Juiz LLM (re-verificação)', { planId: `cb-judge-r${judgeRun + 1}`, judgeRun: judgeRun + 1 }, [repairPlanId], 'sequential', 'waiting_dependency')));
+      const repairedOwners = [...errorsByOwner.keys()];
+      intents.push(createParallelStepIntent(context, parentStep, repairPlanId, 'agentCbUsecase', 'Reparar usecases {{completed}}/{{total}}, falhas {{failed}}', repairedOwners, [], 10));
+      // Re-verification is SCOPED to the repaired owners (mechanical) — cheaper/faster than re-judging
+      // everything; run 1 already cleared the rest.
+      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-judge-r${judgeRun + 1}`, AGENT_NAME, `Juiz LLM (re-verificação de ${repairedOwners.length})`, { planId: `cb-judge-r${judgeRun + 1}`, judgeRun: judgeRun + 1, owners: repairedOwners }, [repairPlanId], 'sequential', 'waiting_dependency')));
       intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
         `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: ${errorsByOwner.size} usecase(s) routed to repair; ${warnings.length} warning(s)`));
       return intents;
@@ -199,7 +216,6 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   } catch (error) {
     // The judge must never kill a run by itself: fail soft to the chain, keep the trace objective.
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`${logPrefix(agent)} ${msg}`);
     return [
       enqueueNext(context, parentStep, step, 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `judge skipped (error): ${msg}`),

@@ -24,7 +24,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
-  buildRepairPromptSection, COMPONENT_REPAIR_BUDGET, type CbRepairState,
+  buildRepairPromptSection, forceDefsStale, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
@@ -308,8 +308,10 @@ function collectRequiredChecksByHandler(content: string): Map<string, Set<string
     while ((errorMatch = errorRe.exec(body)) !== null) {
       const call = errorMatch[1];
       if (!/\b(required|obrigat[oó]ri[oa]|required field|campo obrigat[oó]ri[oa])\b/i.test(call)) continue;
-      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/);
-      if (fieldMatch) fields.add(fieldMatch[1]);
+      // Accept dotted paths ('movement.movementType') and compare by the LAST segment — a dotted
+      // field must not evade the boundary check (lesson task2/102049: adjustStockLevel).
+      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$.]+)['"]/);
+      if (fieldMatch) fields.add(fieldMatch[1].split('.').pop() as string);
     }
     checks.set(handlerMatch[1], fields);
   }
@@ -436,12 +438,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       const entry = await recordComponentFailure(defRef, componentIssues, code);
       throw new Error(`component integrity failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${componentIssues.slice(0, 8).join('; ')}`);
     }
-    const ok = await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, code);
-    if (!ok) throw new Error('saveGeneratedTs failed');
+    const saved = await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, code);
+    if (!saved.ok) throw new Error('saveGeneratedTs failed');
+    if (saved.compileErrors.length) {
+      // COMPILER IN THE LOOP (spec item 11): the .ts was saved but does not compile. Record the
+      // compiler errors + the code, and force the pair stale again (the saved .ts is newer than the
+      // defs) so the dispatcher re-spawns this worker with the errors in the prompt. Budget exhausted
+      // -> the pair STAYS stale and cb-validate-all's staleness finding blocks the run.
+      const entry = await recordComponentFailure(defRef, saved.compileErrors.map(e => `compiler: ${e}`), code);
+      forceDefsStale(defRef);
+      throw new Error(`compile failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${saved.compileErrors.slice(0, 4).join('; ')}`);
+    }
     await clearComponentRepair(defRef); // converged: drop the repair record
   } catch (error) {
+    // No console output: repair is an expected, handled path. The trace below lands on the step, the
+    // findings live in cb-repair-state, and cb-validate-all is where a real failure surfaces.
     trace = `[repair] ${error instanceof Error ? error.message : String(error)}`;
-    console.error(`${logPrefix(agent)} ${trace}`);
   }
   // No enqueueNext: cb-gen-seeds was queued by the dispatcher with a join dependsOn on the last layer.
   // Always 'completed' (see engine-semantics note above): the trace carries the failure, the repair

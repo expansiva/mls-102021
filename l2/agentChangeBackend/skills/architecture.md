@@ -52,3 +52,21 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 - Ids via `ctx.idGenerator.newId()`; timestamps via `ctx.clock.nowIso()`.
 - `AppError(code, message, httpStatus, details?)`: `VALIDATION_ERROR` 400, `NOT_FOUND` 404,
   `CONFLICT` 409. Generate only what the `.defs.ts` declares.
+
+## TypeScript strictness (the generated .ts is compiled with strict:true — it MUST compile clean)
+
+Recurring compiler errors to AVOID (each one fails the run):
+
+- **TS2352 — never cast a typed platform/domain record directly to a looser shape.**
+  `rec as Record<string, unknown>` fails when `rec` is `MdmRelationshipRecord`, `MdmEntityIndexRecord`,
+  `MdmDetailRecord` or a domain entity (no index signature). Cast THROUGH unknown:
+  `rec as unknown as Record<string, unknown>` — same for narrowing details:
+  `(doc.details ?? {}) as unknown as YourShape`.
+- **TS2352 on filters** — `{ subtype: 'Table' } as Partial<MdmEntityIndexRecord>` fails when the
+  literal is not in the enum. Use `{ subtype: 'Table' } as unknown as Partial<MdmEntityIndexRecord>`.
+- **TS2367 — enum vs literal comparison.** When a field is enum-typed and the literal may not overlap,
+  compare via `String(rec.status) === 'active'`.
+- **TS2304 — never reference an undeclared identifier.** Every repository you use must be declared in
+  THIS file: `const shifts = resolveRepository<IShiftRepository>(ctx, 'Shift');`. When editing/repairing
+  code, keep every declaration the remaining code still uses.
+- **TS2339 — `ctx.data` is the IDataRuntime itself.** It is `ctx.data.mdmDocument`, never `ctx.data.data.*`.

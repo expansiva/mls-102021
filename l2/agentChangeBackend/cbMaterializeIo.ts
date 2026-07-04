@@ -108,29 +108,61 @@ export function parseMlsPath(mlsPath: string): ParsedMlsPath | null {
   return { project, level, folder, shortName, extension };
 }
 
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<void> {
+/** Flatten a monaco diagnostic (messageText may be a chain) into a single line. */
+function flattenDiagnostic(d: any): string {
+  const flat = (m: any): string => {
+    if (typeof m === 'string') return m;
+    if (m && typeof m.messageText === 'string') {
+      const next = Array.isArray(m.next) && m.next.length ? ` -> ${flat(m.next[0])}` : '';
+      return `${m.messageText}${next}`;
+    }
+    return '';
+  };
+  const msg = flat(d?.messageText ?? d);
+  const code = typeof d?.code === 'number' ? `TS${d.code}: ` : '';
+  return msg ? `${code}${msg}` : '';
+}
+
+/** Compile the saved .ts and return the TypeScript ERROR diagnostics (empty when clean or when the
+ * compile environment is unavailable — never block on infra). */
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<string[]> {
   try {
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
     const modelTs = modelBase?.ts as mls.editor.IModelTS;
-    if (!modelTs) return;
+    if (!modelTs) return [];
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
     mls.editor.forceModelUpdate(modelTs.model);
+    // category 1 = Error in monaco/ts DiagnosticCategory; keep only real errors, capped.
+    const diags = (modelTs.compilerResults?.errors ?? []) as any[];
+    return diags
+      .filter(d => d?.category === undefined || d.category === 1)
+      .map(flattenDiagnostic)
+      .filter(Boolean)
+      .slice(0, 12);
   } catch (err) {
     console.warn('[cbMaterializeIo] compileGeneratedTs failed', err);
+    return [];
   }
 }
 
-/** Save (create or overwrite) a generated .ts file and force a recompile. */
+export interface SaveGeneratedTsResult {
+  ok: boolean;
+  /** TypeScript errors of the per-file compile (spec item 11: feed the compiler error back into the
+   * repair prompt). Empty when clean or when the compile environment is unavailable. */
+  compileErrors: string[];
+}
+
+/** Save (create or overwrite) a generated .ts file, force a recompile and report its errors. */
 export async function saveGeneratedTs(
   project: number,
   level: number,
   folder: string,
   shortName: string,
   content: string,
-): Promise<boolean> {
+): Promise<SaveGeneratedTsResult> {
   try {
     const fileInfo = { project, level, folder, shortName, extension: '.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
@@ -145,11 +177,11 @@ export async function saveGeneratedTs(
     // across runs); libStor.createStorFile / setContent do not set it.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    if (!shortName.endsWith('.defs')) await compileGeneratedTs(project, level, folder, shortName);
-    return true;
+    const compileErrors = shortName.endsWith('.defs') ? [] : await compileGeneratedTs(project, level, folder, shortName);
+    return { ok: true, compileErrors };
   } catch (err) {
     console.warn('[cbMaterializeIo] saveGeneratedTs failed', err);
-    return false;
+    return { ok: false, compileErrors: [] };
   }
 }
 

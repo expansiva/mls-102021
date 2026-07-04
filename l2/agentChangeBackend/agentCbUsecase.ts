@@ -198,7 +198,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   } catch (error) {
     status = 'failed';
     trace = error instanceof Error ? error.message : String(error);
-    console.error(`${logPrefix(agent)} ${trace}`);
+    // No console output: the trace lands on the step and the finding on cb-repair-state (below).
   }
   if (status === 'failed') {
     // Burn a repair attempt and keep the error as a finding: the judge (cb-judge) detects the missing

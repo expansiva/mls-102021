@@ -14,6 +14,8 @@ import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readS
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
+import { getFileModified } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
+import { isStale } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -82,8 +84,10 @@ function collectRequiredChecksByHandler(content: string): Map<string, Set<string
     while ((errorMatch = errorRe.exec(body)) !== null) {
       const call = errorMatch[1];
       if (!/\b(required|obrigat[oó]ri[oa]|required field|campo obrigat[oó]ri[oa])\b/i.test(call)) continue;
-      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/);
-      if (fieldMatch) fields.add(fieldMatch[1]);
+      // Accept dotted paths ('movement.movementType') and compare by the LAST segment — a dotted
+      // field must not evade the boundary check (lesson task2/102049: adjustStockLevel).
+      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$.]+)['"]/);
+      if (fieldMatch) fields.add(fieldMatch[1].split('.').pop() as string);
     }
     checks.set(handlerMatch[1], fields);
   }
@@ -322,6 +326,18 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const msg = `materialization incomplete -> ${d.folder}/${d.shortName}.ts not generated from its .defs.ts`;
         missing.push(msg);
         addRepair(defRefOf(d.folder, d.real), msg); // missing .ts -> re-materializable
+        continue;
+      }
+      // STALENESS (lesson task2/102049): a worker that failed validation saves NO .ts, but an OLD .ts
+      // from a previous run may still exist and silently mask the failure ("passed" with outdated
+      // code). A .defs.ts newer than its materialized .ts means the current defs were never
+      // materialized -> blocking finding, re-materializable.
+      const defsMs = getFileModified(project, 1, d.folder, d.real, '.defs.ts');
+      const tsMs = getFileModified(project, 1, d.folder, d.real, '.ts');
+      if (isStale(defsMs, tsMs)) {
+        const msg = `materialization stale -> ${d.folder}/${d.shortName}.ts is older than its .defs.ts (failed worker masked by a previous run's output)`;
+        missing.push(msg);
+        addRepair(defRefOf(d.folder, d.real), msg);
       }
     }
 
@@ -394,16 +410,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const reason = !allMapped
         ? `${unmapped.length} finding(s) are defs-level (not repairable by re-materialization)`
         : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
-      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}`;
+      const historyNote = state.history.length ? ` | repair history (${state.history.length}): ${state.history.slice(-8).join(' | ')}` : '';
+      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
       console.error(`${logPrefix(agent)} ${trace}`);
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
-    // Clean run: drop any repair state left behind (converged) before finalizing.
+    // Clean run: embed the repair audit in the TASK trace (the fan-out children were deleted by the
+    // runtime, so this is where the repaired findings survive), then clear the state.
+    const finalState = await readRepairState();
+    const repairNote = finalState.history.length
+      ? `; repaired during this run: ${finalState.history.length} occurrence(s) [${finalState.history.slice(-8).join(' | ')}]`
+      : '';
     await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
-    const okTrace = warnings.length
+    const okTrace = (warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
-      : `l1 defs=${l1Defs}; 0 warnings.`;
+      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote;
     return [
       enqueueNext(context, parentStep, step, 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),

@@ -55,6 +55,10 @@ export interface CbRepairState {
   componentRepairs: Record<string, CbComponentRepair>;
   globalAttempts: number;  // validate-all repair rounds consumed
   judgeRuns: number;       // judge passes consumed
+  /** Durable audit of every repair occurrence in the run ("target :: attempt n :: finding"). The
+   * fan-out children are DELETED by the runtime after completion, so this history is what survives;
+   * cb-validate-all embeds it in the task trace before clearing the state. */
+  history: string[];
   updatedAt: string;
 }
 
@@ -66,7 +70,14 @@ function stateFileInfo(): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder
 }
 
 function emptyState(): CbRepairState {
-  return { schemaVersion: SCHEMA_VERSION, componentRepairs: {}, globalAttempts: 0, judgeRuns: 0, updatedAt: new Date().toISOString() };
+  return { schemaVersion: SCHEMA_VERSION, componentRepairs: {}, globalAttempts: 0, judgeRuns: 0, history: [], updatedAt: new Date().toISOString() };
+}
+
+const MAX_HISTORY = 100;
+
+function pushHistory(state: CbRepairState, entry: string): void {
+  state.history.push(`${new Date().toISOString()} :: ${entry}`);
+  if (state.history.length > MAX_HISTORY) state.history.splice(0, state.history.length - MAX_HISTORY);
 }
 
 // ── state I/O ───────────────────────────────────────────────────────────────────
@@ -83,6 +94,7 @@ export async function readRepairState(): Promise<CbRepairState> {
       componentRepairs: isRecord(parsed.componentRepairs) ? (parsed.componentRepairs as Record<string, CbComponentRepair>) : {},
       globalAttempts: typeof parsed.globalAttempts === 'number' ? parsed.globalAttempts : 0,
       judgeRuns: typeof parsed.judgeRuns === 'number' ? parsed.judgeRuns : 0,
+      history: Array.isArray(parsed.history) ? (parsed.history as unknown[]).filter((h): h is string => typeof h === 'string') : [],
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
     };
   } catch {
@@ -134,6 +146,7 @@ export async function recordComponentFailure(target: string, findings: string[],
     updatedAt: new Date().toISOString(),
   };
   state.componentRepairs[target] = entry;
+  pushHistory(state, `${target} :: attempt ${entry.attempts} :: ${entry.findings[0] ?? 'failure'}`);
   await saveRepairState(state);
   return entry;
 }
@@ -143,6 +156,7 @@ export async function recordComponentFailure(target: string, findings: string[],
 export async function setComponentFindings(target: string, findings: string[], source: CbRepairSource): Promise<void> {
   const state = await readRepairState();
   state.componentRepairs[target] = { target, attempts: 0, findings: findings.slice(0, 20), source, updatedAt: new Date().toISOString() };
+  pushHistory(state, `${target} :: ${source} :: ${findings[0] ?? 'finding'}`);
   await saveRepairState(state);
 }
 

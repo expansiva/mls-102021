@@ -49,8 +49,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const language = await readDefaultLanguage(project);
     const tablePlans = await readTablePlans(project, moduleName);
     const content = buildSeedsSource(project, moduleName, language, scan, tablePlans);
-    const ok = await saveGeneratedTs(project, 1, `${moduleName}/layer_1_external/adapters/persistence`, 'seeds', content);
-    if (!ok) throw new Error('failed to save seeds.ts');
+    const saved = await saveGeneratedTs(project, 1, `${moduleName}/layer_1_external/adapters/persistence`, 'seeds', content);
+    if (!saved.ok) throw new Error('failed to save seeds.ts');
     return [
       enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Generated seeds.ts (${tablePlans.length} table target(s), ${scan.entities.filter(e => e.kind === 'mdm').length} mdm entity type(s), language=${language}).`),
