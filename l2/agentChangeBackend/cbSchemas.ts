@@ -181,6 +181,25 @@ export const httpControllerResultSchema = {
   },
 } as const;
 
+// ── judge (adversarial critic, cb-judge) ────────────────────────────────────────
+// Findings typed by the repair-routing taxonomy (improveAddNewSolution2_1.md §2):
+// estrutural (artifact/link missing) | decisao (business default missing) | fora_de_escopo (other layer).
+
+export const judgeResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['findings'],
+  properties: {
+    findings: objArray(['ownerId', 'type', 'severity', 'message'], {
+      ownerId: str,                                              // operationId of the usecase judged
+      type: { enum: ['estrutural', 'decisao', 'fora_de_escopo'] },
+      severity: { enum: ['error', 'warning'] },
+      message: str,
+      suggestion: str,
+    }),
+  },
+} as const;
+
 export const finalSummaryResultSchema = {
   type: 'object',
   additionalProperties: false,

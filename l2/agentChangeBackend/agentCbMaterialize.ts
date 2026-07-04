@@ -16,12 +16,16 @@ import {
 } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
-  createAddStepIntent, createParallelStepIntent, logPrefix,
+  createAddStepIntent, createParallelStepIntent, isRecord, readStringArray, logPrefix,
 } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
   expandContextRef, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
 } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
+import {
+  readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
+  buildRepairPromptSection, COMPONENT_REPAIR_BUDGET, type CbRepairState,
+} from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
 
@@ -86,23 +90,43 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // finishes — the same proven barrier as cb-usecase-fanout -> cb-gen-http. dispatch is idempotent:
     // the just-materialized .ts stop being stale, so the next call spawns the next layer, and finally
     // cb-gen-seeds when nothing is stale.
-    // minRank: the continue-dispatcher advances STRICTLY forward (rank+1) so a layer that a worker
-    // failed to materialize is never re-spawned under the same planId (a duplicate cb-mat-L{rank});
-    // its incompleteness is caught by cb-validate-all instead.
+    // minRank: the continue-dispatcher advances STRICTLY forward (rank+1). REPAIR EXCEPTION: a stale
+    // entry BELOW minRank whose worker failed with repair budget left (cbRepair state) IS re-included —
+    // it gets a fresh parallel layer under a UNIQUE planId (attempt suffix), with the findings fed back
+    // into the worker prompt. Budget exhausted -> skipped as before (cb-validate-all catches it and can
+    // trigger ONE global repair round). This is the in-flow repair loop; the engine is untouched.
     let minRank = 0;
-    try { const p = JSON.parse(String(step.prompt || '{}')); if (p && typeof p.minRank === 'number') minRank = p.minRank; } catch { /* default 0 */ }
+    let repairMode = false; // set by the validate-all global round: end at cb-validate-all, not seeds
+    try {
+      const p = JSON.parse(String(step.prompt || '{}'));
+      if (p && typeof p.minRank === 'number') minRank = p.minRank;
+      if (p && p.repair === true) repairMode = true;
+    } catch { /* defaults */ }
+    const repairState: CbRepairState = await readRepairState();
+    const repairable = (defRef: string): boolean => {
+      const entry = repairState.componentRepairs[defRef];
+      return !!entry && entry.attempts > 0 && entry.attempts <= COMPONENT_REPAIR_BUDGET;
+    };
     const byRank = new Map<number, DefsEntry[]>();
     for (const e of allStale) {
       const r = layerRank(e.item.type);
-      if (r < minRank) continue;
+      if (r < minRank && !repairable(e.defRef)) continue;
       let bucket = byRank.get(r);
       if (!bucket) { bucket = []; byRank.set(r, bucket); }
       bucket.push(e);
     }
+    // Unique planId suffixes across repair rounds/attempts (a planId must never repeat in the task).
+    const gSuffix = repairState.globalAttempts > 0 ? `-g${repairState.globalAttempts}` : '';
+    const roundArgs = repairMode ? { repair: true } : {};
+    const endStep = (dependsOn: string[]): mls.msg.AgentIntentAddStep => repairMode
+      // Repair round: defs did not change, so seeds/register are still valid — go straight back to the
+      // integrity barrier (unique planId per round).
+      ? createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-validate-all${gSuffix}`, 'agentCbValidateAll', 'Validar artefatos l1 (repair)', { planId: `cb-validate-all${gSuffix}` }, dependsOn, 'sequential', 'waiting_dependency'))
+      : createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, dependsOn, 'sequential', 'waiting_dependency'));
     if (byRank.size === 0) {
-      // No more layers to materialize from minRank up -> generate seeds.
+      // No more layers to materialize from minRank up -> seeds (or the repair-round barrier).
       return [
-        createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, [], 'sequential', 'waiting_dependency')),
+        endStep([]),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `nothing stale to materialize (from L${minRank})`),
       ];
     }
@@ -110,7 +134,9 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const remainingLayers = ranksSorted.length;
     const rank = ranksSorted[0];
     const bucket = byRank.get(rank)!;
-    const planId = `cb-mat-L${rank}`;
+    const maxAttempt = Math.max(0, ...bucket.map(e => repairState.componentRepairs[e.defRef]?.attempts ?? 0));
+    const rSuffix = maxAttempt > 0 ? `-r${maxAttempt}` : '';
+    const planId = `cb-mat-L${rank}${gSuffix}${rSuffix}`;
     const refs = bucket.map(e => e.defRef);
     // Content-based progress label (clearer than "Materializar L0/L1"): name the artifacts in this layer.
     const label = layerLabel([...new Set(bucket.map(e => e.item.type))]);
@@ -124,10 +150,13 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
       // layer's content (not a generic "próxima camada") so the step list stays readable.
       const nextRank = ranksSorted[1];
       const nextLabel = layerLabel([...new Set(byRank.get(nextRank)!.map(e => e.item.type))]);
-      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-mat-after-L${rank}`, AGENT_NAME, `Materializar ${nextLabel}`, { planId: 'cb-materialize', minRank: rank + 1 }, [planId], 'sequential', 'waiting_dependency')));
+      // args carry the attempt/round so the runtime's hook dispatch key (unique args) never repeats
+      // across repair re-dispatches of the same rank.
+      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-mat-after-L${rank}${gSuffix}${rSuffix}`, AGENT_NAME, `Materializar ${nextLabel}`, { planId: 'cb-materialize', minRank: rank + 1, att: maxAttempt, g: repairState.globalAttempts, ...roundArgs }, [planId], 'sequential', 'waiting_dependency')));
     } else {
-      // Last stale layer: seed generation runs after it materializes.
-      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, [planId], 'sequential', 'waiting_dependency')));
+      // Last stale layer: seeds (or the repair-round barrier) runs after it materializes. A same-layer
+      // repair of THIS layer, if needed, reaches a later dispatch through the validate-all repair round.
+      intents.push(endStep([planId]));
     }
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `materializing ${label} (${refs.length} file(s)); ${remainingLayers - 1} layer(s) after`));
     return intents;
@@ -182,10 +211,191 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
     }
   }
   const system = buildSystemPrompt(skillSections, parsed.item.outputPath, DEFAULT_MODEL_TYPE);
-  const human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
+  let human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
+  // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
+  // exact findings + the rejected code back so the model fixes them instead of re-rolling the dice.
+  const repair = await getComponentRepair(defRef);
+  if (repair && repair.findings.length) human += `\n\n${buildRepairPromptSection(repair)}`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the defRef) so the runtime
   // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
   return [createPromptReadyIntent(context, parentStep, hookSequential, defRef, system, human, GEN_TOOL as unknown as mls.msg.LLMTool, GEN_TOOL_NAME)];
+}
+
+function collectL1Imports(content: string, project: number): { key: string; target: string }[] {
+  const out: { key: string; target: string }[] = [];
+  const re = /from\s+['"]\/_(\d+)_\/l1\/([^'"]+)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    if (Number(match[1]) !== project) continue;
+    const path = match[2].replace(/\.(?:d\.ts|ts|js)$/u, '');
+    const lastSlash = path.lastIndexOf('/');
+    const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : '';
+    const shortName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    out.push({ key: `${folder}::${shortName.toLowerCase()}`, target: `_${project}_/l1/${path}` });
+  }
+  return out;
+}
+
+function existingTsKeys(project: number, currentKey: string): Set<string> {
+  const keys = new Set<string>([currentKey]);
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
+    const shortName = String(file.shortName || '');
+    if (file.extension === '.ts' && !shortName.endsWith('.defs') && !shortName.endsWith('.d')) {
+      keys.add(`${String(file.folder || '')}::${shortName.toLowerCase()}`);
+    }
+  }
+  return keys;
+}
+
+function normalizeRuleId(rule: string): string {
+  return rule.split(':')[0].trim();
+}
+
+function collectUsecaseRules(data: unknown): string[] {
+  if (!isRecord(data)) return [];
+  const rules = new Set(readStringArray(data.rulesApplied).map(normalizeRuleId).filter(Boolean));
+  const functions = Array.isArray((data as any).functions) ? (data as any).functions : [];
+  for (const fn of functions) {
+    if (!isRecord(fn)) continue;
+    for (const rule of readStringArray(fn.rulesApplied).map(normalizeRuleId).filter(Boolean)) rules.add(rule);
+  }
+  return [...rules];
+}
+
+function lowerFirstLocal(value: string): string {
+  return value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function fieldNameFromRef(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const parts = raw.split('.');
+  return parts[parts.length - 1] || raw;
+}
+
+function requiredBoundaryFields(inputContract: unknown): Set<string> {
+  const fields = new Set<string>();
+  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession']);
+  if (!Array.isArray(inputContract)) return fields;
+  for (const input of inputContract) {
+    if (!isRecord(input) || input.required !== true) continue;
+    const source = String(input.source ?? '');
+    if (resolvedSources.has(source)) continue;
+    const inputId = fieldNameFromRef(input.inputId);
+    const fieldRef = fieldNameFromRef(input.fieldRef);
+    if (inputId) fields.add(inputId);
+    if (fieldRef) fields.add(fieldRef);
+  }
+  return fields;
+}
+
+function collectRequiredChecksByHandler(content: string): Map<string, Set<string>> {
+  const checks = new Map<string, Set<string>>();
+  const handlerRe = /export\s+const\s+([A-Za-z0-9_$]+)\s*:\s*BffHandler\s*=\s*async[\s\S]*?=>\s*\{([\s\S]*?)\n\};/g;
+  let handlerMatch: RegExpExecArray | null;
+  while ((handlerMatch = handlerRe.exec(content)) !== null) {
+    const fields = new Set<string>();
+    const body = handlerMatch[2];
+    const errorRe = /new\s+AppError\(([\s\S]*?)\);/g;
+    let errorMatch: RegExpExecArray | null;
+    while ((errorMatch = errorRe.exec(body)) !== null) {
+      const call = errorMatch[1];
+      if (!/\b(required|obrigat[oó]ri[oa]|required field|campo obrigat[oó]ri[oa])\b/i.test(call)) continue;
+      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/);
+      if (fieldMatch) fields.add(fieldMatch[1]);
+    }
+    checks.set(handlerMatch[1], fields);
+  }
+  return checks;
+}
+
+function collectExportedHandlers(content: string): Set<string> {
+  const handlers = new Set<string>();
+  const re = /export\s+const\s+([A-Za-z0-9_$]+)\s*:\s*BffHandler\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) handlers.add(match[1]);
+  return handlers;
+}
+
+function collectRouteHandlers(content: string): Map<string, string> {
+  const routes = new Map<string, string>();
+  const re = /\{\s*key\s*:\s*['"]([^'"]+)['"]\s*,\s*handler\s*:\s*([A-Za-z0-9_$]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) routes.set(match[1], match[2]);
+  return routes;
+}
+
+function validateUsecaseComponent(project: number, data: unknown, code: string, tsKeys: Set<string>): string[] {
+  const issues: string[] = [];
+  const mdmRefs = new Set(isRecord(data) ? readStringArray(data.mdmRefs).map(ref => ref.toLowerCase()) : []);
+  for (const req of collectL1Imports(code, project)) {
+    if (!tsKeys.has(req.key)) issues.push(`import unresolved -> imports '${req.target}' which was not generated`);
+    for (const mdmRef of mdmRefs) {
+      const entityPath = `/entities/${lowerFirstLocal(mdmRef)}`;
+      const portPath = `/ports/${lowerFirstLocal(mdmRef)}Repository`;
+      const lowerTarget = req.target.toLowerCase();
+      if (lowerTarget.includes(entityPath.toLowerCase()) || lowerTarget.includes(portPath.toLowerCase())) {
+        issues.push(`mdm local import forbidden -> ${req.target}`);
+      }
+    }
+  }
+  if (/\/_\d+_\/l1\/[^'"]*\/layer_3_domain\/rules\//.test(code)) {
+    issues.push('rulesApplied must be applied inline; layer_3_domain/rules/* is not generated');
+  }
+  const compact = code.replace(/\s+/g, ' ');
+  if (/mdmEntityIndex\.findMany\(\s*\{[^}]*where\s*:\s*\{[^}]*\b(entityType|entityId|productId|warehouseId)\s*:/.test(compact)) {
+    issues.push('mdmEntityIndex uses invented fields; use MdmEntityIndexRecord fields and load module data from mdmDocument.details');
+  }
+  if (/mdmRelationship/.test(code) && /\b(source_entity_|target_entity_)/.test(code)) {
+    issues.push('mdmRelationship uses invented source_entity/target_entity fields; use MdmRelationshipRecord fromId/toId/type');
+  }
+  for (const rule of collectUsecaseRules(data)) {
+    if (!new RegExp(`\\b${escapeRegExp(rule)}\\b`).test(code)) {
+      issues.push(`rulesApplied '${rule}' not present in generated .ts`);
+    }
+  }
+  return issues;
+}
+
+function validateControllerComponent(data: unknown, code: string): string[] {
+  const issues: string[] = [];
+  if (!isRecord(data)) return issues;
+  const handlers = Array.isArray((data as any).handlers) ? (data as any).handlers.filter(isRecord) : [];
+  const routes = Array.isArray((data as any).routes) ? (data as any).routes.filter(isRecord) : [];
+  const handlerNames = new Set(handlers.map((h: any) => String(h.handlerName || '')).filter(Boolean));
+  const exportedHandlers = collectExportedHandlers(code);
+  const emittedRoutes = collectRouteHandlers(code);
+  const requiredChecks = collectRequiredChecksByHandler(code);
+
+  for (const handler of handlers) {
+    const handlerName = String((handler as any).handlerName || '');
+    if (!handlerName) continue;
+    if (!exportedHandlers.has(handlerName)) issues.push(`handler ${handlerName} not exported in .ts`);
+    const allowedRequired = requiredBoundaryFields((handler as any).inputContract);
+    for (const checked of requiredChecks.get(handlerName) ?? []) {
+      if (!allowedRequired.has(checked)) issues.push(`handler ${handlerName} requires '${checked}' outside l4 inputContract`);
+    }
+  }
+  for (const route of routes) {
+    const key = String((route as any).key || '');
+    const handlerName = String((route as any).handlerName || '');
+    if (!key || !handlerName) continue;
+    if (!handlerNames.has(handlerName)) issues.push(`route ${key} points to missing handler ${handlerName}`);
+    if (emittedRoutes.get(key) !== handlerName) issues.push(`route ${key} not exported with handler ${handlerName}`);
+  }
+  return issues;
+}
+
+function validateGeneratedComponent(project: number, item: PipelineItem, data: unknown, code: string, currentKey: string): string[] {
+  const tsKeys = existingTsKeys(project, currentKey);
+  if (item.type === 'applicationUsecase') return validateUsecaseComponent(project, data, code, tsKeys);
+  if (item.type === 'httpController') return validateControllerComponent(data, code);
+  return [];
 }
 
 // afterPromptStep (worker only): take the generated code from the tool call and save the .ts.
@@ -196,18 +406,32 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const defRef = workerDefRef(args, step);
     if (!defRef) throw new Error('worker afterPrompt without defRef');
     const content = await getContentByMlsPath(defRef);
-    const item = content ? parseDefs(content).item : null;
+    const parsed = content ? parseDefs(content) : null;
+    const item = parsed?.item ?? null;
     if (!item || !item.outputPath) throw new Error(`no pipeline item in ${defRef}`);
 
     const payload = step.interaction?.payload?.[0];
     const out = extractToolCallArgs<{ code?: string }>(payload, GEN_TOOL_NAME);
-    if (!out?.code) throw new Error('missing generated code');
+    if (!out?.code) {
+      // LLM-fixable failure: record it so the dispatcher re-spawns this worker with the finding.
+      const entry = await recordComponentFailure(defRef, ['model returned no code (missing/invalid tool call)']);
+      throw new Error(`missing generated code (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
+    }
 
     const code = applyHeader(item.outputPath, out.code);
     const p = parseMlsPath(item.outputPath);
     if (!p) throw new Error(`invalid outputPath: ${item.outputPath}`);
+    const componentIssues = validateGeneratedComponent(p.project, item, parsed?.data, code, `${p.folder}::${p.shortName.toLowerCase()}`);
+    if (componentIssues.length) {
+      // REPAIR LOOP: keep the findings + the rejected code; the dispatcher re-spawns this worker with
+      // them in context while the budget lasts (cbRepair). Budget exhausted -> stays failed and the
+      // validate-all barrier reports it precisely (clean failure).
+      const entry = await recordComponentFailure(defRef, componentIssues, code);
+      throw new Error(`component integrity failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${componentIssues.slice(0, 8).join('; ')}`);
+    }
     const ok = await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, code);
     if (!ok) throw new Error('saveGeneratedTs failed');
+    await clearComponentRepair(defRef); // converged: drop the repair record
   } catch (error) {
     status = 'failed';
     trace = error instanceof Error ? error.message : String(error);

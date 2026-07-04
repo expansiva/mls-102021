@@ -1,10 +1,19 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/agentCbValidateAll.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Non-blocking barrier: read the SAVED l1 .defs.ts files and report coverage/integrity (each owner
-// produced its artifacts; no MDM/horizontal table emitted). Then continue to finalize.
+// Blocking integrity barrier: read the SAVED l1 .defs.ts files and check coverage/integrity (each
+// owner produced its artifacts; no MDM/horizontal table emitted). On success -> finalize. On failure,
+// findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger ONE global repair
+// round: the component defs are forced stale, the findings are recorded (cbRepair) and cb-materialize
+// is re-enqueued in repair mode — the flow reconverges back here (unique planId). Findings that are
+// DEFS-level (missing port/entity defs, defs route missing, controller/usecase defs mismatch) are NOT
+// repairable by re-materializing: the run fails CLEAN with the objective trace. Budget exhausted ->
+// clean failure too. (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import {
+  readRepairState, saveRepairState, forceDefsStale, clearRepairState, GLOBAL_REPAIR_BUDGET,
+} from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -68,9 +77,14 @@ function collectRequiredChecksByHandler(content: string): Map<string, Set<string
   while ((handlerMatch = handlerRe.exec(content)) !== null) {
     const fields = new Set<string>();
     const body = handlerMatch[2];
-    const fieldRe = /field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/g;
-    let fieldMatch: RegExpExecArray | null;
-    while ((fieldMatch = fieldRe.exec(body)) !== null) fields.add(fieldMatch[1]);
+    const errorRe = /new\s+AppError\(([\s\S]*?)\);/g;
+    let errorMatch: RegExpExecArray | null;
+    while ((errorMatch = errorRe.exec(body)) !== null) {
+      const call = errorMatch[1];
+      if (!/\b(required|obrigat[oó]ri[oa]|required field|campo obrigat[oó]ri[oa])\b/i.test(call)) continue;
+      const fieldMatch = call.match(/field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/);
+      if (fieldMatch) fields.add(fieldMatch[1]);
+    }
     checks.set(handlerMatch[1], fields);
   }
   return checks;
@@ -94,13 +108,17 @@ function collectRouteHandlers(content: string): Map<string, string> {
 
 function collectUsecaseRules(data: Record<string, unknown> | undefined): string[] {
   if (!data) return [];
-  const rules = new Set(readStringArray(data.rulesApplied));
+  const rules = new Set(readStringArray(data.rulesApplied).map(normalizeRuleId).filter(Boolean));
   const functions = Array.isArray((data as any).functions) ? (data as any).functions : [];
   for (const fn of functions) {
     if (!isRecord(fn)) continue;
-    for (const rule of readStringArray(fn.rulesApplied)) rules.add(rule);
+    for (const rule of readStringArray(fn.rulesApplied).map(normalizeRuleId).filter(Boolean)) rules.add(rule);
   }
   return [...rules].filter(Boolean);
+}
+
+function normalizeRuleId(rule: string): string {
+  return rule.split(':')[0].trim();
 }
 
 export function createAgent(): IAgentAsync {
@@ -126,7 +144,19 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       routes: { key: string; handlerName: string }[];
     }[] = []; // handler usecaseRefs per controller
     const tsSet = new Set<string>();       // `${folder}::${shortName}` of MATERIALIZED .ts outputs
-    const defsFiles: { folder: string; shortName: string }[] = []; // each .defs.ts (to require a .ts sibling)
+    const defsFiles: { folder: string; shortName: string; real: string }[] = []; // each .defs.ts (real = original-case shortName)
+    // MATERIALIZATION-level findings routed to their origin component (defRef -> findings). Only these
+    // are candidates for the global repair round; everything else fails clean.
+    const repairTargets = new Map<string, string[]>();
+    const mappedMsgs = new Set<string>();
+    const addRepair = (defRef: string, msg: string): void => {
+      const list = repairTargets.get(defRef) || [];
+      list.push(msg);
+      repairTargets.set(defRef, list);
+      mappedMsgs.add(msg);
+    };
+    const defRefByLc = new Map<string, string>(); // `${folderSuffix}::${lcShortName}` -> defRef
+    const defRefOf = (folder: string, real: string): string => `_${project}_/l1/${folder}/${real}.defs.ts`;
     const importReqs: { from: string; key: string; target: string }[] = []; // module-local l1 imports to resolve
     const usecaseSources = new Map<string, string>(); // usecase shortName (lc) -> generated .ts
     const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
@@ -174,7 +204,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       l1Defs++;
       const folder = folder0;
       const shortName = shortName0.toLowerCase();
-      defsFiles.push({ folder, shortName });
+      defsFiles.push({ folder, shortName, real: shortName0 });
+      if (folder.endsWith('/layer_2_application/usecases')) defRefByLc.set(`usecases::${shortName}`, defRefOf(folder, shortName0));
+      if (folder.endsWith('/adapters/http/controllers')) defRefByLc.set(`controllers::${shortName}`, defRefOf(folder, shortName0));
       if (folder.includes('/adapters/persistence') && mdmIds.has(shortName)) mdmTableViolations++;
       if (folder.endsWith('/layer_2_application/ports')) portDefs.add(shortName);
       else if (folder.endsWith('/layer_3_domain/entities')) {
@@ -245,22 +277,27 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
       const source = controllerSources.get(c.id);
       if (!source) continue;
+      const controllerDefRef = defRefByLc.get(`controllers::${c.id}`);
+      const pushControllerTsIssue = (msg: string): void => {
+        missing.push(msg);
+        if (controllerDefRef) addRepair(controllerDefRef, msg); // bad .ts -> re-materializable
+      };
       const exportedHandlers = collectExportedHandlers(source);
       const emittedRoutes = collectRouteHandlers(source);
       const requiredChecks = collectRequiredChecksByHandler(source);
       for (const handler of c.handlers) {
-        if (!exportedHandlers.has(handler.handlerName)) missing.push(`controller ${c.id} -> handler ${handler.handlerName} not exported in .ts`);
+        if (!exportedHandlers.has(handler.handlerName)) pushControllerTsIssue(`controller ${c.id} -> handler ${handler.handlerName} not exported in .ts`);
         const allowedRequired = requiredBoundaryFields(handler.inputContract);
         for (const checked of requiredChecks.get(handler.handlerName) ?? []) {
           if (!allowedRequired.has(checked)) {
-            missing.push(`controller ${c.id} -> handler ${handler.handlerName} requires '${checked}' outside l4 inputContract`);
+            pushControllerTsIssue(`controller ${c.id} -> handler ${handler.handlerName} requires '${checked}' outside l4 inputContract`);
           }
         }
       }
       for (const route of c.routes) {
         const emittedHandler = emittedRoutes.get(route.key);
         if (emittedHandler !== route.handlerName) {
-          missing.push(`controller ${c.id} -> route ${route.key} not exported with handler ${route.handlerName}`);
+          pushControllerTsIssue(`controller ${c.id} -> route ${route.key} not exported with handler ${route.handlerName}`);
         }
       }
     }
@@ -281,7 +318,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // project-level barrier the per-file Monaco compile cannot see — it stops finalize from marking the
     // owners done while any .ts is still missing (the "finalize before materialization finished" gap).
     for (const d of defsFiles) {
-      if (!tsSet.has(`${d.folder}::${d.shortName}`)) missing.push(`materialization incomplete -> ${d.folder}/${d.shortName}.ts not generated from its .defs.ts`);
+      if (!tsSet.has(`${d.folder}::${d.shortName}`)) {
+        const msg = `materialization incomplete -> ${d.folder}/${d.shortName}.ts not generated from its .defs.ts`;
+        missing.push(msg);
+        addRepair(defRefOf(d.folder, d.real), msg); // missing .ts -> re-materializable
+      }
     }
 
     // CROSS-FILE IMPORTS: every module-local l1 import in a generated .ts must resolve to a generated
@@ -289,10 +330,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
     for (const req of importReqs) {
       if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__') {
-        missing.push(`platform contract violation -> ${req.from}.ts: ${req.target}`);
+        const msg = `platform contract violation -> ${req.from}.ts: ${req.target}`;
+        missing.push(msg);
+        addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
         continue;
       }
-      if (!tsSet.has(req.key)) missing.push(`import unresolved -> ${req.from}.ts imports '${req.target}' which was not generated`);
+      if (!tsSet.has(req.key)) {
+        const msg = `import unresolved -> ${req.from}.ts imports '${req.target}' which was not generated`;
+        missing.push(msg);
+        addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // hallucinated import -> re-materializable
+      }
     }
 
     // RULES APPLIED: if a usecase defs says a rule is applied, the materialized .ts must mention that
@@ -304,17 +351,55 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (!source) continue;
       for (const rule of uc.rulesApplied) {
         if (!new RegExp(`\\b${escapeRegExp(rule)}\\b`).test(source)) {
-          missing.push(`usecase ${uc.id} -> rulesApplied '${rule}' not present in generated .ts`);
+          const msg = `usecase ${uc.id} -> rulesApplied '${rule}' not present in generated .ts`;
+          missing.push(msg);
+          const ucDefRef = defRefByLc.get(`usecases::${uc.id}`);
+          if (ucDefRef) addRepair(ucDefRef, msg); // rule dropped in .ts -> re-materializable
         }
       }
     }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];
 
     if (missing.length) {
-      const trace = `INTEGRITY FAILED: ${missing.length} missing-defs reference(s): ${[...new Set(missing)].slice(0, 30).join('; ')}`;
+      const unique = [...new Set(missing)];
+      const unmapped = unique.filter(m => !mappedMsgs.has(m));
+      const allMapped = unmapped.length === 0 && repairTargets.size > 0;
+      const state = await readRepairState();
+      // GLOBAL REPAIR ROUND: only when EVERY finding is materialization-level (re-generating the .ts
+      // can fix it) and the global budget is not exhausted. Defs did not change, so seeds/register stay
+      // valid — the materialize dispatcher (repair mode) re-runs the stale components with the findings
+      // in context and enqueues cb-validate-all-g{n} to re-check.
+      if (allMapped && state.globalAttempts < GLOBAL_REPAIR_BUDGET) {
+        state.globalAttempts += 1;
+        for (const [defRef, findings] of repairTargets) {
+          state.componentRepairs[defRef] = {
+            target: defRef,
+            attempts: 0, // global round grants a fresh worker budget; the GLOBAL budget is the anti-loop
+            findings: findings.slice(0, 20),
+            source: 'validate-all',
+            updatedAt: new Date().toISOString(),
+          };
+          if (!forceDefsStale(defRef)) console.warn(`${logPrefix(agent)} forceDefsStale failed for ${defRef}`);
+        }
+        await saveRepairState(state);
+        const trace = `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s): ${unique.slice(0, 12).join('; ')}`;
+        console.warn(`${logPrefix(agent)} ${trace}`);
+        return [
+          enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true }),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
+        ];
+      }
+      // CLEAN FAILURE: budget exhausted, or at least one finding is defs-level (re-materializing cannot
+      // fix it — the defect is upstream). Objective trace; owners stay inProgress; nothing marked done.
+      const reason = !allMapped
+        ? `${unmapped.length} finding(s) are defs-level (not repairable by re-materialization)`
+        : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
+      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}`;
       console.error(`${logPrefix(agent)} ${trace}`);
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
+    // Clean run: drop any repair state left behind (converged) before finalizing.
+    await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
     const okTrace = warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`

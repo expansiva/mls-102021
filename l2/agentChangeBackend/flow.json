@@ -37,9 +37,15 @@
     "deferredToV2": [
       "toUpdate diff and preservation of manual edits.",
       "toRemove cascade (deprecate table/impl, drop with confirmation, data safety).",
-      "Patching artifacts created by a previous run.",
-      "Critic/repair LLM loop for referential integrity beyond the deterministic checks."
+      "Patching artifacts created by a previous run."
     ],
+    "repairLoopAndJudge": {
+      "_note": "Implemented 2026-07-04 (was deferredToV2 'Critic/repair LLM loop'). Shared block with ns2 (todo/ajustesFinaisChangeBackend.md §2 + improveAddNewSolution2_1.md §4.3/§4.4). The flow ENGINE is untouched: 'reopening' a step = enqueueing a fresh step with a unique planId/args; durable routing state lives in l4/trace/cb-repair-state.json (cbRepair.ts).",
+      "componentRepair": "agentCbMaterialize worker failures (validator findings, missing tool code) are recorded with the findings + rejected code; the dispatcher re-spawns the worker (unique planId cb-mat-L{rank}[-g{round}][-r{attempt}]) with the findings injected into the prompt. Budget: 2 repairs per component (3 LLM calls).",
+      "judge": "agentCbJudge (cb-judge) runs right after cb-usecase-fanout — the first durable LLM artifact consumed downstream — and BEFORE controllers/materialization. Adversarial critic (LLM validates, never generates): usecase defs vs L4 contract (ports, rulesApplied, inputs vs accessPattern, contextResolution, acceptanceAssertions). Findings typed by the taxonomy estrutural|decisao|fora_de_escopo; fora_de_escopo discarded. Error findings re-spawn the origin agentCbUsecase workers with findings in context, then cb-judge-r2 re-verifies (max 2 passes); leftovers are downgraded to warnings — the judge signals, the deterministic gates keep blocking.",
+      "globalRepair": "agentCbValidateAll failure with ALL findings materialization-level (bad/missing .ts) triggers ONE repair round: force the component defs stale + record findings + re-enqueue cb-materialize in repair mode (skips seeds/register — defs unchanged) -> cb-validate-all-g{n}. Defs-level findings or exhausted budget -> CLEAN failure with the objective trace (never soften the gate).",
+      "budgets": { "componentRepairs": 2, "globalRounds": 1, "judgeRuns": 2 }
+    },
     "notResponsible": [
       "MDM tables / persistence (owned EXCLUSIVELY by 102034).",
       "horizontalOwned tables (owned by the horizontal module, e.g. Payment).",
@@ -326,7 +332,7 @@
       "dependsOn": [
         "cb-gen-adapter"
       ],
-      "goal": "DISPATCHER (no LLM). Fan out one usecase worker per OPERATION owner (cb-usecase-fanout) and enqueue the controller join (cb-gen-http, waiting_dependency on the fan-out)."
+      "goal": "DISPATCHER (no LLM). Fan out one usecase worker per OPERATION owner (cb-usecase-fanout) and enqueue the JUDGE join (cb-judge, waiting_dependency on the fan-out)."
     },
     {
       "planId": "cb-usecase-fanout",
@@ -339,9 +345,24 @@
       ],
       "maxParallel": 10,
       "strictTool": true,
-      "goal": "LLM WORKER per operation owner: one usecase file with explicit functions[] input/output, orchestrating domain + ports, appending its eventWrites in the same transaction. Progress: 'Gerar usecases {{completed}}/{{total}}, falhas {{failed}}'.",
+      "goal": "LLM WORKER per operation owner: one usecase file with explicit functions[] input/output, orchestrating domain + ports, appending its eventWrites in the same transaction. On a repair re-spawn (judge findings in cb-repair-state) the findings are injected into the prompt. Progress: 'Gerar usecases {{completed}}/{{total}}, falhas {{failed}}'.",
       "savedArtifact": [
         "l1/{module}/layer_2_application/usecases/{usecase}.defs.ts"
+      ]
+    },
+    {
+      "planId": "cb-judge",
+      "agentName": "agentCbJudge",
+      "type": "agent",
+      "modelAlias": "codehigh",
+      "executionMode": "sequential",
+      "dependsOn": [
+        "cb-usecase-fanout"
+      ],
+      "strictTool": true,
+      "goal": "JUDGE (adversarial critic, EARLY — before controllers/materialization). LLM VALIDATES, never generates: each usecase defs vs its L4 owner contract (ports, rulesApplied executable, inputs vs accessPattern, contextResolution not turned into manual input, acceptanceAssertions satisfiable) + deterministic missing-defs detection. Error findings -> re-spawn the origin workers (cb-usecase-repair-r{n}) with findings in context, then cb-judge-r{n+1} re-verifies (max 2 passes). Leftover errors on the final pass are DOWNGRADED to warnings (the judge signals; deterministic gates keep blocking). Enqueue cb-gen-http.",
+      "savedArtifact": [
+        "l4/trace/cb-repair-state.json (findings routed to workers)"
       ]
     },
     {
@@ -351,7 +372,7 @@
       "modelAlias": null,
       "executionMode": "sequential",
       "dependsOn": [
-        "cb-usecase-fanout"
+        "cb-judge"
       ],
       "goal": "DETERMINISTIC (no LLM). One controller per OPERATION owner (workflows generate none). Binds each handler to the usecase's REAL exported functions (read from the generated defs) — coherence by construction. Enqueue cb-materialize.",
       "savedArtifact": [
@@ -367,7 +388,7 @@
       "dependsOn": [
         "cb-gen-http"
       ],
-      "goal": "DISPATCHER (no LLM), ONE LAYER PER DISPATCH. Spawns only the innermost stale layer (cb-mat-L{rank}) and a sequential continue-dispatcher (cb-mat-after-L{rank}) that waits on that layer's planId and re-runs this dispatch. This is a REAL barrier: the runtime's addParallelArgs forces a parallel parent to in_progress at creation, so creating all layers at once is NOT a barrier (bug: controllers materialized while usecases were 13/18). dispatch is idempotent (materialized .ts stop being stale). Enqueue cb-gen-seeds when all stale layers are done."
+      "goal": "DISPATCHER (no LLM), ONE LAYER PER DISPATCH. Spawns only the innermost stale layer (cb-mat-L{rank}) and a sequential continue-dispatcher (cb-mat-after-L{rank}) that waits on that layer's planId and re-runs this dispatch. This is a REAL barrier: the runtime's addParallelArgs forces a parallel parent to in_progress at creation, so creating all layers at once is NOT a barrier (bug: controllers materialized while usecases were 13/18). dispatch is idempotent (materialized .ts stop being stale). REPAIR: a stale entry below minRank whose worker failed WITH budget left (cb-repair-state) is re-included under a unique planId (cb-mat-L{rank}[-g{round}][-r{attempt}]) with the findings injected into the worker prompt; budget exhausted -> skipped (cb-validate-all reports it). Enqueue cb-gen-seeds when all stale layers are done (or cb-validate-all-g{n} in a validate-all repair round, where seeds/register are still valid)."
     },
     {
       "planId": "cb-mat-L{rank}",
@@ -421,7 +442,7 @@
       "dependsOn": [
         "cb-register"
       ],
-      "goal": "DETERMINISTIC barrier. Integrity from the SAVED l1 files: (a) every usecase port has a port + domain entity defs; (b) every controller handler.usecaseRef exists as a usecase export (coherence, catches the orderFlow break); (c) COMPLETENESS: every .defs.ts has its materialized .ts (fails if materialization is incomplete — the project-level check the per-file Monaco compile misses). FAILS the run on any missing ref, so finalize cannot mark owners done prematurely. Enqueue cb-finalize when clean.",
+      "goal": "DETERMINISTIC barrier. Integrity from the SAVED l1 files: (a) every usecase port has a port + domain entity defs; (b) every controller handler.usecaseRef exists as a usecase export (coherence, catches the orderFlow break); (c) COMPLETENESS: every .defs.ts has its materialized .ts (fails if materialization is incomplete — the project-level check the per-file Monaco compile misses). REPAIR ROUTING: when EVERY finding is materialization-level (bad/missing .ts) and the global budget (1 round) is available, forces the components stale + records the findings and re-enqueues cb-materialize in repair mode (-> cb-validate-all-g{n}); defs-level findings or exhausted budget FAIL CLEAN, so finalize cannot mark owners done prematurely. Enqueue cb-finalize when clean (clears cb-repair-state).",
       "savedArtifact": "l4/trace/cb-health-report.json"
     },
     {

@@ -19,6 +19,7 @@ import {
   type CbScan, type CbOwner,
 } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/cbSchemas.js';
+import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 
 const AGENT_NAME = 'agentCbUsecase';
 const TOOL_NAME = 'submitUsecase';
@@ -114,9 +115,11 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const intents: mls.msg.AgentIntent[] = [
       createParallelStepIntent(context, parentStep, FANOUT_PLAN_ID, AGENT_NAME, 'Gerar usecases {{completed}}/{{total}}, falhas {{failed}}', ownerIds, [], 10),
     ];
-    // Controller joins on the single parallel parent (runs after every worker finished).
-    const cstep = createAgentStepPayload('cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', { planId: 'cb-gen-http' }, [FANOUT_PLAN_ID], 'sequential', 'waiting_dependency');
-    intents.push(createAddStepIntent(context, parentStep, cstep));
+    // JUDGE joins on the single parallel parent (runs after every worker finished): adversarial
+    // critique of the saved usecase defs vs the L4 contract, routing error findings back to these
+    // workers (repair loop) before controllers/materialization. The judge enqueues cb-gen-http.
+    const jstep = createAgentStepPayload('cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { planId: 'cb-judge', judgeRun: 1 }, [FANOUT_PLAN_ID], 'sequential', 'waiting_dependency');
+    intents.push(createAddStepIntent(context, parentStep, jstep));
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)`));
     return intents;
   } catch (error) {
@@ -133,7 +136,11 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `owner not found: ${ownerId}`)];
   if (owner.kind !== 'operation') return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `skip ${ownerId}: workflows generate no usecase`)];
   const item = buildOwnerItem(owner, deriveMaps(scan));
-  const human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession resolutions into required user input. A usecase MAY expose several functions with different IO.`;
+  let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession resolutions into required user input. A usecase MAY expose several functions with different IO.`;
+  // REPAIR: when the judge (or a previous failure) left findings for this owner, feed them back so the
+  // model FIXES the exact defects instead of regenerating blindly (repair loop, cbRepair.ts).
+  const repair = await getComponentRepair(`usecase-defs:${ownerId}`);
+  if (repair && repair.findings.length) human += `\n\n${buildRepairPromptSection(repair)}`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the ownerId) so the runtime
   // (continueBeforePrompt → findBeforePromptStep by parentStepId+args) matches it. step.prompt is not
   // yet set to the arg on the first beforePromptStep of a parallel child.
@@ -185,10 +192,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const pipeline = [buildPipelineItem(lowerFirst(usecaseId), 'applicationUsecase', fi, dependsFiles, layerSkills('applicationUsecase.md'), { rulesApplied: readStringArray(result?.rulesApplied) })];
     await saveDefs(fi, `${lowerFirst(usecaseId)}Usecase`, buildArtifact('usecase', usecaseId, module, AGENT_NAME, result), pipeline);
     if (out.status === 'failed') { status = 'failed'; trace = 'model returned failed'; }
+    else await clearComponentRepair(`usecase-defs:${usecaseId}`); // converged: drop the repair record
   } catch (error) {
     status = 'failed';
     trace = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${trace}`);
+  }
+  if (status === 'failed') {
+    // Burn a repair attempt and keep the error as a finding: the judge (cb-judge) detects the missing
+    // defs deterministically and re-spawns this worker while the budget lasts (repair loop).
+    const failedOwnerId = workerOwnerId(args, step);
+    if (failedOwnerId) await recordComponentFailure(`usecase-defs:${failedOwnerId}`, [trace || 'usecase generation failed']);
   }
   await saveAgentTrace(context, AGENT_NAME, step);
   // No enqueueNext here: the controller step was already queued by the dispatcher with a join dependsOn.
