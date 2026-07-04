@@ -2,8 +2,9 @@
 
 Generate the usecase: it decides WHAT happens (validations, state transitions, orchestration). It
 imports the DOMAIN and the repository PORT type, resolves the concrete adapter via
-`resolveRepository`, applies the rules, and NEVER touches `ctx.data` (except the single
-`ctx.data.runInTransaction` wrapper for multi-aggregate writes). Export the function + its Input/Output
+`resolveRepository`, applies L4 rules inline, and only touches `ctx.data` for the single
+`ctx.data.runInTransaction` wrapper or for explicit MDM runtime access (`mdmDocument`,
+`mdmEntityIndex`). Export the function + its Input/Output
 types (the controller imports these). Use `data.functionName`, `data.ports`, `data.rulesApplied`,
 `data.steps` from the defs.
 
@@ -60,10 +61,15 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   from `RequestContext`/platform helpers, not required as user-entered params.
 - Resolve every repository with `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. NEVER import
   an adapter. Import record/union types and invariants from the domain entity.
-- Apply `rulesApplied`: validate via domain invariants; throw `AppError('VALIDATION_ERROR'|'CONFLICT', …)`.
+- Apply `rulesApplied` inline in this usecase file. L4 rules are authoritative prose/ids, not generated
+  modules: NEVER import from `layer_3_domain/rules/*`, NEVER invent `{ruleId}Rules`/`comboRule` modules,
+  and NEVER add a rule import that is not present in `dependsFiles`. Prefer existing domain invariants
+  from imported domain entities; otherwise write a small local helper in this usecase file and include
+  the `ruleId` in the thrown `AppError('VALIDATION_ERROR'|'CONFLICT', …)` details.
 - Lifecycle: read current state, check the domain transition (e.g. `canTransition*`), then `save`.
-- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })` — this is the
-  ONLY `ctx.data` allowed here; pass `tx` only to repository calls if the adapter supports it.
+- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Outside this,
+  only explicit MDM runtime access from `data.mdmRefs` may use `ctx.data`; pass `tx` only to repository
+  or MDM calls when the runtime surface supports it.
 - Ids via `ctx.idGenerator.newId()`, timestamps via `ctx.clock.nowIso()`.
 
 ## Child-entity operations (embedded members)

@@ -49,6 +49,9 @@ export const routes: ControllerRoute[] = [
   `required:true` and whose source is not resolved by `systemDefault`, `currentWorkspace` or
   `actorSession`. Never require an id manually when the L4 contract resolves it from context. Business
   rules belong to the usecase.
+- A field listed only in `contextResolution` is resolved context, not public boundary input. Do not emit
+  `if (!input.<field>)` / `AppError(... field: '<field>')` for it unless the same field is also present
+  in `inputContract` with `required:true`.
 - Import the usecase function named by `usecaseRef` + its Input type (`inputTypeName` when given); call
   it; wrap the result in `ok(...)`. The imported name MUST match `usecaseRef` exactly — do not rename it
   to the command or the page.

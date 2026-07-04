@@ -157,10 +157,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       await saveDefs(fi, `${lowerFirst(ownerId)}Controller`, buildArtifact('httpController', ownerId, module, AGENT_NAME, data), pipeline);
       saved++;
     }
-    // /rebuild defs stops at the .defs.ts (no .ts materialization): skip cb-materialize, go to cb-register.
+    // /rebuild defs stops at the .defs.ts (no .ts materialization): skip cb-materialize, go to cb-gen-seeds.
     const defsOnly = readCliCommand(context) === 'rebuild-defs';
     const next = defsOnly
-      ? enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {})
+      ? enqueueNext(context, parentStep, step, 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {})
       : enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .defs.ts -> .ts', {});
     return [
       next,

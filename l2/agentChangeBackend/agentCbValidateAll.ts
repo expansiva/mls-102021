@@ -34,6 +34,75 @@ function collectL1Imports(content: string, project: number): { key: string; targ
   return out;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function fieldNameFromRef(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const parts = raw.split('.');
+  return parts[parts.length - 1] || raw;
+}
+
+function requiredBoundaryFields(inputContract: unknown): Set<string> {
+  const fields = new Set<string>();
+  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession']);
+  if (!Array.isArray(inputContract)) return fields;
+  for (const input of inputContract) {
+    if (!isRecord(input) || input.required !== true) continue;
+    const source = String(input.source ?? '');
+    if (resolvedSources.has(source)) continue;
+    const inputId = fieldNameFromRef(input.inputId);
+    const fieldRef = fieldNameFromRef(input.fieldRef);
+    if (inputId) fields.add(inputId);
+    if (fieldRef) fields.add(fieldRef);
+  }
+  return fields;
+}
+
+function collectRequiredChecksByHandler(content: string): Map<string, Set<string>> {
+  const checks = new Map<string, Set<string>>();
+  const handlerRe = /export\s+const\s+([A-Za-z0-9_$]+)\s*:\s*BffHandler\s*=\s*async[\s\S]*?=>\s*\{([\s\S]*?)\n\};/g;
+  let handlerMatch: RegExpExecArray | null;
+  while ((handlerMatch = handlerRe.exec(content)) !== null) {
+    const fields = new Set<string>();
+    const body = handlerMatch[2];
+    const fieldRe = /field\s*:\s*['"]([A-Za-z0-9_$]+)['"]/g;
+    let fieldMatch: RegExpExecArray | null;
+    while ((fieldMatch = fieldRe.exec(body)) !== null) fields.add(fieldMatch[1]);
+    checks.set(handlerMatch[1], fields);
+  }
+  return checks;
+}
+
+function collectExportedHandlers(content: string): Set<string> {
+  const handlers = new Set<string>();
+  const re = /export\s+const\s+([A-Za-z0-9_$]+)\s*:\s*BffHandler\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) handlers.add(match[1]);
+  return handlers;
+}
+
+function collectRouteHandlers(content: string): Map<string, string> {
+  const routes = new Map<string, string>();
+  const re = /\{\s*key\s*:\s*['"]([^'"]+)['"]\s*,\s*handler\s*:\s*([A-Za-z0-9_$]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) routes.set(match[1], match[2]);
+  return routes;
+}
+
+function collectUsecaseRules(data: Record<string, unknown> | undefined): string[] {
+  if (!data) return [];
+  const rules = new Set(readStringArray(data.rulesApplied));
+  const functions = Array.isArray((data as any).functions) ? (data as any).functions : [];
+  for (const fn of functions) {
+    if (!isRecord(fn)) continue;
+    for (const rule of readStringArray(fn.rulesApplied)) rules.add(rule);
+  }
+  return [...rules].filter(Boolean);
+}
+
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbValidateAll', agentProject: 102021, agentFolder: 'agentChangeBackend', agentDescription: 'Deterministic non-blocking l1 coverage/integrity report', visibility: 'private', beforePromptStep };
 }
@@ -47,12 +116,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId.toLowerCase()));
     const portDefs = new Set<string>();    // lowercased shortNames present in layer_2_application/ports
     const domainDefs = new Set<string>();  // lowercased shortNames present in layer_3_domain/entities
-    const usecases: { id: string; ports: string[] }[] = [];
+    const mdmDomainArtifacts: string[] = [];
+    const usecases: { id: string; ports: string[]; rulesApplied: string[] }[] = [];
     const usecaseFnNames = new Map<string, Set<string>>(); // usecaseId (lc) -> exported function names
-    const controllers: { id: string; refs: string[] }[] = []; // handler usecaseRefs per controller
+    const controllers: {
+      id: string;
+      refs: string[];
+      handlers: { handlerName: string; inputContract: unknown; usecaseRef: string }[];
+      routes: { key: string; handlerName: string }[];
+    }[] = []; // handler usecaseRefs per controller
     const tsSet = new Set<string>();       // `${folder}::${shortName}` of MATERIALIZED .ts outputs
     const defsFiles: { folder: string; shortName: string }[] = []; // each .defs.ts (to require a .ts sibling)
     const importReqs: { from: string; key: string; target: string }[] = []; // module-local l1 imports to resolve
+    const usecaseSources = new Map<string, string>(); // usecase shortName (lc) -> generated .ts
+    const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
     for (const file of Object.values(mls.stor.files) as any[]) {
       if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
       const folder0 = String(file.folder || '');
@@ -62,6 +139,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (file.extension === '.ts' && !shortName0.endsWith('.defs') && !shortName0.endsWith('.d')) {
         const content = String(await file.getContent());
         tsSet.add(`${folder0}::${shortName0.toLowerCase()}`);
+        if (folder0.endsWith('/layer_2_application/usecases')) {
+          usecaseSources.set(shortName0.toLowerCase(), content);
+          if (/\/_\d+_\/l1\/[^'"]*\/layer_3_domain\/rules\//.test(content)) {
+            importReqs.push({
+              from: `${folder0}/${shortName0}`,
+              key: '__invalid_rule_import__',
+              target: 'rulesApplied must be applied inline; layer_3_domain/rules/* is not generated by agentChangeBackend',
+            });
+          }
+        }
+        if (folder0.endsWith('/adapters/http/controllers')) controllerSources.set(shortName0.toLowerCase(), content);
         for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
         }
@@ -89,24 +177,43 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       defsFiles.push({ folder, shortName });
       if (folder.includes('/adapters/persistence') && mdmIds.has(shortName)) mdmTableViolations++;
       if (folder.endsWith('/layer_2_application/ports')) portDefs.add(shortName);
-      else if (folder.endsWith('/layer_3_domain/entities')) domainDefs.add(shortName);
+      else if (folder.endsWith('/layer_3_domain/entities')) {
+        if (mdmIds.has(shortName)) mdmDomainArtifacts.push(`${folder}/${shortName}.defs.ts`);
+        else domainDefs.add(shortName);
+      }
       else if (folder.endsWith('/layer_2_application/usecases')) {
         const artifact = parseArtifact(String(await file.getContent()));
         const data = artifact && isRecord(artifact.data) ? artifact.data : undefined;
-        usecases.push({ id: shortName, ports: data ? readStringArray(data.ports) : [] });
+        usecases.push({ id: shortName, ports: data ? readStringArray(data.ports) : [], rulesApplied: collectUsecaseRules(data) });
         const fns = data && Array.isArray((data as any).functions) ? (data as any).functions : [];
         usecaseFnNames.set(shortName, new Set<string>(fns.map((f: any) => String(f?.functionName || '')).filter(Boolean)));
       } else if (folder.endsWith('/adapters/http/controllers')) {
         const artifact = parseArtifact(String(await file.getContent()));
         const data = artifact && isRecord(artifact.data) ? artifact.data : undefined;
         const handlers = data && Array.isArray((data as any).handlers) ? (data as any).handlers : [];
-        controllers.push({ id: shortName, refs: handlers.map((h: any) => String(h?.usecaseRef || '')).filter(Boolean) });
+        const routes = data && Array.isArray((data as any).routes) ? (data as any).routes : [];
+        controllers.push({
+          id: shortName,
+          refs: handlers.map((h: any) => String(h?.usecaseRef || '')).filter(Boolean),
+          handlers: handlers.filter(isRecord).map((h: any) => ({
+            handlerName: String(h?.handlerName || ''),
+            inputContract: h?.inputContract,
+            usecaseRef: String(h?.usecaseRef || ''),
+          })).filter((h: { handlerName: string }) => !!h.handlerName),
+          routes: routes.filter(isRecord).map((r: any) => ({
+            key: String(r?.key || ''),
+            handlerName: String(r?.handlerName || ''),
+          })).filter((r: { key: string; handlerName: string }) => !!r.key && !!r.handlerName),
+        });
       }
     }
 
     // INTEGRITY: every port a usecase references must have a port .defs.ts AND a domain entity .defs.ts.
     // Catches the "usecase imports a module that was never generated" class of errors before tsc.
     const missing: string[] = [];
+    for (const artifact of mdmDomainArtifacts) {
+      missing.push(`mdm local domain artifact forbidden -> ${artifact}`);
+    }
     for (const uc of usecases) {
       for (const p of uc.ports) {
         if (mdmIds.has(p.toLowerCase())) continue;   // mdm = master data read by id via 102034; no local port/entity
@@ -122,8 +229,51 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     for (const c of controllers) {
       const fns = usecaseFnNames.get(c.id);
       for (const ref of c.refs) {
+        if (ref.includes(' | ')) continue; // dispatcher handler delegates to the concrete per-function handlers
         if (!fns) { missing.push(`controller ${c.id} -> usecase defs not found`); break; }
         if (!fns.has(ref)) missing.push(`controller ${c.id} -> usecase export '${ref}' not found (has: ${[...fns].join(', ') || 'none'})`);
+      }
+    }
+
+    // ROUTES + HANDLER BOUNDARY: every route from the controller defs must be present in the generated
+    // .ts and point to an exported handler. Required field validation must stay within the public L4
+    // inputContract; contextResolution-only fields are resolved context, not mandatory request params.
+    for (const c of controllers) {
+      const handlerNames = new Set(c.handlers.map(h => h.handlerName));
+      for (const route of c.routes) {
+        if (!handlerNames.has(route.handlerName)) missing.push(`controller ${c.id} -> route ${route.key} points to missing handler ${route.handlerName}`);
+      }
+      const source = controllerSources.get(c.id);
+      if (!source) continue;
+      const exportedHandlers = collectExportedHandlers(source);
+      const emittedRoutes = collectRouteHandlers(source);
+      const requiredChecks = collectRequiredChecksByHandler(source);
+      for (const handler of c.handlers) {
+        if (!exportedHandlers.has(handler.handlerName)) missing.push(`controller ${c.id} -> handler ${handler.handlerName} not exported in .ts`);
+        const allowedRequired = requiredBoundaryFields(handler.inputContract);
+        for (const checked of requiredChecks.get(handler.handlerName) ?? []) {
+          if (!allowedRequired.has(checked)) {
+            missing.push(`controller ${c.id} -> handler ${handler.handlerName} requires '${checked}' outside l4 inputContract`);
+          }
+        }
+      }
+      for (const route of c.routes) {
+        const emittedHandler = emittedRoutes.get(route.key);
+        if (emittedHandler !== route.handlerName) {
+          missing.push(`controller ${c.id} -> route ${route.key} not exported with handler ${route.handlerName}`);
+        }
+      }
+    }
+
+    const moduleName = scan.moduleNames[0] || 'unknown';
+    for (const owner of scan.owners) {
+      if (owner.kind !== 'operation' || !owner.id) continue;
+      const controllerId = lowerFirst(owner.id).toLowerCase();
+      const controller = controllers.find(c => c.id === controllerId);
+      if (!controller) continue;
+      const expectedRoute = owner.bffName || `${moduleName}.${owner.pageId || owner.id}.${owner.commandName || owner.id}`;
+      if (!controller.routes.some(route => route.key === expectedRoute)) {
+        missing.push(`controller ${controller.id} -> missing canonical bffName route ${expectedRoute}`);
       }
     }
 
@@ -138,11 +288,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // .ts. Root guard for hallucinated modules (e.g. importing layer_3_domain/rules/* — rules live
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
     for (const req of importReqs) {
-      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__') {
+      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__') {
         missing.push(`platform contract violation -> ${req.from}.ts: ${req.target}`);
         continue;
       }
       if (!tsSet.has(req.key)) missing.push(`import unresolved -> ${req.from}.ts imports '${req.target}' which was not generated`);
+    }
+
+    // RULES APPLIED: if a usecase defs says a rule is applied, the materialized .ts must mention that
+    // rule id. This blocks the concrete "referenced in defs and then disappeared" class, while the
+    // explicit rule-import ban above keeps the current strategy inline.
+    for (const uc of usecases) {
+      if (!uc.rulesApplied.length) continue;
+      const source = usecaseSources.get(uc.id);
+      if (!source) continue;
+      for (const rule of uc.rulesApplied) {
+        if (!new RegExp(`\\b${escapeRegExp(rule)}\\b`).test(source)) {
+          missing.push(`usecase ${uc.id} -> rulesApplied '${rule}' not present in generated .ts`);
+        }
+      }
     }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];
 

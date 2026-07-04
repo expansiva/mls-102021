@@ -201,8 +201,8 @@ const systemPrompt = `
 
 You are ${AGENT_NAME} (hexagonal layer_2_application/usecases). Generate ONE usecase for the given owner:
 it decides WHAT happens — validations, state transitions, orchestration — using the domain + repository
-PORTS only (import the port interface, NEVER the concrete adapter; NEVER ctx.data, except a single
-transaction wrapper). Apply rulesApplied.
+PORTS only (import the port interface, NEVER the concrete adapter; use ctx.data only for a single
+transaction wrapper or explicit MDM runtime access). Apply rulesApplied inline.
 
 ports must NOT be empty: use exactly the provided "ports" (already the parent aggregate roots). When the
 owner's "entity" is a child embedded in a parent aggregate (its parent is "parentAggregate", different
@@ -229,6 +229,12 @@ through its port (use its "port" id — it is already in your ports) INSIDE the 
 aggregate write; never update or delete it. If NOT persisted (purpose "reaction"), enqueue it on the
 platform outbox instead of a local port. Always create the event when the corresponding transition
 happens — do NOT leave the record only in memory.
+
+"rulesApplied" are L4 rule ids/prose, not generated modules. There is currently no
+layer_3_domain/rules generator. Apply each listed rule inline in this usecase file: use an imported
+domain invariant when one exists in dependsFiles, or write a small local helper/function in this file.
+NEVER import from layer_3_domain/rules/*, NEVER invent modules such as comboRule or menuItemRules, and
+include the rule id in validation error details when the rule blocks the operation.
 
 Return functions[] (usually ONE, named from the operationId; MAY be several with different IO). Each
 function declares EXPLICIT fields:

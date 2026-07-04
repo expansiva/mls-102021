@@ -5,7 +5,7 @@
 // the transport (prompt_ready vs HTTP) and storage (saveGeneratedTs vs fs) differ. Runs PARALLEL PER LAYER:
 // the DISPATCHER groups the stale items by core.layerRank and emits ONE parallel_dynamic step per layer
 // (domain -> port/table -> adapter/usecase -> controller), each depending on the previous layer's
-// planId so an outer layer never materializes before the inner .ts it imports exists; cb-register joins
+// planId so an outer layer never materializes before the inner .ts it imports exists; cb-gen-seeds joins
 // on the last layer. Each WORKER (same agent, reached with its defRef in hook.args) does one LLM call
 // and saves one .ts. The CLI remains usable offline; this is the in-studio equivalent.
 
@@ -71,7 +71,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 // DISPATCHER (deterministic, no LLM): one parallel_dynamic step per layer, chained by dependsOn so the
-// runtime materializes inner layers before outer ones; cb-register joins the last layer.
+// runtime materializes inner layers before outer ones; cb-gen-seeds joins the last layer.
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const project = mls.actualProject || 0;
@@ -85,7 +85,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // (waiting_dependency) on that layer's planId and re-runs this dispatch after the layer TRULY
     // finishes — the same proven barrier as cb-usecase-fanout -> cb-gen-http. dispatch is idempotent:
     // the just-materialized .ts stop being stale, so the next call spawns the next layer, and finally
-    // cb-register when nothing is stale.
+    // cb-gen-seeds when nothing is stale.
     // minRank: the continue-dispatcher advances STRICTLY forward (rank+1) so a layer that a worker
     // failed to materialize is never re-spawned under the same planId (a duplicate cb-mat-L{rank});
     // its incompleteness is caught by cb-validate-all instead.
@@ -100,9 +100,9 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
       bucket.push(e);
     }
     if (byRank.size === 0) {
-      // No more layers to materialize from minRank up -> register.
+      // No more layers to materialize from minRank up -> generate seeds.
       return [
-        createAddStepIntent(context, parentStep, createAgentStepPayload('cb-register', 'agentCbRegister', 'Registrar backend', { planId: 'cb-register' }, [], 'sequential', 'waiting_dependency')),
+        createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, [], 'sequential', 'waiting_dependency')),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `nothing stale to materialize (from L${minRank})`),
       ];
     }
@@ -126,8 +126,8 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
       const nextLabel = layerLabel([...new Set(byRank.get(nextRank)!.map(e => e.item.type))]);
       intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-mat-after-L${rank}`, AGENT_NAME, `Materializar ${nextLabel}`, { planId: 'cb-materialize', minRank: rank + 1 }, [planId], 'sequential', 'waiting_dependency')));
     } else {
-      // Last stale layer: register runs after it materializes.
-      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload('cb-register', 'agentCbRegister', 'Registrar backend', { planId: 'cb-register' }, [planId], 'sequential', 'waiting_dependency')));
+      // Last stale layer: seed generation runs after it materializes.
+      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, [planId], 'sequential', 'waiting_dependency')));
     }
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `materializing ${label} (${refs.length} file(s)); ${remainingLayers - 1} layer(s) after`));
     return intents;
@@ -213,6 +213,6 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     trace = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${trace}`);
   }
-  // No enqueueNext: cb-register was queued by the dispatcher with a join dependsOn on the last layer.
+  // No enqueueNext: cb-gen-seeds was queued by the dispatcher with a join dependsOn on the last layer.
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace)];
 }
