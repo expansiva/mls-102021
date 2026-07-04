@@ -117,10 +117,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       l4Contract: ownerContract(o),
       generatedUsecaseDefs: defsByOwner.get(o.id) ?? null,
     }));
-    const validPorts = scan.aggregates.map(a => a.rootEntity);
+    // Valid ports = aggregate roots + PERSISTED event stores (agentCbUsecase adds event ports
+    // deterministically for eventWrites — they are legitimate; run3 showed the judge flagging them
+    // as false positives when only roots were listed).
+    const validPorts = [
+      ...scan.aggregates.map(a => a.rootEntity),
+      ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId),
+    ];
     const mdmIds = scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId);
     const human = [
-      `## Valid repository ports (aggregate roots): ${JSON.stringify(validPorts)}`,
+      `## Valid repository ports (aggregate roots + persisted event stores): ${JSON.stringify(validPorts)}`,
       `## MDM entities (read by id via 102034; NEVER a port, NEVER a local entity): ${JSON.stringify(mdmIds)}`,
       '',
       '## Pairs to judge (L4 contract = source of truth vs generated usecase defs)',
@@ -231,8 +237,10 @@ You are ${AGENT_NAME}, an ADVERSARIAL CRITIC (a judge). You NEVER generate or re
 you only compare each generated usecase defs against its L4 contract (the source of truth) and emit
 FINDINGS. Judge every pair on:
 
-1. Ports: usecase ports must be aggregate roots from the valid list. An invented port, a port for an
-   MDM entity, or a missing port for an entity the operation reads/writes -> estrutural error.
+1. Ports: usecase ports must come from the valid list (aggregate roots AND persisted event stores —
+   event ports for eventWrites are legitimate and added by design; do NOT flag them). An invented
+   port, a port for an MDM entity, or a missing port for an entity the operation reads/writes ->
+   estrutural error.
 2. rulesApplied: every L4 rule id must appear in the usecase rulesApplied (top-level or function) and
    be applicable with the declared inputs/entities. A rule that cannot run with the modeled data ->
    estrutural error.

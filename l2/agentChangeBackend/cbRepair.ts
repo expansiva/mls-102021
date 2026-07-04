@@ -191,6 +191,25 @@ export function buildRepairPromptSection(entry: CbComponentRepair): string {
   return lines.join('\n');
 }
 
+// ── durable run report ──────────────────────────────────────────────────────────
+
+/** Persist the validate-all outcome + repair audit to l4/trace/cb-health-report.json. The task dump
+ * keeps interaction null on deterministic steps and the repair state is cleared on success, so this
+ * file is the DURABLE record of what was repaired in the run (survives task cleanup). */
+export async function saveHealthReport(report: Record<string, unknown>): Promise<void> {
+  try {
+    const info: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> =
+      { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-health-report', extension: '.json' };
+    const source = `${JSON.stringify({ savedAt: new Date().toISOString(), ...report }, null, 2)}\n`;
+    const key = mls.stor.getKeyToFile(info);
+    let file = mls.stor.files[key];
+    if (!file) file = await createStorFile({ ...info, source }, false, false, false);
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+  } catch (error) {
+    console.warn('[cbRepair] saveHealthReport failed', error);
+  }
+}
+
 // ── staleness forcing (validate-all -> re-materialize routing) ─────────────────
 
 /** Bump the .defs.ts updatedAt so the materialize dispatcher sees the component as stale again. */

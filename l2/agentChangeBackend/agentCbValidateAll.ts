@@ -12,7 +12,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 import {
-  readRepairState, saveRepairState, forceDefsStale, clearRepairState, GLOBAL_REPAIR_BUDGET,
+  readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 import { getFileModified } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
 import { isStale } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
@@ -399,7 +399,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         }
         await saveRepairState(state);
         const trace = `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s): ${unique.slice(0, 12).join('; ')}`;
-        console.warn(`${logPrefix(agent)} ${trace}`);
+        await saveHealthReport({ outcome: 'repair-round', round: state.globalAttempts, l1Defs, findings: unique, warnings, repairHistory: state.history });
         return [
           enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true }),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
@@ -412,6 +412,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
       const historyNote = state.history.length ? ` | repair history (${state.history.length}): ${state.history.slice(-8).join(' | ')}` : '';
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
+      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
       console.error(`${logPrefix(agent)} ${trace}`);
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
@@ -421,6 +422,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const repairNote = finalState.history.length
       ? `; repaired during this run: ${finalState.history.length} occurrence(s) [${finalState.history.slice(-8).join(' | ')}]`
       : '';
+    await saveHealthReport({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns });
     await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
     const okTrace = (warnings.length
