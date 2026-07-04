@@ -191,10 +191,12 @@ async function readContextRef(ref: string): Promise<string | null> {
 
 // WORKER: assemble the prompt for ONE defs file with the shared core and ask the model for the .ts.
 async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, defRef: string): Promise<mls.msg.AgentIntent[]> {
+  // NB: worker children never return 'failed' (a failed step does not satisfy dependsOn and would
+  // stall the layer barrier); the missing .ts is reported by cb-validate-all.
   const content = await getContentByMlsPath(defRef);
-  if (!content) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `defs not found: ${defRef}`)];
+  if (!content) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] defs not found: ${defRef}`)];
   const parsed = parseDefs(content);
-  if (!parsed.item || !parsed.item.outputPath) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `no pipeline item in ${defRef}`)];
+  if (!parsed.item || !parsed.item.outputPath) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] no pipeline item in ${defRef}`)];
 
   const skillSections: string[] = [];
   for (const s of parsed.item.skills ?? []) {
@@ -399,8 +401,13 @@ function validateGeneratedComponent(project: number, item: PipelineItem, data: u
 }
 
 // afterPromptStep (worker only): take the generated code from the tool call and save the .ts.
+// ENGINE SEMANTICS (observed 2026-07-04, run task1): a FAILED step does NOT satisfy dependsOn — when
+// cb-mat-L4 failed (3 workers), cb-mat-after-L4 stayed waiting_dependency forever and the task died
+// without repair or report. So a worker failure NEVER fails the child step: it is recorded in
+// cb-repair-state (LLM-fixable classes) + surfaced as a "[repair]" trace, the step COMPLETES so the
+// layer barrier advances, the dispatcher re-spawns the repairable components, and cb-validate-all
+// remains the blocking gate for whatever did not converge.
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
-  let status: mls.msg.AIStepStatus = 'completed';
   let trace: string | undefined;
   try {
     const defRef = workerDefRef(args, step);
@@ -433,10 +440,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (!ok) throw new Error('saveGeneratedTs failed');
     await clearComponentRepair(defRef); // converged: drop the repair record
   } catch (error) {
-    status = 'failed';
-    trace = error instanceof Error ? error.message : String(error);
+    trace = `[repair] ${error instanceof Error ? error.message : String(error)}`;
     console.error(`${logPrefix(agent)} ${trace}`);
   }
   // No enqueueNext: cb-gen-seeds was queued by the dispatcher with a join dependsOn on the last layer.
-  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace)];
+  // Always 'completed' (see engine-semantics note above): the trace carries the failure, the repair
+  // state carries the routing, and cb-validate-all carries the enforcement.
+  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
 }

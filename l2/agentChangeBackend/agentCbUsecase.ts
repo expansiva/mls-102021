@@ -133,7 +133,9 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
 async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, ownerId: string): Promise<mls.msg.AgentIntent[]> {
   const scan = await readBackendScan(['toCreate', 'inProgress']);
   const owner = scan.owners.find(o => o.id === ownerId);
-  if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `owner not found: ${ownerId}`)];
+  // NB: worker children never return 'failed' (a failed step does not satisfy dependsOn and would
+  // stall the fan-out join); the judge/validate-all report what is missing.
+  if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] owner not found: ${ownerId}`)];
   if (owner.kind !== 'operation') return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `skip ${ownerId}: workflows generate no usecase`)];
   const item = buildOwnerItem(owner, deriveMaps(scan));
   let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession resolutions into required user input. A usecase MAY expose several functions with different IO.`;
@@ -203,6 +205,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     // defs deterministically and re-spawns this worker while the budget lasts (repair loop).
     const failedOwnerId = workerOwnerId(args, step);
     if (failedOwnerId) await recordComponentFailure(`usecase-defs:${failedOwnerId}`, [trace || 'usecase generation failed']);
+    // ENGINE SEMANTICS (2026-07-04): a FAILED child does NOT satisfy dependsOn — the fan-out join
+    // (cb-judge) would wait forever. Complete with a "[repair]" trace instead; the judge routes the
+    // repair and the deterministic gates downstream keep blocking what does not converge.
+    status = 'completed';
+    trace = `[repair] ${trace || 'usecase generation failed'}`;
   }
   await saveAgentTrace(context, AGENT_NAME, step);
   // No enqueueNext here: the controller step was already queued by the dispatcher with a join dependsOn.
