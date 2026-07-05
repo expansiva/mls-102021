@@ -21,6 +21,17 @@ function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
 }
 
+function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
+  return {
+    projectId: l5.projectId || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
 function main(): void {
   const clientId = (process.argv[2] || '').replace(/^mls-/, '');
   if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
@@ -40,7 +51,7 @@ function main(): void {
   // Skeleton (idempotent): each composer only ensures what it owns/needs.
   config.defaultProjectId = config.defaultProjectId || clientId;
   config.projects = config.projects || {};
-  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client' };
+  config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, clientId) };
   config.projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master backend' };
   // The backend runtime imports shared code from 102029.
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };

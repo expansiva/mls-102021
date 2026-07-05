@@ -25,12 +25,16 @@ layer_3_domain/             entities, value-objects, domain-services, rules, eve
 import { ok, AppError, type BffHandler, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { registerRepository, resolveRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
-// RequestContext: { data: IDataRuntime; log; clock: { nowIso() }; idGenerator: { newId() }; requestMeta? }
+// RequestContext: { data: IDataRuntime; log; clock: { nowIso() }; idGenerator: { newId() }; sessionContext; requestMeta? }
+// ctx.sessionContext.activeCompanyId / activeUnitId: businessContext scope resolved by runtime/session
+// ctx.sessionContext.workspaceId: UI workspace id, not a business company filter
 // ctx.data.moduleData.getTable<TRow>(name): Promise<ITableRepository<TRow>>
 //   ITableRepository: findOne({where}), findMany({where?, orderBy?:{field,direction}, limit?}),
 //                     findManyByValues({field,values,limit?}), insert({record}), update({where,patch}), delete({where})
 // ctx.data.runInTransaction(async (tx) => { ... })  // tx is an IDataRuntime
-// MDM (read-only): ctx.data.mdmEntityIndex, ctx.data.mdmDocument  (master data lives in 102034)
+// MDM facade: ctx.mdm.entity.get/create/update/inactivate/delete/link/unlink
+//             ctx.mdm.collection.getMany/listByType/relatedOfMany/hydrateMany
+//             ctx.mdm.prospect.create/get/listByType/update/promoteToEntity
 ```
 
 ## Port ↔ adapter wiring (dependency inversion)
@@ -45,8 +49,10 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 
 - **Naming is deterministic from the ontology `entityId`/`operationId`** (PascalCase entity, camelCase
   ids). NEVER translate to the PT title (no `pedidoEntity` for `Order`).
-- **`ctx.data` ONLY in `adapters/persistence`.** Domain and application must not reference it.
-- **MDM/horizontal entities have NO local table.** Read MDM via the shared 102034 runtime.
+- **`ctx.data` ONLY in `adapters/persistence` for local module tables and transaction/queue runtime.**
+  Domain and application must not reference it except usecases may open `ctx.data.runInTransaction`.
+- **MDM/horizontal entities have NO local table.** Read/write MDM via `ctx.mdm`; never use raw
+  `ctx.data.mdmDocument`, `ctx.data.mdmEntityIndex`, `ctx.data.mdmRelationship` or `tx.mdm*`.
 - **JSONB-first persistence**: only indexed fields are real columns; everything else + child
   collections go in a single `details` JSONB column (the adapter serializes/parses it).
 - Ids via `ctx.idGenerator.newId()`; timestamps via `ctx.clock.nowIso()`.
@@ -69,4 +75,6 @@ Recurring compiler errors to AVOID (each one fails the run):
 - **TS2304 — never reference an undeclared identifier.** Every repository you use must be declared in
   THIS file: `const shifts = resolveRepository<IShiftRepository>(ctx, 'Shift');`. When editing/repairing
   code, keep every declaration the remaining code still uses.
-- **TS2339 — `ctx.data` is the IDataRuntime itself.** It is `ctx.data.mdmDocument`, never `ctx.data.data.*`.
+- **TS2339 — MDM is on `ctx.mdm`, not on repository ports.** Use `ctx.mdm.entity.*`,
+  `ctx.mdm.collection.*` and, for prospect workflows, `ctx.mdm.prospect.*`; do not call
+  `ctx.data.data.*` or raw `ctx.data.mdm*`.

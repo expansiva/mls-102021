@@ -199,6 +199,7 @@ export function applyHeader(outputPath: string, code: string): string {
 // AppError/ok and the repository registry — the types adapters/usecases/controllers compile against.
 export const CONTRACTS_102034: readonly string[] = [
   '_102034_/l1/server/layer_2_controllers/contracts.ts',
+  '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts',
   '_102034_/l1/server/layer_1_external/data/runtime.ts',
   '_102034_/l1/server/layer_1_external/persistence/contracts.ts',
   '_102034_/l1/server/layer_2_application/repositoryRegistry.ts',

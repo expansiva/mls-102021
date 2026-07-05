@@ -16,6 +16,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
 import { getFileModified } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
 import { isStale } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
+import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/cbMdmGuards.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -58,7 +59,7 @@ function fieldNameFromRef(value: unknown): string {
 
 function requiredBoundaryFields(inputContract: unknown): Set<string> {
   const fields = new Set<string>();
-  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession']);
+  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession', 'businessContext']);
   if (!Array.isArray(inputContract)) return fields;
   for (const input of inputContract) {
     if (!isRecord(input) || input.required !== true) continue;
@@ -200,6 +201,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             from: `${folder0}/${shortName0}`,
             key: '__invalid_mdm_relationship_shape__',
             target: 'mdmRelationship uses invented source_entity/target_entity fields; use MdmRelationshipRecord fromId/toId/type',
+          });
+        }
+        for (const issue of collectRawMdmAccessIssues(content)) {
+          importReqs.push({
+            from: `${folder0}/${shortName0}`,
+            key: '__invalid_raw_mdm_access__',
+            target: issue,
           });
         }
         continue;
@@ -345,7 +353,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // .ts. Root guard for hallucinated modules (e.g. importing layer_3_domain/rules/* — rules live
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
     for (const req of importReqs) {
-      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__') {
+      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__' || req.key === '__invalid_raw_mdm_access__') {
         const msg = `platform contract violation -> ${req.from}.ts: ${req.target}`;
         missing.push(msg);
         addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable

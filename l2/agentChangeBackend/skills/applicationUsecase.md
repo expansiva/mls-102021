@@ -3,8 +3,8 @@
 Generate the usecase: it decides WHAT happens (validations, state transitions, orchestration). It
 imports the DOMAIN and the repository PORT type, resolves the concrete adapter via
 `resolveRepository`, applies L4 rules inline, and only touches `ctx.data` for the single
-`ctx.data.runInTransaction` wrapper or for explicit MDM runtime access (`mdmDocument`,
-`mdmEntityIndex`). Export the function + its Input/Output
+`ctx.data.runInTransaction` wrapper. MDM master data is accessed only through `ctx.mdm`.
+Export the function + its Input/Output
 types (the controller imports these). Use `data.functionName`, `data.ports`, `data.rulesApplied`,
 `data.steps` from the defs.
 
@@ -57,8 +57,12 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   invent fields. Export both interfaces (the controller imports them).
 - The planned function IO was derived from the L4 v2 contract. Preserve that boundary: `accessPattern`
   decides list/get/lookup/commandInput, `inputs[]` decides public required fields, and
-  `contextResolution[]` values from `systemDefault`, `currentWorkspace` or `actorSession` are resolved
-  from `RequestContext`/platform helpers, not required as user-entered params.
+  `contextResolution[]` values from `systemDefault`, `currentWorkspace`, `actorSession` or
+  `businessContext` are resolved from `RequestContext`/platform helpers, not required as
+  user-entered params.
+  - `businessContext.activeCompanyId` -> `ctx.sessionContext.activeCompanyId`
+  - `businessContext.activeUnitId` -> `ctx.sessionContext.activeUnitId`
+  These business scope ids are context, not plain form fields.
 - Resolve every repository with `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. NEVER import
   an adapter. Import record/union types and invariants from the domain entity.
 - Apply `rulesApplied` inline in this usecase file. L4 rules are authoritative prose/ids, not generated
@@ -67,9 +71,9 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   from imported domain entities; otherwise write a small local helper in this usecase file and include
   the `ruleId` in the thrown `AppError('VALIDATION_ERROR'|'CONFLICT', …)` details.
 - Lifecycle: read current state, check the domain transition (e.g. `canTransition*`), then `save`.
-- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Outside this,
-  only explicit MDM runtime access from `data.mdmRefs` may use `ctx.data`; pass `tx` only to repository
-  or MDM calls when the runtime surface supports it.
+- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Do not use
+  raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and
+  `relationshipRefs` stay consistent.
 - Ids via `ctx.idGenerator.newId()`, timestamps via `ctx.clock.nowIso()`.
 
 ## Child-entity operations (embedded members)
@@ -93,51 +97,95 @@ tables). They live in the shared 102034 MDM store, NOT in this module: there is 
 or table** for them, and you must NEVER `resolveRepository` one. A transaction references them **by id
 only** — the id comes in the function input (e.g. `tableId`, `menuCategoryId`).
 
-Read a master-data record by id via the runtime (the one ctx.data call besides `runInTransaction`):
+Read a master-data record by id via the MDM facade:
 
 ```ts
-const doc = await ctx.data.mdmDocument.get({ mdmId: input.tableId });
-if (!doc) throw new AppError('NOT_FOUND', `MDM record not found: ${input.tableId}`, 404, { mdmId: input.tableId });
-const table = doc.details; // the master-data payload
+const entity = await ctx.mdm.entity.get({ mdmId: input.tableId });
+if (!entity) throw new AppError('NOT_FOUND', `MDM record not found: ${input.tableId}`, 404, { mdmId: input.tableId });
+const table = entity.details; // the master-data payload
 ```
 
-`mdmDocument`: `get({ mdmId })`, `getMany({ mdmIds })`, `put({ record })`, `delete({ mdmId })`. Often
-just storing/passing the id is enough — only fetch the record when you actually need its fields. Do not
-import any `/_{project}_/.../ports/{mdm}Repository` — it does not exist.
+For bulk reads use `ctx.mdm.collection.getMany({ mdmIds })`. For module lists use
+`ctx.mdm.collection.listByType({ type: '<module>.<Entity>' })`; this reads the promoted
+`details.moduleTypes` index. For relationship hydration use `ctx.mdm.collection.relatedOfMany(...)`
+and `ctx.mdm.collection.hydrateMany(...)`. Often just storing/passing the id is enough - only fetch the
+record when you actually need its fields. Do not import any `/_{project}_/.../ports/{mdm}Repository` -
+it does not exist.
+
+Plural-first rule: never call `ctx.mdm.entity.get` inside a `for`/`while`/`map`/`forEach` loop. Collect
+the ids first, call `ctx.mdm.collection.getMany({ mdmIds })` or `hydrateMany`, then join the results in
+memory.
 
 ### Writing a module-owned MDM record (cadastral data only)
 
-When `data.kind === 'mdm'` and the operation creates/updates the record, write through `mdmDocument.put`.
-The stored `details` is an `MdmDetailRecord` with REQUIRED base fields — you cannot put a bare entity
-object. Keep the base fields valid and place ALL of the module's own columns under the module-namespace
-key (`details[<module>]`), which `BaseMdmDetailRecord` allows via `[moduleNamespace: string]: unknown`:
+When `data.kind === 'mdm'` and the operation creates/updates the record, write through the MDM facade.
+Never write `mdmDocument.put` directly: the facade is what keeps the document, index and
+`relationshipRefs` consistent. The stored `details` is an MDM detail payload with required base fields;
+place the module-owned columns under the module namespace key (for example `cafeFlow`) and include the
+canonical module type in `moduleTypes`. If a field is module-specific but belongs to the master-data
+record, store it under `details.<moduleId>`; if it is a relation to another MDM record, use
+`ctx.mdm.entity.link/unlink` instead of storing a raw related id in JSON.
 
 ```ts
-// status MUST be an MdmStatus: 'Active' | 'Inactive' | 'Merged' | 'Blocked' (map your domain lifecycle).
-// subtype MUST be an MdmSubtype: 'Product' (menu item/category), 'AssetGeneric' (table/furniture),
-// 'Location' (room), 'Person' | 'Company' | ... — pick the closest one.
-const now = ctx.clock.nowIso();
-// UPDATE: preserve the existing record, override only what changed.
-const doc = await ctx.data.mdmDocument.get({ mdmId: input.menuCategoryId });
-if (!doc) throw new AppError('NOT_FOUND', `MDM record not found: ${input.menuCategoryId}`, 404, { mdmId: input.menuCategoryId });
-await ctx.data.mdmDocument.put({
-  record: {
-    ...doc,
-    details: {
-      ...doc.details,
-      name: input.name ?? doc.details.name,
-      status: input.status === 'inactive' ? 'Inactive' : 'Active',
-      updatedAt: now,
-      cafeFlow: { ...(doc.details.cafeFlow as object ?? {}), ...moduleFields }, // entity columns in JSONB
+const person = await ctx.mdm.entity.create({
+  details: {
+    subtype: 'Person',
+    name: input.name,
+    status: 'Active',
+    moduleTypes: ['people.Profile'],
+    tags: ['people'],
+    people: {
+      birthDate: input.birthDate,
+      preferredName: input.preferredName ?? null,
     },
   },
-  expectedVersion: doc.version,
+});
+
+await ctx.mdm.entity.link({
+  fromId: person.mdmId,
+  toId: input.managerMdmId,
+  type: 'ReportsTo',
+  metadata: {
+    sourceModule: 'people',
+    note: input.relationshipNote ?? null,
+  },
 });
 ```
 
-For CREATE, build the full base (`mdmId`, `subtype`, `name`, `status`, `countryCode`, `tags: []`,
-`aliases: []`, `contacts: []`, `relationshipRefs: {}`, `addresses: []`, `createdAt`, `updatedAt`,
-`<module>: {…}`) and `put({ record: { mdmId, version: 1, details } })`.
+For update, load the entity, preserve fields you do not change, and pass the optimistic version.
+For create use `ctx.mdm.entity.create`. For update use `ctx.mdm.entity.update`. For cadastral
+deactivation prefer `ctx.mdm.entity.inactivate`; use physical `ctx.mdm.entity.delete` only when the
+operation truly removes a standalone record. For MDM links use
+`ctx.mdm.entity.link({ fromId, toId, type })` and `ctx.mdm.entity.unlink({ relationshipId })`.
+If no existing `RelationshipType` expresses the domain relation, record a modeling gap instead of
+inventing a free-text type in generated code.
+For prospect/pre-qualified lead flows use the explicit prospect facade:
+`ctx.mdm.prospect.create`, `ctx.mdm.prospect.get`, `ctx.mdm.prospect.listByType`,
+`ctx.mdm.prospect.update` and `ctx.mdm.prospect.promoteToEntity`; do not model prospects through
+`ctx.mdm.entity`.
+
+Relationship decision guide:
+
+| Situation | MDM relationship |
+| --- | --- |
+| Ownership/possession | `Owns` |
+| Physical/logical location | `LocatedAt` |
+| Organization hierarchy | `SubsidiaryOf`, `BelongsToGroup`, `PartOfUnit` |
+| Supplier/customer relation | `SupplierOf`, `CustomerOf` |
+| Product/service offered | `OffersProduct`, `OffersService` |
+| Contact channel/person | `HasContact` |
+
+If none of these expresses the domain, keep the ids and record a modeling gap instead of inventing a
+free-text relationship type silently.
+
+Embedded decision guide: use embedded only for small child data that has no global identity, no
+independent lifecycle, no cross-aggregate references, no own audit/reporting need and no relationship of
+its own. If it needs identity, links, attachments, search or history, model it as MDM-owned or
+module-owned instead of embedding it to simplify code.
+
+Forbidden in generated module code: `ctx.data.mdmDocument`, `ctx.data.mdmEntityIndex`,
+`ctx.data.mdmRelationship`, `tx.mdmDocument`, `tx.mdmEntityIndex`, `tx.mdmRelationship` and local MDM
+repositories.
 
 NEVER store operational/transactional state (occupancy, movement, balances, `'occupied'`/`'available'`)
 in an MDM record — that is NOT cadastral data and belongs to a local `core` entity with its own table.

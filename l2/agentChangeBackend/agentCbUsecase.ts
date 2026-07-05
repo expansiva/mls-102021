@@ -138,7 +138,7 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] owner not found: ${ownerId}`)];
   if (owner.kind !== 'operation') return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `skip ${ownerId}: workflows generate no usecase`)];
   const item = buildOwnerItem(owner, deriveMaps(scan));
-  let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession resolutions into required user input. A usecase MAY expose several functions with different IO.`;
+  let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession/businessContext resolutions into required user input. A usecase MAY expose several functions with different IO.`;
   // REPAIR: when the judge (or a previous failure) left findings for this owner, feed them back so the
   // model FIXES the exact defects instead of regenerating blindly (repair loop, cbRepair.ts).
   const repair = await getComponentRepair(`usecase-defs:${ownerId}`);
@@ -223,7 +223,7 @@ const systemPrompt = `
 You are ${AGENT_NAME} (hexagonal layer_2_application/usecases). Generate ONE usecase for the given owner:
 it decides WHAT happens — validations, state transitions, orchestration — using the domain + repository
 PORTS only (import the port interface, NEVER the concrete adapter; use ctx.data only for a single
-transaction wrapper or explicit MDM runtime access). Apply rulesApplied inline.
+transaction wrapper). MDM is accessed only through ctx.mdm. Apply rulesApplied inline.
 
 ports must NOT be empty: use exactly the provided "ports" (already the parent aggregate roots). When the
 owner's "entity" is a child embedded in a parent aggregate (its parent is "parentAggregate", different
@@ -236,13 +236,27 @@ Use the L4 v2 contract directly:
   the declared keyField, lookup is a short selector, commandInput mutates from the declared payload.
 - inputs[] is the public BFF/usecase input surface. Required fields come from inputs[].required.
 - contextResolution[] is not extra user input. systemDefault values use ctx.clock/ctx.idGenerator;
-  currentWorkspace/actorSession values come from RequestContext metadata when available; selectedEntity,
+  currentWorkspace/actorSession/businessContext values come from RequestContext sessionContext metadata when available; selectedEntity,
   routeParam and previousStepOutput are accepted only when represented by declared inputs.
+- businessContext.activeCompanyId and businessContext.activeUnitId map to
+  ctx.sessionContext.activeCompanyId / ctx.sessionContext.activeUnitId (also mirrored under
+  ctx.sessionContext.businessContext). Use them for business scope; never ask the actor to type those
+  ids as regular input.
 - Never require an id manually when the L4 contract says it is resolved by context.
 
-Entities in "mdmRefs" are master data in the shared 102034 store: there is NO port for them — reference
-them BY ID (the id is an input field) and read by id via ctx.data.mdmDocument.get({ mdmId }). Never put
-an mdmRef in ports and never resolveRepository it.
+Entities in "mdmRefs" are master data in the shared 102034 store: there is NO port for them - reference
+them BY ID (the id is an input field) and read by id via ctx.mdm.entity.get({ mdmId }) or bulk read via
+ctx.mdm.collection.getMany({ mdmIds }). For MDM-owned create/update/delete/link/list operations use
+ctx.mdm.entity.create/update/inactivate/delete/link/unlink and ctx.mdm.collection.listByType/
+relatedOfMany/hydrateMany. For prospect/pre-qualified lead workflows use the explicit prospect facade:
+ctx.mdm.prospect.create/get/listByType/update/promoteToEntity. Never use ctx.mdm.entity for prospects.
+Module-specific MDM fields live under details.<moduleId>; relationships to other MDM records use
+ctx.mdm.entity.link/unlink, not raw related ids embedded in JSON.
+Never put an mdmRef in ports, never resolveRepository it, and never use raw
+runtime primitives such as ctx.data.mdmDocument, ctx.data.mdmEntityIndex, ctx.data.mdmRelationship,
+tx.mdmDocument, tx.mdmEntityIndex or tx.mdmRelationship.
+Plural-first: never call ctx.mdm.entity.get inside a loop; collect ids and use ctx.mdm.collection.getMany
+or hydrateMany before joining results in memory.
 
 "eventWrites" are append-only events this usecase MUST emit when it mutates the owning aggregate (so the
 history is never lost). For each: if persisted (telemetry/audit), build the event record and append it

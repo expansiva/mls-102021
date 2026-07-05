@@ -1,10 +1,10 @@
 # Skill: repositoryAdapter → `layer_1_external/adapters/persistence/{entity}RepositoryAdapter.ts`
 
 Generate the repository ADAPTER implementing the port. This is the ONLY file allowed to use
-`ctx.data`. It maps the domain aggregate <-> table row: indexed fields become columns; everything
-else + embedded child collections are serialized into the `details` JSONB column. Export a factory
-`create{Entity}RepositoryAdapter(ctx): I{Entity}Repository`. MDM reads go through `ctx.data.mdm*`
-(never a local table).
+`ctx.data.moduleData` for local module tables. It maps the domain aggregate <-> table row: indexed
+fields become columns; everything else + embedded child collections are serialized into the `details`
+JSONB column. Export a factory `create{Entity}RepositoryAdapter(ctx): I{Entity}Repository`. MDM reads
+go through `ctx.mdm` (never `ctx.data.mdm*` and never a local table).
 
 ## Golden example (compiles)
 
@@ -91,20 +91,19 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
   convert between them; `details` is `JSON.stringify` on write, safe-parse on read.
 - The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')`.
 - `orderBy` is always `{ field: '<column>', direction: 'asc'|'desc' }`. `getById` throws `NOT_FOUND`.
-- MDM-backed reads: resolve via `ctx.data.mdmEntityIndex` / `ctx.data.mdmDocument`; never a local table.
-  Use the real 102034 contracts, not invented index fields:
-  - import `type { MdmEntityIndexRecord, MdmRelationshipRecord } from '/_102034_/l1/mdm/module.js'`
-    when you need typed MDM rows.
-  - `MdmEntityIndexRecord` fields are `mdmId`, `subtype`, `name`, `status`, `docType`, `docId`,
-    `countryCode`, `tags`, `searchVector`, `mergedInto`, `dynamoPk`, `createdAt`, `updatedAt`.
-    It does NOT have `entityId`, `entityType`, `productId`, `warehouseId` or module-specific fields.
-  - For module-specific MDM attributes, first query by a real indexed field such as
-    `{ subtype: 'Product' } satisfies Partial<MdmEntityIndexRecord>`, then load documents with
-    `ctx.data.mdmDocument.get({ mdmId: row.mdmId })` or `getMany({ mdmIds })` and inspect
-    `doc.details.<module>`.
-  - `MdmRelationshipRecord` fields are `id`, `fromId`, `toId`, `type`, `role`, `metadata`,
-    `isBidirectional`, `validFrom`, `validTo`, `status`, `createdAt`, `updatedAt`. It does NOT have
-    `source_entity_id`, `target_entity_id`, `source_entity_type` or `target_entity_type`.
+- MDM-backed reads: resolve via `ctx.mdm.collection.listByType/getMany/hydrateMany/relatedOfMany` or
+  `ctx.mdm.entity.get`; never a local table and never raw `ctx.data.mdmDocument`,
+  `ctx.data.mdmEntityIndex` or `ctx.data.mdmRelationship`.
+  Prospect/pre-qualified lead workflows use `ctx.mdm.prospect.create/get/listByType/update/promoteToEntity`,
+  never raw `ctx.data.mdmProspectIndex` or `ctx.data.mdmProspectRelationship`.
+  - For module-specific MDM attributes, list by canonical module type such as
+    `ctx.mdm.collection.listByType({ type: 'cafeFlow.MenuItem' })`, or bulk load by ids with
+    `ctx.mdm.collection.getMany({ mdmIds })`, then inspect `entity.details.<module>`.
+  - Never call `ctx.mdm.entity.get` inside a loop. Collect ids and use `getMany`/`hydrateMany` once.
+  - For MDM relationships, use `ctx.mdm.collection.relatedOfMany({ mdmIds, type? })` for reads and
+    `ctx.mdm.entity.link/unlink` for writes owned by MDM usecases.
+  - Do not import raw MDM row types or write filters over invented index fields such as `entityId`,
+    `entityType`, `productId`, `warehouseId`, `source_entity_id` or `target_entity_id`.
 - Multi-table writes (e.g. + event/metric) wrap in `ctx.data.runInTransaction(async (tx) => { ... })`.
 - Append-only EVENT adapters (`data.appendOnlyEvent === true`): implement the event port over its table —
   `append(record)` does a single `insert({ record: toRow(record) })` (NEVER `update`/`delete`), and the

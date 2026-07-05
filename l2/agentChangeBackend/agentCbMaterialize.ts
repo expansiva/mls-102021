@@ -26,6 +26,7 @@ import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
   buildRepairPromptSection, forceDefsStale, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/cbRepair.js';
+import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/cbMdmGuards.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
 
@@ -282,7 +283,7 @@ function fieldNameFromRef(value: unknown): string {
 
 function requiredBoundaryFields(inputContract: unknown): Set<string> {
   const fields = new Set<string>();
-  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession']);
+  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession', 'businessContext']);
   if (!Array.isArray(inputContract)) return fields;
   for (const input of inputContract) {
     if (!isRecord(input) || input.required !== true) continue;
@@ -397,9 +398,10 @@ function validateControllerComponent(data: unknown, code: string): string[] {
 
 function validateGeneratedComponent(project: number, item: PipelineItem, data: unknown, code: string, currentKey: string): string[] {
   const tsKeys = existingTsKeys(project, currentKey);
-  if (item.type === 'applicationUsecase') return validateUsecaseComponent(project, data, code, tsKeys);
-  if (item.type === 'httpController') return validateControllerComponent(data, code);
-  return [];
+  const issues = collectRawMdmAccessIssues(code);
+  if (item.type === 'applicationUsecase') issues.push(...validateUsecaseComponent(project, data, code, tsKeys));
+  if (item.type === 'httpController') issues.push(...validateControllerComponent(data, code));
+  return issues;
 }
 
 // afterPromptStep (worker only): take the generated code from the tool call and save the .ts.

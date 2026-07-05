@@ -246,7 +246,7 @@ FINDINGS. Judge every pair on:
    estrutural error.
 3. Inputs vs accessPattern: function input fields must match the L4 inputs[] and accessPattern.kind
    (list -> filters, getById -> the declared keyField, commandInput -> the payload). A required user
-   input the L4 resolves by context (systemDefault/currentWorkspace/actorSession/contextResolution) ->
+   input the L4 resolves by context (systemDefault/currentWorkspace/actorSession/businessContext/contextResolution) ->
    decisao error ("automatic operation asking manual input"). A missing required input -> estrutural.
 4. acceptanceAssertions: each assertion must be satisfiable by the declared functions' input/output.
    Unsatisfiable -> estrutural error.

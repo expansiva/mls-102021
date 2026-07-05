@@ -59,6 +59,7 @@ export type EntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
 export type L4ContextSource =
   | 'userInput'
   | 'actorSession'
+  | 'businessContext'
   | 'currentWorkspace'
   | 'selectedEntity'
   | 'activeLifecycleInstance'
