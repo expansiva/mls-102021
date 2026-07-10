@@ -410,12 +410,12 @@
       "planId": "cb-gen-seeds",
       "agentName": "agentCbSeeds",
       "type": "agent",
-      "modelAlias": null,
+      "modelAlias": "codehigh",
       "executionMode": "sequential",
       "dependsOn": [
         "the last cb-mat layer, or cb-gen-http in rebuild-defs"
       ],
-      "goal": "DETERMINISTIC (no LLM). Generate l1/{module}/layer_1_external/adapters/persistence/seeds.ts with sample rows for important local persistence tables and MDM rows targeting the 102034-owned MDM repositories. Labels use the first language from l5/project.json. Enqueue cb-register.",
+      "goal": "HYBRID. An LLM returns only a strict JSON scenario plan from L4/L5/table defs; agentCbSeeds validates it deterministically, resolves symbolic refs to stable IDs, and writes l1/{module}/layer_1_external/adapters/persistence/seeds.ts. The plan is embedded and reused when still valid. Generate local, MDM entity/document, and MDM relationship rows; labels use the first language from l5/project.json. One bounded repair follows validation findings, then enqueue cb-register.",
       "savedArtifact": [
         "l1/{module}/layer_1_external/adapters/persistence/seeds.ts"
       ]

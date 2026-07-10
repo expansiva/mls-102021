@@ -181,6 +181,94 @@ export const httpControllerResultSchema = {
   },
 } as const;
 
+// ── seed scenario planning (agentCbSeeds) ─────────────────────────────────────
+// The planner returns semantic data only. It cannot emit TypeScript or raw IDs: the deterministic
+// cbSeedsCore compiler resolves the symbolic refs and validates the result before saving seeds.ts.
+
+const seedReferenceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['ref'],
+  properties: { ref: str },
+} as const;
+
+const seedValueSchema = {
+  anyOf: [str, num, bool, { type: 'null' }, seedReferenceSchema],
+} as const;
+
+const seedFieldSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'value'],
+  properties: { name: str, value: seedValueSchema },
+} as const;
+
+const seedChildRowSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['key', 'fields'],
+  properties: { key: str, fields: { type: 'array', items: seedFieldSchema } },
+} as const;
+
+const seedChildCollectionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['name', 'rows'],
+  properties: { name: str, rows: { type: 'array', items: seedChildRowSchema } },
+} as const;
+
+const seedLocalRowSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['key', 'columns', 'details', 'children'],
+  properties: {
+    key: str,
+    columns: { type: 'array', items: seedFieldSchema },
+    details: { type: 'array', items: seedFieldSchema },
+    children: { type: 'array', items: seedChildCollectionSchema },
+  },
+} as const;
+
+const seedRelationshipSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['targetRef', 'type', 'metadata', 'isBidirectional'],
+  properties: {
+    targetRef: str,
+    type: str,
+    metadata: { type: 'array', items: seedFieldSchema },
+    isBidirectional: bool,
+  },
+} as const;
+
+const seedMdmRowSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['key', 'fields', 'relationships'],
+  properties: {
+    key: str,
+    fields: { type: 'array', items: seedFieldSchema },
+    relationships: { type: 'array', items: seedRelationshipSchema },
+  },
+} as const;
+
+export const seedPlanResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'localTables', 'mdmEntities'],
+  properties: {
+    summary: str,
+    localTables: objArray(['tableId', 'rows'], {
+      tableId: str,
+      rows: { type: 'array', items: seedLocalRowSchema },
+    }),
+    mdmEntities: objArray(['entityId', 'rows'], {
+      entityId: str,
+      rows: { type: 'array', items: seedMdmRowSchema },
+    }),
+  },
+} as const;
+
 // ── judge (adversarial critic, cb-judge) ────────────────────────────────────────
 // Findings typed by the repair-routing taxonomy (improveAddNewSolution2_1.md §2):
 // estrutural (artifact/link missing) | decisao (business default missing) | fora_de_escopo (other layer).
