@@ -104,7 +104,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
             { planId, seedAttempt: nextAttempt, seedFindings: built.errors.slice(0, 40) },
             [],
             'sequential',
-            'pending',
+            // Directly-added run step (no dependsOn): the backend enqueues its beforePromptStep hook
+            // but never changes the status, and continueBeforePrompt only accepts 'waiting_human_input'.
+            // 'pending' throws "Step not prepared for continueBeforePrompt". Matches the root bootstrap
+            // step (agentChangeBackend.ts) and the unlock/parallel paths in collab-messages tasks.ts.
+            'waiting_human_input',
           )),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Seed plan rejected; repair ${nextAttempt}/${MAX_PLAN_ATTEMPTS} scheduled: ${built.errors.slice(0, 12).join('; ')}`),
         ];

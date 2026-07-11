@@ -11,7 +11,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { L5ProjectJson, MasterRuntimeManifest, ProjectsConfig, ProjectModuleConfig } from '/_102029_/l2/runtimeConfigTypes.js';
-import { serializeRuntimeConfig } from '/_102029_/l2/runtimeConfigEmit.js';
+// Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
+// tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
+import { serializeRuntimeConfig } from '../../../mls-102029/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -46,10 +48,11 @@ function main(): void {
   if (!signature) fail(`l5/project.json has no masters.backend signature (run agentChangeBackend or add it)`);
   const runtimeId = String(signature.runtimeProject);
 
-  // Intermediate JSON shared with the frontend composer; the final l5/runtimeConfig.ts is
-  // emitted from it below (order-independent between the two CLIs).
-  const buildPath = path.join(clientRoot, 'l5', 'runtimeConfig.build.json');
-  const config = (readJson<ProjectsConfig>(buildPath) || {}) as ProjectsConfig;
+  // config.json (root) remains the artifact the pipeline + runtime consume; we also emit
+  // l5/runtimeConfig.ts from the same object below. The navigationFromModule markers persist in
+  // config.json as an extra (harmless) field that only the runtimeConfig.ts serializer reads.
+  const configPath = path.join(clientRoot, 'config.json');
+  const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
   // Skeleton (idempotent): each composer only ensures what it owns/needs.
   config.defaultProjectId = config.defaultProjectId || clientId;
@@ -101,10 +104,10 @@ function main(): void {
   }
   if (backendModules === 0) fail('l5/project.json declares no modules with a backend block; nothing to compose');
 
-  fs.writeFileSync(buildPath, `${JSON.stringify(config, null, 2)}\n`);
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
   fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
-  console.log(`[nodejsSaveRuntimeConfig:backend] composed ${backendModules} module(s) → ${tsPath}`);
+  console.log(`[nodejsSaveRuntimeConfig:backend] composed ${backendModules} module(s) → ${configPath} + ${tsPath}`);
 }
 
 main();
