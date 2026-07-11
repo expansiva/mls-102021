@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { L5ProjectJson, MasterRuntimeManifest, ProjectsConfig, ProjectModuleConfig } from '/_102029_/l2/runtimeConfigTypes.js';
+import { serializeRuntimeConfig } from '/_102029_/l2/runtimeConfigEmit.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -45,8 +46,10 @@ function main(): void {
   if (!signature) fail(`l5/project.json has no masters.backend signature (run agentChangeBackend or add it)`);
   const runtimeId = String(signature.runtimeProject);
 
-  const configPath = path.join(clientRoot, 'config.json');
-  const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
+  // Intermediate JSON shared with the frontend composer; the final l5/runtimeConfig.ts is
+  // emitted from it below (order-independent between the two CLIs).
+  const buildPath = path.join(clientRoot, 'l5', 'runtimeConfig.build.json');
+  const config = (readJson<ProjectsConfig>(buildPath) || {}) as ProjectsConfig;
 
   // Skeleton (idempotent): each composer only ensures what it owns/needs.
   config.defaultProjectId = config.defaultProjectId || clientId;
@@ -62,6 +65,16 @@ function main(): void {
   const manifest = readJson<MasterRuntimeManifest>(path.join(ROOT, `mls-${runtimeId}`, 'masterModules.json'));
   if (manifest?.modules?.length) config.projects[runtimeId].modules = manifest.modules;
   if (manifest?.persistenceModules?.length) config.projects[runtimeId].persistenceModules = manifest.persistenceModules;
+
+  // For each system module that ships a module.ts (frontend definition), reference its navigation
+  // from that module.ts (self-contained) instead of inlining — the client never duplicates it.
+  // Modules without a module.ts (e.g. mdm) get no navigation and won't show in the Apps menu.
+  const runtimeRoot = path.join(ROOT, `mls-${runtimeId}`);
+  for (const m of config.projects[runtimeId].modules || []) {
+    if (fs.existsSync(path.join(runtimeRoot, 'l2', m.moduleId, 'module.ts'))) {
+      m.navigationFromModule = `/_${runtimeId}_/l2/${m.moduleId}/module.js`;
+    }
+  }
 
   const client = config.projects[clientId];
   client.modules = client.modules || [];
@@ -88,8 +101,10 @@ function main(): void {
   }
   if (backendModules === 0) fail('l5/project.json declares no modules with a backend block; nothing to compose');
 
-  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(`[nodejsSaveConfigJson:backend] composed ${backendModules} module(s) into ${configPath}`);
+  fs.writeFileSync(buildPath, `${JSON.stringify(config, null, 2)}\n`);
+  const tsPath = path.join(clientRoot, 'l5', 'runtimeConfig.ts');
+  fs.writeFileSync(tsPath, serializeRuntimeConfig(config, clientId));
+  console.log(`[nodejsSaveRuntimeConfig:backend] composed ${backendModules} module(s) → ${tsPath}`);
 }
 
 main();
