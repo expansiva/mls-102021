@@ -18,13 +18,20 @@ import { ok, AppError, type BffHandler, type ControllerRoute } from '/_102034_/l
 import { createOrder, type CreateOrderInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/createOrder.js';
 
 export const {module}CreateOrderHandler: BffHandler = async ({ request, ctx }) => {
-  const input = request.params as CreateOrderInput;
-  if (!input || !input.dailyShiftId) {
-    throw new AppError('VALIDATION_ERROR', 'dailyShiftId is required', 400, { field: 'dailyShiftId' });
-  }
-  if (!input.orderType) {
+  const params = (request.params ?? {}) as Partial<CreateOrderInput>;
+  // Read + validate ONLY genuine client inputs (source userInput/selectedEntity/routeParam).
+  // Context values — the open-shift id (activeLifecycleInstance), actorSession, systemDefault,
+  // businessContext — are NOT sent by the client; the usecase resolves them from ctx/ports, and they
+  // are NOT on the usecase Input type, so forwarding one would be a compile error.
+  if (!params.orderType) {
     throw new AppError('VALIDATION_ERROR', 'orderType is required', 400, { field: 'orderType' });
   }
+  // Build an EXPLICIT input with only the client fields — never `request.params as XInput` wholesale.
+  const input: CreateOrderInput = {
+    orderType: params.orderType,
+    tableId: params.tableId,
+    items: params.items ?? [],
+  };
   const result = await createOrder(ctx, input);
   return ok(result.order);
 };
@@ -44,14 +51,15 @@ export const routes: ControllerRoute[] = [
   — the leading `/` is required by the path alias; NEVER emit `_{project}_/l2/...` without it.
 - One exported `BffHandler` const per command, named `{module}{Pascal(command)}Handler`. NEVER add an
   explicit return type after the arrow (`BffHandler` already encodes it).
-- Build input from `request.params` plus declared runtime/context resolutions in `data.handlers[].contextResolution`.
-  Boundary validation only checks public/request fields from `data.handlers[].inputContract` whose
-  `required:true` and whose source is not resolved by `systemDefault`, `currentWorkspace`,
-  `actorSession`, `businessContext` or `activeLifecycleInstance`. Never require an id manually when the
-  L4 contract resolves it from context. `businessContext.activeCompanyId` / `businessContext.activeUnitId`
-  come from `ctx.sessionContext`, not from typed request params; `activeLifecycleInstance` ids (e.g. the
-  open `shiftId`) are resolved inside the usecase from the aggregate port, so the controller must NOT
-  require or forward them. Business rules belong to the usecase.
+- Build an EXPLICIT input object with ONLY the public client fields from `data.handlers[].inputContract`
+  whose source is `userInput`, `selectedEntity` or `routeParam`. NEVER cast `request.params as XInput`
+  wholesale. Validate (`required:true`) and forward only those client fields. EVERY other source is
+  resolved inside the USECASE from `ctx`/ports and is NOT on the usecase Input type — so the controller
+  must NOT read it from params, validate it, or put it in the payload: `systemDefault`,
+  `currentWorkspace`, `actorSession`, `businessContext`, `activeLifecycleInstance`. In particular,
+  `activeLifecycleInstance` ids (e.g. the open `shiftId`) are resolved by the usecase from the aggregate
+  port — forwarding one is a compile error because it is absent from the Input type. `businessContext`
+  ids come from `ctx.sessionContext`, also resolved in the usecase. Business rules belong to the usecase.
 - A field listed only in `contextResolution` is resolved context, not public boundary input. Do not emit
   `if (!input.<field>)` / `AppError(... field: '<field>')` for it unless the same field is also present
   in `inputContract` with `required:true`.
