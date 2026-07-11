@@ -10,12 +10,14 @@ import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   createAddStepIntent, createAgentStepPayload, isRecord, readString, readStringArray, logPrefix,
-  type CbScan,
+  parseDefsSource, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/cbSchemas.js';
 import {
   buildSeedSource, extractSeedPlanFromSource, parseSeedPlan, seedPlanPromptContext,
+  SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
+  type SeedRuleDefinition,
 } from '/_102021_/l2/agentChangeBackend/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbSeeds';
@@ -145,7 +147,36 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
     })).filter(field => !!field.fieldId),
   }));
   const ruleIds = [...new Set(scan.owners.flatMap(owner => owner.rulesApplied))].sort();
-  return { project, moduleName, language, entities, tablePlans: await readTablePlans(project, moduleName), ruleIds };
+  const ruleDefs = await readRuleDefinitions(project);
+  const ruleById = new Map(ruleDefs.map(rule => [rule.ruleId, rule]));
+  const rules: SeedRuleDefinition[] = ruleIds.map(ruleId => ruleById.get(ruleId) ?? { ruleId, title: '', description: '', appliesTo: [] });
+  const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
+  return {
+    project, moduleName, language, entities,
+    tablePlans: await readTablePlans(project, moduleName),
+    ruleIds, rules, relationships,
+    timeWindow: { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
+  };
+}
+
+/** Full L4 rule text (id + title + description + appliesTo) from every rule set def in the project.
+ * The planner receives the semantics of each applied rule instead of an opaque id, so it can satisfy
+ * the rules without any domain-specific check hardcoded into the generator. */
+async function readRuleDefinitions(project: number): Promise<SeedRuleDefinition[]> {
+  const rules: SeedRuleDefinition[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!isRecord(parsed) || !Array.isArray(parsed.rules)) continue;
+    for (const raw of parsed.rules) {
+      if (!isRecord(raw)) continue;
+      const ruleId = readString(raw.ruleId);
+      if (!ruleId) continue;
+      rules.push({ ruleId, title: readString(raw.title), description: readString(raw.description), appliesTo: readStringArray(raw.appliesTo) });
+    }
+  }
+  return rules;
 }
 
 async function readDefaultLanguage(project: number): Promise<string> {
@@ -215,13 +246,19 @@ const systemPrompt = `
 <!-- modelType: codehigh -->
 <!-- x-tool-strict: true -->
 
-You are ${AGENT_NAME}. Plan a SMALL, coherent initial-data scenario from the supplied L4 entities,
-rules and persistence tables. You NEVER write TypeScript, SQL, UUIDs, or prose. Call "{{toolName}}"
-exactly once with the JSON plan.
+You are ${AGENT_NAME}. Plan a REALISTIC, coherent initial-data scenario from the supplied L4
+entities, relationships, rules and persistence tables. You NEVER write TypeScript, SQL, UUIDs, or
+prose. Call "{{toolName}}" exactly once with the JSON plan.
 
-The deterministic compiler creates all primary keys and MDM infrastructure. Every local table and
-every MDM entity must receive at least one row. Use exact persistence column names in local columns;
-put non-indexed entity fields in details. A symbolic reference is the only valid foreign key format.
-Use only the supplied timestamps. Prefer one open lifecycle instance, valid state/timestamp pairs,
-and MDM relationships required by the primary workflow. On repair, fix every listed finding.
+The deterministic compiler creates all primary keys and MDM infrastructure. Aim for data a demo
+could actually use, scaled by entity kind: several distinct rows for MDM/catalog entities; enough
+rows for core/operational entities to exercise every lifecycle state and every list/filter the
+operations expose (including at least one open/in-progress instance); coherent children for
+supporting entities; event rows consistent with the operations that produced them. Every local
+table and every MDM entity must still receive at least one row. Use exact persistence column names
+in local columns; put non-indexed entity fields in details. A symbolic reference is the only valid
+foreign key format. Timestamps must be ISO 8601 within the supplied time window and chronologically
+coherent. Model the supplied L4 relationships between MDM entities as MDM relationships, carrying
+quantitative fields as metadata. Respect every supplied rule per its description. On repair, fix
+every listed finding.
 `;

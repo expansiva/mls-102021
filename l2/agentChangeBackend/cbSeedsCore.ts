@@ -6,6 +6,11 @@
 
 export const SEED_T0 = '2026-07-01T08:00:00.000Z';
 export const SEED_T1 = '2026-07-01T09:00:00.000Z';
+// Default deterministic window for seed timestamps. The planner may place ANY ISO 8601 instant
+// inside it, so a scenario can lay out a realistic multi-step timeline instead of collapsing every
+// row onto two fixed points (which is what forced conflicts like readyAt === deliveredAt).
+export const SEED_WINDOW_START = '2026-07-01T00:00:00.000Z';
+export const SEED_WINDOW_END = '2026-07-08T00:00:00.000Z';
 export const SEED_PLAN_START = '/* <agentCbSeedsPlan>';
 export const SEED_PLAN_END = '</agentCbSeedsPlan> */';
 
@@ -94,6 +99,24 @@ export interface SeedPlan {
   mdmEntities: SeedMdmEntity[];
 }
 
+export interface SeedRuleDefinition {
+  ruleId: string;
+  title: string;
+  description: string;
+  appliesTo: string[];
+}
+
+export interface SeedRelationshipDefinition {
+  fromEntity: string;
+  toEntity: string;
+  type: string;
+}
+
+export interface SeedTimeWindow {
+  start: string;
+  end: string;
+}
+
 export interface SeedBuildInput {
   project: number;
   moduleName: string;
@@ -101,6 +124,14 @@ export interface SeedBuildInput {
   entities: SeedEntityDefinition[];
   tablePlans: SeedTableDefinition[];
   ruleIds: string[];
+  /** Full L4 rule text for the applied ruleIds. Passed to the planner so rule conformance is guided
+   * by L4 semantics instead of hardcoded, domain-specific checks. */
+  rules?: SeedRuleDefinition[];
+  /** L4 relationship graph, so the planner models MDM relationships generically (no invented,
+   * per-domain type names baked into this generator). */
+  relationships?: SeedRelationshipDefinition[];
+  /** Allowed timestamp window; every timestamp must be ISO 8601 within it. */
+  timeWindow?: SeedTimeWindow;
   plan: SeedPlan;
 }
 
@@ -305,10 +336,27 @@ function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue |
   }
 }
 
-function validateDeterministicDate(fieldName: string, value: SeedValue | undefined, path: string, errors: string[]) {
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+
+function windowOf(input: SeedBuildInput): SeedTimeWindow {
+  return input.timeWindow ?? { start: SEED_WINDOW_START, end: SEED_WINDOW_END };
+}
+
+// Timestamps stay deterministic (a fixed, bounded window) without collapsing the scenario onto two
+// instants: any ISO 8601 UTC value inside the window is accepted, so a plan can model a coherent
+// multi-step timeline. Domain rule conformance (status flows, etc.) is NOT enforced here — it is
+// guided by the L4 rule text in the planner prompt, keeping this compiler domain-agnostic.
+function validateTimestamp(window: SeedTimeWindow, fieldName: string, value: SeedValue | undefined, path: string, errors: string[]) {
   if (value === undefined || value === null || !/(At|Date)$/u.test(fieldName)) return;
-  if (typeof value !== 'string' || (value !== SEED_T0 && value !== SEED_T1)) {
-    errors.push(`${path}: timestamps must use ${SEED_T0} or ${SEED_T1}`);
+  if (typeof value !== 'string' || !ISO_TIMESTAMP.test(value)) {
+    errors.push(`${path}: timestamp must be an ISO 8601 UTC string (yyyy-mm-ddThh:mm:ss(.sss)Z)`);
+    return;
+  }
+  const instant = Date.parse(value);
+  const start = Date.parse(window.start);
+  const end = Date.parse(window.end);
+  if (Number.isNaN(instant) || instant < start || instant > end) {
+    errors.push(`${path}: timestamp must fall within ${window.start}..${window.end}`);
   }
 }
 
@@ -316,72 +364,14 @@ function hasKey(value: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_-]*$/u.test(value);
 }
 
-function valueAt(row: SeedLocalRow, name: string): SeedValue | undefined {
-  return [...row.columns, ...row.details].find(field => field.name === name)?.value;
-}
-
-function hasNonNullValue(row: SeedLocalRow, name: string): boolean {
-  const value = valueAt(row, name);
-  return value !== undefined && value !== null;
-}
-
-function validateScenarioInvariants(input: SeedBuildInput, errors: string[]) {
-  const localById = new Map(input.plan.localTables.map(table => [table.tableId, table]));
-  const ruleIds = new Set(input.ruleIds);
-  const shifts = localById.get('Shift');
-  if (ruleIds.has('singleOpenShift') && shifts) {
-    const open = shifts.rows.filter(row => valueAt(row, 'status') === 'open');
-    if (open.length > 1) errors.push('Shift: singleOpenShift requires at most one open seed row');
-    for (const row of open) {
-      for (const field of ['closedAt', 'closedBy', 'totalApurado']) {
-        if (hasNonNullValue(row, field)) errors.push(`Shift.${row.key}: open shifts must not populate ${field}`);
-      }
-    }
-  }
-
-  const orders = localById.get('Order');
-  if (ruleIds.has('orderStatusFlow') && orders) {
-    const timestamps: Array<{ status: string; field: string }> = [
-      { status: 'received', field: 'receivedAt' },
-      { status: 'inPreparation', field: 'inPreparationAt' },
-      { status: 'ready', field: 'readyAt' },
-      { status: 'delivered', field: 'deliveredAt' },
-    ];
-    const statusOrder = ['registered', 'received', 'inPreparation', 'ready', 'delivered'];
-    for (const row of orders.rows) {
-      const status = valueAt(row, 'status');
-      const statusIndex = typeof status === 'string' ? statusOrder.indexOf(status) : -1;
-      if (statusIndex === -1) continue;
-      for (let index = 0; index < timestamps.length; index++) {
-        const required = statusIndex >= index + 1;
-        const present = hasNonNullValue(row, timestamps[index].field);
-        if (required !== present) {
-          errors.push(`Order.${row.key}: ${timestamps[index].field} must ${required ? '' : 'not '}be populated for status '${status}'`);
-        }
-      }
-    }
-  }
-
-  for (const entityId of ['StockConsumption', 'StockAdjustment']) {
-    const table = localById.get(entityId);
-    if (!table) continue;
-    for (const row of table.rows) {
-      if (valueAt(row, 'status') !== 'voided' && (hasNonNullValue(row, 'voidedAt') || hasNonNullValue(row, 'voidReason') || hasNonNullValue(row, 'voidedReason'))) {
-        errors.push(`${entityId}.${row.key}: non-voided rows must not populate void fields`);
-      }
-    }
-  }
-
-  if (ruleIds.has('menuItemRequiresIngredient')) {
-    const menuItems = input.plan.mdmEntities.find(entity => entity.entityId === 'MenuItem');
-    for (const row of menuItems?.rows ?? []) {
-      const status = row.fields.find(field => field.name === 'status')?.value;
-      if (status === 'active' && !row.relationships.some(relationship => relationship.type === 'requires-ingredient')) {
-        errors.push(`MenuItem.${row.key}: active items require a requires-ingredient MDM relationship`);
-      }
-    }
-  }
-}
+// NOTE: domain-specific scenario invariants used to live here — hardcoded to the cafeFlow example
+// (Shift/Order/MenuItem/StockConsumption names, the registered→…→delivered status flow, and the
+// invented "requires-ingredient" relationship type). They were removed because this generator is
+// generic across client modules (a petshop has none of those names). Rule conformance is now guided
+// by the L4 rule text in the planner prompt; structural correctness (enums, references, required
+// fields, timestamp window) is validated generically above. The one cross-cutting convention that
+// still lacks a single source of truth — the MDM relationship TYPE the runtime usecases read — should
+// be declared in L4 and shared with the usecase generator, not reintroduced here.
 
 /** Deterministic validation of the plan before any seed source is saved. */
 export function validateSeedPlan(input: SeedBuildInput): string[] {
@@ -389,6 +379,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
   const tableById = new Map(input.tablePlans.map(table => [table.tableId, table]));
   const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   const references = collectReferences(input.plan);
+  const window = windowOf(input);
   const seenLocalTables = new Set<string>();
   const seenMdmEntities = new Set<string>();
 
@@ -431,7 +422,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
         const value = columns.get(column.name);
         if (!column.nullable && value === undefined) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
-        validateDeterministicDate(toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
+        validateTimestamp(window, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
         validateEnum(entityFields.get(toCamel(column.name)), value, `${rowPath}.columns.${column.name}`, errors);
         if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && !isSeedReference(value)) {
           errors.push(`${rowPath}.columns.${column.name}: foreign keys must use a symbolic { ref }`);
@@ -444,7 +435,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
         const value = storedAsColumn ? columns.get(mappedColumn) : details.get(field.fieldId);
         if (field.required && !generatedPrimaryKey && value === undefined) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
-        validateDeterministicDate(field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
+        validateTimestamp(window, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
         if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && !isSeedReference(value)) {
           errors.push(`${rowPath}.${field.fieldId}: entity references must use a symbolic { ref }`);
@@ -460,7 +451,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
           const fields = mapFields(childRow.fields, `${rowPath}.children.${child.name}.${childRow.key}`, errors);
           for (const [name, value] of fields) {
             validateReference(value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, references, errors);
-            validateDeterministicDate(name, value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, errors);
+            validateTimestamp(window, name, value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, errors);
           }
         }
       }
@@ -493,7 +484,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
         const field = fieldsById.get(name);
         if (!field) errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
-        validateDeterministicDate(name, value, `${rowPath}.fields.${name}`, errors);
+        validateTimestamp(window, name, value, `${rowPath}.fields.${name}`, errors);
         validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
       }
       for (const field of definition.fields) {
@@ -521,7 +512,6 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
   for (const entity of input.entities.filter(entity => entity.kind === 'mdm')) {
     if (!seenMdmEntities.has(entity.entityId)) errors.push(`mdmEntities: missing plan for '${entity.entityId}'`);
   }
-  validateScenarioInvariants(input, errors);
   return [...new Set(errors)];
 }
 
@@ -621,7 +611,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
           role: null,
           metadata: resolveFields(relationship.metadata, ids),
           isBidirectional: relationship.isBidirectional,
-          validFrom: SEED_T0,
+          validFrom: windowOf(input).start,
           validTo: null,
           status: 'Active',
           createdAt: fields.createdAt,
@@ -681,13 +671,30 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
     primaryKey: table.primaryKey,
     columns: table.columns,
   }));
+  const relationships = (input.relationships ?? []).map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
+  const rules = (input.rules && input.rules.length)
+    ? input.rules.map(rule => ({ ruleId: rule.ruleId, title: rule.title, description: rule.description, appliesTo: rule.appliesTo }))
+    : input.ruleIds.map(ruleId => ({ ruleId }));
+  const timeWindow = input.timeWindow ?? { start: SEED_WINDOW_START, end: SEED_WINDOW_END };
   return [
-    `## Module and language\n${JSON.stringify({ moduleName: input.moduleName, language: input.language, timestamps: [SEED_T0, SEED_T1] })}`,
+    `## Module and language\n${JSON.stringify({ moduleName: input.moduleName, language: input.language, timeWindow })}`,
     `## Entities from L4\n${JSON.stringify(entities, null, 2)}`,
     `## Local persistence tables\n${JSON.stringify(tables, null, 2)}`,
-    `## L4 rules that the scenario must satisfy\n${JSON.stringify(input.ruleIds)}`,
+    `## Relationships from L4\n${JSON.stringify(relationships, null, 2)}`,
+    `## L4 rules the scenario must satisfy (full text)\n${JSON.stringify(rules, null, 2)}`,
     '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" } or { "ref": "mdm:EntityId.rowKey" } for foreign keys. Never emit UUIDs.',
-    '## Required result\nPlan every local table and every MDM entity. Use readable labels in the requested language. Choose a small but useful scenario that makes primary list/query operations and the main workflow usable. Use only the two supplied timestamps. Active MDM MenuItems that require ingredients must include a requires-ingredient relationship with quantityPerServing metadata.',
+    [
+      '## Required result',
+      'Plan EVERY local table and EVERY MDM entity, using readable labels in the requested language.',
+      'Build a realistic, useful dataset — NOT the bare minimum:',
+      '- MDM/catalog entities: several distinct rows (a small but plausible catalog), not just one.',
+      '- Core/operational entities: enough rows to exercise every lifecycle state and every list/filter the operations expose, including at least one open/in-progress instance.',
+      '- Supporting/child entities: coherent children for their parents.',
+      '- Event entities: consistent with the operational rows that would have produced them.',
+      'Every timestamp must be an ISO 8601 UTC value strictly within the supplied timeWindow and chronologically coherent (a row is created before it is updated or transitions state).',
+      'Model the relationships listed above between MDM entities as MDM relationships, attaching any quantitative fields (quantities, ratios, per-unit amounts) as relationship metadata.',
+      'Satisfy every rule listed above, following its description.',
+    ].join('\n'),
     ...(repairFindings.length ? [`## Repair findings from the prior plan\n${repairFindings.join('\n')}`] : []),
   ].join('\n\n');
 }

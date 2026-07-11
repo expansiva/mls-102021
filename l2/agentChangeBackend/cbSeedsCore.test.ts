@@ -53,8 +53,11 @@ test('buildSeedSource compiles a valid semantic plan into local and MDM relation
   assert.equal(extractSeedPlanFromSource(result.content ?? '')?.summary, validInput().plan.summary);
 });
 
-test('validateSeedPlan blocks invalid enums and seed lifecycle invariants', () => {
+test('validateSeedPlan blocks invalid enum values but no longer enforces hardcoded domain invariants', () => {
   const input = validInput();
+  // A second open shift + an invalid enum: the old generator tripped the hardcoded singleOpenShift
+  // check here. That domain-specific invariant is gone (this generator is now domain-agnostic), so
+  // only the generic enum violation is reported.
   input.plan.localTables[0].rows.push({
     key: 'afternoon',
     columns: [{ name: 'status', value: 'open' }, { name: 'created_at', value: SEED_T1 }],
@@ -66,5 +69,17 @@ test('validateSeedPlan blocks invalid enums and seed lifecycle invariants', () =
   const errors = validateSeedPlan(input);
 
   assert.ok(errors.some(error => error.includes('expected one of table, takeout')));
-  assert.ok(errors.some(error => error.includes('singleOpenShift')));
+  assert.ok(!errors.some(error => error.includes('singleOpenShift')));
+});
+
+test('validateSeedPlan accepts any ISO timestamp inside the window and rejects out-of-window', () => {
+  const good = validInput();
+  // A timestamp that is neither SEED_T0 nor SEED_T1 but still within the default window.
+  good.plan.localTables[1].rows[0].columns.find(field => field.name === 'created_at')!.value = '2026-07-03T14:30:00.000Z';
+  good.plan.localTables[1].rows[0].details.find(field => field.name === 'updatedAt')!.value = '2026-07-03T14:30:00.000Z';
+  assert.deepEqual(validateSeedPlan(good), []);
+
+  const bad = validInput();
+  bad.plan.localTables[1].rows[0].columns.find(field => field.name === 'created_at')!.value = '2020-01-01T00:00:00.000Z';
+  assert.ok(validateSeedPlan(bad).some(error => error.includes('within')));
 });
