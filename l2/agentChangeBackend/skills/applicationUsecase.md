@@ -56,13 +56,18 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   `data.functions[].input[]` / `output[]` fields (name + type, `?` when `required:false`) — do NOT
   invent fields. Export both interfaces (the controller imports them).
 - The planned function IO was derived from the L4 v2 contract. Preserve that boundary: `accessPattern`
-  decides list/get/lookup/commandInput, `inputs[]` decides public required fields, and
-  `contextResolution[]` values from `systemDefault`, `currentWorkspace`, `actorSession` or
-  `businessContext` are resolved from `RequestContext`/platform helpers, not required as
-  user-entered params.
+  decides list/get/lookup/commandInput; only inputs whose source is `userInput`, `selectedEntity` or
+  `routeParam` are public required fields. Values whose source is `systemDefault`, `currentWorkspace`,
+  `actorSession`, `businessContext` or `activeLifecycleInstance` are resolved server-side — they are NOT
+  part of the public Input interface and are NOT required as user-entered params.
   - `businessContext.activeCompanyId` -> `ctx.sessionContext.activeCompanyId`
   - `businessContext.activeUnitId` -> `ctx.sessionContext.activeUnitId`
-  These business scope ids are context, not plain form fields.
+  - `activeLifecycleInstance` -> load the single OPEN/active instance of the lifecycle aggregate via its
+    port (e.g. the one `Shift` with `status === 'open'`) and use its id; if none is open, honor the L4
+    rule (empty result or the documented validation error) — never throw a "missing input" error for it.
+  These context ids are resolved, not plain form fields. Apply a business-scope filter only on a field
+  that exists in the model; never invent one (e.g. a `companyId` the entity does not declare) — record a
+  modeling gap and skip the filter instead.
 - Resolve every repository with `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. NEVER import
   an adapter. Import record/union types and invariants from the domain entity.
 - Apply `rulesApplied` inline in this usecase file. L4 rules are authoritative prose/ids, not generated

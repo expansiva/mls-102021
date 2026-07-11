@@ -234,14 +234,25 @@ contract: the contract is input/output/ports.
 Use the L4 v2 contract directly:
 - accessPattern.kind decides the function shape: list returns a collection/projection, getById requires
   the declared keyField, lookup is a short selector, commandInput mutates from the declared payload.
-- inputs[] is the public BFF/usecase input surface. Required fields come from inputs[].required.
+- inputs[] carries a per-field "source". ONLY sources userInput, selectedEntity and routeParam are the
+  public BFF/usecase input surface — put THOSE in the function input[] (required ones from
+  inputs[].required). EVERY other source is CONTEXT, resolved server-side, and MUST NOT appear in the
+  public input[] (the client never sends it): systemDefault, currentWorkspace, actorSession,
+  businessContext, activeLifecycleInstance, previousStepOutput, and anything in contextResolution[].
 - contextResolution[] is not extra user input. systemDefault values use ctx.clock/ctx.idGenerator;
-  currentWorkspace/actorSession/businessContext values come from RequestContext sessionContext metadata when available; selectedEntity,
-  routeParam and previousStepOutput are accepted only when represented by declared inputs.
+  currentWorkspace/actorSession/businessContext values come from RequestContext sessionContext metadata
+  when available; selectedEntity and routeParam are accepted only when represented by a public input.
+- activeLifecycleInstance means "the single OPEN/active instance of a lifecycle aggregate" (e.g. the one
+  Shift with status 'open'). RESOLVE it inside the usecase by querying that aggregate's port
+  (resolveRepository + list/find by the active status) and use the found id — NEVER declare its id as a
+  public input nor require it from the client. If none is open, apply the L4 rule (empty result or the
+  documented validation error), never a "missing input" error.
 - businessContext.activeCompanyId and businessContext.activeUnitId map to
   ctx.sessionContext.activeCompanyId / ctx.sessionContext.activeUnitId (also mirrored under
   ctx.sessionContext.businessContext). Use them for business scope; never ask the actor to type those
-  ids as regular input.
+  ids as regular input. Apply such a scope filter ONLY on a field that ACTUALLY exists in the entity/MDM
+  model; if the entity declares no scoping field, do NOT invent one (e.g. a fake companyId) — record a
+  modeling gap and skip the filter instead of matching against a non-existent field.
 - Never require an id manually when the L4 contract says it is resolved by context.
 
 Entities in "mdmRefs" are master data in the shared 102034 store: there is NO port for them - reference

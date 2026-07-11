@@ -47,9 +47,11 @@ export const routes: ControllerRoute[] = [
 - Build input from `request.params` plus declared runtime/context resolutions in `data.handlers[].contextResolution`.
   Boundary validation only checks public/request fields from `data.handlers[].inputContract` whose
   `required:true` and whose source is not resolved by `systemDefault`, `currentWorkspace`,
-  `actorSession` or `businessContext`. Never require an id manually when the L4 contract resolves it
-  from context. `businessContext.activeCompanyId` / `businessContext.activeUnitId` come from
-  `ctx.sessionContext`, not from typed request params. Business rules belong to the usecase.
+  `actorSession`, `businessContext` or `activeLifecycleInstance`. Never require an id manually when the
+  L4 contract resolves it from context. `businessContext.activeCompanyId` / `businessContext.activeUnitId`
+  come from `ctx.sessionContext`, not from typed request params; `activeLifecycleInstance` ids (e.g. the
+  open `shiftId`) are resolved inside the usecase from the aggregate port, so the controller must NOT
+  require or forward them. Business rules belong to the usecase.
 - A field listed only in `contextResolution` is resolved context, not public boundary input. Do not emit
   `if (!input.<field>)` / `AppError(... field: '<field>')` for it unless the same field is also present
   in `inputContract` with `required:true`.
