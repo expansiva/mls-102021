@@ -1,5 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/cbComponentValidators.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
+import { isClientBoundarySource } from '/_102029_/l2/clientBoundarySources.js';
+
 // Shared component-inspection helpers for the generated l1 .ts / .defs.ts artifacts. These pure
 // functions were duplicated (near-identically) in agentCbMaterialize.ts and agentCbValidateAll.ts;
 // a fix on one side kept drifting from the other. Extracted here on 2026-07-11 as the SINGLE source
@@ -50,12 +52,11 @@ export function fieldNameFromRef(value: unknown): string {
 
 export function requiredBoundaryFields(inputContract: unknown): Set<string> {
   const fields = new Set<string>();
-  const resolvedSources = new Set(['systemDefault', 'currentWorkspace', 'actorSession', 'businessContext']);
   if (!Array.isArray(inputContract)) return fields;
   for (const input of inputContract) {
     if (!isRecord(input) || input.required !== true) continue;
     const source = String(input.source ?? '');
-    if (resolvedSources.has(source)) continue;
+    if (!isClientBoundarySource(source)) continue;
     const inputId = fieldNameFromRef(input.inputId);
     const fieldRef = fieldNameFromRef(input.fieldRef);
     if (inputId) fields.add(inputId);

@@ -52,7 +52,8 @@ export const routes: ControllerRoute[] = [
 - One exported `BffHandler` const per command, named `{module}{Pascal(command)}Handler`. NEVER add an
   explicit return type after the arrow (`BffHandler` already encodes it).
 - Build an EXPLICIT input object with ONLY the public client fields from `data.handlers[].inputContract`
-  whose source is `userInput`, `selectedEntity` or `routeParam`. NEVER cast `request.params as XInput`
+  whose source is listed in the shared `/_102029_/l2/clientBoundarySources.ts` module
+  (`CLIENT_BOUNDARY_SOURCES`: `userInput`, `selectedEntity`, `routeParam`). NEVER cast `request.params as XInput`
   wholesale. Validate (`required:true`) and forward only those client fields. EVERY other source is
   resolved inside the USECASE from `ctx`/ports and is NOT on the usecase Input type — so the controller
   must NOT read it from params, validate it, or put it in the payload: `systemDefault`,

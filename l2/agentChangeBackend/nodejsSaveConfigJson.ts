@@ -24,6 +24,12 @@ function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
 }
 
+function generatedConfigPath(clientId: string): string {
+  const dir = path.join(ROOT, '.generated', 'configs');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `mls-${clientId}.config.json`);
+}
+
 function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
   return {
     projectId: l5.projectId || clientId,
@@ -49,10 +55,9 @@ function main(): void {
   if (!signature) fail(`l5/project.json has no masters.backend signature (run agentChangeBackend or add it)`);
   const runtimeId = String(signature.runtimeProject);
 
-  // config.json (root) remains the artifact the pipeline + runtime consume; we also emit
-  // l5/runtimeConfig.ts from the same object below. The navigationFromModule markers persist in
-  // config.json as an extra (harmless) field that only the runtimeConfig.ts serializer reads.
-  const configPath = path.join(clientRoot, 'config.json');
+  // The JSON config is a generated build/runtime artifact. Keep it outside the
+  // client repo to avoid duplicating l5/project.json and l5/runtimeConfig.ts.
+  const configPath = generatedConfigPath(clientId);
   const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
   // Skeleton (idempotent): each composer only ensures what it owns/needs.
