@@ -17,7 +17,7 @@ import {
   buildSeedSource, extractSeedPlanFromSource, parseSeedPlan, seedPlanPromptContext,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
-  type SeedRuleDefinition,
+  type SeedRuleDefinition, type SeedActorDefinition,
 } from '/_102021_/l2/agentChangeBackend/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbSeeds';
@@ -152,12 +152,35 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   const ruleById = new Map(ruleDefs.map(rule => [rule.ruleId, rule]));
   const rules: SeedRuleDefinition[] = ruleIds.map(ruleId => ruleById.get(ruleId) ?? { ruleId, title: '', description: '', appliesTo: [] });
   const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
+  const actors = await readActorDefinitions(project);
   return {
     project, moduleName, language, entities,
     tablePlans: await readTablePlans(project, moduleName),
-    ruleIds, rules, relationships,
+    ruleIds, rules, relationships, actors,
     timeWindow: { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
   };
+}
+
+/** L4 actors (id + title) from every actor set def in the project. The planner references these as
+ * platform-user identities so FKs to people (assignees, actorSession-resolved workers) resolve
+ * without fabricating a table — mirrors readRuleDefinitions. */
+async function readActorDefinitions(project: number): Promise<SeedActorDefinition[]> {
+  const actors: SeedActorDefinition[] = [];
+  const seen = new Set<string>();
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!isRecord(parsed) || !Array.isArray(parsed.actors)) continue;
+    for (const raw of parsed.actors) {
+      if (!isRecord(raw)) continue;
+      const actorId = readString(raw.actorId);
+      if (!actorId || seen.has(actorId)) continue;
+      seen.add(actorId);
+      actors.push({ actorId, title: readString(raw.title) });
+    }
+  }
+  return actors;
 }
 
 /** Full L4 rule text (id + title + description + appliesTo) from every rule set def in the project.

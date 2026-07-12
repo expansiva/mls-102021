@@ -21,3 +21,7 @@ Model an L4 relationship as an MDM relationship ONLY when BOTH of its endpoints 
 (carrying quantitative fields as metadata). Any relationship touching a non-MDM entity
 (core/event/supporting) must be seeded as a symbolic { "ref": ... } foreign key on the non-MDM side,
 following the relationship direction — never as an MDM row relationship.
+
+A foreign key that identifies a PLATFORM USER (an assignee such as an assigned worker, or an id
+resolved from the actor session like a worker/owner id) references a supplied platform-user identity
+({ "ref": "actor:ActorId.key" }), never a fabricated table or MDM entity.

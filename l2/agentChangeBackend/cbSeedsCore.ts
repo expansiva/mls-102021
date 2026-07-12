@@ -112,6 +112,15 @@ export interface SeedRelationshipDefinition {
   type: string;
 }
 
+/** An L4 actor (platform user role). Some FK fields (e.g. an assignee or the actorSession-resolved
+ * worker on an event) reference a platform-user identity, NOT a module-owned entity — there is no
+ * table/MDM entity to seed. The generator synthesizes a small, deterministic pool of platform-user
+ * identities per actor so those FKs resolve to real MDM Person records instead of a fabricated table. */
+export interface SeedActorDefinition {
+  actorId: string;
+  title: string;
+}
+
 export interface SeedTimeWindow {
   start: string;
   end: string;
@@ -130,6 +139,9 @@ export interface SeedBuildInput {
   /** L4 relationship graph, so the planner models MDM relationships generically (no invented,
    * per-domain type names baked into this generator). */
   relationships?: SeedRelationshipDefinition[];
+  /** L4 actors. The generator exposes a resolvable platform-user identity pool per actor so FKs that
+   * reference a platform user (assignees, actorSession-resolved fields) never fabricate a table. */
+  actors?: SeedActorDefinition[];
   /** Allowed timestamp window; every timestamp must be ISO 8601 within it. */
   timeWindow?: SeedTimeWindow;
   plan: SeedPlan;
@@ -309,6 +321,40 @@ function mapFields(fields: SeedFieldValue[], path: string, errors: string[]): Ma
   return mapped;
 }
 
+// How many platform-user identities to synthesize per actor. A small pool lets a scenario assign a
+// few distinct people (e.g. several field workers) without the planner declaring or the compiler
+// hardcoding any of them.
+const ACTOR_IDENTITY_COUNT = 3;
+
+interface ActorIdentity {
+  actorId: string;
+  key: string;
+  ref: string;
+  name: string;
+  mdmId: string;
+}
+
+/** Deterministic platform-user identity pool derived from the L4 actors. Single source of truth for
+ * the reference set, the id map and the emitted MDM Person records, so `actor:<actorId>.<key>`
+ * references always resolve to a real MDM identity. */
+function actorIdentities(input: Pick<SeedBuildInput, 'moduleName' | 'actors'>): ActorIdentity[] {
+  const identities: ActorIdentity[] = [];
+  for (const actor of input.actors ?? []) {
+    if (!actor.actorId.trim()) continue;
+    for (let index = 1; index <= ACTOR_IDENTITY_COUNT; index++) {
+      const key = `u${index}`;
+      identities.push({
+        actorId: actor.actorId,
+        key,
+        ref: `actor:${actor.actorId}.${key}`,
+        name: `${actor.title || actor.actorId} ${index}`,
+        mdmId: stableUuid(`${input.moduleName}:actor:${actor.actorId}:${key}`),
+      });
+    }
+  }
+  return identities;
+}
+
 function collectReferences(plan: SeedPlan): Set<string> {
   const refs = new Set<string>();
   for (const table of plan.localTables) {
@@ -322,8 +368,8 @@ function collectReferences(plan: SeedPlan): Set<string> {
 
 function validateReference(value: SeedValue, path: string, references: Set<string>, errors: string[]) {
   if (!isSeedReference(value)) return;
-  if (!/^(local|mdm):[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_-]*$/u.test(value.ref)) {
-    errors.push(`${path}: reference '${value.ref}' must use local:Entity.key or mdm:Entity.key`);
+  if (!/^(local|mdm|actor):[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_-]*$/u.test(value.ref)) {
+    errors.push(`${path}: reference '${value.ref}' must use local:Entity.key, mdm:Entity.key or actor:ActorId.key`);
   } else if (!references.has(value.ref)) {
     errors.push(`${path}: unresolved reference '${value.ref}'`);
   }
@@ -379,6 +425,7 @@ export function validateSeedPlan(input: SeedBuildInput): string[] {
   const tableById = new Map(input.tablePlans.map(table => [table.tableId, table]));
   const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   const references = collectReferences(input.plan);
+  for (const identity of actorIdentities(input)) references.add(identity.ref);
   const window = windowOf(input);
   const seenLocalTables = new Set<string>();
   const seenMdmEntities = new Set<string>();
@@ -536,6 +583,7 @@ function idMap(input: SeedBuildInput): Map<string, string> {
   for (const entity of input.plan.mdmEntities) {
     for (const row of entity.rows) ids.set(`mdm:${entity.entityId}.${row.key}`, stableUuid(`${input.moduleName}:mdm:${entity.entityId}:${row.key}`));
   }
+  for (const identity of actorIdentities(input)) ids.set(identity.ref, identity.mdmId);
   return ids;
 }
 
@@ -620,6 +668,27 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       }
     }
   }
+  // Platform-user identities: emitted as MDM Person records so actor references (assignees,
+  // actorSession-resolved worker fields) resolve to a real MDM identity at runtime. The module never
+  // owns a user/rate table (see rule workerRateFromProfile) — these are the referenceable people.
+  const window = windowOf(input);
+  for (const identity of actorIdentities(input)) {
+    indexRows.push({
+      mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
+      countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, 'actor', identity.actorId],
+      searchVector: `${identity.name} ${identity.actorId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
+      dynamoPk: identity.mdmId, createdAt: window.start, updatedAt: window.start,
+    });
+    documentRows.push({
+      mdmId: identity.mdmId, version: 1,
+      details: {
+        mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
+        countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, 'actor', identity.actorId],
+        aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
+        createdAt: window.start, updatedAt: window.start, actorId: identity.actorId,
+      },
+    });
+  }
   return [
     { exportName: 'mdmEntityIndexSeeds', seedFor: 'mdmEntityIndex', rows: indexRows },
     { exportName: 'mdmDocumentSeeds', seedFor: 'mdmDocumentCache', rows: documentRows },
@@ -684,13 +753,18 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
     ? input.rules.map(rule => ({ ruleId: rule.ruleId, title: rule.title, description: rule.description, appliesTo: rule.appliesTo }))
     : input.ruleIds.map(ruleId => ({ ruleId }));
   const timeWindow = input.timeWindow ?? { start: SEED_WINDOW_START, end: SEED_WINDOW_END };
+  // Pre-synthesized platform-user identities the planner can reference. These stand in for the
+  // authenticated people (assignees, the actorSession worker on an event) — there is NO entity or
+  // table to seed for them, so a worker/assignee FK must point at one of these refs.
+  const actorIdentityRefs = actorIdentities(input).map(identity => ({ ref: identity.ref, name: identity.name, actorId: identity.actorId }));
   return [
     `## Module and language\n${JSON.stringify({ moduleName: input.moduleName, language: input.language, timeWindow })}`,
     `## Entities from L4\n${JSON.stringify(entities, null, 2)}`,
     `## Local persistence tables\n${JSON.stringify(tables, null, 2)}`,
     `## Relationships from L4\n${JSON.stringify(relationships, null, 2)}`,
+    `## Platform users (actor identities)\nThese identities already exist; reference them for any field that points to a platform user (an assignee, or a field resolved from the actor session such as a worker/owner id). Do NOT create a table or MDM entity for them.\n${JSON.stringify(actorIdentityRefs, null, 2)}`,
     `## L4 rules the scenario must satisfy (full text)\n${JSON.stringify(rules, null, 2)}`,
-    '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" } or { "ref": "mdm:EntityId.rowKey" } for foreign keys. Never emit UUIDs.',
+    '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" }, { "ref": "mdm:EntityId.rowKey" } or { "ref": "actor:ActorId.key" } for foreign keys. Never emit UUIDs.',
     [
       '## Required result',
       'Plan EVERY local table and EVERY MDM entity, using readable labels in the requested language.',
@@ -702,6 +776,7 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
       'Every timestamp must be an ISO 8601 UTC value strictly within the supplied timeWindow and chronologically coherent (a row is created before it is updated or transitions state).',
       'Relationships: model a relationship as an MDM row relationship ONLY when BOTH fromKind and toKind are "mdm", attaching any quantitative fields (quantities, ratios, per-unit amounts) as relationship metadata.',
       'Any relationship whose fromKind or toKind is NOT "mdm" (core/event/supporting) is seeded as a symbolic { "ref": "..." } foreign key on the NON-MDM side (the local table column or entity field that holds the id), following the relationship direction — never as an MDM row relationship. Example: Project(core) -manyToOne-> Client(mdm) becomes each Project row carrying its clientId as { "ref": "mdm:Client.<key>" }, not a relationship on the Client row.',
+      'A foreign key that identifies a PLATFORM USER (an assignee such as an assigned worker, or an id resolved from the actor session like a worker/owner id) references a platform-user identity, NOT a module entity. Point it at one of the "Platform users (actor identities)" refs above ({ "ref": "actor:ActorId.key" }). Never invent a local table or MDM entity for people/workers/assignees.',
       'Satisfy every rule listed above, following its description.',
     ].join('\n'),
     ...(repairFindings.length ? [`## Repair findings from the prior plan\n${repairFindings.join('\n')}`] : []),
