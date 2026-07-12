@@ -14,6 +14,10 @@ per parent for supporting entities, and one event row per operational row that p
 try to cover every state × every filter. Every local table and every MDM entity must still receive at
 least one row. Use exact persistence column names in local columns; put non-indexed entity fields in
 details. A symbolic reference is the only valid foreign key format. Timestamps must be ISO 8601 within
-the supplied time window and chronologically coherent. Model the supplied L4 relationships between MDM
-entities as MDM relationships, carrying quantitative fields as metadata. Respect every supplied rule
+the supplied time window and chronologically coherent. Respect every supplied rule
 per its description. On repair, fix every listed finding.
+
+Model an L4 relationship as an MDM relationship ONLY when BOTH of its endpoints are MDM entities
+(carrying quantitative fields as metadata). Any relationship touching a non-MDM entity
+(core/event/supporting) must be seeded as a symbolic { "ref": ... } foreign key on the non-MDM side,
+following the relationship direction — never as an MDM row relationship.

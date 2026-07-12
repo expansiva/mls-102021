@@ -671,7 +671,15 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
     primaryKey: table.primaryKey,
     columns: table.columns,
   }));
-  const relationships = (input.relationships ?? []).map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
+  // Carry each endpoint's kind so the planner can tell MDM<->MDM links (which become MDM row
+  // relationships) apart from links that touch a non-MDM entity (which are seeded as a symbolic FK
+  // on the non-MDM side). Display-only enrichment; the compiler/validator are unaffected.
+  const kindOf = new Map(input.entities.map(entity => [entity.entityId, entity.kind]));
+  const relationships = (input.relationships ?? []).map(rel => ({
+    fromEntity: rel.fromEntity, fromKind: kindOf.get(rel.fromEntity) ?? 'unknown',
+    toEntity: rel.toEntity, toKind: kindOf.get(rel.toEntity) ?? 'unknown',
+    type: rel.type,
+  }));
   const rules = (input.rules && input.rules.length)
     ? input.rules.map(rule => ({ ruleId: rule.ruleId, title: rule.title, description: rule.description, appliesTo: rule.appliesTo }))
     : input.ruleIds.map(ruleId => ({ ruleId }));
@@ -692,7 +700,8 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
       '- Supporting/child entities: 1-2 children per parent.',
       '- Event entities: one row per operational row that would have produced it.',
       'Every timestamp must be an ISO 8601 UTC value strictly within the supplied timeWindow and chronologically coherent (a row is created before it is updated or transitions state).',
-      'Model the relationships listed above between MDM entities as MDM relationships, attaching any quantitative fields (quantities, ratios, per-unit amounts) as relationship metadata.',
+      'Relationships: model a relationship as an MDM row relationship ONLY when BOTH fromKind and toKind are "mdm", attaching any quantitative fields (quantities, ratios, per-unit amounts) as relationship metadata.',
+      'Any relationship whose fromKind or toKind is NOT "mdm" (core/event/supporting) is seeded as a symbolic { "ref": "..." } foreign key on the NON-MDM side (the local table column or entity field that holds the id), following the relationship direction — never as an MDM row relationship. Example: Project(core) -manyToOne-> Client(mdm) becomes each Project row carrying its clientId as { "ref": "mdm:Client.<key>" }, not a relationship on the Client row.',
       'Satisfy every rule listed above, following its description.',
     ].join('\n'),
     ...(repairFindings.length ? [`## Repair findings from the prior plan\n${repairFindings.join('\n')}`] : []),

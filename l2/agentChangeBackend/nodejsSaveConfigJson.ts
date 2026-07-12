@@ -40,7 +40,8 @@ function main(): void {
   if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
 
   const clientRoot = path.join(ROOT, `mls-${clientId}`);
-  const l5Path = path.join(clientRoot, 'l5', 'project.json');
+  const runtimeL5Path = path.join(clientRoot, 'l5', 'runtime.project.json');
+  const l5Path = fs.existsSync(runtimeL5Path) ? runtimeL5Path : path.join(clientRoot, 'l5', 'project.json');
   const l5 = readJson<L5ProjectJson>(l5Path);
   if (!l5) fail(`cannot read ${l5Path}`);
 
