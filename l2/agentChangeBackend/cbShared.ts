@@ -531,7 +531,7 @@ export interface CbTablePlan {
 
 /** Heuristic: a field needs a real column when it is the id (PK), a reference/FK (type is an entity
  * id or ends with "Id"), a status/lifecycle field, or an ordering timestamp (createdAt). Everything
- * else goes into details JSONB. Deterministic baseline for the LLM persistence-index agent. */
+ * else goes into details JSONB. Deterministic column plan consumed by the table/adapter generators. */
 export function planTableColumns(fields: Record<string, unknown>[], knownEntityIds: Set<string>): { indexed: CbColumnPlan[]; details: string[] } {
   const indexed: CbColumnPlan[] = [];
   const details: string[] = [];
@@ -565,6 +565,26 @@ export function usecaseFileInfo(m: string, usecaseId: string): CbFileInfo { retu
 export function persistenceTableFileInfo(m: string, tableId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, lowerFirst(tableId)); }
 export function repositoryAdapterFileInfo(m: string, entityId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, `${lowerFirst(entityId)}RepositoryAdapter`); }
 export function httpControllerFileInfo(m: string, pageId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/http/controllers`, lowerFirst(pageId)); }
+
+// ── co-located agent prompt assets ─────────────────────────────────────────────
+
+export const CB_AGENT_PROJECT = 102021;
+export const CB_AGENT_FOLDER = 'agentChangeBackend';
+
+/** Read a co-located LLM prompt at runtime. Prompts live next to their step agent as
+ * `agentChangeBackend/steps/<slug>/prompt.md` (moved into the step folders on 2026-07-11,
+ * todo/modernizeChangeBackend.md step 4; inline template strings were extracted in step 2). Each file
+ * keeps its `<!-- modelType: ... -->` marker; the caller still replaces the {{toolName}} placeholder.
+ * `folderRel` is relative to this agent folder (e.g. 'steps/gen-domain'); fixed to project 102021 (the
+ * agent's own files), NOT the client mls.actualProject. */
+export async function readCbPrompt(folderRel: string, shortName = 'prompt'): Promise<string> {
+  const fileInfo = { project: CB_AGENT_PROJECT, level: 2, folder: `${CB_AGENT_FOLDER}/${folderRel}`, shortName, extension: '.md' } as unknown as mls.stor.IFileInfo;
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; getContent(): Promise<unknown> } | undefined;
+  if (!file || file.status === 'deleted') throw new Error(`[readCbPrompt] prompt not found: ${folderRel}/${shortName}.md`);
+  const raw = await file.getContent();
+  if (typeof raw !== 'string') throw new Error(`[readCbPrompt] prompt is not text: ${folderRel}/${shortName}.md`);
+  return raw;
+}
 
 // ── defs writer (main export + pipeline export, self-sufficient) ───────────────
 

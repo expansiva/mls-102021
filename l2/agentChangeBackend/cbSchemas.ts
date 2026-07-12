@@ -14,67 +14,10 @@ function objArray(required: string[], properties: Record<string, unknown>) {
   return { type: 'array', items: { type: 'object', additionalProperties: false, required, properties } } as const;
 }
 
-// ── planning / index ───────────────────────────────────────────────────────────
-
-export const aggregateIndexResultSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['aggregates'],
-  properties: {
-    aggregates: objArray(['aggregateId', 'rootEntity', 'embeddedMembers', 'events', 'mdmRefs'], {
-      aggregateId: str,
-      rootEntity: str,
-      embeddedMembers: strArray, // supporting entities folded into the root details JSONB
-      events: strArray,          // event entities -> own append-only tables
-      mdmRefs: strArray,         // mdm entities -> read via 102034, NO local table
-    }),
-  },
-} as const;
-
-export const persistenceIndexResultSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['tables'],
-  properties: {
-    tables: objArray(['tableId', 'rootEntity', 'ownership', 'indexedColumns', 'detailsFields', 'childCollections'], {
-      tableId: str,
-      rootEntity: str,
-      ownership: str,
-      indexedColumns: objArray(['fieldId', 'reason'], { fieldId: str, reason: str }), // real columns
-      detailsFields: strArray,     // non-indexed fields -> details JSONB
-      childCollections: strArray,  // embedded supporting collections in details JSONB
-    }),
-  },
-} as const;
-
-export const usecaseIndexResultSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['usecases'],
-  properties: {
-    usecases: objArray(['usecaseId', 'ownerId', 'ports', 'rulesApplied'], {
-      usecaseId: str,
-      ownerId: str,        // operationId or workflowId
-      ports: strArray,     // repository ports the usecase needs
-      rulesApplied: strArray,
-    }),
-  },
-} as const;
-
-export const bffIndexResultSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['pages'],
-  properties: {
-    pages: objArray(['pageId', 'commands', 'contractRef'], {
-      pageId: str,
-      commands: strArray,  // bffCommand names on the page
-      contractRef: str,    // l2/{module}/web/contracts/{page}.defs.ts
-    }),
-  },
-} as const;
-
 // ── generation / defs ───────────────────────────────────────────────────────────
+// NOTE (2026-07-11): the planning/index schemas (aggregate/persistence/usecase/bff Index) were
+// removed together with their LLM steps — the output was discarded and the generators re-derive
+// aggregates/columns/usecases deterministically. See todo/modernizeChangeBackend.md.
 
 const fieldSchema = { type: 'object', additionalProperties: false, required: ['fieldId', 'type', 'required'], properties: { fieldId: str, type: str, required: bool, description: str, enum: strArray } } as const;
 
