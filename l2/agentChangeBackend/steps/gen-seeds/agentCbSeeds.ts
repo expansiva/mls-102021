@@ -14,10 +14,12 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
-  buildSeedSource, extractSeedPlanFromSource, parseSeedPlan, seedPlanPromptContext,
+  buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, estimateSeedPlanningWaveTokens,
+  extractSeedPlanProgressFromSource, mergeSeedPlans, parseSeedPlan, seedPlanInputForWave,
+  seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
-  type SeedRuleDefinition, type SeedActorDefinition,
+  type SeedRuleDefinition, type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbSeeds';
@@ -28,6 +30,8 @@ const toolSchema = createPlannerToolSchema(TOOL_NAME, 'Submit the deterministic 
 interface SeedStepArgs {
   seedAttempt: number;
   seedFindings: string[];
+  forcedBatch?: SeedPlanningWave;
+  partialPlanRef?: 'seeds.ts';
 }
 
 export function createAgent(): IAgentAsync {
@@ -48,9 +52,69 @@ function seedArgsOf(step: mls.msg.AIAgentStep): SeedStepArgs {
     return {
       seedAttempt: typeof raw.seedAttempt === 'number' && raw.seedAttempt > 0 ? raw.seedAttempt : 1,
       seedFindings: Array.isArray(raw.seedFindings) ? raw.seedFindings.filter((value): value is string => typeof value === 'string').slice(0, 40) : [],
+      forcedBatch: parseWave(raw.forcedBatch),
     };
   } catch {
     return { seedAttempt: 1, seedFindings: [] };
+  }
+}
+
+function parseWave(value: unknown): SeedPlanningWave | undefined {
+  if (!isRecord(value) || typeof value.index !== 'number') return undefined;
+  const values = (key: 'tableIds' | 'mdmEntityIds') => Array.isArray(value[key])
+    ? value[key].filter((item): item is string => typeof item === 'string' && !!item).sort()
+    : [];
+  return { index: value.index, tableIds: values('tableIds'), mdmEntityIds: values('mdmEntityIds') };
+}
+
+function emptyPlan(): SeedPlan {
+  return { summary: '', localTables: [], mdmEntities: [] };
+}
+
+function plannedTargetIds(plan: SeedPlan): Set<string> {
+  return new Set([...plan.localTables.map(table => `table:${table.tableId}`), ...plan.mdmEntities.map(entity => `mdm:${entity.entityId}`)]);
+}
+
+function nextSeedBatch(input: Omit<SeedBuildInput, 'plan'>, plan: SeedPlan, forcedBatch?: SeedPlanningWave): SeedPlanningWave | null {
+  const planned = plannedTargetIds(plan);
+  const usableForced = forcedBatch && [...forcedBatch.tableIds.map(id => `table:${id}`), ...forcedBatch.mdmEntityIds.map(id => `mdm:${id}`)]
+    .some(id => !planned.has(id));
+  if (usableForced) return forcedBatch!;
+  for (const wave of deriveSeedPlanningWaves(input)) {
+    const missing = {
+      index: wave.index,
+      tableIds: wave.tableIds.filter(id => !planned.has(`table:${id}`)),
+      mdmEntityIds: wave.mdmEntityIds.filter(id => !planned.has(`mdm:${id}`)),
+    };
+    if (!missing.tableIds.length && !missing.mdmEntityIds.length) continue;
+    return splitSeedPlanningWave(input, missing)[0] ?? null;
+  }
+  return null;
+}
+
+function completedWaveIndexes(input: Omit<SeedBuildInput, 'plan'>, plan: SeedPlan): number[] {
+  const planned = plannedTargetIds(plan);
+  return deriveSeedPlanningWaves(input).filter(wave =>
+    wave.tableIds.every(id => planned.has(`table:${id}`)) && wave.mdmEntityIds.every(id => planned.has(`mdm:${id}`)),
+  ).map(wave => wave.index);
+}
+
+function splitBatchForRetry(input: Omit<SeedBuildInput, 'plan'>, batch: SeedPlanningWave): SeedPlanningWave | null {
+  const tighterBudget = Math.max(300, Math.floor(estimateSeedPlanningWaveTokens(input, batch) / 2));
+  const batches = splitSeedPlanningWave(input, batch, tighterBudget);
+  return batches.length > 1 ? batches[0] : null;
+}
+
+function isOutputLimitFailure(value: unknown): boolean {
+  return /TOOL_ARGS_SCHEMA|truncat|output.{0,20}(limit|token)|recognized submitSeedScenario/iu.test(String(value));
+}
+
+function outputTokenTrace(payload: unknown): string {
+  try {
+    const match = JSON.stringify(payload).match(/"(?:outputTokens|output_tokens|completion_tokens)"\s*:\s*(\d+)/u);
+    return match ? `reported output tokens ${match[1]}` : 'reported output tokens unavailable';
+  } catch {
+    return 'reported output tokens unavailable';
   }
 }
 
@@ -59,9 +123,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const scan = await readBackendScan(['toCreate', 'inProgress']);
     const input = await readSeedBuildInput(scan);
     const args = seedArgsOf(step);
-    const persistedPlan = await readPersistedPlan(input.project, input.moduleName);
-    if (persistedPlan) {
-      const reused = buildSeedSource({ ...input, plan: persistedPlan });
+    const persisted = await readPersistedPlan(input.project, input.moduleName);
+    if (persisted && !persisted.partial) {
+      const reused = buildSeedSource({ ...input, plan: persisted.plan });
       if (!reused.errors.length && reused.content) {
         const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', reused.content);
         if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile reused seeds.ts: ${saved.compileErrors.join('; ')}`);
@@ -72,7 +136,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
       args.seedFindings.push(...reused.errors.slice(0, 40));
     }
-    const human = seedPlanPromptContext(input, args.seedFindings);
+    const progress = persisted?.partial ? persisted : { plan: emptyPlan(), partial: true, completedWaveIndexes: [] };
+    const batch = nextSeedBatch(input, progress.plan, args.forcedBatch);
+    if (!batch) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, progress.plan, 'Resumed all validated seed waves.');
+    const waveInput = seedPlanInputForWave(input, batch);
+    const estimatedTokens = estimateSeedPlanningWaveTokens(input, batch);
+    const human = seedPlanPromptContext(waveInput, args.seedFindings, {
+      wave: batch,
+      catalog: seedReferenceCatalog(progress.plan),
+      priorSummary: progress.plan.summary,
+      estimatedOutputTokens: estimatedTokens,
+    });
     const systemPrompt = await readCbPrompt('steps/gen-seeds');
     return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ''), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
   } catch (error) {
@@ -84,52 +158,95 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const payload = step.interaction?.payload?.[0];
-    if (!payload) throw new Error('missing seed scenario payload');
-    const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
-    if (out.status === 'failed') throw new Error('model returned failed for seed scenario');
     const scan = await readBackendScan(['toCreate', 'inProgress']);
     const input = await readSeedBuildInput(scan);
-    const plan = parseSeedPlan(out.result);
-    const built = buildSeedSource({ ...input, plan });
     const args = seedArgsOf(step);
+    const persisted = await readPersistedPlan(input.project, input.moduleName);
+    const progress = persisted?.partial ? persisted : { plan: emptyPlan(), partial: true, completedWaveIndexes: [] };
+    const batch = nextSeedBatch(input, progress.plan, args.forcedBatch);
+    if (!batch) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, progress.plan, 'All seed waves were already complete.');
+    const payload = step.interaction?.payload?.[0];
+    if (!payload) throw new Error('missing seed scenario payload');
+    let out;
+    try {
+      out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
+      if (out.status === 'failed') throw new Error(out.trace.join('; ') || 'model returned failed for seed scenario');
+    } catch (error) {
+      const split = isOutputLimitFailure(error) ? splitBatchForRetry(input, batch) : null;
+      if (split) return scheduleSeedStep(context, parentStep, step, hookSequential, {
+        seedAttempt: 1,
+        seedFindings: [`Planner output exceeded its schema/token budget; split ${batch.tableIds.length + batch.mdmEntityIds.length} targets into a smaller batch.`],
+        forcedBatch: split,
+      }, `Seed batch split after output limit (wave ${batch.index}; estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens).`);
+      throw error;
+    }
+    const plan = parseSeedPlan(out.result);
+    const waveInput = seedPlanInputForWave(input, batch);
+    const errors = validateSeedPlan({ ...waveInput, plan }, seedReferenceCatalog(progress.plan).map(item => item.ref));
     await saveAgentTrace(context, AGENT_NAME, step);
 
-    if (built.errors.length) {
+    if (errors.length) {
       if (args.seedAttempt < MAX_PLAN_ATTEMPTS) {
         const nextAttempt = args.seedAttempt + 1;
-        const planId = `cb-gen-seeds-r${nextAttempt}`;
-        return [
-          createAddStepIntent(context, parentStep, createAgentStepPayload(
-            planId,
-            AGENT_NAME,
-            `Reparar plano de seeds (${nextAttempt}/${MAX_PLAN_ATTEMPTS})`,
-            { planId, seedAttempt: nextAttempt, seedFindings: built.errors.slice(0, 40) },
-            [],
-            'sequential',
-            // Directly-added run step (no dependsOn): the backend enqueues its beforePromptStep hook
-            // but never changes the status, and continueBeforePrompt only accepts 'waiting_human_input'.
-            // 'pending' throws "Step not prepared for continueBeforePrompt". Matches the root bootstrap
-            // step (agentChangeBackend.ts) and the unlock/parallel paths in collab-messages tasks.ts.
-            'waiting_human_input',
-          )),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Seed plan rejected; repair ${nextAttempt}/${MAX_PLAN_ATTEMPTS} scheduled: ${built.errors.slice(0, 12).join('; ')}`),
-        ];
+        return scheduleSeedStep(context, parentStep, step, hookSequential, {
+          seedAttempt: nextAttempt,
+          seedFindings: errors.slice(0, 40),
+          forcedBatch: batch,
+        }, `Seed wave ${batch.index} rejected; repair ${nextAttempt}/${MAX_PLAN_ATTEMPTS} scheduled: ${errors.slice(0, 12).join('; ')}`);
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `Seed plan validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}: ${built.errors.slice(0, 30).join('; ')}`)];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `Seed wave ${batch.index} validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}: ${errors.slice(0, 30).join('; ')}`)];
     }
-    if (!built.content) throw new Error('seed compiler returned no source');
-    const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
-    if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
-    return [
-      enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Generated validated seeds.ts (${built.summary}; plan attempt ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}).`, 'input_output'),
-    ];
+    const tokenTrace = outputTokenTrace(payload);
+    const merged = mergeSeedPlans(progress.plan, plan);
+    const next = nextSeedBatch(input, merged);
+    const partial = buildPartialSeedSource(input, { plan: merged, completedWaveIndexes: completedWaveIndexes(input, merged) });
+    const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', partial);
+    if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to persist partial seeds.ts: ${saved.compileErrors.join('; ')}`);
+    if (!next) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, merged, `Generated final seed wave ${batch.index} (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
+    return scheduleSeedStep(context, parentStep, step, hookSequential, { seedAttempt: 1, seedFindings: [], forcedBatch: next }, `Validated seed wave ${batch.index}; persisted partial plan and scheduled the next wave (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+function scheduleSeedStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: SeedStepArgs,
+  trace: string,
+): mls.msg.AgentIntent[] {
+  const planId = `cb-gen-seeds-w${args.forcedBatch?.index ?? 'next'}-r${args.seedAttempt}-${Date.now()}`;
+  return [
+    createAddStepIntent(context, parentStep, createAgentStepPayload(
+      planId, AGENT_NAME,
+      args.seedAttempt > 1 ? `Reparar plano de seeds (${args.seedAttempt}/${MAX_PLAN_ATTEMPTS})` : `Planejar próxima onda de seeds`,
+      { planId, ...args, partialPlanRef: 'seeds.ts' }, [], 'sequential', 'waiting_human_input',
+    )),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace, 'input_output'),
+  ];
+}
+
+async function finalizeSeedPlan(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  input: Omit<SeedBuildInput, 'plan'>,
+  plan: SeedPlan,
+  trace: string,
+): Promise<mls.msg.AgentIntent[]> {
+  const built = buildSeedSource({ ...input, plan });
+  if (built.errors.length || !built.content) throw new Error(`final seed plan validation failed: ${built.errors.slice(0, 30).join('; ')}`);
+  const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
+  if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
+  return [
+    enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace} Final validation succeeded (${built.summary}).`, 'input_output'),
+  ];
 }
 
 async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'plan'>> {
@@ -254,13 +371,13 @@ function parseArtifact(content: string): Record<string, unknown> | undefined {
   }
 }
 
-async function readPersistedPlan(project: number, moduleName: string): Promise<SeedPlan | null> {
+async function readPersistedPlan(project: number, moduleName: string): Promise<SeedPlanProgress | null> {
   try {
     const fileInfo = { project, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
     const file = (mls.stor.files as Record<string, any>)[key];
     if (!file || file.status === 'deleted') return null;
-    return extractSeedPlanFromSource(String(await file.getContent()));
+    return extractSeedPlanProgressFromSource(String(await file.getContent()));
   } catch {
     return null;
   }

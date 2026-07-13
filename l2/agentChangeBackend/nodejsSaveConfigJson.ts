@@ -21,12 +21,6 @@ function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
 }
 
-function generatedConfigPath(clientId: string): string {
-  const dir = path.join(ROOT, '.generated', 'configs');
-  fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, `mls-${clientId}.config.json`);
-}
-
 function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
   return {
     projectId: l5.projectId || clientId,

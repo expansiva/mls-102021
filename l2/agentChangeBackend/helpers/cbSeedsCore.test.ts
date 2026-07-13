@@ -3,7 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildSeedSource, extractSeedPlanFromSource, validateSeedPlan,
+  buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, extractSeedPlanFromSource,
+  extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
+  seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
   SEED_T0, SEED_T1, type SeedBuildInput,
 } from './cbSeedsCore.js';
 
@@ -28,6 +30,11 @@ function validInput(): SeedBuildInput {
       { tableId: 'Shift', tableName: 'shift', seedFor: 'cafeFlowShift', primaryKey: ['shift_id'], columns: [{ name: 'shift_id', type: 'UUID', nullable: false }, { name: 'status', type: 'VARCHAR', nullable: false }, { name: 'created_at', type: 'TIMESTAMP', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
       { tableId: 'Order', tableName: 'order', seedFor: 'cafeFlowOrder', primaryKey: ['order_id'], columns: [{ name: 'order_id', type: 'UUID', nullable: false }, { name: 'shift_id', type: 'UUID', nullable: false }, { name: 'status', type: 'VARCHAR', nullable: false }, { name: 'order_type', type: 'VARCHAR', nullable: false }, { name: 'created_at', type: 'TIMESTAMP', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
     ],
+    relationships: [
+      { fromEntity: 'MenuItem', toEntity: 'MenuCategory', type: 'manyToOne' },
+      { fromEntity: 'MenuItem', toEntity: 'StockItem', type: 'manyToMany' },
+      { fromEntity: 'Order', toEntity: 'Shift', type: 'manyToOne' },
+    ],
     plan: {
       summary: 'Open shift, a POS order, and an active menu item with stock.',
       localTables: [
@@ -42,6 +49,86 @@ function validInput(): SeedBuildInput {
     },
   };
 }
+
+test('deriveSeedPlanningWaves orders the cafeFlow graph deterministically', () => {
+  assert.deepEqual(deriveSeedPlanningWaves(validInput()), [
+    { index: 1, tableIds: [], mdmEntityIds: ['MenuCategory', 'StockItem'] },
+    { index: 2, tableIds: ['Shift'], mdmEntityIds: ['MenuItem'] },
+    { index: 3, tableIds: ['Order'], mdmEntityIds: [] },
+  ]);
+});
+
+test('deriveSeedPlanningWaves keeps foreign-key cycles together and uses table columns as dependencies', () => {
+  const waves = deriveSeedPlanningWaves({
+    entities: [
+      { entityId: 'Catalog', title: 'Catalog', kind: 'mdm', fields: [] },
+      { entityId: 'Invoice', title: 'Invoice', kind: 'core', fields: [] },
+      { entityId: 'Organization', title: 'Organization', kind: 'core', fields: [] },
+      { entityId: 'BillingAccount', title: 'Billing account', kind: 'core', fields: [] },
+      { entityId: 'AuditEvent', title: 'Audit event', kind: 'event', fields: [] },
+    ],
+    relationships: [{ fromEntity: 'Invoice', toEntity: 'Catalog', type: 'manyToOne' }],
+    tablePlans: [
+      { tableId: 'Invoice', tableName: 'invoice', seedFor: 'billingInvoice', primaryKey: ['invoice_id'], columns: [{ name: 'invoice_id', type: 'UUID', nullable: false }, { name: 'catalog_id', type: 'UUID', nullable: false }] },
+      { tableId: 'Organization', tableName: 'organization', seedFor: 'billingOrganization', primaryKey: ['organization_id'], columns: [{ name: 'organization_id', type: 'UUID', nullable: false }, { name: 'billing_account_id', type: 'UUID', nullable: false }] },
+      { tableId: 'BillingAccount', tableName: 'billing_account', seedFor: 'billingAccount', primaryKey: ['billing_account_id'], columns: [{ name: 'billing_account_id', type: 'UUID', nullable: false }, { name: 'organization_id', type: 'UUID', nullable: false }] },
+      { tableId: 'AuditEvent', tableName: 'audit_event', seedFor: 'billingAuditEvent', primaryKey: ['audit_event_id'], columns: [{ name: 'audit_event_id', type: 'UUID', nullable: false }, { name: 'invoice_id', type: 'UUID', nullable: false }] },
+    ],
+  });
+
+  assert.deepEqual(waves, [
+    { index: 1, tableIds: [], mdmEntityIds: ['Catalog'] },
+    { index: 2, tableIds: ['BillingAccount', 'Invoice', 'Organization'], mdmEntityIds: [] },
+    { index: 3, tableIds: ['AuditEvent'], mdmEntityIds: [] },
+  ]);
+});
+
+test('wave context excludes unrelated definitions and accepts only catalog references from earlier waves', () => {
+  const input = validInput();
+  const orderWave = { index: 3, tableIds: ['Order'], mdmEntityIds: [] };
+  const scoped = seedPlanInputForWave(input, orderWave);
+  const prior = { summary: 'Shift opened.', localTables: [input.plan.localTables[0]], mdmEntities: [] };
+  const orderPlan = { summary: 'Order registered after the shift opened.', localTables: [input.plan.localTables[1]], mdmEntities: [] };
+
+  const context = seedPlanPromptContext(scoped, [], { wave: orderWave, catalog: seedReferenceCatalog(prior), priorSummary: prior.summary });
+  assert.match(context, /"tableId": "Order"/);
+  assert.doesNotMatch(context, /"entityId": "MenuItem"/);
+  assert.match(context, /local:Shift\.morning/);
+  assert.deepEqual(validateSeedPlan({ ...scoped, plan: orderPlan }, seedReferenceCatalog(prior).map(item => item.ref)), []);
+  assert.ok(validateSeedPlan({ ...scoped, plan: orderPlan }).some(error => error.includes("unresolved reference 'local:Shift.morning'")));
+});
+
+test('partial seed source persists and resumes the accumulated plan without becoming a reusable final source', () => {
+  const input = validInput();
+  const partialPlan = { summary: 'Catalog and shift ready.', localTables: [input.plan.localTables[0]], mdmEntities: input.plan.mdmEntities.slice(0, 2) };
+  const source = buildPartialSeedSource(input, { plan: partialPlan, completedWaveIndexes: [1] });
+
+  assert.equal(extractSeedPlanFromSource(source), null);
+  assert.deepEqual(extractSeedPlanProgressFromSource(source), { plan: partialPlan, partial: true, completedWaveIndexes: [1] });
+  assert.deepEqual(mergeSeedPlans(partialPlan, { summary: 'Order ready.', localTables: [input.plan.localTables[1]], mdmEntities: [input.plan.mdmEntities[2]] }), {
+    summary: 'Order ready.',
+    localTables: [input.plan.localTables[1], input.plan.localTables[0]],
+    mdmEntities: [input.plan.mdmEntities[0], input.plan.mdmEntities[2], input.plan.mdmEntities[1]],
+  });
+});
+
+test('splitSeedPlanningWave divides oversized independent table batches deterministically', () => {
+  const input = validInput();
+  input.relationships = [];
+  input.tablePlans[1].columns = input.tablePlans[1].columns.filter(column => column.name !== 'shift_id');
+  const batches = splitSeedPlanningWave(input, { index: 2, tableIds: ['Order', 'Shift'], mdmEntityIds: [] }, 500);
+  assert.deepEqual(batches, [
+    { index: 2, tableIds: ['Order'], mdmEntityIds: [] },
+    { index: 2, tableIds: ['Shift'], mdmEntityIds: [] },
+  ]);
+});
+
+test('splitSeedPlanningWave keeps a same-wave reference component together', () => {
+  const input = validInput();
+  assert.deepEqual(splitSeedPlanningWave(input, { index: 3, tableIds: ['Order', 'Shift'], mdmEntityIds: [] }, 500), [
+    { index: 3, tableIds: ['Order', 'Shift'], mdmEntityIds: [] },
+  ]);
+});
 
 test('buildSeedSource compiles a valid semantic plan into local and MDM relationship seeds', () => {
   const result = buildSeedSource(validInput());

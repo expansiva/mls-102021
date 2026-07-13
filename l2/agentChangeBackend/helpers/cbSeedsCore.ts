@@ -112,6 +112,35 @@ export interface SeedRelationshipDefinition {
   type: string;
 }
 
+/** A deterministic batch of seed-plan targets. All references emitted by a target in a wave resolve
+ * to a target in an earlier wave, or to another target in that same wave (a dependency cycle). */
+export interface SeedPlanningWave {
+  index: number;
+  tableIds: string[];
+  mdmEntityIds: string[];
+}
+
+export interface SeedPlanProgress {
+  plan: SeedPlan;
+  partial: boolean;
+  completedWaveIndexes: number[];
+}
+
+export interface SeedReferenceCatalogItem {
+  ref: string;
+  label: string;
+  context: string;
+}
+
+export interface SeedPlanPromptOptions {
+  catalog?: SeedReferenceCatalogItem[];
+  priorSummary?: string;
+  wave?: SeedPlanningWave;
+  estimatedOutputTokens?: number;
+}
+
+export const MAX_SEED_WAVE_OUTPUT_TOKENS = 12000;
+
 /** An L4 actor (platform user role). Some FK fields (e.g. an assignee or the actorSession-resolved
  * worker on an event) reference a platform-user identity, NOT a module-owned entity — there is no
  * table/MDM entity to seed. The generator synthesizes a small, deterministic pool of platform-user
@@ -151,6 +180,251 @@ export interface SeedBuildResult {
   errors: string[];
   content?: string;
   summary: string;
+}
+
+interface SeedPlanningNode {
+  id: string;
+  subjectId: string;
+  type: 'table' | 'mdm';
+  baseLevel: number;
+}
+
+function normalizedIdentifier(value: string): string {
+  return value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function foreignKeyTargetName(columnName: string): string {
+  return columnName.replace(/_id$/iu, '');
+}
+
+/**
+ * Partitions seed targets by their real dependency graph. MDM starts in the first wave, ordinary
+ * persistence tables in the second, and supporting/event tables in the third; a dependency moves
+ * only its dependant forward. Strongly connected targets stay together so mutual references remain
+ * valid within one LLM call.
+ */
+export function deriveSeedPlanningWaves(input: Pick<SeedBuildInput, 'entities' | 'tablePlans' | 'relationships'>): SeedPlanningWave[] {
+  const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
+  const nodes = new Map<string, SeedPlanningNode>();
+
+  for (const entity of input.entities) {
+    if (entity.kind !== 'mdm') continue;
+    nodes.set(`mdm:${entity.entityId}`, { id: `mdm:${entity.entityId}`, subjectId: entity.entityId, type: 'mdm', baseLevel: 0 });
+  }
+  for (const table of input.tablePlans) {
+    const kind = entityById.get(table.tableId)?.kind;
+    nodes.set(`table:${table.tableId}`, {
+      id: `table:${table.tableId}`,
+      subjectId: table.tableId,
+      type: 'table',
+      baseLevel: kind === 'supporting' || kind === 'event' ? 2 : 1,
+    });
+  }
+
+  const targetForEntity = (entityId: string): string | undefined => {
+    const entity = entityById.get(entityId);
+    if (entity?.kind === 'mdm' && nodes.has(`mdm:${entityId}`)) return `mdm:${entityId}`;
+    return nodes.has(`table:${entityId}`) ? `table:${entityId}` : undefined;
+  };
+  const targetByForeignKey = new Map<string, string>();
+  for (const node of nodes.values()) {
+    const key = normalizedIdentifier(node.subjectId);
+    if (!targetByForeignKey.has(key)) targetByForeignKey.set(key, node.id);
+  }
+
+  const dependencies = new Map([...nodes.keys()].map(id => [id, new Set<string>()]));
+  const addDependency = (source: string | undefined, target: string | undefined) => {
+    if (source && target && source !== target) dependencies.get(source)!.add(target);
+  };
+
+  for (const relationship of input.relationships ?? []) {
+    addDependency(targetForEntity(relationship.fromEntity), targetForEntity(relationship.toEntity));
+  }
+  for (const table of input.tablePlans) {
+    const source = `table:${table.tableId}`;
+    for (const column of table.columns) {
+      if (!/_id$/iu.test(column.name) || table.primaryKey.includes(column.name)) continue;
+      addDependency(source, targetByForeignKey.get(normalizedIdentifier(foreignKeyTargetName(column.name))));
+    }
+  }
+
+  let sequence = 0;
+  const index = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const components: string[][] = [];
+  const visit = (nodeId: string) => {
+    index.set(nodeId, sequence);
+    lowlink.set(nodeId, sequence++);
+    stack.push(nodeId);
+    onStack.add(nodeId);
+    for (const dependency of [...dependencies.get(nodeId)!].sort()) {
+      if (!index.has(dependency)) {
+        visit(dependency);
+        lowlink.set(nodeId, Math.min(lowlink.get(nodeId)!, lowlink.get(dependency)!));
+      } else if (onStack.has(dependency)) {
+        lowlink.set(nodeId, Math.min(lowlink.get(nodeId)!, index.get(dependency)!));
+      }
+    }
+    if (lowlink.get(nodeId) !== index.get(nodeId)) return;
+    const component: string[] = [];
+    for (;;) {
+      const member = stack.pop()!;
+      onStack.delete(member);
+      component.push(member);
+      if (member === nodeId) break;
+    }
+    components.push(component.sort());
+  };
+  for (const nodeId of [...nodes.keys()].sort()) if (!index.has(nodeId)) visit(nodeId);
+
+  const componentOf = new Map<string, number>();
+  components.forEach((component, componentIndex) => component.forEach(nodeId => componentOf.set(nodeId, componentIndex)));
+  const componentDependencies = components.map(() => new Set<number>());
+  components.forEach((component, componentIndex) => {
+    for (const nodeId of component) {
+      for (const dependency of dependencies.get(nodeId)!) {
+        const dependencyComponent = componentOf.get(dependency)!;
+        if (dependencyComponent !== componentIndex) componentDependencies[componentIndex].add(dependencyComponent);
+      }
+    }
+  });
+  const levels = new Map<number, number>();
+  const levelOf = (componentIndex: number): number => {
+    const cached = levels.get(componentIndex);
+    if (cached !== undefined) return cached;
+    const ownLevel = Math.max(...components[componentIndex].map(nodeId => nodes.get(nodeId)!.baseLevel));
+    const dependencyLevel = Math.max(-1, ...[...componentDependencies[componentIndex]].map(dependency => levelOf(dependency) + 1));
+    const level = Math.max(ownLevel, dependencyLevel);
+    levels.set(componentIndex, level);
+    return level;
+  };
+
+  const byLevel = new Map<number, SeedPlanningNode[]>();
+  components.forEach((component, componentIndex) => {
+    const level = levelOf(componentIndex);
+    const wave = byLevel.get(level) ?? [];
+    wave.push(...component.map(nodeId => nodes.get(nodeId)!));
+    byLevel.set(level, wave);
+  });
+  return [...byLevel.entries()].sort(([left], [right]) => left - right).map(([level, wave]) => ({
+    index: level + 1,
+    tableIds: wave.filter(node => node.type === 'table').map(node => node.subjectId).sort(),
+    mdmEntityIds: wave.filter(node => node.type === 'mdm').map(node => node.subjectId).sort(),
+  }));
+}
+
+/** Keeps a wave under the output budget by assigning whole dependency components to sequential
+ * batches. An SCC is never split, so references inside a planning wave remain valid. */
+export function splitSeedPlanningWave(
+  input: Pick<SeedBuildInput, 'entities' | 'tablePlans' | 'relationships'>,
+  wave: SeedPlanningWave,
+  maxTokens = MAX_SEED_WAVE_OUTPUT_TOKENS,
+): SeedPlanningWave[] {
+  const entities = new Map(input.entities.map(entity => [entity.entityId, entity]));
+  const tables = new Map(input.tablePlans.map(table => [table.tableId, table]));
+  const targets = [
+    ...wave.mdmEntityIds.map(id => ({ type: 'mdm' as const, id })),
+    ...wave.tableIds.map(id => ({ type: 'table' as const, id })),
+  ].sort((left, right) => `${left.type}:${left.id}`.localeCompare(`${right.type}:${right.id}`));
+  const estimate = (target: { type: 'mdm' | 'table'; id: string }) => {
+    const fields = entities.get(target.id)?.fields.length ?? 0;
+    const columns = tables.get(target.id)?.columns.length ?? 0;
+    const rows = target.type === 'mdm' ? 4 : 3;
+    return Math.max(300, rows * (120 + (fields + columns) * 36));
+  };
+  const targetKeys = new Set(targets.map(target => `${target.type}:${target.id}`));
+  const targetForEntity = (entityId: string) => {
+    const type = entities.get(entityId)?.kind === 'mdm' ? 'mdm' : 'table';
+    const key = `${type}:${entityId}`;
+    return targetKeys.has(key) ? key : undefined;
+  };
+  const parent = new Map([...targetKeys].map(key => [key, key]));
+  const find = (key: string): string => {
+    const root = parent.get(key)!;
+    if (root === key) return root;
+    const resolved = find(root);
+    parent.set(key, resolved);
+    return resolved;
+  };
+  const join = (left: string | undefined, right: string | undefined) => {
+    if (!left || !right) return;
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+  for (const relationship of input.relationships ?? []) join(targetForEntity(relationship.fromEntity), targetForEntity(relationship.toEntity));
+  const foreignKeyTargets = new Map(targets.map(target => [normalizedIdentifier(target.id), `${target.type}:${target.id}`]));
+  for (const table of input.tablePlans) {
+    const source = `table:${table.tableId}`;
+    if (!targetKeys.has(source)) continue;
+    for (const column of table.columns) {
+      if (/_id$/iu.test(column.name) && !table.primaryKey.includes(column.name)) {
+        join(source, foreignKeyTargets.get(normalizedIdentifier(foreignKeyTargetName(column.name))));
+      }
+    }
+  }
+  const components = new Map<string, Array<{ type: 'mdm' | 'table'; id: string }>>();
+  for (const target of targets) {
+    const root = find(`${target.type}:${target.id}`);
+    const component = components.get(root) ?? [];
+    component.push(target);
+    components.set(root, component);
+  }
+  const units = [...components.values()].sort((left, right) =>
+    `${left[0].type}:${left[0].id}`.localeCompare(`${right[0].type}:${right[0].id}`),
+  );
+  const batches: Array<Array<{ type: 'mdm' | 'table'; id: string }>> = [];
+  let batch: Array<{ type: 'mdm' | 'table'; id: string }> = [];
+  let used = 0;
+  for (const unit of units) {
+    const cost = unit.reduce((total, target) => total + estimate(target), 0);
+    if (batch.length && used + cost > maxTokens) {
+      batches.push(batch);
+      batch = [];
+      used = 0;
+    }
+    batch.push(...unit);
+    used += cost;
+  }
+  if (batch.length) batches.push(batch);
+  return batches.map(items => ({
+    index: wave.index,
+    tableIds: items.filter(item => item.type === 'table').map(item => item.id),
+    mdmEntityIds: items.filter(item => item.type === 'mdm').map(item => item.id),
+  }));
+}
+
+export function estimateSeedPlanningWaveTokens(
+  input: Pick<SeedBuildInput, 'entities' | 'tablePlans' | 'relationships'>,
+  wave: SeedPlanningWave,
+): number {
+  return splitSeedPlanningWave(input, wave, Number.MAX_SAFE_INTEGER)
+    .flatMap(batch => [...batch.tableIds, ...batch.mdmEntityIds])
+    .reduce((total, id) => {
+      const entity = input.entities.find(item => item.entityId === id);
+      const table = input.tablePlans.find(item => item.tableId === id);
+      const rows = entity?.kind === 'mdm' ? 4 : 3;
+      return total + Math.max(300, rows * (120 + ((entity?.fields.length ?? 0) + (table?.columns.length ?? 0)) * 36));
+    }, 0);
+}
+
+/** Selects exactly the L4/table definitions that a wave may create. Rules and relationships are
+ * filtered too, so unrelated definitions never inflate the planner context. */
+export function seedPlanInputForWave(input: Omit<SeedBuildInput, 'plan'>, wave: SeedPlanningWave): Omit<SeedBuildInput, 'plan'> {
+  const targetIds = new Set([...wave.tableIds, ...wave.mdmEntityIds]);
+  const tableIds = new Set(wave.tableIds);
+  const entities = input.entities.filter(entity => targetIds.has(entity.entityId));
+  const rules = input.rules?.filter(rule => !rule.appliesTo.length || rule.appliesTo.some(id => targetIds.has(id)));
+  return {
+    ...input,
+    entities,
+    tablePlans: input.tablePlans.filter(table => tableIds.has(table.tableId)),
+    relationships: (input.relationships ?? []).filter(rel => targetIds.has(rel.fromEntity) || targetIds.has(rel.toEntity)),
+    rules,
+    ruleIds: (rules ?? []).map(rule => rule.ruleId),
+  };
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -245,16 +519,88 @@ export function parseSeedPlan(value: unknown): SeedPlan {
 /** Reads the persisted plan embedded in seeds.ts. A valid plan is reused so materializing the same
  * L4/table input never asks the model for a different fixture mass. */
 export function extractSeedPlanFromSource(source: string): SeedPlan | null {
+  const progress = extractSeedPlanProgressFromSource(source);
+  return progress && !progress.partial ? progress.plan : null;
+}
+
+/** Reads either a completed or interrupted seed run from the persisted envelope. */
+export function extractSeedPlanProgressFromSource(source: string): SeedPlanProgress | null {
   const start = source.indexOf(SEED_PLAN_START);
   const end = source.indexOf(SEED_PLAN_END);
   if (start === -1 || end === -1 || end <= start) return null;
   try {
     const raw = source.slice(start + SEED_PLAN_START.length, end).trim();
     const envelope = JSON.parse(raw) as UnknownRecord;
-    return isRecord(envelope.plan) ? parseSeedPlan(envelope.plan) : null;
+    if (!isRecord(envelope.plan)) return null;
+    return {
+      plan: parseSeedPlan(envelope.plan),
+      partial: envelope.partial === true,
+      completedWaveIndexes: arrayValue(envelope.completedWaveIndexes)
+        .filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0)
+        .sort((left, right) => left - right),
+    };
   } catch {
     return null;
   }
+}
+
+/** A partial seeds.ts remains valid TypeScript so an interrupted flow can be resumed without
+ * re-planning completed waves. It intentionally exports no runtime rows until final compilation. */
+export function buildPartialSeedSource(
+  input: Pick<SeedBuildInput, 'project' | 'moduleName' | 'language'>,
+  progress: Pick<SeedPlanProgress, 'plan' | 'completedWaveIndexes'>,
+): string {
+  const envelope = {
+    version: 1,
+    moduleName: input.moduleName,
+    language: input.language,
+    partial: true,
+    completedWaveIndexes: [...new Set(progress.completedWaveIndexes)].sort((left, right) => left - right),
+    plan: progress.plan,
+  };
+  return [
+    `/// <mls fileReference="_${input.project}_/l1/${input.moduleName}/layer_1_external/adapters/persistence/seeds.ts" enhancement="_blank"/>`,
+    '',
+    '// Partial deterministic seed plan. agentCbSeeds resumes it before this module is registered.',
+    SEED_PLAN_START,
+    JSON.stringify(envelope, null, 2),
+    SEED_PLAN_END,
+    '',
+    'export {};',
+    '',
+  ].join('\n');
+}
+
+export function mergeSeedPlans(current: SeedPlan, next: SeedPlan): SeedPlan {
+  const merge = <T extends { tableId?: string; entityId?: string }>(items: T[], additions: T[], key: 'tableId' | 'entityId') => {
+    const byId = new Map(items.map(item => [String(item[key] || ''), item]));
+    for (const item of additions) byId.set(String(item[key] || ''), item);
+    return [...byId.values()].sort((left, right) => String(left[key] || '').localeCompare(String(right[key] || '')));
+  };
+  return {
+    summary: next.summary.trim() || current.summary,
+    localTables: merge(current.localTables, next.localTables, 'tableId'),
+    mdmEntities: merge(current.mdmEntities, next.mdmEntities, 'entityId'),
+  };
+}
+
+export function seedReferenceCatalog(plan: SeedPlan): SeedReferenceCatalogItem[] {
+  const labelOf = (fields: SeedFieldValue[], fallback: string) => {
+    const readable = fields.find(field => field.name === 'name' || field.name === 'label');
+    return typeof readable?.value === 'string' && readable.value.trim() ? readable.value : fallback;
+  };
+  return [
+    ...plan.localTables.flatMap(table => table.rows.map(row => ({
+      ref: `local:${table.tableId}.${row.key}`,
+      label: labelOf(row.details, row.key),
+      context: `local row in ${table.tableId}`,
+    }))),
+    ...plan.mdmEntities.flatMap(entity => entity.rows.map(row => ({
+      ref: `mdm:${entity.entityId}.${row.key}`,
+      label: labelOf(row.fields, row.key),
+      context: `MDM ${entity.entityId}`,
+    }))),
+  ].sort((left, right) => left.ref.localeCompare(right.ref));
 }
 
 function toSnake(value: string): string {
@@ -420,11 +766,12 @@ function hasKey(value: string): boolean {
 // be declared in L4 and shared with the usecase generator, not reintroduced here.
 
 /** Deterministic validation of the plan before any seed source is saved. */
-export function validateSeedPlan(input: SeedBuildInput): string[] {
+export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterable<string> = []): string[] {
   const errors: string[] = [];
   const tableById = new Map(input.tablePlans.map(table => [table.tableId, table]));
   const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   const references = collectReferences(input.plan);
+  for (const ref of knownReferences) references.add(ref);
   for (const identity of actorIdentities(input)) references.add(identity.ref);
   const window = windowOf(input);
   const seenLocalTables = new Set<string>();
@@ -727,7 +1074,11 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
   return { errors: [], content: lines.join('\n'), summary };
 }
 
-export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repairFindings: string[] = []): string {
+export function seedPlanPromptContext(
+  input: Omit<SeedBuildInput, 'plan'>,
+  repairFindings: string[] = [],
+  options: SeedPlanPromptOptions = {},
+): string {
   const entities = input.entities.map(entity => ({
     entityId: entity.entityId,
     title: entity.title,
@@ -757,18 +1108,23 @@ export function seedPlanPromptContext(input: Omit<SeedBuildInput, 'plan'>, repai
   // authenticated people (assignees, the actorSession worker on an event) — there is NO entity or
   // table to seed for them, so a worker/assignee FK must point at one of these refs.
   const actorIdentityRefs = actorIdentities(input).map(identity => ({ ref: identity.ref, name: identity.name, actorId: identity.actorId }));
+  const catalog = options.catalog ?? [];
+  const wave = options.wave ?? { index: 1, tableIds: input.tablePlans.map(table => table.tableId), mdmEntityIds: input.entities.filter(entity => entity.kind === 'mdm').map(entity => entity.entityId) };
   return [
     `## Module and language\n${JSON.stringify({ moduleName: input.moduleName, language: input.language, timeWindow })}`,
+    `## Planning wave\n${JSON.stringify({ index: wave.index, tableIds: wave.tableIds, mdmEntityIds: wave.mdmEntityIds, estimatedOutputTokens: options.estimatedOutputTokens ?? undefined }, null, 2)}`,
     `## Entities from L4\n${JSON.stringify(entities, null, 2)}`,
     `## Local persistence tables\n${JSON.stringify(tables, null, 2)}`,
     `## Relationships from L4\n${JSON.stringify(relationships, null, 2)}`,
+    ...(options.priorSummary ? [`## Scenario summary from earlier waves\n${options.priorSummary}`] : []),
+    ...(catalog.length ? [`## Valid references from earlier waves\nUse these refs when needed; do not recreate their rows.\n${JSON.stringify(catalog, null, 2)}`] : []),
     `## Platform users (actor identities)\nThese identities already exist; reference them for any field that points to a platform user (an assignee, or a field resolved from the actor session such as a worker/owner id). Do NOT create a table or MDM entity for them.\n${JSON.stringify(actorIdentityRefs, null, 2)}`,
     `## L4 rules the scenario must satisfy (full text)\n${JSON.stringify(rules, null, 2)}`,
     '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" }, { "ref": "mdm:EntityId.rowKey" } or { "ref": "actor:ActorId.key" } for foreign keys. Never emit UUIDs.',
     [
       '## Required result',
-      'Plan EVERY local table and EVERY MDM entity, using readable labels in the requested language.',
-      'Keep the scenario COMPACT but representative — small enough to return in a SINGLE tool call, never exhausting the output budget. Use these approximate caps (never just one row where several make the feature usable, never a huge dataset):',
+      'Plan ONLY the local tables and MDM entities listed in "Planning wave". Do not create rows for any other table/entity; reference earlier waves only through the supplied catalog.',
+      'Keep this wave COMPACT but representative and below its output budget. Use these approximate caps (never just one row where several make the feature usable, never a huge dataset):',
       '- MDM/catalog entities: ~3-5 rows each.',
       '- Core/operational entities: ~2-4 rows each, covering the MAIN lifecycle states and including at least one open/in-progress instance. You do NOT need every state × every filter combination.',
       '- Supporting/child entities: 1-2 children per parent.',
