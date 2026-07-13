@@ -28,6 +28,9 @@ export interface IOrderRepository {
 ## Rules
 
 - Interface name `I{Entity}Repository`; import the aggregate + needed unions from the domain entity.
+- Before importing an identity alias such as `InvoiceId` or `OrderLineId`, verify that the domain
+  `.d.ts` actually exports it. When it does not, declare the alias locally in the port as
+  `export type {Name}Id = string`; never import a type merely because its name is plausible.
 - `save` persists the whole aggregate (root + embedded members) — no per-child methods.
 - A `{Entity}ListFilter` carries only indexed/queryable fields (PK, FKs, status). No filtering by
   fields that live in `details` JSONB.
