@@ -1,10 +1,10 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbComponentValidators.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.test.ts" enhancement="_blank"/>
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-} from '/_102021_/l2/agentChangeBackend/cbComponentValidators.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 test('collectL1Imports keeps same-project l1 imports and drops others', () => {
   const code = `

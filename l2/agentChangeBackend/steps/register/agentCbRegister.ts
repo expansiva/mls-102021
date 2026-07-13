@@ -10,7 +10,7 @@
 // tables (those belong to 102034).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbRegister', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/register', agentDescription: 'Deterministic backend registration (l5 config + composition root; routes/tables discovered at runtime)', visibility: 'private', beforePromptStep };

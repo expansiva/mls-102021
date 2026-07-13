@@ -4,7 +4,7 @@
 // L4 v2 operation contracts are present, and ontology kind/relationships exist.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbValidateL4Readiness', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/scan', agentDescription: 'Deterministic l4 create-readiness preflight', visibility: 'private', beforePromptStep };

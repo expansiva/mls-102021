@@ -1,4 +1,4 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbSeedsCore.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Pure seed-plan compiler. The LLM may choose a useful business scenario, but it never writes
 // TypeScript: this module validates its JSON plan, resolves symbolic references to stable UUIDs

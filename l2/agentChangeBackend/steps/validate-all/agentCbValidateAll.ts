@@ -10,17 +10,17 @@
 // clean failure too. (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, GLOBAL_REPAIR_BUDGET,
-} from '/_102021_/l2/agentChangeBackend/cbRepair.js';
-import { getFileModified } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
-import { isStale } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
-import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/cbMdmGuards.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { getFileModified } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { isStale } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-} from '/_102021_/l2/agentChangeBackend/cbComponentValidators.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and

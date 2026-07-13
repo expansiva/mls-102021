@@ -1,4 +1,4 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbRepair.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Repair-loop + juiz state for the agentChangeBackend flow (Stage 3). Implements the shared
 // "repair loop / juiz LLM" block (todo/ajustesFinaisChangeBackend.md §2 + improveAddNewSolution2_1.md
@@ -14,8 +14,8 @@
 // same routing vocabulary can be reused by the ns2 repair loop later.
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
-import { isRecord, parseMaybeJson } from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
+import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 
 // ── budgets (anti-loop) ─────────────────────────────────────────────────────────
 

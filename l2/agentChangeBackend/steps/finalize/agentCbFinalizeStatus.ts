@@ -4,7 +4,7 @@
 // final summary.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, setTodoBackendStatus, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { readBackendScan, setTodoBackendStatus, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbFinalizeStatus', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/finalize', agentDescription: 'Deterministic todoBackend inProgress -> done', visibility: 'private', beforePromptStep };

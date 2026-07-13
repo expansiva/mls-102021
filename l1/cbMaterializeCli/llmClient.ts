@@ -7,7 +7,7 @@
 
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { GEN_TOOL, GEN_TOOL_NAME, type GenResult } from '../../l2/agentChangeBackend/cbMaterializeCore.js';
+import { GEN_TOOL, GEN_TOOL_NAME, type GenResult } from '../../l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
 export interface LlmConfig {
   baseUrl: string;          // e.g. http://localhost:3050 (collab-llm.baseUrl in appconfig.json)

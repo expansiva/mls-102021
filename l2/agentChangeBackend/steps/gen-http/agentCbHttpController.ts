@@ -12,7 +12,7 @@ import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, parseDefsSource, isRecord,
   saveDefs, buildArtifact, buildPipelineItem, httpControllerFileInfo, usecaseFileInfo,
   dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 const AGENT_NAME = 'agentCbHttpController';
 

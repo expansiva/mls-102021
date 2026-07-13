@@ -13,24 +13,24 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   scanL1DefsWithPipeline, getContentByMlsPath, getFileModified, saveGeneratedTs, parseMlsPath,
   extractToolCallArgs,
-} from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
   createAddStepIntent, createParallelStepIntent, isRecord, readStringArray, logPrefix,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
   expandContextRef, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
-} from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
   buildRepairPromptSection, forceDefsStale, COMPONENT_REPAIR_BUDGET, type CbRepairState,
-} from '/_102021_/l2/agentChangeBackend/cbRepair.js';
-import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/cbMdmGuards.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-} from '/_102021_/l2/agentChangeBackend/cbComponentValidators.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
 

@@ -1,11 +1,11 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbMaterializeIo.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.ts" enhancement="_blank"/>
 
 // Platform I/O glue for the in-studio materializer (agentCbMaterialize), vendored into agentChangeBackend
 // so it does not depend on agentMaterializeSolution (being removed). Pure mls.stor / libStor access; the
 // pure prompt/parse/order logic lives in cbMaterializeCore.ts (shared with the Node CLI).
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
+import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
 // L1 layer folders that may hold a .defs.ts with a pipeline (hexagonal: only layer_1_external in v1,
 // but keep the full set so the scan is robust if defs land in other layers).

@@ -1,7 +1,7 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbMdmGuards.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.test.ts" enhancement="_blank"/>
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/cbMdmGuards.js';
+import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 
 test('collectRawMdmAccessIssues allows facade and local module runtime access', () => {
   const issues = collectRawMdmAccessIssues(`

@@ -13,11 +13,7 @@ Materializes the L1 backend (`.defs.ts` → `.ts`) outside the studio. Pure logi
 
 ## Configure
 
-Copy the sample and fill it (this real file is git-ignored — never commit the token):
-
-```
-cp materializeL1.config.sample.json materializeL1.config.json
-```
+The CLI reads the shared `mls-base/.env` by default. Keep the token there; `.env` is git-ignored.
 
 - `baseUrl` — production collab-llm: `https://llm.collab.codes` (local dev would be `http://localhost:3050`).
 - `token` — a Bearer token production accepts: the same `hook.collabtoken` the prod collab-messages uses,
@@ -25,6 +21,18 @@ cp materializeL1.config.sample.json materializeL1.config.json
 - `orgId` — your prod org slug (used with JWT tokens; a `cak_` API key already carries its org).
 - `modelTypeOverride` — optional: a model alias that exists in prod (e.g. `codepro`, `codehigh`); leave
   empty to use the per-file default (`codeinstruct2`).
+
+Supported `.env` keys:
+
+```
+COLLAB_LLM_BASE_URL=https://llm.collab.codes
+COLLAB_LLM_TOKEN=...
+COLLAB_LLM_ORG_ID=Collab.codes
+MATERIALIZE_L1_MODEL_TYPE=codehigh
+```
+
+The CLI also accepts a legacy JSON config through `--config <path>` or `MATERIALIZE_L1_CONFIG`, but the
+default path is the shared `.env`.
 
 > Note: run this on your Mac — `llm.collab.codes` is not reachable from the Cowork sandbox.
 
@@ -50,7 +58,7 @@ by item id/type), `--check` (run `tsc` on the generated module afterwards), `--c
 
 The model is always the config's `modelTypeOverride` (sent to collab-llm as the `model` alias, e.g.
 `codehigh`); when left empty it falls back to the per-file default. Set it once in
-`materializeL1.config.json`.
+`MATERIALIZE_L1_MODEL_TYPE` in `.env`.
 
 ## Trace
 

@@ -14,7 +14,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, setTodoBackendStatus, createAgentStepPayload, createUpdateStatusIntent, logPrefix,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 

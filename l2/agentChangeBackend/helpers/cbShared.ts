@@ -1,10 +1,9 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/cbShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
+/// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Shared plumbing for the agentChangeBackend flow (Stage 3 backend reconciler, v1 autonomous
 // create-only). Backend-specific logic (l4 scan + l5 todoBackend status, aggregate derivation,
 // JSONB persistence plan, l1 file-info builders) lives here. The generic planner/LLM-envelope helpers
-// and the .defs.ts writer are reused from the agentNewSolution2 toolkit (ns2Extract/ns2Artifacts);
-// those are generic infra that should eventually move to _102027_ (collabCommon). See flow.json.
+// live in helpers/cbPlanner.ts so this agent no longer depends on removed agentNewSolution2 files.
 
 import { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
@@ -19,8 +18,7 @@ import {
   optionalStringArray,
   type PlannerExtractConfig,
   type PlannerOutput,
-} from '/_102020_/l2/agentNewSolution2/ns2Extract.js';
-import { saveAgentTrace } from '/_102020_/l2/agentNewSolution2/ns2Artifacts.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 
 export {
@@ -33,7 +31,6 @@ export {
   assertString,
   optionalString,
   optionalStringArray,
-  saveAgentTrace,
 };
 export type { PlannerExtractConfig, PlannerOutput };
 
@@ -55,6 +52,7 @@ export function asArray(value: unknown): Record<string, unknown>[] {
 
 export type ExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
 export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
+const ALL_STATUSES: OwnerStatus[] = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 export type EntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
 export type L4ContextSource =
   | 'userInput'
@@ -68,7 +66,7 @@ export type L4ContextSource =
   | 'previousStepOutput'
   | 'systemDefault';
 
-// Persistence intent for kind:"event" entities (set by agentNewSolution2). Drives whether Stage 3
+// Persistence intent for kind:"event" entities (set by the stage-1 solution agent). Drives whether Stage 3
 // gives the event a durable table (telemetry/audit) or routes it to the outbox (reaction).
 export type EventPurpose = 'telemetry' | 'audit' | 'reaction';
 export interface EventPolicy { purpose: EventPurpose; retentionDays?: number; }
@@ -667,6 +665,58 @@ export async function saveDefs(fileInfo: CbFileInfo, exportName: string, data: u
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content: src });
   return ref;
+}
+
+export async function saveAgentTrace(context: mls.msg.ExecutionContext, agentName: string, step: mls.msg.AIAgentStep): Promise<void> {
+  if (!shouldSaveTrace(context)) return;
+  try {
+    const payload = step.interaction?.payload?.[0];
+    if (!payload) return;
+    const scan = await readBackendScan(ALL_STATUSES).catch(() => null);
+    const moduleName = scan?.moduleNames?.[0] || 'backend';
+    const source = `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      agentName,
+      stepId: step.stepId,
+      planning: (step as { planning?: unknown }).planning || null,
+      status: step.status,
+      payload,
+    }, null, 2)}\n`;
+    const fileInfo: CbFileInfo = {
+      project: mls.actualProject || 0,
+      level: 4,
+      folder: `${moduleName}/trace`,
+      shortName: traceShortName(agentName, step.stepId),
+      extension: '.json',
+    };
+    const ref = defsRef(fileInfo);
+    const info = mls.stor.convertFileReferenceToFile(ref);
+    const file = await createStorFile({ ...info, source } as IReqCreateStorFile, true, true, false);
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+  } catch (error) {
+    console.warn(`[cb saveAgentTrace] failed for ${agentName}`, error);
+  }
+}
+
+function shouldSaveTrace(context: mls.msg.ExecutionContext): boolean {
+  try {
+    const longMemory = (context.task?.iaCompressed as { longMemory?: Record<string, string> } | undefined)?.longMemory;
+    const flag = longMemory?._saveTrace;
+    if (flag === 'true') return true;
+    if (flag === 'false') return false;
+  } catch {
+    // use default
+  }
+  return true;
+}
+
+function traceShortName(agentName: string, stepId: unknown): string {
+  const safe = agentName
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  return `${String(stepId ?? 0).padStart(3, '0')}-${safe || 'agent'}`;
 }
 
 // ── todoBackend mutation (deterministic) ───────────────────────────────────────

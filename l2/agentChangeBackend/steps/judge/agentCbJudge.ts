@@ -19,13 +19,13 @@ import {
   createAddStepIntent, createParallelStepIntent, enqueueNext,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   isRecord, readString, lowerFirst, logPrefix, type CbScan, type CbOwner,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
-import { parseDefs } from '/_102021_/l2/agentChangeBackend/cbMaterializeCore.js';
-import { judgeResultSchema } from '/_102021_/l2/agentChangeBackend/cbSchemas.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { parseDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { judgeResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
   readRepairState, saveRepairState, usecaseDefsTarget,
   COMPONENT_REPAIR_BUDGET, JUDGE_MAX_RUNS, type CbJudgeFinding,
-} from '/_102021_/l2/agentChangeBackend/cbRepair.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 const AGENT_NAME = 'agentCbJudge';
 const TOOL_NAME = 'submitJudgeFindings';
@@ -229,4 +229,3 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     ];
   }
 }
-

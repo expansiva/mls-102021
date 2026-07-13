@@ -9,8 +9,8 @@ import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, enqueueNext, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, domainEntityFileInfo, layerSkills, readString, lowerFirst, logPrefix, planIdOf,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
-import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/cbSchemas.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 
 const AGENT_NAME = 'agentCbDomainEntity';
 const TOOL_NAME = 'submitDomainEntities';

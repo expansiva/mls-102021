@@ -5,20 +5,20 @@
 // deterministic TableSeedRows plus MDM entity/document/relationship rows.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/cbMaterializeIo.js';
+import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   createAddStepIntent, createAgentStepPayload, isRecord, readString, readStringArray, logPrefix,
   parseDefsSource, type CbScan,
-} from '/_102021_/l2/agentChangeBackend/cbShared.js';
-import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/cbSchemas.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
   buildSeedSource, extractSeedPlanFromSource, parseSeedPlan, seedPlanPromptContext,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
   type SeedRuleDefinition, type SeedActorDefinition,
-} from '/_102021_/l2/agentChangeBackend/cbSeedsCore.js';
+} from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbSeeds';
 const TOOL_NAME = 'submitSeedScenario';
@@ -265,4 +265,3 @@ async function readPersistedPlan(project: number, moduleName: string): Promise<S
     return null;
   }
 }
-

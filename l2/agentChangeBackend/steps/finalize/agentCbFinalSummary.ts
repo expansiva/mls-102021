@@ -4,7 +4,7 @@
 // no-work path (scan found nothing) and the normal path (owners marked done).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, isRecord, parseMaybeJson, logPrefix } from '/_102021_/l2/agentChangeBackend/cbShared.js';
+import { createUpdateStatusIntent, isRecord, parseMaybeJson, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbFinalSummary', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/finalize', agentDescription: 'Terminal run summary + task completion', visibility: 'private', beforePromptStep };
