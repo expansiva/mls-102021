@@ -16,6 +16,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { getFileModified } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isStale } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
@@ -38,6 +39,8 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    let preSeeds = false;
+    try { preSeeds = JSON.parse(String(step.prompt || '{}'))?.preSeeds === true; } catch { /* post-register validation */ }
     const scan = await readBackendScan(['toCreate', 'inProgress']);
     const project = mls.actualProject || 0;
     let l1Defs = 0;
@@ -55,7 +58,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       routes: { key: string; handlerName: string }[];
     }[] = []; // handler usecaseRefs per controller
     const tsSet = new Set<string>();       // `${folder}::${shortName}` of MATERIALIZED .ts outputs
+    const tsFiles: { folder: string; shortName: string; real: string }[] = [];
     const defsFiles: { folder: string; shortName: string; real: string }[] = []; // each .defs.ts (real = original-case shortName)
+    const syntaxIssues: { folder: string; shortName: string; message: string }[] = [];
     // MATERIALIZATION-level findings routed to their origin component (defRef -> findings). Only these
     // are candidates for the global repair round; everything else fails clean.
     const repairTargets = new Map<string, string[]>();
@@ -80,6 +85,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (file.extension === '.ts' && !shortName0.endsWith('.defs') && !shortName0.endsWith('.d')) {
         const content = String(await file.getContent());
         tsSet.add(`${folder0}::${shortName0.toLowerCase()}`);
+        tsFiles.push({ folder: folder0, shortName: shortName0.toLowerCase(), real: shortName0 });
+        for (const issue of syntaxDiagnostics(content)) {
+          syntaxIssues.push({ folder: folder0, shortName: shortName0.toLowerCase(), message: `TS5076 -> ${folder0}/${shortName0}.ts ${issue}` });
+        }
         if (folder0.endsWith('/layer_2_application/usecases')) {
           usecaseSources.set(shortName0.toLowerCase(), content);
           if (/\/_\d+_\/l1\/[^'"]*\/layer_3_domain\/rules\//.test(content)) {
@@ -255,6 +264,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
 
+    // Syntax fallback is repeated at the gate: a compiler unavailable in a worker cannot turn a
+    // syntactically invalid cached output into a clean materialization result.
+    for (const issue of syntaxIssues) {
+      missing.push(issue.message);
+      const defs = defsFiles.find(d => d.folder === issue.folder && d.shortName === issue.shortName);
+      if (defs) addRepair(defRefOf(defs.folder, defs.real), issue.message);
+    }
+
     // CROSS-FILE IMPORTS: every module-local l1 import in a generated .ts must resolve to a generated
     // .ts. Root guard for hallucinated modules (e.g. importing layer_3_domain/rules/* — rules live
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
@@ -289,6 +306,32 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];
+    // Safe reconciliation policy: do not delete files that may contain a manual client edit, but
+    // block on duplicate generated names so stale snake_case/camelCase artifacts cannot leak into runtime.
+    const normalizedDefs = new Map<string, string[]>();
+    for (const d of defsFiles) {
+      const key = `${d.folder}::${d.shortName.replace(/[_-]/g, '')}`;
+      const names = normalizedDefs.get(key) ?? [];
+      names.push(d.real);
+      normalizedDefs.set(key, names);
+    }
+    for (const [key, names] of normalizedDefs) {
+      if (new Set(names).size > 1) missing.push(`orphan/duplicate generated defs -> ${key} has ${[...new Set(names)].join(', ')}`);
+    }
+    const defsKeys = new Set(defsFiles.map(d => `${d.folder}::${d.shortName}`));
+    for (const ts of tsFiles) {
+      if (!defsKeys.has(`${ts.folder}::${ts.shortName}`)) {
+        missing.push(`orphan generated ts -> ${ts.folder}/${ts.real}.ts has no matching .defs.ts (manual deletion required)`);
+      }
+    }
+    // Older usecases/controllers frequently survive an entity regeneration. They are not safe to
+    // delete automatically because clients may edit them, so make them explicit blocking findings.
+    const expectedOperationIds = new Set(scan.owners.filter(owner => owner.kind === 'operation').map(owner => lowerFirst(owner.id).toLowerCase()));
+    for (const d of defsFiles) {
+      if ((d.folder.endsWith('/layer_2_application/usecases') || d.folder.endsWith('/adapters/http/controllers')) && !expectedOperationIds.has(d.shortName)) {
+        missing.push(`orphan generated defs -> ${d.folder}/${d.real}.defs.ts is not owned by a current operation (manual reconciliation required)`);
+      }
+    }
 
     if (missing.length) {
       const unique = [...new Set(missing)];
@@ -315,7 +358,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const trace = `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s): ${unique.slice(0, 12).join('; ')}`;
         await saveHealthReport({ outcome: 'repair-round', round: state.globalAttempts, l1Defs, findings: unique, warnings, repairHistory: state.history });
         return [
-          enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true }),
+          enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true, ...(preSeeds ? { preSeeds: true } : {}) }),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
@@ -343,7 +386,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
       : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote;
     return [
-      enqueueNext(context, parentStep, step, 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar todoBackend', {}),
+      enqueueNext(context, parentStep, step, preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),
     ];
   } catch (error) {

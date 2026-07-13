@@ -16,6 +16,7 @@
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
+import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
 
 // ── budgets (anti-loop) ─────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export async function readRepairState(): Promise<CbRepairState> {
   }
 }
 
-export async function saveRepairState(state: CbRepairState): Promise<void> {
+export async function saveRepairState(state: CbRepairState): Promise<boolean> {
   try {
     state.updatedAt = new Date().toISOString();
     const info = stateFileInfo();
@@ -111,14 +112,16 @@ export async function saveRepairState(state: CbRepairState): Promise<void> {
     let file = mls.stor.files[key];
     if (!file) file = await createStorFile({ ...info, source }, false, false, false);
     await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+    return true;
   } catch (error) {
     console.warn('[cbRepair] saveRepairState failed', error);
+    return false;
   }
 }
 
 /** Wipe the whole repair state (validate-all passed: the run converged). */
 export async function clearRepairState(): Promise<void> {
-  await saveRepairState(emptyState());
+  if (!await saveRepairState(emptyState())) throw new Error('repair state persistence failed while clearing a converged run');
 }
 
 // ── component records ───────────────────────────────────────────────────────────
@@ -135,36 +138,42 @@ export async function getComponentRepair(target: string): Promise<CbComponentRep
 
 /** Record a failed attempt (increments the budget) and keep the findings + rejected code for the retry prompt. */
 export async function recordComponentFailure(target: string, findings: string[], lastCode?: string, source: CbRepairSource = 'component-validate'): Promise<CbComponentRepair> {
-  const state = await readRepairState();
-  const prev = state.componentRepairs[target];
-  const entry: CbComponentRepair = {
-    target,
-    attempts: (prev?.attempts ?? 0) + 1,
-    findings: findings.slice(0, 20),
-    ...(lastCode ? { lastCode: lastCode.length > MAX_LAST_CODE ? `${lastCode.slice(0, MAX_LAST_CODE)}\n// ... (truncated)` : lastCode } : {}),
-    source,
-    updatedAt: new Date().toISOString(),
-  };
-  state.componentRepairs[target] = entry;
-  pushHistory(state, `${target} :: attempt ${entry.attempts} :: ${entry.findings[0] ?? 'failure'}`);
-  await saveRepairState(state);
-  return entry;
+  return serializeRepairMutation(async () => {
+    const state = await readRepairState();
+    const prev = state.componentRepairs[target];
+    const entry: CbComponentRepair = {
+      target,
+      attempts: (prev?.attempts ?? 0) + 1,
+      findings: findings.slice(0, 20),
+      ...(lastCode ? { lastCode: lastCode.length > MAX_LAST_CODE ? `${lastCode.slice(0, MAX_LAST_CODE)}\n// ... (truncated)` : lastCode } : {}),
+      source,
+      updatedAt: new Date().toISOString(),
+    };
+    state.componentRepairs[target] = entry;
+    pushHistory(state, `${target} :: attempt ${entry.attempts} :: ${entry.findings[0] ?? 'failure'}`);
+    if (!await saveRepairState(state)) throw new Error(`repair state persistence failed while recording ${target}`);
+    return entry;
+  });
 }
 
 /** Set findings WITHOUT burning component budget (used by the validate-all global round, which grants
  * the component a fresh worker budget — the global round has its own budget). */
 export async function setComponentFindings(target: string, findings: string[], source: CbRepairSource): Promise<void> {
-  const state = await readRepairState();
-  state.componentRepairs[target] = { target, attempts: 0, findings: findings.slice(0, 20), source, updatedAt: new Date().toISOString() };
-  pushHistory(state, `${target} :: ${source} :: ${findings[0] ?? 'finding'}`);
-  await saveRepairState(state);
+  await serializeRepairMutation(async () => {
+    const state = await readRepairState();
+    state.componentRepairs[target] = { target, attempts: 0, findings: findings.slice(0, 20), source, updatedAt: new Date().toISOString() };
+    pushHistory(state, `${target} :: ${source} :: ${findings[0] ?? 'finding'}`);
+    if (!await saveRepairState(state)) throw new Error(`repair state persistence failed while recording findings for ${target}`);
+  });
 }
 
 export async function clearComponentRepair(target: string): Promise<void> {
-  const state = await readRepairState();
-  if (!state.componentRepairs[target]) return;
-  delete state.componentRepairs[target];
-  await saveRepairState(state);
+  await serializeRepairMutation(async () => {
+    const state = await readRepairState();
+    if (!state.componentRepairs[target]) return;
+    delete state.componentRepairs[target];
+    if (!await saveRepairState(state)) throw new Error(`repair state persistence failed while clearing ${target}`);
+  });
 }
 
 /** True while the component may still be retried (attempts consumed <= budget). */

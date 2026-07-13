@@ -56,6 +56,38 @@ function deriveMaps(scan: CbScan) {
   return { roots, mdmIds, childToRoot, byId, eventsByOwner };
 }
 
+/** Reject defs that drift from the current entity/port contract before materialization can turn the
+ * mismatch into broken TypeScript. */
+function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string[] {
+  const issues: string[] = [];
+  const entities = new Map(scan.entities.map(entity => [entity.entityId, entity]));
+  const knownPorts = new Set([
+    ...scan.aggregates.map(aggregate => aggregate.rootEntity),
+    ...scan.events.filter(event => event.persisted).map(event => event.entityId),
+  ]);
+  for (const port of readStringArray(result?.ports)) if (!knownPorts.has(port)) issues.push(`usecase ${ownerId}: unknown port '${port}'`);
+  for (const fn of Array.isArray(result?.functions) ? result.functions : []) {
+    for (const port of readStringArray(fn?.ports)) if (!knownPorts.has(port)) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: unknown port '${port}'`);
+    for (const io of [...(Array.isArray(fn?.input) ? fn.input : []), ...(Array.isArray(fn?.output) ? fn.output : [])]) {
+      const entityId = readString(io?.ofEntity);
+      if (!entityId) continue;
+      const entity = entities.get(entityId);
+      if (!entity) { issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: unknown ofEntity '${entityId}'`); continue; }
+      const fieldName = readString(io?.name);
+      if (fieldName && !(entity.fields ?? []).some((field: any) => field.fieldId === fieldName)) {
+        issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: ${entityId}.${fieldName} is not declared by the entity`);
+      }
+    }
+    const allowedStatuses = new Set(scan.entities.flatMap(entity => (entity.fields ?? []).flatMap((field: any) => Array.isArray(field.enum) ? field.enum : [])));
+    for (const step of readStringArray(fn?.steps)) {
+      for (const match of step.matchAll(/\bstatus\s*(?:=|:|is)\s*["']?([A-Za-z][A-Za-z0-9_]*)/giu)) {
+        if (!allowedStatuses.has(match[1])) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: status '${match[1]}' is not declared by any entity enum`);
+      }
+    }
+  }
+  return [...new Set(issues)];
+}
+
 // The single-owner item sent to the LLM (explicit ports/mdmRefs + entity fields to shape input/output).
 function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
   const { roots, mdmIds, childToRoot, byId, eventsByOwner } = maps;
@@ -165,6 +197,13 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const { roots, mdmIds, childToRoot } = deriveMaps(scan);
     const usecaseId = readString(result?.usecaseId) || workerOwnerId(args, step);
     if (!usecaseId) throw new Error('missing usecaseId');
+    const queuedOwnerId = workerOwnerId(args, step);
+    if (queuedOwnerId && usecaseId !== queuedOwnerId) throw new Error(`usecaseId '${usecaseId}' does not match queued owner '${queuedOwnerId}'`);
+
+    // Validate raw model output before normalization. Filtering invented ports first would silently
+    // mask a bad defs response instead of routing it through the repair loop.
+    const planIssues = validateUsecasePlan(result, scan, usecaseId);
+    if (planIssues.length) throw new Error(`usecase defs validation failed: ${planIssues.slice(0, 12).join('; ')}`);
 
     // Final ports = model's ports ∪ deterministic ports (owner entity+writes, children -> parent root),
     // with mdm removed (master data is read by id via 102034, not through a port).
@@ -186,7 +225,6 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     for (const fn of Array.isArray(result?.functions) ? result.functions : []) {
       fn.ports = readStringArray(fn?.ports).filter((id: string) => ports.includes(id)); // drop invented ports
     }
-
     const fi = usecaseFileInfo(module, usecaseId);
     const dependsFiles = [
       ...ports.map(p => dtsRef(repositoryPortFileInfo(module, p))),

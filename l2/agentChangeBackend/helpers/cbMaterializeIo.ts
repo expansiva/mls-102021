@@ -6,6 +6,7 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 
 // L1 layer folders that may hold a .defs.ts with a pipeline (hexagonal: only layer_1_external in v1,
 // but keep the full set so the scan is robust if defs land in other layers).
@@ -123,36 +124,38 @@ function flattenDiagnostic(d: any): string {
   return msg ? `${code}${msg}` : '';
 }
 
-/** Compile the saved .ts and return the TypeScript ERROR diagnostics (empty when clean or when the
- * compile environment is unavailable — never block on infra). */
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<string[]> {
+/** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<{ errors: string[]; available: boolean }> {
   try {
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
     const modelTs = modelBase?.ts as mls.editor.IModelTS;
-    if (!modelTs) return [];
+    if (!modelTs) return { errors: [], available: false };
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
     mls.editor.forceModelUpdate(modelTs.model);
     // category 1 = Error in monaco/ts DiagnosticCategory; keep only real errors, capped.
     const diags = (modelTs.compilerResults?.errors ?? []) as any[];
-    return diags
+    return { errors: diags
       .filter(d => d?.category === undefined || d.category === 1)
       .map(flattenDiagnostic)
       .filter(Boolean)
-      .slice(0, 12);
+      .slice(0, 12), available: true };
   } catch (err) {
     console.warn('[cbMaterializeIo] compileGeneratedTs failed', err);
-    return [];
+    return { errors: [], available: false };
   }
 }
 
+/** Small deterministic fallback for syntax that TypeScript rejects before type checking. */
 export interface SaveGeneratedTsResult {
   ok: boolean;
   /** TypeScript errors of the per-file compile (spec item 11: feed the compiler error back into the
    * repair prompt). Empty when clean or when the compile environment is unavailable. */
   compileErrors: string[];
+  /** False means Monaco/project compilation was unavailable; syntax fallback still ran. */
+  compilerAvailable: boolean;
 }
 
 /** Save (create or overwrite) a generated .ts file, force a recompile and report its errors. */
@@ -177,11 +180,12 @@ export async function saveGeneratedTs(
     // across runs); libStor.createStorFile / setContent do not set it.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    const compileErrors = shortName.endsWith('.defs') ? [] : await compileGeneratedTs(project, level, folder, shortName);
-    return { ok: true, compileErrors };
+    const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName);
+    const compileErrors = [...syntaxDiagnostics(content), ...compiled.errors].slice(0, 12);
+    return { ok: true, compileErrors, compilerAvailable: compiled.available };
   } catch (err) {
     console.warn('[cbMaterializeIo] saveGeneratedTs failed', err);
-    return { ok: false, compileErrors: [] };
+    return { ok: false, compileErrors: [], compilerAvailable: false };
   }
 }
 

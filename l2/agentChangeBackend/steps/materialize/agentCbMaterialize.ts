@@ -24,7 +24,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
-  buildRepairPromptSection, forceDefsStale, COMPONENT_REPAIR_BUDGET, type CbRepairState,
+  buildRepairPromptSection, forceDefsStale, saveHealthReport, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
@@ -63,13 +63,18 @@ async function scanEntries(): Promise<DefsEntry[]> {
   return entries;
 }
 
-// Output is stale when missing or when the .defs.ts is newer than the generated .ts (same rule as the CLI).
-function entryIsStale(project: number, defRef: string, outputPath: string): boolean {
+// Output is stale when missing, older than its defs, OR older than any generated internal dependency.
+// This makes staleness transitive: a regenerated entity invalidates importing usecases/controllers.
+function entryIsStale(project: number, defRef: string, item: PipelineItem): boolean {
   const d = parseMlsPath(defRef);
-  const o = parseMlsPath(outputPath);
+  const o = parseMlsPath(item.outputPath);
   const defsMs = d ? getFileModified(d.project, d.level, d.folder, d.shortName, '.defs.ts') : null;
   const tsMs = o ? getFileModified(o.project, o.level, o.folder, o.shortName, '.ts') : null;
-  return isStale(defsMs, tsMs);
+  const dependencyTimes = (item.dependsFiles ?? []).map(ref => parseMlsPath(ref.replace(/\.d\.ts$/u, '.ts')))
+    .map(path => path ? getFileModified(path.project, path.level, path.folder, path.shortName, '.ts') : null)
+    .filter((value): value is number => value !== null);
+  const inputMs = Math.max(defsMs ?? -1, ...dependencyTimes);
+  return isStale(inputMs < 0 ? null : inputMs, tsMs);
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -85,7 +90,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   try {
     const project = mls.actualProject || 0;
     const entries = await scanEntries();
-    const allStale = entries.filter(e => entryIsStale(project, e.defRef, e.item.outputPath));
+    const allStale = entries.filter(e => entryIsStale(project, e.defRef, e.item));
     // Materialize ONE layer per dispatch. The runtime's addParallelArgs forces a parallel parent to
     // in_progress and enqueues its children the moment the add-step is applied, so a `dependsOn`
     // between two parallel steps created together is NOT a real barrier — every layer would start at
@@ -101,13 +106,22 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // into the worker prompt. Budget exhausted -> skipped as before (cb-validate-all catches it and can
     // trigger ONE global repair round). This is the in-flow repair loop; the engine is untouched.
     let minRank = 0;
-    let repairMode = false; // set by the validate-all global round: end at cb-validate-all, not seeds
+    let repairMode = false;
+    let preSeeds = false;
     try {
       const p = JSON.parse(String(step.prompt || '{}'));
       if (p && typeof p.minRank === 'number') minRank = p.minRank;
       if (p && p.repair === true) repairMode = true;
+      if (p && p.preSeeds === true) preSeeds = true;
     } catch { /* defaults */ }
     const repairState: CbRepairState = await readRepairState();
+    await saveHealthReport({
+      outcome: 'materialize-dispatch',
+      stale: allStale.map(entry => entry.defRef),
+      pendingRepairs: Object.values(repairState.componentRepairs).map(entry => ({ target: entry.target, attempts: entry.attempts, findings: entry.findings.slice(0, 3) })),
+      minRank,
+      repairMode,
+    });
     const repairable = (defRef: string): boolean => {
       const entry = repairState.componentRepairs[defRef];
       return !!entry && entry.attempts > 0 && entry.attempts <= COMPONENT_REPAIR_BUDGET;
@@ -115,6 +129,10 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const byRank = new Map<number, DefsEntry[]>();
     for (const e of allStale) {
       const r = layerRank(e.item.type);
+      if (r < minRank && !repairable(e.defRef)) {
+        const entry = await recordComponentFailure(e.defRef, ['output .ts absent or stale after its layer already advanced'], undefined, 'component-validate');
+        repairState.componentRepairs[e.defRef] = entry;
+      }
       if (r < minRank && !repairable(e.defRef)) continue;
       let bucket = byRank.get(r);
       if (!bucket) { bucket = []; byRank.set(r, bucket); }
@@ -122,12 +140,12 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     }
     // Unique planId suffixes across repair rounds/attempts (a planId must never repeat in the task).
     const gSuffix = repairState.globalAttempts > 0 ? `-g${repairState.globalAttempts}` : '';
-    const roundArgs = repairMode ? { repair: true } : {};
+    const roundArgs = repairMode ? { repair: true, ...(preSeeds ? { preSeeds: true } : {}) } : {};
     const endStep = (dependsOn: string[]): mls.msg.AgentIntentAddStep => repairMode
       // Repair round: defs did not change, so seeds/register are still valid — go straight back to the
       // integrity barrier (unique planId per round).
-      ? createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-validate-all${gSuffix}`, 'agentCbValidateAll', 'Validar artefatos l1 (repair)', { planId: `cb-validate-all${gSuffix}` }, dependsOn, 'sequential', 'waiting_dependency'))
-      : createAddStepIntent(context, parentStep, createAgentStepPayload('cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', { planId: 'cb-gen-seeds' }, dependsOn, 'sequential', 'waiting_dependency'));
+      ? createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-validate-all${gSuffix}`, 'agentCbValidateAll', 'Validar artefatos l1 (repair)', { planId: `cb-validate-all${gSuffix}`, ...(preSeeds ? { preSeeds: true } : {}) }, dependsOn, 'sequential', 'waiting_dependency'))
+      : createAddStepIntent(context, parentStep, createAgentStepPayload('cb-validate-before-seeds', 'agentCbValidateAll', 'Validar integridade l1 antes dos seeds', { planId: 'cb-validate-before-seeds', preSeeds: true }, dependsOn, 'sequential', 'waiting_dependency'));
     if (byRank.size === 0) {
       // No more layers to materialize from minRank up -> seeds (or the repair-round barrier).
       return [
@@ -143,11 +161,12 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const rSuffix = maxAttempt > 0 ? `-r${maxAttempt}` : '';
     const planId = `cb-mat-L${rank}${gSuffix}${rSuffix}`;
     const refs = bucket.map(e => e.defRef);
+    const pendingRepairCount = Object.values(repairState.componentRepairs).filter(entry => entry.attempts > 0).length;
     // Content-based progress label (clearer than "Materializar L0/L1"): name the artifacts in this layer.
     const label = layerLabel([...new Set(bucket.map(e => e.item.type))]);
     const intents: mls.msg.AgentIntent[] = [
       // Current layer starts now (its inner layers are already materialized -> no dependsOn needed).
-      createParallelStepIntent(context, parentStep, planId, AGENT_NAME, `Materializar ${label} {{completed}}/{{total}}, falhas {{failed}}`, refs, [], 10),
+      createParallelStepIntent(context, parentStep, planId, AGENT_NAME, `Materializar ${label} {{completed}}/{{total}} (repairs no trace)`, refs, [], 10),
     ];
     if (remainingLayers > 1) {
       // More layers to go: a continue-dispatcher runs ONLY after this layer completes (real barrier),
@@ -163,7 +182,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
       // repair of THIS layer, if needed, reaches a later dispatch through the validate-all repair round.
       intents.push(endStep([planId]));
     }
-    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `materializing ${label} (${refs.length} file(s)); ${remainingLayers - 1} layer(s) after`));
+    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `materializing ${label} (${refs.length} file(s)); ${pendingRepairCount} repair(s) pending before this layer; ${remainingLayers - 1} layer(s) after`));
     return intents;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -194,38 +213,67 @@ async function readContextRef(ref: string): Promise<string | null> {
   return null;
 }
 
+/** A parallel child must complete for the layer barrier, but every pre-prompt failure still needs a
+ * repair record. A storage failure is made explicit in the child trace instead of being silent. */
+async function completeWorkerFailure(
+  context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep,
+  hookSequential: number, defRef: string, message: string,
+): Promise<mls.msg.AgentIntent[]> {
+  let trace = `[repair] ${message}`;
+  try {
+    const entry = await recordComponentFailure(defRef, [message]);
+    trace += ` (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`;
+  } catch (error) {
+    const persistence = error instanceof Error ? error.message : String(error);
+    trace += `; REPAIR STATE ERROR: ${persistence}`;
+    await saveHealthReport({ outcome: 'repair-state-error', defRef, message, persistence });
+  }
+  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
+}
+
 // WORKER: assemble the prompt for ONE defs file with the shared core and ask the model for the .ts.
 async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, defRef: string): Promise<mls.msg.AgentIntent[]> {
   // NB: worker children never return 'failed' (a failed step does not satisfy dependsOn and would
   // stall the layer barrier); the missing .ts is reported by cb-validate-all.
-  const content = await getContentByMlsPath(defRef);
-  if (!content) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] defs not found: ${defRef}`)];
-  const parsed = parseDefs(content);
-  if (!parsed.item || !parsed.item.outputPath) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] no pipeline item in ${defRef}`)];
+  let content: string | null;
+  try {
+    content = await getContentByMlsPath(defRef);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, `could not read defs: ${message}`);
+  }
+  if (!content) return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, 'defs not found');
+  try {
+    const parsed = parseDefs(content);
+    if (!parsed.item || !parsed.item.outputPath) return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, 'no pipeline item in defs');
 
-  const skillSections: string[] = [];
-  for (const s of parsed.item.skills ?? []) {
-    for (const real of expandContextRef(s)) {
-      const c = await getContentByMlsPath(real);
-      if (c != null) skillSections.push(`<!-- skill: ${real} -->\n${c}`);
+    const skillSections: string[] = [];
+    for (const s of parsed.item.skills ?? []) {
+      for (const real of expandContextRef(s)) {
+        const c = await getContentByMlsPath(real);
+        if (c != null) skillSections.push(`<!-- skill: ${real} -->\n${c}`);
+      }
     }
-  }
-  const contextSections: string[] = [];
-  for (const d of parsed.item.dependsFiles ?? []) {
-    for (const real of expandContextRef(d)) {
-      const c = await readContextRef(real);
-      if (c != null) contextSections.push(`### ${real}\n\`\`\`ts\n${c}\n\`\`\``);
+    const contextSections: string[] = [];
+    for (const d of parsed.item.dependsFiles ?? []) {
+      for (const real of expandContextRef(d)) {
+        const c = await readContextRef(real);
+        if (c != null) contextSections.push(`### ${real}\n\`\`\`ts\n${c}\n\`\`\``);
+      }
     }
+    const system = buildSystemPrompt(skillSections, parsed.item.outputPath, DEFAULT_MODEL_TYPE);
+    let human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
+    // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
+    // exact findings + the rejected code back so the model fixes them instead of re-rolling the dice.
+    const repair = await getComponentRepair(defRef);
+    if (repair && repair.findings.length) human += `\n\n${buildRepairPromptSection(repair)}`;
+    // prompt_ready args MUST equal the parallel child's queued hook args (the defRef) so the runtime
+    // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
+    return [createPromptReadyIntent(context, parentStep, hookSequential, defRef, system, human, GEN_TOOL as unknown as mls.msg.LLMTool, GEN_TOOL_NAME)];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, `could not prepare materialization prompt: ${message}`);
   }
-  const system = buildSystemPrompt(skillSections, parsed.item.outputPath, DEFAULT_MODEL_TYPE);
-  let human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
-  // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
-  // exact findings + the rejected code back so the model fixes them instead of re-rolling the dice.
-  const repair = await getComponentRepair(defRef);
-  if (repair && repair.findings.length) human += `\n\n${buildRepairPromptSection(repair)}`;
-  // prompt_ready args MUST equal the parallel child's queued hook args (the defRef) so the runtime
-  // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
-  return [createPromptReadyIntent(context, parentStep, hookSequential, defRef, system, human, GEN_TOOL as unknown as mls.msg.LLMTool, GEN_TOOL_NAME)];
 }
 
 function existingTsKeys(project: number, currentKey: string): Set<string> {
@@ -350,7 +398,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw new Error(`component integrity failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${componentIssues.slice(0, 8).join('; ')}`);
     }
     const saved = await saveGeneratedTs(p.project, p.level, p.folder, p.shortName, code);
-    if (!saved.ok) throw new Error('saveGeneratedTs failed');
+    if (!saved.ok) {
+      const entry = await recordComponentFailure(defRef, ['saveGeneratedTs failed before output could be persisted'], code);
+      throw new Error(`saveGeneratedTs failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
+    }
     if (saved.compileErrors.length) {
       // COMPILER IN THE LOOP (spec item 11): the .ts was saved but does not compile. Record the
       // compiler errors + the code, and force the pair stale again (the saved .ts is newer than the
@@ -359,6 +410,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       const entry = await recordComponentFailure(defRef, saved.compileErrors.map(e => `compiler: ${e}`), code);
       forceDefsStale(defRef);
       throw new Error(`compile failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${saved.compileErrors.slice(0, 4).join('; ')}`);
+    }
+    if (!saved.compilerAvailable) {
+      trace = `[infra] Monaco compiler unavailable for ${defRef}; deterministic syntax checks passed, project gate remains required`;
+      await saveHealthReport({ outcome: 'materialize-infra-warning', defRef, compilerAvailable: false, message: trace });
     }
     await clearComponentRepair(defRef); // converged: drop the repair record
   } catch (error) {
