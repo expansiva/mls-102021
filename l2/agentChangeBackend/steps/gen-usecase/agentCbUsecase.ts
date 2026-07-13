@@ -80,8 +80,12 @@ function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string
     }
     const allowedStatuses = new Set(scan.entities.flatMap(entity => (entity.fields ?? []).flatMap((field: any) => Array.isArray(field.enum) ? field.enum : [])));
     for (const step of readStringArray(fn?.steps)) {
-      for (const match of step.matchAll(/\bstatus\s*(?:=|:|is)\s*["']?([A-Za-z][A-Za-z0-9_]*)/giu)) {
-        if (!allowedStatuses.has(match[1])) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: status '${match[1]}' is not declared by any entity enum`);
+      // Steps are primarily natural-language explanations. Only validate an explicit assignment
+      // (`status = delivered`, `status: "delivered"`, `status is "delivered"`), never prose such
+      // as "status is any" or "status is one of ...".
+      for (const match of step.matchAll(/\bstatus\s*(?:=|:)\s*["']?([A-Za-z][A-Za-z0-9_]*)|\bstatus\s+is\s+["']([A-Za-z][A-Za-z0-9_]*)["']/giu)) {
+        const status = match[1] || match[2];
+        if (!allowedStatuses.has(status)) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: status '${status}' is not declared by any entity enum`);
       }
     }
   }

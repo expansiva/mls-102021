@@ -43,6 +43,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     try { preSeeds = JSON.parse(String(step.prompt || '{}'))?.preSeeds === true; } catch { /* post-register validation */ }
     const scan = await readBackendScan(['toCreate', 'inProgress']);
     const project = mls.actualProject || 0;
+    const moduleName = scan.moduleNames[0] || 'unknown';
+    const moduleFolderPrefix = `${moduleName}/`;
     let l1Defs = 0;
     let mdmTableViolations = 0;
     const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId.toLowerCase()));
@@ -79,6 +81,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     for (const file of Object.values(mls.stor.files) as any[]) {
       if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
       const folder0 = String(file.folder || '');
+      // A Studio project can retain artifacts from a previous module. Validation must only compare
+      // the module described by the current scan; otherwise same-named cafeFlow/petShop files are
+      // cross-paired and turn a clean current module into false blocking findings.
+      if (!folder0.startsWith(moduleFolderPrefix)) continue;
       const shortName0 = String(file.shortName || '');
       // Collect materialized .ts outputs (not the .defs.ts / .d.ts) for the completeness check, and
       // record their module-local l1 imports for the cross-file resolution check below.
@@ -229,7 +235,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
 
-    const moduleName = scan.moduleNames[0] || 'unknown';
     for (const owner of scan.owners) {
       if (owner.kind !== 'operation' || !owner.id) continue;
       const controllerId = lowerFirst(owner.id).toLowerCase();
