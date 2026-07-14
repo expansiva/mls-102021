@@ -39,6 +39,20 @@ export function collectL1Imports(content: string, project: number): { key: strin
   return out;
 }
 
+/** Generated l1 code must import ONLY via the '/_<project>_/...' alias. A relative import sometimes
+ * even resolves under tsc, but it breaks the studio path convention — and it is the typical way the
+ * model tries to silence a not-yet-materialized alias import (TS2792 hint, run task2/102049: six
+ * controllers rewritten to '../../../../...' during repair). Rejected deterministically here. */
+export function collectRelativeImportIssues(code: string): string[] {
+  const issues: string[] = [];
+  const re = /\b(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]*)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    issues.push(`relative import forbidden -> '${match[1]}'; import via the '/_<project>_/l1/...' alias exactly as in the context files (keep the alias even if the target module is not materialized yet)`);
+  }
+  return issues;
+}
+
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

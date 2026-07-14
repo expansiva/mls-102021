@@ -121,7 +121,17 @@ function flattenDiagnostic(d: any): string {
   };
   const msg = flat(d?.messageText ?? d);
   const code = typeof d?.code === 'number' ? `TS${d.code}: ` : '';
-  return msg ? `${code}${msg}` : '';
+  return msg ? `${code}${sanitizeModuleHint(msg)}` : '';
+}
+
+// The stock TS2792/TS2307 hint ("Did you mean to set the 'moduleResolution' option ... 'paths'?")
+// teaches the repair model to abandon the '/_<project>_/...' alias for a relative path (observed in
+// run task2/102049: six controllers rewritten to '../../../../...'). Replace it with the actual fix.
+function sanitizeModuleHint(message: string): string {
+  return message.replace(
+    /Did you mean to set the 'moduleResolution' option to '[^']+', or to add aliases to the 'paths' option\?/g,
+    "Keep the '/_<project>_/l1/...' alias import exactly as in the context files — NEVER rewrite it as a relative path; the alias resolves once the target module is materialized.",
+  );
 }
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */

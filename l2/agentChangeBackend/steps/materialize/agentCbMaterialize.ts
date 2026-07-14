@@ -28,7 +28,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
-  collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
@@ -356,6 +356,9 @@ function validateControllerComponent(data: unknown, code: string): string[] {
 function validateGeneratedComponent(project: number, item: PipelineItem, data: unknown, code: string, currentKey: string): string[] {
   const tsKeys = existingTsKeys(project, currentKey);
   const issues = collectRawMdmAccessIssues(code);
+  // Every component type: alias imports only. Rejecting here (repair finding) stops the model from
+  // "fixing" an unresolved alias import by switching to a relative path (run task2/102049).
+  issues.push(...collectRelativeImportIssues(code));
   if (item.type === 'applicationUsecase') issues.push(...validateUsecaseComponent(project, data, code, tsKeys));
   if (item.type === 'httpController') issues.push(...validateControllerComponent(data, code));
   return issues;

@@ -1,6 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/steps/validate-all/agentCbValidateAll.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// Blocking integrity barrier: read the SAVED l1 .defs.ts files and check coverage/integrity (each
+// Integrity barrier: BLOCKING after register (preSeeds=false), NON-BLOCKING before seeds
+// (preSeeds=true: findings are console warnings + health report and the flow continues to seeds).
+// It reads the SAVED l1 .defs.ts files and checks coverage/integrity (each
 // owner produced its artifacts; no MDM/horizontal table emitted). On success -> finalize. On failure,
 // findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger ONE global repair
 // round: the component defs are forced stale, the findings are recorded (cbRepair) and cb-materialize
@@ -19,7 +21,7 @@ import { isStale } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCo
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
-  collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
@@ -108,6 +110,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         if (folder0.endsWith('/adapters/http/controllers')) controllerSources.set(shortName0.toLowerCase(), content);
         for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
+        }
+        // Alias-only imports (same rule as the materialize worker): a relative import escapes
+        // collectL1Imports entirely, so without this check it would pass the gate unseen.
+        for (const issue of collectRelativeImportIssues(content)) {
+          importReqs.push({ from: `${folder0}/${shortName0}`, key: '__relative_import__', target: issue });
         }
         const compact = content.replace(/\s+/g, ' ');
         if (/mdmEntityIndex\.findMany\(\s*\{[^}]*where\s*:\s*\{[^}]*\b(entityType|entityId|productId|warehouseId)\s*:/.test(compact)) {
@@ -281,6 +288,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // .ts. Root guard for hallucinated modules (e.g. importing layer_3_domain/rules/* — rules live
     // inside the entity, that folder is never generated). Catches it deterministically before the VM build.
     for (const req of importReqs) {
+      if (req.key === '__relative_import__') {
+        const msg = `relative import -> ${req.from}.ts: ${req.target}`;
+        missing.push(msg);
+        addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
+        continue;
+      }
       if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__' || req.key === '__invalid_raw_mdm_access__') {
         const msg = `platform contract violation -> ${req.from}.ts: ${req.target}`;
         missing.push(msg);
@@ -373,6 +386,19 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ? `${unmapped.length} finding(s) are defs-level (not repairable by re-materialization)`
         : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
       const historyNote = state.history.length ? ` | repair history (${state.history.length}): ${state.history.slice(-8).join(' | ')}` : '';
+      // PRE-SEEDS: NON-BLOCKING (user decision 2026-07-14). The pre-seeds barrier only reports —
+      // findings go to the console/health report as warnings and the flow proceeds to cb-gen-seeds,
+      // so seeds can be exercised over a partially converged l1. The post-register cb-validate-all
+      // (preSeeds=false) keeps the blocking semantics: nothing is finalized over these findings.
+      if (preSeeds) {
+        const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
+        await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
+        console.warn(`${logPrefix(agent)} ${trace}`);
+        return [
+          enqueueNext(context, parentStep, step, 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
+        ];
+      }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
       await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
       console.error(`${logPrefix(agent)} ${trace}`);
