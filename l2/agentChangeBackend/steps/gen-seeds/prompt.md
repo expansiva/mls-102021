@@ -25,3 +25,9 @@ following the relationship direction — never as an MDM row relationship.
 A foreign key that identifies a PLATFORM USER (an assignee such as an assigned worker, or an id
 resolved from the actor session like a worker/owner id) references a supplied platform-user identity
 ({ "ref": "actor:ActorId.key" }), never a fabricated table or MDM entity.
+
+For a declared image/URL field, you may request a generated local seed asset only with
+`{ "asset": "EntityId/seedKey", "kind": "image" }`. Use the row's stable EntityId/key and never
+put an asset reference in an id, key, relationship metadata, child collection, or arbitrary text
+field. The backend resolves it to a local public URL only after the optional image asset is ready;
+if generation fails, that field becomes null.

@@ -135,8 +135,18 @@ const seedReferenceSchema = {
   properties: { ref: str },
 } as const;
 
+const seedAssetReferenceSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['asset', 'kind'],
+  properties: {
+    asset: str,
+    kind: { const: 'image' },
+  },
+} as const;
+
 const seedValueSchema = {
-  anyOf: [str, num, bool, { type: 'null' }, seedReferenceSchema],
+  anyOf: [str, num, bool, { type: 'null' }, seedReferenceSchema, seedAssetReferenceSchema],
 } as const;
 
 const seedFieldSchema = {

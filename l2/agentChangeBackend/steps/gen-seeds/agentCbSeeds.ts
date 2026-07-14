@@ -130,7 +130,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', reused.content);
         if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile reused seeds.ts: ${saved.compileErrors.join('; ')}`);
         return [
-          enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
+          enqueueNext(context, parentStep, step, 'cb-seed-assets', 'agentCbSeedAssets', 'Gerar assets de seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Reused validated deterministic seed plan (${reused.summary}).`, 'input_output'),
         ];
       }
@@ -244,7 +244,7 @@ async function finalizeSeedPlan(
   const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
   return [
-    enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
+    enqueueNext(context, parentStep, step, 'cb-seed-assets', 'agentCbSeedAssets', 'Gerar assets de seeds', {}),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace} Final validation succeeded (${built.summary}).`, 'input_output'),
   ];
 }

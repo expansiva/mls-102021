@@ -13,6 +13,8 @@ export const SEED_WINDOW_START = '2026-07-01T00:00:00.000Z';
 export const SEED_WINDOW_END = '2026-07-08T00:00:00.000Z';
 export const SEED_PLAN_START = '/* <agentCbSeedsPlan>';
 export const SEED_PLAN_END = '</agentCbSeedsPlan> */';
+export const SEED_ASSET_URLS_START = '// <agentCbSeedAssetUrls>';
+export const SEED_ASSET_URLS_END = '// </agentCbSeedAssetUrls>';
 
 export interface SeedFieldDefinition {
   fieldId: string;
@@ -46,7 +48,12 @@ export interface SeedReference {
   ref: string;
 }
 
-export type SeedValue = string | number | boolean | null | SeedReference;
+export interface SeedAssetRef {
+  asset: string;
+  kind: 'image';
+}
+
+export type SeedValue = string | number | boolean | null | SeedReference | SeedAssetRef;
 
 export interface SeedFieldValue {
   name: string;
@@ -445,8 +452,14 @@ function isSeedReference(value: unknown): value is SeedReference {
   return isRecord(value) && typeof value.ref === 'string' && Object.keys(value).length === 1;
 }
 
+export function isSeedAssetRef(value: unknown): value is SeedAssetRef {
+  return isRecord(value) && value.kind === 'image' && typeof value.asset === 'string'
+    && Object.keys(value).length === 2;
+}
+
 function isSeedValue(value: unknown): value is SeedValue {
-  return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || isSeedReference(value);
+  return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    || isSeedReference(value) || isSeedAssetRef(value);
 }
 
 function parseFields(value: unknown): SeedFieldValue[] {
@@ -659,7 +672,7 @@ function mapFields(fields: SeedFieldValue[], path: string, errors: string[]): Ma
       continue;
     }
     if (!isSeedValue(field.value)) {
-      errors.push(`${path}.${field.name}: value must be a scalar, null, or { ref }`);
+      errors.push(`${path}.${field.name}: value must be a scalar, null, { ref }, or { asset, kind: 'image' }`);
       continue;
     }
     mapped.set(field.name, field.value);
@@ -723,8 +736,25 @@ function validateReference(value: SeedValue, path: string, references: Set<strin
 
 function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue | undefined, path: string, errors: string[]) {
   if (!field?.enumValues.length || value === undefined) return;
+  if (isSeedAssetRef(value)) return;
   if (isSeedReference(value) || typeof value !== 'string' || !field.enumValues.includes(value)) {
     errors.push(`${path}: expected one of ${field.enumValues.join(', ')}`);
+  }
+}
+
+function isImageOrUrlField(field: SeedFieldDefinition | undefined): boolean {
+  if (!field || /Id$/u.test(field.fieldId)) return false;
+  return /(?:image|photo|avatar|thumbnail|cover).*(?:url|uri)?$/iu.test(field.fieldId)
+    || /(?:image|url|uri)/iu.test(field.type);
+}
+
+function validateAssetReference(value: SeedValue | undefined, field: SeedFieldDefinition | undefined, path: string, errors: string[]) {
+  if (!isSeedAssetRef(value)) return;
+  if (!/^[A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*$/u.test(value.asset)) {
+    errors.push(`${path}: asset must use EntityId/seedKey`);
+  }
+  if (!isImageOrUrlField(field)) {
+    errors.push(`${path}: seed asset references are allowed only in declared image or URL fields`);
   }
 }
 
@@ -817,7 +847,9 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         if (!column.nullable && value === undefined) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
         validateTimestamp(window, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
-        validateEnum(entityFields.get(toCamel(column.name)), value, `${rowPath}.columns.${column.name}`, errors);
+        const field = entityFields.get(toCamel(column.name));
+        validateEnum(field, value, `${rowPath}.columns.${column.name}`, errors);
+        validateAssetReference(value, field, `${rowPath}.columns.${column.name}`, errors);
         if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && !isSeedReference(value)) {
           errors.push(`${rowPath}.columns.${column.name}: foreign keys must use a symbolic { ref }`);
         }
@@ -831,6 +863,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
         validateTimestamp(window, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
+        validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
         if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && !isSeedReference(value)) {
           errors.push(`${rowPath}.${field.fieldId}: entity references must use a symbolic { ref }`);
         }
@@ -846,6 +879,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
           for (const [name, value] of fields) {
             validateReference(value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, references, errors);
             validateTimestamp(window, name, value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, errors);
+            if (isSeedAssetRef(value)) errors.push(`${rowPath}.children.${child.name}.${childRow.key}.${name}: seed asset references require a declared image or URL field`);
           }
         }
       }
@@ -880,6 +914,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
         validateTimestamp(window, name, value, `${rowPath}.fields.${name}`, errors);
         validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
+        validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
       }
       for (const field of definition.fields) {
         const automaticId = field.fieldId === entityIdField(definition);
@@ -898,7 +933,10 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
           errors.push(`${relationshipPath}: targetRef '${relationship.targetRef}' must resolve to an MDM row`);
         }
         const metadata = mapFields(relationship.metadata, `${relationshipPath}.metadata`, errors);
-        for (const [name, value] of metadata) validateReference(value, `${relationshipPath}.metadata.${name}`, references, errors);
+        for (const [name, value] of metadata) {
+          validateReference(value, `${relationshipPath}.metadata.${name}`, references, errors);
+          if (isSeedAssetRef(value)) errors.push(`${relationshipPath}.metadata.${name}: seed asset references require a declared image or URL field`);
+        }
       }
     }
   }
@@ -909,9 +947,39 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
   return [...new Set(errors)];
 }
 
+interface SeedAssetValueMarker { __agentCbSeedAsset: string; }
+
 function resolveValue(value: SeedValue, ids: Map<string, string>): unknown {
+  if (isSeedAssetRef(value)) return { __agentCbSeedAsset: value.asset } satisfies SeedAssetValueMarker;
   if (!isSeedReference(value)) return value;
   return ids.get(value.ref) ?? value.ref;
+}
+
+function seedSourceLiteral(value: unknown): string {
+  return JSON.stringify(value, null, 2).replace(
+    /\{\s*"__agentCbSeedAsset"\s*:\s*"([A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*)"\s*\}/gu,
+    (_match, assetId: string) => `seedAssetUrl(${JSON.stringify(assetId)})`,
+  );
+}
+
+export function seedAssetUrlsBlock(urls: Record<string, string>, warnings: string[] = []): string {
+  const safeUrls = Object.fromEntries(Object.entries(urls)
+    .filter(([asset, url]) => /^[A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*$/u.test(asset) && typeof url === 'string' && url.startsWith('/'))
+    .sort(([left], [right]) => left.localeCompare(right)));
+  return [
+    SEED_ASSET_URLS_START,
+    `const seedAssetUrls: Record<string, string> = ${JSON.stringify(safeUrls, null, 2)};`,
+    `const seedAssetWarnings: string[] = ${JSON.stringify([...new Set(warnings)].sort(), null, 2)};`,
+    SEED_ASSET_URLS_END,
+  ].join('\n');
+}
+
+export function updateSeedAssetUrlsInSource(source: string, urls: Record<string, string>, warnings: string[] = []): string {
+  const start = source.indexOf(SEED_ASSET_URLS_START);
+  const end = source.indexOf(SEED_ASSET_URLS_END);
+  if (start < 0 || end < start) throw new Error('seed source has no asset URL block');
+  const replacement = seedAssetUrlsBlock(urls, warnings);
+  return `${source.slice(0, start)}${replacement}${source.slice(end + SEED_ASSET_URLS_END.length)}`;
 }
 
 function resolveFields(fields: SeedFieldValue[], ids: Map<string, string>): Record<string, unknown> {
@@ -1064,10 +1132,14 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     JSON.stringify(planEnvelope, null, 2),
     SEED_PLAN_END,
     '',
+    seedAssetUrlsBlock({}, []),
+    '',
+    'function seedAssetUrl(assetId: string): string | null { return seedAssetUrls[assetId] ?? null; }',
+    '',
     `import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';`,
     '',
     ...blocks.flatMap(block => [
-      `export const ${block.exportName}: TableSeedRows = ${JSON.stringify({ seedFor: block.seedFor, rows: block.rows }, null, 2)};`,
+      `export const ${block.exportName}: TableSeedRows = ${seedSourceLiteral({ seedFor: block.seedFor, rows: block.rows })};`,
       '',
     ]),
   ];

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, extractSeedPlanFromSource,
   extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
-  seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
+  seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
   SEED_T0, SEED_T1, type SeedBuildInput,
 } from './cbSeedsCore.js';
 
@@ -138,6 +138,21 @@ test('buildSeedSource compiles a valid semantic plan into local and MDM relation
   assert.match(result.content ?? '', /requires-ingredient/);
   assert.match(result.content ?? '', /"shift_id": "[0-9a-f-]+"/);
   assert.equal(extractSeedPlanFromSource(result.content ?? '')?.summary, validInput().plan.summary);
+});
+
+test('SeedAssetRef is accepted only for declared image/URL fields and resolves through the local asset map', () => {
+  const input = validInput();
+  input.entities.find(entity => entity.entityId === 'Shift')!.fields.push(field('photoUrl', false));
+  input.plan.localTables[0].rows[0].details.push({ name: 'photoUrl', value: { asset: 'Shift/morning', kind: 'image' } });
+
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, []);
+  assert.match(built.content ?? '', /seedAssetUrl\("Shift\/morning"\)/);
+  const withUrl = updateSeedAssetUrlsInSource(built.content ?? '', { 'Shift/morning': '/cafeFlow/assets/seed/Shift/morning.webp' });
+  assert.match(withUrl, /"Shift\/morning": "\/cafeFlow\/assets\/seed\/Shift\/morning\.webp"/);
+
+  input.plan.localTables[0].rows[0].columns.find(field => field.name === 'status')!.value = { asset: 'Shift/morning', kind: 'image' };
+  assert.ok(validateSeedPlan(input).some(error => error.includes('declared image or URL fields')));
 });
 
 test('validateSeedPlan blocks invalid enum values but no longer enforces hardcoded domain invariants', () => {
