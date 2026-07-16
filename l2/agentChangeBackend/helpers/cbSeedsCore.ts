@@ -1047,15 +1047,18 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       fields[idField] = mdmId;
       const name = String(fields.name);
       const subtype = mdmSubtypeFor(entity.entityId);
+      // mdmFacade.listByType matches record.tags.includes('<moduleId>.<Type>') — the canonical tag
+      // MUST be present as a single string or every seeded entity is invisible to the module reads.
+      const tags = [`${input.moduleName}.${entity.entityId}`, input.moduleName, entity.entityId];
       indexRows.push({
         mdmId, subtype, name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, entity.entityId],
+        countryCode: countryCodeForLanguage(input.language), tags,
         searchVector: `${name} ${entity.entityId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
         dynamoPk: mdmId, createdAt: fields.createdAt, updatedAt: fields.updatedAt,
       });
       const details: Record<string, unknown> = {
         mdmId, subtype, name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, entity.entityId],
+        countryCode: countryCodeForLanguage(input.language), tags,
         aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
         createdAt: fields.createdAt, updatedAt: fields.updatedAt, [input.moduleName]: fields,
       };
@@ -1088,9 +1091,11 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
   // owns a user/rate table (see rule workerRateFromProfile) — these are the referenceable people.
   const window = windowOf(input);
   for (const identity of actorIdentities(input)) {
+    // Same canonical-tag contract as above: person identities must be listable by '<module>.Person'.
+    const actorTags = [`${input.moduleName}.Person`, input.moduleName, 'actor', identity.actorId];
     indexRows.push({
       mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
-      countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, 'actor', identity.actorId],
+      countryCode: countryCodeForLanguage(input.language), tags: actorTags,
       searchVector: `${identity.name} ${identity.actorId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
       dynamoPk: identity.mdmId, createdAt: window.start, updatedAt: window.start,
     });
@@ -1098,7 +1103,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       mdmId: identity.mdmId, version: 1,
       details: {
         mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags: [input.moduleName, 'actor', identity.actorId],
+        countryCode: countryCodeForLanguage(input.language), tags: actorTags,
         aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
         createdAt: window.start, updatedAt: window.start, actorId: identity.actorId,
       },

@@ -42,8 +42,11 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 - The usecase depends on the port interface `I{Entity}Repository` and gets the concrete adapter with
   `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. It NEVER imports the adapter.
 - The adapter is a factory `create{Entity}RepositoryAdapter(ctx): I{Entity}Repository` (methods close
-  over `ctx`). The composition root (`adapters/persistence/repositories.ts`) registers it with
-  `registerRepository('{Entity}', create{Entity}RepositoryAdapter)`.
+  over `ctx`). The composition root (`adapters/persistence/registerRepositories.ts`) registers it with
+  `registerRepository('{Entity}', create{Entity}RepositoryAdapter)`. That file is generated
+  deterministically by agentCbRegister and imported by the 102034 runtime through the
+  `persistenceModules[].tableDefsDir` config link — do NOT generate it, and do NOT import it from
+  controllers or usecases.
 
 ## Hard rules
 
