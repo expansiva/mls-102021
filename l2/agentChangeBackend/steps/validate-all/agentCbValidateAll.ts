@@ -80,6 +80,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const importReqs: { from: string; key: string; target: string }[] = []; // module-local l1 imports to resolve
     const usecaseSources = new Map<string, string>(); // usecase shortName (lc) -> generated .ts
     const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
+    const persistenceSources = new Map<string, string>(); // adapters/persistence shortName (lc) -> generated .ts
     for (const file of Object.values(mls.stor.files) as any[]) {
       if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
       const folder0 = String(file.folder || '');
@@ -108,6 +109,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           }
         }
         if (folder0.endsWith('/adapters/http/controllers')) controllerSources.set(shortName0.toLowerCase(), content);
+        if (folder0.endsWith('/adapters/persistence')) persistenceSources.set(shortName0.toLowerCase(), content);
         for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
         }
@@ -323,6 +325,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         }
       }
     }
+    // TABLE BINDING (lesson run 2026-07-16 cafeFlow: getTable('orders') vs tableName 'order'): every
+    // getTable('<name>') in a repository adapter must be a tableName declared by one of the module's
+    // TableDefinition artifacts — an unknown name only explodes at runtime (PERSISTENCE_TABLE_NOT_FOUND).
+    const declaredTableNames = new Set<string>();
+    for (const [, source] of persistenceSources) {
+      for (const m of source.matchAll(/tableName:\s*'([^']+)'/g)) declaredTableNames.add(m[1]);
+    }
+    if (declaredTableNames.size > 0) {
+      for (const [sn, source] of persistenceSources) {
+        if (!sn.endsWith('repositoryadapter')) continue;
+        for (const m of source.matchAll(/getTable(?:<[^>]*>)?\(\s*'([^']+)'\s*\)/g)) {
+          if (declaredTableNames.has(m[1])) continue;
+          const msg = `adapter ${sn} -> getTable('${m[1]}') does not match any declared tableName (${[...declaredTableNames].sort().join(', ')})`;
+          missing.push(msg);
+          const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+          if (defs) addRepair(defRefOf(defs.folder, defs.real), msg); // bad .ts -> re-materializable
+        }
+      }
+    }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];
     // Safe reconciliation policy: do not delete files that may contain a manual client edit, but
     // block on duplicate generated names so stale snake_case/camelCase artifacts cannot leak into runtime.
@@ -342,7 +363,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // (flow.json cb-gen-seeds/writes). Declarative allowlist so expected artifacts of that kind are
     // never blocking orphans; extend it here (and in flow.json expectedGeneratedTsWithoutDefs) only
     // for artifacts generated deterministically outside materialization.
-    const expectedTsWithoutDefs = new Set([`${moduleName}/layer_1_external/adapters/persistence::seeds`]);
+    const expectedTsWithoutDefs = new Set([
+      `${moduleName}/layer_1_external/adapters/persistence::seeds`,
+      // registerRepositories.ts: composition root compiled deterministically by agentCbRegister
+      // (lesson run 2026-07-16 cafeFlow: the orphan check must not flag it for manual deletion).
+      `${moduleName}/layer_1_external/adapters/persistence::registerrepositories`,
+    ]);
     for (const ts of tsFiles) {
       const tsKey = `${ts.folder}::${ts.shortName}`;
       if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey)) {

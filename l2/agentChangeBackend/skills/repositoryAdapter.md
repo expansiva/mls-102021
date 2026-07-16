@@ -54,7 +54,7 @@ function toDomain(row: OrderRow): Order {
 }
 
 export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderRepository {
-  const getTable = () => ctx.data.moduleData.getTable<OrderRow>('orders');
+  const getTable = () => ctx.data.moduleData.getTable<OrderRow>('order'); // = TableDefinition.tableName, verbatim
   return {
     async getById(orderId) {
       const row = await (await getTable()).findOne({ where: { order_id: orderId } });
@@ -89,7 +89,10 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
 - Define a `{Entity}Row` (snake_case columns matching the TableDefinition) and a `{Entity}Details`
   (the JSONB payload: non-indexed fields + embedded collections). `toRow`/`toDomain`/`parseDetails`
   convert between them; `details` is `JSON.stringify` on write, safe-parse on read.
-- The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')`.
+- The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')` where
+  `{table_name}` is EXACTLY the `tableName` declared in the entity's TableDefinition (see the
+  `<entity>.d.ts` in dependsFiles). NEVER pluralize, translate or invent it — an unknown name fails
+  only at runtime with PERSISTENCE_TABLE_NOT_FOUND. The defs `tableRef` is a hint; `tableName` wins.
 - `orderBy` is always `{ field: '<column>', direction: 'asc'|'desc' }`. `getById` throws `NOT_FOUND`.
 - MDM-backed reads: resolve via `ctx.mdm.collection.listByType/getMany/hydrateMany/relatedOfMany` or
   `ctx.mdm.entity.get`; never a local table and never raw `ctx.data.mdmDocument`,

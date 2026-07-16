@@ -453,7 +453,8 @@
       ],
       "goal": "DETERMINISTIC barrier. Integrity from the SAVED l1 files: (a) every usecase port has a port + domain entity defs; (b) every controller handler.usecaseRef exists as a usecase export (coherence, catches the orderFlow break); (c) COMPLETENESS: every .defs.ts has its materialized .ts (fails if materialization is incomplete — the project-level check the per-file Monaco compile misses); (d) ORPHANS: every generated .ts must have its .defs.ts, EXCEPT the declared expectedGeneratedTsWithoutDefs below (artifacts compiled deterministically outside the defs->materialize pipeline). REPAIR ROUTING: when EVERY finding is materialization-level (bad/missing .ts) and the global budget (1 round) is available, forces the components stale + records the findings and re-enqueues cb-materialize in repair mode (-> cb-validate-all-g{n}); defs-level findings or exhausted budget FAIL CLEAN, so finalize cannot mark owners done prematurely. Enqueue cb-finalize when clean (clears cb-repair-state).",
       "expectedGeneratedTsWithoutDefs": [
-        "l1/{module}/layer_1_external/adapters/persistence/seeds.ts (agentCbSeeds compiles it deterministically via cbSeedsCore/saveGeneratedTs; there is no seeds.defs.ts by design — lesson run 2026-07-15 cafeFlow: the orphan check must not block it)"
+        "l1/{module}/layer_1_external/adapters/persistence/seeds.ts (agentCbSeeds compiles it deterministically via cbSeedsCore/saveGeneratedTs; there is no seeds.defs.ts by design — lesson run 2026-07-15 cafeFlow: the orphan check must not block it)",
+        "l1/{module}/layer_1_external/adapters/persistence/registerRepositories.ts (agentCbRegister compiles the composition root deterministically via saveGeneratedTs; there is no .defs.ts by design — lesson run 2026-07-16 cafeFlow)"
       ],
       "savedArtifact": "l4/trace/cb-health-report.json"
     },
