@@ -337,8 +337,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (new Set(names).size > 1) missing.push(`orphan/duplicate generated defs -> ${key} has ${[...new Set(names)].join(', ')}`);
     }
     const defsKeys = new Set(defsFiles.map(d => `${d.folder}::${d.shortName}`));
+    // seeds.ts is INTENTIONALLY a .ts without a .defs.ts sibling: agentCbSeeds compiles it
+    // deterministically (cbSeedsCore -> saveGeneratedTs), outside the defs->materialize pipeline
+    // (flow.json cb-gen-seeds/writes). Declarative allowlist so expected artifacts of that kind are
+    // never blocking orphans; extend it here (and in flow.json expectedGeneratedTsWithoutDefs) only
+    // for artifacts generated deterministically outside materialization.
+    const expectedTsWithoutDefs = new Set([`${moduleName}/layer_1_external/adapters/persistence::seeds`]);
     for (const ts of tsFiles) {
-      if (!defsKeys.has(`${ts.folder}::${ts.shortName}`)) {
+      const tsKey = `${ts.folder}::${ts.shortName}`;
+      if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey)) {
         missing.push(`orphan generated ts -> ${ts.folder}/${ts.real}.ts has no matching .defs.ts (manual deletion required)`);
       }
     }

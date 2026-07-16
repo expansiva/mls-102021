@@ -110,6 +110,15 @@ if (!entity) throw new AppError('NOT_FOUND', `MDM record not found: ${input.tabl
 const table = entity.details; // the master-data payload
 ```
 
+`ctx.mdm.entity.get`/`ctx.mdm.collection.getMany` return `MdmEntityReadResult`:
+`{ mdmId, version, document, index, details, related() }`.
+
+- `document` is `MdmDocumentRecord = { mdmId, version, details }` — it has **NO**
+  `createdAt`/`updatedAt`. Reading `entity.document.createdAt` is a TS2339 compile error; never
+  infer temporal metadata on `document`.
+- Timestamps live on the INDEX: `entity.index.createdAt` / `entity.index.updatedAt`
+  (`MdmEntityIndexRecord`). Module-owned dates may also live under `entity.details.<moduleId>`.
+
 For bulk reads use `ctx.mdm.collection.getMany({ mdmIds })`. For module lists use
 `ctx.mdm.collection.listByType({ type: '<module>.<Entity>' })`; this reads the promoted
 `details.moduleTypes` index. For relationship hydration use `ctx.mdm.collection.relatedOfMany(...)`

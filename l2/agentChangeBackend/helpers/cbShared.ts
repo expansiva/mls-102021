@@ -667,6 +667,103 @@ export async function saveDefs(fileInfo: CbFileInfo, exportName: string, data: u
   return ref;
 }
 
+export async function saveBackendWorkspaceConfig(): Promise<string> {
+  const project = mls.actualProject || 0;
+  if (!project) return 'l5/config.json backend skipped: project unavailable';
+  const l5 = await readJsonStor({ project, level: 5, folder: '', shortName: 'project', extension: '.json' });
+  if (!isRecord(l5)) return 'l5/config.json backend skipped: l5/project.json not found';
+  const masters = isRecord(l5.masters) ? l5.masters : {};
+  const backendSignature = isRecord(masters.backend) ? masters.backend : {};
+  const runtimeId = readId(backendSignature.runtimeProject) || '102034';
+  const config = await readJsonStor({ project, level: 5, folder: '', shortName: 'config', extension: '.json' });
+  const workspace = isRecord(config) ? config : {};
+
+  workspace.defaultProjectId = readId(workspace.defaultProjectId) || String(project);
+  const projects = ensureRecordProperty(workspace, 'projects');
+  const client = ensureProjectConfig(projects, String(project), { root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, String(project)) });
+  const backendRuntime = isRecord(projects[runtimeId]) ? projects[runtimeId] as Record<string, unknown> : {};
+  projects[runtimeId] = { ...backendRuntime, root: `../mls-${runtimeId}`, type: 'master backend' };
+  projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
+
+  const clientModules = Array.isArray(client.modules) ? client.modules.filter(isRecord) : [];
+  const persistenceModules = Array.isArray(client.persistenceModules) ? client.persistenceModules.filter(isRecord) : [];
+  client.modules = clientModules;
+  client.persistenceModules = persistenceModules;
+
+  let backendModules = 0;
+  const l5Modules = Array.isArray(l5.modules) ? l5.modules.filter(isRecord) : [];
+  for (const l5mod of l5Modules) {
+    const moduleName = readString(l5mod.moduleName);
+    const backend = isRecord(l5mod.backend) ? l5mod.backend : null;
+    if (!moduleName || !backend) continue;
+    const persistence = isRecord(backend.persistence) ? backend.persistence : {};
+    const backendControllers = readString(backend.backendControllers);
+    const tableDefsDir = readString(persistence.tableDefsDir);
+    if (!backendControllers || !tableDefsDir) continue;
+    let mod = clientModules.find(item => readString(item.moduleId) === moduleName);
+    if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
+    mod.basePath = readString(mod.basePath) || `/${moduleName}`;
+    mod.shellMode = readString(mod.shellMode) || 'spa';
+    mod.backendControllers = backendControllers;
+    delete mod.backendRouter;
+
+    let pm = persistenceModules.find(item => readString(item.moduleId) === moduleName);
+    if (!pm) { pm = { moduleId: moduleName }; persistenceModules.push(pm); }
+    pm.tableDefsDir = tableDefsDir;
+    delete pm.persistenceEntrypoint;
+    backendModules += 1;
+  }
+
+  await saveJsonStor({ project, level: 5, folder: '', shortName: 'config', extension: '.json' }, workspace);
+  return `l5/config.json backend merged (${backendModules} module(s))`;
+}
+
+async function readJsonStor(fileInfo: CbFileInfo): Promise<unknown> {
+  try {
+    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    return file && file.status !== 'deleted' ? JSON.parse(String(await file.getContent())) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveJsonStor(fileInfo: CbFileInfo, data: unknown): Promise<void> {
+  const source = `${JSON.stringify(data, null, 2)}\n`;
+  const key = mls.stor.getKeyToFile(fileInfo);
+  let file = mls.stor.files[key];
+  if (!file) file = await createStorFile({ ...fileInfo, source } as IReqCreateStorFile, false, false, false);
+  if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
+  file.updatedAt = new Date().toISOString();
+  await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+}
+
+function ensureRecordProperty(target: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (!isRecord(target[key])) target[key] = {};
+  return target[key] as Record<string, unknown>;
+}
+
+function ensureProjectConfig(projects: Record<string, unknown>, id: string, patch: Record<string, unknown>): Record<string, unknown> {
+  const existing = isRecord(projects[id]) ? projects[id] as Record<string, unknown> : {};
+  projects[id] = { ...existing, ...patch };
+  return projects[id] as Record<string, unknown>;
+}
+
+function projectRuntimeMetadata(l5: Record<string, unknown>, clientId: string): Record<string, unknown> {
+  return {
+    projectId: readId(l5.projectId) || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
+function readId(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return readString(value);
+}
+
 export async function saveAgentTrace(context: mls.msg.ExecutionContext, agentName: string, step: mls.msg.AIAgentStep): Promise<void> {
   if (!shouldSaveTrace(context)) return;
   try {

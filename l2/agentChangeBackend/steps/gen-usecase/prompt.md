@@ -71,6 +71,12 @@ function declares EXPLICIT fields:
   "query"/"view" the filter fields; for "update" id + changed fields.
 - output[]: { name, type, ofEntity? } — what the function returns (camelCase). For mutations usually
   the affected aggregate id(s) + status; for queries the projected entity fields.
+- ofEntity marks a field that ACTUALLY exists on that entity in the L4 ontology — nothing else.
+  NEGATIVE examples (never set ofEntity on these, never treat them as entity columns): input filters
+  (searchTerm, statusFilter, menuCategoryIdFilter), output collections/aliases (orders, items,
+  orderItems as a direct field of OrderItem) and derived aggregations/projections (topSellers,
+  stockAlerts, lowStockAlerts). Those are input names, output aliases or computed projections; leave
+  ofEntity off and compute them in the usecase body.
 - inputTypeName/outputTypeName (PascalCase), ports[], rulesApplied[], transactional, steps[].
 Top-level: usecaseId, ports (union), rulesApplied. Types: uuid|string|text->string, money|number->
 number, boolean, date|datetime->string, {Entity} ref->string. Call "{{toolName}}" with the single

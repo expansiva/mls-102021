@@ -5,9 +5,9 @@
 // and `persistenceModules[].tableDefsDir` -> the exported TableDefinition adapters. So NO router or
 // persistence index file is generated here. This step (a) writes the module's backend registration
 // into the CLIENT-owned l5/project.json (backendControllers dir + tableDefsDir + routeKeys) so the
-// runtime assembly can compose the workspace config.json WITHOUT the masters (102033/102034) importing
-// the client — dependency inversion, spec item 13 — and (b) gates to validateAll. NEVER registers MDM
-// tables (those belong to 102034).
+// final backend step can merge l5/config.json WITHOUT the masters (102033/102034) importing the client
+// — dependency inversion, spec item 13 — and (b) gates to validateAll. NEVER registers MDM tables
+// (those belong to 102034).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
@@ -44,8 +44,7 @@ async function updateL5BackendConfig(project: number, moduleName: string, routeK
   const file = (mls.stor.files as Record<string, any>)[key];
   if (!file || file.status === 'deleted') return 'l5/project.json not found; backend config skipped';
   const cfg = JSON.parse(String(await file.getContent()));
-  // Master signature: records who generated the backend and which production master the
-  // publish composer must use (mls-<masterProject>/l2/<agentFolder>/nodejsSaveConfigJson.ts).
+  // Master signature: records who generated the backend and which production master runtime uses.
   if (!isRecord(cfg.masters)) cfg.masters = {};
   cfg.masters.backend = { masterProject: 102021, agentFolder: 'agentChangeBackend', runtimeProject: 102034 };
   const controllersDir = `./_${project}_/l1/${moduleName}/layer_1_external/adapters/http/controllers`;

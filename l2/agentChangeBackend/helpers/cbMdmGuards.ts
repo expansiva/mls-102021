@@ -23,6 +23,11 @@ const destructuredCtxDataAccess = new RegExp(
 );
 const singularMdmGetInBlockLoop = /\b(?:for|while)\s*\([^)]*\)\s*\{[\s\S]{0,1600}?\bctx\.mdm\.entity\.get\s*\(/g;
 const singularMdmGetInArrayLoop = /\.\s*(?:map|forEach)\s*\(\s*(?:async\s*)?[\s\S]{0,900}?\bctx\.mdm\.entity\.get\s*\(/g;
+// MdmDocumentRecord is { mdmId, version, details } — it has NO timestamps. Reading
+// result.document.createdAt/updatedAt is a TS2339 against the 102034 contract; timestamps live on
+// the MDM index (result.index.createdAt/updatedAt). Only checked when the file uses ctx.mdm, so a
+// module-owned `document` object elsewhere is not a false positive.
+const mdmDocumentTimestampAccess = /\b[A-Za-z_$][\w$]*\.document\.(createdAt|updatedAt)\b/g;
 
 function pushIssue(issues: string[], seen: Set<string>, access: string, primitive: string): void {
   const hint = RAW_MDM_PRIMITIVE_HINTS[primitive] || 'ctx.mdm';
@@ -57,6 +62,15 @@ export function collectRawMdmAccessIssues(code: string): string[] {
     if (!seen.has(msg)) {
       seen.add(msg);
       issues.push(msg);
+    }
+  }
+  if (code.includes('ctx.mdm.')) {
+    for (const match of code.matchAll(mdmDocumentTimestampAccess)) {
+      const msg = `MDM document timestamp forbidden -> ${match[0]}; MdmDocumentRecord has only mdmId/version/details — read ${match[1]} from the MDM index (result.index.${match[1]})`;
+      if (!seen.has(msg)) {
+        seen.add(msg);
+        issues.push(msg);
+      }
     }
   }
   return issues;

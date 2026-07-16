@@ -33,6 +33,28 @@ test('collectRawMdmAccessIssues blocks raw MDM runtime access', () => {
   assert.match(issues.join('\n'), /mdmProspectIndex/);
 });
 
+test('collectRawMdmAccessIssues blocks timestamp reads on the MDM document', () => {
+  const issues = collectRawMdmAccessIssues(`
+    const existing = await ctx.mdm.entity.get({ mdmId: input.stockItemId });
+    const createdAt = existing.document.createdAt;
+    const updatedAt = existing.document.updatedAt;
+    const indexedAt = existing.index.createdAt;
+  `);
+
+  assert.equal(issues.length, 2);
+  assert.match(issues.join('\n'), /result\.index\.createdAt/);
+  assert.match(issues.join('\n'), /result\.index\.updatedAt/);
+});
+
+test('collectRawMdmAccessIssues ignores module-owned document objects without ctx.mdm', () => {
+  const issues = collectRawMdmAccessIssues(`
+    const record = await repositories.load(id);
+    const createdAt = record.document.createdAt;
+  `);
+
+  assert.deepEqual(issues, []);
+});
+
 test('collectRawMdmAccessIssues blocks singular MDM reads inside loops', () => {
   const issues = collectRawMdmAccessIssues(`
     for (const mdmId of input.mdmIds) {
