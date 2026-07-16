@@ -13,6 +13,48 @@ import {
   saveDefs, buildArtifact, buildPipelineItem, httpControllerFileInfo, usecaseFileInfo,
   dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+
+// Item 5 — boundary DTO (adapter HTTP owns the wire shape). The DTO .ts is a thin alias of the
+// usecase output type + identity toDto: it is the projection SEAM (the ownership boundary), so the day
+// a usecase goes domain-shaped only toDto changes and the public contract + frontend stay put. Kept as
+// an alias (not a hand-mirrored interface) so it is deterministic and always compiles. The top-level
+// `responseShape` copied into the controller defs is the single source the frontend contract derives
+// from (killing the l4 re-inference drift). Nested item schemas are NOT carried yet (they live only in
+// usecase-defs prose) — deferred; top-level fixes every reported bug and every task2 acceptance case.
+const HTTP_DTO_FOLDER_SUFFIX = 'layer_1_external/adapters/http/dto';
+
+function dtoFileInfo(module: string, ownerId: string) {
+  return { project: mls.actualProject || 0, level: 1, folder: `${module}/${HTTP_DTO_FOLDER_SUFFIX}`, shortName: lowerFirst(ownerId), extension: '.defs.ts' } as const;
+}
+
+/** Top-level wire shape from the usecase output field list (object with named fields; each field kept
+ *  as array | object | scalar). The frontend copies this instead of re-inferring the shape from l4. */
+function buildResponseShape(output: UsecaseOutputField[] | undefined): { kind: 'object'; fields: UsecaseOutputField[] } | undefined {
+  if (!Array.isArray(output) || output.length === 0) return undefined;
+  return { kind: 'object', fields: output.map(f => ({ name: f.name, type: f.type, required: f.required })) };
+}
+
+function renderDtoTs(module: string, ownerId: string, outputTypeName: string): string {
+  const project = mls.actualProject || 0;
+  const dtoName = `${capitalize(ownerId)}ResponseDto`;
+  const usecaseImport = `/_${project}_/l1/${module}/layer_2_application/usecases/${lowerFirst(ownerId)}.js`;
+  return [
+    `/// <mls fileReference="_${project}_/l1/${module}/${HTTP_DTO_FOLDER_SUFFIX}/${lowerFirst(ownerId)}.ts" enhancement="_blank"/>`,
+    ``,
+    `// Boundary DTO for the ${ownerId} routine — the wire shape owned by the HTTP adapter. Alias of the`,
+    `// usecase output today (toDto is identity); the seam lets the public contract diverge from the`,
+    `// usecase later without touching the frontend. Frontend copies the shape from the controller defs.`,
+    `import type { ${outputTypeName} } from '${usecaseImport}';`,
+    ``,
+    `export type ${dtoName} = ${outputTypeName};`,
+    ``,
+    `export function toDto(result: ${outputTypeName}): ${dtoName} {`,
+    `  return result;`,
+    `}`,
+    ``,
+  ].join('\n');
+}
 
 const AGENT_NAME = 'agentCbHttpController';
 
@@ -33,7 +75,8 @@ async function contractPageIds(): Promise<Set<string>> {
   return ids;
 }
 
-type UsecaseFn = { functionName: string; inputTypeName?: string; kind?: string };
+type UsecaseOutputField = { name: string; type: string; required: boolean };
+type UsecaseFn = { functionName: string; inputTypeName?: string; outputTypeName?: string; kind?: string; output?: UsecaseOutputField[] };
 
 /** First `export const … = {…} as const;` — the artifact block (parseDefsSource spans both exports). */
 function parseArtifactData(content: string): Record<string, unknown> | undefined {
@@ -56,7 +99,15 @@ async function readUsecaseFunctions(): Promise<Map<string, UsecaseFn[]>> {
     const usecaseId = String((data as any).usecaseId || file.shortName || '');
     const fns = Array.isArray((data as any).functions) ? (data as any).functions : [];
     const parsed: UsecaseFn[] = fns
-      .map((f: any) => ({ functionName: String(f?.functionName || ''), inputTypeName: f?.inputTypeName ? String(f.inputTypeName) : undefined, kind: f?.kind ? String(f.kind) : undefined }))
+      .map((f: any) => ({
+        functionName: String(f?.functionName || ''),
+        inputTypeName: f?.inputTypeName ? String(f.inputTypeName) : undefined,
+        outputTypeName: f?.outputTypeName ? String(f.outputTypeName) : undefined,
+        kind: f?.kind ? String(f.kind) : undefined,
+        output: Array.isArray(f?.output)
+          ? f.output.filter(isRecord).map((o: any) => ({ name: String(o?.name || ''), type: String(o?.type || 'unknown'), required: o?.required === true })).filter((o: UsecaseOutputField) => !!o.name)
+          : undefined,
+      }))
       .filter((f: UsecaseFn) => !!f.functionName);
     if (usecaseId && parsed.length) map.set(usecaseId, parsed);
   }
@@ -76,7 +127,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // Only OPERATIONS are BFF command owners. Workflows are pure orchestration — no controller/command.
       if (owner.kind !== 'operation') continue;
       const routePageId = owner.pageId || ownerId;
-      const outputSource = contracts.has(routePageId) ? 'contract' : 'usecase';
+      let outputSource = contracts.has(routePageId) ? 'contract' : 'usecase';
       // COHERENCE (item 3): bind handlers to the usecase's REAL exported functions read from the
       // generated defs — never an assumed name. This prevents the controller from importing a function
       // the usecase never produced (the orderFlow-class break). Fallback to the ownerId only if the defs
@@ -142,17 +193,33 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         });
         routes.push({ key: routeKey, handlerName });
       }
+      // Item 5: for a single-function operation, emit the boundary DTO and anchor the wire shape on it.
+      // The controller then returns ok(toDto(result)); the frontend copies responseShape by routine key.
+      // Multi-function/dispatcher owners keep the legacy path (no DTO) — best-effort, flagged.
+      const soleFn = fns.length <= 1 ? fns[0] : undefined;
+      const responseShape = soleFn ? buildResponseShape(soleFn.output) : undefined;
+      const dtoRefs: string[] = [];
+      let dtoMeta: Record<string, unknown> = {};
+      if (soleFn?.outputTypeName) {
+        await saveGeneratedTs(mls.actualProject || 0, 1, `${module}/${HTTP_DTO_FOLDER_SUFFIX}`, lowerFirst(ownerId), renderDtoTs(module, ownerId, soleFn.outputTypeName));
+        outputSource = 'dto';
+        dtoRefs.push(dtsRef(dtoFileInfo(module, ownerId)));
+        dtoMeta = { dtoTypeName: `${capitalize(ownerId)}ResponseDto`, dtoModulePath: `_${mls.actualProject || 0}_/l1/${module}/${HTTP_DTO_FOLDER_SUFFIX}/${lowerFirst(ownerId)}.js`, usecaseOutputTypeName: soleFn.outputTypeName };
+      }
       const data = {
         pageId: routePageId,
         controllerName: `${capitalize(ownerId)}Controller`,
         ownerKind: owner.kind,            // operation (workflows are skipped)
         outputSource,
+        ...dtoMeta,
+        ...(responseShape ? { responseShape } : {}),
         handlers,
         routes,
       };
       const fi = httpControllerFileInfo(module, ownerId);
-      const dependsFiles = [dtsRef(usecaseFileInfo(module, ownerId))];
-      if (contracts.has(routePageId)) dependsFiles.push(`_${mls.actualProject || 0}_/l2/${module}/web/contracts/${routePageId}.ts`);
+      const dependsFiles = [dtsRef(usecaseFileInfo(module, ownerId)), ...dtoRefs];
+      // Legacy contract-mapping path only when no DTO was emitted (DTO now owns the wire shape).
+      if (outputSource === 'contract' && contracts.has(routePageId)) dependsFiles.push(`_${mls.actualProject || 0}_/l2/${module}/web/contracts/${routePageId}.ts`);
       const pipeline = [buildPipelineItem(lowerFirst(ownerId), 'httpController', fi, dependsFiles, layerSkills('httpController.md'))];
       await saveDefs(fi, `${lowerFirst(ownerId)}Controller`, buildArtifact('httpController', ownerId, module, AGENT_NAME, data), pipeline);
       saved++;

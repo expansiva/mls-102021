@@ -5,10 +5,14 @@ one `BffHandler` per entry in `data.handlers` (each has `command`, `usecaseRef`,
 `inputTypeName`); import the usecase FUNCTION named EXACTLY by `usecaseRef` (it was read from the
 generated usecase, so the export is guaranteed to exist — never invent a different name) and its input
 type by `inputTypeName` when present (otherwise `{Capitalize(command)}Input`); call it and return its
-output. The frontend contract is OPTIONAL refinement:
-if `data.outputSource === 'contract'` (and the contract `.ts` is in dependsFiles), map the response to
-the contract Output exactly; otherwise the Output is the usecase output. Each handler validates the
-boundary input only. NO `ctx.data`, NO persistence/domain-internals import.
+output through the boundary DTO. **Output ownership (`data.outputSource`):**
+- `'dto'` (default for single-function operations): the HTTP adapter owns the wire shape. Import
+  `toDto` from `data.dtoModulePath` (the boundary DTO module) and return **`ok(toDto(result))`** — do
+  NOT unwrap or reshape the result; `toDto` is the single projection point. This decouples the public
+  contract from the usecase (the frontend copies the DTO's `responseShape`).
+- `'contract'` (legacy, only when no DTO): map the response to the frontend contract Output exactly.
+- `'usecase'` (fallback): the Output is the usecase output.
+Each handler validates the boundary input only. NO `ctx.data`, NO persistence/domain-internals import.
 
 ## Golden example (compiles)
 
@@ -16,6 +20,7 @@ boundary input only. NO `ctx.data`, NO persistence/domain-internals import.
 /// <mls fileReference="_{project}_/l1/{module}/layer_1_external/adapters/http/controllers/createOrder.ts" enhancement="_blank"/>
 import { ok, AppError, type BffHandler, type ControllerRoute } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { createOrder, type CreateOrderInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/createOrder.js';
+import { toDto } from '/_{project}_/l1/{module}/layer_1_external/adapters/http/dto/createOrder.js';
 
 export const {module}CreateOrderHandler: BffHandler = async ({ request, ctx }) => {
   const params = (request.params ?? {}) as Partial<CreateOrderInput>;
@@ -33,7 +38,8 @@ export const {module}CreateOrderHandler: BffHandler = async ({ request, ctx }) =
     items: params.items ?? [],
   };
   const result = await createOrder(ctx, input);
-  return ok(result.order);
+  // outputSource 'dto': the adapter owns the wire shape via the single projection point toDto.
+  return ok(toDto(result));
 };
 
 // Self-describing routes — the runtime discovers them by importing this controller (no router file).
@@ -65,10 +71,12 @@ export const routes: ControllerRoute[] = [
   `if (!input.<field>)` / `AppError(... field: '<field>')` for it unless the same field is also present
   in `inputContract` with `required:true`.
 - Import the usecase function named by `usecaseRef` + its Input type (`inputTypeName` when given); call
-  it; wrap the result in `ok(...)`. The imported name MUST match `usecaseRef` exactly — do not rename it
-  to the command or the page.
-- `kind: 'query'` → return the queried data (unwrap the named output property); `command`/`mutation` →
-  return the whole result. When a contract Output is provided, map field names to match it exactly.
+  it. The imported name MUST match `usecaseRef` exactly — do not rename it to the command or the page.
+- Returning the result: when `outputSource === 'dto'` (default) return `ok(toDto(result))` — the DTO is
+  the single wire-shape projection; do NOT unwrap a property or reshape (this is what keeps the frontend
+  contract stable across usecase regenerations). ONLY in the legacy `outputSource === 'contract'` /
+  `'usecase'` modes: `kind: 'query'` may unwrap the named output property and, for a contract Output,
+  map field names to match it exactly.
 - NO `ctx.data`, NO imports from `adapters/persistence` or the domain internals.
 - `kind: 'dispatcher'` → the canonical BFF route from l4 (`bffName`) over a usecase that exposes several
   functions (`usecaseRef` lists them separated by ` | `). Implement it WITHOUT calling usecases directly:

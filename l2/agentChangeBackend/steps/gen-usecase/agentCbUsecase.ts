@@ -16,7 +16,7 @@ import {
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
-  type CbScan, type CbOwner,
+  type CbScan, type CbOwner, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
@@ -115,6 +115,9 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     writes: o.writes,
     rulesApplied: o.rulesApplied,
     accessPattern: o.accessPattern ?? null,
+    // Option 3: the canonical wire shape from l4. The function output type is PINNED to this — it is
+    // copied over the model's output below, so the usecase never re-drifts the contract.
+    outputShape: o.outputShape ?? null,
     inputs: o.inputs,
     contextResolution: o.contextResolution,
     acceptanceAssertions: o.acceptanceAssertions,
@@ -123,6 +126,21 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
     entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
   };
+}
+
+// Option 3: flatten the l4 canonical outputShape to the usecase-defs top-level `output` field list
+// (downstream — gen-http responseShape, materialize — reads this shape). The full structured shape is
+// also kept on `fn.outputShape` so the usecase materializer generates the exact output interface.
+function cbOutputShapeToDefsFields(shape: CbOutputShape): Array<Record<string, unknown>> {
+  return shape.fields.map(field => {
+    const entity = field.fieldRef && field.fieldRef.includes('.') ? field.fieldRef.split('.')[0] : undefined;
+    return {
+      name: field.name,
+      type: field.type,
+      required: field.required,
+      ...(entity ? { ofEntity: entity } : {}),
+    };
+  });
 }
 
 // ── beforePromptStep: dispatch (fan-out) or worker (one usecase) ───────────────
@@ -226,8 +244,18 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const ports = [...new Set([...aggPorts, ...eventPortIds])];
     result.ports = ports;
     result.mdmRefs = [...new Set(ownerRefs.filter(id => mdmIds.has(id)))];
-    for (const fn of Array.isArray(result?.functions) ? result.functions : []) {
+    const resultFns = Array.isArray(result?.functions) ? result.functions : [];
+    for (const fn of resultFns) {
       fn.ports = readStringArray(fn?.ports).filter((id: string) => ports.includes(id)); // drop invented ports
+    }
+    // Option 3: PIN the output type to the l4 canonical outputShape. The model implements the body and
+    // declares the input; the OUTPUT is NOT the model's to invent. For a single-function operation,
+    // copy the l4 shape onto the function (structured on `outputShape`, flattened on `output`) so the
+    // usecase output = DTO = l4 and never re-drifts. Multi-function/dispatcher owners keep the model
+    // output (best-effort — no single l4 shape maps to several functions).
+    if (owner?.outputShape && resultFns.length === 1) {
+      resultFns[0].outputShape = owner.outputShape;
+      resultFns[0].output = cbOutputShapeToDefsFields(owner.outputShape);
     }
     const fi = usecaseFileInfo(module, usecaseId);
     const dependsFiles = [

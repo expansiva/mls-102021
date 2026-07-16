@@ -14,6 +14,10 @@ in its collection, save the parent. NEVER invent a child repository. "steps" are
 contract: the contract is input/output/ports.
 
 Use the L4 v2 contract directly:
+- `outputShape` (when present in the item) is the CANONICAL output structure declared by l4. The
+  function's `output[]` MUST reproduce it exactly (same field names/types/nesting); the system also pins
+  it deterministically, so do NOT invent a different output shape — your `steps` must produce that shape
+  (including computed fields like totals/top-sellers/alerts that have no entity behind them).
 - accessPattern.kind decides the function shape: list returns a collection/projection, getById requires
   the declared keyField, lookup is a short selector, commandInput mutates from the declared payload.
 - inputs[] carries a per-field "source". ONLY sources userInput, selectedEntity and routeParam are the

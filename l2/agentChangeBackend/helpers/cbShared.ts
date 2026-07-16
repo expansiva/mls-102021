@@ -88,6 +88,22 @@ export interface CbAccessPattern {
   output?: string[];
 }
 
+// Canonical output structure declared by l4 (agentNewSolution3 e5 outputShape). The usecase output
+// TYPE is pinned to this (Option 3) so it never re-drifts, and the frontend contract copies the same
+// l4 shape — neither master re-infers. Mirrors Ns3E5OutputShape/OutputField.
+export interface CbOutputField {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  required: boolean;
+  fieldRef?: string;
+  item?: { fields: CbOutputField[] };
+}
+
+export interface CbOutputShape {
+  kind: 'object' | 'list' | 'paginated';
+  fields: CbOutputField[];
+}
+
 export interface CbOperationInput {
   inputId: string;
   fieldRef: string;
@@ -117,6 +133,8 @@ export interface CbOwner {
   writes: string[];
   rulesApplied: string[];
   accessPattern?: CbAccessPattern;
+  /** Canonical output structure from l4 (Option 3): the usecase output type is pinned to this. */
+  outputShape?: CbOutputShape;
   inputs: CbOperationInput[];
   contextResolution: CbContextResolution[];
   acceptanceAssertions: string[];
@@ -423,6 +441,7 @@ function ownerFrom(
     writes,
     rulesApplied: readStringArray(obj.rulesApplied),
     accessPattern: readAccessPattern(obj.accessPattern),
+    outputShape: readOutputShape(obj.outputShape),
     inputs: readOperationInputs(obj.inputs),
     contextResolution: readContextResolution(obj.contextResolution),
     acceptanceAssertions: readStringArray(obj.acceptanceAssertions),
@@ -449,6 +468,31 @@ function readAccessPattern(value: unknown): CbAccessPattern | undefined {
     ...(readString(value.selection) ? { selection: readString(value.selection) } : {}),
     ...(readStringArray(value.output).length ? { output: readStringArray(value.output) } : {}),
   };
+}
+
+function readCbOutputField(value: unknown): CbOutputField | null {
+  if (!isRecord(value)) return null;
+  const name = readString(value.name);
+  const type = readString(value.type) as CbOutputField['type'];
+  if (!name || !type) return null;
+  const field: CbOutputField = { name, type, required: value.required === true };
+  const fieldRef = readString(value.fieldRef);
+  if (fieldRef) field.fieldRef = fieldRef;
+  if (isRecord(value.item) && Array.isArray(value.item.fields)) {
+    const fields = value.item.fields.map(readCbOutputField).filter((f): f is CbOutputField => f !== null);
+    if (fields.length) field.item = { fields };
+  }
+  return field;
+}
+
+function readOutputShape(value: unknown): CbOutputShape | undefined {
+  if (!isRecord(value)) return undefined;
+  const kind = readString(value.kind) as CbOutputShape['kind'];
+  const fields = Array.isArray(value.fields)
+    ? value.fields.map(readCbOutputField).filter((f): f is CbOutputField => f !== null)
+    : [];
+  if (!kind || fields.length === 0) return undefined;
+  return { kind, fields };
 }
 
 function readOperationInputs(value: unknown): CbOperationInput[] {

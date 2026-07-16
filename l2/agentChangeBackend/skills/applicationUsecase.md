@@ -52,9 +52,18 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
 
 - Generate ONE exported `async function` per entry in `data.functions` (a usecase may export SEVERAL),
   signature `(ctx: RequestContext, input: {inputTypeName}): Promise<{outputTypeName}>`.
-- Build the `{inputTypeName}` / `{outputTypeName}` interfaces from the function's EXPLICIT
-  `data.functions[].input[]` / `output[]` fields (name + type, `?` when `required:false`) — do NOT
-  invent fields. Export both interfaces (the controller imports them).
+- Build the `{inputTypeName}` interface from the function's EXPLICIT `data.functions[].input[]` fields
+  (name + type, `?` when `required:false`) — do NOT invent fields. Export it (the controller imports it).
+- Build the `{outputTypeName}` interface from `data.functions[].outputShape` when present — it is the
+  CANONICAL wire shape declared by l4 and is AUTHORITATIVE: the interface MUST match it EXACTLY (same
+  field names, same required-ness, same array/object nesting) and your implementation MUST return that
+  shape. `outputShape` is `{ kind, fields[] }`; each field is `{ name, type, required, fieldRef?, item? }`.
+  For a field with `type: 'array'` or `'object'` declare a named nested interface from its `item.fields`
+  (e.g. `orders: DashboardOrder[]`, with `interface DashboardOrder { ... }`), one level deep. Fields with
+  no `fieldRef` are computed/aggregate values you must produce in the body (e.g. `totalSales`,
+  `topSellers`). Do NOT add, drop or rename output fields — the frontend contract copies this same shape,
+  so any deviation re-creates the FE×BE drift. If `outputShape` is absent (legacy), fall back to building
+  `{outputTypeName}` from the flat `output[]` fields. Export the output interface(s).
 - The planned function IO was derived from the L4 v2 contract. Preserve that boundary: `accessPattern`
   decides list/get/lookup/commandInput; only inputs whose source is `userInput`, `selectedEntity` or
   `routeParam` are public required fields. Values whose source is `systemDefault`, `currentWorkspace`,
