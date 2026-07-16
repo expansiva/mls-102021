@@ -369,9 +369,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // (lesson run 2026-07-16 cafeFlow: the orphan check must not flag it for manual deletion).
       `${moduleName}/layer_1_external/adapters/persistence::registerrepositories`,
     ]);
+    // Whole-folder allowlist: the boundary DTOs (adapters/http/dto/<op>.ts + toDto, Item 5) are emitted
+    // deterministically by gen-http (one per routine, no .defs.ts by design, like seeds), so every .ts
+    // in this folder is an expected defs-less artifact. Mirrored in flow.json expectedGeneratedTsWithoutDefs.
+    const expectedTsFolderWithoutDefs = new Set([
+      `${moduleName}/layer_1_external/adapters/http/dto`,
+    ]);
     for (const ts of tsFiles) {
       const tsKey = `${ts.folder}::${ts.shortName}`;
-      if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey)) {
+      if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey) && !expectedTsFolderWithoutDefs.has(ts.folder)) {
         missing.push(`orphan generated ts -> ${ts.folder}/${ts.real}.ts has no matching .defs.ts (manual deletion required)`);
       }
     }

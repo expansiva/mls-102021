@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-07-16 — boundary DTO folder allowlisted no orphan check (Item 5 / Opção 3)
+Os DTOs de boundary (`adapters/http/dto/<op>.ts` + `toDto`, gerados determinísticamente por gen-http,
+sem `.defs.ts` por design) eram acusados como "orphan generated ts ... has no matching .defs.ts" e
+faziam o validate-all FALHAR (run 102049 16/07: 15 findings). Adicionado allowlist por PASTA
+(`expectedTsFolderWithoutDefs` = `{module}/layer_1_external/adapters/http/dto`) — como seeds/
+registerRepositories, mas por pasta (o shortName varia por routine). Espelho documental no flow.json.
+
 ## 2026-07-16 — registerRepositories.ts não é órfão + check getTable×tableName (todo/runtime/testes_run16jul_analise.md)
 
 - Lição da rodada cafeFlow/102051: o composition root `registerRepositories.ts` (gerado deterministicamente pelo agentCbRegister, sem `.defs.ts` por design) era bloqueado como órfão. Adicionado à allowlist `expectedTsWithoutDefs` (espelhada em `flow.json`).
