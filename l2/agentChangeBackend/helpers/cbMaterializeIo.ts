@@ -134,9 +134,31 @@ function sanitizeModuleHint(message: string): string {
   );
 }
 
+/** The Monaco TS worker resolves '/_<proj>_/l1/...' alias imports against LOADED MODELS (plus the
+ * publish cache, which only covers files that already existed before the run). A .ts materialized
+ * earlier in the SAME run has no publish cache yet — if its model is not loaded in the client doing
+ * this compile, the importer fails with TS2792 even though the file exists in stor (run 102049-d:
+ * the 6 controllers whose usecases were first created in that run, while the 10 pre-existing ones
+ * resolved fine). Lazily load the models of same-project l1 imports before compiling. */
+async function ensureSameProjectImportModels(project: number, content: string): Promise<void> {
+  for (const match of content.matchAll(/from\s+['"]\/_(\d+)_\/l1\/([^'"]+?)\.js['"]/gu)) {
+    if (Number(match[1]) !== project) continue;
+    const path = match[2];
+    const idx = path.lastIndexOf('/');
+    if (idx <= 0) continue;
+    const folder = path.slice(0, idx);
+    const shortName = path.slice(idx + 1);
+    if (mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, 1)]) continue;
+    const fileKey = mls.stor.getKeyToFile({ project, level: 1, folder, shortName, extension: '.ts' });
+    if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
+    try { await mls.editor.addModels(project, shortName, folder, 1); } catch { /* best effort: the compile error stays precise */ }
+  }
+}
+
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string): Promise<{ errors: string[]; available: boolean }> {
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; available: boolean }> {
   try {
+    await ensureSameProjectImportModels(project, content);
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
@@ -181,7 +203,10 @@ export async function saveGeneratedTs(
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
     if (!file) {
-      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
+      // needCreateModel=true (parity with cfeMaterializeStudio): register the Monaco model at
+      // creation so files materialized later in the run can import this one (see
+      // ensureSameProjectImportModels). needCompile=false — the explicit compile below owns that.
+      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
     } else {
       const model = await file.getOrCreateModel();
       if (model) model.model.setValue(content);
@@ -190,7 +215,7 @@ export async function saveGeneratedTs(
     // across runs); libStor.createStorFile / setContent do not set it.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName);
+    const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
     const compileErrors = [...syntaxDiagnostics(content), ...compiled.errors].slice(0, 12);
     return { ok: true, compileErrors, compilerAvailable: compiled.available };
   } catch (err) {
