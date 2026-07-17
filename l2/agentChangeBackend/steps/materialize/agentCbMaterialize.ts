@@ -384,9 +384,18 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const payload = step.interaction?.payload?.[0];
     const out = extractToolCallArgs<{ code?: string }>(payload, GEN_TOOL_NAME);
     if (!out?.code) {
-      // LLM-fixable failure: record it so the dispatcher re-spawns this worker with the finding.
-      const entry = await recordComponentFailure(defRef, ['model returned no code (missing/invalid tool call)']);
-      throw new Error(`missing generated code (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
+      // Distinguish LLM INFRA failures (proxy/credit/rate errors — the call never produced a payload)
+      // from a model that answered without the tool call. Both burn a repair attempt (an out-of-credit
+      // retry fails identically — the budget is the anti-loop), but the finding must tell the truth:
+      // run f burned its whole budget on "model returned no code" when the real cause was
+      // 402 insufficient credit.
+      const infra = (step.interaction?.trace ?? []).map(String)
+        .filter(t => t.includes('Error invoking Collab LLM proxy') || t.includes('Error executing AI task')).slice(-1)[0];
+      const message = infra
+        ? `LLM infra failure (no payload): ${infra.slice(0, 300)}`
+        : 'model returned no code (missing/invalid tool call)';
+      const entry = await recordComponentFailure(defRef, [message]);
+      throw new Error(`${infra ? 'LLM infra failure' : 'missing generated code'} (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
     }
 
     const code = applyHeader(item.outputPath, out.code);

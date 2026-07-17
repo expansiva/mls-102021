@@ -447,9 +447,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // so seeds can be exercised over a partially converged l1. The post-register cb-validate-all
       // (preSeeds=false) keeps the blocking semantics: nothing is finalized over these findings.
       if (preSeeds) {
+        // No console dump (user decision 2026-07-17, run f): the full findings list already lives on
+        // the step trace and in the health report — printing it again only floods the console.
         const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
         await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
-        console.warn(`${logPrefix(agent)} ${trace}`);
         return [
           enqueueNext(context, parentStep, step, 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
@@ -457,7 +458,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
       await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
-      console.error(`${logPrefix(agent)} ${trace}`);
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Clean run: embed the repair audit in the TASK trace (the fan-out children were deleted by the

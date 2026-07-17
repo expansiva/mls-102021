@@ -241,7 +241,12 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   let trace: string | undefined;
   try {
     const payload = step.interaction?.payload?.[0];
-    if (!payload) throw new Error('missing payload');
+    if (!payload) {
+      // Truthful finding for LLM INFRA failures (proxy/credit errors leave no payload — see run f).
+      const infra = (step.interaction?.trace ?? []).map(String)
+        .filter(t => t.includes('Error invoking Collab LLM proxy') || t.includes('Error executing AI task')).slice(-1)[0];
+      throw new Error(infra ? `LLM infra failure (no payload): ${infra.slice(0, 300)}` : 'missing payload');
+    }
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const result = out.result as any;
     const scan = await readBackendScan(['toCreate', 'inProgress']);
