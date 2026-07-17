@@ -186,6 +186,9 @@ export interface SaveGeneratedTsResult {
   /** TypeScript errors of the per-file compile (spec item 11: feed the compiler error back into the
    * repair prompt). Empty when clean or when the compile environment is unavailable. */
   compileErrors: string[];
+  /** Deterministic INTRA-FILE syntax findings (subset of compileErrors). Never a false positive —
+   * callers gate on these immediately even when the cross-file compile is deferred. */
+  syntaxErrors: string[];
   /** False means Monaco/project compilation was unavailable; syntax fallback still ran. */
   compilerAvailable: boolean;
 }
@@ -216,11 +219,12 @@ export async function saveGeneratedTs(
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
-    const compileErrors = [...syntaxDiagnostics(content), ...compiled.errors].slice(0, 12);
-    return { ok: true, compileErrors, compilerAvailable: compiled.available };
+    const syntaxErrors = syntaxDiagnostics(content).slice(0, 12);
+    const compileErrors = [...syntaxErrors, ...compiled.errors].slice(0, 12);
+    return { ok: true, compileErrors, syntaxErrors, compilerAvailable: compiled.available };
   } catch (err) {
     console.warn('[cbMaterializeIo] saveGeneratedTs failed', err);
-    return { ok: false, compileErrors: [], compilerAvailable: false };
+    return { ok: false, compileErrors: [], syntaxErrors: [], compilerAvailable: false };
   }
 }
 

@@ -416,7 +416,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     if (saved.compileErrors.length) {
       const repairEntry = await getComponentRepair(defRef);
-      if (repairEntry) {
+      // Syntax findings are intra-file and deterministic — never false, so they gate IMMEDIATELY
+      // even on the first pass (run 102049-g: a deferred TS5076 '||'/'??' mix survived to the end).
+      if (repairEntry || saved.syntaxErrors.length) {
         // REPAIR RETRY (compiler in the loop, spec item 11): on a retry every dependency is already
         // materialized, so compiler findings are real. Record errors + code and force the pair stale
         // so the dispatcher re-spawns this worker with the errors in the prompt; budget exhausted ->

@@ -5,6 +5,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbScanCreateOwners', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/scan', agentDescription: 'Deterministic todoBackend=toCreate scan', visibility: 'private', beforePromptStep };
@@ -15,6 +16,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // toCreate is the trigger; inProgress is treated as resumable (a previous run locked but did not
     // finish) so the reconciler is idempotent and never gets stuck after a partial run.
     const scan = await readBackendScan(['toCreate', 'inProgress']);
+    // FRESH BUDGETS (lesson run 102049-g): clearRepairState only ran on validate-all SUCCESS, so a
+    // failed run leaked its consumed attempts/globalAttempts into the NEXT run, which then started
+    // with the repair budget already burned. A new run regenerates the artifacts anyway — old
+    // findings reference code that is about to be replaced; reset everything at run start.
+    await clearRepairState();
     const warningTrace = scan.warnings.length ? ` Warnings: ${scan.warnings.slice(0, 8).join('; ')}` : '';
     if (scan.owners.length === 0) {
       return [
