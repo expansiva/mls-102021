@@ -406,13 +406,21 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw new Error(`saveGeneratedTs failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
     }
     if (saved.compileErrors.length) {
-      // COMPILER IN THE LOOP (spec item 11): the .ts was saved but does not compile. Record the
-      // compiler errors + the code, and force the pair stale again (the saved .ts is newer than the
-      // defs) so the dispatcher re-spawns this worker with the errors in the prompt. Budget exhausted
-      // -> the pair STAYS stale and cb-validate-all's staleness finding blocks the run.
-      const entry = await recordComponentFailure(defRef, saved.compileErrors.map(e => `compiler: ${e}`), code);
-      forceDefsStale(defRef);
-      throw new Error(`compile failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${saved.compileErrors.slice(0, 4).join('; ')}`);
+      const repairEntry = await getComponentRepair(defRef);
+      if (repairEntry) {
+        // REPAIR RETRY (compiler in the loop, spec item 11): on a retry every dependency is already
+        // materialized, so compiler findings are real. Record errors + code and force the pair stale
+        // so the dispatcher re-spawns this worker with the errors in the prompt; budget exhausted ->
+        // the pair STAYS stale and cb-validate-all's staleness finding blocks the run.
+        const entry = await recordComponentFailure(defRef, saved.compileErrors.map(e => `compiler: ${e}`), code);
+        forceDefsStale(defRef);
+        throw new Error(`compile failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${saved.compileErrors.slice(0, 4).join('; ')}`);
+      }
+      // FIRST PASS (layer sweep) — user decision 2026-07-17 (run 102049-e): compile findings here can
+      // be FALSE (siblings/other layers still materializing), so the compile gate is DEFERRED: the .ts
+      // stays saved and cb-validate-all's whole-project compile re-checks with every file present,
+      // routing REAL errors to the global repair rounds. Content checks above remain immediate gates.
+      trace = `[compile-deferred] ${saved.compileErrors.length} error(s) — re-checked by validate-all: ${saved.compileErrors.slice(0, 3).join('; ')}`;
     }
     if (!saved.compilerAvailable) {
       trace = `[infra] Monaco compiler unavailable for ${defRef}; deterministic syntax checks passed, project gate remains required`;

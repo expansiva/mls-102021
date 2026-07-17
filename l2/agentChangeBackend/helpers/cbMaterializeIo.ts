@@ -224,6 +224,23 @@ export async function saveGeneratedTs(
   }
 }
 
+/** Whole-project compile check (used by cb-validate-all): compile an already-saved generated .ts and
+ * return its errors. At that point every generated file exists, so findings are REAL — unlike the
+ * per-file compile during the layer sweep, which is deferred (see agentCbMaterialize). Returns []
+ * when Monaco is unavailable — the deterministic checks remain the floor. */
+export async function compileSavedTsAndGetErrors(project: number, folder: string, shortName: string): Promise<string[]> {
+  try {
+    const key = mls.stor.getKeyToFile({ project, level: 1, folder, shortName, extension: '.ts' });
+    const file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo | undefined;
+    if (!file || file.status === 'deleted') return [];
+    const content = String(await file.getContent() ?? '');
+    const compiled = await compileGeneratedTs(project, 1, folder, shortName, content);
+    return compiled.available ? compiled.errors : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseMaybeJson(raw: unknown): unknown {
   if (typeof raw !== 'string') return raw;
   try { return JSON.parse(raw); } catch { return null; }

@@ -3,20 +3,23 @@
 // Integrity barrier: BLOCKING after register (preSeeds=false), NON-BLOCKING before seeds
 // (preSeeds=true: findings are console warnings + health report and the flow continues to seeds).
 // It reads the SAVED l1 .defs.ts files and checks coverage/integrity (each
-// owner produced its artifacts; no MDM/horizontal table emitted). On success -> finalize. On failure,
-// findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger ONE global repair
-// round: the component defs are forced stale, the findings are recorded (cbRepair) and cb-materialize
-// is re-enqueued in repair mode — the flow reconverges back here (unique planId). Findings that are
-// DEFS-level (missing port/entity defs, defs route missing, controller/usecase defs mismatch) are NOT
-// repairable by re-materializing: the run fails CLEAN with the objective trace. Budget exhausted ->
-// clean failure too. (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
+// owner produced its artifacts; no MDM/horizontal table emitted), and runs the WHOLE-PROJECT compile
+// over the materialized .ts (the layer sweep defers its compile gate — findings there can be false
+// while siblings materialize; here they are real). On success -> finalize. On failure,
+// findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger up to
+// GLOBAL_REPAIR_BUDGET global repair rounds: the component defs are forced stale, the findings are
+// recorded (cbRepair) and cb-materialize is re-enqueued in repair mode — the flow reconverges back
+// here (unique planId). Findings that are DEFS-level (missing port/entity defs, defs route missing,
+// controller/usecase defs mismatch) are NOT repairable by re-materializing: the run fails CLEAN with
+// the objective trace. Budget exhausted -> clean failure too.
+// (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { getFileModified } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { getFileModified, compileSavedTsAndGetErrors } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isStale } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
@@ -306,6 +309,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const msg = `import unresolved -> ${req.from}.ts imports '${req.target}' which was not generated`;
         missing.push(msg);
         addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // hallucinated import -> re-materializable
+      }
+    }
+
+    // WHOLE-PROJECT COMPILE (user decision 2026-07-17, run 102049-e): the per-file compile of the
+    // layer sweep is DEFERRED (siblings/other layers still materializing produced false TS2792/type
+    // findings that burned repair budget). Here every generated .ts exists, so compiler findings are
+    // REAL and re-materializable via the global repair rounds.
+    for (const d of defsFiles) {
+      if (!tsSet.has(`${d.folder}::${d.shortName}`)) continue; // completeness finding already covers it
+      const compileErrors = await compileSavedTsAndGetErrors(project, d.folder, d.real);
+      for (const err of compileErrors.slice(0, 6)) {
+        const msg = `compiler -> ${d.folder}/${d.real}.ts: ${err}`;
+        missing.push(msg);
+        addRepair(defRefOf(d.folder, d.real), msg);
       }
     }
 

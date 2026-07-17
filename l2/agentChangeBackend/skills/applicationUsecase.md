@@ -84,6 +84,10 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   and NEVER add a rule import that is not present in `dependsFiles`. Prefer existing domain invariants
   from imported domain entities; otherwise write a small local helper in this usecase file and include
   the `ruleId` in the thrown `AppError('VALIDATION_ERROR'|'CONFLICT', …)` details.
+  HARD REQUIREMENT (deterministic gate): EVERY id in `rulesApplied` must appear VERBATIM somewhere in
+  this file, or the output is rejected. A blocking rule is covered by the `AppError` details above; a
+  NON-blocking rule (side-effect, filter, computed behavior — e.g. a cancellation that restores
+  availability) must carry a `// rule: <ruleId>` comment on the exact line(s) that enforce it.
 - Lifecycle: read current state, check the domain transition (e.g. `canTransition*`), then `save`.
 - Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Do not use
   raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and

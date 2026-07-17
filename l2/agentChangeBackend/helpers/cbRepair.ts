@@ -23,7 +23,10 @@ import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers
 /** Max REPAIR attempts per component after the first failure (first try + 2 repairs = 3 LLM calls). */
 export const COMPONENT_REPAIR_BUDGET = 2;
 /** Max full validate-all -> re-materialize repair rounds. */
-export const GLOBAL_REPAIR_BUDGET = 1;
+// 2 rounds (user decision 2026-07-17, run e): the whole-project compile check now surfaces REAL
+// compiler findings only at validate-all, so the global round is the primary fix path — one round
+// for the bulk, one for stragglers introduced by the first round's own repairs.
+export const GLOBAL_REPAIR_BUDGET = 2;
 /** Max judge passes (initial critique + 1 post-repair verification). */
 export const JUDGE_MAX_RUNS = 2;
 
@@ -46,6 +49,10 @@ export interface CbComponentRepair {
   target: string;          // defRef of the component OR 'usecase-defs:{ownerId}' for the defs phase
   attempts: number;        // failed attempts consumed so far
   findings: string[];      // last findings (fed back into the retry prompt)
+  /** Findings from EARLIER attempts that the last output resolved. Fed back so the model does not
+   * regress them while fixing the current findings (run 102049-e: attempt 3 fixed the compiler
+   * finding but reintroduced the rulesApplied finding of attempt 1 — whack-a-mole until budget). */
+  priorFindings?: string[];
   lastCode?: string;       // previous rejected code (truncated) so the model fixes, not regenerates blindly
   source: CbRepairSource;
   updatedAt: string;
@@ -141,10 +148,17 @@ export async function recordComponentFailure(target: string, findings: string[],
   return serializeRepairMutation(async () => {
     const state = await readRepairState();
     const prev = state.componentRepairs[target];
+    const current = findings.slice(0, 20);
+    // Findings the last attempt resolved (present before, absent now): carry them so the next
+    // attempt keeps them fixed instead of trading one finding for another across attempts.
+    const priorFindings = [...new Set([...(prev?.priorFindings ?? []), ...(prev?.findings ?? [])])]
+      .filter(f => !current.includes(f))
+      .slice(0, 10);
     const entry: CbComponentRepair = {
       target,
       attempts: (prev?.attempts ?? 0) + 1,
-      findings: findings.slice(0, 20),
+      findings: current,
+      ...(priorFindings.length ? { priorFindings } : {}),
       ...(lastCode ? { lastCode: lastCode.length > MAX_LAST_CODE ? `${lastCode.slice(0, MAX_LAST_CODE)}\n// ... (truncated)` : lastCode } : {}),
       source,
       updatedAt: new Date().toISOString(),
@@ -194,6 +208,13 @@ export function buildRepairPromptSection(entry: CbComponentRepair): string {
     '### Findings (each one MUST be resolved)',
     ...entry.findings.map(f => `- ${f}`),
   ];
+  if (entry.priorFindings?.length) {
+    lines.push(
+      '',
+      '### Fixed in earlier attempts — MUST STAY fixed (do NOT reintroduce)',
+      ...entry.priorFindings.map(f => `- ${f}`),
+    );
+  }
   if (entry.lastCode) {
     lines.push('', '### Previous rejected output (fix it — do not repeat these mistakes)', '```ts', entry.lastCode, '```');
   }
