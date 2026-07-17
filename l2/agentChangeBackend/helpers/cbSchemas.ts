@@ -81,7 +81,11 @@ export const repositoryAdapterResultSchema = {
 
 // A usecase file may export SEVERAL functions, each with its OWN explicit Input/Output FIELDS (not
 // just type names) so the .ts and the BFF that imports it are deterministic.
-const ioFieldSchema = { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: { name: str, type: str, required: bool, description: str, ofEntity: str } } as const;
+// `fieldRef`/`item` mirror the l4 outputShape entry vocabulary: the prompt shows the canonical
+// outputShape and models copy its entries verbatim into output[] — rejecting those keys made the
+// x-tool-strict ajv gate 502 the whole call (primary AND fallback) on run 102049. They are tolerated,
+// not consumed: the pin (cbOutputShapeToDefsFields) flattens the defs output regardless.
+const ioFieldSchema = { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: { name: str, type: str, required: bool, description: str, ofEntity: str, fieldRef: str, item: { type: 'object' } } } as const;
 
 const usecaseFunctionSchema = {
   type: 'object',

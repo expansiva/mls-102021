@@ -991,6 +991,12 @@ export function createParallelStepIntent(
   maxParallel = 10,
 ): mls.msg.AgentIntentAddStep {
   const step = createAgentStepPayload(planId, agentName, stepTitle, {}, dependsOn, 'parallel_dynamic', 'in_progress');
+  // Children inherit onFailure from the fan-out parent. Without 'continue', an LLM-CALL failure
+  // (e.g. proxy 502 after a TOOL_ARGS_SCHEMA reject on primary+fallback) marks the child failed AND
+  // the whole task failed (runLLMStepParallel default branch) — bypassing the repair loop entirely.
+  // With 'continue' the child proceeds to afterPromptStep, which finds no payload, records the repair
+  // finding and COMPLETES the step, exactly like every other worker failure class.
+  step.onFailure = 'continue';
   step.interaction = {
     input: [{ type: 'system', content: '<!-- modelType: codepro -->' }],
     cost: 0,

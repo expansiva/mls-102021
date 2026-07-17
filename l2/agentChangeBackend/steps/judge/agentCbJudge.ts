@@ -205,7 +205,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       intents.push(createParallelStepIntent(context, parentStep, repairPlanId, 'agentCbUsecase', 'Reparar usecases {{completed}}/{{total}}, falhas {{failed}}', repairedOwners, [], 10));
       // Re-verification is SCOPED to the repaired owners (mechanical) — cheaper/faster than re-judging
       // everything; run 1 already cleared the rest.
-      intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-judge-r${judgeRun + 1}`, AGENT_NAME, `Juiz LLM (re-verificação de ${repairedOwners.length})`, { planId: `cb-judge-r${judgeRun + 1}`, judgeRun: judgeRun + 1, owners: repairedOwners }, [repairPlanId], 'sequential', 'waiting_dependency')));
+      const rstep = createAgentStepPayload(`cb-judge-r${judgeRun + 1}`, AGENT_NAME, `Juiz LLM (re-verificação de ${repairedOwners.length})`, { planId: `cb-judge-r${judgeRun + 1}`, judgeRun: judgeRun + 1, owners: repairedOwners }, [repairPlanId], 'sequential', 'waiting_dependency');
+      rstep.onFailure = 'continue'; // same soft-fail as the run-1 judge step: an LLM 502 must not kill the task
+      intents.push(createAddStepIntent(context, parentStep, rstep));
       // 'input_output': the pairs prompt is the largest interaction of the run (~120KB) and the
       // findings are already durable (saveAgentTrace file + cb-repair-state); keep only the cost.
       intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',

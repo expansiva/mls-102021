@@ -80,16 +80,43 @@ function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string
     }
     const allowedStatuses = new Set(scan.entities.flatMap(entity => (entity.fields ?? []).flatMap((field: any) => Array.isArray(field.enum) ? field.enum : [])));
     for (const step of readStringArray(fn?.steps)) {
-      // Steps are primarily natural-language explanations. Only validate an explicit assignment
-      // (`status = delivered`, `status: "delivered"`, `status is "delivered"`), never prose such
-      // as "status is any" or "status is one of ...".
-      for (const match of step.matchAll(/\bstatus\s*(?:=|:)\s*["']?([A-Za-z][A-Za-z0-9_]*)|\bstatus\s+is\s+["']([A-Za-z][A-Za-z0-9_]*)["']/giu)) {
+      // Steps are primarily natural-language explanations. Only validate an explicit QUOTED
+      // assignment (`status = "delivered"`, `status: 'delivered'`, `status is "delivered"`), never
+      // prose: unquoted forms like "status: must be 'active'" captured 'must' and burned repair
+      // budget on a false positive (run 102049-c, updateReservationStatus).
+      for (const match of step.matchAll(/\bstatus\s*(?:=|:)\s*["']([A-Za-z][A-Za-z0-9_]*)["']|\bstatus\s+is\s+["']([A-Za-z][A-Za-z0-9_]*)["']/giu)) {
         const status = match[1] || match[2];
         if (!allowedStatuses.has(status)) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: status '${status}' is not declared by any entity enum`);
       }
     }
   }
   return [...new Set(issues)];
+}
+
+/** Deterministic ofEntity repair, BEFORE validation. ofEntity is metadata (never emitted as code),
+ * but models echo the l4 fieldRef into it ('Product.name' instead of 'Product') or annotate
+ * filter/projection aliases (searchTerm, minPrice) with an entity — and they repeat the mistake on
+ * repair, burning the whole component budget on something a string fix resolves (run 102049-c lost
+ * 6/16 usecases to exactly this). Fix what is fixable, DROP what is not:
+ * - 'Entity.field' -> 'Entity' (when Entity exists in the scan);
+ * - unknown entity, or a field name the entity does not declare -> remove ofEntity. */
+function sanitizeOfEntity(result: any, scan: CbScan): void {
+  const entities = new Map(scan.entities.map(entity => [entity.entityId, entity]));
+  for (const fn of Array.isArray(result?.functions) ? result.functions : []) {
+    for (const io of [...(Array.isArray(fn?.input) ? fn.input : []), ...(Array.isArray(fn?.output) ? fn.output : [])]) {
+      if (!io || typeof io !== 'object') continue;
+      const raw = readString(io.ofEntity);
+      if (!raw) continue;
+      const entityId = raw.includes('.') ? raw.split('.')[0] : raw;
+      const entity = entities.get(entityId);
+      const fieldName = readString(io.name);
+      if (!entity || (fieldName && !(entity.fields ?? []).some((field: any) => field.fieldId === fieldName))) {
+        delete io.ofEntity;
+      } else {
+        io.ofEntity = entityId;
+      }
+    }
+  }
 }
 
 // The single-owner item sent to the LLM (explicit ports/mdmRefs + entity fields to shape input/output).
@@ -173,6 +200,9 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // critique of the saved usecase defs vs the L4 contract, routing error findings back to these
     // workers (repair loop) before controllers/materialization. The judge enqueues cb-gen-http.
     const jstep = createAgentStepPayload('cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { planId: 'cb-judge', judgeRun: 1 }, [FANOUT_PLAN_ID], 'sequential', 'waiting_dependency');
+    // The judge must never kill a run (its afterPrompt fails soft to cb-gen-http). Without 'continue',
+    // an LLM-CALL failure (proxy 502) would mark the whole task failed before afterPrompt ever ran.
+    jstep.onFailure = 'continue';
     intents.push(createAddStepIntent(context, parentStep, jstep));
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)`));
     return intents;
@@ -223,7 +253,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     if (queuedOwnerId && usecaseId !== queuedOwnerId) throw new Error(`usecaseId '${usecaseId}' does not match queued owner '${queuedOwnerId}'`);
 
     // Validate raw model output before normalization. Filtering invented ports first would silently
-    // mask a bad defs response instead of routing it through the repair loop.
+    // mask a bad defs response instead of routing it through the repair loop. ofEntity is the one
+    // exception: it is repaired/dropped deterministically first (see sanitizeOfEntity) because the
+    // repair loop demonstrably cannot fix it via LLM.
+    sanitizeOfEntity(result, scan);
     const planIssues = validateUsecasePlan(result, scan, usecaseId);
     if (planIssues.length) throw new Error(`usecase defs validation failed: ${planIssues.slice(0, 12).join('; ')}`);
 

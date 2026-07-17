@@ -15,9 +15,11 @@ contract: the contract is input/output/ports.
 
 Use the L4 v2 contract directly:
 - `outputShape` (when present in the item) is the CANONICAL output structure declared by l4. The
-  function's `output[]` MUST reproduce it exactly (same field names/types/nesting); the system also pins
-  it deterministically, so do NOT invent a different output shape — your `steps` must produce that shape
-  (including computed fields like totals/top-sellers/alerts that have no entity behind them).
+  function's `output[]` MUST list its TOP-LEVEL fields with the same names and types — an array field is
+  ONE entry with type 'array' (you MAY copy the outputShape entry verbatim, `fieldRef`/`item` included,
+  but never add any other key: the tool schema rejects unknown properties). The system pins the full
+  nested shape deterministically, so do NOT invent a different output shape — your `steps` must produce
+  that shape (including computed fields like totals/top-sellers/alerts that have no entity behind them).
 - accessPattern.kind decides the function shape: list returns a collection/projection, getById requires
   the declared keyField, lookup is a short selector, commandInput mutates from the declared payload.
 - inputs[] carries a per-field "source". ONLY sources userInput, selectedEntity and routeParam are the
@@ -73,9 +75,11 @@ function declares EXPLICIT fields:
 - input[]: { name, type, required, ofEntity? } — the fields the command receives (camelCase). For a
   "create" derive from the entity's writable fields (minus server-generated ids/timestamps); for
   "query"/"view" the filter fields; for "update" id + changed fields.
-- output[]: { name, type, ofEntity? } — what the function returns (camelCase). For mutations usually
-  the affected aggregate id(s) + status; for queries the projected entity fields.
-- ofEntity marks a field that ACTUALLY exists on that entity in the L4 ontology — nothing else.
+- output[]: { name, type, ofEntity?, fieldRef?, item? } — what the function returns (camelCase). For
+  mutations usually the affected aggregate id(s) + status; for queries the projected entity fields.
+- ofEntity is the BARE entity id ('Product'), NEVER a qualified ref ('Product.name' belongs in
+  fieldRef, not here). It marks a field that ACTUALLY exists on that entity in the L4 ontology —
+  nothing else.
   NEGATIVE examples (never set ofEntity on these, never treat them as entity columns): input filters
   (searchTerm, statusFilter, menuCategoryIdFilter), output collections/aliases (orders, items,
   orderItems as a direct field of OrderItem) and derived aggregations/projections (topSellers,
