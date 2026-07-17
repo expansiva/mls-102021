@@ -206,8 +206,10 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // Re-verification is SCOPED to the repaired owners (mechanical) — cheaper/faster than re-judging
       // everything; run 1 already cleared the rest.
       intents.push(createAddStepIntent(context, parentStep, createAgentStepPayload(`cb-judge-r${judgeRun + 1}`, AGENT_NAME, `Juiz LLM (re-verificação de ${repairedOwners.length})`, { planId: `cb-judge-r${judgeRun + 1}`, judgeRun: judgeRun + 1, owners: repairedOwners }, [repairPlanId], 'sequential', 'waiting_dependency')));
+      // 'input_output': the pairs prompt is the largest interaction of the run (~120KB) and the
+      // findings are already durable (saveAgentTrace file + cb-repair-state); keep only the cost.
       intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
-        `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: ${errorsByOwner.size} usecase(s) routed to repair; ${warnings.length} warning(s)`));
+        `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: ${errorsByOwner.size} usecase(s) routed to repair; ${warnings.length} warning(s)`, 'input_output'));
       return intents;
     }
 
@@ -218,14 +220,16 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       ? `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: budget exhausted; ${leftoverErrors.length} finding(s) downgraded to warning: ${leftoverErrors.slice(0, 8).map(f => `${f.ownerId}: ${f.message}`).join('; ')}`
       : `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: clean (${warnings.length} warning(s))`;
     intents.push(enqueueNext(context, parentStep, step, 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}));
-    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', traceMsg));
+    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', traceMsg, 'input_output'));
     return intents;
   } catch (error) {
     // The judge must never kill a run by itself: fail soft to the chain, keep the trace objective.
     const msg = error instanceof Error ? error.message : String(error);
     return [
       enqueueNext(context, parentStep, step, 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `judge skipped (error): ${msg}`),
+      // 'input' only: saveAgentTrace did not run on this path, so the payload is the sole record
+      // of what the model returned — keep it for diagnosis, drop the ~120KB pairs prompt.
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `judge skipped (error): ${msg}`, 'input'),
     ];
   }
 }
