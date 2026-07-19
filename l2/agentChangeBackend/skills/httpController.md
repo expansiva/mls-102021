@@ -87,3 +87,92 @@ export const routes: ControllerRoute[] = [
 - ALWAYS export `const routes: ControllerRoute[]` with one entry per `data.routes[]`: `{ key, handler }`,
   where `key` is the route key from the defs (`{module}.{page}.{command}`) and `handler` is the exported
   handler const. The runtime discovers routes from this export — there is NO generated router file.
+
+---
+
+## V2: workspace controllers (`data.ownerKind === 'workspace'`)
+
+When `data.ownerKind === 'workspace'` this is a **BFF-per-page controller**: ONE file for the whole
+workspace/page (`data.workspaceId`), with **one handler per `data.handlers[]` entry** (each is a
+`bffCall`). The rules above still hold (boundary-only input, no `ctx.data`, `routes` export); the
+differences:
+
+- **One handler per bffCall.** `handlerName` = `data.handlers[].handlerName` (already `{workspaceId}{Pascal(bffId)}Handler`).
+  Each handler:
+  1. **Authorization** — call the shared `enforceActors(ctx, ALLOWED, '<route>')` (define it ONCE per file)
+     with the workspace scopes `data.allowedScopes`. It is permissive (the actor→login-role map is
+     pending): absent session scope → allow + `ctx.log.info('bff.actor.no-scope', …)`; a declared
+     `ctx.sessionContext.actorScope` with zero intersection → `return fail(new AppError('FORBIDDEN_ACTOR', …, 403))`.
+  2. **Input** — validate the required boundary fields from `handler.inputContract` (same source rule:
+     only `userInput`/`selectedEntity`/`routeParam`), then build the usecase input(s) from the client
+     fields. Type it as the contract `handler.contract.inputTypeName` (imported from `handler.contract.modulePath`).
+  3. **Call the usecase(s)** named EXACTLY by `handler.usecaseRefs` (real exports). Single use → one call;
+     composed (`usecaseRefs.length > 1`) → `Promise.all`, and an `optionalUses` entry degrades to `null`
+     on error (`.catch(() => null)`) with a warning in the envelope.
+  4. **Project + return** per `handler.projection`:
+     - `kind: 'object'` → `return ok({ …topFields })` typed to the contract `Output`. Each `topFields[i]`
+       reads `<opResult>.<path>` (rename to the wire `name`).
+     - `kind: 'list'` → the contract `Output` is a **BARE array** (`Item[]`). Map the usecase result's
+       array to the item columns: `const items: Output = (<opResult>.<sourceArray> ?? []).map(row => ({ …itemFields }))`
+       then `return ok(items)`. Read the `<sourceArray>` name from the usecase Output type (`.d.ts`) — for
+       a `list` usecase it is `items`.
+     - `kind: 'paginated'` → the contract `Output` is `{ <arrayFieldName>: Item[]; total; page; pageSize }`.
+       Use the DECLARED `handler.projection.arrayFieldName` (e.g. `reservations`, NEVER `items`):
+       `const <arrayFieldName>: Output['<arrayFieldName>'] = (<opResult>.<sourceArray> ?? []).map(row => ({ …itemFields }));`
+       then `return ok({ <arrayFieldName>, total: <opResult>.total, page: …, pageSize: … })`.
+     - `command` with no `handler.contract.outputTypeName` → passthrough: `return ok(<opResult>)`.
+- **Imports**: the runtime contracts line as above; per used operation, the usecase function + its Input
+  type from `/_{project}_/l1/{module}/layer_2_application/usecases/{operationId}.js`. **There is NO l1
+  contract file — do NOT import from `l1/{module}/contracts/`.** The boundary input is validated from
+  `handler.inputContract` and typed via the usecase Input type; the wire output is the projected object
+  built inline from `handler.projection` (its shape IS the contract — the frontend copies the l4 contract
+  separately). Do not declare a separate `XxxOutput` type; return the projected object structurally.
+- **`routes`**: one entry per `data.routes[]` — `{ key: '<route string>', handler: <handlerName> }`. The
+  `key` is the literal route from the defs (`{module}.{workspaceId}.{bffId}`).
+
+### V2 golden example (paginated + command, compiles)
+
+```ts
+/// <mls fileReference="_{project}_/l1/{module}/layer_1_external/adapters/http/controllers/acompanharReservas.ts" enhancement="_blank"/>
+import { ok, fail, AppError, type BffHandler, type BffResponse, type ControllerRoute, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { browseReservations, type BrowseReservationsInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/browseReservations.js';
+import { updateReservationStatus, type UpdateReservationStatusInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/updateReservationStatus.js';
+// NO l1/contracts import — the wire input is validated from handler.inputContract (typed via the usecase
+// Input) and the wire output is the projected object built inline from handler.projection.
+
+const ALLOWED: readonly string[] = ['{module}:equipeLoja'];
+function enforceActors(ctx: RequestContext, allowed: readonly string[], route: string): BffResponse | null {
+  if (allowed.length === 0) return null;
+  const scope = ctx.sessionContext?.actorScope ?? [];
+  if (scope.length === 0) { ctx.log.info('bff.actor.no-scope', { route, allowed }); return null; }
+  if (scope.some((s) => allowed.includes(s))) return null;
+  return fail(new AppError('FORBIDDEN_ACTOR', 'actor scope not permitted for ' + route, 403, { route }));
+}
+
+export const acompanharReservasListReservationsHandler: BffHandler = async ({ request, ctx }) => {
+  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.listReservations');
+  if (denial) return denial;
+  const params = (request.params ?? {}) as { statusFilter?: string; page?: number; pageSize?: number };
+  const input: BrowseReservationsInput = { statusFilter: params.statusFilter, page: params.page, pageSize: params.pageSize };
+  const result = await browseReservations(ctx, input);
+  const reservations = (result.reservations ?? []).map((row) => ({
+    reservationId: row.reservationId, customerName: row.customerName, status: row.status,
+  }));
+  return ok({ reservations, total: result.total, page: result.page, pageSize: result.pageSize });
+};
+
+export const acompanharReservasUpdateStatusHandler: BffHandler = async ({ request, ctx }) => {
+  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.updateStatus');
+  if (denial) return denial;
+  const params = (request.params ?? {}) as { reservationId?: string; newStatus?: string };
+  if (!params.reservationId) throw new AppError('VALIDATION_ERROR', 'reservationId is required', 400, { field: 'reservationId' });
+  const input: UpdateReservationStatusInput = { reservationId: params.reservationId, newStatus: params.newStatus };
+  const result = await updateReservationStatus(ctx, input);
+  return ok({ reservationId: result.reservationId, status: result.status });
+};
+
+export const routes: ControllerRoute[] = [
+  { key: '{module}.acompanharReservas.listReservations', handler: acompanharReservasListReservationsHandler },
+  { key: '{module}.acompanharReservas.updateStatus', handler: acompanharReservasUpdateStatusHandler },
+];
+```

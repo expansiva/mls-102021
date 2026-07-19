@@ -14,9 +14,8 @@ import {
   dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand,
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
-import { saveGeneratedTs, saveGeneratedFile } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
-import { renderWorkspaceController, type UsecaseFnRef } from '/_102021_/l2/agentChangeBackend/helpers/cbControllerEmit.js';
-import { renderBffContract, type CbContractTypes, type CbOpOutputShapeView } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
+import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
 
 const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 
@@ -130,17 +129,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // not the DTO seam here, not the tail (materialize/seeds/seed-assets/register/validate-all).
     const defsOnly = readCliCommand(context) === 'rebuild-defs';
 
-    // ── l4 v2: modules that declare workspaces get DETERMINISTIC per-workspace controllers (B4) + the
-    // l1 contract mirror (B5), emitted straight to .ts like DTOs/seeds. No LLM, no .defs.ts, no
-    // cb-materialize — so they are skipped in defs-only (the controller .ts is a materialization). ──
+    // ── l4 v2: modules that declare workspaces get ONE controller .defs.ts per WORKSPACE (N routes, one
+    // per bffCall) + a pipeline entry, so cb-materialize (LLM, httpController.md) generates the .ts —
+    // adding auth/filters/adjustments beyond the mechanical projection (user decision 19/jul). The
+    // controller imports the USECASE types and projects the wire output structurally — there is NO l1
+    // contract file (the wire contract of record lives in l4/contracts/*.defs.ts, which only the FE and
+    // the materializer PROMPT read; the controller does not import it). ──
     const v2Modules = new Set(scan.workspaces.map(w => w.moduleName).filter(Boolean));
-    let mirrored = 0, savedV2 = 0;
-    if (!defsOnly) {
-      for (const module of scan.moduleNames) {
-        if (!v2Modules.has(module)) continue;
-        mirrored += await generateL1Contracts(scan, module);
-        savedV2 += await emitWorkspaceControllers(scan, module, usecaseFns);
-      }
+    let savedV2 = 0;
+    for (const module of scan.moduleNames) {
+      if (!v2Modules.has(module)) continue;
+      savedV2 += await emitWorkspaceControllerDefs(scan, module, usecaseFns);   // .defs.ts (always)
     }
 
     // ── l4 v1 fallback: one controller .defs.ts per pending OPERATION (materialized by cb-materialize). ──
@@ -257,7 +256,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const next = defsOnly
       ? enqueueNext(context, parentStep, step, 'cb-rebuild-defs-cleanup', 'agentCbRebuildDefsCleanup', 'Limpar .ts derivados (defs-only)', { modules: scan.moduleNames })
       : enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .defs.ts -> .ts', {});
-    const v2Note = v2Modules.size ? ` + ${savedV2} v2 workspace controller(s), ${mirrored} l1 contract mirror(s)` : '';
+    const v2Note = v2Modules.size ? ` + ${savedV2} v2 workspace controller def(s)` : '';
     return [
       next,
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Generated ${saved} v1 controller(s)${v2Note} from l4${defsOnly ? ' (defs-only: .ts skipped)' : ''}.`),
@@ -269,80 +268,65 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-// ── B5: GENERATE the l1 contracts from the workspace bffCalls (NEVER read a `.ts`/`.d.ts` from l4 — l4
-// holds only `.defs.ts`; getContent on an l4 `.ts` 422s). The contract of record (Input/Output/route) is
-// derived deterministically from the bffCall + operation defs. Written to l1 for the controller to import. ──
-async function generateL1Contracts(scan: CbScan, module: string): Promise<number> {
+// ── B4 v2: emit ONE controller .defs.ts per WORKSPACE (N handlers/routes, one per bffCall) + a pipeline
+// entry, so cb-materialize (LLM + httpController.md) generates the .ts. The def carries what the LLM
+// needs: the routes, the usecase function to call per bffCall (real export names), the boundary
+// inputContract, the projection spec (pick/rename/$items per bffCall), the wire contract type names, and
+// the workspace actors/scopes for authorization. Deterministic def; the .ts is LLM-materialized. ──
+async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecaseFns: Map<string, UsecaseFn[]>): Promise<number> {
   const project = mls.actualProject || 0;
-  const types = buildContractTypes(scan, module);
-  let n = 0;
-  for (const ws of scan.workspaces) {
-    if (ws.moduleName !== module) continue;
-    for (const bff of ws.bffCalls) {
-      const src = renderBffContract(project, module, ws.workspaceId, bff, types);
-      if (await saveGeneratedFile(project, 1, `${module}/contracts`, `${ws.workspaceId}.${bff.bffId}`, '.ts', src)) n++;
-    }
-  }
-  return n;
-}
-
-// Type resolver for the contract generator: TS types come from the operation defs (input.type OR the
-// ontology field the input's fieldRef points at; output fields from the operation outputShape).
-function buildContractTypes(scan: CbScan, module: string): CbContractTypes {
-  const opInput = new Map<string, string>();   // `${op}.${inputId}` -> l4 type token
-  const opOutTop = new Map<string, string>();  // `${op}.${field}`   -> l4 type token (top-level output)
-  const opOutItem = new Map<string, string>(); // `${op}.${col}`     -> l4 type token (item column)
-  const entField = new Map<string, string>();  // `${Entity}.${field}` -> ontology field type
-  for (const e of scan.entities) {
-    if (e.moduleName !== module) continue;
-    for (const f of e.fields ?? []) {
-      const id = String((f as { fieldId?: unknown }).fieldId || '');
-      if (id) entField.set(`${e.entityId}.${id}`, String((f as { type?: unknown }).type || 'string'));
-    }
-  }
-  for (const o of scan.owners) {
-    if (o.kind !== 'operation' || o.moduleName !== module) continue;
-    for (const i of o.inputs) {
-      const t = i.type || (i.fieldRef ? entField.get(i.fieldRef) : '') || 'string';
-      if (i.inputId) opInput.set(`${o.id}.${i.inputId}`, t);
-    }
-    const os = o.outputShape;
-    if (os) for (const f of os.fields) {
-      opOutTop.set(`${o.id}.${f.name}`, f.type || 'string');
-      if (f.item?.fields?.length) for (const c of f.item.fields) opOutItem.set(`${o.id}.${c.name}`, c.type || 'string');
-      else if (os.kind === 'list') opOutItem.set(`${o.id}.${f.name}`, f.type || 'string'); // list: top-level fields ARE the item cols
-    }
-  }
-  return {
-    inputType: (op, field) => opInput.get(`${op}.${field}`) || 'string',
-    outputType: (op, col, fromItems) => (fromItems ? opOutItem.get(`${op}.${col}`) : opOutTop.get(`${op}.${col}`)) || 'string',
-  };
-}
-
-// ── B4: emit one deterministic controller .ts per workspace of the module (no LLM). ──
-async function emitWorkspaceControllers(scan: CbScan, module: string, usecaseFns: Map<string, UsecaseFn[]>): Promise<number> {
-  const project = mls.actualProject || 0;
-  // outputShape per operation (all statuses) — resolves `$items` to the concrete array field at emit time.
-  const opShapes = new Map<string, CbOpOutputShapeView | null>();
-  for (const o of scan.owners) {
-    if (o.kind !== 'operation' || o.moduleName !== module) continue;
-    opShapes.set(o.id, o.outputShape ? { kind: o.outputShape.kind, fields: o.outputShape.fields } : null);
-  }
-  // primary usecase function per operation (fns[0]); the controller binds to the REAL exported name.
-  const primaryFns = new Map<string, UsecaseFnRef>();
-  for (const [op, fns] of usecaseFns) {
-    const fn = fns[0];
-    if (fn) primaryFns.set(op, { functionName: fn.functionName, inputTypeName: fn.inputTypeName });
-  }
   const actorRoleScopes = new Map<string, string>();
   for (const a of scan.actors) if (a.moduleName === module) actorRoleScopes.set(a.actorId, a.roleScope);
+  const opFn = new Map<string, { functionName: string; inputTypeName?: string }>();
+  for (const [op, fns] of usecaseFns) { const fn = fns[0]; if (fn) opFn.set(op, { functionName: fn.functionName, inputTypeName: fn.inputTypeName }); }
+  const opById = new Map(scan.owners.filter(o => o.kind === 'operation' && o.moduleName === module).map(o => [o.id, o]));
 
   let n = 0;
-  for (const workspace of scan.workspaces) {
-    if (workspace.moduleName !== module || !workspace.bffCalls.length) continue;
-    const { source } = renderWorkspaceController({ project, moduleName: module, workspace, opShapes, usecaseFns: primaryFns, actorRoleScopes });
-    const r = await saveGeneratedTs(project, 1, `${module}/layer_1_external/adapters/http/controllers`, workspace.workspaceId, source);
-    if (r.ok) n++;
+  for (const ws of scan.workspaces) {
+    if (ws.moduleName !== module || !ws.bffCalls.length) continue;
+    const allowedScopes = ws.actors.map(a => actorRoleScopes.get(a) || `${module}:${a}`);
+    const handlers: Record<string, unknown>[] = [];
+    const routes: { key: string; handlerName: string }[] = [];
+    const dependsFiles = new Set<string>();
+    for (const bff of ws.bffCalls) {
+      const handlerName = `${ws.workspaceId}${capitalize(bff.bffId)}Handler`;
+      const proj = resolveBffProjection(bff);
+      const usecaseRefs = bff.uses.map(u => opFn.get(u.operationId)?.functionName || u.operationId);
+      const inputContract = bff.uses.flatMap(u => opById.get(u.operationId)?.inputs ?? []);
+      for (const u of bff.uses) dependsFiles.add(dtsRef(usecaseFileInfo(module, u.operationId)));
+      // Contract CONTEXT for the materializer prompt: the l4 contract .defs.ts (ALWAYS exists — fetchable
+      // even in defs-only). Context only — the controller does NOT import it (there is no l1 contract; it
+      // uses the usecase types + projects structurally). The wire type of record stays in l4.
+      dependsFiles.add(`_${project}_/l4/${module}/contracts/${ws.workspaceId}.${bff.bffId}.defs.ts`);
+      handlers.push({
+        handlerName,
+        command: bff.bffId,
+        bffId: bff.bffId,
+        route: bff.route,
+        kind: bff.kind,                              // query | command
+        usecaseRef: usecaseRefs.join(' | '),         // coherence check (v1-compatible); ' | ' for composed
+        usecaseRefs,
+        inputTypeName: bff.uses.length === 1 ? opFn.get(bff.uses[0].operationId)?.inputTypeName : undefined,
+        inputContract,
+        projection: { kind: proj.kind, arrayFieldName: proj.arrayFieldName, itemFields: proj.itemFields, topFields: proj.topFields },
+        optionalUses: bff.uses.filter(u => u.optional).map(u => u.operationId),
+      });
+      routes.push({ key: bff.route, handlerName });
+    }
+    const data = {
+      pageId: ws.workspaceId,
+      controllerName: `${capitalize(ws.workspaceId)}Controller`,
+      ownerKind: 'workspace',
+      workspaceId: ws.workspaceId,
+      actors: ws.actors,
+      allowedScopes,
+      handlers,
+      routes,
+    };
+    const fi = httpControllerFileInfo(module, ws.workspaceId);
+    const pipeline = [buildPipelineItem(lowerFirst(ws.workspaceId), 'httpController', fi, [...dependsFiles], layerSkills('httpController.md'))];
+    await saveDefs(fi, `${lowerFirst(ws.workspaceId)}Controller`, buildArtifact('httpController', ws.workspaceId, module, AGENT_NAME, data), pipeline);
+    n++;
   }
   return n;
 }

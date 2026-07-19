@@ -13,9 +13,20 @@ covering the MAIN lifecycle states (including at least one open/in-progress inst
 per parent for supporting entities, and one event row per operational row that produced it. Do NOT
 try to cover every state × every filter. Every local table and every MDM entity in the current wave must still receive at
 least one row; never create rows outside that wave. Use exact persistence column names in local columns; put non-indexed entity fields in
-details. A symbolic reference is the only valid foreign key format. References to prior waves must use the supplied catalog. Timestamps must be ISO 8601 within
-the supplied time window and chronologically coherent. Respect every supplied rule
-per its description. On repair, fix every listed finding.
+details. References to prior waves must use the supplied catalog. Respect every supplied rule per its description. On repair, fix every listed finding.
+
+FOREIGN KEYS (both the persistence column, e.g. `payment_id`, and the entity-reference detail field,
+e.g. `paymentId`) are ONLY ever one of two values: `null` — when the relationship does not exist for
+that row (e.g. a PENDING/unpaid reservation has NO payment, an unassigned order has no worker) — or a
+symbolic `{ "ref": "local:<Table>.<rowKey>" }` (or `mdm:`/`actor:`) pointing to a row seeded in THIS or
+a PRIOR wave. NEVER a literal id string/number, and never a bare row key. Prefer `null` over inventing a
+reference; if you set a non-null ref, that target row MUST exist in your plan.
+
+TIMESTAMPS: every field whose name ends in `At`/`Date` — INCLUDING forward-looking ones like `expiresAt`,
+`dueAt`, `readyAt`, `completedAt` — MUST be an ISO 8601 UTC value strictly INSIDE the supplied time
+window, and chronologically coherent. Model "future" as ordering WITHIN the window (e.g. `createdAt`
+near the window start, `expiresAt` later but still before the window end) — do NOT use a real
+calendar-future date outside the window.
 
 Model an L4 relationship as an MDM relationship ONLY when BOTH of its endpoints are MDM entities
 (carrying quantitative fields as metadata). Any relationship touching a non-MDM entity

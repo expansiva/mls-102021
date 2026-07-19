@@ -25,7 +25,7 @@ import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyn
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
-  collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
+  collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
@@ -207,12 +207,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
     // COHERENCE (item 3): every controller handler must reference a function the usecase actually
     // exports. Catches the "controller imports an export the usecase never produced" break (orderFlow).
+    // V1: controller id == usecase id (per operation). V2: controller id == workspaceId and each handler
+    // ref points at a DIFFERENT operation's usecase export, so check against ALL the module's exports.
+    const allUsecaseFns = new Set<string>();
+    for (const fns of usecaseFnNames.values()) for (const fn of fns) allUsecaseFns.add(fn);
     for (const c of controllers) {
-      const fns = usecaseFnNames.get(c.id);
+      const fns = isV2 ? allUsecaseFns : usecaseFnNames.get(c.id);
       for (const ref of c.refs) {
-        if (ref.includes(' | ')) continue; // dispatcher handler delegates to the concrete per-function handlers
+        if (ref.includes(' | ')) continue; // dispatcher / composed handler delegates to the concrete functions
         if (!fns) { missing.push(`controller ${c.id} -> usecase defs not found`); break; }
-        if (!fns.has(ref)) missing.push(`controller ${c.id} -> usecase export '${ref}' not found (has: ${[...fns].join(', ') || 'none'})`);
+        if (!fns.has(ref)) missing.push(`controller ${c.id} -> usecase export '${ref}' not found (has: ${[...fns].slice(0, 20).join(', ') || 'none'})`);
       }
     }
 
@@ -251,7 +255,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
 
-    // V1 canonical bffName route (no-op for v2 — its controllers have no defs, so `controllers` is empty).
+    // V1-only canonical bffName route (per-operation controller). v2 controllers are per-WORKSPACE with
+    // routes = bffCalls (checked by the coherence + routes checks above, which now apply because a v2
+    // controller HAS a .defs.ts with handlers/routes and an LLM-materialized .ts).
     if (!isV2) {
       for (const owner of scan.owners) {
         if (owner.kind !== 'operation' || !owner.id) continue;
@@ -263,14 +269,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           missing.push(`controller ${controller.id} -> missing canonical bffName route ${expectedRoute}`);
         }
       }
-    }
-
-    // V2 COHERENCE (controller x workspace): the workspace controller .ts is emitted DETERMINISTICALLY by
-    // gen-http (no .defs.ts, no repair round). Rotas esperadas = bffCalls do workspace. Blocking + clean
-    // (a finding means an emitter/upstream bug — the next full run regenerates it; materialize repair
-    // cannot). The check is a pure function in cbComponentValidators (unit-tested with violation fixtures).
-    if (isV2) {
-      for (const issue of collectV2ControllerCoherenceIssues(moduleWorkspaces, controllerSources)) missing.push(issue);
     }
 
     // COMPLETENESS (items 4 & 6): every .defs.ts must have its materialized .ts sibling. This is the
@@ -340,16 +338,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         addRepair(defRefOf(d.folder, d.real), msg);
       }
     }
-    // V2: compile the deterministic workspace controllers (they have no .defs.ts so the loop above skips
-    // them). Errors are clean/blocking — no materialize repair regenerates a v2 controller.
-    if (isV2) {
-      const controllersFolder = `${moduleName}/layer_1_external/adapters/http/controllers`;
-      for (const ws of moduleWorkspaces) {
-        if (!controllerSources.has(ws.workspaceId.toLowerCase())) continue;
-        const errs = await compileSavedTsAndGetErrors(project, controllersFolder, ws.workspaceId);
-        for (const err of errs.slice(0, 6)) missing.push(`compiler -> ${controllersFolder}/${ws.workspaceId}.ts: ${err}`);
-      }
-    }
 
     // RULES APPLIED: if a usecase defs says a rule is applied, the materialized .ts must mention that
     // rule id. This blocks the concrete "referenced in defs and then disappeared" class, while the
@@ -417,25 +405,26 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const expectedTsFolderWithoutDefs = new Set([
       `${moduleName}/layer_1_external/adapters/http/dto`,
     ]);
-    if (isV2) {
-      // v2: the workspace controllers and the l1 contract mirror (`.ts`/`.d.ts`) are emitted
-      // deterministically by gen-http (no `.defs.ts`, like seeds/registerRepositories). Mirrored in
-      // flow.json expectedGeneratedTsWithoutDefs. The `.d.ts` twins are not collected as `.ts` outputs.
-      expectedTsFolderWithoutDefs.add(`${moduleName}/layer_1_external/adapters/http/controllers`);
-      expectedTsFolderWithoutDefs.add(`${moduleName}/contracts`);
-    }
+    // v2 note: there is NO l1/contracts folder (the controller imports the usecase types + projects
+    // structurally; the wire contract of record stays in l4). v2 controllers DO have a `.defs.ts` and
+    // materialize via the pipeline, so completeness/orphan checks apply to them normally.
     for (const ts of tsFiles) {
       const tsKey = `${ts.folder}::${ts.shortName}`;
       if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey) && !expectedTsFolderWithoutDefs.has(ts.folder)) {
         missing.push(`orphan generated ts -> ${ts.folder}/${ts.real}.ts has no matching .defs.ts (manual deletion required)`);
       }
     }
-    // Older usecases/controllers frequently survive an entity regeneration. They are not safe to
-    // delete automatically because clients may edit them, so make them explicit blocking findings.
+    // Older usecases/controllers frequently survive an entity regeneration. Not safe to auto-delete
+    // (clients may edit them) -> explicit blocking findings. Usecase defs are owned by an operation;
+    // v2 controller defs are owned by a WORKSPACE (per-page), so both id sets are accepted for controllers.
     const expectedOperationIds = new Set(scan.owners.filter(owner => owner.kind === 'operation').map(owner => lowerFirst(owner.id).toLowerCase()));
+    const expectedWorkspaceIds = new Set(moduleWorkspaces.map(w => w.workspaceId.toLowerCase()));
     for (const d of defsFiles) {
-      if ((d.folder.endsWith('/layer_2_application/usecases') || d.folder.endsWith('/adapters/http/controllers')) && !expectedOperationIds.has(d.shortName)) {
+      if (d.folder.endsWith('/layer_2_application/usecases') && !expectedOperationIds.has(d.shortName)) {
         missing.push(`orphan generated defs -> ${d.folder}/${d.real}.defs.ts is not owned by a current operation (manual reconciliation required)`);
+      }
+      if (d.folder.endsWith('/adapters/http/controllers') && !expectedOperationIds.has(d.shortName) && !expectedWorkspaceIds.has(d.shortName)) {
+        missing.push(`orphan generated defs -> ${d.folder}/${d.real}.defs.ts is not owned by a current operation/workspace (manual reconciliation required)`);
       }
     }
 

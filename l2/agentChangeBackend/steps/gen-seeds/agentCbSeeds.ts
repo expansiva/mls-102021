@@ -194,7 +194,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
           forcedBatch: batch,
         }, `Seed wave ${batch.index} rejected; repair ${nextAttempt}/${MAX_PLAN_ATTEMPTS} scheduled: ${errors.slice(0, 12).join('; ')}`);
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `Seed wave ${batch.index} validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}: ${errors.slice(0, 30).join('; ')}`)];
+      // Repair budget exhausted for this wave. Seeds are TEST DATA — a wave that will not converge must
+      // NOT fail the whole backend: the composition root (registerRepositories) + l5 config + finalize
+      // are downstream of seeds and far more important than seed rows. FINALIZE with the PARTIAL plan
+      // (the waves that DID validate; this wave and any later ones are omitted, keeping the seed
+      // self-consistent — no dangling refs). validateSeedPlan requires a plan for EVERY input.tablePlans
+      // entry, so we narrow tablePlans to the SEEDED tables; the skipped table(s) are simply seeded empty
+      // at runtime. Continue to cb-seed-assets -> cb-register. Surface the give-up as a WARNING, not a fail.
+      const seededTableIds = new Set(progress.plan.localTables.map(t => t.tableId));
+      const partialInput = { ...input, tablePlans: input.tablePlans.filter(t => seededTableIds.has(t.tableId)) };
+      return finalizeSeedPlan(context, parentStep, step, hookSequential, partialInput, progress.plan,
+        `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; its table(s) seeded EMPTY so the run reaches register/finalize): ${errors.slice(0, 12).join('; ')}`);
     }
     const tokenTrace = outputTokenTrace(payload);
     const merged = mergeSeedPlans(progress.plan, plan);

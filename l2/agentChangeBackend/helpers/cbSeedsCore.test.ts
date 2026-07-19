@@ -50,6 +50,21 @@ function validInput(): SeedBuildInput {
   };
 }
 
+test('buildSeedSource: narrowing tablePlans to the seeded tables lets a partial plan finalize (seed give-up path)', () => {
+  const full = validInput();
+  // Simulate a wave giving up on the Order table (repair budget exhausted): the partial plan has only
+  // the tables that DID validate (Shift + MDM), no Order.
+  const partialPlan = { ...full.plan, localTables: full.plan.localTables.filter(t => t.tableId !== 'Order') };
+  // Without narrowing, coverage requires a plan for EVERY input.tablePlans entry -> Order is flagged.
+  const withFull = buildSeedSource({ ...full, plan: partialPlan });
+  assert.ok(withFull.errors.some(e => /missing plan for persistence table 'Order'/.test(e)), withFull.errors.join('\n'));
+  // Narrowing tablePlans to the seeded tables (what agentCbSeeds does on give-up) -> the partial
+  // validates cleanly; the skipped table is simply seeded empty at runtime.
+  const seeded = new Set(partialPlan.localTables.map(t => t.tableId));
+  const narrowed = buildSeedSource({ ...full, plan: partialPlan, tablePlans: full.tablePlans.filter(t => seeded.has(t.tableId)) });
+  assert.deepEqual(narrowed.errors, [], narrowed.errors.join('\n'));
+});
+
 test('deriveSeedPlanningWaves orders the cafeFlow graph deterministically', () => {
   assert.deepEqual(deriveSeedPlanningWaves(validInput()), [
     { index: 1, tableIds: [], mdmEntityIds: ['MenuCategory', 'StockItem'] },

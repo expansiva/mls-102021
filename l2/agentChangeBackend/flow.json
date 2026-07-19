@@ -367,9 +367,9 @@
       "dependsOn": [
         "cb-judge"
       ],
-      "goal": "DETERMINISTIC (no LLM). One controller per OPERATION owner (workflows generate none). Binds each handler to the usecase's REAL exported functions (read from the generated defs) — coherence by construction. Enqueue cb-materialize — EXCEPT under /rebuild defs (defs-only TOTAL, B2): the DTO .ts seam is NOT materialized here and the next step is cb-rebuild-defs-cleanup (skipping materialize/seeds/seed-assets/register/validate-all entirely).",
+      "goal": "DETERMINISTIC (no LLM). V1 module (no workspaces): one controller .defs.ts per OPERATION + boundary DTO .ts. V2 module (has workspaces): one controller .defs.ts per WORKSPACE (page) with N handlers/routes (one per bffCall) carrying usecaseRefs + inputContract + the projection spec (pick/rename/$items) + workspace actors/scopes; the pipeline dependsFiles reference the usecase .d.ts + the l4/contracts/*.defs.ts (context only). BOTH v1 and v2 controllers materialize via cb-materialize (LLM + httpController.md) — the LLM adds auth/filters/adjustments beyond the mechanical projection (user decision 19/jul). The v2 controller imports the USECASE types and projects the wire output structurally — there is NO l1 contract file (the wire contract of record stays in l4; only the FE copies it). Controller .defs.ts are emitted in defs-only too (review artifact). Enqueue cb-materialize — EXCEPT under /rebuild defs (defs-only TOTAL, B2): nothing is materialized and the next step is cb-rebuild-defs-cleanup.",
       "savedArtifact": [
-        "l1/{module}/layer_1_external/adapters/http/controllers/{owner}.defs.ts"
+        "l1/{module}/layer_1_external/adapters/http/controllers/{owner|workspace}.defs.ts"
       ]
     },
     {
@@ -419,7 +419,7 @@
       "dependsOn": [
         "the last cb-mat layer (materialize path only; NOT reached under /rebuild defs — that path ends at cb-rebuild-defs-cleanup)"
       ],
-      "goal": "HYBRID. An LLM returns only a strict JSON scenario plan from L4/L5/table defs; agentCbSeeds validates it deterministically, resolves symbolic refs to stable IDs, and writes l1/{module}/layer_1_external/adapters/persistence/seeds.ts. The plan is embedded and reused when still valid. Generate local, MDM entity/document, and MDM relationship rows; labels use the first language from l5/project.json. A SeedAssetRef is allowed only in declared image/URL fields. One bounded repair follows validation findings, then enqueue cb-seed-assets.",
+      "goal": "HYBRID. An LLM returns only a strict JSON scenario plan from L4/L5/table defs; agentCbSeeds validates it deterministically, resolves symbolic refs to stable IDs, and writes l1/{module}/layer_1_external/adapters/persistence/seeds.ts. The plan is embedded and reused when still valid. Generate local, MDM entity/document, and MDM relationship rows; labels use the first language from l5/project.json. A SeedAssetRef is allowed only in declared image/URL fields. Bounded repair (2 attempts) follows validation findings. NON-FATAL: if a wave still won't validate after the repair budget, agentCbSeeds does NOT fail the task (seeds are TEST DATA — the composition root/config/finalize downstream matter more): it FINALIZES with the PARTIAL plan (tablePlans narrowed to the seeded tables so coverage passes; the skipped table is seeded EMPTY) and continues to cb-seed-assets -> cb-register, surfacing the give-up as a WARNING. Then enqueue cb-seed-assets.",
       "savedArtifact": [
         "l1/{module}/layer_1_external/adapters/persistence/seeds.ts"
       ]
@@ -467,8 +467,7 @@
       "expectedGeneratedTsWithoutDefs": [
         "l1/{module}/layer_1_external/adapters/persistence/seeds.ts (agentCbSeeds compiles it deterministically via cbSeedsCore/saveGeneratedTs; there is no seeds.defs.ts by design — lesson run 2026-07-15 cafeFlow: the orphan check must not block it)",
         "l1/{module}/layer_1_external/adapters/persistence/registerRepositories.ts (agentCbRegister compiles the composition root deterministically via saveGeneratedTs; there is no .defs.ts by design — lesson run 2026-07-16 cafeFlow)",
-        "l1/{module}/layer_1_external/adapters/http/controllers/*.ts (V2 ONLY: one deterministic controller per WORKSPACE emitted by gen-http, no .defs.ts — B4)",
-        "l1/{module}/contracts/*.ts + *.d.ts (V2 ONLY: byte-mirror of l4/{module}/contracts, emitted by gen-http — B5; the .d.ts twins are not collected as .ts outputs)"
+        "(V2: there is NO l1/contracts — the controller imports the usecase types and projects the wire output structurally; the wire contract of record stays in l4/{module}/contracts/*.defs.ts, copied only by the FE. v2 controllers DO have a .defs.ts and materialize via cb-materialize, so they are NOT defs-less artifacts.)"
       ],
       "savedArtifact": "l4/trace/cb-health-report.json"
     },
