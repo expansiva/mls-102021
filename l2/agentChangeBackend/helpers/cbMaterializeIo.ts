@@ -193,6 +193,37 @@ export interface SaveGeneratedTsResult {
   compilerAvailable: boolean;
 }
 
+/** Save (create or overwrite) a generated file with an ARBITRARY extension, WITHOUT compiling. Used for
+ * byte-mirror artifacts (l1 contract copies `.ts`/`.d.ts` — B5) where the whole-project compile in
+ * validate-all owns correctness; a per-file compile of a `.d.ts` twin would be meaningless. Mirrors the
+ * write path of saveGeneratedTs (createStorFile with the Monaco model registered so later files import it). */
+export async function saveGeneratedFile(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  extension: string,
+  content: string,
+): Promise<boolean> {
+  try {
+    const fileInfo = { project, level, folder, shortName, extension };
+    const key = mls.stor.getKeyToFile(fileInfo);
+    let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
+    if (!file) {
+      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
+    } else {
+      const model = await file.getOrCreateModel();
+      if (model) model.model.setValue(content);
+    }
+    file.updatedAt = new Date().toISOString();
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    return true;
+  } catch (err) {
+    console.warn('[cbMaterializeIo] saveGeneratedFile failed', err);
+    return false;
+  }
+}
+
 /** Save (create or overwrite) a generated .ts file, force a recompile and report its errors. */
 export async function saveGeneratedTs(
   project: number,

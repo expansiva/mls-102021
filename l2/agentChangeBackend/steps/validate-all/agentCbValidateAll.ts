@@ -25,7 +25,7 @@ import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyn
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
-  collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
+  collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
@@ -50,6 +50,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const project = mls.actualProject || 0;
     const moduleName = scan.moduleNames[0] || 'unknown';
     const moduleFolderPrefix = `${moduleName}/`;
+    // l4 v2: a module that declares workspaces gets deterministic per-workspace controllers (orphan .ts,
+    // no .defs.ts) + the l1 contract mirror. The controller/route/orphan checks below branch on this.
+    const moduleWorkspaces = scan.workspaces.filter(w => w.moduleName === moduleName);
+    const isV2 = moduleWorkspaces.length > 0;
     let l1Defs = 0;
     let mdmTableViolations = 0;
     const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId.toLowerCase()));
@@ -247,15 +251,26 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
 
-    for (const owner of scan.owners) {
-      if (owner.kind !== 'operation' || !owner.id) continue;
-      const controllerId = lowerFirst(owner.id).toLowerCase();
-      const controller = controllers.find(c => c.id === controllerId);
-      if (!controller) continue;
-      const expectedRoute = owner.bffName || `${moduleName}.${owner.pageId || owner.id}.${owner.commandName || owner.id}`;
-      if (!controller.routes.some(route => route.key === expectedRoute)) {
-        missing.push(`controller ${controller.id} -> missing canonical bffName route ${expectedRoute}`);
+    // V1 canonical bffName route (no-op for v2 — its controllers have no defs, so `controllers` is empty).
+    if (!isV2) {
+      for (const owner of scan.owners) {
+        if (owner.kind !== 'operation' || !owner.id) continue;
+        const controllerId = lowerFirst(owner.id).toLowerCase();
+        const controller = controllers.find(c => c.id === controllerId);
+        if (!controller) continue;
+        const expectedRoute = owner.bffName || `${moduleName}.${owner.pageId || owner.id}.${owner.commandName || owner.id}`;
+        if (!controller.routes.some(route => route.key === expectedRoute)) {
+          missing.push(`controller ${controller.id} -> missing canonical bffName route ${expectedRoute}`);
+        }
       }
+    }
+
+    // V2 COHERENCE (controller x workspace): the workspace controller .ts is emitted DETERMINISTICALLY by
+    // gen-http (no .defs.ts, no repair round). Rotas esperadas = bffCalls do workspace. Blocking + clean
+    // (a finding means an emitter/upstream bug — the next full run regenerates it; materialize repair
+    // cannot). The check is a pure function in cbComponentValidators (unit-tested with violation fixtures).
+    if (isV2) {
+      for (const issue of collectV2ControllerCoherenceIssues(moduleWorkspaces, controllerSources)) missing.push(issue);
     }
 
     // COMPLETENESS (items 4 & 6): every .defs.ts must have its materialized .ts sibling. This is the
@@ -325,6 +340,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         addRepair(defRefOf(d.folder, d.real), msg);
       }
     }
+    // V2: compile the deterministic workspace controllers (they have no .defs.ts so the loop above skips
+    // them). Errors are clean/blocking — no materialize repair regenerates a v2 controller.
+    if (isV2) {
+      const controllersFolder = `${moduleName}/layer_1_external/adapters/http/controllers`;
+      for (const ws of moduleWorkspaces) {
+        if (!controllerSources.has(ws.workspaceId.toLowerCase())) continue;
+        const errs = await compileSavedTsAndGetErrors(project, controllersFolder, ws.workspaceId);
+        for (const err of errs.slice(0, 6)) missing.push(`compiler -> ${controllersFolder}/${ws.workspaceId}.ts: ${err}`);
+      }
+    }
 
     // RULES APPLIED: if a usecase defs says a rule is applied, the materialized .ts must mention that
     // rule id. This blocks the concrete "referenced in defs and then disappeared" class, while the
@@ -392,6 +417,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const expectedTsFolderWithoutDefs = new Set([
       `${moduleName}/layer_1_external/adapters/http/dto`,
     ]);
+    if (isV2) {
+      // v2: the workspace controllers and the l1 contract mirror (`.ts`/`.d.ts`) are emitted
+      // deterministically by gen-http (no `.defs.ts`, like seeds/registerRepositories). Mirrored in
+      // flow.json expectedGeneratedTsWithoutDefs. The `.d.ts` twins are not collected as `.ts` outputs.
+      expectedTsFolderWithoutDefs.add(`${moduleName}/layer_1_external/adapters/http/controllers`);
+      expectedTsFolderWithoutDefs.add(`${moduleName}/contracts`);
+    }
     for (const ts of tsFiles) {
       const tsKey = `${ts.folder}::${ts.shortName}`;
       if (!defsKeys.has(tsKey) && !expectedTsWithoutDefs.has(tsKey) && !expectedTsFolderWithoutDefs.has(ts.folder)) {

@@ -116,7 +116,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     }
     let configMsg = 'l5 config skipped';
     try {
-      const routeKeys = await collectRouteKeys(project);
+      // Route keys: v1 controllers expose them in their .defs.ts (collectRouteKeys); v2 controllers are
+      // deterministic .ts with no defs, so their routes come straight from the workspace bffCalls
+      // (route = <module>.<workspaceId>.<bffId>). backendControllers stays the CONTROLLERS DIR — the
+      // 102034 host discovers every workspace controller by directory, so 1-file-per-workspace needs no
+      // change there; only the informational routeKeys list must include the v2 routes.
+      const v1RouteKeys = await collectRouteKeys(project);
+      const v2RouteKeys = scan.workspaces
+        .filter(w => w.moduleName === moduleName)
+        .flatMap(w => w.bffCalls.map(b => b.route))
+        .filter(Boolean);
+      const routeKeys = [...new Set([...v1RouteKeys, ...v2RouteKeys])].sort();
       configMsg = await updateL5BackendConfig(project, moduleName, routeKeys);
     } catch (cfgError) {
       // Non-blocking: a config write failure must not abort the run.

@@ -131,3 +131,32 @@ export function collectUsecaseRules(data: unknown): string[] {
   }
   return [...rules].filter(Boolean);
 }
+
+// ── l4 v2: workspace-controller coherence (B7) ──────────────────────────────────
+// The v2 controller is emitted DETERMINISTICALLY (no .defs.ts). "Rotas esperadas = bffCalls do
+// workspace": every bffCall must have an exported handler `<ws><Bff>Handler`, registered in `routes`
+// by its `<bffId>Route` const. Pure so validate-all's check is unit-tested (bffCall sem handler / rota
+// órfã fixtures) without importing the heavy runtime graph.
+function capitalizeFirst(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+export interface V2WorkspaceForCheck { workspaceId: string; bffCalls: Array<{ bffId: string }>; }
+export function collectV2ControllerCoherenceIssues(
+  workspaces: V2WorkspaceForCheck[],
+  controllerSources: Map<string, string>, // workspaceId (lowercased) -> generated controller .ts
+): string[] {
+  const issues: string[] = [];
+  for (const ws of workspaces) {
+    if (!ws.bffCalls.length) continue;
+    const src = controllerSources.get(ws.workspaceId.toLowerCase());
+    if (!src) { issues.push(`v2 controller ${ws.workspaceId} -> .ts not generated for the workspace`); continue; }
+    const exported = collectExportedHandlers(src);
+    for (const bff of ws.bffCalls) {
+      const handlerName = `${ws.workspaceId}${capitalizeFirst(bff.bffId)}Handler`;
+      if (!exported.has(handlerName)) issues.push(`v2 controller ${ws.workspaceId} -> bffCall ${bff.bffId} has no handler ${handlerName}`);
+      else if (!new RegExp(`handler:\\s*${escapeRegExp(handlerName)}\\b`).test(src)) issues.push(`v2 controller ${ws.workspaceId} -> bffCall ${bff.bffId} handler not registered in routes`);
+      if (!new RegExp(`\\b${escapeRegExp(bff.bffId)}Route\\b`).test(src)) issues.push(`v2 controller ${ws.workspaceId} -> bffCall ${bff.bffId} route const ${bff.bffId}Route missing (rota órfã)`);
+    }
+  }
+  return issues;
+}

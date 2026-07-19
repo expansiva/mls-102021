@@ -20,6 +20,10 @@ import {
   type PlannerOutput,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
+import {
+  parseWorkspaceDefs, readModuleActors, readActorsField,
+  type CbWorkspace, type CbActor,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
 export {
   createPlannerToolSchema,
@@ -107,6 +111,9 @@ export interface CbOutputShape {
 export interface CbOperationInput {
   inputId: string;
   fieldRef: string;
+  /** l4 v2 (N1b): every input declares an explicit `type` OR a `fieldRef` — so the usecase/contract
+   * input is 100% derivable without re-inferring free inputs (page/pageSize/minPrice) from prose. */
+  type?: string;
   required: boolean;
   source: string;
   description: string;
@@ -129,6 +136,8 @@ export interface CbOwner {
   title: string;
   entity: string;
   opKind: string;            // operation CRUD/intent kind: create|update|query|view|... (l4 operation.kind)
+  /** Actors allowed on this operation. l4 v2 declares `actors: string[]`; v1 `actor: string` (folded to a 1-array). */
+  actors: string[];
   reads: string[];
   writes: string[];
   rulesApplied: string[];
@@ -183,6 +192,24 @@ export interface CbEventTarget {
   fields?: Record<string, unknown>[];
 }
 
+// l4 v2 workspace/bffCall model + pure parsers live in cbWorkspace.ts (side-effect-free so they stay
+// unit-testable — cbShared's libStor->libModel import crashes the l2 test stub). Re-exported here so
+// downstream steps keep importing the v2 model from cbShared.
+export type {
+  CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
+
+// Enumeration of the l4 contracts (`.ts`/`.d.ts`, NOT `.defs.ts`) — the byte-source mirrored into l1 (B5).
+// B1 only lists them; the copy itself is B5.
+export interface CbContractRef {
+  moduleName: string;
+  workspaceId: string;
+  bffId: string;
+  shortName: string;          // `<workspaceId>.<bffId>`
+  folder: string;             // `<module>/contracts`
+  extension: string;          // '.ts' | '.d.ts'
+}
+
 export interface CbScan {
   project: number;
   moduleNames: string[];
@@ -191,6 +218,10 @@ export interface CbScan {
   relationships: CbRelationship[];
   aggregates: CbAggregate[];  // derived baseline (the LLM index may refine)
   events: CbEventTarget[];    // kind:"event" entities, classified by eventPolicy
+  workspaces: CbWorkspace[];  // l4 v2 only (empty for v1 modules)
+  contracts: CbContractRef[]; // l4 v2 contract files (B5 mirror source; empty for v1)
+  actors: CbActor[];          // module actors.defs.ts (l4 v2); empty for v1 folder-based actors
+  siteMaps: Record<string, Record<string, unknown>>; // moduleName -> siteMap/navigation raw (best-effort view)
   warnings: string[];
 }
 
@@ -203,7 +234,11 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
   const entityToModule = new Map<string, string>();
   const entities: CbEntity[] = [];
   const relationships: CbRelationship[] = [];
-  const rawOwners: { kind: 'operation' | 'workflow'; obj: Record<string, unknown> }[] = [];
+  const rawOwners: { kind: 'operation' | 'workflow'; obj: Record<string, unknown>; moduleName?: string }[] = [];
+  const workspaces: CbWorkspace[] = [];
+  const actorsList: CbActor[] = [];
+  const siteMaps: Record<string, Record<string, unknown>> = {};
+  const siteMapSource: Record<string, 'siteMap' | 'navigation'> = {};
   const warnings: string[] = [];
 
   for (const file of Object.values(mls.stor.files) as any[]) {
@@ -213,10 +248,29 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
     const shortName = String(file.shortName || '');
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!isRecord(parsed)) continue;
+    // l4 layout: v1 keeps operations/workflows flat at the l4 root; v2 nests everything under `<module>/`.
+    const nestedModule = folder.includes('/') ? folder.split('/')[0] : '';
 
-    if (folder === 'operations') rawOwners.push({ kind: 'operation', obj: parsed });
-    else if (folder === 'workflows') rawOwners.push({ kind: 'workflow', obj: parsed });
-    else if (shortName === 'module' && folder && !folder.includes('/')) {
+    if (folder === 'operations' || folder.endsWith('/operations')) {
+      rawOwners.push({ kind: 'operation', obj: parsed, moduleName: nestedModule || undefined });
+    } else if (folder === 'workflows' || folder.endsWith('/workflows')) {
+      rawOwners.push({ kind: 'workflow', obj: parsed, moduleName: nestedModule || undefined });
+    } else if (folder.endsWith('/workspaces')) {
+      // l4 v2 only: the workspace declares the page's bffCalls (controller source — see B4).
+      const ws = parseWorkspaceDefs(parsed, nestedModule);
+      if (ws) { workspaces.push(ws); if (ws.moduleName) moduleNames.add(ws.moduleName); }
+    } else if (shortName === 'actors' && folder && !folder.includes('/')) {
+      // l4 v2 module actors file: `l4/<module>/actors.defs.ts` (folder === moduleName; actors are objects).
+      const moduleName = readString(parsed.moduleName) || folder;
+      for (const a of readModuleActors(parsed, moduleName)) actorsList.push(a);
+    } else if ((shortName === 'siteMap' || shortName === 'navigation') && folder && !folder.includes('/')) {
+      // Prefer siteMap (post-P7); navigation is the pre-P7 fallback. Kept as a raw view for menu/register.
+      const moduleName = readString(parsed.moduleName) || folder;
+      if (siteMapSource[moduleName] !== 'siteMap') {
+        siteMaps[moduleName] = parsed;
+        siteMapSource[moduleName] = shortName === 'siteMap' ? 'siteMap' : 'navigation';
+      }
+    } else if (shortName === 'module' && folder && !folder.includes('/')) {
       const moduleName = readString((isRecord(parsed.module) ? parsed.module : parsed).moduleName) || folder;
       moduleNames.add(moduleName);
       collectModuleOntology(parsed, moduleName, entities, entityToModule, relationships);
@@ -241,7 +295,8 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
 
   const moduleFallback = moduleNames.size === 1 ? Array.from(moduleNames)[0] : 'unknown';
   const allOwners = rawOwners
-    .map(({ kind, obj }) => ownerFrom(kind, obj, entityToModule, moduleFallback))
+    // v2 knows the module from the folder (`<module>/operations`); v1 (flat) derives it from the entity.
+    .map(({ kind, obj, moduleName }) => ownerFrom(kind, obj, entityToModule, moduleFallback, moduleName))
     .filter((o): o is CbOwner => !!o);
   const todoState = await readBackendTodoState(project);
   if (rawOwners.length > 0 && todoState.files === 0) {
@@ -286,7 +341,34 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
 
   const aggregates = deriveAggregates(entities, relationships, operatedRootIds);
   const events = deriveEventTargets(entities, relationships);
-  return { project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships, aggregates, events, warnings };
+  const contracts = readL4Contracts(project);
+  return {
+    project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships,
+    aggregates, events, workspaces, contracts, actors: actorsList, siteMaps, warnings,
+  };
+}
+
+// Enumerate the l4 v2 contract files (`.ts`/`.d.ts` under `<module>/contracts`). B1 lists them so B5
+// can byte-copy each into l1; the shortName is `<workspaceId>.<bffId>` (compound; split on the last dot).
+function readL4Contracts(project: number): CbContractRef[] {
+  const contracts: CbContractRef[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    const extension = String(file.extension || '');
+    if (extension !== '.ts' && extension !== '.d.ts') continue;
+    const folder = String(file.folder || '');
+    if (!folder.endsWith('/contracts')) continue;
+    const shortName = String(file.shortName || '');
+    const dot = shortName.lastIndexOf('.');
+    if (dot <= 0 || dot >= shortName.length - 1) continue; // expect `<workspaceId>.<bffId>`
+    contracts.push({
+      moduleName: folder.split('/')[0],
+      workspaceId: shortName.slice(0, dot),
+      bffId: shortName.slice(dot + 1),
+      shortName, folder, extension,
+    });
+  }
+  return contracts;
 }
 
 interface CbTodoOwner {
@@ -416,6 +498,7 @@ function ownerFrom(
   obj: Record<string, unknown>,
   entityToModule: Map<string, string>,
   fallbackModule: string,
+  explicitModule?: string,
 ): CbOwner | null {
   const id = readString(obj.operationId) || readString(obj.workflowId);
   if (!id) return null;
@@ -427,7 +510,7 @@ function ownerFrom(
   const entitiesArr = bare(readStringArray(obj.entities));
   const reads = [...new Set([...bare(readStringArray(obj.reads)), ...entitiesArr])];
   const writes = [...new Set([...bare(readStringArray(obj.writes)), ...entitiesArr])];
-  const moduleName = entityToModule.get(entity) || entityToModule.get(reads[0]) || entityToModule.get(writes[0]) || fallbackModule;
+  const moduleName = explicitModule || entityToModule.get(entity) || entityToModule.get(reads[0]) || entityToModule.get(writes[0]) || fallbackModule;
   return {
     kind,
     id,
@@ -437,6 +520,7 @@ function ownerFrom(
     title: readString(obj.title) || id,
     entity,
     opKind: readString(obj.kind),
+    actors: readActorsField(obj),
     reads,
     writes,
     rulesApplied: readStringArray(obj.rulesApplied),
@@ -499,6 +583,7 @@ function readOperationInputs(value: unknown): CbOperationInput[] {
   return Array.isArray(value) ? value.filter(isRecord).map(raw => ({
     inputId: readString(raw.inputId),
     fieldRef: readString(raw.fieldRef),
+    ...(readString(raw.type) ? { type: readString(raw.type) } : {}),
     required: raw.required === true,
     source: readString(raw.source),
     description: readString(raw.description),

@@ -367,10 +367,22 @@
       "dependsOn": [
         "cb-judge"
       ],
-      "goal": "DETERMINISTIC (no LLM). One controller per OPERATION owner (workflows generate none). Binds each handler to the usecase's REAL exported functions (read from the generated defs) — coherence by construction. Enqueue cb-materialize.",
+      "goal": "DETERMINISTIC (no LLM). One controller per OPERATION owner (workflows generate none). Binds each handler to the usecase's REAL exported functions (read from the generated defs) — coherence by construction. Enqueue cb-materialize — EXCEPT under /rebuild defs (defs-only TOTAL, B2): the DTO .ts seam is NOT materialized here and the next step is cb-rebuild-defs-cleanup (skipping materialize/seeds/seed-assets/register/validate-all entirely).",
       "savedArtifact": [
         "l1/{module}/layer_1_external/adapters/http/controllers/{owner}.defs.ts"
       ]
+    },
+    {
+      "planId": "cb-rebuild-defs-cleanup",
+      "agentName": "agentCbRebuildDefsCleanup",
+      "type": "agent",
+      "modelAlias": null,
+      "executionMode": "sequential",
+      "dependsOn": [
+        "cb-gen-http (ONLY on the /rebuild defs path; never reached in /rebuild all or /run)"
+      ],
+      "goal": "DETERMINISTIC (no LLM), /rebuild defs ONLY. Soft-deletes the DERIVED l1 backend .ts (every level-1 non-.defs.ts under the run's modules: domain/port/adapter/table/usecase/controller + seeds.ts + registerRepositories.ts + l1 contract mirror .ts/.d.ts), keeping ONLY the .defs.ts source of truth. Closes the 'stale .ts masks a worker bug' class (runs c-h) and guarantees the next /rebuild all re-materializes from zero. Best-effort: a failure never fails the tree (defs are already regenerated; .ts are recoverable + re-materializable). Enqueue cb-finalize. Trace: 'rebuild-defs: 0 materializados, M .ts soft-deletados'.",
+      "savedArtifact": []
     },
     {
       "planId": "cb-materialize",
@@ -405,7 +417,7 @@
       "modelAlias": "codehigh",
       "executionMode": "sequential",
       "dependsOn": [
-        "the last cb-mat layer, or cb-gen-http in rebuild-defs"
+        "the last cb-mat layer (materialize path only; NOT reached under /rebuild defs — that path ends at cb-rebuild-defs-cleanup)"
       ],
       "goal": "HYBRID. An LLM returns only a strict JSON scenario plan from L4/L5/table defs; agentCbSeeds validates it deterministically, resolves symbolic refs to stable IDs, and writes l1/{module}/layer_1_external/adapters/persistence/seeds.ts. The plan is embedded and reused when still valid. Generate local, MDM entity/document, and MDM relationship rows; labels use the first language from l5/project.json. A SeedAssetRef is allowed only in declared image/URL fields. One bounded repair follows validation findings, then enqueue cb-seed-assets.",
       "savedArtifact": [
@@ -451,10 +463,12 @@
       "dependsOn": [
         "cb-register"
       ],
-      "goal": "DETERMINISTIC barrier. Integrity from the SAVED l1 files: (a) every usecase port has a port + domain entity defs; (b) every controller handler.usecaseRef exists as a usecase export (coherence, catches the orderFlow break); (c) COMPLETENESS: every .defs.ts has its materialized .ts (fails if materialization is incomplete — the project-level check the per-file Monaco compile misses); (d) ORPHANS: every generated .ts must have its .defs.ts, EXCEPT the declared expectedGeneratedTsWithoutDefs below (artifacts compiled deterministically outside the defs->materialize pipeline). REPAIR ROUTING: when EVERY finding is materialization-level (bad/missing .ts) and the global budget (1 round) is available, forces the components stale + records the findings and re-enqueues cb-materialize in repair mode (-> cb-validate-all-g{n}); defs-level findings or exhausted budget FAIL CLEAN, so finalize cannot mark owners done prematurely. Enqueue cb-finalize when clean (clears cb-repair-state).",
+      "goal": "DETERMINISTIC barrier. Integrity from the SAVED l1 files: (a) every usecase port has a port + domain entity defs; (b) V1 every controller handler.usecaseRef exists as a usecase export (orderFlow break); V2 (module has workspaces) COHERENCE controller x workspace: every bffCall has an exported handler registered in routes by its route const (rotas esperadas = bffCalls do workspace, not per-operation bffName) + the workspace controller .ts compiles; (c) COMPLETENESS: every .defs.ts has its materialized .ts (fails if materialization is incomplete — the project-level check the per-file Monaco compile misses); (d) ORPHANS: every generated .ts must have its .defs.ts, EXCEPT the declared expectedGeneratedTsWithoutDefs below (artifacts compiled deterministically outside the defs->materialize pipeline). REPAIR ROUTING: when EVERY finding is materialization-level (bad/missing .ts) and the global budget (1 round) is available, forces the components stale + records the findings and re-enqueues cb-materialize in repair mode (-> cb-validate-all-g{n}); defs-level findings (incl. V2 controller findings — the deterministic emitter, not materialize, owns them) or exhausted budget FAIL CLEAN, so finalize cannot mark owners done prematurely. Enqueue cb-finalize when clean (clears cb-repair-state).",
       "expectedGeneratedTsWithoutDefs": [
         "l1/{module}/layer_1_external/adapters/persistence/seeds.ts (agentCbSeeds compiles it deterministically via cbSeedsCore/saveGeneratedTs; there is no seeds.defs.ts by design — lesson run 2026-07-15 cafeFlow: the orphan check must not block it)",
-        "l1/{module}/layer_1_external/adapters/persistence/registerRepositories.ts (agentCbRegister compiles the composition root deterministically via saveGeneratedTs; there is no .defs.ts by design — lesson run 2026-07-16 cafeFlow)"
+        "l1/{module}/layer_1_external/adapters/persistence/registerRepositories.ts (agentCbRegister compiles the composition root deterministically via saveGeneratedTs; there is no .defs.ts by design — lesson run 2026-07-16 cafeFlow)",
+        "l1/{module}/layer_1_external/adapters/http/controllers/*.ts (V2 ONLY: one deterministic controller per WORKSPACE emitted by gen-http, no .defs.ts — B4)",
+        "l1/{module}/contracts/*.ts + *.d.ts (V2 ONLY: byte-mirror of l4/{module}/contracts, emitted by gen-http — B5; the .d.ts twins are not collected as .ts outputs)"
       ],
       "savedArtifact": "l4/trace/cb-health-report.json"
     },
@@ -465,9 +479,9 @@
       "modelAlias": null,
       "executionMode": "sequential",
       "dependsOn": [
-        "cb-validate-all"
+        "cb-validate-all (materialize path), or cb-rebuild-defs-cleanup (/rebuild defs path)"
       ],
-      "goal": "DETERMINISTIC. Set todoBackend status = done for the processed owners (operations AND workflows). Runs only after cb-validate-all passes, so materialization is proven complete. Enqueue cb-final-summary."
+      "goal": "DETERMINISTIC. Set todoBackend status = done for the processed owners (operations AND workflows). On the materialize path runs only after cb-validate-all passes (materialization proven complete); on the /rebuild defs path runs after cb-rebuild-defs-cleanup (defs regenerated; .ts intentionally absent — the next /rebuild all resets owners to toCreate and materializes). Enqueue cb-final-summary."
     },
     {
       "planId": "cb-final-summary",

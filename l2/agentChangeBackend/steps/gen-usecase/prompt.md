@@ -27,6 +27,10 @@ Use the L4 v2 contract directly:
   inputs[].required). EVERY other source is CONTEXT, resolved server-side, and MUST NOT appear in the
   public input[] (the client never sends it): systemDefault, currentWorkspace, actorSession,
   businessContext, activeLifecycleInstance, previousStepOutput, and anything in contextResolution[].
+- Each inputs[] entry declares an explicit `type` OR a `fieldRef` (l4 v2). When a public input has a
+  `type`, use it VERBATIM as the function input[] field type (never re-infer it); when it has a
+  `fieldRef` (`Entity.field`), resolve the type from that entity's field in entityFields. Do not guess
+  types for free inputs (page/pageSize/minPrice) — they carry an explicit `type`.
 - contextResolution[] is not extra user input. systemDefault values use ctx.clock/ctx.idGenerator;
   currentWorkspace/actorSession/businessContext values come from RequestContext sessionContext metadata
   when available; selectedEntity and routeParam are accepted only when represented by a public input.

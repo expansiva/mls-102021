@@ -92,11 +92,12 @@ function ownerContract(o: CbOwner) {
     ownerId: o.id,
     opKind: o.opKind,
     entity: o.entity,
+    actors: o.actors,          // l4 v2 plural (fallback single `actor`); the usecase is authorized for these
     reads: o.reads,
     writes: o.writes,
     rulesApplied: o.rulesApplied,
     accessPattern: o.accessPattern ?? null,
-    inputs: o.inputs,
+    inputs: o.inputs,          // inputs carry explicit `type` OR `fieldRef` (N1b) — no re-inference
     contextResolution: o.contextResolution,
     acceptanceAssertions: o.acceptanceAssertions,
   };
