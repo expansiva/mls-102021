@@ -27,7 +27,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         if (!owner.bffName) errors.push(`${owner.id}: missing bffName`);
         if (!owner.accessPattern?.kind) errors.push(`${owner.id}: missing accessPattern.kind`);
         for (const input of owner.inputs) {
-          if (input.required && (!input.inputId || !input.fieldRef || !input.source)) {
+          // N1b (l4 v2): a required input declares an explicit `type` OR a `fieldRef` — free inputs
+          // (paymentMethod, paymentAmount, page…) are type-only and legitimately have no fieldRef.
+          if (input.required && (!input.inputId || (!input.fieldRef && !input.type) || !input.source)) {
             errors.push(`${owner.id}: invalid required input ${input.inputId || input.fieldRef || '(unknown)'}`);
           }
           if (input.fieldRef && !input.fieldRef.includes('.') && input.fieldRef !== owner.entity) {
