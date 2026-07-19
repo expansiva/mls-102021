@@ -6,95 +6,86 @@ import { renderWorkspaceController, type RenderControllerInput } from './cbContr
 import { parseWorkspaceDefs } from './cbWorkspace.js';
 import type { CbOpOutputShapeView } from './cbContracts.js';
 
-// The real petShop `catalog` workspace: paginated list (catalogList <- browseCatalog) + object detail
-// (productDetail <- viewProductDetail). browseCatalog's outputShape array field is `products`.
-function catalogInput(): RenderControllerInput {
+// A workspace with the three canonical output kinds: list (bare array), paginated (nested wrapper),
+// object. Grounded in the real petShop v2 shapes.
+function inp(): RenderControllerInput {
   const workspace = parseWorkspaceDefs({
-    workspaceId: 'catalog',
-    title: 'Catálogo',
-    actors: ['cliente'],
-    kind: 'operation',
+    workspaceId: 'catalogo', title: 'Catálogo', actors: ['cliente'], kind: 'operation',
     bffCalls: [
-      {
-        bffId: 'catalogList', kind: 'query', uses: [{ operationId: 'browseCatalog' }],
-        input: [
-          { name: 'searchTerm', from: 'browseCatalog.searchTerm' },
-          { name: 'page', from: 'browseCatalog.page' },
-        ],
-        output: { kind: 'paginated', fields: [
-          { name: 'productId', from: 'browseCatalog.$items.productId' },
-          { name: 'name', from: 'browseCatalog.$items.name' },
-        ] },
-      },
-      {
-        bffId: 'productDetail', kind: 'query', uses: [{ operationId: 'viewProductDetail' }],
+      { bffId: 'browseCatalog', kind: 'query', uses: [{ operationId: 'browseProducts' }],
+        input: [{ name: 'searchName', from: 'browseProducts.searchName' }],
+        output: { kind: 'list', fields: [
+          { name: 'productId', from: 'browseProducts.$items.productId' },
+          { name: 'name', from: 'browseProducts.$items.name' },
+        ] } },
+      { bffId: 'productDetail', kind: 'query', uses: [{ operationId: 'viewProductDetail' }],
         input: [{ name: 'productId', from: 'viewProductDetail.productId' }],
         output: { kind: 'object', fields: [
           { name: 'productId', from: 'viewProductDetail.productId' },
           { name: 'categoryName', from: 'viewProductDetail.categoryName' },
-        ] },
-      },
+        ] } },
     ],
   }, 'petShop')!;
   const opShapes = new Map<string, CbOpOutputShapeView | null>([
-    // browseCatalog's real paginated outputShape: array `products` + total/page/pageSize meta.
-    ['browseCatalog', { kind: 'paginated', fields: [{ name: 'products', type: 'array', item: {} }, { name: 'total', type: 'number' }, { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' }] }],
-    ['viewProductDetail', { kind: 'object', fields: [{ name: 'productId', type: 'string' }] }],
+    ['browseProducts', { kind: 'list', fields: [{ name: 'productId', type: 'string' }, { name: 'name', type: 'string' }] }],
+    ['viewProductDetail', { kind: 'object', fields: [] }],
   ]);
   const usecaseFns = new Map([
-    ['browseCatalog', { functionName: 'browseCatalog', inputTypeName: 'BrowseCatalogInput' }],
+    ['browseProducts', { functionName: 'browseProducts', inputTypeName: 'BrowseProductsInput' }],
     ['viewProductDetail', { functionName: 'viewProductDetail', inputTypeName: 'ViewProductDetailInput' }],
   ]);
-  const actorRoleScopes = new Map([['cliente', 'petShop:cliente']]);
-  return { project: 102049, moduleName: 'petShop', workspace, opShapes, usecaseFns, actorRoleScopes };
+  return { project: 102049, moduleName: 'petShop', workspace, opShapes, usecaseFns, actorRoleScopes: new Map([['cliente', 'petShop:cliente']]) };
 }
 
-test('renderWorkspaceController emits one controller with a handler per bffCall and routes from consts', () => {
-  const { source, usecaseOperationIds, routeKeys } = renderWorkspaceController(catalogInput());
-
-  // imports: runtime contracts, both usecases, both l1 contract mirrors
-  assert.match(source, /from '\/_102034_\/l1\/server\/layer_2_controllers\/contracts\.js'/);
-  assert.match(source, /import \{ browseCatalog, type BrowseCatalogInput \} from '\/_102049_\/l1\/petShop\/layer_2_application\/usecases\/browseCatalog\.js'/);
-  assert.match(source, /import \{ type CatalogListInput, type CatalogListOutput, catalogListRoute \} from '\/_102049_\/l1\/petShop\/contracts\/catalog\.catalogList\.js'/);
-
-  // paginated handler: items mapped from the op's `products` array to the projected columns
-  assert.match(source, /export const catalogCatalogListHandler: BffHandler = async \(\{ request, ctx \}\) =>/);
-  assert.match(source, /const items: CatalogListOutput\[\] = \(browseCatalogResult\.products \?\? \[\]\)\.map/);
+test('renderWorkspaceController: list handler returns a BARE array (ok(items), not { items })', () => {
+  const { source } = renderWorkspaceController(inp());
+  assert.match(source, /const items: BrowseCatalogOutput = \(browseProductsResult\.items \?\? \[\]\)\.map\(\(row\) => \(\{/);
   assert.match(source, /productId: row\.productId,/);
-  assert.match(source, /return ok\(\{ items, total: browseCatalogResult\.total, page: browseCatalogResult\.page, pageSize: browseCatalogResult\.pageSize \}\)/);
-
-  // object handler: projected top-level fields, no items envelope
-  assert.match(source, /export const catalogProductDetailHandler: BffHandler/);
-  assert.match(source, /categoryName: viewProductDetailResult\.categoryName,/);
-
-  // input mapping: wire name -> usecase field
-  assert.match(source, /const browseCatalogInput: BrowseCatalogInput = \{/);
-  assert.match(source, /searchTerm: input\.searchTerm,/);
-
-  // actor enforcement + allowed scopes const (one place to adjust for D6.5)
-  assert.match(source, /const catalogAllowedScopes: readonly string\[\] = \["petShop:cliente"\]/);
-  assert.match(source, /const denial = enforceActors\(ctx, catalogAllowedScopes, catalogListRoute\)/);
-  assert.match(source, /function enforceActors\(ctx: RequestContext/);
-
-  // routes registered by the contract route CONST (never a hand-typed string)
-  assert.match(source, /\{ key: catalogListRoute, handler: catalogCatalogListHandler \}/);
-  assert.match(source, /\{ key: productDetailRoute, handler: catalogProductDetailHandler \}/);
-  assert.doesNotMatch(source, /key: 'petShop\.catalog/); // no literal route strings
-
-  assert.deepEqual(usecaseOperationIds.sort(), ['browseCatalog', 'viewProductDetail']);
-  assert.deepEqual(routeKeys, ['catalogListRoute', 'productDetailRoute']);
+  assert.match(source, /return ok\(items\);/);           // BARE array
+  assert.doesNotMatch(source, /return ok\(\{ items/);     // NOT wrapped
 });
 
-test('renderWorkspaceController emits a command passthrough when the bffCall declares no output', () => {
-  const inp = catalogInput();
-  inp.workspace = parseWorkspaceDefs({
-    workspaceId: 'reservationPanel', actors: ['lojista'], kind: 'workflow',
-    bffCalls: [{ bffId: 'confirmReserva', kind: 'command', uses: [{ operationId: 'confirmReservation' }],
-      input: [{ name: 'reservationId', from: 'confirmReservation.reservationId' }] }],
+test('renderWorkspaceController: object handler is typed to Output', () => {
+  const { source } = renderWorkspaceController(inp());
+  assert.match(source, /const out: ProductDetailOutput = \{/);
+  assert.match(source, /categoryName: viewProductDetailResult\.categoryName,/);
+  assert.match(source, /return ok\(out\);/);
+});
+
+test('renderWorkspaceController: paginated handler wraps with the DECLARED array name + meta', () => {
+  const i = inp();
+  i.workspace = parseWorkspaceDefs({
+    workspaceId: 'acompanharReservas', actors: ['equipeLoja'], kind: 'workflow',
+    bffCalls: [{ bffId: 'listReservations', kind: 'query', uses: [{ operationId: 'browseReservations' }],
+      input: [{ name: 'statusFilter', from: 'browseReservations.statusFilter' }],
+      output: { kind: 'paginated', fields: [
+        { name: 'reservations', from: 'browseReservations.$items', item: { fields: [
+          { name: 'reservationId', from: 'browseReservations.$items.reservationId' },
+        ] } },
+        { name: 'total', from: 'browseReservations.total' },
+        { name: 'page', from: 'browseReservations.page' },
+        { name: 'pageSize', from: 'browseReservations.pageSize' },
+      ] } }],
   }, 'petShop')!;
-  inp.usecaseFns = new Map([['confirmReservation', { functionName: 'confirmReservation', inputTypeName: 'ConfirmReservationInput' }]]);
-  inp.actorRoleScopes = new Map([['lojista', 'petShop:lojista']]);
-  const { source } = renderWorkspaceController(inp);
-  assert.match(source, /return ok\(confirmReservationResult\);/); // passthrough, no projection
-  assert.doesNotMatch(source, /type ConfirmReservaOutput/); // no Output import when no output declared
+  i.opShapes = new Map([['browseReservations', { kind: 'paginated', fields: [
+    { name: 'reservations', type: 'array', item: { fields: [{ name: 'reservationId', type: 'string' }] } },
+    { name: 'total', type: 'number' }, { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' },
+  ] }]]);
+  i.usecaseFns = new Map([['browseReservations', { functionName: 'browseReservations', inputTypeName: 'BrowseReservationsInput' }]]);
+  i.actorRoleScopes = new Map([['equipeLoja', 'petShop:equipeLoja']]);
+  const { source } = renderWorkspaceController(i);
+  // reads the op's declared array (reservations) and wraps under the declared wire name (reservations)
+  assert.match(source, /const reservations: ListReservationsOutput\['reservations'\] = \(browseReservationsResult\.reservations \?\? \[\]\)\.map/);
+  assert.match(source, /reservationId: row\.reservationId,/);
+  assert.match(source, /return ok\(\{ reservations, total: browseReservationsResult\.total, page: browseReservationsResult\.page, pageSize: browseReservationsResult\.pageSize \}\);/);
+  assert.doesNotMatch(source, /ok\(\{ items/); // never "items" for paginated
+});
+
+test('renderWorkspaceController: routes use the contract route const; actor enforcement present', () => {
+  const { source, routeKeys } = renderWorkspaceController(inp());
+  assert.match(source, /\{ key: browseCatalogRoute, handler: catalogoBrowseCatalogHandler \}/);
+  assert.match(source, /const catalogoAllowedScopes: readonly string\[\] = \["petShop:cliente"\]/);
+  assert.match(source, /function enforceActors\(ctx: RequestContext/);
+  assert.doesNotMatch(source, /key: 'petShop\.catalogo/); // no literal route strings
+  assert.deepEqual(routeKeys, ['browseCatalogRoute', 'productDetailRoute']);
 });

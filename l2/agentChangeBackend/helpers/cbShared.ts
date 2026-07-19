@@ -199,17 +199,6 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
-// Enumeration of the l4 contracts (`.ts`/`.d.ts`, NOT `.defs.ts`) — the byte-source mirrored into l1 (B5).
-// B1 only lists them; the copy itself is B5.
-export interface CbContractRef {
-  moduleName: string;
-  workspaceId: string;
-  bffId: string;
-  shortName: string;          // `<workspaceId>.<bffId>`
-  folder: string;             // `<module>/contracts`
-  extension: string;          // '.ts' | '.d.ts'
-}
-
 export interface CbScan {
   project: number;
   moduleNames: string[];
@@ -218,8 +207,7 @@ export interface CbScan {
   relationships: CbRelationship[];
   aggregates: CbAggregate[];  // derived baseline (the LLM index may refine)
   events: CbEventTarget[];    // kind:"event" entities, classified by eventPolicy
-  workspaces: CbWorkspace[];  // l4 v2 only (empty for v1 modules)
-  contracts: CbContractRef[]; // l4 v2 contract files (B5 mirror source; empty for v1)
+  workspaces: CbWorkspace[];  // l4 v2 only (empty for v1 modules) — the l1 contracts are GENERATED from these
   actors: CbActor[];          // module actors.defs.ts (l4 v2); empty for v1 folder-based actors
   siteMaps: Record<string, Record<string, unknown>>; // moduleName -> siteMap/navigation raw (best-effort view)
   warnings: string[];
@@ -341,34 +329,12 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
 
   const aggregates = deriveAggregates(entities, relationships, operatedRootIds);
   const events = deriveEventTargets(entities, relationships);
-  const contracts = readL4Contracts(project);
+  // NB: the l4 contracts (`.ts`) are NEVER read here — l4 holds only `.defs.ts` (a `.ts` in l4 is not
+  // compilable and getContent on it 422s). The l1 contracts are GENERATED from `workspaces` (gen-http).
   return {
     project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships,
-    aggregates, events, workspaces, contracts, actors: actorsList, siteMaps, warnings,
+    aggregates, events, workspaces, actors: actorsList, siteMaps, warnings,
   };
-}
-
-// Enumerate the l4 v2 contract files (`.ts`/`.d.ts` under `<module>/contracts`). B1 lists them so B5
-// can byte-copy each into l1; the shortName is `<workspaceId>.<bffId>` (compound; split on the last dot).
-function readL4Contracts(project: number): CbContractRef[] {
-  const contracts: CbContractRef[] = [];
-  for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
-    const extension = String(file.extension || '');
-    if (extension !== '.ts' && extension !== '.d.ts') continue;
-    const folder = String(file.folder || '');
-    if (!folder.endsWith('/contracts')) continue;
-    const shortName = String(file.shortName || '');
-    const dot = shortName.lastIndexOf('.');
-    if (dot <= 0 || dot >= shortName.length - 1) continue; // expect `<workspaceId>.<bffId>`
-    contracts.push({
-      moduleName: folder.split('/')[0],
-      workspaceId: shortName.slice(0, dot),
-      bffId: shortName.slice(dot + 1),
-      shortName, folder, extension,
-    });
-  }
-  return contracts;
 }
 
 interface CbTodoOwner {

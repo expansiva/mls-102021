@@ -14,9 +14,9 @@ import {
   dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand,
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
-import { saveGeneratedTs, saveGeneratedFile, getContentByMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { saveGeneratedTs, saveGeneratedFile } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { renderWorkspaceController, type UsecaseFnRef } from '/_102021_/l2/agentChangeBackend/helpers/cbControllerEmit.js';
-import { rewriteContractHeaderToL1, type CbOpOutputShapeView } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
+import { renderBffContract, type CbContractTypes, type CbOpOutputShapeView } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
 
 const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 
@@ -138,7 +138,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (!defsOnly) {
       for (const module of scan.moduleNames) {
         if (!v2Modules.has(module)) continue;
-        mirrored += await mirrorL4ContractsToL1(scan, module);
+        mirrored += await generateL1Contracts(scan, module);
         savedV2 += await emitWorkspaceControllers(scan, module, usecaseFns);
       }
     }
@@ -269,18 +269,54 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-// ── B5: mirror l4 contracts into l1 (byte-copy, header repointed) so the controller import resolves ──
-async function mirrorL4ContractsToL1(scan: CbScan, module: string): Promise<number> {
+// ── B5: GENERATE the l1 contracts from the workspace bffCalls (NEVER read a `.ts`/`.d.ts` from l4 — l4
+// holds only `.defs.ts`; getContent on an l4 `.ts` 422s). The contract of record (Input/Output/route) is
+// derived deterministically from the bffCall + operation defs. Written to l1 for the controller to import. ──
+async function generateL1Contracts(scan: CbScan, module: string): Promise<number> {
   const project = mls.actualProject || 0;
+  const types = buildContractTypes(scan, module);
   let n = 0;
-  for (const c of scan.contracts) {
-    if (c.moduleName !== module) continue;
-    const src = await getContentByMlsPath(`_${project}_/l4/${module}/contracts/${c.shortName}${c.extension}`);
-    if (src == null) continue;
-    const out = rewriteContractHeaderToL1(src, project, module, c.shortName, c.extension);
-    if (await saveGeneratedFile(project, 1, `${module}/contracts`, c.shortName, c.extension, out)) n++;
+  for (const ws of scan.workspaces) {
+    if (ws.moduleName !== module) continue;
+    for (const bff of ws.bffCalls) {
+      const src = renderBffContract(project, module, ws.workspaceId, bff, types);
+      if (await saveGeneratedFile(project, 1, `${module}/contracts`, `${ws.workspaceId}.${bff.bffId}`, '.ts', src)) n++;
+    }
   }
   return n;
+}
+
+// Type resolver for the contract generator: TS types come from the operation defs (input.type OR the
+// ontology field the input's fieldRef points at; output fields from the operation outputShape).
+function buildContractTypes(scan: CbScan, module: string): CbContractTypes {
+  const opInput = new Map<string, string>();   // `${op}.${inputId}` -> l4 type token
+  const opOutTop = new Map<string, string>();  // `${op}.${field}`   -> l4 type token (top-level output)
+  const opOutItem = new Map<string, string>(); // `${op}.${col}`     -> l4 type token (item column)
+  const entField = new Map<string, string>();  // `${Entity}.${field}` -> ontology field type
+  for (const e of scan.entities) {
+    if (e.moduleName !== module) continue;
+    for (const f of e.fields ?? []) {
+      const id = String((f as { fieldId?: unknown }).fieldId || '');
+      if (id) entField.set(`${e.entityId}.${id}`, String((f as { type?: unknown }).type || 'string'));
+    }
+  }
+  for (const o of scan.owners) {
+    if (o.kind !== 'operation' || o.moduleName !== module) continue;
+    for (const i of o.inputs) {
+      const t = i.type || (i.fieldRef ? entField.get(i.fieldRef) : '') || 'string';
+      if (i.inputId) opInput.set(`${o.id}.${i.inputId}`, t);
+    }
+    const os = o.outputShape;
+    if (os) for (const f of os.fields) {
+      opOutTop.set(`${o.id}.${f.name}`, f.type || 'string');
+      if (f.item?.fields?.length) for (const c of f.item.fields) opOutItem.set(`${o.id}.${c.name}`, c.type || 'string');
+      else if (os.kind === 'list') opOutItem.set(`${o.id}.${f.name}`, f.type || 'string'); // list: top-level fields ARE the item cols
+    }
+  }
+  return {
+    inputType: (op, field) => opInput.get(`${op}.${field}`) || 'string',
+    outputType: (op, col, fromItems) => (fromItems ? opOutItem.get(`${op}.${col}`) : opOutTop.get(`${op}.${col}`)) || 'string',
+  };
 }
 
 // ── B4: emit one deterministic controller .ts per workspace of the module (no LLM). ──

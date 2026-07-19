@@ -17,7 +17,7 @@
 
 import type { CbBffCall, CbWorkspace } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 import {
-  resolveBffProjection, resolveItemsArrayField, parseFromPath, envelopeKindOf, type CbOpOutputShapeView,
+  resolveBffProjection, resolveItemsArrayField, parseFromPath, type CbOpOutputShapeView,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
 
 export interface UsecaseFnRef { functionName: string; inputTypeName?: string; }
@@ -150,39 +150,38 @@ function resultVarProjector(_singleOp: string): Projector {
 
 function renderEnvelope(bff: CbBffCall, h: HandlerCtx, project: Projector): string[] {
   if (!bff.output) return [`return ok(${bff.uses[0].operationId}Result);`]; // command passthrough
-  const kind = envelopeKindOf(bff);
   const proj = resolveBffProjection(bff);
-  if (kind === 'object') {
+  if (proj.kind === 'object') {
+    // WIRE = the projected object. Typed to Output so the contract shape is enforced at compile.
     const fields = proj.topFields.map(f => `    ${f.name}: ${project(f.operationId, f.path, '')},`);
-    return [`return ok({`, ...fields, `  });`];
+    return [`const out: ${h.outputType} = {`, ...fields, `  };`, `return ok(out);`];
   }
-  // paginated | list: map the source array (the op's $items field) to the projected item columns, then
-  // wrap as `{ items, ... }`. The wire array key is ALWAYS `items` (the bffCall contract Output is the
-  // item shape — there is no declared array name in a bffCall; the frontend v2 path reads `.items`).
-  const op = proj.itemFields[0]?.operationId || bff.uses[0].operationId;
-  const arrayField = resolveItemsArrayField(h.opShapes.get(op)) || 'items';
+  // list | paginated: map the op's SOURCE array to the projected item columns. `row` is UN-annotated so
+  // its columns infer from the usecase's typed result array (outputShape pinned = CP2; the materializer
+  // types the element as a named projection). The SOURCE key is the op's array field (list -> the
+  // materializer's `items`; paginated -> the declared array field name of the operation outputShape).
+  const op = proj.arrayOperationId || bff.uses[0].operationId;
+  const srcArray = resolveItemsArrayField(h.opShapes.get(op)) || 'items';
   const cols = proj.itemFields.map(f => `    ${f.name}: row${f.path.map(p => `.${p}`).join('')},`);
-  // `row` is left UN-annotated so its item columns infer from the usecase's typed result array (the
-  // outputShape is pinned = CP2, and the materializer types the array element as a named projection —
-  // e.g. BrowseMenuItemProjection[]). Annotating `Record<string, unknown>` would make every column
-  // `unknown` and fail the whole-project compile against the typed Output.
-  const lines = [
-    `const items: ${h.outputType}[] = (${op}Result.${arrayField} ?? []).map((row) => ({`,
+  if (proj.kind === 'list') {
+    // WIRE = a BARE array (contract `Output = Item[]`), NOT `{ items }`.
+    return [
+      `const items: ${h.outputType} = (${op}Result.${srcArray} ?? []).map((row) => ({`,
+      ...cols,
+      `  }));`,
+      `return ok(items);`,
+    ];
+  }
+  // paginated: WIRE = `{ <declaredArrayName>: Item[], ...meta }` — the DECLARED array name (e.g.
+  // `reservations`), never `items`. Meta (total/page/pageSize) is passed through from the op result.
+  const arrName = proj.arrayFieldName || 'items';
+  const meta = proj.topFields.map(f => `${f.name}: ${project(f.operationId, f.path, '')}`);
+  return [
+    `const ${arrName}: ${h.outputType}['${arrName}'] = (${op}Result.${srcArray} ?? []).map((row) => ({`,
     ...cols,
     `  }));`,
+    `return ok({ ${[arrName, ...meta].join(', ')} });`,
   ];
-  // Any DECLARED top-level projection (rare — usually none for paginated) is kept; pagination meta
-  // (total/page/pageSize) is passed through from the op ONLY when the op's outputShape actually declares
-  // it and it was not already projected as a top-level field (A5: pagination is never implicit).
-  const declared = new Set(proj.topFields.map(f => f.name));
-  const topProps = proj.topFields.map(f => `${f.name}: ${project(f.operationId, f.path, '')}`);
-  const opFieldNames = new Set((h.opShapes.get(op)?.fields ?? []).map(f => f.name));
-  const meta = kind === 'paginated'
-    ? ['total', 'page', 'pageSize'].filter(k => !declared.has(k) && opFieldNames.has(k)).map(k => `${k}: ${op}Result.${k}`)
-    : [];
-  const parts = ['items', ...topProps, ...meta];
-  lines.push(`return ok({ ${parts.join(', ')} });`);
-  return lines;
 }
 
 // Composed call (uses > 1): Promise.all of the usecases, optional slices degrade to null + a warning in
