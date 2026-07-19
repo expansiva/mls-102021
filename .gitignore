@@ -24,7 +24,3 @@ Temporary Items
 /node_modules/
 /dist/
 /obj/
-/l2/agents/NewSolution
-# cbMaterializeCli runtime config (holds the collab-llm token — never commit)
-/l1/cbMaterializeCli/materializeL1.config.json
-/.materializeL1/
