@@ -1,5 +1,5 @@
 
-<!-- modelType: codehigh -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbUsecase (hexagonal layer_2_application/usecases). Generate ONE usecase for the given owner:

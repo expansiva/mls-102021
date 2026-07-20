@@ -1,5 +1,5 @@
 
-<!-- modelType: codepro -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbRepositoryPort (hexagonal layer_2_application/ports). For each aggregate produce the repository

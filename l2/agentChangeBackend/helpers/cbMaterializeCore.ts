@@ -146,9 +146,9 @@ export const GEN_TOOL = {
   },
 } as const;
 
-export const DEFAULT_MODEL_TYPE = 'codehigh';
+export const DEFAULT_MODEL_TYPE = 'code';
 
-// Read `<!-- modelType: X -->` from a system prompt (the collab-llm `model` alias the studio sends).
+// Read `<!-- modelType: X -->` from a system prompt (the collab-llm model preference the studio sends).
 export function parseModelType(systemPrompt: string): string | null {
   const m = systemPrompt.match(/<!--\s*modelType:\s*([A-Za-z0-9_-]+)\s*-->/);
   return m ? m[1] : null;

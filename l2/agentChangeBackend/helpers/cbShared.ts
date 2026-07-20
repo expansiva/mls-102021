@@ -1049,7 +1049,7 @@ export function createParallelStepIntent(
   // finding and COMPLETES the step, exactly like every other worker failure class.
   step.onFailure = 'continue';
   step.interaction = {
-    input: [{ type: 'system', content: '<!-- modelType: codepro -->' }],
+    input: [{ type: 'system', content: '<!-- modelType: code -->' }],
     cost: 0,
     trace: [`queued ${args.length} parallel args for ${agentName}`],
     payload: null,

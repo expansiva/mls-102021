@@ -90,7 +90,7 @@
     "materialization": "Reuses the L1 pipeline: gen-* writes the `data` block; agentPrepareDefsL1 appends `export const pipeline` to each .defs.ts in dependency order; agentMaterializeL1Def resolves outputPath + dependsFiles + attaches skills/rulesPath per item via tool call; agentMaterializeGen generates the .ts from the self-sufficient .defs.ts. Then deterministic registrars wire the manifest, the router and the composition root.",
     "fanOutReads": "Parallel fan-out children are pre-allocated, reused and DELETED after completion. Consumers that run AFTER a fan-out read the SAVED .defs.ts files (file-fallback), never task payloads.",
     "verification": "Deterministic, NON-blocking preflight (cb-validate-readiness) checks entity/operation refs resolve against canonical l4 ids (unresolved -> warnings); the final validate (cb-validate-all) reads the SAVED l1 files (ctx.data only in adapters/persistence; no MDM table; contract shape honored).",
-    "modelPolicy": "No LLM for deterministic scan, status mutation, registration and validation — NOR for aggregate/column/usecase planning (that is now derived deterministically from the scan; the LLM index steps were removed 2026-07-11). When an LLM is required, force strict JSON-schema tool output. Alias by task: codeawsfast (cheap/fast) for light steps; codehigh (strong reasoning, low cost) for the whole-layer generators (domain, table) and usecase workers; codepro (mid) for structured defs (ports, adapters, controllers) + pipeline resolution; codeinstruct (priciest, best code) RESERVED for the final .ts generation (agentMaterializeGen)."
+    "modelPolicy": "No LLM for deterministic scan, status mutation, registration and validation — NOR for aggregate/column/usecase planning (that is now derived deterministically from the scan; the LLM index steps were removed 2026-07-11). When an LLM is required, force strict JSON-schema tool output. Use modelType code for backend defs, usecase workers, technical judging and final .ts materialization; use modelType image only for optional seed asset generation."
   },
   "modernization": {
     "_note": "Target of todo/modernizeChangeBackend.md: migrate this flat folder (agents + infra) to the agentNewSolution3 pattern (1 folder per maintenance unit under steps/), prompts in .md, a minimal policy-frozen shared core, and this flow.json as the spec-first contract. External behavior (generated artifacts, /run|/rebuild CLI, l4/l5 contract) stays identical.",
@@ -133,55 +133,18 @@
     }
   },
   "modelAliases": {
-    "_note": "Test aliases. Stored here so the flow is self-describing; each LLM step picks one via its `modelAlias` field. modelType hints inside prompts (e.g. <!-- modelType: codepro -->) must match the chosen alias.",
-    "codeinstruct": {
-      "provider": "azureai",
-      "model": "gpt-5.2-codex",
-      "costAsProvided": {
-        "input": "$1.75",
-        "output": "$14.00"
-      },
+    "_note": "Model type preferences. Stored here so the flow is self-describing; each LLM step picks one via its `modelAlias` field. modelType hints inside prompts (e.g. <!-- modelType: code -->) must match the chosen alias.",
+    "code": {
       "recommendedFor": [
-        "final .ts code generation (agentMaterializeGen)",
-        "highest-risk code where correctness matters most"
-      ]
-    },
-    "codepro": {
-      "provider": "azureai",
-      "model": "Kimi-K2.6-1",
-      "costAsProvided": {
-        "input": "$0.95",
-        "output": "$4.00"
-      },
-      "recommendedFor": [
-        "schema-first defs generation (ports, adapters, controllers)",
-        "pipeline resolution"
-      ]
-    },
-    "codeawsfast": {
-      "provider": "bedrock",
-      "model": "amazon.nova-pro-v1:0",
-      "costAsProvided": {
-        "input": "$0.63",
-        "output": "$5.00"
-      },
-      "recommendedFor": [
-        "low-cost summaries",
-        "simple classification",
-        "mechanical/non-critical steps"
-      ]
-    },
-    "codehigh": {
-      "provider": "openrouter",
-      "model": "z-ai/glm-5.2",
-      "costAsProvided": {
-        "input": "$1",
-        "output": "$3"
-      },
-      "recommendedFor": [
-        "reasoning-heavy planning: aggregate boundaries, JSONB/index decisions",
+        "backend defs generation",
         "usecase orchestration",
-        "pure domain entities"
+        "technical judging and repair guidance",
+        "final .ts code generation"
+      ]
+    },
+    "image": {
+      "recommendedFor": [
+        "optional seed image asset generation"
       ]
     }
   },
@@ -260,7 +223,7 @@
       "planId": "cb-gen-domain",
       "agentName": "agentCbDomainEntity",
       "type": "agent",
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "cb-lock"
@@ -275,7 +238,7 @@
       "planId": "cb-gen-port",
       "agentName": "agentCbRepositoryPort",
       "type": "agent",
-      "modelAlias": "codepro",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "cb-gen-domain"
@@ -290,7 +253,7 @@
       "planId": "cb-gen-table",
       "agentName": "agentCbPersistenceTable",
       "type": "agent",
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "cb-gen-port"
@@ -305,7 +268,7 @@
       "planId": "cb-gen-adapter",
       "agentName": "agentCbRepositoryAdapter",
       "type": "agent",
-      "modelAlias": "codepro",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "cb-gen-table"
@@ -331,7 +294,7 @@
       "planId": "cb-usecase-fanout",
       "agentName": "agentCbUsecase",
       "type": "agent",
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "executionMode": "parallel_dynamic",
       "dependsOn": [
         "cb-gen-usecase"
@@ -347,7 +310,7 @@
       "planId": "cb-judge",
       "agentName": "agentCbJudge",
       "type": "agent",
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "cb-usecase-fanout"
@@ -399,7 +362,7 @@
       "planId": "cb-mat-L{rank}",
       "agentName": "agentCbMaterialize",
       "type": "agent",
-      "modelAlias": "codeinstruct",
+      "modelAlias": "code",
       "executionMode": "parallel_dynamic",
       "dependsOn": [
         "cb-materialize (spawned one rank at a time; each next layer waits on the previous via cb-mat-after-L{rank})"
@@ -414,7 +377,7 @@
       "planId": "cb-gen-seeds",
       "agentName": "agentCbSeeds",
       "type": "agent",
-      "modelAlias": "codehigh",
+      "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
         "the last cb-mat layer (materialize path only; NOT reached under /rebuild defs — that path ends at cb-rebuild-defs-cleanup)"
@@ -486,7 +449,7 @@
       "planId": "cb-final-summary",
       "agentName": "agentCbFinalSummary",
       "type": "agent",
-      "modelAlias": "codeawsfast",
+      "modelAlias": null,
       "executionMode": "sequential",
       "dependsOn": [
         "cb-finalize"

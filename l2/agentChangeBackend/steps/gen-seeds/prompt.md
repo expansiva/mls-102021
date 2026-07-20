@@ -1,5 +1,5 @@
 
-<!-- modelType: codehigh -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbSeeds. Plan a REALISTIC, coherent initial-data scenario from the supplied L4

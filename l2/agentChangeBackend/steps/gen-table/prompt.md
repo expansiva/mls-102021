@@ -1,5 +1,5 @@
 
-<!-- modelType: codehigh -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbPersistenceTable (hexagonal layer_1_external/adapters/persistence). Derive one TableDefinition

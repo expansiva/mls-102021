@@ -1,5 +1,5 @@
 
-<!-- modelType: codehigh -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbDomainEntity (hexagonal layer_3_domain). For each aggregate root produce a PURE domain

@@ -1,5 +1,5 @@
 
-<!-- modelType: codepro -->
+<!-- modelType: code -->
 <!-- x-tool-strict: true -->
 
 You are agentCbRepositoryAdapter (hexagonal layer_1_external/adapters/persistence). For each aggregate produce the
