@@ -374,6 +374,21 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         }
       }
     }
+    // COMPOSITION ROOT (102034 requirement — lesson run 24/25): if the module has repository adapters,
+    // registerRepositories.ts MUST exist and register EVERY adapter's port. A missing/partial root passes
+    // every other check but makes resolveRepository 500 at runtime (silent failure: agentCbRegister used
+    // to key off the LLM `className`, which drifted, and skipped the root). Adapter defs are identified by
+    // the deterministic file name `<entity>RepositoryAdapter`.
+    const adapterDefCount = defsFiles.filter(d => d.folder.endsWith('/adapters/persistence') && d.shortName.endsWith('repositoryadapter')).length;
+    if (adapterDefCount > 0) {
+      const root = persistenceSources.get('registerrepositories');
+      if (!root) {
+        missing.push(`composition root missing -> registerRepositories.ts absent though ${adapterDefCount} repository adapter(s) exist (102034 resolveRepository will 500)`);
+      } else {
+        const registered = (root.match(/registerRepository\(/g) ?? []).length;
+        if (registered < adapterDefCount) missing.push(`composition root incomplete -> registerRepositories.ts binds ${registered} of ${adapterDefCount} adapter(s)`);
+      }
+    }
     const warnings = mdmTableViolations > 0 ? [`${mdmTableViolations} MDM table artifact(s) found in persistence (should be 0)`] : [];
     // Safe reconciliation policy: do not delete files that may contain a manual client edit, but
     // block on duplicate generated names so stale snake_case/camelCase artifacts cannot leak into runtime.

@@ -13,7 +13,7 @@
 // to 102034).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 
 export function createAgent(): IAgentAsync {
@@ -36,13 +36,18 @@ async function writeRegisterRepositories(project: number, moduleName: string): P
     if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.folder || '') !== persistenceFolder) continue;
     const data = parseArtifactData(String(await file.getContent()));
-    const className = data && typeof (data as any).className === 'string' ? String((data as any).className) : '';
     const entityId = data && typeof (data as any).entityId === 'string' ? String((data as any).entityId) : '';
-    if (!className.endsWith('RepositoryAdapter') || !entityId) continue;
+    const shortName = String(file.shortName || '');
+    // Identify adapter defs by the DETERMINISTIC file name (`<entity>RepositoryAdapter`), NOT the
+    // LLM-authored `className` (which drifts, e.g. `PaymentRepository` vs `PaymentRepositoryAdapter`, and
+    // silently produced an EMPTY composition root -> resolveRepository 500 at runtime).
+    if (!shortName.endsWith('RepositoryAdapter') || !entityId) continue;
     adapters.push({
       portName: entityId,
-      factoryName: `create${className}`,
-      importPath: `/_${project}_/l1/${persistenceFolder}/${file.shortName}.js`,
+      // repositoryAdapter.md ALWAYS exports `create<Entity>RepositoryAdapter` (independent of the def's
+      // className) — derive the factory from the entityId so the import matches the real export.
+      factoryName: `create${capitalize(entityId)}RepositoryAdapter`,
+      importPath: `/_${project}_/l1/${persistenceFolder}/${shortName}.js`,
     });
   }
   if (adapters.length === 0) return 'composition root skipped (no repository adapters)';
