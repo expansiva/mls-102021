@@ -18,24 +18,29 @@ export interface PlannerExtractConfig<T> {
 const plannerResultSchemasByToolName: Record<string, Record<string, unknown>> = {};
 
 export function createPlannerToolSchema(toolName: string, description: string, resultSchema: Record<string, unknown>): mls.msg.LLMTool {
-  plannerResultSchemasByToolName[toolName] = resultSchema;
+  plannerResultSchemasByToolName[toolName] = resultSchema; // internal AJV keeps the ORIGINAL (with $defs)
+  // Strict providers (Grok/xAI, Moonshot/Kimi) validate the WHOLE tool schema from the wrapper root:
+  // hoist result's top-level `$defs` here so `#/$defs/...` refs resolve, and drop the nested `$id` the
+  // provider does not need. Every enum/const must also declare `type`. (agentsBestPractices.md §9)
+  const resultBody: Record<string, unknown> = { ...resultSchema };
+  const hoistedDefs = resultBody.$defs;
+  delete resultBody.$defs;
+  delete resultBody.$id;
+  const parameters: Record<string, unknown> = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['status', 'result', 'questions', 'trace'],
+    properties: {
+      status: { type: 'string', enum: ['ok', 'needs_input', 'failed'] },
+      result: resultBody,
+      questions: { type: 'array', items: { type: 'string' } },
+      trace: { type: 'array', items: { type: 'string' } },
+    },
+  };
+  if (hoistedDefs && typeof hoistedDefs === 'object') parameters.$defs = hoistedDefs;
   return {
     type: 'function',
-    function: {
-      name: toolName,
-      description,
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['status', 'result', 'questions', 'trace'],
-        properties: {
-          status: { enum: ['ok', 'needs_input', 'failed'] },
-          result: resultSchema,
-          questions: { type: 'array', items: { type: 'string' } },
-          trace: { type: 'array', items: { type: 'string' } },
-        },
-      },
-    },
+    function: { name: toolName, description, parameters },
   } as unknown as mls.msg.LLMTool;
 }
 

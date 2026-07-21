@@ -145,7 +145,7 @@ const seedAssetReferenceSchema = {
   required: ['asset', 'kind'],
   properties: {
     asset: str,
-    kind: { const: 'image' },
+    kind: { type: 'string', const: 'image' },
   },
 } as const;
 
@@ -237,8 +237,8 @@ export const judgeResultSchema = {
   properties: {
     findings: objArray(['ownerId', 'type', 'severity', 'message'], {
       ownerId: str,                                              // operationId of the usecase judged
-      type: { enum: ['estrutural', 'decisao', 'fora_de_escopo'] },
-      severity: { enum: ['error', 'warning'] },
+      type: { type: 'string', enum: ['estrutural', 'decisao', 'fora_de_escopo'] },
+      severity: { type: 'string', enum: ['error', 'warning'] },
       message: str,
       suggestion: str,
     }),
