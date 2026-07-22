@@ -16,6 +16,7 @@ import {
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
+  newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOwner, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
@@ -221,6 +222,16 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   // stall the fan-out join); the judge/validate-all report what is missing.
   if (!owner) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] owner not found: ${ownerId}`)];
   if (owner.kind !== 'operation') return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `skip ${ownerId}: workflows generate no usecase`)];
+  // REUSE: if this usecase's .defs.ts already exists and is newer than the L4 input (nothing changed)
+  // AND there is no pending repair finding for it, skip the LLM and reuse it. /rebuild forces regen.
+  // The fan-out/judge orchestration is untouched — the worker just short-circuits to completed.
+  if (!isRebuildCommand(context)) {
+    const module = scan.moduleNames[0] || 'unknown';
+    const repair = await getComponentRepair(`usecase-defs:${ownerId}`);
+    if ((!repair || !repair.findings.length) && defsCurrent(usecaseFileInfo(module, ownerId), newestL4DefsMs(scan.project))) {
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused usecase ${ownerId} .defs.ts (L4 unchanged)`)];
+    }
+  }
   const item = buildOwnerItem(owner, deriveMaps(scan));
   let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession/businessContext resolutions into required user input. A usecase MAY expose several functions with different IO.`;
   // REPAIR: when the judge (or a previous failure) left findings for this owner, feed them back so the

@@ -9,6 +9,7 @@ import {
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, repositoryPortFileInfo, domainEntityFileInfo, dtsRef,
   layerSkills, readString, lowerFirst, logPrefix, planIdOf,
+  newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { repositoryPortResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 
@@ -22,6 +23,17 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const scan = await readBackendScan(['toCreate', 'inProgress'], context);
+  if (!isRebuildCommand(context)) {
+    const module = scan.moduleNames[0] || 'unknown';
+    const targetIds = [...scan.aggregates.map(a => a.rootEntity), ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId)];
+    const watermark = newestL4DefsMs(scan.project);
+    if (targetIds.length && targetIds.every(id => defsCurrent(repositoryPortFileInfo(module, id), watermark))) {
+      return [
+        enqueueNext(context, parentStep, step, 'cb-gen-table', 'agentCbPersistenceTable', 'Gerar tabelas (persistência)', {}),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused ${targetIds.length} repository port .defs.ts (L4 unchanged; skipped generation)`, 'input_output'),
+      ];
+    }
+  }
   const items = scan.aggregates.map(a => ({ entityId: a.rootEntity, embeddedMembers: a.embeddedMembers }));
   // Append-only event ports: append(record) + read finders (listByOwnerId, listByPeriod). NO update/delete.
   const eventItems = scan.events.filter(ev => ev.persisted).map(ev => ({ entityId: ev.entityId, appendOnlyEvent: true, owner: ev.ownerEntity }));

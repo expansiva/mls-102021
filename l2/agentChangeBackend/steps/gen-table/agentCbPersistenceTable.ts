@@ -10,6 +10,7 @@ import {
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, persistenceTableFileInfo, domainEntityFileInfo, dtsRef,
   layerSkills, readString, lowerFirst, logPrefix, planIdOf,
+  newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { persistenceTableResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 
@@ -23,6 +24,17 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const scan = await readBackendScan(['toCreate', 'inProgress'], context);
+  if (!isRebuildCommand(context)) {
+    const module = scan.moduleNames[0] || 'unknown';
+    const targetIds = [...scan.aggregates.map(a => a.rootEntity), ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId)];
+    const watermark = newestL4DefsMs(scan.project);
+    if (targetIds.length && targetIds.every(id => defsCurrent(persistenceTableFileInfo(module, id), watermark))) {
+      return [
+        enqueueNext(context, parentStep, step, 'cb-gen-adapter', 'agentCbRepositoryAdapter', 'Gerar adapters de persistência', {}),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused ${targetIds.length} persistence table .defs.ts (L4 unchanged; skipped generation)`, 'input_output'),
+      ];
+    }
+  }
   const entityIds = new Set(scan.entities.map(e => e.entityId));
   const byId = new Map(scan.entities.map(e => [e.entityId, e]));
   const tables = scan.aggregates.map(agg => {

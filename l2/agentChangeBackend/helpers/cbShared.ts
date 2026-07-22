@@ -675,6 +675,52 @@ export function persistenceTableFileInfo(m: string, tableId: string): CbFileInfo
 export function repositoryAdapterFileInfo(m: string, entityId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, `${lowerFirst(entityId)}RepositoryAdapter`); }
 export function httpControllerFileInfo(m: string, pageId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/http/controllers`, lowerFirst(pageId)); }
 
+// ── defs reuse (staleness) ──────────────────────────────────────────────────────
+// Regenerating .defs.ts via the LLM is the dominant cost of a re-run (~1h for a module). Mirror the
+// materializer's staleness model at the DEFS level: a generated l1 .defs.ts is reusable when it
+// already exists AND was written at/after the newest L4 input (nothing upstream changed). A step then
+// skips the LLM for current components and regenerates only what is missing/stale. Callers gate this:
+// /rebuild forces regeneration (isRebuildCommand), and a pending repair finding also forces it.
+
+function fileModifiedMs(info: CbFileInfo): number | null {
+  try {
+    const file = (mls.stor.files as Record<string, any>)[mls.stor.getKeyToFile(info as unknown as mls.stor.IFileInfo)];
+    if (!file || file.status === 'deleted') return null;
+    if (file.updatedAt) return Date.parse(String(file.updatedAt));
+    return (file.status === 'new' || file.status === 'changed') ? Number.MAX_SAFE_INTEGER : null;
+  } catch { return null; }
+}
+
+/** Newest mtime (ms) among all L4 `.defs.ts` of the project — the "input changed" watermark. Any l1
+ * defs written at/after this is current; anything older (or a changed L4) forces regeneration. */
+export function newestL4DefsMs(project: number): number {
+  let newest = 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (String(file.extension) !== '.defs.ts') continue;
+    const ms = file.updatedAt ? Date.parse(String(file.updatedAt)) : ((file.status === 'new' || file.status === 'changed') ? Number.MAX_SAFE_INTEGER : 0);
+    if (ms > newest) newest = ms;
+  }
+  return newest;
+}
+
+/** Pure staleness decision (extracted for unit testing): a generated defs is current when it exists
+ * (non-null mtime) and was written at/after the L4 watermark. */
+export function defsIsCurrent(defsMs: number | null, l4WatermarkMs: number): boolean {
+  return defsMs != null && defsMs >= l4WatermarkMs;
+}
+
+/** Whether the generated `.defs.ts` for `fileInfo` can be reused (exists + at/after the L4 watermark). */
+export function defsCurrent(fileInfo: CbFileInfo, l4WatermarkMs: number): boolean {
+  return defsIsCurrent(fileModifiedMs(fileInfo), l4WatermarkMs);
+}
+
+/** A /rebuild forces fresh output — reuse is bypassed. (run/bare reuses current defs.) */
+export function isRebuildCommand(context: mls.msg.ExecutionContext): boolean {
+  const cmd = readCliCommand(context);
+  return cmd === 'rebuild-all' || cmd === 'rebuild-defs';
+}
+
 // ── co-located agent prompt assets ─────────────────────────────────────────────
 
 export const CB_AGENT_PROJECT = 102021;

@@ -9,6 +9,7 @@ import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, enqueueNext, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, domainEntityFileInfo, layerSkills, readString, lowerFirst, logPrefix, planIdOf,
+  newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 
@@ -22,6 +23,19 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const scan = await readBackendScan(['toCreate', 'inProgress'], context);
+  // REUSE: skip the LLM batch when every target .defs.ts already exists and is newer than the L4 input
+  // (nothing changed) — the materializer's staleness, applied at the defs level. /rebuild forces regen.
+  if (!isRebuildCommand(context)) {
+    const module = scan.moduleNames[0] || 'unknown';
+    const targetIds = [...scan.aggregates.map(a => a.rootEntity), ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId)];
+    const watermark = newestL4DefsMs(scan.project);
+    if (targetIds.length && targetIds.every(id => defsCurrent(domainEntityFileInfo(module, id), watermark))) {
+      return [
+        enqueueNext(context, parentStep, step, 'cb-gen-port', 'agentCbRepositoryPort', 'Gerar ports de repositório', {}),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused ${targetIds.length} domain entity .defs.ts (L4 unchanged; skipped generation)`, 'input_output'),
+      ];
+    }
+  }
   const byId = new Map(scan.entities.map(e => [e.entityId, e]));
   const items = scan.aggregates.map(agg => ({
     aggregateId: agg.aggregateId,
