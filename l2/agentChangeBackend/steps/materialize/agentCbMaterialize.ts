@@ -17,6 +17,7 @@ import {
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
   createAddStepIntent, createParallelStepIntent, isRecord, readStringArray, logPrefix,
+  repositoryPortFileInfo, dtsRef,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
@@ -30,6 +31,7 @@ import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpe
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
+  extractInterfaceMethods, collectRepositoryMethodMisuse,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
@@ -211,6 +213,29 @@ async function readContextRef(ref: string): Promise<string | null> {
   if (direct != null) return direct;
   if (ref.endsWith('.d.ts')) return getContentByMlsPath(ref.replace(/\.d\.ts$/u, '.ts'));
   return null;
+}
+
+/** Deterministic repository-method gate for a usecase .ts: for every `resolveRepository<IXRepository>`
+ * in the code, load the port source (already materialized — usecases depend on their ports) and flag
+ * any call to a method the port does not declare. Ports that cannot be resolved are skipped (no false
+ * positive). Precise findings (the port's real methods) let the repair loop fix append-only vs CRUD
+ * mismatches deterministically instead of re-guessing (run14: createStockAdjustment save/create). */
+async function repositoryMethodIssues(code: string, module: string): Promise<string[]> {
+  const interfaces = new Set<string>();
+  const ifaceRe = /resolveRepository\s*<\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = ifaceRe.exec(code)) !== null) interfaces.add(m[1]);
+  if (!interfaces.size) return [];
+  const methodsByInterface = new Map<string, Set<string>>();
+  for (const iface of interfaces) {
+    const entity = iface.replace(/^I/u, '').replace(/Repository$/u, '');
+    if (!entity) continue;
+    const src = await readContextRef(dtsRef(repositoryPortFileInfo(module, entity)));
+    if (src == null) continue; // port source not resolvable -> skip (no false positive)
+    const methods = extractInterfaceMethods(src, iface);
+    if (methods.size) methodsByInterface.set(iface, methods);
+  }
+  return collectRepositoryMethodMisuse(code, methodsByInterface);
 }
 
 /** A parallel child must complete for the layer barrier, but every pre-prompt failure still needs a
@@ -402,6 +427,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const p = parseMlsPath(item.outputPath);
     if (!p) throw new Error(`invalid outputPath: ${item.outputPath}`);
     const componentIssues = validateGeneratedComponent(p.project, item, parsed?.data, code, `${p.folder}::${p.shortName.toLowerCase()}`);
+    if (item.type === 'applicationUsecase') {
+      // Deterministic port-method gate (append-only vs CRUD). Async (loads the port source), so it runs
+      // here rather than inside the sync validateGeneratedComponent.
+      componentIssues.push(...await repositoryMethodIssues(code, p.folder.split('/')[0]));
+    }
     if (componentIssues.length) {
       // REPAIR LOOP: keep the findings + the rejected code; the dispatcher re-spawns this worker with
       // them in context while the budget lasts (cbRepair). Budget exhausted -> stays failed and the

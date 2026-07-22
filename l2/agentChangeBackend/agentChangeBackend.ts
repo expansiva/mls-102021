@@ -55,7 +55,22 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     } catch (e) {
       console.error(`${logPrefix(agent)} ${cmd} reset failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  } else if (cmd === 'run') {
+    // Resolve the target module up front (explicit, else the first module with pending owners) so the
+    // task title is correct AT CREATION. Renaming later via the update-status intent's newTaskTitle is
+    // best-effort and depends on collab-messages forwarding it; the bootstrap taskTitle path is the
+    // reliable one. Never blocks the run.
+    try {
+      const scan = await readBackendScan(['toCreate', 'inProgress'], undefined, requestedModule);
+      targetModule = scan.moduleNames[0] || requestedModule;
+    } catch (e) {
+      console.error(`${logPrefix(agent)} run module resolve failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+
+  // Task title reflects the ONE module this run targets (backend). Set here, at creation, via the
+  // deployed taskTitle path — not the mid-run newTaskTitle intent.
+  const taskTitle = targetModule ? `${targetModule} - backend` : 'agentChangeBackend';
 
   // The root agent step is created WITHOUT calling the model (skipRootLLM); the chain is added below.
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
@@ -68,7 +83,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
         { type: 'system', content: 'agentChangeBackend deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.' },
         { type: 'human', content: normalizePrompt(raw) || 'agentChangeBackend' },
       ],
-      taskTitle: 'agentChangeBackend',
+      taskTitle,
       threadId: context.message.threadId,
       userMessage: context.message.content,
       longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule },

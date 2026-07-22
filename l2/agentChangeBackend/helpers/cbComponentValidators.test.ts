@@ -4,7 +4,52 @@ import assert from 'node:assert/strict';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
+  extractInterfaceMethods, collectRepositoryMethodMisuse,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+
+// An append-only ledger port (StockAdjustment): NO save/create — only append + queries.
+const STOCK_ADJ_PORT = `
+import type { StockAdjustment } from '/_102051_/l1/cafeFlow/layer_3_domain/entities/stockAdjustment.js';
+export interface IStockAdjustmentRepository {
+  append(record: StockAdjustment): Promise<void>;
+  listByPeriod(period: DateRange): Promise<StockAdjustment[]>;
+  listByProductId(productId: ProductId): Promise<StockAdjustment[]>;
+}
+`;
+
+test('extractInterfaceMethods reads only the named interface method signatures', () => {
+  const methods = extractInterfaceMethods(STOCK_ADJ_PORT, 'IStockAdjustmentRepository');
+  assert.deepEqual([...methods].sort(), ['append', 'listByPeriod', 'listByProductId']);
+  // Unknown interface -> empty (never a false source of methods).
+  assert.equal(extractInterfaceMethods(STOCK_ADJ_PORT, 'IOrderRepository').size, 0);
+});
+
+test('collectRepositoryMethodMisuse flags a call to a method the port does not declare (run14: save on append-only)', () => {
+  const methods = new Map([['IStockAdjustmentRepository', extractInterfaceMethods(STOCK_ADJ_PORT, 'IStockAdjustmentRepository')]]);
+  const code = `
+    const stockAdjustments = resolveRepository<IStockAdjustmentRepository>(ctx, 'StockAdjustment');
+    await stockAdjustments.save(record);
+    const past = await stockAdjustments.listByPeriod(period);
+  `;
+  const issues = collectRepositoryMethodMisuse(code, methods);
+  assert.equal(issues.length, 1, issues.join('\n'));
+  assert.match(issues[0], /stockAdjustments\.save\(\) is not declared on IStockAdjustmentRepository/);
+  assert.match(issues[0], /use one of: append, listByPeriod, listByProductId/);
+});
+
+test('collectRepositoryMethodMisuse accepts only-declared calls and skips unresolved interfaces', () => {
+  const methods = new Map([['IStockAdjustmentRepository', extractInterfaceMethods(STOCK_ADJ_PORT, 'IStockAdjustmentRepository')]]);
+  // All calls valid.
+  assert.deepEqual(collectRepositoryMethodMisuse(`
+    const a = resolveRepository<IStockAdjustmentRepository>(ctx, 'StockAdjustment');
+    await a.append(r); await a.listByProductId(id);
+  `, methods), []);
+  // Port not in the map (source unresolved) -> skipped, no false positive even for a bogus method.
+  assert.deepEqual(collectRepositoryMethodMisuse(`
+    const o = resolveRepository<IOrderRepository>(ctx, 'Order');
+    await o.whatever(x);
+  `, methods), []);
+});
 
 // A well-formed v2 controller for the "catalog" workspace (one handler per bffCall, routes by const).
 const CATALOG_CONTROLLER = `

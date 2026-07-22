@@ -132,6 +132,65 @@ export function collectUsecaseRules(data: unknown): string[] {
   return [...rules].filter(Boolean);
 }
 
+// ── repository method misuse (usecase materialization gate) ─────────────────────
+// A usecase resolves repositories with `resolveRepository<IXRepository>(...)` and then calls methods
+// on them. When the generated code calls a method the port does NOT declare, materialization produces
+// broken TypeScript (TS2339). Append-only ledgers expose `append`, not `save` — and the LLM keeps
+// guessing `save`/`create` (run14: createStockAdjustment burned its whole repair budget on exactly
+// this because the finding never told it the port's real methods). These pure checks run on the FIRST
+// materialize pass so the finding is precise (the allowed methods) and the repair converges.
+
+/** Method names declared on a repository port interface, read from the generated port `.ts`/`.d.ts`.
+ * Walks the interface body brace-matched; matches member signatures `name(...)` / `name<...>(...)`. */
+export function extractInterfaceMethods(portSource: string, interfaceName: string): Set<string> {
+  const methods = new Set<string>();
+  const header = new RegExp(`\\binterface\\s+${escapeRegExp(interfaceName)}\\b`);
+  const at = portSource.search(header);
+  if (at < 0) return methods;
+  const open = portSource.indexOf('{', at);
+  if (open < 0) return methods;
+  let depth = 0, end = -1;
+  for (let i = open; i < portSource.length; i++) {
+    const ch = portSource[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end < 0) return methods;
+  const body = portSource.slice(open + 1, end);
+  const re = /(?:^|\n)\s*(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:<[^>]*>)?\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) methods.add(m[1]);
+  return methods;
+}
+
+/** Repository method calls in a usecase that are NOT declared on the bound port interface. Binds each
+ * `const v = resolveRepository<IXRepository>(...)` variable to its interface, then checks every
+ * `v.method(` call. Interfaces absent from `methodsByInterface` (port source unresolved) are skipped,
+ * so this never false-positives. The finding lists the port's real methods for a deterministic repair. */
+export function collectRepositoryMethodMisuse(code: string, methodsByInterface: Map<string, Set<string>>): string[] {
+  const binding = new Map<string, string>();
+  const bindRe = /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:await\s+)?resolveRepository\s*<\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*>/g;
+  let b: RegExpExecArray | null;
+  while ((b = bindRe.exec(code)) !== null) binding.set(b[1], b[2]);
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const [varName, iface] of binding) {
+    const methods = methodsByInterface.get(iface);
+    if (!methods || methods.size === 0) continue; // unresolved interface -> do not guess
+    const callRe = new RegExp(`\\b${escapeRegExp(varName)}\\.([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(`, 'g');
+    let c: RegExpExecArray | null;
+    while ((c = callRe.exec(code)) !== null) {
+      const method = c[1];
+      if (methods.has(method)) continue;
+      const dedupe = `${iface}.${method}`;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      issues.push(`repository method misuse -> ${varName}.${method}() is not declared on ${iface}; use one of: ${[...methods].sort().join(', ')}`);
+    }
+  }
+  return issues;
+}
+
 // ── l4 v2: workspace-controller coherence (B7) ──────────────────────────────────
 // The v2 controller is emitted DETERMINISTICALLY (no .defs.ts). "Rotas esperadas = bffCalls do
 // workspace": every bffCall must have an exported handler `<ws><Bff>Handler`, registered in `routes`

@@ -28,12 +28,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No owner with todoBackend status = toCreate.${warningTrace}`),
       ];
     }
-    // First module-aware step: rename the running task to "<module> - backend" (the root bootstrap
-    // could not, the module name is resolved here). Mirrors the e1-draft "plan <module>" rename.
-    const moduleName = scan.moduleNames[0] || 'unknown';
     return [
       enqueueNext(context, parentStep, step, 'cb-validate-readiness', 'agentCbValidateL4Readiness', 'Preflight l4', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}`, undefined, `${moduleName} - backend`),
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}`),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
