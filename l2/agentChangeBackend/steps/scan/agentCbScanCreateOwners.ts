@@ -15,7 +15,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     // toCreate is the trigger; inProgress is treated as resumable (a previous run locked but did not
     // finish) so the reconciler is idempotent and never gets stuck after a partial run.
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     // FRESH BUDGETS (lesson run 102049-g): clearRepairState only ran on validate-all SUCCESS, so a
     // failed run leaked its consumed attempts/globalAttempts into the NEXT run, which then started
     // with the repair budget already burned. A new run regenerates the artifacts anyway — old
@@ -28,9 +28,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No owner with todoBackend status = toCreate.${warningTrace}`),
       ];
     }
+    // First module-aware step: rename the running task to "<module> - backend" (the root bootstrap
+    // could not, the module name is resolved here). Mirrors the e1-draft "plan <module>" rename.
+    const moduleName = scan.moduleNames[0] || 'unknown';
     return [
       enqueueNext(context, parentStep, step, 'cb-validate-readiness', 'agentCbValidateL4Readiness', 'Preflight l4', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}`),
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}`, undefined, `${moduleName} - backend`),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

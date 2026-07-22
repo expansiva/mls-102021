@@ -108,7 +108,7 @@ async function updateL5BackendConfig(project: number, moduleName: string, routeK
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const project = mls.actualProject || 0;
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const moduleName = scan.moduleNames[0] || 'unknown';
     const moduleTables = scan.aggregates.map(a => a.rootEntity);
     let compositionMsg = 'composition root skipped';

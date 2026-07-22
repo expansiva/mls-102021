@@ -22,7 +22,7 @@ export function createAgent(): IAgentAsync {
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  const scan = await readBackendScan(['toCreate', 'inProgress']);
+  const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const entityIds = new Set(scan.entities.map(e => e.entityId));
   const byId = new Map(scan.entities.map(e => [e.entityId, e]));
   const tables = scan.aggregates.map(agg => {
@@ -47,7 +47,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
     let saved = 0;
     for (const item of asArray((out.result as any).items)) {

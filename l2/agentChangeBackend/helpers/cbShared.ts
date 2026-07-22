@@ -199,6 +199,8 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
+import { scopeBackendScan } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+
 export interface CbScan {
   project: number;
   moduleNames: string[];
@@ -215,7 +217,7 @@ export interface CbScan {
 
 // ── deterministic l4 scan ──────────────────────────────────────────────────────
 
-export async function readBackendScan(statuses: string[] = ['toCreate']): Promise<CbScan> {
+export async function readBackendScan(statuses: string[] = ['toCreate'], context?: mls.msg.ExecutionContext, targetModuleOverride?: string): Promise<CbScan> {
   const wanted = new Set(statuses);
   const project = mls.actualProject || 0;
   const moduleNames = new Set<string>();
@@ -327,13 +329,27 @@ export async function readBackendScan(statuses: string[] = ['toCreate']): Promis
     for (const w of readStringArray(obj.writes)) operatedRootIds.add(w);
   }
 
-  const aggregates = deriveAggregates(entities, relationships, operatedRootIds);
-  const events = deriveEventTargets(entities, relationships);
+  // ── single-module scope ────────────────────────────────────────────────────────
+  // A run targets exactly ONE module so each task stays small (a project may hold several modules).
+  // The target is the explicit CLI module (an override arg, or the value the root persisted in the
+  // task longMemory), else the first (sorted) module that has owners in the requested statuses.
+  // Every downstream step reads the SAME target — moduleNames[0] and only that module's owners,
+  // entities, relationships, workspaces and actors — so the pipeline never spans modules. Pure
+  // filtering lives in cbScope (unit-tested there).
+  const allModuleNames = Array.from(moduleNames).sort();
+  const requestedModule = (targetModuleOverride && targetModuleOverride.trim())
+    || (context ? readTargetModule(context) : '');
+  const scoped = scopeBackendScan({ owners, entities, relationships, workspaces, actors: actorsList, allModuleNames, requestedModule });
+  if (scoped.warning) warnings.push(scoped.warning);
+
+  const aggregates = deriveAggregates(scoped.entities, scoped.relationships, operatedRootIds);
+  const events = deriveEventTargets(scoped.entities, scoped.relationships);
   // NB: the l4 contracts (`.ts`) are NEVER read here — l4 holds only `.defs.ts` (a `.ts` in l4 is not
   // compilable and getContent on it 422s). The l1 contracts are GENERATED from `workspaces` (gen-http).
   return {
-    project, moduleNames: Array.from(moduleNames).sort(), owners, entities, relationships,
-    aggregates, events, workspaces, actors: actorsList, siteMaps, warnings,
+    project, moduleNames: scoped.moduleName ? [scoped.moduleName] : allModuleNames,
+    owners: scoped.owners, entities: scoped.entities, relationships: scoped.relationships,
+    aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps, warnings,
   };
 }
 
@@ -864,7 +880,7 @@ export async function saveAgentTrace(context: mls.msg.ExecutionContext, agentNam
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) return;
-    const scan = await readBackendScan(ALL_STATUSES).catch(() => null);
+    const scan = await readBackendScan(ALL_STATUSES, context).catch(() => null);
     const moduleName = scan?.moduleNames?.[0] || 'backend';
     const source = `${JSON.stringify({
       savedAt: new Date().toISOString(),
@@ -949,6 +965,7 @@ export function createUpdateStatusIntent(
   status: mls.msg.AIStepStatus,
   traceMsg?: string,
   cleaner?: 'input' | 'input_output',
+  newTaskTitle?: string,
 ): mls.msg.AgentIntentUpdateStatus {
   const intent: mls.msg.AgentIntentUpdateStatus = {
     type: 'update-status',
@@ -962,6 +979,9 @@ export function createUpdateStatusIntent(
     traceMsg,
   };
   if (cleaner) intent.cleaner = cleaner;
+  // Rename the running task once the module name is known (the scan step resolves it). Mirrors the
+  // e1-draft "plan <module>" rename on agentNewSolution.
+  if (newTaskTitle) intent.newTaskTitle = newTaskTitle;
   return intent;
 }
 
@@ -1069,6 +1089,13 @@ export function planIdOf(step: mls.msg.AIPayload | undefined): string {
 export function readCliCommand(context: mls.msg.ExecutionContext): string {
   const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
   return typeof lm?.cliCommand === 'string' ? lm.cliCommand : '';
+}
+
+/** The target module the root stored in the task longMemory. Empty means "auto": readBackendScan
+ * scopes to the first (sorted) module with owners in the requested statuses. Mirrors readCliCommand. */
+export function readTargetModule(context: mls.msg.ExecutionContext): string {
+  const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
+  return typeof lm?.targetModule === 'string' ? lm.targetModule.trim() : '';
 }
 
 /** Enqueue the next sequential step under the same parent, depending on the current step. v1 uses a

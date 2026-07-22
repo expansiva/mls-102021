@@ -120,7 +120,7 @@ function outputTokenTrace(payload: unknown): string {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const input = await readSeedBuildInput(scan);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
@@ -158,7 +158,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const input = await readSeedBuildInput(scan);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
@@ -199,12 +199,20 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // are downstream of seeds and far more important than seed rows. FINALIZE with the PARTIAL plan
       // (the waves that DID validate; this wave and any later ones are omitted, keeping the seed
       // self-consistent — no dangling refs). validateSeedPlan requires a plan for EVERY input.tablePlans
-      // entry, so we narrow tablePlans to the SEEDED tables; the skipped table(s) are simply seeded empty
-      // at runtime. Continue to cb-seed-assets -> cb-register. Surface the give-up as a WARNING, not a fail.
+      // entry AND every MDM entity in input.entities, so we narrow BOTH to what actually validated: a
+      // skipped wave can carry MDM entities (e.g. a catalog entity with no local table) as well as
+      // tables, and leaving those MDM entities in input.entities would make the FINAL validation demand
+      // a plan we deliberately skipped and fail the whole backend. The skipped target(s) are simply
+      // seeded empty at runtime. Continue to cb-seed-assets -> cb-register. Surface as a WARNING, not a fail.
       const seededTableIds = new Set(progress.plan.localTables.map(t => t.tableId));
-      const partialInput = { ...input, tablePlans: input.tablePlans.filter(t => seededTableIds.has(t.tableId)) };
+      const seededMdmIds = new Set(progress.plan.mdmEntities.map(e => e.entityId));
+      const partialInput = {
+        ...input,
+        tablePlans: input.tablePlans.filter(t => seededTableIds.has(t.tableId)),
+        entities: input.entities.filter(e => e.kind !== 'mdm' || seededMdmIds.has(e.entityId)),
+      };
       return finalizeSeedPlan(context, parentStep, step, hookSequential, partialInput, progress.plan,
-        `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; its table(s) seeded EMPTY so the run reaches register/finalize): ${errors.slice(0, 12).join('; ')}`);
+        `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; its target(s) seeded EMPTY so the run reaches register/finalize): ${errors.slice(0, 12).join('; ')}`);
     }
     const tokenTrace = outputTokenTrace(payload);
     const merged = mergeSeedPlans(progress.plan, plan);

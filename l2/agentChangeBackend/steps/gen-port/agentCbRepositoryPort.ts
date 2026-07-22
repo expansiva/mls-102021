@@ -21,7 +21,7 @@ export function createAgent(): IAgentAsync {
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  const scan = await readBackendScan(['toCreate', 'inProgress']);
+  const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const items = scan.aggregates.map(a => ({ entityId: a.rootEntity, embeddedMembers: a.embeddedMembers }));
   // Append-only event ports: append(record) + read finders (listByOwnerId, listByPeriod). NO update/delete.
   const eventItems = scan.events.filter(ev => ev.persisted).map(ev => ({ entityId: ev.entityId, appendOnlyEvent: true, owner: ev.ownerEntity }));
@@ -37,7 +37,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
     let saved = 0;
     for (const item of asArray((out.result as any).items)) {

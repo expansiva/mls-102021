@@ -183,7 +183,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // (runtime pool of 5, payloads discarded as each finishes) + the controller JOIN on that parent.
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     // Only OPERATIONS are BFF command owners with their own usecase. Workflows are pure L4
     // orchestration/composition realized by their member operations — they generate no usecase,
     // controller or command (their status is still finalized to done downstream).
@@ -215,7 +215,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
 
 // WORKER: build the prompt for ONE owner and ask the model for that single usecase.
 async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, ownerId: string): Promise<mls.msg.AgentIntent[]> {
-  const scan = await readBackendScan(['toCreate', 'inProgress']);
+  const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const owner = scan.owners.find(o => o.id === ownerId);
   // NB: worker children never return 'failed' (a failed step does not satisfy dependsOn and would
   // stall the fan-out join); the judge/validate-all report what is missing.
@@ -249,7 +249,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const result = out.result as any;
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
     const { roots, mdmIds, childToRoot } = deriveMaps(scan);
     const usecaseId = readString(result?.usecaseId) || workerOwnerId(args, step);

@@ -122,7 +122,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     // Read ALL statuses: v2 controllers are per-WORKSPACE and a workspace's bffCalls may `use` operations
     // of mixed status (a partial /run). The v1 loop still processes only the pending owners (filtered below).
-    const scan = await readBackendScan(ALL_STATUSES);
+    const scan = await readBackendScan(ALL_STATUSES, context);
     const contracts = await contractPageIds();
     const usecaseFns = await readUsecaseFunctions();
     // defs-only is TOTAL (B2): the controller .defs.ts is written, but NOTHING is materialized to .ts —

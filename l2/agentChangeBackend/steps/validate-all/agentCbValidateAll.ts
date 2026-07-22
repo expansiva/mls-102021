@@ -46,7 +46,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     let preSeeds = false;
     try { preSeeds = JSON.parse(String(step.prompt || '{}'))?.preSeeds === true; } catch { /* post-register validation */ }
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const project = mls.actualProject || 0;
     const moduleName = scan.moduleNames[0] || 'unknown';
     const moduleFolderPrefix = `${moduleName}/`;

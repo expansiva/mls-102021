@@ -50,9 +50,9 @@ function workerDefRef(args: string | undefined, step: mls.msg.AIAgentStep): stri
 interface DefsEntry { defRef: string; item: PipelineItem; }
 
 // Scan every l1 .defs.ts of the (single) module and pair it with its pipeline item + defs mls path.
-async function scanEntries(): Promise<DefsEntry[]> {
+async function scanEntries(context: mls.msg.ExecutionContext): Promise<DefsEntry[]> {
   const project = mls.actualProject || 0;
-  const scan = await readBackendScan(['toCreate', 'inProgress']);
+  const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const moduleName = scan.moduleNames[0] || 'unknown';
   const files = await scanL1DefsWithPipeline(project, moduleName);
   const entries: DefsEntry[] = [];
@@ -89,7 +89,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const project = mls.actualProject || 0;
-    const entries = await scanEntries();
+    const entries = await scanEntries(context);
     const allStale = entries.filter(e => entryIsStale(project, e.defRef, e.item));
     // Materialize ONE layer per dispatch. The runtime's addParallelArgs forces a parallel parent to
     // in_progress and enqueues its children the moment the add-step is applied, so a `dependsOn`

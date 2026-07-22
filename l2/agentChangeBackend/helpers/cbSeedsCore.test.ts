@@ -65,6 +65,26 @@ test('buildSeedSource: narrowing tablePlans to the seeded tables lets a partial 
   assert.deepEqual(narrowed.errors, [], narrowed.errors.join('\n'));
 });
 
+test('buildSeedSource: narrowing entities to the seeded MDM entities lets a partial plan finalize (seed give-up path)', () => {
+  const full = validInput();
+  // Simulate a wave giving up on an MDM entity (MenuItem) — this is the run13 failure: the batch that
+  // failed carried MenuItem, so it never merged and the partial plan omits it (no local table backs an
+  // MDM entity, so narrowing tablePlans alone cannot help here).
+  const partialPlan = { ...full.plan, mdmEntities: full.plan.mdmEntities.filter(e => e.entityId !== 'MenuItem') };
+  // Without narrowing entities, coverage requires a plan for EVERY MDM entity -> MenuItem is flagged
+  // and finalizeSeedPlan throws "final seed plan validation failed: mdmEntities: missing plan for 'MenuItem'".
+  const withFull = buildSeedSource({ ...full, plan: partialPlan });
+  assert.ok(withFull.errors.some(e => /mdmEntities: missing plan for 'MenuItem'/.test(e)), withFull.errors.join('\n'));
+  // Narrowing entities to the seeded MDM entities (what agentCbSeeds does on give-up) -> the partial
+  // validates cleanly; MenuItem is simply seeded empty at runtime, self-consistent (no seeded row
+  // references it, because its wave never merged).
+  const seededMdm = new Set(partialPlan.mdmEntities.map(e => e.entityId));
+  const narrowed = buildSeedSource({ ...full, plan: partialPlan, entities: full.entities.filter(e => e.kind !== 'mdm' || seededMdm.has(e.entityId)) });
+  assert.deepEqual(narrowed.errors, [], narrowed.errors.join('\n'));
+  // The give-up must not emit rows for the skipped entity.
+  assert.ok(narrowed.content && !narrowed.content.includes('mdm:MenuItem'), 'skipped MDM entity must not be seeded');
+});
+
 test('deriveSeedPlanningWaves orders the cafeFlow graph deterministically', () => {
   assert.deepEqual(deriveSeedPlanningWaves(validInput()), [
     { index: 1, tableIds: [], mdmEntityIds: ['MenuCategory', 'StockItem'] },

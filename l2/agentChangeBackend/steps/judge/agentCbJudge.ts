@@ -105,7 +105,7 @@ function ownerContract(o: CbOwner) {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const { judgeRun, operations } = scopedOperations(scan, step);
     if (!operations.length) {
       return [
@@ -150,7 +150,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
-    const scan = await readBackendScan(['toCreate', 'inProgress']);
+    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const { judgeRun, operations } = scopedOperations(scan, step);
     const operationIds = new Set(operations.map(o => o.id));
 

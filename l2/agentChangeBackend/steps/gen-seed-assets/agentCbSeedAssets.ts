@@ -36,7 +36,7 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const state = await loadState();
+    const state = await loadState(context);
     const args = stepArgs(step);
     const request = await nextRequest(state, args.skippedAssetIds);
     if (!request) return completeAssets(context, parentStep, step, hookSequential, state, 'Seed assets reused or not requested.');
@@ -62,7 +62,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const state = await loadState();
+    const state = await loadState(context);
     const args = stepArgs(step);
     const request = await nextRequest(state, args.skippedAssetIds);
     if (!request) return completeAssets(context, parentStep, step, hookSequential, state, 'Seed assets already completed.');
@@ -96,8 +96,8 @@ function stepArgs(step: mls.msg.AIAgentStep): AssetStepArgs {
   }
 }
 
-async function loadState(): Promise<{ project: number; moduleName: string; entities: SeedEntityDefinition[]; source: string; manifest: SeedAssetManifest }> {
-  const scan = await readBackendScan(['toCreate', 'inProgress']);
+async function loadState(context: mls.msg.ExecutionContext): Promise<{ project: number; moduleName: string; entities: SeedEntityDefinition[]; source: string; manifest: SeedAssetManifest }> {
+  const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const moduleName = scan.moduleNames[0] || 'unknown';
   const source = await readSeedSource(scan.project, moduleName);
   const plan = extractSeedPlanFromSource(source);
