@@ -85,7 +85,11 @@ export const repositoryAdapterResultSchema = {
 // outputShape and models copy its entries verbatim into output[] — rejecting those keys made the
 // x-tool-strict ajv gate 502 the whole call (primary AND fallback) on run 102049. They are tolerated,
 // not consumed: the pin (cbOutputShapeToDefsFields) flattens the defs output regardless.
-const ioFieldSchema = { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: { name: str, type: str, required: bool, description: str, ofEntity: str, fieldRef: str, item: { type: 'object' } } } as const;
+// The item shape of an array field = { fields: [...columns] }. Flat one level (columns are scalars),
+// so its own field schema omits a further `item` — keeps the tree bounded AND provider-clean.
+const itemFieldSchema = { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: { name: str, type: str, required: bool, description: str, ofEntity: str, fieldRef: str } } as const;
+const arrayItemSchema = { type: 'object', additionalProperties: false, properties: { fields: { type: 'array', items: itemFieldSchema } } } as const;
+const ioFieldSchema = { type: 'object', additionalProperties: false, required: ['name', 'type'], properties: { name: str, type: str, required: bool, description: str, ofEntity: str, fieldRef: str, item: arrayItemSchema } } as const;
 
 const usecaseFunctionSchema = {
   type: 'object',
