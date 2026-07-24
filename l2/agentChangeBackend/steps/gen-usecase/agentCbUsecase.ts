@@ -4,7 +4,7 @@
 // each LLM response small (the per-usecase defs carry explicit functions[] input/output), this agent
 // fans out via the runtime's parallel_dynamic/progress: a DISPATCHER step (deterministic, no LLM)
 // emits ONE parallel step whose args queue = the owner ids (createParallelStepIntent, maxParallel 10).
-// The runtime runs the workers in a pool of 5 slots and DISCARDS each child's payload as it finishes
+// The runtime runs the workers in a pool of 10 slots and DISCARDS each child's payload as it finishes
 // (the task stays small), instead of keeping N persistent steps. Each WORKER (same agent, reached with
 // its ownerId in hook.args) does one LLM call and saves one usecase .defs.ts. The controller step JOINS
 // on the single parallel parent (dependsOn its planId).
@@ -181,7 +181,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 // DISPATCHER (deterministic, no LLM): ONE parallel_dynamic step whose args queue is the owner ids
-// (runtime pool of 5, payloads discarded as each finishes) + the controller JOIN on that parent.
+// (runtime pool of 10, payloads discarded as each finishes) + the controller JOIN on that parent.
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);

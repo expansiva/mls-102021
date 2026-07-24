@@ -24,6 +24,20 @@ void test('agentCbDomainEntity declares the LLM step agent contract', () => {
   assert.match(flow, /"agentName": "agentCbDomainEntity"/);
 });
 
+void test('agentCbDomainEntity fans out one worker per domain (10 slots) and cb-gen-port joins', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbDomainEntity.ts'), 'utf8');
+  const flow = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8'));
+  // Source: dispatcher fans out via createParallelStepIntent with 10 slots; workers never hard-fail.
+  assert.match(src, /createParallelStepIntent\([^)]*10\)/s, 'must fan out with 10 slots');
+  assert.match(src, /cb-domain-fanout/);
+  // Flow contract: the fan-out step exists as parallel_dynamic and cb-gen-port joins ON it.
+  const steps = flow.steps as Array<{ planId: string; executionMode?: string; dependsOn?: string[] }>;
+  const fanout = steps.find((s) => s.planId === 'cb-domain-fanout');
+  assert.ok(fanout && fanout.executionMode === 'parallel_dynamic', 'cb-domain-fanout must be parallel_dynamic');
+  const port = steps.find((s) => s.planId === 'cb-gen-port');
+  assert.ok(port?.dependsOn?.includes('cb-domain-fanout'), 'cb-gen-port must join on cb-domain-fanout');
+});
+
 void test('agentCbDomainEntity tool schema is provider-clean', () => {
   const errs = lintToolSchema(JSON.stringify(tool().function.parameters));
   assert.equal(errs, null, errs?.join(' | '));

@@ -16,7 +16,7 @@
     "spec": "_102021_/l2/agentChangeBackend/spec.md",
     "stage1Flow": "_102020_/l2/agentNewSolution3/flow.json",
     "siblingFlow": "_102020_/l2/agentChangeFrontend/flow.json (same autonomous create-only pattern, statusFrontend side)",
-    "tree": "_102021_/l2/agentChangeBackend/agentChangeBackend.ts + per-agent enqueueNext/dispatch (IMPERATIVE sequential chain; NOT a declarative planned tree). Two parallel_dynamic fan-outs: cb-usecase-fanout and cb-materialize (one layer per dispatch). The former LLM index chain (cb-lock -> aggregate -> persistence -> usecase -> bff -> gen-domain) was collapsed to cb-lock -> gen-domain on 2026-07-11.",
+    "tree": "_102021_/l2/agentChangeBackend/agentChangeBackend.ts + per-agent enqueueNext/dispatch (IMPERATIVE sequential chain; NOT a declarative planned tree). Three parallel_dynamic fan-outs: cb-domain-fanout (one worker per aggregate/event), cb-usecase-fanout (one per operation owner) and cb-materialize (one layer per dispatch). The former LLM index chain (cb-lock -> aggregate -> persistence -> usecase -> bff -> gen-domain) was collapsed to cb-lock -> gen-domain on 2026-07-11; gen-domain became a dispatcher + cb-domain-fanout on 2026-07-24 (the single WHOLE-LAYER call truncated on large modules).",
     "schemas": "_102021_/l2/agentChangeBackend/helpers/cbSchemas.ts (strict JSON schemas; collab-llm enforces the tool call, cbExtract re-validates).",
     "reused": "_102021_/l2/agentMaterializeSolution/* (agentPrepareDefsL1, agentMaterializeL1Def, agentMaterializeGen, templateMaterialize, registerBackEnd)"
   },
@@ -99,7 +99,7 @@
     "folderLayout": {
       "_note": "APPLIED 2026-07-11 (todo/modernizeChangeBackend.md §Ordem 4): each step agent now lives under steps/<slug>/ with its prompt.md, readme.md and CHANGELOG.md. Agents are resolved by agentName (getInstanceByName scans the project), so the move needed no import changes — only fileReference + agentFolder updates. The shared core stays flat (see sharedCoreFrozen).",
       "steps/scan/": "cb-scan (agentCbScanCreateOwners) + cb-validate-readiness (agentCbValidateL4Readiness) + cb-lock (agentCbLockOwners) — deterministic input steps, small, always edited together.",
-      "steps/gen-domain/": "cb-gen-domain (agentCbDomainEntity) + prompt.md + schema.",
+      "steps/gen-domain/": "cb-gen-domain dispatcher + cb-domain-fanout worker (agentCbDomainEntity, one file: dispatcher when no bare-id arg, worker when the arg is a domain id) + prompt.md + schema.",
       "steps/gen-port/": "cb-gen-port (agentCbRepositoryPort) + prompt.md + schema.",
       "steps/gen-table/": "cb-gen-table (agentCbPersistenceTable) + prompt.md + schema.",
       "steps/gen-adapter/": "cb-gen-adapter (agentCbRepositoryAdapter) + prompt.md + schema.",
@@ -223,13 +223,24 @@
       "planId": "cb-gen-domain",
       "agentName": "agentCbDomainEntity",
       "type": "agent",
-      "modelAlias": "code",
+      "modelAlias": null,
       "executionMode": "sequential",
       "dependsOn": [
         "cb-lock"
       ],
+      "goal": "DISPATCHER (no LLM). Reuse fast-path: if every domain .defs.ts is current (L4 unchanged and not /rebuild) enqueue cb-gen-port directly. Otherwise fan out ONE worker per aggregate root + per persisted event (cb-domain-fanout, 10 slots) and enqueue cb-gen-port JOINING on the fan-out. Aggregates derived deterministically (cbShared.deriveAggregates) from ontology kind + relationships."
+    },
+    {
+      "planId": "cb-domain-fanout",
+      "agentName": "agentCbDomainEntity",
+      "type": "agent",
+      "modelAlias": "code",
+      "executionMode": "parallel_dynamic",
+      "dependsOn": [
+        "cb-gen-domain"
+      ],
       "strictTool": true,
-      "goal": "LLM, WHOLE LAYER in one call (array result). Pure domain entities per aggregate root + value-objects, plus one immutable record per persisted event. Aggregates are derived deterministically (cbShared.deriveAggregates) from ontology kind + relationships. Enqueue cb-gen-port.",
+      "goal": "WORKER (LLM), ONE aggregate/event per slot: a PURE domain entity (root fields + embedded value-objects) or one immutable record for a persisted event. Same system prompt + submitDomainEntities schema as the former whole-layer call, scoped to a single domain so the output never truncates (this replaced the single WHOLE-LAYER call that made grok-4.5 emit item[0] without fields). NEVER returns 'failed' (fan-out join semantics): a failed slot completes with a '[repair]' trace + cb-repair-state record; a re-run (not /rebuild) regenerates only the missing domain via the worker reuse check.",
       "savedArtifact": [
         "l1/{module}/layer_3_domain/entities/*.defs.ts"
       ]
@@ -241,7 +252,7 @@
       "modelAlias": "code",
       "executionMode": "sequential",
       "dependsOn": [
-        "cb-gen-domain"
+        "cb-domain-fanout"
       ],
       "strictTool": true,
       "goal": "LLM, whole layer. Repository ports I{Entity}Repository per aggregate; append-only ports (append+finders) per persisted event. Enqueue cb-gen-table.",
