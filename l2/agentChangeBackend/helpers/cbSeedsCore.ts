@@ -735,7 +735,9 @@ function validateReference(value: SeedValue, path: string, references: Set<strin
 }
 
 function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue | undefined, path: string, errors: string[]) {
-  if (!field?.enumValues.length || value === undefined) return;
+  // null is a cleared/absent optional value (e.g. a not-yet-set enum on an in-progress row); the
+  // required check below enforces presence separately, so an optional enum may be null.
+  if (!field?.enumValues.length || value === undefined || value === null) return;
   if (isSeedAssetRef(value)) return;
   if (isSeedReference(value) || typeof value !== 'string' || !field.enumValues.includes(value)) {
     errors.push(`${path}: expected one of ${field.enumValues.join(', ')}`);
@@ -844,13 +846,17 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
           continue;
         }
         const value = columns.get(column.name);
-        if (!column.nullable && value === undefined) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
+        // A NOT NULL column must have a concrete value: neither missing (undefined) nor null.
+        if (!column.nullable && (value === undefined || value === null)) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
         validateTimestamp(window, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
         const field = entityFields.get(toCamel(column.name));
         validateEnum(field, value, `${rowPath}.columns.${column.name}`, errors);
         validateAssetReference(value, field, `${rowPath}.columns.${column.name}`, errors);
-        if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && !isSeedReference(value)) {
+        // A nullable FK is legitimately null for an in-progress row (an open shift has no closer yet);
+        // only a NON-null FK value must be a symbolic { ref }. null on a NOT NULL column is already
+        // caught by the required check above.
+        if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && value !== null && !isSeedReference(value)) {
           errors.push(`${rowPath}.columns.${column.name}: foreign keys must use a symbolic { ref }`);
         }
       }
@@ -859,12 +865,14 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         const storedAsColumn = columnNames.has(mappedColumn);
         const generatedPrimaryKey = definition.primaryKey.includes(mappedColumn);
         const value = storedAsColumn ? columns.get(mappedColumn) : details.get(field.fieldId);
-        if (field.required && !generatedPrimaryKey && value === undefined) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
+        if (field.required && !generatedPrimaryKey && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
         validateTimestamp(window, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
         validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
-        if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && !isSeedReference(value)) {
+        // Optional entity references may be null (a not-yet-linked relation on an in-progress row);
+        // only a NON-null reference must be symbolic. A required field that is null is already caught above.
+        if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && value !== null && !isSeedReference(value)) {
           errors.push(`${rowPath}.${field.fieldId}: entity references must use a symbolic { ref }`);
         }
       }
@@ -918,9 +926,10 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
       }
       for (const field of definition.fields) {
         const automaticId = field.fieldId === entityIdField(definition);
-        if (field.required && !automaticId && fields.get(field.fieldId) === undefined) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         const value = fields.get(field.fieldId);
-        if (field.fieldId.endsWith('Id') && !automaticId && value !== undefined && !isSeedReference(value)) {
+        if (field.required && !automaticId && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
+        // Optional MDM references may be null; only a NON-null reference must be symbolic.
+        if (field.fieldId.endsWith('Id') && !automaticId && value !== undefined && value !== null && !isSeedReference(value)) {
           errors.push(`${rowPath}.${field.fieldId}: MDM references must use a symbolic { ref }`);
         }
       }

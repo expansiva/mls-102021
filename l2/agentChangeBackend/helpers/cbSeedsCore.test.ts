@@ -209,6 +209,32 @@ test('validateSeedPlan blocks invalid enum values but no longer enforces hardcod
   assert.ok(!errors.some(error => error.includes('singleOpenShift')));
 });
 
+test('validateSeedPlan accepts null on nullable FK columns / optional references (in-progress lifecycle row)', () => {
+  // Regression for the seed give-up cascade seen on cafeFlow 102051: an open DailyShift legitimately
+  // has closed_by_user_id = null (it has no closer yet). A nullable FK column, an optional entity
+  // field ending in Id, and an optional MDM field ending in Id must all accept null — otherwise the
+  // whole wave fails validation, exhausts its repair budget, is skipped, and every table it (and every
+  // downstream wave) covers is seeded EMPTY.
+  const input = validInput();
+  // Nullable FK column + optional entity reference field on the operational Order.
+  const order = input.tablePlans.find(t => t.tableId === 'Order')!;
+  order.columns.push({ name: 'delivered_by_id', type: 'UUID', nullable: true });
+  input.entities.find(e => e.entityId === 'Order')!.fields.push(field('deliveredById', false));
+  input.plan.localTables.find(t => t.tableId === 'Order')!.rows[0].columns.push({ name: 'delivered_by_id', value: null });
+  // Optional MDM reference field left null.
+  input.entities.find(e => e.entityId === 'MenuItem')!.fields.push(field('supplierId', false));
+  input.plan.mdmEntities.find(e => e.entityId === 'MenuItem')!.rows[0].fields.push({ name: 'supplierId', value: null });
+
+  assert.deepEqual(validateSeedPlan(input), []);
+
+  // But null on a NOT NULL FK column is still a missing-value error (not a "must use ref" false positive).
+  const bad = validInput();
+  bad.plan.localTables.find(t => t.tableId === 'Order')!.rows[0].columns.find(c => c.name === 'shift_id')!.value = null;
+  const errors = validateSeedPlan(bad);
+  assert.ok(errors.some(e => /columns\.shift_id: required column missing/.test(e)), errors.join('\n'));
+  assert.ok(!errors.some(e => /shift_id.*must use a symbolic/.test(e)), errors.join('\n'));
+});
+
 test('validateSeedPlan accepts any ISO timestamp inside the window and rejects out-of-window', () => {
   const good = validInput();
   // A timestamp that is neither SEED_T0 nor SEED_T1 but still within the default window.
