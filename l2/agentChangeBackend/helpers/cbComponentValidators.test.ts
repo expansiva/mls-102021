@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
+  eventPortBelongsToOwner, missingPrincipalPortIssues, portsMissingFromDependsFiles,
+  ownershipCheckIsInconclusive, ownershipInconclusiveWarning,
+  collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
   stableCompilerErrors, selectCompilerRepairRoots,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -200,4 +203,154 @@ test('collectUsecaseRules unions top-level and per-function rules, normalized', 
   assert.deepEqual(collectUsecaseRules(data).sort(), ['R1', 'R2', 'R3', 'R4']);
   assert.deepEqual(collectUsecaseRules(undefined), []);
   assert.deepEqual(collectUsecaseRules('nope'), []);
+});
+
+// ── T12: the createStockAdjustment bug (erro4 + erro5) ──────────────────────────
+// Real cafeFlow shape: StockAdjustment is kind:"event" (append-only), its ONLY relationship is to
+// StockItem (kind:"mdm"), so deriveEventTargets finds no related CORE entity -> ownerEntity === ''.
+// The owner L4 declares entity:"StockAdjustment". Before the fix the event matched none of the three
+// derivation paths, so the port never reached dependsFiles and the model had to guess the interface.
+test('T12: an event the operation CREATES is owned by it even with an empty ownerEntity', () => {
+  const stockAdjustment = { entityId: 'StockAdjustment', ownerEntity: '' };
+  const ownerRefs = ['StockAdjustment', 'StockItem'];           // l4 entity + reads
+  const mutated = new Set(ownerRefs);
+  assert.equal(eventPortBelongsToOwner(stockAdjustment, ownerRefs, mutated), true);
+});
+
+test('T12: an event whose ownerEntity is MDM but referenced by the owner is included', () => {
+  const event = { entityId: 'StockAdjustment', ownerEntity: 'StockItem' }; // StockItem is mdm
+  assert.equal(eventPortBelongsToOwner(event, ['StockAdjustment'], new Set(['StockAdjustment'])), true);
+});
+
+test('T12: the legacy ownerEntity path still matches, and an UNRELATED event is NOT pulled in', () => {
+  // legacy: the event belongs to a core entity the owner mutates.
+  assert.equal(eventPortBelongsToOwner({ entityId: 'ShiftClosed', ownerEntity: 'DailyShift' }, ['DailyShift'], new Set(['DailyShift'])), true);
+  // unrelated event -> excluded (T5 context savings must hold: no blanket inclusion).
+  assert.equal(eventPortBelongsToOwner({ entityId: 'OrderPlaced', ownerEntity: 'Order' }, ['DailyShift'], new Set(['DailyShift'])), false);
+  // an EMPTY ownerEntity must never match an empty ownerRefs entry (would pull in every event).
+  assert.equal(eventPortBelongsToOwner({ entityId: 'OrderPlaced', ownerEntity: '' }, ['', 'DailyShift'], new Set(['DailyShift'])), false);
+});
+
+test('T12 item 4: judge flags a defs whose principal aggregate has a port but is not declared', () => {
+  const localPorts = new Set(['StockAdjustment', 'DailyShift']);
+  const mdm = new Set(['StockItem']);
+  // the erro5 defs: ports = ["DailyShift"], principal aggregate StockAdjustment missing.
+  const issues = missingPrincipalPortIssues({ id: 'createStockAdjustment', entity: 'StockAdjustment' }, ['DailyShift'], localPorts, mdm);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /principal aggregate 'StockAdjustment'/u);
+  assert.match(issues[0], /IStockAdjustmentRepository/u);
+  // declared -> no finding.
+  assert.deepEqual(missingPrincipalPortIssues({ id: 'createStockAdjustment', entity: 'StockAdjustment' }, ['DailyShift', 'StockAdjustment'], localPorts, mdm), []);
+  // REGRESSION: an MDM-only usecase (browseMenuItems) must NOT be told to invent a local port.
+  assert.deepEqual(missingPrincipalPortIssues({ id: 'browseMenuItems', entity: 'StockItem' }, [], localPorts, mdm), []);
+  // an entity with no local port at all -> nothing to declare.
+  assert.deepEqual(missingPrincipalPortIssues({ id: 'doThing', entity: 'Whatever' }, [], localPorts, mdm), []);
+});
+
+test('T12 item 3: the worker belt spots ports referenced by the defs but absent from dependsFiles', () => {
+  const dependsFiles = [
+    '_102051_/l1/cafeFlow/layer_2_application/ports/dailyShiftRepository.d.ts',
+    '_102051_/l1/cafeFlow/layer_3_domain/entities/dailyShift.d.ts',
+  ];
+  // ports/functions[].ports name StockAdjustment, but only the DailyShift pair is in dependsFiles.
+  const data = { ports: ['DailyShift', 'StockAdjustment'], functions: [{ ports: ['StockAdjustment'] }] };
+  assert.deepEqual(portsMissingFromDependsFiles(data, dependsFiles), ['StockAdjustment']);
+  // fully declared -> nothing extra loaded (no context bloat).
+  assert.deepEqual(portsMissingFromDependsFiles({ ports: ['DailyShift'] }, dependsFiles), []);
+  assert.deepEqual(portsMissingFromDependsFiles(undefined, dependsFiles), []);
+});
+
+// ── T10: ownership-check sanity guard ──────────────────────────────────────────
+test('T10: an empty ownership set with generated defs present is INCONCLUSIVE, not 20 orphans', () => {
+  // erro5: the gen-http `done` flip emptied the scan -> 0 expected ids, 20 usecase defs on disk.
+  assert.equal(ownershipCheckIsInconclusive(0, 20), true);
+  assert.match(ownershipInconclusiveWarning(20), /inconclusive/u);
+  assert.match(ownershipInconclusiveWarning(20), /20 generated defs/u);
+  // a healthy scan -> the check runs normally (a GENUINE orphan must still be caught).
+  assert.equal(ownershipCheckIsInconclusive(20, 20), false);
+  // no defs at all -> nothing to be inconclusive about.
+  assert.equal(ownershipCheckIsInconclusive(0, 0), false);
+});
+
+test('T10: the guard is gated PER CHECK — a v2 module must not defeat the usecase guard', () => {
+  // erro5 state on cafeFlow (v2): owners all flipped to `done` so the status-filtered scan yields 0
+  // operations, but scan.workspaces is NOT status-filtered -> 3 workspaces are still present.
+  const expectedOperations = 0;
+  const expectedWorkspaces = 3;
+  const usecaseDefs = 20;
+  const controllerDefs = 3;
+  // USECASE ownership comes ONLY from operations -> inconclusive (this is what erro5 got wrong).
+  assert.equal(ownershipCheckIsInconclusive(expectedOperations, usecaseDefs), true);
+  // Summing the two sets (0 + 3) would have left the usecase guard DEAD — regression pin.
+  assert.equal(ownershipCheckIsInconclusive(expectedOperations + expectedWorkspaces, usecaseDefs), false,
+    'summing operations+workspaces must NOT be used for the usecase check');
+  // CONTROLLER ownership accepts workspaces too, so with workspaces present it stays conclusive.
+  assert.equal(ownershipCheckIsInconclusive(expectedOperations + expectedWorkspaces, controllerDefs), false);
+  // A v1 module (no workspaces) with 0 operations -> both checks are inconclusive.
+  assert.equal(ownershipCheckIsInconclusive(0 + 0, controllerDefs), true);
+});
+
+// ── T10 / Opção A: the required regression suite ────────────────────────────────
+// Fixture = the erro5 post-gen-http state: 20 usecase defs + 3 v2 controller defs, generated by THIS
+// run, with every owner already flipped to `done` by gen-http.
+const OP_IDS = ['browsemenuforpos', 'createstockadjustment', 'openshift', 'closeshift', 'voidadjustment'];
+const usecaseDefsFixture = OP_IDS.map(id => ({ folder: 'cafeFlow/layer_2_application/usecases', shortName: id, real: id }));
+const controllerDefsFixture = ['posworkspace', 'stockworkspace'].map(id => ({ folder: 'cafeFlow/l1/adapters/http/controllers', shortName: id, real: id }));
+
+test('T10 regression: with the ALL_STATUSES scan (A1) the run-generated defs produce ZERO orphans', () => {
+  // A1: the scan now returns the `done` owners too, so expectedOperationIds is populated.
+  const expectedOperations = new Set(OP_IDS);
+  const expectedWorkspaces = new Set(['posworkspace', 'stockworkspace']);
+  const { findings, warnings } = collectOrphanDefsFindings(
+    [...usecaseDefsFixture, ...controllerDefsFixture], expectedOperations, expectedWorkspaces);
+  assert.deepEqual(findings, [], 'no defs generated by this run may be reported as an orphan');
+  assert.deepEqual(warnings, [], 'ownership was conclusive -> no degradation warning');
+});
+
+test('T10 guard: the PRE-A1 state degrades to warnings instead of 20 blocking findings', () => {
+  // Pending-filtered scan after the gen-http flip: 0 operations, but workspaces are NOT status-filtered.
+  const { findings, warnings } = collectOrphanDefsFindings(
+    [...usecaseDefsFixture, ...controllerDefsFixture], new Set(), new Set(['posworkspace', 'stockworkspace']));
+  // The usecase check is inconclusive -> ONE warning, NOT 5 blocking findings.
+  assert.equal(warnings.length, 1, warnings.join(' | '));
+  assert.match(warnings[0], /inconclusive/u);
+  // Crucially: nothing blocking for the usecases (this is what starved the repair round in erro5).
+  assert.equal(findings.filter(f => f.includes('layer_2_application/usecases')).length, 0);
+  // The controller check still had workspaces, so it stayed conclusive and passed.
+  assert.equal(findings.length, 0);
+});
+
+test('T10: a TRUE orphan is still blocking (an id owned by no owner, any status)', () => {
+  const expectedOperations = new Set(OP_IDS);                 // 'legacyremovedusecase' is NOT here
+  const withOrphan = [...usecaseDefsFixture, { folder: 'cafeFlow/layer_2_application/usecases', shortName: 'legacyremovedusecase', real: 'legacyRemovedUsecase' }];
+  const { findings, warnings } = collectOrphanDefsFindings(withOrphan, expectedOperations, new Set());
+  assert.equal(findings.length, 1, findings.join(' | '));
+  assert.match(findings[0], /legacyRemovedUsecase\.defs\.ts is not owned by a current operation/u);
+  assert.match(findings[0], /manual reconciliation required/u);
+  assert.deepEqual(warnings, []);
+  // A controller owned by NEITHER an operation nor a workspace is blocking too.
+  const orphanController = collectOrphanDefsFindings(
+    [{ folder: 'm/adapters/http/controllers', shortName: 'ghostworkspace', real: 'ghostWorkspace' }],
+    expectedOperations, new Set(['posworkspace']));
+  assert.equal(orphanController.findings.length, 1);
+  assert.match(orphanController.findings[0], /not owned by a current operation\/workspace/u);
+});
+
+test('T10 / A1: the V1 canonical-route check still fires for owners already flipped to done', () => {
+  const lowerFirstFn = (v: string) => v.charAt(0).toLowerCase() + v.slice(1);
+  // Owners come from the ALL_STATUSES scan -> present even though todoStatus is 'done'.
+  const owners = [
+    { kind: 'operation', id: 'CreateStockAdjustment', bffName: 'cafeFlow.stock.createAdjustment' },
+    { kind: 'operation', id: 'OpenShift' },                    // no bffName -> canonical fallback
+    { kind: 'workflow', id: 'NightlyClose' },                   // not an operation -> ignored
+  ];
+  const controllers = [
+    { id: 'createstockadjustment', routes: [{ key: 'cafeFlow.stock.createAdjustment' }] },  // ok
+    { id: 'openshift', routes: [{ key: 'cafeFlow.wrong.route' }] },                          // missing
+  ];
+  const issues = collectMissingCanonicalRouteIssues(owners, controllers, 'cafeFlow', lowerFirstFn);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /controller openshift -> missing canonical bffName route cafeFlow\.OpenShift\.OpenShift/u);
+  // An operation with NO controller is not flagged here (completeness checks own that case).
+  assert.deepEqual(collectMissingCanonicalRouteIssues(owners, [], 'cafeFlow', lowerFirstFn), []);
 });

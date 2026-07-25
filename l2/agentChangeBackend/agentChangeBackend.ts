@@ -20,10 +20,9 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, setTodoBackendStatus, createAgentStepPayload, createUpdateStatusIntent, logPrefix,
+  ALL_STATUSES,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { parseCli, normalizePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbCli.js';
-
-const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 
 export function createAgent(): IAgentAsync {
   return {
@@ -39,7 +38,7 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const raw = userPrompt || context.message.content || '';
-  const { kind: cmd, module: requestedModule } = parseCli(raw);
+  const { kind: cmd, module: requestedModule, noAssets } = parseCli(raw);
 
   // Resolve the ONE module this run targets, and (for rebuild) reset only that module's owners so the
   // task stays small. No explicit module -> the first (sorted) module with owners; readBackendScan
@@ -89,7 +88,8 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       taskTitle,
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule },
+      // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}) },
     },
   };
 
@@ -147,5 +147,18 @@ Comandos:
 - <módulo>               : igual ao /run daquele módulo (ex: @@changeBackend cafeFlow).
 - (sem comando)          : igual ao /run — varre o todoBackend e continua o primeiro módulo pendente.
 - /help                  : mostra esta ajuda.
+
+Flags (combinam com qualquer comando):
+- --no-assets            : pula a geração de imagens de seed (assets cosméticos, custo real). O step
+                           completa com aviso e os seeds ficam intactos. Ex: @@changeBackend cafeFlow --no-assets
+
+Semântica de todoBackend = 'done':
+'done' significa "os .defs.ts do owner foram gerados" — NÃO que o backend inteiro compilou. O flip
+acontece no gen-http, antes da materialização, de propósito: se a run falhar no fim (materialize,
+seeds, assets), o /run seguinte reaproveita os defs já validados pelo judge e só re-materializa os .ts
+desatualizados — recuperação em minutos/centavos em vez de uma run inteira. A conclusão REAL da run é
+o cb-validate-all (compila tudo) + o resumo final, que acusa qualquer .ts quebrado mesmo com o owner
+já 'done'. Consequência prática: com todos os owners 'done', o módulo não aparece mais como pendente,
+então para retomá-lo é preciso nomeá-lo: /run <módulo>.
 
 Qualquer outro texto sem comando e sem módulo reconhecível mostra esta ajuda.`;

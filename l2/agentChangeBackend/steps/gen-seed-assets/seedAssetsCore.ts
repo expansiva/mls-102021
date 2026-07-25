@@ -111,6 +111,30 @@ export function collectSeedAssetRequests(moduleId: string, plan: SeedPlan, entit
   });
 }
 
+// T11: images are the most expensive thing this flow buys, and the seed plan can nominate an unbounded
+// number of them. Cap the candidates per run and report what was dropped — a silent truncation would
+// read as "all assets generated" when it wasn't ("no silent caps"). The list is already sorted by
+// assetId in collectSeedAssetRequests, so the kept subset is deterministic across runs.
+export const SEED_ASSET_CAP = 8;
+
+export function capSeedAssetRequests(
+  requests: readonly SeedAssetRequest[],
+  cap: number = SEED_ASSET_CAP,
+): { kept: SeedAssetRequest[]; dropped: string[] } {
+  if (cap <= 0) return { kept: [], dropped: requests.map(request => request.assetId) };
+  return {
+    kept: requests.slice(0, cap),
+    dropped: requests.slice(cap).map(request => request.assetId),
+  };
+}
+
+/** Trace line for the dropped candidates (empty when nothing was capped). */
+export function seedAssetCapWarning(dropped: readonly string[], cap: number = SEED_ASSET_CAP): string {
+  return dropped.length
+    ? `${dropped.length} seed image(s) over the per-run cap of ${cap} were skipped: ${dropped.join(', ')}`
+    : '';
+}
+
 function assetFields(entityId: string, rowKey: string, fields: SeedFieldValue[]) {
   return fields.flatMap(field => {
     const value = field.value;

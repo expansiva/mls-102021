@@ -12,12 +12,10 @@ import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, parseDefsSource, isRecord,
   saveDefs, buildArtifact, buildPipelineItem, httpControllerFileInfo, usecaseFileInfo,
   dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand, setTodoBackendStatus,
-  type CbScan,
+  ALL_STATUSES, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
-
-const ALL_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 
 // Item 5 — boundary DTO (adapter HTTP owns the wire shape). The DTO .ts is a thin alias of the
 // usecase output type + identity toDto: it is the projection SEAM (the ownership boundary), so the day
@@ -257,6 +255,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // whole generation chain, including the LLM judge) and only materializes stale .ts + missing seeds.
     // `done` therefore means "defs generated"; the run's overall success (compiling .ts) is still gated by
     // cb-validate-all, which reports any broken .ts even though the owner is already done.
+    //
+    // A3 (T10) — CONSEQUENCE ANY FUTURE READER MUST KNOW: after this flip, every
+    // readBackendScan(['toCreate','inProgress']) downstream returns ZERO owners. A check that asks
+    // "does this artifact belong to a current owner?" MUST therefore scan ALL_STATUSES, or it will
+    // conclude that everything the run just generated is an orphan — that is exactly how erro5 turned
+    // 20 freshly generated usecases into blocking "manual reconciliation required" findings and starved
+    // the repair round of the 2 real errors. cb-validate-all now scans ALL_STATUSES (A1) and degrades an
+    // ownership check with an empty owner set to a warning (the guard). Downstream steps that legitimately
+    // ask "what is still PENDING?" keep the filtered scan. Decision + audit:
+    // todo/changeBackend/erro5_changeBackend_tasks.md §T10.
     if (!defsOnly) {
       for (const owner of scan.owners) await setTodoBackendStatus(owner, 'done');
     }

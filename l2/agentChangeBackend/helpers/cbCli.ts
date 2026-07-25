@@ -13,14 +13,17 @@ const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'seeds', 'run', 'help'])
  * slash-flag (case is PRESERVED — module names are case-sensitive). 'all' is a keyword, never a module.
  * Empty (bare @@changeBackend) is the autonomous default -> 'run'. A bare non-keyword token
  * (e.g. "@@changeBackend cafeFlow") means: run (continue) that specific module. */
-export function parseCli(raw: string | undefined): { kind: CbCommandKind; module: string } {
+export function parseCli(raw: string | undefined): { kind: CbCommandKind; module: string; noAssets: boolean } {
   const stripped = String(raw || '').replace(/@@?[a-z0-9_]*changebackend\s*/i, '').trim();
   const tokens = stripped.split(/\s+/).filter(Boolean);
   const cleaned = tokens.map(t => t.replace(/^\/+/, ''));   // drop leading slash of /rebuild, /run, ...
   const lower = cleaned.map(t => t.toLowerCase());
+  // T11: `--no-assets` skips the optional seed-image step entirely (cosmetic assets, real money).
+  // Accepted with either dash style so `--no-assets` and `/no-assets` both work.
+  const noAssets = lower.some(t => t.replace(/^-+/, '') === 'no-assets' || t.replace(/^-+/, '') === 'noassets');
   let module = '';
   for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].startsWith('/')) continue;                // slash-flags are commands, never modules
+    if (tokens[i].startsWith('/') || tokens[i].startsWith('-')) continue;  // flags are never modules
     if (CLI_KEYWORDS.has(lower[i])) continue;               // rebuild | all | defs | run | help
     module = cleaned[i];
     break;
@@ -33,9 +36,10 @@ export function parseCli(raw: string | undefined): { kind: CbCommandKind; module
   else if (lower.includes('run')) kind = 'run';
   else if (lower.includes('help')) kind = 'help';
   else if (module) kind = 'run';                            // bare module name -> continue that module
-  else if (tokens.length) kind = 'help';                    // unrecognized, keyword-less noise
-  else kind = 'run';                                        // empty -> autonomous run
-  return { kind, module };
+  // Flags alone are NOT noise: `@@changeBackend --no-assets` is an autonomous run that skips assets.
+  else if (tokens.some(t => !t.startsWith('/') && !t.startsWith('-'))) kind = 'help'; // keyword-less noise
+  else kind = 'run';                                        // empty (or flags only) -> autonomous run
+  return { kind, module, noAssets };
 }
 
 /** The human message content stored on the bootstrap step: the prompt with the mention stripped and

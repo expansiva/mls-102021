@@ -18,8 +18,9 @@ import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload, readCbPrompt,
   createAddStepIntent, createParallelStepIntent, enqueueNext,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
-  isRecord, readString, lowerFirst, logPrefix, type CbScan, type CbOwner,
+  isRecord, readString, readStringArray, lowerFirst, logPrefix, type CbScan, type CbOwner,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { missingPrincipalPortIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { parseDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { judgeResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
@@ -75,12 +76,30 @@ function scopedOperations(scan: CbScan, step: mls.msg.AIAgentStep): { judgeRun: 
   return { judgeRun, operations };
 }
 
-/** Deterministic pre-findings: an operation owner whose usecase .defs.ts is missing entirely. */
-function missingDefsFindings(defsByOwner: Map<string, Record<string, unknown> | null>): CbJudgeFinding[] {
+/** Deterministic pre-findings: an operation owner whose usecase .defs.ts is missing entirely, plus
+ *  (T12) one whose defs omit the principal aggregate's local port — a DERIVATION gap that would
+ *  otherwise only surface as broken TypeScript after 2-3 expensive materialization repairs. */
+function missingDefsFindings(
+  defsByOwner: Map<string, Record<string, unknown> | null>,
+  scan: CbScan,
+  operations: CbOwner[],
+): CbJudgeFinding[] {
   const findings: CbJudgeFinding[] = [];
+  const localPortIds = new Set<string>([
+    ...scan.aggregates.map(a => a.rootEntity),
+    ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId),
+  ]);
+  const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId));
+  const byId = new Map(operations.map(o => [o.id, o]));
   for (const [ownerId, defs] of defsByOwner) {
     if (defs === null) {
       findings.push({ ownerId, type: 'estrutural', severity: 'error', message: `usecase .defs.ts missing for operation ${ownerId} (worker failed or never saved)` });
+      continue;
+    }
+    const owner = byId.get(ownerId);
+    if (!owner) continue;
+    for (const message of missingPrincipalPortIssues(owner, readStringArray(defs.ports), localPortIds, mdmIds)) {
+      findings.push({ ownerId, type: 'estrutural', severity: 'error', message });
     }
   }
   return findings;
@@ -166,7 +185,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         ...(readString(f.suggestion) ? { suggestion: readString(f.suggestion) } : {}),
       }))
       .filter((f: CbJudgeFinding) => !!f.message && f.type !== 'fora_de_escopo');
-    const detFindings = missingDefsFindings(await readUsecaseDefsByOwner(scan, operations));
+    const detFindings = missingDefsFindings(await readUsecaseDefsByOwner(scan, operations), scan, operations);
     const findings = [...detFindings, ...llmFindings];
 
     const warnings = findings.filter(f => f.severity !== 'error');

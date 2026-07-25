@@ -56,7 +56,16 @@ export function asArray(value: unknown): Record<string, unknown>[] {
 
 export type ExecutionMode = 'sequential' | 'parallel_static' | 'parallel_dynamic' | 'manual_later';
 export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
-const ALL_STATUSES: OwnerStatus[] = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
+// The SINGLE source of truth for "every owner status" (T10/A1). Use it whenever the question is about
+// OWNERSHIP or STRUCTURE — "does this artifact belong to a current owner?", "which module is this?" —
+// because the gen-http `done` flip empties a ['toCreate','inProgress'] scan and such a check would then
+// conclude that everything the run just generated is an orphan (erro5). Keep the pending-filtered scan
+// only where the question really is "what is still PENDING?".
+// Do NOT re-declare this list locally: three copies used to exist (root, gen-http, here) and a drift
+// between them would make the ownership checks diverge silently.
+// `readonly`: now that a SINGLE array instance is shared by every caller, an in-place mutation
+// (push/sort/splice) would silently change what every ownership check sees.
+export const ALL_STATUSES: readonly OwnerStatus[] = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 export type EntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
 export type L4ContextSource =
   | 'userInput'
@@ -217,7 +226,7 @@ export interface CbScan {
 
 // ── deterministic l4 scan ──────────────────────────────────────────────────────
 
-export async function readBackendScan(statuses: string[] = ['toCreate'], context?: mls.msg.ExecutionContext, targetModuleOverride?: string): Promise<CbScan> {
+export async function readBackendScan(statuses: readonly string[] = ['toCreate'], context?: mls.msg.ExecutionContext, targetModuleOverride?: string): Promise<CbScan> {
   const wanted = new Set(statuses);
   const project = mls.actualProject || 0;
   const moduleNames = new Set<string>();
@@ -416,8 +425,9 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
   return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
 }
 
+// Derived from ALL_STATUSES so the list lives in exactly ONE place (it used to be spelled out here too).
 function isOwnerStatus(status: string): status is OwnerStatus {
-  return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
+  return (ALL_STATUSES as readonly string[]).includes(status);
 }
 
 // Read the optional event classification from an ontology def (shape-safe; ignores malformed input).
@@ -1135,6 +1145,13 @@ export function planIdOf(step: mls.msg.AIPayload | undefined): string {
 export function readCliCommand(context: mls.msg.ExecutionContext): string {
   const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
   return typeof lm?.cliCommand === 'string' ? lm.cliCommand : '';
+}
+
+/** T11: true when the run was started with `--no-assets` — the optional seed-image step is skipped
+ *  entirely (it completes with a warning and the seeds stay intact). Mirrors readCliCommand. */
+export function readNoAssets(context: mls.msg.ExecutionContext): boolean {
+  const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
+  return lm?.noAssets === 'true' || lm?.noAssets === true;
 }
 
 /** The target module the root stored in the task longMemory. Empty means "auto": readBackendScan

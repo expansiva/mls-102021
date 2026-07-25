@@ -4,7 +4,7 @@
 // No work -> finish (no file/status writes). Work -> continue to validate.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix, readCliCommand } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 export function createAgent(): IAgentAsync {
@@ -33,14 +33,29 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     await clearRepairState();
     const warningTrace = scan.warnings.length ? ` Warnings: ${scan.warnings.slice(0, 8).join('; ')}` : '';
     if (scan.owners.length === 0) {
-      // No PENDING owners (module already built / owners done). Don't stop: still MATERIALIZE any stale
+      // A4 (T10): with NO pending owner AND no explicit module there is nothing to scope to — the
+      // gen-http `done` flip means an already-built module no longer appears as pending, so
+      // readTargetModule is empty and cb-materialize would scan the module literal 'unknown', find
+      // nothing, and end in a silent no-op that reads like a successful run. Stop here with the
+      // instruction the user actually needs instead.
+      const targetModule = readTargetModule(context);
+      if (!targetModule) {
+        return [
+          enqueueNext(context, parentStep, step, 'cb-final-summary', 'agentCbFinalSummary', 'Resumo do run', {
+            noWork: true,
+            reason: 'nenhum módulo com owners pendentes (todoBackend toCreate|inProgress). Um módulo já construído fica com os owners `done`, então não aparece como pendente: para retomar/revalidar um módulo específico use `/run <módulo>` (ex: /run cafeFlow), ou `/rebuild all <módulo>` para regerar do zero.',
+          }),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}`),
+        ];
+      }
+      // Explicit module: don't stop: still MATERIALIZE any stale
       // .ts (a .ts older than its .defs.ts — e.g. a previous run that failed after defs) and generate
       // seeds if the seeds file is missing. cb-materialize skips up-to-date .ts, and cb-gen-seeds keeps
       // an existing seeds.ts (regenerates only on /rebuild all|seeds), so this is a fast no-op when the
-      // module is fully current. This is what a bare @@changeBackend expects on an already-built module.
+      // module is fully current. This is the cheap recovery path the `done` flip exists for.
       return [
         enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .ts desatualizados', {}),
-        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner; materializing stale .ts + seeds if missing.${warningTrace}`),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner in ${targetModule}; materializing stale .ts + seeds if missing.${warningTrace}`),
       ];
     }
     return [

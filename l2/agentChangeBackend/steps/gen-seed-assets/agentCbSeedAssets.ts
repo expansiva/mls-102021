@@ -8,12 +8,13 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   createAgentStepPayload, createUpdateStatusIntent, enqueueNext, isRecord, logPrefix, readBackendScan,
-  readCbPrompt,
+  readCbPrompt, readNoAssets,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { extractSeedPlanFromSource, updateSeedAssetUrlsInSource, type SeedEntityDefinition } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 import {
   collectSeedAssetRequests, emptySeedAssetManifest, parseSeedAssetManifest, putSeedAssetManifestEntry,
-  readySeedAssetUrls, seedAssetWarnings, type SeedAssetManifest, type SeedAssetRequest,
+  readySeedAssetUrls, seedAssetWarnings, capSeedAssetRequests, seedAssetCapWarning,
+  type SeedAssetManifest, type SeedAssetRequest,
 } from '/_102021_/l2/agentChangeBackend/steps/gen-seed-assets/seedAssetsCore.js';
 
 const AGENT_NAME = 'agentCbSeedAssets';
@@ -36,6 +37,13 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    // T11 `--no-assets`: skip the image step entirely. Reuses the existing degradation path, so the
+    // seeds source is still rewritten (with whatever assets are already ready) and the flow proceeds
+    // to cb-register — zero image calls, seeds intact.
+    if (readNoAssets(context)) {
+      const state = await loadState(context);
+      return completeAssets(context, parentStep, step, hookSequential, state, 'Seed assets skipped (--no-assets).');
+    }
     const state = await loadState(context);
     const args = stepArgs(step);
     const request = await nextRequest(state, args.skippedAssetIds);
@@ -111,12 +119,18 @@ async function loadState(context: mls.msg.ExecutionContext): Promise<{ project: 
   };
 }
 
-async function nextRequest(state: Awaited<ReturnType<typeof loadState>>, skipped: string[]): Promise<SeedAssetRequest | null> {
+/** The capped candidate list for this run + the ids dropped by the cap (T11). */
+function cappedRequests(state: Awaited<ReturnType<typeof loadState>>): { kept: SeedAssetRequest[]; dropped: string[] } {
   const plan = extractSeedPlanFromSource(state.source);
-  if (!plan) return null;
-  const requests = collectSeedAssetRequests(state.moduleName, plan, state.entities);
-  for (const request of requests) {
+  if (!plan) return { kept: [], dropped: [] };
+  return capSeedAssetRequests(collectSeedAssetRequests(state.moduleName, plan, state.entities));
+}
+
+async function nextRequest(state: Awaited<ReturnType<typeof loadState>>, skipped: string[]): Promise<SeedAssetRequest | null> {
+  for (const request of cappedRequests(state).kept) {
     if (skipped.includes(request.assetId)) continue;
+    // CACHE (T11): an asset already `ready` with the SAME promptHash and its .webp still on disk is
+    // never re-requested — the image LLM is not called at all on an unchanged re-run.
     const entry = state.manifest.assets.find(asset => asset.id === request.assetId);
     if (entry?.status === 'ready' && entry.promptHash === request.promptHash && await hasReadyImage(state.project, state.moduleName, request)) continue;
     return request;
@@ -143,9 +157,13 @@ async function completeAssets(context: mls.msg.ExecutionContext, parentStep: mls
   const saved = await saveGeneratedTs(state.project, 1, `${state.moduleName}/layer_1_external/adapters/persistence`, 'seeds', updated);
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to update seeds.ts with asset URLs: ${saved.compileErrors.join('; ')}`);
   const warnings = seedAssetWarnings(state.manifest);
+  // T11 "no silent caps": candidates dropped by the per-run cap are always reported in the step trace.
+  // Not on the --no-assets path: EVERY asset was skipped there, so a cap note would only muddle the trace.
+  const capNote = readNoAssets(context) ? '' : seedAssetCapWarning(cappedRequests(state).dropped);
+  if (capNote) console.warn(`[agentCbSeedAssets] ${capNote}`);
   return [
     enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
-    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace}${warnings.length ? ` ${warnings.length} optional asset warning(s): ${warnings.join('; ')}` : ''}`, 'input_output'),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace}${warnings.length ? ` ${warnings.length} optional asset warning(s): ${warnings.join('; ')}` : ''}${capNote ? ` ${capNote}` : ''}`, 'input_output'),
   ];
 }
 

@@ -21,6 +21,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { eventPortBelongsToOwner } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbUsecase';
 const TOOL_NAME = 'submitUsecase';
@@ -289,7 +290,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     // Persisted event ports the owner emits (own real ports too) — append-only writes within the txn.
     const mutated = new Set(ownerRefs.map(id => childToRoot.get(id) ?? id));
     const eventPortIds = scan.events
-      .filter(ev => ev.persisted && (ownerRefs.includes(ev.ownerEntity) || mutated.has(ev.ownerEntity)))
+      .filter(ev => ev.persisted && eventPortBelongsToOwner(ev, ownerRefs, mutated))
       .map(ev => ev.entityId);
     const ports = [...new Set([...aggPorts, ...eventPortIds])];
     result.ports = ports;

@@ -240,6 +240,172 @@ export function selectCompilerRepairRoots(
   return { roots, cascades };
 }
 
+// ── T12: persisted-event port ownership ─────────────────────────────────────────
+// A persisted event needs a local repository port, and the usecase that writes it must DECLARE that
+// port (it lands in dependsFiles -> the materialize prompt shows the model the port interface + entity
+// shape). The original filter only matched the event's `ownerEntity` (the related CORE entity), which
+// misses two real cases — both hit createStockAdjustment in erro4 AND erro5:
+//   1. the event IS the owner's own aggregate (l4 `entity: "StockAdjustment"`, kind:"event"): it is not
+//      an aggregate root, so it already fell out of detPorts/aggPorts, and matching on ownerEntity
+//      never looks at the event's own id;
+//   2. `ownerEntity` is EMPTY or MDM: deriveEventTargets only accepts a related entity of kind "core",
+//      and StockAdjustment relates solely to StockItem (kind:"mdm") -> ownerEntity === '' -> no match.
+// The fix: an event whose OWN id the owner references (entity/reads/writes) is owned by this usecase.
+// Deliberately narrow — it does NOT add every module event (that would regress T5's context savings).
+export interface EventForPortCheck { entityId: string; ownerEntity: string; }
+export function eventPortBelongsToOwner(
+  event: EventForPortCheck,
+  ownerRefs: readonly string[],
+  mutated: ReadonlySet<string>,
+): boolean {
+  // (1) the event itself is referenced by the owner — the aggregate the operation creates/emits.
+  if (ownerRefs.includes(event.entityId) || mutated.has(event.entityId)) return true;
+  // (2) legacy path: the event belongs to a core entity the owner touches. Empty ownerEntity never
+  // matches (it would otherwise pair with an empty ownerRefs entry and pull in unrelated events).
+  return !!event.ownerEntity && (ownerRefs.includes(event.ownerEntity) || mutated.has(event.ownerEntity));
+}
+
+/**
+ * T12 item 4 — POST-condition on the saved usecase defs: the owner's PRINCIPAL aggregate (l4
+ * `entity`) must appear in `data.ports` whenever it has a local port (an aggregate root or a persisted
+ * event). MDM entities are excluded (read by id via 102034, never a port).
+ *
+ * This is checked on the SAVED defs by the judge — not on the model's raw output — because the ports
+ * are derived deterministically by the agent AFTER the model answers. So a violation here means the
+ * DERIVATION missed a case (the erro4/erro5 createStockAdjustment bug), not that the model misbehaved:
+ * it routes to a cheap phase-1 defs repair instead of 3 LLM repair attempts during materialization.
+ * Returns [] when the owner's entity legitimately has no port.
+ */
+export function missingPrincipalPortIssues(
+  owner: { id: string; entity: string },
+  declaredPorts: readonly string[],
+  localPortIds: ReadonlySet<string>,  // aggregate roots ∪ persisted event ids
+  mdmIds: ReadonlySet<string>,
+): string[] {
+  const entity = owner.entity;
+  if (!entity || mdmIds.has(entity) || !localPortIds.has(entity)) return [];
+  if (declaredPorts.includes(entity)) return [];
+  return [`usecase ${owner.id}: principal aggregate '${entity}' has a local port but is missing from data.ports (materialize never sees I${entity}Repository nor the ${entity} shape; see T12)`];
+}
+
+/**
+ * T12 item 3 — SAFETY BELT for the materialize worker. Independently of how the defs were derived, the
+ * worker's prompt must show the model every port the usecase will actually resolve. Returns the port
+ * entity ids that the defs `data` references (top-level `ports` + `functions[].ports`) but whose
+ * `.d.ts` pair is NOT already in `dependsFiles` — the worker then loads those pairs into the context.
+ *
+ * Narrow by construction (only ids the defs itself names, never the whole module) so T5's context
+ * savings hold. Immunizes against future derivation gaps without regenerating old defs.
+ */
+export function portsMissingFromDependsFiles(
+  data: unknown,
+  dependsFiles: readonly string[],
+): string[] {
+  if (!data || typeof data !== 'object') return [];
+  const record = data as { ports?: unknown; functions?: unknown };
+  const referenced = new Set<string>();
+  const collect = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    for (const id of value) if (typeof id === 'string' && id) referenced.add(id);
+  };
+  collect(record.ports);
+  if (Array.isArray(record.functions)) {
+    for (const fn of record.functions) if (fn && typeof fn === 'object') collect((fn as { ports?: unknown }).ports);
+  }
+  // dependsFiles carry mls paths ending in `<lowerFirstEntity>Repository.d.ts` / `<lowerFirstEntity>.d.ts`.
+  const declared = dependsFiles.join('\n').toLowerCase();
+  return [...referenced].filter(id => !declared.includes(`/${id.charAt(0).toLowerCase()}${id.slice(1)}repository.d.ts`.toLowerCase()));
+}
+
+// ── T10: ownership-check sanity guard ───────────────────────────────────────────
+// The orphan-defs check answers "is this defs owned by a current operation/workspace?" using the ids
+// derived from the scan. If the scan yields ZERO expected ids while the module DOES have generated defs,
+// the check's PRECONDITION failed (erro5: the gen-http `done` flip emptied the ['toCreate','inProgress']
+// scan, so all 20 usecases of the run were reported as orphans, `allMapped` went false and the global
+// repair round that would have fixed the 2 REAL findings never fired). A check whose input is missing
+// must DEGRADE to a warning — never fail the run with "manual reconciliation required" for files the
+// run just generated. Pure so both the empty-scan and the genuine-orphan paths are unit-tested.
+export function ownershipCheckIsInconclusive(expectedIdCount: number, generatedDefsCount: number): boolean {
+  return expectedIdCount === 0 && generatedDefsCount > 0;
+}
+
+/** The warning emitted in place of the (suppressed) orphan findings. */
+export function ownershipInconclusiveWarning(generatedDefsCount: number): string {
+  return `ownership check inconclusive -> scan returned 0 operations/workspaces but the module has ${generatedDefsCount} generated defs; orphan check skipped (see T10)`;
+}
+
+export interface DefsFileForOwnership { folder: string; shortName: string; real: string; }
+
+/**
+ * The ORPHAN-DEFS check, pure. A usecase defs is owned by an operation; a v2 controller defs is owned by
+ * an operation OR a workspace. Callers pass the id sets built from an ALL_STATUSES scan (A1) — ownership
+ * does not depend on pending status.
+ *
+ * Gated PER CHECK, not on the sum: usecase ownership comes ONLY from `expectedOperationIds` (which the
+ * scan filters by owner status), while controller ownership also accepts `expectedWorkspaceIds` — and
+ * scan.workspaces is NOT status-filtered. Summing them would leave the usecase guard dead on a v2 module
+ * (0 operations + N workspaces != 0), i.e. exactly the erro5 case this guard exists for.
+ */
+export function collectOrphanDefsFindings(
+  defsFiles: readonly DefsFileForOwnership[],
+  expectedOperationIds: ReadonlySet<string>,
+  expectedWorkspaceIds: ReadonlySet<string>,
+): { findings: string[]; warnings: string[] } {
+  const usecaseDefs = defsFiles.filter(d => d.folder.endsWith('/layer_2_application/usecases'));
+  const controllerDefs = defsFiles.filter(d => d.folder.endsWith('/adapters/http/controllers'));
+  const findings: string[] = [];
+  const warnings: string[] = [];
+
+  if (ownershipCheckIsInconclusive(expectedOperationIds.size, usecaseDefs.length)) {
+    warnings.push(ownershipInconclusiveWarning(usecaseDefs.length));
+  } else {
+    for (const d of usecaseDefs) {
+      if (!expectedOperationIds.has(d.shortName)) {
+        findings.push(`orphan generated defs -> ${d.folder}/${d.real}.defs.ts is not owned by a current operation (manual reconciliation required)`);
+      }
+    }
+  }
+  if (ownershipCheckIsInconclusive(expectedOperationIds.size + expectedWorkspaceIds.size, controllerDefs.length)) {
+    warnings.push(ownershipInconclusiveWarning(controllerDefs.length));
+  } else {
+    for (const d of controllerDefs) {
+      if (!expectedOperationIds.has(d.shortName) && !expectedWorkspaceIds.has(d.shortName)) {
+        findings.push(`orphan generated defs -> ${d.folder}/${d.real}.defs.ts is not owned by a current operation/workspace (manual reconciliation required)`);
+      }
+    }
+  }
+  return { findings, warnings };
+}
+
+export interface OwnerForRouteCheck { kind: string; id: string; bffName?: string; pageId?: string; commandName?: string; }
+export interface ControllerForRouteCheck { id: string; routes: ReadonlyArray<{ key: string }>; }
+
+/**
+ * V1-only canonical bffName route check, pure (v2 controllers are per-WORKSPACE and covered by
+ * collectV2ControllerCoherenceIssues). Every operation owner that HAS a controller must expose its
+ * canonical route. Works off an ALL_STATUSES scan (A1) so a `done` owner is still checked — with the old
+ * pending-filtered scan this check silently passed on every post-gen-http run.
+ */
+export function collectMissingCanonicalRouteIssues(
+  owners: readonly OwnerForRouteCheck[],
+  controllers: readonly ControllerForRouteCheck[],
+  moduleName: string,
+  lowerFirstFn: (value: string) => string,
+): string[] {
+  const issues: string[] = [];
+  for (const owner of owners) {
+    if (owner.kind !== 'operation' || !owner.id) continue;
+    const controllerId = lowerFirstFn(owner.id).toLowerCase();
+    const controller = controllers.find(c => c.id === controllerId);
+    if (!controller) continue;
+    const expectedRoute = owner.bffName || `${moduleName}.${owner.pageId || owner.id}.${owner.commandName || owner.id}`;
+    if (!controller.routes.some(route => route.key === expectedRoute)) {
+      issues.push(`controller ${controller.id} -> missing canonical bffName route ${expectedRoute}`);
+    }
+  }
+  return issues;
+}
+
 // ── l4 v2: workspace-controller coherence (B7) ──────────────────────────────────
 // The v2 controller is emitted DETERMINISTICALLY (no .defs.ts). "Rotas esperadas = bffCalls do
 // workspace": every bffCall must have an exported handler `<ws><Bff>Handler`, registered in `routes`

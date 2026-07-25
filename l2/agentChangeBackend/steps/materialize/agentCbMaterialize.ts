@@ -17,7 +17,7 @@ import {
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
   createAddStepIntent, createParallelStepIntent, isRecord, readStringArray, logPrefix,
-  repositoryPortFileInfo, dtsRef,
+  repositoryPortFileInfo, domainEntityFileInfo, dtsRef,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
@@ -32,6 +32,7 @@ import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
+  portsMissingFromDependsFiles,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
@@ -289,6 +290,21 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
       for (const real of expandContextRef(d, artifactType, hasMdmRefs)) {
         const c = await readContextRef(real);
         if (c != null) contextSections.push(`### ${real}\n\`\`\`ts\n${c}\n\`\`\``);
+      }
+    }
+    // T12 SAFETY BELT: a usecase resolves every port its defs `data` names, but only `dependsFiles`
+    // reaches the prompt. If the two disagree (derivation gap — erro4/erro5 createStockAdjustment), the
+    // model has to GUESS the port interface and the entity shape: it invented `updatedAt`, called a
+    // non-existent save(), then omitted required fields across three attempts. Load the missing
+    // port+entity pair here so the prompt is complete regardless of how the defs were derived. Only ids
+    // the defs itself names (never the whole module) — T5's context savings hold; a pair is ~1-3KB.
+    const moduleName = parseMlsPath(parsed.item.outputPath)?.folder.split('/')[0] || '';
+    if (moduleName) {
+      for (const entityId of portsMissingFromDependsFiles(parsed.data, parsed.item.dependsFiles ?? [])) {
+        for (const ref of [dtsRef(repositoryPortFileInfo(moduleName, entityId)), dtsRef(domainEntityFileInfo(moduleName, entityId))]) {
+          const c = await readContextRef(ref);  // null when the pair does not exist -> silently skipped
+          if (c != null) contextSections.push(`### ${ref}\n\`\`\`ts\n${c}\n\`\`\``);
+        }
       }
     }
     // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
