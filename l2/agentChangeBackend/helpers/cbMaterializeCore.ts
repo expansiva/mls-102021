@@ -192,20 +192,111 @@ export function applyHeader(outputPath: string, code: string): string {
   return trimmed.startsWith('///') ? code : `${header}\n\n${code}`;
 }
 
+/** True when a repair finding is a pure COMPILER error (from the per-file compile `compiler: ...` or the
+ *  whole-project compile `compiler -> ...`). Micro-repair only applies when ALL findings are compiler. */
+export function isCompilerFinding(finding: string): boolean {
+  return /^\s*compiler\b/u.test(finding);
+}
+
+/** T6: should ONE targeted rescue round fire (outside the global budget)? Only for a SMALL, compiler-only
+ *  residual after the global budget is exactly spent — a larger or non-compiler residual is a genuine
+ *  failure, not a last-mile fix. The caller bumps globalAttempts past the budget so this is a one-shot
+ *  (`globalAttempts === budget` becomes false on the re-check). Pure/testable. */
+export function shouldTargetedRescue(input: {
+  globalAttempts: number;
+  budget: number;
+  targetCount: number;
+  maxTargets: number;
+  findings: string[];
+}): boolean {
+  return input.globalAttempts === input.budget
+    && input.targetCount > 0
+    && input.targetCount <= input.maxTargets
+    && input.findings.length > 0
+    && input.findings.every(isCompilerFinding);
+}
+
+// T4: SURGICAL prompt for a repair whose findings are ALL compiler errors on an already-generated .ts.
+// The full re-materialization prompt is ~15-25k tokens (architecture.md + layer skill + the platform
+// contracts bundle + defs + dependsFiles) and re-generates the whole file — expensive and prone to
+// whack-a-mole regressions. For a compiler error the model only needs: the current code, the exact
+// errors, the types it depends on, and the pitfalls. Same tool (submitGeneratedTs) and the SAME
+// post-gen gates (validateGeneratedComponent + compile) — only the INPUT shrinks. Pure/testable.
+export function buildMicroRepairPrompt(input: {
+  outputPath: string;
+  code: string;                 // the current (failing) .ts to fix
+  findings: string[];           // the compiler errors (each MUST be resolved)
+  contextSections: string[];    // dependsFiles type context (entity/port .d.ts) — reference only
+  pitfalls: string | null;      // typePitfalls.md content
+}): { system: string; human: string } {
+  const system = [
+    '<!-- modelType: code -->',
+    '<!-- x-tool-strict: true -->',
+    '',
+    'You are FIXING COMPILER ERRORS in an already-generated TypeScript file — not writing a new one.',
+    'Make the SMALLEST change that resolves EVERY listed error. Do NOT restructure, rename, reorder',
+    'imports, or touch anything unrelated to the errors. Keep the existing behavior and every declaration',
+    'the remaining code still uses.',
+    `The file must keep its header: /// <mls fileReference="${input.outputPath}" enhancement="_blank"/>`,
+    `Return the COMPLETE corrected file via the ${GEN_TOOL_NAME} tool.`,
+    ...(input.pitfalls ? ['', '---', '', input.pitfalls] : []),
+  ].join('\n');
+  const human = [
+    `## File to fix\n${input.outputPath}`,
+    `## Compiler errors — fix ALL, change as little as possible\n${input.findings.map(f => `- ${f}`).join('\n')}`,
+    ...(input.contextSections.length ? [`## Types it depends on (reference only — do not edit)\n${input.contextSections.join('\n\n')}`] : []),
+    `## Current file (edit THIS — return the whole corrected file)\n\`\`\`ts\n${input.code}\n\`\`\``,
+  ].join('\n\n');
+  return { system, human };
+}
+
 // ─── dependsFiles/skill ref expansion (shared by the Node CLI and the in-studio agent) ─────────────
 
-// `_102034_.d.ts` (the shared runtime contracts) has no aggregated d.ts; expand the alias to the real
-// 102034 source files so every prompt carries RequestContext, IDataRuntime/getTable, TableDefinition,
-// AppError/ok and the repository registry — the types adapters/usecases/controllers compile against.
-export const CONTRACTS_102034: readonly string[] = [
-  '_102034_/l1/server/layer_2_controllers/contracts.ts',
-  '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts',
-  '_102034_/l1/server/layer_1_external/data/runtime.ts',
-  '_102034_/l1/server/layer_1_external/persistence/contracts.ts',
-  '_102034_/l1/server/layer_2_application/repositoryRegistry.ts',
-];
+// `_102034_.d.ts` (the shared runtime contracts) has no aggregated d.ts; the alias expands to the real
+// 102034 source files that carry RequestContext, IDataRuntime/getTable, TableDefinition, AppError/ok and
+// the repository registry — the types adapters/usecases/controllers compile against.
+const C_CONTRACTS = '_102034_/l1/server/layer_2_controllers/contracts.ts';           // RequestContext, AppError, ok, BffHandler
+const C_MDM_FACADE = '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts';                 // ctx.mdm (master data) — 21KB
+const C_RUNTIME = '_102034_/l1/server/layer_1_external/data/runtime.ts';             // IDataRuntime / ctx.data.getTable CRUD
+const C_PERSISTENCE = '_102034_/l1/server/layer_1_external/persistence/contracts.ts'; // TableDefinition
+const C_REGISTRY = '_102034_/l1/server/layer_2_application/repositoryRegistry.ts';    // register/resolveRepository
+
+export const CONTRACTS_102034: readonly string[] = [C_CONTRACTS, C_MDM_FACADE, C_RUNTIME, C_PERSISTENCE, C_REGISTRY];
+
+// T5: the fixed 37.6KB bundle (mdmFacade.ts alone is 21KB) went into EVERY materialize prompt — a port
+// (pure interface) got 12k input tokens for a 240-token output. Give each artifact type only the
+// contracts it compiles against: a domain entity / repository port use ZERO platform types (their sole
+// dependency, the entity .d.ts, arrives via dependsFiles), and mdmFacade is carried ONLY by a usecase
+// that references MDM. Guard: the compile gate (cross-project fidelity, 24/07) is the detector — if a
+// layer starts erroring for a missing contract, add that file back to its case here (evidence, not guess).
+// (Adapters keep contracts.ts because the generated adapters import AppError/RequestContext from it.)
+function contracts102034ForType(artifactType: string | undefined, hasMdmRefs: boolean): string[] {
+  switch (artifactType) {
+    case 'domainEntity':
+    case 'valueObject':
+    case 'domainService':
+    case 'domainRule':
+    case 'domainEvent':
+    case 'repositoryPort':
+      return [];
+    case 'persistenceTable':
+    case 'persistenceMetricTable':
+      return [C_PERSISTENCE];
+    case 'repositoryAdapter':
+      return [C_CONTRACTS, C_RUNTIME, C_PERSISTENCE, C_REGISTRY];
+    case 'applicationUsecase':
+    case 'applicationService':
+      return hasMdmRefs ? [C_CONTRACTS, C_REGISTRY, C_MDM_FACADE] : [C_CONTRACTS, C_REGISTRY];
+    case 'httpController':
+    case 'httpRoute':
+      return [C_CONTRACTS];
+    default:
+      return [...CONTRACTS_102034]; // unknown type -> full bundle (never starve an unmapped artifact)
+  }
+}
 
 // Map a single context ref to the real file ref(s) to read. Pure (ref -> refs); the caller does the I/O.
-export function expandContextRef(ref: string): string[] {
-  return ref === '_102034_.d.ts' ? [...CONTRACTS_102034] : [ref];
+// artifactType/hasMdmRefs scope the `_102034_.d.ts` alias to the per-layer subset (T5); other refs pass through.
+export function expandContextRef(ref: string, artifactType?: string, hasMdmRefs = false): string[] {
+  return ref === '_102034_.d.ts' ? contracts102034ForType(artifactType, hasMdmRefs) : [ref];
 }

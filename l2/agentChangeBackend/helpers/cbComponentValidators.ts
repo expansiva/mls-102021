@@ -191,6 +191,55 @@ export function collectRepositoryMethodMisuse(code: string, methodsByInterface: 
   return issues;
 }
 
+/**
+ * The MDM facade's `entity.related(key)` takes a TYPED CompactRelationshipRefKey. Models invent a key
+ * and force it past the type with a string-literal cast — `entity.related(key as 'o')`,
+ * `x.relatedIds(rel as "OffersProduct")` (todo/changeBackend erro4). The isolated in-loop compile missed
+ * it (the platform type was not loaded), so it only surfaced in the project `tsc`. A cast to a string
+ * literal inside a related()/relatedIds() call is never legitimate — a real key is a typed constant,
+ * never something you cast a literal into. Flag it as a repair finding: the linked id must be read from a
+ * DECLARED entity field (e.g. `menuCategoryId`), not a guessed relationship key.
+ */
+export function collectInventedRelationshipKeyIssues(code: string): string[] {
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  for (const match of code.matchAll(/\.related(?:Ids)?\s*\([^)]*\bas\s+(['"])([^'"]+)\1/gu)) {
+    const key = match[2];
+    if (seen.has(key)) continue;
+    seen.add(key);
+    issues.push(`invented relationship key -> entity.related(... as '${key}'); a CompactRelationshipRefKey is never a literal cast — read the linked id from a declared entity field instead of guessing a key`);
+  }
+  return issues;
+}
+
+// ── T2: whole-project compile — flaky double-check + cascade dedup (pure decisions) ──────────────
+
+/** Double-check (vs H1): keep only the compiler errors that reproduced in BOTH passes. A finding present
+ * in the first compile but not the recompile was a transient (Monaco model lag / imports not yet
+ * settled) and must not force a full LLM re-generation of a file that was already correct. */
+export function stableCompilerErrors(first: string[], second: string[]): string[] {
+  const seen = new Set(second);
+  return first.filter(e => seen.has(e));
+}
+
+/** Cascade dedup (vs H2): among the files flagged by the whole-project compile, a file that IMPORTS
+ * another flagged file is reporting DERIVED errors from that broken import — repair only the ROOT this
+ * round and DEFER the importer. Pure over (flagged keys, importsOf); the caller resolves imports (I/O).
+ * `importsOf(key)` returns the l1 import keys of that file (same `${folder}::${shortName}` space). */
+export function selectCompilerRepairRoots(
+  flaggedKeys: Iterable<string>,
+  importsOf: (key: string) => string[],
+): { roots: string[]; cascades: string[] } {
+  const flagged = new Set(flaggedKeys);
+  const roots: string[] = [];
+  const cascades: string[] = [];
+  for (const key of flagged) {
+    const importsAnotherFlagged = importsOf(key).some(k => k !== key && flagged.has(k));
+    (importsAnotherFlagged ? cascades : roots).push(key);
+  }
+  return { roots, cascades };
+}
+
 // ── l4 v2: workspace-controller coherence (B7) ──────────────────────────────────
 // The v2 controller is emitted DETERMINISTICALLY (no .defs.ts). "Rotas esperadas = bffCalls do
 // workspace": every bffCall must have an exported handler `<ws><Bff>Handler`, registered in `routes`

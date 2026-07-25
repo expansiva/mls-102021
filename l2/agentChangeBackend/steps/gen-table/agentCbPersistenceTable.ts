@@ -5,6 +5,7 @@
 // details JSONB. MDM/horizontal entities produce NO table.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import {
   readBackendScan, planTableColumns, createPromptReadyIntent, createUpdateStatusIntent, enqueueNext, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
@@ -53,6 +54,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('gen-table', step.interaction); // T7: per-phase cost telemetry (best-effort)
   let status: mls.msg.AIStepStatus = 'completed';
   let trace: string | undefined;
   try {

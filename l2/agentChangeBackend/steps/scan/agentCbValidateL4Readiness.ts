@@ -45,8 +45,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       console.error(`${logPrefix(agent)} ${trace}`);
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
-    if (warnings.length) console.warn(`${logPrefix(agent)} ${warnings.length} warning(s): ${warnings.slice(0, 8).join('; ')}`);
-    // Record the warning details on the step log too (not just the count), so they are visible in the trace.
+    // Console stays clean (spec §Console limpo): the warnings are recorded on the step trace below
+    // (the durable, auditable channel) instead of console.warn — they are informational, not failures.
     const preflightTrace = warnings.length
       ? `Preflight: ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
       : 'Preflight ok (0 warnings).';

@@ -9,6 +9,8 @@
 //   /rebuild all [module]   reset the target module's owners -> toCreate, then regenerate defs AND
 //                           materialize the .ts (files overwritten in place by saveDefs)
 //   /rebuild defs [module]  reset the target module's owners -> toCreate and regenerate .defs.ts ONLY
+//   /rebuild seeds [module] regenerate ONLY seeds.ts (+ assets) of an already-built module, then stop
+//                           (no owner reset, no domain/port/table/usecase/controller work)
 //   /run [module]           generate for the target module's pending owners (toCreate | inProgress)
 //   <module>                same as /run for that module (bare non-keyword token)
 //   (empty mention)         same as /run: continue the first module with pending owners
@@ -55,7 +57,8 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     } catch (e) {
       console.error(`${logPrefix(agent)} ${cmd} reset failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } else if (cmd === 'run') {
+  } else if (cmd === 'run' || cmd === 'rebuild-seeds') {
+    // rebuild-seeds regenerates ONLY seeds.ts of an already-built module — it never resets owners.
     // Resolve the target module up front (explicit, else the first module with pending owners) so the
     // task title is correct AT CREATION. Renaming later via the update-status intent's newTaskTitle is
     // best-effort and depends on collab-messages forwarding it; the bootstrap taskTitle path is the
@@ -139,6 +142,7 @@ palavra do comando, nunca nome de módulo.
 Comandos:
 - /rebuild all [módulo]  : reseta os owners do módulo-alvo para toCreate e regenera o backend — defs E materialização dos .ts (arquivos sobrescritos in place; sem deletar).
 - /rebuild defs [módulo] : reseta os owners do módulo-alvo para toCreate e regenera SOMENTE os .defs.ts (NÃO materializa os .ts).
+- /rebuild seeds [módulo]: regenera SOMENTE o seeds.ts (+ assets) do módulo já construído e termina — não reseta owners, não toca domínio/ports/tabelas/usecases/controllers. Use após ajustar dados/regra de seed sem refazer todo o backend.
 - /run [módulo]          : gera os owners pendentes (todoBackend = toCreate | inProgress) sem resetar; materializa os .ts faltando/desatualizados.
 - <módulo>               : igual ao /run daquele módulo (ex: @@changeBackend cafeFlow).
 - (sem comando)          : igual ao /run — varre o todoBackend e continua o primeiro módulo pendente.

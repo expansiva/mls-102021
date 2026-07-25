@@ -24,7 +24,7 @@ import {
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
-import { recordComponentFailure } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { recordComponentFailure, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 const AGENT_NAME = 'agentCbDomainEntity';
 const TOOL_NAME = 'submitDomainEntities';
@@ -87,6 +87,65 @@ function buildDomainItem(domainId: string, scan: CbScan): { aggregates: unknown[
   return null;
 }
 
+type FieldDef = Record<string, unknown>;
+
+function entityFieldsOf(scan: CbScan, id: string): FieldDef[] {
+  const fields = scan.entities.find(e => e.entityId === id)?.fields;
+  return Array.isArray(fields) ? (fields as FieldDef[]) : [];
+}
+
+function entityTitleOf(scan: CbScan, id: string): string {
+  return scan.entities.find(e => e.entityId === id)?.title || id;
+}
+
+/** The lifecycle status enum is the `status` field's enum — deterministic, so the model never needs
+ *  to restate it. */
+function statusEnumOf(fields: FieldDef[]): string[] {
+  const status = fields.find(f => readString(f.fieldId) === 'status');
+  return Array.isArray(status?.enum) ? (status!.enum as unknown[]).filter((v): v is string => typeof v === 'string') : [];
+}
+
+/** An embedded member is a collection when the root -> member relationship is oneToMany. */
+function isCollectionMember(scan: CbScan, root: string, member: string): boolean {
+  return scan.relationships.some(r => r.fromEntity === root && r.toEntity === member && r.type === 'oneToMany');
+}
+
+/**
+ * The DETERMINISTIC part of a domain entity — everything the ontology already fixes: root fields,
+ * embedded members as value-objects (their ontology fields + the collection flag), and the status enum.
+ * The LLM adds only `invariants` on top of this (see afterPromptStep). Returns null if the id is neither
+ * an aggregate root nor a persisted event.
+ */
+function buildDeterministicEntity(domainId: string, scan: CbScan): Record<string, unknown> | null {
+  const aggregate = scan.aggregates.find(a => a.rootEntity === domainId);
+  if (aggregate) {
+    const fields = entityFieldsOf(scan, aggregate.rootEntity);
+    return {
+      entityId: aggregate.rootEntity,
+      title: entityTitleOf(scan, aggregate.rootEntity),
+      fields,
+      valueObjects: aggregate.embeddedMembers.map(member => ({
+        name: member,
+        collection: isCollectionMember(scan, aggregate.rootEntity, member),
+        fields: entityFieldsOf(scan, member),
+      })),
+      statusEnum: statusEnumOf(fields),
+    };
+  }
+  const event = scan.events.find(ev => ev.persisted && ev.entityId === domainId);
+  if (event) {
+    const fields = Array.isArray(event.fields) ? (event.fields as FieldDef[]) : [];
+    return { entityId: event.entityId, title: entityTitleOf(scan, event.entityId), fields, valueObjects: [], statusEnum: statusEnumOf(fields) };
+  }
+  return null;
+}
+
+async function saveDomainEntity(module: string, entityId: string, data: Record<string, unknown>): Promise<void> {
+  const fi = domainEntityFileInfo(module, entityId);
+  const pipeline = [buildPipelineItem(lowerFirst(entityId), 'domainEntity', fi, [], layerSkills('domainEntity.md'))];
+  await saveDefs(fi, `${lowerFirst(entityId)}DomainEntity`, buildArtifact('domainEntity', entityId, module, AGENT_NAME, data), pipeline);
+}
+
 // ── beforePromptStep: dispatch (fan-out) or worker (one domain) ───────────────
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -140,17 +199,27 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
 async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, domainId: string): Promise<mls.msg.AgentIntent[]> {
   const scan = await readBackendScan(['toCreate', 'inProgress'], context);
   const module = scan.moduleNames[0] || 'unknown';
-  const item = buildDomainItem(domainId, scan);
+  const deterministic = buildDeterministicEntity(domainId, scan);
   // NB: worker children never return 'failed' (a failed step does not satisfy dependsOn and would stall
   // the cb-gen-port join); report the problem as a completed [worker-error] trace instead.
-  if (!item) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] domain target not found: ${domainId}`)];
+  if (!deterministic) return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `[worker-error] domain target not found: ${domainId}`)];
   // REUSE: if this domain's .defs.ts already exists and is newer than the L4 input, skip the LLM and
   // reuse it. /rebuild forces regen. A re-run after a partial failure regenerates ONLY the missing ones.
   if (!isRebuildCommand(context) && defsCurrent(domainEntityFileInfo(module, domainId), newestL4DefsMs(scan.project))) {
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused domain entity ${domainId} .defs.ts (L4 unchanged)`)];
   }
-  // Same human template as v1 (two labelled sections + trailing instruction), scoped to ONE domain.
-  const human = `## Aggregates (root + embedded members, with ontology fields)\n${JSON.stringify(item.aggregates, null, 2)}\n\n## Append-only event records (one pure domain entity each, immutable, no valueObjects)\n${JSON.stringify(item.events, null, 2)}\n\nReturn one pure domain entity per aggregate root AND per event record; embedded members become valueObjects (collection=true for oneToMany). Event records carry no invariants beyond their fields.`;
+  // EVENTS are append-only records with NO invariants beyond their fields (spec) — the entity is fully
+  // deterministic, so save it WITHOUT an LLM call (fewer tokens, zero failure surface).
+  const isEvent = scan.events.some(ev => ev.persisted && ev.entityId === domainId);
+  if (isEvent) {
+    await saveDomainEntity(module, domainId, { ...deterministic, invariants: [] });
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `event ${domainId}: deterministic domain entity (no LLM)`)];
+  }
+  // AGGREGATE: the model returns ONLY the invariants. It still SEES the full ontology fields (root +
+  // embedded members) so it can reason about them, but it does NOT restate them — fields/valueObjects/
+  // statusEnum are attached deterministically in afterPromptStep.
+  const item = buildDomainItem(domainId, scan)!;
+  const human = `## Aggregate (root + embedded members, with ontology fields) — CONTEXT to reason about; DO NOT restate these fields\n${JSON.stringify(item.aggregates, null, 2)}\n\nReturn ONE item { entityId: "${domainId}", invariants: [...] } — the business rules the entity must always hold (status transitions, required-when conditions, cross-field and monetary/quantity constraints). Do NOT output fields, valueObjects or statusEnum; they are attached automatically from the ontology.`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the domainId) so the runtime
   // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
   const systemPrompt = await readCbPrompt('steps/gen-domain');
@@ -160,6 +229,7 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
 // ── afterPromptStep (worker only): save the one domain .defs.ts ───────────────
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('gen-domain', step.interaction); // T7: per-phase cost telemetry (best-effort)
   let status: mls.msg.AIStepStatus = 'completed';
   let trace: string | undefined;
   const domainId = workerDomainId(args, step);
@@ -174,17 +244,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
-    let saved = 0;
-    for (const item of asArray((out.result as any).items)) {
-      const entityId = readString(item.entityId);
-      if (!entityId) continue;
-      const fi = domainEntityFileInfo(module, entityId);
-      const pipeline = [buildPipelineItem(lowerFirst(entityId), 'domainEntity', fi, [], layerSkills('domainEntity.md'))];
-      await saveDefs(fi, `${lowerFirst(entityId)}DomainEntity`, buildArtifact('domainEntity', entityId, module, AGENT_NAME, item), pipeline);
-      saved++;
-    }
+    // The deterministic shape (fields/valueObjects/statusEnum) is the authority; the model supplies only
+    // the invariants. Match the model item by entityId, falling back to this worker's domainId.
+    const deterministic = buildDeterministicEntity(domainId, scan);
+    if (!deterministic) throw new Error(`domain target not found: ${domainId}`);
+    const items = asArray((out.result as any).items);
+    const modelItem = items.find(it => readString(it.entityId) === domainId) ?? items[0];
+    const invariants = Array.isArray(modelItem?.invariants)
+      ? (modelItem!.invariants as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [];
+    await saveDomainEntity(module, domainId, { ...deterministic, invariants });
     if (out.status === 'failed') throw new Error('model returned failed');
-    if (!saved) throw new Error('no domain entity saved (empty items)');
   } catch (error) {
     trace = error instanceof Error ? error.message : String(error);
   }

@@ -4,8 +4,36 @@ import assert from 'node:assert/strict';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
-  extractInterfaceMethods, collectRepositoryMethodMisuse,
+  extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
+  stableCompilerErrors, selectCompilerRepairRoots,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+
+test('stableCompilerErrors (T2): keeps only findings that reproduce on the double-check (flaky dropped)', () => {
+  const first = ['compiler: TS2792 cannot find module', 'compiler: TS2322 real type error'];
+  const second = ['compiler: TS2322 real type error']; // TS2792 was a transient (models not settled)
+  assert.deepEqual(stableCompilerErrors(first, second), ['compiler: TS2322 real type error']);
+  // A finding present in BOTH passes is a real error and stays.
+  assert.deepEqual(stableCompilerErrors(['x'], ['x']), ['x']);
+  // Nothing reproduces -> everything suppressed as flaky.
+  assert.deepEqual(stableCompilerErrors(['a', 'b'], ['c']), []);
+});
+
+test('selectCompilerRepairRoots (T2): an importer of a flagged file is a cascade; only the root is repaired', () => {
+  // B is broken; A imports B; C is independently broken and imports nobody flagged.
+  const flagged = ['mod/adapters::orderrepositoryadapter', 'mod/entities::order', 'mod/entities::daily'];
+  const importsOf = (key: string): string[] =>
+    key === 'mod/adapters::orderrepositoryadapter' ? ['mod/entities::order'] // A imports flagged B
+      : []; // order (B) and daily (C) import nothing flagged
+  const { roots, cascades } = selectCompilerRepairRoots(flagged, importsOf);
+  assert.deepEqual(cascades, ['mod/adapters::orderrepositoryadapter'], 'importer of a flagged file is deferred');
+  assert.deepEqual(roots.sort(), ['mod/entities::daily', 'mod/entities::order'], 'only roots are repaired this round');
+});
+
+test('selectCompilerRepairRoots (T2): a file importing a NON-flagged file is a root (not a cascade)', () => {
+  const { roots, cascades } = selectCompilerRepairRoots(['a'], () => ['some/other::cleanfile']);
+  assert.deepEqual(roots, ['a']);
+  assert.deepEqual(cascades, []);
+});
 
 // An append-only ledger port (StockAdjustment): NO save/create — only append + queries.
 const STOCK_ADJ_PORT = `
@@ -16,6 +44,19 @@ export interface IStockAdjustmentRepository {
   listByProductId(productId: ProductId): Promise<StockAdjustment[]>;
 }
 `;
+
+test('collectInventedRelationshipKeyIssues flags a literal-cast related() key (erro4) but not a typed key', () => {
+  // The exact erro4 shape: entity.related(key as 'o') — an invented CompactRelationshipRefKey forced past the type.
+  const bad = `for (const key of ['o','op'] as const) { const ids = entity.related(key as 'o'); pushAll(ids); }
+    const more = entity.relatedIds(rel as "OffersProduct");`;
+  const issues = collectInventedRelationshipKeyIssues(bad);
+  assert.equal(issues.length, 2, issues.join(' | '));
+  assert.ok(issues.some(i => i.includes("as 'o'")));
+  assert.ok(issues.some(i => i.includes("as 'OffersProduct'")));
+  // A properly typed key (no literal cast) must NOT be flagged.
+  const good = `const rel: CompactRelationshipRefKey = resolveKey(); const ids = entity.related(rel);`;
+  assert.deepEqual(collectInventedRelationshipKeyIssues(good), []);
+});
 
 test('extractInterfaceMethods reads only the named interface method signatures', () => {
   const methods = extractInterfaceMethods(STOCK_ADJ_PORT, 'IStockAdjustmentRepository');

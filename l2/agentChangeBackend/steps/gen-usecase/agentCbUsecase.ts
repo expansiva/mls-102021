@@ -20,7 +20,7 @@ import {
   type CbScan, type CbOwner, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
-import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 const AGENT_NAME = 'agentCbUsecase';
 const TOOL_NAME = 'submitUsecase';
@@ -248,6 +248,7 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
 // ── afterPromptStep (worker only): save the one usecase .defs.ts ───────────────
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('gen-usecase', step.interaction); // T7: per-phase cost telemetry (best-effort)
   let status: mls.msg.AIStepStatus = 'completed';
   let trace: string | undefined;
   try {

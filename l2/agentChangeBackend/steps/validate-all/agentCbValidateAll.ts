@@ -17,15 +17,21 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
-  readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, GLOBAL_REPAIR_BUDGET,
+  readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
+  mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { getFileModified, compileSavedTsAndGetErrors } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
-import { isStale } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { isStale, shouldTargetedRescue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+
+// T6: one targeted rescue round (outside the global budget) fires only for a SMALL, compiler-only
+// residual — a larger or non-compiler residual is a genuine failure, not a last-mile fix.
+const RESCUE_MAX_TARGETS = 4;
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
+  stableCompilerErrors, selectCompilerRepairRoots,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
@@ -76,6 +82,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // are candidates for the global repair round; everything else fails clean.
     const repairTargets = new Map<string, string[]>();
     const mappedMsgs = new Set<string>();
+    // T2 sanity guard: how many whole-project compile findings were suppressed as flaky (non-reproducible
+    // on double-check) or as cascade (importer of a file that itself has a finding). Logged to the round
+    // health report + trace so a suppressed-then-reappearing finding is auditable (deferred, never lost).
+    let flakyCompilerSuppressed = 0;
+    let cascadeCompilerSuppressed = 0;
     const addRepair = (defRef: string, msg: string): void => {
       const list = repairTargets.get(defRef) || [];
       list.push(msg);
@@ -329,13 +340,42 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // layer sweep is DEFERRED (siblings/other layers still materializing produced false TS2792/type
     // findings that burned repair budget). Here every generated .ts exists, so compiler findings are
     // REAL and re-materializable via the global repair rounds.
+    //
+    // T2: two defenses BEFORE a compiler finding becomes an LLM re-materialization (erro4: g1/g2 flagged
+    // ~43 files — ports included — while the final pass found 3, and $4.50 was spent re-generating
+    // already-correct files). Both are local compute (zero LLM) and NEVER drop a real error: every pass
+    // recomputes from scratch and the post-register pass compiles all files, so a suppressed finding that
+    // is real re-appears and is caught later.
+    const compileFlagged = new Map<string, { folder: string; real: string; errors: string[] }>();
     for (const d of defsFiles) {
       if (!tsSet.has(`${d.folder}::${d.shortName}`)) continue; // completeness finding already covers it
-      const compileErrors = await compileSavedTsAndGetErrors(project, d.folder, d.real);
-      for (const err of compileErrors.slice(0, 6)) {
-        const msg = `compiler -> ${d.folder}/${d.real}.ts: ${err}`;
+      const first = await compileSavedTsAndGetErrors(project, d.folder, d.real);
+      if (!first.length) continue;
+      // STEP 2 (double-check vs H1 — flaky): recompile once more (models/imports now settled) and keep
+      // only errors that reproduce. A transient finding (Monaco model lag / ensureImportModels
+      // best-effort) must not force a full re-generation of a file that was already correct.
+      const second = await compileSavedTsAndGetErrors(project, d.folder, d.real);
+      const stable = stableCompilerErrors(first, second);
+      flakyCompilerSuppressed += first.length - stable.length;
+      if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
+    }
+    // STEP 3 (cascade dedup vs H2 — derived): a broken file B stays saved (saveGeneratedTs writes before
+    // the gate), so importers of B report DERIVED errors. Resolve each flagged file's l1 imports, then
+    // keep only ROOTS this round (a file that imports another flagged file is deferred — fixing the root
+    // almost always clears it, and it is re-flagged next round / by the final pass if not).
+    const importsByKey = new Map<string, string[]>();
+    for (const [key, info] of compileFlagged) {
+      const tsContent = await getContentByMlsPath(`_${project}_/l1/${info.folder}/${info.real}.ts`);
+      importsByKey.set(key, tsContent ? collectL1Imports(tsContent, project).map(req => req.key) : []);
+    }
+    const { cascades } = selectCompilerRepairRoots(compileFlagged.keys(), key => importsByKey.get(key) ?? []);
+    const cascadeSet = new Set(cascades);
+    for (const [key, info] of compileFlagged) {
+      if (cascadeSet.has(key)) { cascadeCompilerSuppressed += info.errors.length; continue; }
+      for (const err of info.errors.slice(0, 6)) {
+        const msg = `compiler -> ${info.folder}/${info.real}.ts: ${err}`;
         missing.push(msg);
-        addRepair(defRefOf(d.folder, d.real), msg);
+        addRepair(defRefOf(info.folder, info.real), msg);
       }
     }
 
@@ -448,25 +488,51 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const unmapped = unique.filter(m => !mappedMsgs.has(m));
       const allMapped = unmapped.length === 0 && repairTargets.size > 0;
       const state = await readRepairState();
+      // T6 TARGETED RESCUE: the global budget is spent, but only a FEW compiler-only findings remain — one
+      // more round (OUTSIDE the budget) fixes them cheaply (T2 scopes it, T4 makes each call surgical)
+      // instead of shipping a "green" artifact with real type errors (erro4 ended with 3). Fires EXACTLY
+      // once: it bumps globalAttempts to budget+1, so the gate (=== budget) is false on the re-check, and
+      // it never applies to defs-level findings (not fixable by re-materialization) or a large residual.
+      const isRescue = shouldTargetedRescue({ globalAttempts: state.globalAttempts, budget: GLOBAL_REPAIR_BUDGET, targetCount: repairTargets.size, maxTargets: RESCUE_MAX_TARGETS, findings: unique });
       // GLOBAL REPAIR ROUND: only when EVERY finding is materialization-level (re-generating the .ts
       // can fix it) and the global budget is not exhausted. Defs did not change, so seeds/register stay
       // valid — the materialize dispatcher (repair mode) re-runs the stale components with the findings
       // in context and enqueues cb-validate-all-g{n} to re-check.
-      if (allMapped && state.globalAttempts < GLOBAL_REPAIR_BUDGET) {
+      if (allMapped && (state.globalAttempts < GLOBAL_REPAIR_BUDGET || isRescue)) {
         state.globalAttempts += 1;
+        const roundTargets: Array<{ defRef: string; findings: number; first: string }> = [];
         for (const [defRef, findings] of repairTargets) {
-          state.componentRepairs[defRef] = {
-            target: defRef,
-            attempts: 0, // global round grants a fresh worker budget; the GLOBAL budget is the anti-loop
-            findings: findings.slice(0, 20),
-            source: 'validate-all',
-            updatedAt: new Date().toISOString(),
-          };
+          const prev = state.componentRepairs[defRef];
+          // T3: MERGE instead of overwrite — carry priorFindings (what earlier rounds already fixed) and
+          // the last code so the worker does not re-roll and reintroduce a fixed error (createStockAdjustment
+          // 'save() misuse' reappeared as attempt 1 in g0/g1/g2 because the state was overwritten each round).
+          // attempts:0 is intentional (the global round grants a fresh worker budget; GLOBAL is the anti-loop).
+          // When the state has no lastCode yet, seed it with the CURRENT saved .ts so the model fixes that
+          // exact file (it was saved before the gate) instead of regenerating from scratch.
+          let lastCode: string | undefined;
+          if (!prev?.lastCode) {
+            const tsRef = defRef.replace(/\.defs\.ts$/u, '.ts');
+            lastCode = (await getContentByMlsPath(tsRef)) ?? undefined;
+          }
+          state.componentRepairs[defRef] = mergeComponentRepair(prev, defRef, findings, { attempts: 0, source: 'validate-all', lastCode });
+          // T1: record EACH forced-stale target in the durable history so post-mortem can tell which
+          // defRefs a given g{n} round re-materialized.
+          pushHistory(state, `${defRef} :: validate-all g${state.globalAttempts} :: ${findings[0] ?? 'finding'}`);
+          roundTargets.push({ defRef, findings: findings.length, first: findings[0] ?? 'finding' });
           if (!forceDefsStale(defRef)) console.warn(`${logPrefix(agent)} forceDefsStale failed for ${defRef}`);
         }
         await saveRepairState(state);
-        const trace = `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s): ${unique.slice(0, 12).join('; ')}`;
-        await saveHealthReport({ outcome: 'repair-round', round: state.globalAttempts, l1Defs, findings: unique, warnings, repairHistory: state.history });
+        const suppressedNote = (flakyCompilerSuppressed || cascadeCompilerSuppressed)
+          ? ` (T2 suppressed ${flakyCompilerSuppressed} flaky + ${cascadeCompilerSuppressed} cascade compiler finding(s))`
+          : '';
+        const trace = isRescue
+          ? `INTEGRITY targeted rescue (global budget spent; ${repairTargets.size} compiler-only component(s))${suppressedNote}: ${unique.slice(0, 12).join('; ')}`
+          : `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s)${suppressedNote}: ${unique.slice(0, 12).join('; ')}`;
+        // T1: the round snapshot carries the FULL forced-stale target list (defRef + finding count) so
+        // cb-health-report.json's `rounds` array is a durable, per-round audit of what each g{n} decided.
+        // T2: the suppressed counts make the double-check/dedup auditable (a suppressed finding that is
+        // real re-appears next round / at the final pass — deferred, never lost).
+        await saveHealthReport({ outcome: isRescue ? 'rescue-round' : 'repair-round', round: state.globalAttempts, globalAttempts: state.globalAttempts, repairTargets: roundTargets, targetCount: roundTargets.length, flakyCompilerSuppressed, cascadeCompilerSuppressed, l1Defs, findings: unique, warnings, repairHistory: state.history });
         return [
           enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true, ...(preSeeds ? { preSeeds: true } : {}) }),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),

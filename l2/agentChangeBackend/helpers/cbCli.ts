@@ -4,9 +4,9 @@
 // it stays unit-testable — the l2 test stub crashes on cbShared's libStor->libModel import, mirroring
 // why cbWorkspace.ts was extracted.
 
-export type CbCommandKind = 'rebuild-all' | 'rebuild-defs' | 'run' | 'help';
+export type CbCommandKind = 'rebuild-all' | 'rebuild-defs' | 'rebuild-seeds' | 'run' | 'help';
 
-const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'run', 'help']);
+const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'seeds', 'run', 'help']);
 
 /** Parse the user prompt into a CLI command plus an OPTIONAL target module. Lenient: mention stripped,
  * command keyword matched anywhere. The module is the first token that is NOT a CLI keyword and not a
@@ -26,7 +26,10 @@ export function parseCli(raw: string | undefined): { kind: CbCommandKind; module
     break;
   }
   let kind: CbCommandKind;
-  if (lower.includes('rebuild')) kind = lower.includes('defs') ? 'rebuild-defs' : 'rebuild-all';
+  if (lower.includes('rebuild')) {
+    // seeds-only regeneration takes precedence over defs; bare `/rebuild` (neither) is the full rebuild.
+    kind = lower.includes('seeds') ? 'rebuild-seeds' : lower.includes('defs') ? 'rebuild-defs' : 'rebuild-all';
+  }
   else if (lower.includes('run')) kind = 'run';
   else if (lower.includes('help')) kind = 'help';
   else if (module) kind = 'run';                            // bare module name -> continue that module

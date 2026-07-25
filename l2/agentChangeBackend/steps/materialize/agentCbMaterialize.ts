@@ -21,17 +21,17 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
-  expandContextRef, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
+  expandContextRef, buildMicroRepairPrompt, isCompilerFinding, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
-  buildRepairPromptSection, forceDefsStale, saveHealthReport, COMPONENT_REPAIR_BUDGET, type CbRepairState,
+  buildRepairPromptSection, forceDefsStale, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-  extractInterfaceMethods, collectRepositoryMethodMisuse,
+  extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
@@ -272,25 +272,43 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
     const parsed = parseDefs(content);
     if (!parsed.item || !parsed.item.outputPath) return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, 'no pipeline item in defs');
 
+    // T5: scope the platform-contracts bundle to what THIS artifact type compiles against (a domain
+    // entity / port carry none; mdmFacade only for a usecase that references MDM). Big input-token cut.
+    const artifactType = parsed.item.type;
+    const hasMdmRefs = Array.isArray((parsed.data as { mdmRefs?: unknown })?.mdmRefs)
+      && ((parsed.data as { mdmRefs: unknown[] }).mdmRefs).length > 0;
     const skillSections: string[] = [];
     for (const s of parsed.item.skills ?? []) {
-      for (const real of expandContextRef(s)) {
+      for (const real of expandContextRef(s, artifactType, hasMdmRefs)) {
         const c = await getContentByMlsPath(real);
         if (c != null) skillSections.push(`<!-- skill: ${real} -->\n${c}`);
       }
     }
     const contextSections: string[] = [];
     for (const d of parsed.item.dependsFiles ?? []) {
-      for (const real of expandContextRef(d)) {
+      for (const real of expandContextRef(d, artifactType, hasMdmRefs)) {
         const c = await readContextRef(real);
         if (c != null) contextSections.push(`### ${real}\n\`\`\`ts\n${c}\n\`\`\``);
       }
     }
-    const system = buildSystemPrompt(skillSections, parsed.item.outputPath, DEFAULT_MODEL_TYPE);
-    let human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
     // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
     // exact findings + the rejected code back so the model fixes them instead of re-rolling the dice.
     const repair = await getComponentRepair(defRef);
+    // T4 MICRO-REPAIR: if EVERY finding is a compiler error on an already-generated .ts, use a surgical
+    // prompt (current code + errors + dependsFiles types + type-pitfalls skill) instead of the full
+    // ~15-25k re-materialization. Same tool + same post-gen gates — only the INPUT shrinks (~5k). A
+    // structural finding (hallucinated import, missing route, rulesApplied gone) keeps the full path,
+    // where the complete skills/contracts context matters.
+    if (repair && repair.findings.length && repair.findings.every(isCompilerFinding)) {
+      const currentCode = await getContentByMlsPath(parsed.item.outputPath);
+      if (currentCode) {
+        const pitfalls = await getContentByMlsPath('_102021_/l2/agentChangeBackend/skills/typePitfalls.md');
+        const micro = buildMicroRepairPrompt({ outputPath: parsed.item.outputPath, code: currentCode, findings: repair.findings, contextSections, pitfalls });
+        return [createPromptReadyIntent(context, parentStep, hookSequential, defRef, micro.system, micro.human, GEN_TOOL as unknown as mls.msg.LLMTool, GEN_TOOL_NAME)];
+      }
+    }
+    const system = buildSystemPrompt(skillSections, parsed.item.outputPath, DEFAULT_MODEL_TYPE);
+    let human = buildHumanPrompt(parsed.data, contextSections, parsed.item.outputPath);
     if (repair && repair.findings.length) human += `\n\n${buildRepairPromptSection(repair)}`;
     // prompt_ready args MUST equal the parallel child's queued hook args (the defRef) so the runtime
     // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
@@ -341,6 +359,7 @@ function validateUsecaseComponent(project: number, data: unknown, code: string, 
   if (/mdmRelationship/.test(code) && /\b(source_entity_|target_entity_)/.test(code)) {
     issues.push('mdmRelationship uses invented source_entity/target_entity fields; use MdmRelationshipRecord fromId/toId/type');
   }
+  issues.push(...collectInventedRelationshipKeyIssues(code));
   for (const rule of collectUsecaseRules(data)) {
     if (!new RegExp(`\\b${escapeRegExp(rule)}\\b`).test(code)) {
       issues.push(`rulesApplied '${rule}' not present in generated .ts`);
@@ -397,6 +416,7 @@ function validateGeneratedComponent(project: number, item: PipelineItem, data: u
 // layer barrier advances, the dispatcher re-spawns the repairable components, and cb-validate-all
 // remains the blocking gate for whatever did not converge.
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('materialize', step.interaction); // T7: per-phase cost telemetry (best-effort)
   let trace: string | undefined;
   try {
     const defRef = workerDefRef(args, step);

@@ -4,6 +4,7 @@
 // depends on the port (interface), never on the concrete adapter — dependency inversion.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, enqueueNext, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
@@ -43,6 +44,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('gen-port', step.interaction); // T7: per-phase cost telemetry (best-effort)
   let status: mls.msg.AIStepStatus = 'completed';
   let trace: string | undefined;
   try {

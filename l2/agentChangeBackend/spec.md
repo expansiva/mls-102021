@@ -192,7 +192,7 @@ O `l1` (backend) conversa com o frontend via **BFF**: cada **página** tem funç
 
 ## Status (`todoBackend`)
 
-Pega itens com `todoBackend.status` pendente; ao iniciar seta `inProgress`; ao concluir marca `done`. **Independente do frontend:** o `agentChangeFrontend` controla o `todoFrontend` separadamente, então não há ordem obrigatória entre os dois workers nem colisão de escrita no L4. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem nos dois todos como `toCreate`.
+Pega itens com `todoBackend.status` pendente (`toCreate` | `inProgress`); ao dar `lock` seta `inProgress`; marca `done` **assim que os `.defs.ts` do owner estão gerados** (no fim do `cb-gen-http`, ANTES da materialização) — não no fim do run. Motivo: materialize/seeds/assets são os passos que falham no fim; marcar `done` após os defs faz um re-run **reaproveitar** os defs prontos (pula toda a cadeia de geração, inclusive o juiz LLM, ~20 min) e só materializar `.ts` desatualizados + seeds faltando. Portanto `done` = "defs gerados"; o sucesso do run (o `.ts` compilar) continua sendo gate do `cb-validate-all`. Um `@@changeBackend` sem pendências NÃO para: vai direto materializar os `.ts` desatualizados (staleness: `.ts` mais antigo que `.defs.ts`) e gerar seeds se faltar o arquivo (seeds existente só é regerado com `/rebuild all` ou `/rebuild seeds`). **Independente do frontend:** o `agentChangeFrontend` controla o `todoFrontend` separadamente, então não há ordem obrigatória entre os dois workers nem colisão de escrita no L4. Owners semeados pela Etapa 1 (`agentNewSolution2`) nascem nos dois todos como `toCreate`.
 
 ## O que este agente NÃO faz
 

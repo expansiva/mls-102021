@@ -23,7 +23,7 @@ import {
 import { parseDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { judgeResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
-  readRepairState, saveRepairState, usecaseDefsTarget,
+  readRepairState, saveRepairState, usecaseDefsTarget, recordLlmCost,
   COMPONENT_REPAIR_BUDGET, JUDGE_MAX_RUNS, type CbJudgeFinding,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
@@ -146,6 +146,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('judge', step.interaction); // T7: per-phase cost telemetry (best-effort)
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing payload');

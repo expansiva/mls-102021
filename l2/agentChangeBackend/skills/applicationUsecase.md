@@ -139,6 +139,19 @@ and `ctx.mdm.collection.hydrateMany(...)`. Often just storing/passing the id is 
 record when you actually need its fields. Do not import any `/_{project}_/.../ports/{mdm}Repository` -
 it does not exist.
 
+### Type pitfalls that fail the compile (the in-loop compiler now checks cross-project types too)
+
+- **`entity.related(key)` takes a typed `CompactRelationshipRefKey`** — NEVER invent a key or force one
+  with a literal cast (`entity.related(key as 'o')` / `entity.relatedIds(rel as 'OffersProduct')` are
+  rejected). To get a linked id, read a DECLARED field off the record (e.g.
+  `entity.details.<moduleId>.menuCategoryId`), not a guessed relationship key.
+- **Append-only EVENT entities have NO `updatedAt`** — they carry only `createdAt` (plus their own
+  declared timestamps such as `occurredAt`/`voidedAt`). Setting `updatedAt` on an event object literal is
+  a compile error (TS2353). Only mutable **core** aggregates have `updatedAt`.
+- **A port method typed `Promise<T | null>` really can return null** — assign it to a `T | null` variable
+  and null-check (or throw `NOT_FOUND`) before use. Never assign a nullable result to a non-null variable
+  or pass it where a non-null `T` is required (TS2322/TS2345).
+
 Plural-first rule: never call `ctx.mdm.entity.get` inside a `for`/`while`/`map`/`forEach` loop. Collect
 the ids first, call `ctx.mdm.collection.getMany({ mdmIds })` or `hydrateMany`, then join the results in
 memory.

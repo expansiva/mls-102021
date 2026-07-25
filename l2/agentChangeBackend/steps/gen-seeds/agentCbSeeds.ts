@@ -5,12 +5,13 @@
 // deterministic TableSeedRows plus MDM entity/document/relationship rows.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   createAddStepIntent, createAgentStepPayload, isRecord, readString, readStringArray, logPrefix,
-  parseDefsSource, type CbScan,
+  parseDefsSource, readCliCommand, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import {
@@ -71,6 +72,30 @@ function emptyPlan(): SeedPlan {
   return { summary: '', localTables: [], mdmEntities: [] };
 }
 
+// `/rebuild seeds` regenerates seeds for an ALREADY-BUILT module whose owners are typically `done`.
+// Include `done` so entities/tables/relationships AND the owners' rulesApplied are still in scope
+// (a normal run only sees toCreate|inProgress). Also force a fresh plan (no persisted-plan reuse).
+function isRebuildSeeds(context: mls.msg.ExecutionContext): boolean {
+  return readCliCommand(context) === 'rebuild-seeds';
+}
+// Regenerate an EXISTING seeds.ts only on an explicit /rebuild all or /rebuild seeds. A bare @@changeBackend
+// (or /run) keeps the existing seeds file and only GENERATES it when it is missing (see beforePromptStep).
+function forceSeeds(context: mls.msg.ExecutionContext): boolean {
+  const cmd = readCliCommand(context);
+  return cmd === 'rebuild-all' || cmd === 'rebuild-seeds';
+}
+function seedScanStatuses(context: mls.msg.ExecutionContext): string[] {
+  return isRebuildSeeds(context) ? ['toCreate', 'inProgress', 'done'] : ['toCreate', 'inProgress'];
+}
+
+// The seed-asset (image) step is OPTIONAL. Mark it onFailure:'continue' so an image LLM/proxy failure
+// (e.g. INVALID_JSON_CONTENT from an image model, or a 502 — which leaves no payload) still routes to
+// agentCbSeedAssets.afterPromptStep, which degrades it to a warning (seed value stays null) and proceeds
+// to cb-register. Without this, a failed optional image marks the whole backend run failed at the last step.
+function enqueueSeedAssets(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep): mls.msg.AgentIntentAddStep {
+  return enqueueNext(context, parentStep, step, 'cb-seed-assets', 'agentCbSeedAssets', 'Gerar assets de seeds', {}, 'continue');
+}
+
 function plannedTargetIds(plan: SeedPlan): Set<string> {
   return new Set([...plan.localTables.map(table => `table:${table.tableId}`), ...plan.mdmEntities.map(entity => `mdm:${entity.entityId}`)]);
 }
@@ -120,21 +145,19 @@ function outputTokenTrace(payload: unknown): string {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
+    const scan = await readBackendScan(seedScanStatuses(context), context);
     const input = await readSeedBuildInput(scan);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
-    if (persisted && !persisted.partial) {
-      const reused = buildSeedSource({ ...input, plan: persisted.plan });
-      if (!reused.errors.length && reused.content) {
-        const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', reused.content);
-        if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile reused seeds.ts: ${saved.compileErrors.join('; ')}`);
-        return [
-          enqueueNext(context, parentStep, step, 'cb-seed-assets', 'agentCbSeedAssets', 'Gerar assets de seeds', {}),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Reused validated deterministic seed plan (${reused.summary}).`, 'input_output'),
-        ];
-      }
-      args.seedFindings.push(...reused.errors.slice(0, 40));
+    // A COMPLETE seeds.ts already exists and this is not /rebuild all|seeds -> KEEP it as-is (no re-plan,
+    // no recompile) and move on. This is the reuse the bare @@changeBackend wants: seeds are (re)generated
+    // only when the file is missing or an explicit rebuild is requested. To refresh after data/rule
+    // changes, use /rebuild seeds (or /rebuild all).
+    if (persisted && !persisted.partial && !forceSeeds(context)) {
+      return [
+        enqueueSeedAssets(context, parentStep, step),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'Kept existing seeds.ts (use /rebuild seeds to regenerate).', 'input_output'),
+      ];
     }
     const progress = persisted?.partial ? persisted : { plan: emptyPlan(), partial: true, completedWaveIndexes: [] };
     const batch = nextSeedBatch(input, progress.plan, args.forcedBatch);
@@ -157,8 +180,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  await recordLlmCost('seeds', step.interaction); // T7: per-phase cost telemetry (best-effort)
   try {
-    const scan = await readBackendScan(['toCreate', 'inProgress'], context);
+    const scan = await readBackendScan(seedScanStatuses(context), context);
     const input = await readSeedBuildInput(scan);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
@@ -262,7 +286,7 @@ async function finalizeSeedPlan(
   const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
   return [
-    enqueueNext(context, parentStep, step, 'cb-seed-assets', 'agentCbSeedAssets', 'Gerar assets de seeds', {}),
+    enqueueSeedAssets(context, parentStep, step),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace} Final validation succeeded (${built.summary}).`, 'input_output'),
   ];
 }

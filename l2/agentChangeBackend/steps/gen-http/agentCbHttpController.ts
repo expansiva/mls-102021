@@ -11,7 +11,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, parseDefsSource, isRecord,
   saveDefs, buildArtifact, buildPipelineItem, httpControllerFileInfo, usecaseFileInfo,
-  dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand,
+  dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand, setTodoBackendStatus,
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
@@ -250,6 +250,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const pipeline = [buildPipelineItem(lowerFirst(ownerId), 'httpController', fi, dependsFiles, layerSkills('httpController.md'))];
       await saveDefs(fi, `${lowerFirst(ownerId)}Controller`, buildArtifact('httpController', ownerId, module, AGENT_NAME, data), pipeline);
       saved++;
+    }
+    // All defs for the processed owners are now generated (domain/port/table/adapter/usecase/controller).
+    // Flip todoBackend -> done HERE, before materialization: materialize/seeds/assets are the steps that
+    // fail at the very end, and marking done after defs means a re-run reuses the finished defs (skips the
+    // whole generation chain, including the LLM judge) and only materializes stale .ts + missing seeds.
+    // `done` therefore means "defs generated"; the run's overall success (compiling .ts) is still gated by
+    // cb-validate-all, which reports any broken .ts even though the owner is already done.
+    if (!defsOnly) {
+      for (const owner of scan.owners) await setTodoBackendStatus(owner, 'done');
     }
     // /rebuild defs is defs-only TOTAL: skip cb-materialize AND the materializing tail (seeds/seed-assets/
     // register/validate-all); route straight to the cleanup that soft-deletes stale derived .ts, then finalize.

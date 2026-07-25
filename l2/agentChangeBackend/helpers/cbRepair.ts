@@ -17,11 +17,19 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
+import { buildHealthReportContent } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
+import { parseStepCost, accumulatePhaseCost, summarizeCost, type CbCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
+import {
+  COMPONENT_REPAIR_BUDGET, MAX_LAST_CODE, mergeComponentRepair, buildRepairPromptSection,
+  type CbComponentRepair, type CbRepairSource,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+
+// Re-exported so existing importers keep importing the repair contract from cbRepair.js.
+export { COMPONENT_REPAIR_BUDGET, mergeComponentRepair, buildRepairPromptSection } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+export type { CbComponentRepair, CbRepairSource } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
 
 // ── budgets (anti-loop) ─────────────────────────────────────────────────────────
 
-/** Max REPAIR attempts per component after the first failure (first try + 2 repairs = 3 LLM calls). */
-export const COMPONENT_REPAIR_BUDGET = 2;
 /** Max full validate-all -> re-materialize repair rounds. */
 // 2 rounds (user decision 2026-07-17, run e): the whole-project compile check now surfaces REAL
 // compiler findings only at validate-all, so the global round is the primary fix path — one round
@@ -43,21 +51,6 @@ export interface CbJudgeFinding {
   suggestion?: string;
 }
 
-export type CbRepairSource = 'component-validate' | 'validate-all' | 'judge';
-
-export interface CbComponentRepair {
-  target: string;          // defRef of the component OR 'usecase-defs:{ownerId}' for the defs phase
-  attempts: number;        // failed attempts consumed so far
-  findings: string[];      // last findings (fed back into the retry prompt)
-  /** Findings from EARLIER attempts that the last output resolved. Fed back so the model does not
-   * regress them while fixing the current findings (run 102049-e: attempt 3 fixed the compiler
-   * finding but reintroduced the rulesApplied finding of attempt 1 — whack-a-mole until budget). */
-  priorFindings?: string[];
-  lastCode?: string;       // previous rejected code (truncated) so the model fixes, not regenerates blindly
-  source: CbRepairSource;
-  updatedAt: string;
-}
-
 export interface CbRepairState {
   schemaVersion: string;
   componentRepairs: Record<string, CbComponentRepair>;
@@ -71,7 +64,6 @@ export interface CbRepairState {
 }
 
 const SCHEMA_VERSION = '2026-07-03-cb-repair';
-const MAX_LAST_CODE = 6000;
 
 function stateFileInfo(): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
   return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-repair-state', extension: '.json' };
@@ -83,7 +75,10 @@ function emptyState(): CbRepairState {
 
 const MAX_HISTORY = 100;
 
-function pushHistory(state: CbRepairState, entry: string): void {
+/** Append a timestamped line to the durable repair history (bounded). Exported so the validate-all
+ *  global repair round can record which defRefs it forced stale (it mutates the state object directly
+ *  in one read/save transaction). */
+export function pushHistory(state: CbRepairState, entry: string): void {
   state.history.push(`${new Date().toISOString()} :: ${entry}`);
   if (state.history.length > MAX_HISTORY) state.history.splice(0, state.history.length - MAX_HISTORY);
 }
@@ -148,21 +143,8 @@ export async function recordComponentFailure(target: string, findings: string[],
   return serializeRepairMutation(async () => {
     const state = await readRepairState();
     const prev = state.componentRepairs[target];
-    const current = findings.slice(0, 20);
-    // Findings the last attempt resolved (present before, absent now): carry them so the next
-    // attempt keeps them fixed instead of trading one finding for another across attempts.
-    const priorFindings = [...new Set([...(prev?.priorFindings ?? []), ...(prev?.findings ?? [])])]
-      .filter(f => !current.includes(f))
-      .slice(0, 10);
-    const entry: CbComponentRepair = {
-      target,
-      attempts: (prev?.attempts ?? 0) + 1,
-      findings: current,
-      ...(priorFindings.length ? { priorFindings } : {}),
-      ...(lastCode ? { lastCode: lastCode.length > MAX_LAST_CODE ? `${lastCode.slice(0, MAX_LAST_CODE)}\n// ... (truncated)` : lastCode } : {}),
-      source,
-      updatedAt: new Date().toISOString(),
-    };
+    // Merge (priorFindings + lastCode carried) so a retry fixes instead of re-rolling; attempts++.
+    const entry = mergeComponentRepair(prev, target, findings, { attempts: (prev?.attempts ?? 0) + 1, source, lastCode });
     state.componentRepairs[target] = entry;
     pushHistory(state, `${target} :: attempt ${entry.attempts} :: ${entry.findings[0] ?? 'failure'}`);
     if (!await saveRepairState(state)) throw new Error(`repair state persistence failed while recording ${target}`);
@@ -195,31 +177,7 @@ export function hasRepairBudget(entry: CbComponentRepair | null | undefined): bo
   return !!entry && entry.attempts > 0 && entry.attempts <= COMPONENT_REPAIR_BUDGET;
 }
 
-// ── prompt injection ────────────────────────────────────────────────────────────
-
-/** Repair section appended to the worker's human prompt on a retry. */
-export function buildRepairPromptSection(entry: CbComponentRepair): string {
-  const lines = [
-    '## REPAIR — previous attempt was REJECTED by the deterministic validator',
-    '',
-    `This is repair attempt ${entry.attempts} of ${COMPONENT_REPAIR_BUDGET + 1} for this component (source: ${entry.source}).`,
-    'Fix EXACTLY the findings below. Do not introduce unrelated changes.',
-    '',
-    '### Findings (each one MUST be resolved)',
-    ...entry.findings.map(f => `- ${f}`),
-  ];
-  if (entry.priorFindings?.length) {
-    lines.push(
-      '',
-      '### Fixed in earlier attempts — MUST STAY fixed (do NOT reintroduce)',
-      ...entry.priorFindings.map(f => `- ${f}`),
-    );
-  }
-  if (entry.lastCode) {
-    lines.push('', '### Previous rejected output (fix it — do not repeat these mistakes)', '```ts', entry.lastCode, '```');
-  }
-  return lines.join('\n');
-}
+// buildRepairPromptSection moved to cbRepairCore.ts (pure, unit-testable) and re-exported above.
 
 // ── durable run report ──────────────────────────────────────────────────────────
 
@@ -230,13 +188,80 @@ export async function saveHealthReport(report: Record<string, unknown>): Promise
   try {
     const info: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> =
       { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-health-report', extension: '.json' };
-    const source = `${JSON.stringify({ savedAt: new Date().toISOString(), ...report }, null, 2)}\n`;
     const key = mls.stor.getKeyToFile(info);
     let file = mls.stor.files[key];
+    // Read the existing report so the new snapshot ACCUMULATES into `rounds` instead of overwriting it
+    // (the per-round repair audit must survive across the run's many saveHealthReport calls).
+    let existingRaw: string | null = null;
+    if (file && file.status !== 'deleted') {
+      try { existingRaw = String((await file.getContent()) ?? ''); } catch { existingRaw = null; }
+    }
+    // T7: embed the accumulated per-phase cost so the health report itself carries custoPorFase
+    // (no manual post-processing of the task dump). The last snapshot = the run's final cost.
+    const costByPhase = await readCostReport();
+    const enriched = Object.keys(costByPhase).length ? { ...report, costByPhase, costSummary: summarizeCost(costByPhase) } : report;
+    const source = buildHealthReportContent(existingRaw, enriched, new Date().toISOString());
     if (!file) file = await createStorFile({ ...info, source }, false, false, false);
     await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
   } catch (error) {
     console.warn('[cbRepair] saveHealthReport failed', error);
+  }
+}
+
+// ── per-phase cost telemetry (T7) ────────────────────────────────────────────────
+
+function costFileInfo(): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
+  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-cost', extension: '.json' };
+}
+
+/** Accumulate ONE LLM step's cost into l4/trace/cb-cost.json under `phase`. Cost comes from the
+ *  authoritative `interaction.cost` (this step's LLM charge, retries included, no child cost); token
+ *  counts are parsed from the trace (not carried on the interaction). Best-effort + serialized (fan-out
+ *  workers write concurrently); never throws into the flow. */
+export async function recordLlmCost(phase: string, interaction: mls.msg.AIInteraction | null | undefined): Promise<void> {
+  if (!interaction) return;
+  const parsed = parseStepCost(interaction.trace ?? []);
+  const cost = typeof interaction.cost === 'number' && interaction.cost > 0 ? interaction.cost : parsed.cost;
+  const delta = { cost, inputTokens: parsed.inputTokens, outputTokens: parsed.outputTokens };
+  if (!delta.cost && !delta.inputTokens && !delta.outputTokens) return;
+  try {
+    await serializeRepairMutation(async () => {
+      const report = await readCostReport();
+      const next = accumulatePhaseCost(report, phase, delta);
+      const info = costFileInfo();
+      const source = `${JSON.stringify(next, null, 2)}\n`;
+      const key = mls.stor.getKeyToFile(info);
+      let file = mls.stor.files[key];
+      if (!file) file = await createStorFile({ ...info, source }, false, false, false);
+      await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+    });
+  } catch (error) {
+    console.warn('[cbRepair] recordLlmCost failed', error);
+  }
+}
+
+export async function readCostReport(): Promise<CbCostReport> {
+  try {
+    const file = mls.stor.files[mls.stor.getKeyToFile(costFileInfo())];
+    if (!file || file.status === 'deleted') return {};
+    const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as CbCostReport : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Read the last-state cb-health-report.json (top level = the last snapshot). Used by the final summary
+ *  (T6) to surface residual compiler findings that would otherwise live only in this file. */
+export async function readHealthReport(): Promise<Record<string, unknown> | null> {
+  try {
+    const info = { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-health-report', extension: '.json' } as Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
+    const file = mls.stor.files[mls.stor.getKeyToFile(info)];
+    if (!file || file.status === 'deleted') return null;
+    const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
   }
 }
 

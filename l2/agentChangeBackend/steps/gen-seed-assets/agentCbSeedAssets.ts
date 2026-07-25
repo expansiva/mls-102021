@@ -126,11 +126,14 @@ async function nextRequest(state: Awaited<ReturnType<typeof loadState>>, skipped
 
 function scheduleNext(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, skippedAssetIds: string[], trace: string): mls.msg.AgentIntent[] {
   const planId = `cb-seed-assets-${Date.now()}`;
+  const nextStep = createAgentStepPayload(planId, AGENT_NAME, 'Gerar próximo asset de seed', { planId, skippedAssetIds }, [], 'sequential', 'waiting_human_input');
+  // Seed images are OPTIONAL. If the image LLM call fails at the proxy (e.g. INVALID_JSON_CONTENT from
+  // an image model, or a 502), the runtime would mark the step — and the whole task — failed BEFORE
+  // afterPromptStep runs. 'continue' lets afterPromptStep run anyway; it records the failure as a
+  // warning (seed value stays null) and proceeds to cb-register, so an optional asset never kills the run.
+  nextStep.onFailure = 'continue';
   return [
-    {
-      type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parentStep.stepId,
-      step: createAgentStepPayload(planId, AGENT_NAME, 'Gerar próximo asset de seed', { planId, skippedAssetIds }, [], 'sequential', 'waiting_human_input'),
-    },
+    { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parentStep.stepId, step: nextStep },
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace, 'input_output'),
   ];
 }

@@ -12,6 +12,10 @@ test('parseCli: command detection with the optional [module] argument', () => {
   // Commands without a module keep module empty.
   assert.deepEqual(parseCli('@@changeBackend /rebuild all'), { kind: 'rebuild-all', module: '' });
   assert.deepEqual(parseCli('@@changeBackend /rebuild defs'), { kind: 'rebuild-defs', module: '' });
+  assert.deepEqual(parseCli('@@changeBackend /rebuild seeds'), { kind: 'rebuild-seeds', module: '' });
+  assert.deepEqual(parseCli('@@changeBackend /rebuild seeds cafeFlow'), { kind: 'rebuild-seeds', module: 'cafeFlow' });
+  // 'seeds' is a keyword, never a module name.
+  assert.deepEqual(parseCli('@@changeBackend rebuild seeds'), { kind: 'rebuild-seeds', module: '' });
   assert.deepEqual(parseCli('@@changeBackend /run'), { kind: 'run', module: '' });
   assert.deepEqual(parseCli('@@changeBackend /help'), { kind: 'help', module: '' });
 

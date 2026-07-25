@@ -43,9 +43,18 @@ void test('agentCbDomainEntity tool schema is provider-clean', () => {
   assert.equal(errs, null, errs?.join(' | '));
 });
 
+void test('domain item schema requires only entityId (fields are attached deterministically, not by the model)', () => {
+  // Regression for erro3: the model used to omit the root `fields` (nesting them under valueObjects) and
+  // fail TOOL_ARGS_SCHEMA. `fields`/`valueObjects`/`statusEnum` are now derived from the ontology by the
+  // agent, so the model returns only { entityId, invariants } — `fields` must NOT be required anymore.
+  const itemSchema = domainEntityResultSchema as unknown as { required: readonly string[]; properties: { valueObjects: { items: { required: readonly string[] } } } };
+  assert.deepEqual([...itemSchema.required], ['entityId'], 'item must require only entityId');
+  assert.ok(!itemSchema.properties.valueObjects.items.required.includes('fields'), 'valueObject fields must be optional');
+});
+
 for (const modelType of MODEL_TYPES) {
-  void test(`agentCbDomainEntity live @ ${modelType}: schema accepted + result has items`, { skip: !liveTestsEnabled() }, async () => {
-    const r = await callToolProvider(config(), { modelType, system: system(modelType), human: human({ items: [{ entityId: 'Order', fields: [] }] }), tool: tool() });
+  void test(`agentCbDomainEntity live @ ${modelType}: schema accepted for invariants-only item`, { skip: !liveTestsEnabled() }, async () => {
+    const r = await callToolProvider(config(), { modelType, system: system(modelType), human: human({ items: [{ entityId: 'Order', invariants: ['totalAmount must equal the sum of item subtotals'] }] }), tool: tool() });
     assertLiveResponse(r);
     assert.ok(isRecord(r.args) && Array.isArray(r.args.items), `${modelType}: result.items missing`);
   });

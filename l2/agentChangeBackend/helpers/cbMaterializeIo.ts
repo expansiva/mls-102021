@@ -140,25 +140,34 @@ function sanitizeModuleHint(message: string): string {
  * this compile, the importer fails with TS2792 even though the file exists in stor (run 102049-d:
  * the 6 controllers whose usecases were first created in that run, while the 10 pre-existing ones
  * resolved fine). Lazily load the models of same-project l1 imports before compiling. */
-async function ensureSameProjectImportModels(project: number, content: string): Promise<void> {
+// Load the Monaco model of every l1 import the generated .ts references — INCLUDING cross-project ones
+// (the platform, e.g. /_102034_/). The in-loop compile used to load only SAME-project models, so types
+// that live in another project (the platform RequestContext/ctx.mdm facade, CompactRelationshipRefKey,
+// a port's nullable return) resolved loosely and their misuse escaped the compile — surfacing only in
+// the real project `tsc` (see todo/changeBackend erro4: updatedAt on an append-only event, entity.related
+// with an invented key, a nullable findCurrent() assigned to a non-null). Loading each import under ITS
+// OWN project closes that fidelity gap. Best-effort: an import whose source is not in stor is skipped, so
+// this never regresses a workspace that lacks the platform source (types then come from the bundled d.ts).
+async function ensureImportModels(content: string): Promise<void> {
   for (const match of content.matchAll(/from\s+['"]\/_(\d+)_\/l1\/([^'"]+?)\.js['"]/gu)) {
-    if (Number(match[1]) !== project) continue;
+    const importProject = Number(match[1]);
+    if (!Number.isInteger(importProject) || importProject <= 0) continue;
     const path = match[2];
     const idx = path.lastIndexOf('/');
     if (idx <= 0) continue;
     const folder = path.slice(0, idx);
     const shortName = path.slice(idx + 1);
-    if (mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, 1)]) continue;
-    const fileKey = mls.stor.getKeyToFile({ project, level: 1, folder, shortName, extension: '.ts' });
+    if (mls.editor.models[mls.editor.getKeyModel(importProject, shortName, folder, 1)]) continue;
+    const fileKey = mls.stor.getKeyToFile({ project: importProject, level: 1, folder, shortName, extension: '.ts' });
     if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
-    try { await mls.editor.addModels(project, shortName, folder, 1); } catch { /* best effort: the compile error stays precise */ }
+    try { await mls.editor.addModels(importProject, shortName, folder, 1); } catch { /* best effort: the compile error stays precise */ }
   }
 }
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
 async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; available: boolean }> {
   try {
-    await ensureSameProjectImportModels(project, content);
+    await ensureImportModels(content);
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;

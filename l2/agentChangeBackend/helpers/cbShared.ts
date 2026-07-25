@@ -1155,6 +1155,7 @@ export function enqueueNext(
   agentName: string,
   stepTitle: string,
   args: unknown = {},
+  onFailure?: mls.msg.AIAgentStep['onFailure'],
 ): mls.msg.AgentIntentAddStep {
   const dep = planIdOf(currentStep);
   // Steps are SIBLINGS under the same parent (NEVER nested under the current step — that would
@@ -1162,6 +1163,9 @@ export function enqueueNext(
   // dispatch key comes from UNIQUE ARGS (the planId embedded in the prompt), not from the parent.
   const mergedArgs = { planId, ...(args && typeof args === 'object' ? (args as Record<string, unknown>) : {}) };
   const next = createAgentStepPayload(planId, agentName, stepTitle, mergedArgs, dep ? [dep] : [], 'sequential', 'waiting_dependency');
+  // 'continue' lets afterPromptStep run even when the LLM call itself fails (proxy error / no payload),
+  // so a step that soft-handles failures is not force-failed by the runtime before it can react.
+  if (onFailure) next.onFailure = onFailure;
   return createAddStepIntent(context, parentStep, next);
 }
 

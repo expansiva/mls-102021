@@ -21,15 +21,21 @@ function objArray(required: string[], properties: Record<string, unknown>) {
 
 const fieldSchema = { type: 'object', additionalProperties: false, required: ['fieldId', 'type', 'required'], properties: { fieldId: str, type: str, required: bool, description: str, enum: strArray } } as const;
 
+// Only `entityId` (to map the item back to its domain) is required from the model: the LLM's job here
+// is the INVARIANTS (business rules that are not derivable from the ontology). `fields`, `valueObjects`
+// and `statusEnum` are DETERMINISTIC (ontology fields, embedded members, the status enum) and are
+// attached by agentCbDomainEntity from the scan — so they are optional here and any model-emitted copy
+// is ignored. This removes the whole class of "items/0 must have required property 'fields'" failures
+// (the model used to omit the root fields or nest them under valueObjects) and shrinks the output.
 export const domainEntityResultSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['entityId', 'fields'],
+  required: ['entityId'],
   properties: {
     entityId: str,
     title: str,
     fields: { type: 'array', items: fieldSchema },
-    valueObjects: objArray(['name', 'fields'], { name: str, fields: { type: 'array', items: fieldSchema }, collection: bool }),
+    valueObjects: objArray(['name'], { name: str, fields: { type: 'array', items: fieldSchema }, collection: bool }),
     invariants: strArray,
     statusEnum: strArray,
   },
