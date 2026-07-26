@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scopeBackendScan, type CbScopeInput } from './cbScope.js';
+import { scopeBackendScan, backfillEntityFieldsFromOwners, type CbScopeInput } from './cbScope.js';
 
 // Minimal fixtures — scopeBackendScan only reads moduleName / entityId / fromEntity / toEntity.
 const owner = (id: string, moduleName: string) => ({ kind: 'operation', id, moduleName }) as unknown as CbScopeInput['owners'][number];
@@ -58,4 +58,69 @@ test('scopeBackendScan: empty project (no owners, no modules) returns unscoped a
   const r = scopeBackendScan({ owners: [], entities: [], relationships: [], workspaces: [], actors: [], allModuleNames: [], requestedModule: '' });
   assert.equal(r.moduleName, '');
   assert.equal(r.warning, null);
+});
+
+// ── backfillEntityFieldsFromOwners: the cafeFlow "kind: metric" gap ─────────────
+// e3 leaves a metric entity with NO fields, yet deriveAggregates promotes it to a real aggregate, so
+// domain entity + table + seeds were all built from an empty field list. Result in 102051:
+// getShiftClosingReport returned two ids and getAiSalesSummary crashed on todaySalesTotal.toFixed(2).
+// The L4 owner shapes DO declare the fields via fieldRef, so recover them deterministically.
+const metricEntity = (entityId: string) =>
+  ({ entityId, title: entityId, kind: 'metric', ownership: 'moduleOwned', moduleName: 'cafeFlow' }) as any;
+
+test('backfill recovers fields from an owner outputShape fieldRef (bug-shift-closing-report-payload)', () => {
+  const owners = [{
+    id: 'viewShiftClosingReport', kind: 'operation', moduleName: 'cafeFlow',
+    outputShape: {
+      kind: 'object',
+      fields: [
+        { name: 'shiftClosingReportId', type: 'string', required: true, fieldRef: 'ShiftClosingReport.shiftClosingReportId' },
+        { name: 'totalSalesAmount', type: 'number', required: true, fieldRef: 'ShiftClosingReport.totalSalesAmount' },
+        { name: 'closingNotes', type: 'string', required: false, fieldRef: 'ShiftClosingReport.closingNotes' },
+        { name: 'unrelated', type: 'string', required: true },                    // no fieldRef -> ignored
+      ],
+    },
+  }] as any[];
+  const [entity] = backfillEntityFieldsFromOwners([metricEntity('ShiftClosingReport')], owners);
+  assert.deepEqual(entity.fields, [
+    { fieldId: 'shiftClosingReportId', type: 'string', required: true },
+    { fieldId: 'totalSalesAmount', type: 'number', required: true },
+    { fieldId: 'closingNotes', type: 'string', required: false },
+  ]);
+});
+
+test('backfill NEVER overrides ontology-declared fields', () => {
+  const declared = { entityId: 'MenuItem', title: 'm', kind: 'core', ownership: 'moduleOwned', moduleName: 'cafeFlow', fields: [{ fieldId: 'name', type: 'string', required: true }] } as any;
+  const owners = [{ id: 'x', kind: 'operation', outputShape: { kind: 'object', fields: [{ name: 'price', type: 'number', required: true, fieldRef: 'MenuItem.price' }] } }] as any[];
+  const [entity] = backfillEntityFieldsFromOwners([declared], owners);
+  assert.deepEqual(entity.fields, [{ fieldId: 'name', type: 'string', required: true }], 'the ontology is authoritative when it declares fields');
+});
+
+test('backfill reads list/paginated item shapes and operation inputs too', () => {
+  const owners = [
+    { id: 'browse', kind: 'operation', outputShape: { kind: 'list', fields: [{ name: 'items', type: 'array', required: true, item: { fields: [{ name: 'todaySalesTotal', type: 'number', required: true, fieldRef: 'OperationalDashboard.todaySalesTotal' }] } }] } },
+    { id: 'view', kind: 'operation', inputs: [{ inputId: 'i1', fieldRef: 'OperationalDashboard.dailyShiftId', type: 'string', required: true, source: 'route', description: '' }] },
+  ] as any[];
+  const [entity] = backfillEntityFieldsFromOwners([metricEntity('OperationalDashboard')], owners);
+  assert.deepEqual(entity.fields?.map((f: any) => f.fieldId).sort(), ['dailyShiftId', 'todaySalesTotal']);
+});
+
+test('backfill upgrades a field to required when ANY contract declares it mandatory', () => {
+  // The seed gate only enforces REQUIRED fields, so an optional-then-required sighting must end required.
+  const owners = [
+    { id: 'a', kind: 'operation', outputShape: { kind: 'object', fields: [{ name: 'x', type: 'number', required: false, fieldRef: 'M.x' }] } },
+    { id: 'b', kind: 'operation', outputShape: { kind: 'object', fields: [{ name: 'x', type: 'number', required: true, fieldRef: 'M.x' }] } },
+  ] as any[];
+  const [entity] = backfillEntityFieldsFromOwners([metricEntity('M')], owners);
+  assert.deepEqual(entity.fields, [{ fieldId: 'x', type: 'number', required: true }]);
+});
+
+test('backfill ignores malformed fieldRefs and leaves an entity with no declarations alone', () => {
+  const owners = [{ id: 'a', kind: 'operation', outputShape: { kind: 'object', fields: [
+    { name: 'bad', type: 'string', required: true, fieldRef: 'NoDotHere' },
+    { name: 'deep', type: 'string', required: true, fieldRef: 'A.b.c' },
+  ] } }] as any[];
+  const [entity] = backfillEntityFieldsFromOwners([metricEntity('Untouched')], owners);
+  assert.equal(entity.fields, undefined);
+  assert.deepEqual(backfillEntityFieldsFromOwners([metricEntity('NoDotHere')], owners)[0].fields, undefined);
 });

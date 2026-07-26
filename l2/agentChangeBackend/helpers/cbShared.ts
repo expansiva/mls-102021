@@ -208,7 +208,7 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
-import { scopeBackendScan } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { scopeBackendScan, backfillEntityFieldsFromOwners } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 
 export interface CbScan {
   project: number;
@@ -351,13 +351,25 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   const scoped = scopeBackendScan({ owners, entities, relationships, workspaces, actors: actorsList, allModuleNames, requestedModule });
   if (scoped.warning) warnings.push(scoped.warning);
 
-  const aggregates = deriveAggregates(scoped.entities, scoped.relationships, operatedRootIds);
-  const events = deriveEventTargets(scoped.entities, scoped.relationships);
+  // An ontology entity with NO fields (every `kind: "metric"` one in cafeFlow) still becomes a real
+  // aggregate with a domain entity, table and seeds — all built from an empty field list, which is what
+  // left getShiftClosingReport answering with two ids and getAiSalesSummary crashing on .toFixed(). The
+  // L4 owner shapes already declare those fields via `fieldRef`, so recover them deterministically
+  // BEFORE aggregates/events/seed planning read `entities`. Ontology-declared fields always win.
+  const backfilled = backfillEntityFieldsFromOwners(scoped.entities, scoped.owners);
+  for (const entity of backfilled) {
+    const original = scoped.entities.find(e => e.entityId === entity.entityId);
+    if (original && original !== entity) {
+      warnings.push(`entity '${entity.entityId}' declares no fields in the ontology; ${entity.fields?.length ?? 0} field(s) recovered from l4 owner shapes`);
+    }
+  }
+  const aggregates = deriveAggregates(backfilled, scoped.relationships, operatedRootIds);
+  const events = deriveEventTargets(backfilled, scoped.relationships);
   // NB: the l4 contracts (`.ts`) are NEVER read here — l4 holds only `.defs.ts` (a `.ts` in l4 is not
   // compilable and getContent on it 422s). The l1 contracts are GENERATED from `workspaces` (gen-http).
   return {
     project, moduleNames: scoped.moduleName ? [scoped.moduleName] : allModuleNames,
-    owners: scoped.owners, entities: scoped.entities, relationships: scoped.relationships,
+    owners: scoped.owners, entities: backfilled, relationships: scoped.relationships,
     aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps, warnings,
   };
 }

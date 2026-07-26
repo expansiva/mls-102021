@@ -737,7 +737,9 @@ function validateReference(value: SeedValue, path: string, references: Set<strin
 function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue | undefined, path: string, errors: string[]) {
   // null is a cleared/absent optional value (e.g. a not-yet-set enum on an in-progress row); the
   // required check below enforces presence separately, so an optional enum may be null.
-  if (!field?.enumValues.length || value === undefined || value === null) return;
+  // `enumValues` is optional-chained: a field object built anywhere but agentCbSeeds' mapper may omit
+  // it, and a THROW inside the validator would abort the whole seed gate instead of reporting findings.
+  if (!field?.enumValues?.length || value === undefined || value === null) return;
   if (isSeedAssetRef(value)) return;
   if (isSeedReference(value) || typeof value !== 'string' || !field.enumValues.includes(value)) {
     errors.push(`${path}: expected one of ${field.enumValues.join(', ')}`);

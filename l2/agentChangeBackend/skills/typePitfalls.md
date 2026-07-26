@@ -25,3 +25,12 @@ compiler errors — fix the reported error with the SMALLEST change; do not rest
 - **Invented relationship keys.** `entity.related(key)` takes a typed `CompactRelationshipRefKey` —
   never invent one or force it with a literal cast (`entity.related(key as 'o')`). Read the linked id
   from a DECLARED entity field (e.g. `details.<moduleId>.menuCategoryId`) instead.
+- **RUNTIME (not a type error) — never format a persisted number without a fallback.** A row stored with
+  a JSONB `details` column can legitimately come back missing an optional field, and a nullable column is
+  `null`. `dashboard.todaySalesTotal.toFixed(2)` then throws `Cannot read properties of undefined
+  (reading 'toFixed')`, which the boundary reports as a 500 `INTERNAL_ERROR` — observed on
+  `getAiSalesSummary` in 102051. The types do NOT protect you here: the value is typed `number` but the
+  stored row was partial. So: guard the RECORD with a domain error (`if (!dashboard) -> NOT_FOUND`), and
+  for each numeric/date field you format, apply a coalescing default at the point of use —
+  `(dashboard.todaySalesTotal ?? 0).toFixed(2)`, `Number(row.total ?? 0)`. Same for `.toISOString()`,
+  `.padStart()`, `.split()` and any other method called on a persisted value.
