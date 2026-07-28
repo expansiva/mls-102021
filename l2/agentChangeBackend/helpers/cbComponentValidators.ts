@@ -406,6 +406,82 @@ export function collectMissingCanonicalRouteIssues(
   return issues;
 }
 
+// ── details defaulting (adapter materialization gate) ───────────────────────────
+// A `details` JSONB envelope can be NULL, '{}' or missing keys (seeds, older rows, partial writes) and
+// `JSON.parse('{}')` does NOT throw. An adapter that defaults only inside `catch` therefore returns an
+// object whose required fields are `undefined` at runtime, and `as {Entity}Details` makes the compiler
+// accept it — that is how a plain read became a 500 (`metric.toFixed(2)` on undefined). The correct
+// shape (see skills/repositoryAdapter.md) parses into a `Partial<...>` and spread-merges over complete
+// defaults. Both checks below are textual and entity-agnostic: nothing here names a module or entity.
+
+/** Top-level `function name(...) {...}` / `const name = (...) => {...}` blocks, brace-matched. */
+export function extractFunctionBlocks(code: string): Array<{ name: string; body: string }> {
+  const blocks: Array<{ name: string; body: string }> = [];
+  const re = /(?:function\s+([A-Za-z0-9_$]+)\s*\([^)]*\)[^{;]*\{|(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*(?::[^=]+?)?=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*(?::[^=]+?)?=>\s*\{)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    const open = code.indexOf('{', match.index + match[0].length - 1);
+    if (open < 0) continue;
+    let depth = 0, end = -1;
+    for (let i = open; i < code.length; i++) {
+      const ch = code[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) continue;
+    blocks.push({ name: match[1] || match[2] || '<anonymous>', body: code.slice(open + 1, end) });
+  }
+  return blocks;
+}
+
+/** Number of object-literal spread elements (`...x`) in a body — the merge signature. */
+function spreadCount(body: string): number {
+  return (body.match(/\.\.\.[A-Za-z_$]/g) ?? []).length;
+}
+
+/** Findings for adapters that parse a `details` envelope without merging over defaults. A candidate is
+ * any function that calls `JSON.parse` on an expression mentioning `details` (so `ctx.mdm` reads of
+ * `entity.details.<module>`, which never JSON.parse, are not candidates). */
+export function collectDetailsDefaultingIssues(code: string): string[] {
+  const issues: string[] = [];
+  for (const { name, body } of extractFunctionBlocks(code)) {
+    if (!/JSON\.parse\(\s*[^)]*\bdetails\b/.test(body)) continue;
+    // 1) RUNTIME defect: no spread-merge over defaults. The required shape produces at least two
+    //    spreads in one literal (`{ ...detailsDefaults(row), ...parsed }`).
+    if (spreadCount(body) < 2) {
+      issues.push(`details defaulting -> ${name}() parses the details envelope without merging over complete defaults; a NULL/'{}'/partial envelope leaves required fields undefined at runtime (JSON.parse('{}') does not throw). Build a defaults object covering EVERY details field and return { ...defaults, ...parsed }`);
+    }
+    // 2) TYPE defect: casting the parse result to the full interface hides the same hole from tsc.
+    const lyingCast = body.match(/\bas\s+(?!Partial\b)([A-Za-z0-9_$]*Details)\b/);
+    if (lyingCast) {
+      issues.push(`details cast -> ${name}() casts the JSON.parse result to '${lyingCast[1]}'; the stored envelope may be incomplete, so type it as 'Partial<${lyingCast[1]}>' and merge it over defaults instead`);
+    }
+  }
+  return [...new Set(issues)];
+}
+
+/** Collection fields of a generated domain entity, as `valueObjectName -> the entity's field name`
+ * (e.g. `OrderItem -> items` for `items: OrderItem[]`).
+ *
+ * WHY this indirection exists: the TableDefinition declares embedded child collections by ENTITY ID
+ * (`childCollections: ['OrderItem']`), but the domain-entity materializer names the field itself
+ * (`items: OrderItem[]`) and the adapter reads THAT name (`d.items`). Seeding the envelope under the
+ * entity id would write `details.OrderItem` while the adapter reads `details.items` — the row looks
+ * seeded and the collection still arrives empty. Since seeds are generated AFTER materialization, the
+ * real field name is readable from the generated entity source instead of guessed from a convention. */
+export function extractCollectionFieldNames(entitySource: string): Map<string, string> {
+  const byValueObject = new Map<string, string>();
+  // Member boundary is a newline OR `{`/`;`/`,` so a single-line interface is matched too. Deliberately
+  // NOT `(` — a function parameter is not an entity field.
+  const re = /(?:^|[\n{;,])\s*(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\??\s*:\s*(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*\[\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(entitySource)) !== null) {
+    const [, fieldName, typeName] = match;
+    if (!byValueObject.has(typeName)) byValueObject.set(typeName, fieldName);
+  }
+  return byValueObject;
+}
+
 // ── l4 v2: workspace-controller coherence (B7) ──────────────────────────────────
 // The v2 controller is emitted DETERMINISTICALLY (no .defs.ts). "Rotas esperadas = bffCalls do
 // workspace": every bffCall must have an exported handler `<ws><Bff>Handler`, registered in `routes`

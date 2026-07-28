@@ -70,6 +70,15 @@ export const routes: ControllerRoute[] = [
 - A field listed only in `contextResolution` is resolved context, not public boundary input. Do not emit
   `if (!input.<field>)` / `AppError(... field: '<field>')` for it unless the same field is also present
   in `inputContract` with `required:true`.
+- **Boundary validation of an id checks SHAPE, not only presence.** A required id that is present but
+  malformed must be rejected here with `AppError('VALIDATION_ERROR', …, 400, { field: '<field>' })`.
+  Ids are opaque generated identifiers (`ctx.idGenerator`), so a client-supplied value that is not a
+  well-formed identifier is a boundary error — passing it through reaches the persistence driver, whose
+  own error surfaces as `INTERNAL_ERROR` (500) and leaks the SQL/driver message. Validate every
+  `inputContract` field whose name ends in `Id` (or that the contract types as an id) before calling the
+  usecase; do NOT hardcode a project-specific format — check the generic identifier shape the platform
+  emits (non-empty, no whitespace, and the id charset used by `ctx.idGenerator`). A value that is
+  well-formed but absent from storage is the usecase/adapter's `NOT_FOUND` (404), never a 500.
 - Import the usecase function named by `usecaseRef` + its Input type (`inputTypeName` when given); call
   it. The imported name MUST match `usecaseRef` exactly — do not rename it to the command or the page.
 - Returning the result: when `outputSource === 'dto'` (default) return `ok(toDto(result))` — the DTO is

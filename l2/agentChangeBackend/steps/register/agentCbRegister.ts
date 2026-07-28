@@ -15,6 +15,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { extractSeedSkippedFromSource, type SeedSkippedTargets } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbRegister', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/register', agentDescription: 'Deterministic backend registration (l5 config + composition root; routes/tables discovered at runtime)', visibility: 'private', beforePromptStep };
@@ -83,8 +84,20 @@ async function collectRouteKeys(project: number): Promise<string[]> {
   return [...keys].sort();
 }
 
+/** Seed coverage published by gen-seeds, read back from the generated seeds.ts. Absent/complete -> null. */
+async function readSeedSkipped(project: number, moduleName: string): Promise<SeedSkippedTargets | null> {
+  try {
+    const fileInfo = { project, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.ts' };
+    const file = (mls.stor.files as Record<string, any>)[mls.stor.getKeyToFile(fileInfo as unknown as mls.stor.IFileInfo)];
+    if (!file || file.status === 'deleted') return null;
+    return extractSeedSkippedFromSource(String(await file.getContent()));
+  } catch {
+    return null;
+  }
+}
+
 /** Write the module's backend block into the client-owned l5/project.json (guarded; never blocks). */
-async function updateL5BackendConfig(project: number, moduleName: string, routeKeys: string[]): Promise<string> {
+async function updateL5BackendConfig(project: number, moduleName: string, routeKeys: string[], seedSkipped: SeedSkippedTargets | null): Promise<string> {
   const fileInfo = { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
   const key = mls.stor.getKeyToFile(fileInfo as unknown as mls.stor.IFileInfo);
   const file = (mls.stor.files as Record<string, any>)[key];
@@ -99,10 +112,16 @@ async function updateL5BackendConfig(project: number, moduleName: string, routeK
   let mod = modules.find((m: any) => m && m.moduleName === moduleName);
   if (!mod) { mod = { moduleName }; modules.push(mod); }
   mod.backend = { backendControllers: controllersDir, persistence: { tableDefsDir }, routeKeys };
+  // seedCoverage: targets that are EMPTY BY DESIGN (a seed wave that never converged). Consumers —
+  // notably a test generator — must not assert "at least one row" against these. Omitted entirely when
+  // coverage is complete, so its mere presence means "there is a known gap".
+  if (seedSkipped) mod.backend.seedCoverage = { skippedTables: seedSkipped.tables, skippedMdmEntities: seedSkipped.mdmEntities, reason: seedSkipped.reason };
+  else if (isRecord(mod.backend)) delete (mod.backend as Record<string, unknown>).seedCoverage;
   const content = JSON.stringify(cfg, null, 2);
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-  return `l5/project.json backend block updated for '${moduleName}' (${routeKeys.length} route(s))`;
+  const coverageNote = seedSkipped ? `; seedCoverage gap: tables [${seedSkipped.tables.join(', ') || 'none'}], MDM [${seedSkipped.mdmEntities.join(', ') || 'none'}]` : '';
+  return `l5/project.json backend block updated for '${moduleName}' (${routeKeys.length} route(s))${coverageNote}`;
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -132,7 +151,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         .flatMap(w => w.bffCalls.map(b => b.route))
         .filter(Boolean);
       const routeKeys = [...new Set([...v1RouteKeys, ...v2RouteKeys])].sort();
-      configMsg = await updateL5BackendConfig(project, moduleName, routeKeys);
+      configMsg = await updateL5BackendConfig(project, moduleName, routeKeys, await readSeedSkipped(project, moduleName));
     } catch (cfgError) {
       // Non-blocking: a config write failure must not abort the run.
       configMsg = `l5 config update failed: ${cfgError instanceof Error ? cfgError.message : String(cfgError)}`;

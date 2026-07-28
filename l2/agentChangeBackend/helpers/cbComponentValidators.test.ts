@@ -9,6 +9,7 @@ import {
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
   stableCompilerErrors, selectCompilerRepairRoots,
+  collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 test('stableCompilerErrors (T2): keeps only findings that reproduce on the double-check (flaky dropped)', () => {
@@ -353,4 +354,97 @@ test('T10 / A1: the V1 canonical-route check still fires for owners already flip
   assert.match(issues[0], /controller openshift -> missing canonical bffName route cafeFlow\.OpenShift\.OpenShift/u);
   // An operation with NO controller is not flagged here (completeness checks own that case).
   assert.deepEqual(collectMissingCanonicalRouteIssues(owners, [], 'cafeFlow', lowerFirstFn), []);
+});
+
+// ── collectDetailsDefaultingIssues: the 102051 "details JSONB null" 500 ─────────
+// The generated adapter defaulted only inside `catch`, but JSON.parse('{}') never throws, so a row with
+// details=NULL yielded an entity whose required numbers were undefined -> `.toFixed(2)` threw a 500
+// (bug_trace_changeBackend.md D1). Entity-agnostic: the fixtures below use an arbitrary entity name.
+const BAD_ADAPTER = `
+function parseDetails(row: WidgetRow): WidgetDetails {
+  try { return JSON.parse(row.details ?? '{}') as WidgetDetails; }
+  catch { return { totalAmount: 0, items: [], updatedAt: row.created_at }; }
+}
+function toDomain(row: WidgetRow): Widget {
+  const d = parseDetails(row);
+  return { widgetId: row.widget_id, totalAmount: d.totalAmount, items: d.items ?? [] };
+}
+`;
+const GOOD_ADAPTER = `
+function detailsDefaults(row: WidgetRow): WidgetDetails {
+  return { totalAmount: 0, items: [], updatedAt: row.created_at };
+}
+function parseDetails(row: WidgetRow): WidgetDetails {
+  let parsed: Partial<WidgetDetails> = {};
+  try { parsed = (JSON.parse(row.details ?? '{}') ?? {}) as Partial<WidgetDetails>; }
+  catch { parsed = {}; }
+  return { ...detailsDefaults(row), ...parsed };
+}
+`;
+
+test('collectDetailsDefaultingIssues flags parse-without-merge AND the lying cast', () => {
+  const issues = collectDetailsDefaultingIssues(BAD_ADAPTER);
+  assert.equal(issues.length, 2, issues.join(' | '));
+  assert.ok(issues.some(i => /details defaulting -> parseDetails\(\)/.test(i)), issues.join(' | '));
+  assert.ok(issues.some(i => /details cast .*'WidgetDetails'.*Partial<WidgetDetails>/.test(i)), issues.join(' | '));
+});
+
+test('collectDetailsDefaultingIssues accepts the merge-over-defaults shape', () => {
+  assert.deepEqual(collectDetailsDefaultingIssues(GOOD_ADAPTER), []);
+});
+
+test('collectDetailsDefaultingIssues ignores code that never parses a details envelope', () => {
+  // MDM reads inspect `entity.details.<module>` but never JSON.parse it -> not a candidate.
+  const mdmRead = `
+    async function loadMenu(ctx: RequestContext) {
+      const rows = await ctx.mdm.collection.listByType({ type: canonicalType });
+      return rows.map(entity => ({ name: entity.name, extra: entity.details.someModule }));
+    }
+  `;
+  assert.deepEqual(collectDetailsDefaultingIssues(mdmRead), []);
+  // A plain adapter with no details column at all.
+  assert.deepEqual(collectDetailsDefaultingIssues(`
+    function toDomain(row: EventRow): Event { return { eventId: row.event_id, at: row.created_at }; }
+  `), []);
+});
+
+test('extractFunctionBlocks brace-matches nested bodies for both function and arrow forms', () => {
+  const blocks = extractFunctionBlocks(`
+    function outer(a: number) { if (a) { return { x: 1 }; } return null; }
+    const arrow = (b: string) => { const o = { y: { z: b } }; return o; };
+  `);
+  assert.deepEqual(blocks.map(b => b.name), ['outer', 'arrow']);
+  assert.match(blocks[0].body, /return null;/);
+  assert.match(blocks[1].body, /return o;/);
+});
+
+// ── extractCollectionFieldNames: the details key must match what the adapter reads ──
+// The TableDefinition declares children by ENTITY ID (childCollections: ['OrderItem']) but the generated
+// entity names the field (`items: OrderItem[]`) and the adapter reads `d.items`. Seeding under the entity
+// id would write details.OrderItem while the reader looks at details.items — collection arrives empty.
+test('extractCollectionFieldNames maps a value-object type to the field name that holds it', () => {
+  const entity = `
+    export interface Order {
+      orderId: string;
+      status: OrderStatus;
+      items: OrderItem[];
+      payments?: OrderPayment[];
+      readonly tags: string[];
+    }
+  `;
+  const map = extractCollectionFieldNames(entity);
+  assert.equal(map.get('OrderItem'), 'items');
+  assert.equal(map.get('OrderPayment'), 'payments');
+  assert.equal(map.get('string'), 'tags');
+  assert.equal(map.get('Missing'), undefined);
+});
+
+test('extractCollectionFieldNames keeps the FIRST declaration and ignores non-array fields', () => {
+  const map = extractCollectionFieldNames(`
+    export interface A { primary: Thing[]; }
+    export interface B { secondary: Thing[]; }
+    export interface C { single: Thing; }
+  `);
+  assert.equal(map.get('Thing'), 'primary');
+  assert.equal(map.size, 1, 'a non-array field must not register');
 });

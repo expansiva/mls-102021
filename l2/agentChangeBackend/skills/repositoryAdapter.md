@@ -37,9 +37,21 @@ function toRow(order: Order): OrderRow {
     created_at: order.createdAt, details: JSON.stringify(details),
   };
 }
+// Defaults for EVERY details field, so a row whose `details` is NULL/empty/partial still yields a
+// complete domain object. Row-derived values (e.g. updatedAt) come from the row.
+function detailsDefaults(row: OrderRow): OrderDetails {
+  return {
+    totalAmount: 0, notes: null, customerName: null, customerPhone: null, numberOfGuests: null,
+    closedAt: null, cancelledAt: null, cancellationReason: null, updatedAt: row.created_at, items: [],
+  };
+}
 function parseDetails(row: OrderRow): OrderDetails {
-  try { return JSON.parse(row.details ?? '{}') as OrderDetails; }
-  catch { return { totalAmount: 0, notes: null, customerName: null, customerPhone: null, numberOfGuests: null, closedAt: null, cancelledAt: null, cancellationReason: null, updatedAt: row.created_at, items: [] }; }
+  // Partial (NOT `as OrderDetails`): the envelope may be null, '{}' or missing keys. JSON.parse('{}')
+  // does NOT throw, so defaulting only in `catch` would leave required fields undefined at runtime.
+  let parsed: Partial<OrderDetails> = {};
+  try { parsed = (JSON.parse(row.details ?? '{}') ?? {}) as Partial<OrderDetails>; }
+  catch { parsed = {}; }
+  return { ...detailsDefaults(row), ...parsed };   // merge over the defaults, field by field
 }
 function toDomain(row: OrderRow): Order {
   const d = parseDetails(row);
@@ -89,11 +101,28 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
 - Define a `{Entity}Row` (snake_case columns matching the TableDefinition) and a `{Entity}Details`
   (the JSONB payload: non-indexed fields + embedded collections). `toRow`/`toDomain`/`parseDetails`
   convert between them; `details` is `JSON.stringify` on write, safe-parse on read.
+- **`parseDetails` MUST merge over complete defaults — never cast the parse result.** A stored row can
+  have `details` NULL, `'{}'` or missing keys (older rows, seeds, partial writes), and
+  `JSON.parse('{}')` does NOT throw — so defaulting only inside `catch` silently produces `undefined`
+  in fields the interface types as required, and `as {Entity}Details` makes the compiler accept the
+  lie. That is how a read turns into a runtime `Cannot read properties of undefined` (e.g.
+  `metric.toFixed(2)`). Required shape:
+  1. a `detailsDefaults(row)` (or module-level const) covering EVERY `{Entity}Details` field —
+     `0` for numbers, `[]` for collections, `null` for nullable, row values for row-derived ones;
+  2. `let parsed: Partial<{Entity}Details> = {}` filled inside `try`, reset in `catch`;
+  3. `return { ...detailsDefaults(row), ...parsed }`.
+  Applies to every adapter with a `details` column, including append-only event adapters.
 - The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')` where
   `{table_name}` is EXACTLY the `tableName` declared in the entity's TableDefinition (see the
   `<entity>.d.ts` in dependsFiles). NEVER pluralize, translate or invent it — an unknown name fails
   only at runtime with PERSISTENCE_TABLE_NOT_FOUND. The defs `tableRef` is a hint; `tableName` wins.
 - `orderBy` is always `{ field: '<column>', direction: 'asc'|'desc' }`. `getById` throws `NOT_FOUND`.
+- **Never let a persistence-driver error escape untranslated.** A lookup by an id the driver rejects
+  (e.g. a value that is not a valid key for the column type) throws from the driver, and an untranslated
+  throw becomes `INTERNAL_ERROR` (500) exposing the driver message to the client. In a lookup by id,
+  translate a driver *input/format* rejection into `AppError('NOT_FOUND', …, 404, { <idField> })` — the
+  caller asked for something that cannot exist. Do NOT blanket-catch every error into `NOT_FOUND`:
+  connection/timeout failures must keep propagating, otherwise an outage reads as "not found".
 - MDM-backed reads: resolve via `ctx.mdm.collection.listByType/getMany/hydrateMany/relatedOfMany` or
   `ctx.mdm.entity.get`; never a local table and never raw `ctx.data.mdmDocument`,
   `ctx.data.mdmEntityIndex` or `ctx.data.mdmRelationship`.

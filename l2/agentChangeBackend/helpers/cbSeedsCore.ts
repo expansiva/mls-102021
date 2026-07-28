@@ -40,8 +40,26 @@ export interface SeedTableDefinition {
   tableId: string;
   tableName: string;
   seedFor: string;
+  /** Real table columns. MUST include the details column when the TableDefinition enables it — the
+   * emitter only writes a row property for a declared column, so omitting it DROPS the whole details
+   * payload (102051: every seeded row lost its planned `details`, see detailsColumnName). */
   columns: SeedTableColumn[];
   primaryKey: string[];
+  /** The JSONB envelope column declared by `detailsColumn` in the TableDefinition (`enabled` + a
+   * `columnName` that is conventionally, but not necessarily, `details`). Empty when the table has none. */
+  detailsColumnName?: string;
+  /** Embedded child collections stored INSIDE the details envelope (declared by the TableDefinition).
+   * Surfaced to the planner so an aggregate that owns children (e.g. order items) actually gets them. */
+  childCollections?: string[];
+}
+
+/** The details envelope column of a table plan: the explicit declaration when present, else the
+ * conventional `details` if such a column exists. Keeps the compiler honest about WHERE the JSONB goes
+ * without hardcoding the name at every use site. */
+export function detailsColumnOf(table: Pick<SeedTableDefinition, 'columns' | 'detailsColumnName'>): string {
+  const declared = (table.detailsColumnName ?? '').trim();
+  if (declared) return declared;
+  return table.columns.some(column => column.name === 'details') ? 'details' : '';
 }
 
 export interface SeedReference {
@@ -180,7 +198,20 @@ export interface SeedBuildInput {
   actors?: SeedActorDefinition[];
   /** Allowed timestamp window; every timestamp must be ISO 8601 within it. */
   timeWindow?: SeedTimeWindow;
+  /** Targets deliberately left with NO seed rows (a wave that never converged). Recorded in the
+   * emitted artifact so downstream consumers can tell "empty by design" from "generation lost it". */
+  skipped?: SeedSkippedTargets;
   plan: SeedPlan;
+}
+
+/** Machine-readable seed coverage: which targets have NO rows on purpose. The seed give-up narrows
+ * tablePlans/entities so a non-converging wave cannot fail the whole backend — which silently left
+ * tables with zero rows (102051: AiSalesSummary, AiPromotionSuggestion). A test generator asserting
+ * "at least one row" against those produces impossible cases, so the fact is published, not implied. */
+export interface SeedSkippedTargets {
+  tables: string[];
+  mdmEntities: string[];
+  reason: string;
 }
 
 export interface SeedBuildResult {
@@ -557,6 +588,27 @@ export function extractSeedPlanProgressFromSource(source: string): SeedPlanProgr
   }
 }
 
+/** Reads the published seed coverage (targets intentionally left with no rows) back from a generated
+ * seeds.ts. Returns null when the artifact declares nothing skipped — i.e. full coverage. Consumers
+ * (register -> l5 config, and any test generator) use this instead of inferring from missing exports. */
+export function extractSeedSkippedFromSource(source: string): SeedSkippedTargets | null {
+  const start = source.indexOf(SEED_PLAN_START);
+  const end = source.indexOf(SEED_PLAN_END);
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const envelope = JSON.parse(source.slice(start + SEED_PLAN_START.length, end).trim()) as UnknownRecord;
+    const skipped = envelope.skipped;
+    if (!isRecord(skipped)) return null;
+    const ids = (value: unknown) => arrayValue(value).filter((item): item is string => typeof item === 'string' && !!item).sort();
+    const tables = ids(skipped.tables);
+    const mdmEntities = ids(skipped.mdmEntities);
+    if (!tables.length && !mdmEntities.length) return null;
+    return { tables, mdmEntities, reason: stringValue(skipped.reason) };
+  } catch {
+    return null;
+  }
+}
+
 /** A partial seeds.ts remains valid TypeScript so an interrupted flow can be resumed without
  * re-planning completed waves. It intentionally exports no runtime rows until final compilation. */
 export function buildPartialSeedSource(
@@ -827,6 +879,11 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
     const entity = entityById.get(table.tableId);
     const entityFields = new Map((entity?.fields ?? []).map(field => [field.fieldId, field]));
     const columnNames = new Set(definition.columns.map(column => column.name));
+    // The JSONB envelope is addressed by its DECLARED name; row.details is the bag that fills it.
+    const detailsColumn = detailsColumnOf(definition);
+    // Collection field names the entity declares (resolved from the generated entity by readTablePlans).
+    // Empty = unknown, and then child names are not constrained (never invent a false rejection).
+    const declaredChildCollections = definition.childCollections ?? [];
 
     for (const row of table.rows) {
       const rowPath = `${path}.${row.key || '<missing>'}`;
@@ -836,14 +893,24 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
       const columns = mapFields(row.columns, `${rowPath}.columns`, errors);
       const details = mapFields(row.details, `${rowPath}.details`, errors);
       for (const name of columns.keys()) {
-        if (name === 'details' || !columnNames.has(name)) errors.push(`${rowPath}.columns.${name}: unknown persistence column`);
+        if ((detailsColumn && name === detailsColumn) || !columnNames.has(name)) errors.push(`${rowPath}.columns.${name}: unknown persistence column`);
       }
       for (const name of details.keys()) {
         if (name !== 'label' && !entityFields.has(name)) errors.push(`${rowPath}.details.${name}: unknown entity field`);
       }
+      // NOWHERE TO STORE IT: planning details/children for a table that declares no JSONB envelope used
+      // to validate cleanly and then be dropped by the emitter (only declared columns are written). Fail
+      // loudly instead — either the TableDefinition must enable its details column, or the fields belong
+      // in real columns.
+      if (!detailsColumn && (details.size > 0 || row.children.length > 0)) {
+        // Phrased as something the PLANNER can act on (it cannot edit a TableDefinition): drop these from
+        // the plan. The prompt already reports `detailsColumn: null` for such a table. If a REQUIRED field
+        // has no column either, the row is genuinely unplannable and the give-up publishes the gap.
+        errors.push(`${rowPath}: table '${table.tableId}' has no details envelope (detailsColumn is null), so it accepts ONLY real columns — remove every details/children entry for this table from the plan`);
+      }
       for (const column of definition.columns) {
         if (definition.primaryKey.includes(column.name)) continue; // generated from tableId + row key
-        if (column.name === 'details') {
+        if (detailsColumn && column.name === detailsColumn) {
           if (!column.nullable && details.size === 0 && row.children.length === 0) errors.push(`${rowPath}: details are required`);
           continue;
         }
@@ -880,6 +947,12 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
       }
       for (const child of row.children) {
         if (!hasKey(child.name)) errors.push(`${rowPath}.children: child collection name must be a stable identifier`);
+        // The child collection is stored under this name INSIDE the details envelope, and the adapter
+        // reads it by the entity's collection FIELD name. A name that is not a declared collection would
+        // be persisted where nothing reads it (an order whose items never load), so reject it here.
+        if (declaredChildCollections.length && !declaredChildCollections.includes(child.name)) {
+          errors.push(`${rowPath}.children.${child.name}: unknown child collection; use one of: ${declaredChildCollections.join(', ')}`);
+        }
         const childKeys = new Set<string>();
         for (const childRow of child.rows) {
           if (!hasKey(childRow.key)) errors.push(`${rowPath}.children.${child.name}: child row key must be a stable identifier`);
@@ -1017,6 +1090,7 @@ function buildLocalRows(input: SeedBuildInput, ids: Map<string, string>): Array<
   const plannedTables = planMap(input.plan.localTables, 'tableId');
   return input.tablePlans.map((table) => {
     const planned = plannedTables.get(table.tableId)!;
+    const detailsColumn = detailsColumnOf(table);
     return {
       exportName: `${table.tableId.charAt(0).toLowerCase()}${table.tableId.slice(1)}Seeds`,
       seedFor: table.seedFor,
@@ -1032,8 +1106,8 @@ function buildLocalRows(input: SeedBuildInput, ids: Map<string, string>): Array<
             out[column.name] = table.primaryKey.length === 1
               ? ids.get(`local:${table.tableId}.${row.key}`)
               : stableUuid(`${input.moduleName}:local:${table.tableId}:${row.key}:${column.name}`);
-          } else if (column.name === 'details') {
-            if (Object.keys(details).length) out.details = details;
+          } else if (detailsColumn && column.name === detailsColumn) {
+            if (Object.keys(details).length) out[detailsColumn] = details;
           } else {
             out[column.name] = columns[column.name];
           }
@@ -1137,7 +1211,12 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
   if (errors.length) return { errors, summary };
   const ids = idMap(input);
   const blocks = [...buildLocalRows(input, ids), ...buildMdmRows(input, ids)];
-  const planEnvelope = { version: 1, moduleName: input.moduleName, language: input.language, plan: input.plan };
+  const planEnvelope = {
+    version: 1, moduleName: input.moduleName, language: input.language,
+    // Published so "no rows" is a documented decision, readable without re-running the generator.
+    ...(input.skipped && (input.skipped.tables.length || input.skipped.mdmEntities.length) ? { skipped: input.skipped } : {}),
+    plan: input.plan,
+  };
   const lines = [
     `/// <mls fileReference="_${input.project}_/l1/${input.moduleName}/layer_1_external/adapters/persistence/seeds.ts" enhancement="_blank"/>`,
     '',
@@ -1178,6 +1257,12 @@ export function seedPlanPromptContext(
     seedFor: table.seedFor,
     primaryKey: table.primaryKey,
     columns: table.columns,
+    // Where the non-indexed fields actually land, and which embedded collections the aggregate owns.
+    // Without childCollections the planner had no way to know an aggregate carries children, so it
+    // planned none and every seeded parent came out with an empty collection (102051: orders with
+    // `items: []`). Declared by the TableDefinition — never inferred from a name.
+    detailsColumn: detailsColumnOf(table) || null,
+    childCollections: table.childCollections ?? [],
   }));
   // Carry each endpoint's kind so the planner can tell MDM<->MDM links (which become MDM row
   // relationships) apart from links that touch a non-MDM entity (which are seeded as a symbolic FK
@@ -1217,6 +1302,7 @@ export function seedPlanPromptContext(
       '- Core/operational entities: ~2-4 rows each, covering the MAIN lifecycle states and including at least one open/in-progress instance. You do NOT need every state × every filter combination.',
       '- Supporting/child entities: 1-2 children per parent.',
       '- Event entities: one row per operational row that would have produced it.',
+      'A row is only usable if it is COMPLETE against its entity contract, not just its indexed columns: every non-indexed field goes in `details` (with a coherent value — a real number, not a placeholder) when the table reports a `detailsColumn`; when `detailsColumn` is null that table accepts ONLY real columns, so leave its `details` and `children` empty. For each name in that table\'s `childCollections` add a `children` entry whose `name` is EXACTLY that string (it is the entity\'s collection field, which is what reads the data back — do not substitute the child entity id or a plural of your own) with 1-2 rows. A parent whose child collection is empty makes the feature look broken (an order with no items), and a metric row whose numbers are absent breaks any consumer that formats them.',
       'Every timestamp must be an ISO 8601 UTC value strictly within the supplied timeWindow and chronologically coherent (a row is created before it is updated or transitions state).',
       'Relationships: model a relationship as an MDM row relationship ONLY when BOTH fromKind and toKind are "mdm", attaching any quantitative fields (quantities, ratios, per-unit amounts) as relationship metadata.',
       'Any relationship whose fromKind or toKind is NOT "mdm" (core/event/supporting) is seeded as a symbolic { "ref": "..." } foreign key on the NON-MDM side (the local table column or entity field that holds the id), following the relationship direction — never as an MDM row relationship. Example: Project(core) -manyToOne-> Client(mdm) becomes each Project row carrying its clientId as { "ref": "mdm:Client.<key>" }, not a relationship on the Client row.',

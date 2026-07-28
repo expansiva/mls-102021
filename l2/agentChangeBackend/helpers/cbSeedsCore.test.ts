@@ -6,7 +6,7 @@ import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, extractSeedPlanFromSource,
   extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
   seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
-  SEED_T0, SEED_T1, type SeedBuildInput,
+  SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf, type SeedBuildInput,
 } from './cbSeedsCore.js';
 
 function field(fieldId: string, required = true, enumValues: string[] = []) {
@@ -245,4 +245,99 @@ test('validateSeedPlan accepts any ISO timestamp inside the window and rejects o
   const bad = validInput();
   bad.plan.localTables[1].rows[0].columns.find(field => field.name === 'created_at')!.value = '2020-01-01T00:00:00.000Z';
   assert.ok(validateSeedPlan(bad).some(error => error.includes('within')));
+});
+
+// ── seed coverage: "empty BY DESIGN" is published, not implied ──────────────────
+// The give-up narrows tablePlans/entities so a non-converging wave cannot fail the whole backend. That
+// left tables with zero rows and nothing on disk saying so, and a test generator asserting "at least
+// one row" against them produced impossible cases (bug_trace_changeBackend.md D3, last row).
+test('buildSeedSource publishes skipped targets and extractSeedSkippedFromSource reads them back', () => {
+  const full = validInput();
+  // Wave carrying the Order table gave up: it is dropped from the plan AND from tablePlans.
+  const partialPlan = { ...full.plan, localTables: full.plan.localTables.filter(t => t.tableId !== 'Order') };
+  const built = buildSeedSource({
+    ...full,
+    plan: partialPlan,
+    tablePlans: full.tablePlans.filter(t => t.tableId !== 'Order'),
+    skipped: { tables: ['Order'], mdmEntities: [], reason: 'wave 2 did not converge' },
+  });
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  const readBack = extractSeedSkippedFromSource(built.content ?? '');
+  assert.deepEqual(readBack, { tables: ['Order'], mdmEntities: [], reason: 'wave 2 did not converge' });
+});
+
+test('extractSeedSkippedFromSource returns null when coverage is complete (nothing skipped)', () => {
+  const built = buildSeedSource(validInput());          // no `skipped` -> key omitted from the envelope
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.equal(extractSeedSkippedFromSource(built.content ?? ''), null);
+  // An empty skip list must also read as "complete", never as a bogus gap.
+  const empty = buildSeedSource({ ...validInput(), skipped: { tables: [], mdmEntities: [], reason: 'x' } });
+  assert.equal(extractSeedSkippedFromSource(empty.content ?? ''), null);
+  // Non-seed source / malformed envelope -> null, never a throw.
+  assert.equal(extractSeedSkippedFromSource('export const x = 1;'), null);
+});
+
+// ── the details envelope must actually reach the emitted row ────────────────────
+// ROOT CAUSE of bug_trace_changeBackend.md D2: the TableDefinition declares the JSONB envelope in a
+// SEPARATE `detailsColumn` property, not inside `columns`. readTablePlans read only `columns`, so the
+// compiler never knew the table had a details column and buildLocalRows — which writes a property only
+// for a DECLARED column — silently DROPPED the whole planned payload. In 102051 the persisted plan held
+// 10-12 details fields per row while every emitted row carried just its indexed ids.
+test('detailsColumnOf prefers the declared name and falls back to a conventional details column', () => {
+  assert.equal(detailsColumnOf({ columns: [{ name: 'payload', type: 'JSONB', nullable: true }], detailsColumnName: 'payload' }), 'payload');
+  assert.equal(detailsColumnOf({ columns: [{ name: 'details', type: 'JSONB', nullable: true }] }), 'details');
+  assert.equal(detailsColumnOf({ columns: [{ name: 'id', type: 'UUID', nullable: false }] }), '');
+});
+
+test('buildSeedSource emits the planned details into the declared envelope column', () => {
+  const input = validInput();
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  // Shift declares a `details` column and its row plans openedAt/openedBy/updatedAt -> they must ship.
+  const shiftBlock = (built.content ?? '').split('export const shiftSeeds')[1] ?? '';
+  assert.match(shiftBlock, /"details":/u, 'the details envelope must be present in the emitted row');
+  assert.match(shiftBlock, /"openedBy": "manager-1"/u, 'planned details fields must survive compilation');
+});
+
+test('buildSeedSource honours a NON-conventional envelope column name (no hardcoded "details")', () => {
+  const input = validInput();
+  // Same table, but the TableDefinition calls its envelope `payload` instead of `details`.
+  input.tablePlans = input.tablePlans.map(table => table.tableId !== 'Shift' ? table : {
+    ...table,
+    columns: table.columns.map(column => column.name === 'details' ? { ...column, name: 'payload' } : column),
+    detailsColumnName: 'payload',
+  });
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  const shiftBlock = (built.content ?? '').split('export const shiftSeeds')[1] ?? '';
+  assert.match(shiftBlock, /"payload":/u, 'the envelope must be written under its declared name');
+  assert.match(shiftBlock, /"openedBy": "manager-1"/u);
+  assert.doesNotMatch(shiftBlock.split('export const')[0], /"details":/u, 'never emit a hardcoded details key');
+});
+
+test('a table WITHOUT any envelope column drops nothing silently: non-indexed required fields are rejected', () => {
+  const input = validInput();
+  // Remove the envelope entirely from Shift: its required non-indexed fields now have nowhere to live.
+  input.tablePlans = input.tablePlans.map(table => table.tableId !== 'Shift' ? table : {
+    ...table, columns: table.columns.filter(column => column.name !== 'details'), detailsColumnName: '',
+  });
+  const errors = validateSeedPlan(input);
+  assert.ok(errors.some(e => /has no details envelope \(detailsColumn is null\)/u.test(e)), errors.join('\n'));
+});
+
+test('validateSeedPlan rejects a child collection the entity does not declare (dead details key)', () => {
+  const input = validInput();
+  // Shift declares ONE collection field, `visits`; the plan seeds children under the child ENTITY id.
+  input.tablePlans = input.tablePlans.map(t => t.tableId !== 'Shift' ? t : { ...t, childCollections: ['visits'] });
+  input.plan.localTables[0].rows[0].children = [
+    { name: 'ShiftVisit', rows: [{ key: 'v1', fields: [{ name: 'openedBy', value: 'x' }] }] },
+  ];
+  const errors = validateSeedPlan(input);
+  assert.ok(errors.some(e => /unknown child collection; use one of: visits/u.test(e)), errors.join('\n'));
+
+  // Using the declared FIELD name is accepted.
+  input.plan.localTables[0].rows[0].children = [
+    { name: 'visits', rows: [{ key: 'v1', fields: [{ name: 'openedBy', value: 'x' }] }] },
+  ];
+  assert.deepEqual(validateSeedPlan(input).filter(e => /child collection/u.test(e)), []);
 });

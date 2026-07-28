@@ -14,6 +14,7 @@ import {
   parseDefsSource, readCliCommand, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
+import { extractCollectionFieldNames } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, estimateSeedPlanningWaveTokens,
   extractSeedPlanProgressFromSource, mergeSeedPlans, parseSeedPlan, seedPlanInputForWave,
@@ -230,13 +231,23 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // seeded empty at runtime. Continue to cb-seed-assets -> cb-register. Surface as a WARNING, not a fail.
       const seededTableIds = new Set(progress.plan.localTables.map(t => t.tableId));
       const seededMdmIds = new Set(progress.plan.mdmEntities.map(e => e.entityId));
+      // PUBLISH the coverage gap. Narrowing alone made "zero rows" indistinguishable from a generation
+      // loss, so a test generator asserted "at least one row" against tables that are empty BY DESIGN
+      // (102051: AiSalesSummary, AiPromotionSuggestion). The skipped ids are recorded in the artifact
+      // (and propagated to l5 by cb-register) instead of living only in this trace string.
+      const skipped = {
+        tables: input.tablePlans.filter(t => !seededTableIds.has(t.tableId)).map(t => t.tableId).sort(),
+        mdmEntities: input.entities.filter(e => e.kind === 'mdm' && !seededMdmIds.has(e.entityId)).map(e => e.entityId).sort(),
+        reason: `seed wave ${batch.index} did not converge after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS} attempts: ${errors.slice(0, 6).join('; ')}`,
+      };
       const partialInput = {
         ...input,
         tablePlans: input.tablePlans.filter(t => seededTableIds.has(t.tableId)),
         entities: input.entities.filter(e => e.kind !== 'mdm' || seededMdmIds.has(e.entityId)),
+        skipped,
       };
       return finalizeSeedPlan(context, parentStep, step, hookSequential, partialInput, progress.plan,
-        `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; its target(s) seeded EMPTY so the run reaches register/finalize): ${errors.slice(0, 12).join('; ')}`);
+        `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; seeded EMPTY by design: tables [${skipped.tables.join(', ') || 'none'}], MDM [${skipped.mdmEntities.join(', ') || 'none'}]): ${errors.slice(0, 12).join('; ')}`);
     }
     const tokenTrace = outputTokenTrace(payload);
     const merged = mergeSeedPlans(progress.plan, plan);
@@ -390,15 +401,56 @@ async function readTablePlans(project: number, moduleName: string): Promise<Seed
       nullable: column.nullable === true,
     })).filter(column => !!column.name) : [];
     if (!tableId || !columns.length) continue;
+    // The TableDefinition declares the JSONB envelope SEPARATELY (`detailsColumn`), not inside
+    // `columns` — so reading only `columns` left the seed compiler unaware that the table has a details
+    // column, and buildLocalRows (which writes a property only for a DECLARED column) silently dropped
+    // the whole planned `details` payload. That is why every seeded row in 102051 carried just its
+    // indexed ids while the persisted plan held 10-12 details fields per row. Carry the declaration.
+    const detailsDecl = isRecord(data.detailsColumn) ? data.detailsColumn : undefined;
+    const detailsColumnName = detailsDecl?.enabled === true ? (readString(detailsDecl.columnName) || 'details') : '';
+    if (detailsColumnName && !columns.some(column => column.name === detailsColumnName)) {
+      columns.push({ name: detailsColumnName, type: 'JSONB', nullable: true });
+    }
     plans.push({
       tableId,
       tableName: readString(data.tableName) || tableId,
       seedFor: `${moduleName}${tableId}`,
       columns,
       primaryKey: Array.isArray(data.primaryKey) ? data.primaryKey.map(readString).filter(Boolean) : [],
+      ...(detailsColumnName ? { detailsColumnName } : {}),
+      // Resolved to the FIELD names the adapter reads (see resolveChildCollectionFields): the declaration
+      // carries entity ids, the generated entity names the field, and the seed must use the field name.
+      childCollections: await resolveChildCollectionFields(project, moduleName, readStringArray(detailsDecl?.childCollections)),
     });
   }
   return plans.sort((left, right) => left.seedFor.localeCompare(right.seedFor));
+}
+
+/** Map the TableDefinition's `childCollections` (ENTITY IDS) onto the collection FIELD NAMES the
+ * generated domain entity actually declares — which is what the adapter reads out of the details
+ * envelope. Seeds run after materialization, so the entity source is on disk; when it cannot be read (or
+ * declares no matching collection) the entity id is kept as a best-effort so nothing silently vanishes. */
+async function resolveChildCollectionFields(project: number, moduleName: string, childEntityIds: string[]): Promise<string[]> {
+  if (!childEntityIds.length) return [];
+  const resolved: string[] = [];
+  for (const childEntityId of childEntityIds) {
+    let fieldName = '';
+    try {
+      // The owner entity of the collection is unknown here, so scan the module's generated entities for
+      // the one that declares `<field>: <childEntityId>[]`.
+      for (const file of Object.values(mls.stor.files) as any[]) {
+        if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
+        if (file.extension !== '.ts' || String(file.folder || '') !== `${moduleName}/layer_3_domain/entities`) continue;
+        const found = extractCollectionFieldNames(String(await file.getContent())).get(childEntityId);
+        if (found) { fieldName = found; break; }
+      }
+    } catch { /* unresolved -> dropped below */ }
+    // UNRESOLVED is dropped, not defaulted to the entity id: if no generated entity declares a collection
+    // of this child, nothing reads it back, and seeding under the entity id would write to a dead key —
+    // the same silent-shape defect this resolution exists to prevent. The table simply gets no children.
+    if (fieldName) resolved.push(fieldName);
+  }
+  return [...new Set(resolved)];
 }
 
 function parseArtifact(content: string): Record<string, unknown> | undefined {
