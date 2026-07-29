@@ -246,7 +246,26 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         entities: input.entities.filter(e => e.kind !== 'mdm' || seededMdmIds.has(e.entityId)),
         skipped,
       };
-      return finalizeSeedPlan(context, parentStep, step, hookSequential, partialInput, progress.plan,
+      // NOTHING ACCUMULATED: when the FIRST attempted wave gives up, `progress.plan` is still the empty
+      // plan, whose blank `summary` makes the final validation throw `plan.summary is required` — the
+      // whole backend failing at the exact point that exists to keep it alive (102045/buildFlowFsm run05).
+      // Two guards:
+      //  (a) synthesize a summary so an all-skipped plan is a VALID artifact;
+      //  (b) never overwrite a COMPLETE seeds.ts with an empty one — on a /rebuild that gave up, keeping
+      //      the previously working seed data beats replacing it with nothing.
+      const nothingSeeded = !progress.plan.localTables.length && !progress.plan.mdmEntities.length;
+      if (nothingSeeded && persisted && !persisted.partial) {
+        return [
+          enqueueSeedAssets(context, parentStep, step),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+            `SEED WAVE ${batch.index} SKIPPED and nothing new validated — KEPT the existing seeds.ts instead of replacing it with an empty one: ${errors.slice(0, 8).join('; ')}`, 'input_output'),
+        ];
+      }
+      const givenUpPlan = progress.plan.summary.trim() ? progress.plan : {
+        ...progress.plan,
+        summary: `No seed data: wave ${batch.index} did not converge after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS} attempts; every target of this module is seeded empty by design.`,
+      };
+      return finalizeSeedPlan(context, parentStep, step, hookSequential, partialInput, givenUpPlan,
         `SEED WAVE ${batch.index} SKIPPED (validation failed after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS}; seeded EMPTY by design: tables [${skipped.tables.join(', ') || 'none'}], MDM [${skipped.mdmEntities.join(', ') || 'none'}]): ${errors.slice(0, 12).join('; ')}`);
     }
     const tokenTrace = outputTokenTrace(payload);

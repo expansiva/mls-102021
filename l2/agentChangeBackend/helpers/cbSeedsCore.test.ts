@@ -6,7 +6,8 @@ import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, extractSeedPlanFromSource,
   extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
   seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
-  SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf, type SeedBuildInput,
+  SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf,
+  isDateOnlyField, idFieldHasResolvableTarget, type SeedBuildInput,
 } from './cbSeedsCore.js';
 
 function field(fieldId: string, required = true, enumValues: string[] = []) {
@@ -340,4 +341,82 @@ test('validateSeedPlan rejects a child collection the entity does not declare (d
     { name: 'visits', rows: [{ key: 'v1', fields: [{ name: 'openedBy', value: 'x' }] }] },
   ];
   assert.deepEqual(validateSeedPlan(input).filter(e => /child collection/u.test(e)), []);
+});
+
+// ── run05 (102045/buildFlowFsm): three validator defects that made a CORRECT plan look wrong ──────
+// The planner returned a valid scenario and was rejected 19 times, burning both repair attempts and
+// forcing a give-up that then crashed the run. All three defects are in the validator, not the plan.
+
+test('A: a "…Date" field accepts a calendar date; a "…At" field still requires an instant', () => {
+  assert.equal(isDateOnlyField('workDate'), true);
+  assert.equal(isDateOnlyField('plannedStartDate'), true);
+  assert.equal(isDateOnlyField('shiftDate'), true);
+  assert.equal(isDateOnlyField('usedAt'), false);      // an instant: stays strict
+  assert.equal(isDateOnlyField('createdAt'), false);
+  assert.equal(isDateOnlyField('updatedAt'), false);
+
+  const input = validInput();
+  const shiftRow = input.plan.localTables[0].rows[0];
+  // Generated usecases compare these as plain 'YYYY-MM-DD' strings, so a date-only value is CORRECT.
+  input.entities[0].fields.push({ fieldId: 'businessDate', type: 'string', required: true, enumValues: [] });
+  shiftRow.details.push({ name: 'businessDate', value: '2026-07-03' });
+  assert.deepEqual(validateSeedPlan(input), [], 'a calendar date must be accepted for a …Date field');
+
+  // Out of window is still rejected, compared BY DATE (not by luck of parsing to midnight).
+  shiftRow.details.find(f => f.name === 'businessDate')!.value = '2026-09-01';
+  assert.ok(validateSeedPlan(input).some(e => /businessDate: date must fall within/u.test(e)));
+
+  // An …At field must NOT accept a bare date.
+  const atInput = validInput();
+  atInput.plan.localTables[0].rows[0].details.find(f => f.name === 'openedAt')!.value = '2026-07-03';
+  assert.ok(validateSeedPlan(atInput).some(e => /openedAt: timestamp must be an ISO 8601 UTC string/u.test(e)));
+});
+
+test('B: only an "…Id" with a resolvable target must be a symbolic { ref }', () => {
+  const entities = ['Client', 'Project', 'MenuItem', 'Order'];
+  // taxId points at nothing seedable -> a literal is legitimate (run05 demanded a ref three times).
+  assert.equal(idFieldHasResolvableTarget('taxId', entities), false);
+  assert.equal(idFieldHasResolvableTarget('licenseId', entities), false);
+  // A decorated id still resolves by SUFFIX -> stays strict (no dangling reference reintroduced).
+  assert.equal(idFieldHasResolvableTarget('topMenuItemId', entities), true);
+  assert.equal(idFieldHasResolvableTarget('clientId', entities), true);
+  assert.equal(idFieldHasResolvableTarget('client_id', entities), true);
+  // Platform-user ids resolve to an actor identity, so they stay strict even with no such entity.
+  assert.equal(idFieldHasResolvableTarget('closedByUserId', entities), true);
+  assert.equal(idFieldHasResolvableTarget('assigneeId', entities), true);
+  assert.equal(idFieldHasResolvableTarget('openedByWorkerId', entities), true);
+});
+
+test('B: a non-reference id passes validation while a real reference still must be symbolic', () => {
+  const input = validInput();
+  const menuItem = input.plan.mdmEntities.find(e => e.entityId === 'MenuItem')!;
+  input.entities.find(e => e.entityId === 'MenuItem')!.fields.push({ fieldId: 'taxId', type: 'string', required: false, enumValues: [] });
+  menuItem.rows[0].fields.push({ name: 'taxId', value: '12.345.678/0001-99' });
+  assert.deepEqual(validateSeedPlan(input).filter(e => /taxId/u.test(e)), [], 'a tax number is not an entity reference');
+
+  // menuCategoryId DOES resolve to the MenuCategory entity -> a literal is still rejected.
+  menuItem.rows[0].fields.find(f => f.name === 'menuCategoryId')!.value = 'not-a-ref';
+  assert.ok(validateSeedPlan(input).some(e => /menuCategoryId: MDM references must use a symbolic/u.test(e)));
+});
+
+test('C: an all-skipped module still compiles to a VALID artifact (no crash, no orphan import)', () => {
+  const built = buildSeedSource({
+    project: 102045, moduleName: 'anyModule', language: 'en',
+    entities: [], tablePlans: [], ruleIds: [], actors: [],
+    skipped: { tables: ['A', 'B'], mdmEntities: ['C'], reason: 'wave 1 did not converge' },
+    plan: { summary: 'No seed data: wave 1 did not converge; every target seeded empty by design.', localTables: [], mdmEntities: [] },
+  });
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  const src = built.content ?? '';
+  assert.doesNotMatch(src, /import type \{ TableSeedRows \}/u, 'no unused import when nothing is seeded');
+  assert.match(src, /export \{\};/u, 'the file must still be a module');
+  assert.deepEqual(extractSeedSkippedFromSource(src), { tables: ['A', 'B'], mdmEntities: ['C'], reason: 'wave 1 did not converge' });
+});
+
+test('C: an EMPTY summary is what crashed run05 — a blank plan is still rejected', () => {
+  const built = buildSeedSource({
+    project: 1, moduleName: 'm', language: 'en', entities: [], tablePlans: [], ruleIds: [],
+    plan: { summary: '   ', localTables: [], mdmEntities: [] },
+  });
+  assert.ok(built.errors.includes('plan.summary is required'), built.errors.join('\n'));
 });

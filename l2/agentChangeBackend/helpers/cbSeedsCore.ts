@@ -815,6 +815,20 @@ function validateAssetReference(value: SeedValue | undefined, field: SeedFieldDe
 }
 
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/u;
+
+/** A `…Date` field is a CALENDAR DATE; a `…At` field is an INSTANT.
+ *
+ * The validator used to demand a full ISO datetime for both (`/(At|Date)$/`), so a planner that wrote
+ * `"2026-07-03"` for `workDate`/`dueDate`/`issueDate`/`plannedStartDate`/`shiftDate` was rejected — 16 of
+ * the 19 findings that burned both repair attempts in 102045/buildFlowFsm, and the same failure that
+ * killed wave 2 of cafeFlow run14. The planner was RIGHT: generated usecases compare these fields as
+ * plain `YYYY-MM-DD` strings (e.g. `shift.shiftDate >= periodStart` built from `iso.slice(0, 10)`), so a
+ * datetime stored there silently breaks same-day comparisons. Date-only is therefore ACCEPTED for a
+ * `…Date` field; `…At` stays strict, because an instant with no time is a different kind of wrong. */
+export function isDateOnlyField(fieldName: string): boolean {
+  return /Date$/u.test(fieldName) && !/At$/u.test(fieldName);
+}
 
 function windowOf(input: SeedBuildInput): SeedTimeWindow {
   return input.timeWindow ?? { start: SEED_WINDOW_START, end: SEED_WINDOW_END };
@@ -826,8 +840,20 @@ function windowOf(input: SeedBuildInput): SeedTimeWindow {
 // guided by the L4 rule text in the planner prompt, keeping this compiler domain-agnostic.
 function validateTimestamp(window: SeedTimeWindow, fieldName: string, value: SeedValue | undefined, path: string, errors: string[]) {
   if (value === undefined || value === null || !/(At|Date)$/u.test(fieldName)) return;
-  if (typeof value !== 'string' || !ISO_TIMESTAMP.test(value)) {
-    errors.push(`${path}: timestamp must be an ISO 8601 UTC string (yyyy-mm-ddThh:mm:ss(.sss)Z)`);
+  const dateOnlyAllowed = isDateOnlyField(fieldName);
+  if (typeof value !== 'string' || !(ISO_TIMESTAMP.test(value) || (dateOnlyAllowed && ISO_DATE_ONLY.test(value)))) {
+    errors.push(dateOnlyAllowed
+      ? `${path}: date must be an ISO 8601 calendar date (yyyy-mm-dd) or a UTC instant (yyyy-mm-ddThh:mm:ss(.sss)Z)`
+      : `${path}: timestamp must be an ISO 8601 UTC string (yyyy-mm-ddThh:mm:ss(.sss)Z)`);
+    return;
+  }
+  // A calendar date is compared BY DATE against the window, never as an instant: an end-of-window date
+  // must stay valid by rule, not by the accident of parsing to midnight.
+  if (ISO_DATE_ONLY.test(value)) {
+    const day = value;
+    const startDay = window.start.slice(0, 10);
+    const endDay = window.end.slice(0, 10);
+    if (day < startDay || day > endDay) errors.push(`${path}: date must fall within ${startDay}..${endDay}`);
     return;
   }
   const instant = Date.parse(value);
@@ -840,6 +866,37 @@ function validateTimestamp(window: SeedTimeWindow, fieldName: string, value: See
 
 function hasKey(value: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_-]*$/u.test(value);
+}
+
+/** Ids that name a PLATFORM USER (assignee, actor-session owner). They resolve to an `actor:` identity,
+ * never to a module entity, so they must stay symbolic even though no entity carries their name. */
+const PLATFORM_USER_ID = /(?:user|worker|assignee|owner|employee|operator|technician)Id$/iu;
+
+/**
+ * Does an `…Id` field actually REFERENCE something seedable — a module entity or a platform-user
+ * identity? Only then must its value be a symbolic `{ ref }`.
+ *
+ * The old rule was "every field ending in Id must be a { ref }", which is false for identifiers that are
+ * plain data: `taxId` on an MDM Client is a tax number, not a pointer, and there is no `Tax` entity to
+ * point at — yet the planner was told three times to make it symbolic (102045/buildFlowFsm), an
+ * impossible instruction that burned the repair budget and forced the give-up.
+ *
+ * Matching is by SUFFIX against the known entity names, so a decorated id still resolves:
+ * `topMenuItemId` ends with `MenuItemId` -> `MenuItem` exists -> a ref IS required (keeping it strict
+ * avoids reintroducing dangling references). `closedByUserId` is platform-user-shaped -> strict too.
+ * Only when nothing can be pointed at is a literal accepted.
+ */
+export function idFieldHasResolvableTarget(fieldId: string, knownEntityIds: Iterable<string>): boolean {
+  const name = fieldId.replace(/_id$/iu, 'Id');
+  if (!/Id$/u.test(name)) return false;
+  if (PLATFORM_USER_ID.test(name)) return true;               // -> actor: identity
+  const lower = name.toLowerCase();
+  for (const entityId of knownEntityIds) {
+    if (!entityId) continue;
+    // `<entity>Id` as an exact name or as the SUFFIX of a decorated one (top<Entity>Id, primary<Entity>Id).
+    if (lower.endsWith(`${entityId.toLowerCase()}id`)) return true;
+  }
+  return false;
 }
 
 // NOTE: domain-specific scenario invariants used to live here — hardcoded to the cafeFlow example
@@ -857,6 +914,9 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
   const tableById = new Map(input.tablePlans.map(table => [table.tableId, table]));
   const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   const references = collectReferences(input.plan);
+  // Entity names an `…Id` field could point at. Used to tell a REFERENCE apart from a plain identifier
+  // (taxId, licenseId, …) so the planner is never told to make a non-pointer symbolic.
+  const knownEntityIds = input.entities.map(entity => entity.entityId);
   for (const ref of knownReferences) references.add(ref);
   for (const identity of actorIdentities(input)) references.add(identity.ref);
   const window = windowOf(input);
@@ -925,7 +985,8 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         // A nullable FK is legitimately null for an in-progress row (an open shift has no closer yet);
         // only a NON-null FK value must be a symbolic { ref }. null on a NOT NULL column is already
         // caught by the required check above.
-        if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && value !== null && !isSeedReference(value)) {
+        if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && value !== null
+            && !isSeedReference(value) && idFieldHasResolvableTarget(column.name, knownEntityIds)) {
           errors.push(`${rowPath}.columns.${column.name}: foreign keys must use a symbolic { ref }`);
         }
       }
@@ -941,7 +1002,8 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
         // Optional entity references may be null (a not-yet-linked relation on an in-progress row);
         // only a NON-null reference must be symbolic. A required field that is null is already caught above.
-        if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && value !== null && !isSeedReference(value)) {
+        if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && value !== null
+            && !isSeedReference(value) && idFieldHasResolvableTarget(field.fieldId, knownEntityIds)) {
           errors.push(`${rowPath}.${field.fieldId}: entity references must use a symbolic { ref }`);
         }
       }
@@ -1004,7 +1066,8 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         const value = fields.get(field.fieldId);
         if (field.required && !automaticId && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         // Optional MDM references may be null; only a NON-null reference must be symbolic.
-        if (field.fieldId.endsWith('Id') && !automaticId && value !== undefined && value !== null && !isSeedReference(value)) {
+        if (field.fieldId.endsWith('Id') && !automaticId && value !== undefined && value !== null
+            && !isSeedReference(value) && idFieldHasResolvableTarget(field.fieldId, knownEntityIds)) {
           errors.push(`${rowPath}.${field.fieldId}: MDM references must use a symbolic { ref }`);
         }
       }
@@ -1231,8 +1294,12 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     '',
     'function seedAssetUrl(assetId: string): string | null { return seedAssetUrls[assetId] ?? null; }',
     '',
-    `import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';`,
-    '',
+    // The contracts import and the seed exports only exist when there ARE rows. An all-skipped module
+    // (every wave gave up) must still emit a VALID module: no unused import, and `export {}` so the file
+    // is unambiguously a module rather than a script whose top-level consts leak into the global scope.
+    ...(blocks.length
+      ? [`import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';`, '']
+      : ['export {};', '']),
     ...blocks.flatMap(block => [
       `export const ${block.exportName}: TableSeedRows = ${seedSourceLiteral({ seedFor: block.seedFor, rows: block.rows })};`,
       '',
