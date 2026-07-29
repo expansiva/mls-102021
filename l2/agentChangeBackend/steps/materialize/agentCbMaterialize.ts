@@ -212,7 +212,17 @@ function layerLabel(types: string[]): string {
 async function readContextRef(ref: string): Promise<string | null> {
   const direct = await getContentByMlsPath(ref);
   if (direct != null) return direct;
-  if (ref.endsWith('.d.ts')) return getContentByMlsPath(ref.replace(/\.d\.ts$/u, '.ts'));
+  if (ref.endsWith('.d.ts')) {
+    const fallback = await getContentByMlsPath(ref.replace(/\.d\.ts$/u, '.ts'));
+    if (fallback != null) return fallback;
+  }
+  // A dependsFiles entry that cannot be read is SILENTLY dropped from the prompt by the caller, so the
+  // model generates against an incomplete contract with nothing on the record. Observed in 102045/run06:
+  // all 22 `l4/<module>/contracts/*.defs.ts` refs failed (the stor entry exists with versionRef "0" — never
+  // pushed — so getContent falls through to the GitHub blob API and 422s), and every workspace controller
+  // was materialized WITHOUT its wire contract. Log it; do not fail the worker (a missing context is
+  // degraded input, not a broken artifact).
+  console.warn(`[agentCbMaterialize] context ref unreadable, prompt will omit it: ${ref}`);
   return null;
 }
 

@@ -88,6 +88,22 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   this file, or the output is rejected. A blocking rule is covered by the `AppError` details above; a
   NON-blocking rule (side-effect, filter, computed behavior — e.g. a cancellation that restores
   availability) must carry a `// rule: <ruleId>` comment on the exact line(s) that enforce it.
+  A third kind exists and is the one most often mishandled: an **ASSUMPTION / SCOPE rule** — a premise or
+  phase limitation rather than something the data can violate (a connected-experience assumption, "not
+  supported in this phase", "single-currency for now"). It is satisfied ONLY by a `// rule: <ruleId>`
+  comment where the premise is relevant — **NEVER by an `AppError`**.
+  THE TEST, applied before writing anything: name the concrete input field or stored state of THIS
+  operation that would violate the rule. If you can name it, enforce it (blocking or non-blocking). If you
+  cannot — and note you may only have the rule ID, not its prose — do NOT invent a check to satisfy the
+  gate: emit the comment. **When in doubt, comment.** An id that reads as a premise (`…Assumption`,
+  `…Assumed`, `…OnlyPhase`, `…NotSupported`) is a strong signal, but the fallback above governs.
+  Why this matters more than it looks: fabricating a validation to satisfy the gate produces a 400 that
+  every caller hits, so the route can never return data and can never be tested. Observed in a generated
+  query: it rejected all callers with `VALIDATION_ERROR` naming an assumption rule, which also blocked
+  every later test on that page.
+  Finally, never label an EXISTING guard with an assumption ruleId: a missing authenticated actor, an
+  absent session or a permission gap is not an assumption violation. Use the rule that actually governs it
+  (or state the plain reason) — a wrong ruleId on a real guard hides why the request was rejected.
 - Lifecycle: read current state, check the domain transition (e.g. `canTransition*`), then `save`.
 - Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Do not use
   raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and

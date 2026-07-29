@@ -148,7 +148,13 @@ function sanitizeModuleHint(message: string): string {
 // with an invented key, a nullable findCurrent() assigned to a non-null). Loading each import under ITS
 // OWN project closes that fidelity gap. Best-effort: an import whose source is not in stor is skipped, so
 // this never regresses a workspace that lacks the platform source (types then come from the bundled d.ts).
-async function ensureImportModels(content: string): Promise<void> {
+interface BorrowedModel { project: number; shortName: string; folder: string; }
+
+async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
+  // Models loaded HERE are BORROWED for one compile and released afterwards (see releaseImportModels).
+  // A model already in the registry belongs to the Studio (it may be open in a tab) and is never ours
+  // to release — the `continue` below is what makes the ownership unambiguous.
+  const borrowed: BorrowedModel[] = [];
   for (const match of content.matchAll(/from\s+['"]\/_(\d+)_\/l1\/([^'"]+?)\.js['"]/gu)) {
     const importProject = Number(match[1]);
     if (!Number.isInteger(importProject) || importProject <= 0) continue;
@@ -160,14 +166,46 @@ async function ensureImportModels(content: string): Promise<void> {
     if (mls.editor.models[mls.editor.getKeyModel(importProject, shortName, folder, 1)]) continue;
     const fileKey = mls.stor.getKeyToFile({ project: importProject, level: 1, folder, shortName, extension: '.ts' });
     if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
-    try { await mls.editor.addModels(importProject, shortName, folder, 1); } catch { /* best effort: the compile error stays precise */ }
+    try {
+      await mls.editor.addModels(importProject, shortName, folder, 1);
+      borrowed.push({ project: importProject, shortName, folder });
+    } catch { /* best effort: the compile error stays precise */ }
+  }
+  return borrowed;
+}
+
+// Materialize workers run in a POOL (parallel_dynamic, 10 slots), so two compiles can overlap. Worker B
+// skips borrowing a model that worker A already loaded (the registry guard above), so releasing A's
+// borrows while B is mid-compile could pull a model out from under B and produce a FALSE TS2792 that
+// burns repair budget. Releases are therefore deferred until no compile is in flight — the registry
+// still gets emptied at every quiescent point, which is what keeps the listener count bounded.
+let activeCompiles = 0;
+const pendingRelease: BorrowedModel[] = [];
+
+/** Queue the models this compile borrowed for release, and release everything queued once the last
+ * in-flight compile finishes. Without any release, every import of every generated file stayed loaded
+ * for the whole run (the registry only grows — the guard never re-adds one) and Monaco hit its
+ * "potential listener LEAK detected, having 200 listeners already" threshold on a 64-file module.
+ * Only BORROWED models are ever released, so a file the user has open in a tab is untouched; the next
+ * compile re-adds whatever it needs, which ensureImportModels already does on demand. */
+function releaseImportModels(borrowed: BorrowedModel[]): void {
+  pendingRelease.push(...borrowed);
+  if (activeCompiles > 0) return;
+  const toRelease = pendingRelease.splice(0, pendingRelease.length);
+  for (const model of toRelease) {
+    // Signature is (project, shortName, folder, releaseMonacoModel, level) — the boolean comes BEFORE
+    // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
+    try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, 1); } catch { /* best effort */ }
   }
 }
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
 async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; available: boolean }> {
+  // Borrowed OUTSIDE the try so the finally can always release them, even on a compile exception.
+  let borrowed: BorrowedModel[] = [];
+  activeCompiles++;
   try {
-    await ensureImportModels(content);
+    borrowed = await ensureImportModels(content);
     const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
@@ -186,6 +224,11 @@ async function compileGeneratedTs(project: number, level: number, folder: string
   } catch (err) {
     console.warn('[cbMaterializeIo] compileGeneratedTs failed', err);
     return { errors: [], available: false };
+  } finally {
+    // NB: the model of the file BEING compiled (added above) is deliberately kept — it is a real project
+    // artifact the editor/publish path and the repair loop reuse. Only the borrowed imports are released.
+    activeCompiles--;
+    releaseImportModels(borrowed);
   }
 }
 
