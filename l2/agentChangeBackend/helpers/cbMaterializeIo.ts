@@ -148,7 +148,7 @@ function sanitizeModuleHint(message: string): string {
 // with an invented key, a nullable findCurrent() assigned to a non-null). Loading each import under ITS
 // OWN project closes that fidelity gap. Best-effort: an import whose source is not in stor is skipped, so
 // this never regresses a workspace that lacks the platform source (types then come from the bundled d.ts).
-interface BorrowedModel { project: number; shortName: string; folder: string; }
+interface BorrowedModel { project: number; shortName: string; folder: string; level: number; }
 
 async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
   // Models loaded HERE are BORROWED for one compile and released afterwards (see releaseImportModels).
@@ -168,7 +168,7 @@ async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
     if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
     try {
       await mls.editor.addModels(importProject, shortName, folder, 1);
-      borrowed.push({ project: importProject, shortName, folder });
+      borrowed.push({ project: importProject, shortName, folder, level: 1 });
     } catch { /* best effort: the compile error stays precise */ }
   }
   return borrowed;
@@ -182,20 +182,28 @@ async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
 let activeCompiles = 0;
 const pendingRelease: BorrowedModel[] = [];
 
-/** Queue the models this compile borrowed for release, and release everything queued once the last
- * in-flight compile finishes. Without any release, every import of every generated file stayed loaded
- * for the whole run (the registry only grows — the guard never re-adds one) and Monaco hit its
- * "potential listener LEAK detected, having 200 listeners already" threshold on a 64-file module.
- * Only BORROWED models are ever released, so a file the user has open in a tab is untouched; the next
- * compile re-adds whatever it needs, which ensureImportModels already does on demand. */
-function releaseImportModels(borrowed: BorrowedModel[]): void {
+/** Queue models WE loaded/created for release, and release everything queued once the last in-flight
+ * compile finishes. Without any release the registry only grows (the guards never re-add one) and Monaco
+ * hits its "potential listener LEAK detected, having 200 listeners already" threshold — observed on a
+ * 62-file module.
+ *
+ * Two sources are queued: the imports borrowed for a compile, and the model of the generated file itself
+ * (created by saveGeneratedTs). Releasing the latter is safe because NOTHING in this agent depends on a
+ * model outliving its compile: `mls.editor.models` is read in exactly two places, both of them the
+ * "load it if absent" guards below (`:166` for imports, `:210` for the file being compiled). The
+ * materialization step is an independent process — it can run in a later session or from the CLI — so it
+ * can never assume a preloaded registry, and every compile reloads what it needs on demand.
+ *
+ * Only models WE put there are ever released: each site checks the registry first, so a file the user has
+ * open in a Studio tab is never ours and is never disposed. */
+function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
   pendingRelease.push(...borrowed);
   if (activeCompiles > 0) return;
   const toRelease = pendingRelease.splice(0, pendingRelease.length);
   for (const model of toRelease) {
     // Signature is (project, shortName, folder, releaseMonacoModel, level) — the boolean comes BEFORE
     // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
-    try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, 1); } catch { /* best effort */ }
+    try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, model.level); } catch { /* best effort */ }
   }
 }
 
@@ -228,7 +236,7 @@ async function compileGeneratedTs(project: number, level: number, folder: string
     // NB: the model of the file BEING compiled (added above) is deliberately kept — it is a real project
     // artifact the editor/publish path and the repair loop reuse. Only the borrowed imports are released.
     activeCompiles--;
-    releaseImportModels(borrowed);
+    releaseBorrowedModels(borrowed);
   }
 }
 
@@ -287,11 +295,17 @@ export async function saveGeneratedTs(
   try {
     const fileInfo = { project, level, folder, shortName, extension: '.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
+    // OWNERSHIP, decided BEFORE anything below can create a model: if the registry has no model for this
+    // file yet, whatever the save creates (createStorFile with needCreateModel, or getOrCreateModel) is
+    // OURS and is released after the compile. If a model already exists the file is open in the Studio —
+    // not ours, never disposed.
+    const ownsModel = !mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, level)];
     let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
     if (!file) {
-      // needCreateModel=true (parity with cfeMaterializeStudio): register the Monaco model at
-      // creation so files materialized later in the run can import this one (see
-      // ensureSameProjectImportModels). needCompile=false — the explicit compile below owns that.
+      // needCreateModel=true (parity with cfeMaterializeStudio) so the compile below has a model to work
+      // on. needCompile=false — the explicit compile owns that. NB: the model is NOT kept for later
+      // importers; ensureImportModels reloads any import on demand, which is what makes releasing it
+      // afterwards safe (materialization is an independent process and never assumes a warm registry).
       file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
     } else {
       const model = await file.getOrCreateModel();
@@ -302,6 +316,9 @@ export async function saveGeneratedTs(
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
+    // The content is already durable in stor; the monaco model was a working copy for the compile. Queue
+    // it (released at the next quiescent point, so a peer compile in the pool can still import it).
+    if (ownsModel) releaseBorrowedModels([{ project, shortName, folder, level }]);
     const syntaxErrors = syntaxDiagnostics(content).slice(0, 12);
     const compileErrors = [...syntaxErrors, ...compiled.errors].slice(0, 12);
     return { ok: true, compileErrors, syntaxErrors, compilerAvailable: compiled.available };
