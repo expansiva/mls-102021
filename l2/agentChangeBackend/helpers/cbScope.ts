@@ -17,6 +17,20 @@ export interface CbScopeInput {
   requestedModule: string;
 }
 
+/** One l4 owner or one todo entry, reduced to what reconciliation needs. */
+export interface CbReconcileEntry { key: string; moduleName: string; }
+
+export interface CbReconcileInput {
+  l4Owners: CbReconcileEntry[];
+  todoOwners: CbReconcileEntry[];
+  /** Unreadable/invalid todo files, with the module the file belongs to. */
+  todoErrors: Array<{ moduleName: string; message: string }>;
+  /** Canonical target module; empty means auto-discovery (every module that HAS a todo). */
+  targetModule: string;
+}
+
+export interface CbReconcileResult { errors: string[]; warnings: string[]; }
+
 export interface CbScopeResult {
   moduleName: string;
   owners: CbOwner[];
@@ -86,6 +100,71 @@ export function backfillEntityFieldsFromOwners(entities: CbEntity[], owners: CbO
   });
 }
 
+/**
+ * Entities are identified by MODULE + id. A project keeps the generations the generator left behind
+ * and they share entity ids (34 of them between buildFlowFsm46 and 47), so deduping by id alone let
+ * whichever file the store yielded last decide the module of a shared id — and the module scope then
+ * dropped an entity its own module legitimately declares, quietly shortening the ontology.
+ */
+export function upsertEntity(entities: CbEntity[], entity: CbEntity): void {
+  const existing = entities.find(e => e.entityId === entity.entityId && e.moduleName === entity.moduleName);
+  if (existing) Object.assign(existing, entity);
+  else entities.push(entity);
+}
+
+/**
+ * Resolve a requested module name against the ones that exist. Module names are canonical camelCase
+ * but are typed by hand ('buildFlowFSM47'), and an unmatched case used to filter everything to empty.
+ */
+export function resolveModuleName(requested: string, names: string[]): string {
+  const wanted = requested.trim();
+  if (!wanted) return '';
+  return names.find(name => name.toLowerCase() === wanted.toLowerCase()) || wanted;
+}
+
+/**
+ * Reconcile the l4 owners against the todo — FOR THE TARGET MODULE ONLY.
+ *
+ * A project accumulates modules the generator left behind (the ns4 iteration writes buildFlowFsm39…47
+ * side by side, and only the last one has a todo). Reconciling project-wide killed a run whose target
+ * module was intact, because a previous generation's 108 operations had no todo of their own. Those
+ * are not this run's business: they become ONE warning per module and their owners simply never carry
+ * a status, so nothing downstream can treat them as pending work.
+ */
+export function reconcileBackendTodo(input: CbReconcileInput): CbReconcileResult {
+  const todoModules = new Set([...input.todoOwners, ...input.todoErrors].map(entry => entry.moduleName).filter(Boolean));
+  // Without an explicit target, every module that has a todo is a target: that is exactly the set
+  // auto-discovery can pick from.
+  const isTarget = (moduleName: string): boolean =>
+    input.targetModule ? moduleName === input.targetModule : todoModules.has(moduleName);
+
+  const todoKeys = new Set(input.todoOwners.map(entry => entry.key));
+  const l4Keys = new Set(input.l4Owners.map(entry => entry.key));
+  const missing = input.l4Owners.filter(entry => !todoKeys.has(entry.key));
+  const extra = input.todoOwners.filter(entry => !l4Keys.has(entry.key));
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const onTarget = (entries: CbReconcileEntry[]) => entries.filter(entry => isTarget(entry.moduleName));
+  const offTarget = (entries: CbReconcileEntry[], label: string) => {
+    const byModule = new Map<string, number>();
+    for (const entry of entries.filter(entry => !isTarget(entry.moduleName))) {
+      byModule.set(entry.moduleName || 'unknown', (byModule.get(entry.moduleName || 'unknown') || 0) + 1);
+    }
+    for (const [moduleName, count] of [...byModule].sort()) warnings.push(`module ${moduleName}: ${count} ${label} — module outside this run, ignored`);
+  };
+
+  const missingOnTarget = onTarget(missing);
+  const extraOnTarget = onTarget(extra);
+  errors.push(...input.todoErrors.filter(entry => isTarget(entry.moduleName)).map(entry => entry.message));
+  if (missingOnTarget.length) errors.push(`todoBackend missing l4 owner(s): ${missingOnTarget.map(entry => entry.key).slice(0, 12).join(', ')}`);
+  if (extraOnTarget.length) errors.push(`todoBackend has owner(s) absent from l4: ${extraOnTarget.map(entry => entry.key).slice(0, 12).join(', ')}`);
+  offTarget(missing, 'l4 owner(s) with no todoBackend');
+  offTarget(extra, 'todoBackend owner(s) with no l4');
+  for (const entry of input.todoErrors.filter(entry => !isTarget(entry.moduleName))) warnings.push(`${entry.message} (module outside this run, ignored)`);
+  return { errors, warnings };
+}
+
 /** Resolve the target module and filter every collection to it. The target is the explicit requested
  * module, else the first (sorted) module that has owners in the caller's requested statuses, else the
  * first module overall. A requested-but-absent module yields empty owners plus a warning (so the run
@@ -96,9 +175,7 @@ export function scopeBackendScan(input: CbScopeInput): CbScopeResult {
   const requested = input.requestedModule.trim();
   // A module typed by hand ('buildFlowFSM47') must resolve to the canonical name the artifacts use,
   // or every collection filters to empty and the run reports "no work" for a module that has work.
-  const canonical = requested
-    ? [...input.allModuleNames, ...pendingModules].find(name => name.toLowerCase() === requested.toLowerCase()) || requested
-    : '';
+  const canonical = resolveModuleName(requested, [...input.allModuleNames, ...pendingModules]);
   const moduleName = canonical || pendingModules[0] || input.allModuleNames[0] || '';
   if (!moduleName) {
     return {

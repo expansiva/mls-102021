@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scopeBackendScan, backfillEntityFieldsFromOwners, type CbScopeInput } from './cbScope.js';
+import { scopeBackendScan, backfillEntityFieldsFromOwners, reconcileBackendTodo, resolveModuleName, upsertEntity, type CbScopeInput } from './cbScope.js';
 
 // Minimal fixtures — scopeBackendScan only reads moduleName / entityId / fromEntity / toEntity.
 const owner = (id: string, moduleName: string) => ({ kind: 'operation', id, moduleName }) as unknown as CbScopeInput['owners'][number];
@@ -139,4 +139,89 @@ test('scopeBackendScan: a module that exists nowhere still warns', () => {
   assert.equal(r.moduleName, 'cafeFlowX');
   assert.deepEqual(r.owners, []);
   assert.match(String(r.warning), /not found in project modules/);
+});
+
+// ── reconciliation scope (T9) ────────────────────────────────────────────────
+// A project keeps every module the generator left behind: ns4 wrote buildFlowFsm39…47 side by side
+// and only the last one has a todo. Reconciling project-wide killed a run whose module was intact.
+
+const l4 = (key: string, moduleName: string) => ({ key, moduleName });
+
+test('reconcileBackendTodo: a previous generation with no todo never fails the target module', () => {
+  const result = reconcileBackendTodo({
+    l4Owners: [l4('operation:listProject', 'buildFlowFsm47'), l4('operation:assignWorkTask', 'buildFlowFsm46'), l4('operation:createDailyLog', 'buildFlowFsm46')],
+    todoOwners: [l4('operation:listProject', 'buildFlowFsm47')],
+    todoErrors: [],
+    targetModule: 'buildFlowFsm47',
+  });
+  assert.deepEqual(result.errors, []);
+  // One line per module, never one per orphan owner (there were 108 of them).
+  assert.deepEqual(result.warnings, ['module buildFlowFsm46: 2 l4 owner(s) with no todoBackend — module outside this run, ignored']);
+});
+
+test('reconcileBackendTodo: a real divergence in the target module still fails', () => {
+  const result = reconcileBackendTodo({
+    l4Owners: [l4('operation:listProject', 'buildFlowFsm47'), l4('operation:createProject', 'buildFlowFsm47')],
+    todoOwners: [l4('operation:listProject', 'buildFlowFsm47'), l4('operation:goneFromL4', 'buildFlowFsm47')],
+    todoErrors: [{ moduleName: 'buildFlowFsm47', message: 'invalid todoBackend defs at l5/buildFlowFsm47/todoBackend.defs.ts' }],
+    targetModule: 'buildFlowFsm47',
+  });
+  assert.match(result.errors.join('; '), /invalid todoBackend defs/);
+  assert.match(result.errors.join('; '), /missing l4 owner\(s\): operation:createProject/);
+  assert.match(result.errors.join('; '), /absent from l4: operation:goneFromL4/);
+});
+
+test('reconcileBackendTodo: without a target, every module that HAS a todo is reconciled', () => {
+  const result = reconcileBackendTodo({
+    l4Owners: [l4('operation:listProject', 'buildFlowFsm47'), l4('operation:assignWorkTask', 'buildFlowFsm46')],
+    todoOwners: [l4('operation:listProject', 'buildFlowFsm47')],
+    todoErrors: [{ moduleName: 'buildFlowFsm46', message: 'invalid todoBackend defs at l5/buildFlowFsm46/todoBackend.defs.ts' }],
+    targetModule: '',
+  });
+  // fsm46 has a (broken) todo file, so it IS a target of auto-discovery and its gap is an error.
+  assert.match(result.errors.join('; '), /invalid todoBackend defs at l5\/buildFlowFsm46/);
+  assert.match(result.errors.join('; '), /missing l4 owner\(s\): operation:assignWorkTask/);
+
+  // With no todo at all, the orphan module is invisible to auto-discovery.
+  const orphan = reconcileBackendTodo({
+    l4Owners: [l4('operation:listProject', 'buildFlowFsm47'), l4('operation:assignWorkTask', 'buildFlowFsm46')],
+    todoOwners: [l4('operation:listProject', 'buildFlowFsm47')],
+    todoErrors: [],
+    targetModule: '',
+  });
+  assert.deepEqual(orphan.errors, []);
+  assert.deepEqual(orphan.warnings, ['module buildFlowFsm46: 1 l4 owner(s) with no todoBackend — module outside this run, ignored']);
+});
+
+test('resolveModuleName: what the user typed resolves to the module that exists', () => {
+  assert.equal(resolveModuleName('buildFlowFSM47', ['buildFlowFsm46', 'buildFlowFsm47']), 'buildFlowFsm47');
+  assert.equal(resolveModuleName('  buildflowfsm47 ', ['buildFlowFsm47']), 'buildFlowFsm47');
+  // Unknown stays as typed: scopeBackendScan is the one that reports it as not found.
+  assert.equal(resolveModuleName('nowhere', ['buildFlowFsm47']), 'nowhere');
+  assert.equal(resolveModuleName('', ['buildFlowFsm47']), '');
+});
+
+test('scopeBackendScan: an owner of another module never joins the run, even with the same id', () => {
+  // ns4 generations repeat operation ids: buildFlowFsm46 also has `listProject`. It matches the
+  // target's todo entry by key, so only the module of its own folder keeps it out of the run.
+  const input = base('buildFlowFsm47');
+  input.owners = [owner('listProject', 'buildFlowFsm47'), owner('listProject', 'buildFlowFsm46')];
+  input.allModuleNames = ['buildFlowFsm46', 'buildFlowFsm47'];
+  const scoped = scopeBackendScan(input);
+  assert.equal(scoped.owners.length, 1);
+  assert.equal((scoped.owners[0] as unknown as { moduleName: string }).moduleName, 'buildFlowFsm47');
+});
+
+test('upsertEntity: the same entity id in two modules is two entities, not one', () => {
+  // buildFlowFsm46 and 47 share 34 entity ids. Keyed by id alone, whichever file the store yielded
+  // last decided the module — and the module scope then dropped an entity fsm47 itself declares.
+  const entities: any[] = [];
+  upsertEntity(entities, { entityId: 'Project', moduleName: 'buildFlowFsm47', fields: [{ fieldId: 'projectId' }] } as any);
+  upsertEntity(entities, { entityId: 'Project', moduleName: 'buildFlowFsm46', fields: [] } as any);
+  assert.equal(entities.length, 2);
+  assert.deepEqual(entities.find(e => e.moduleName === 'buildFlowFsm47').fields, [{ fieldId: 'projectId' }]);
+  // Re-reading the same module's file still merges in place.
+  upsertEntity(entities, { entityId: 'Project', moduleName: 'buildFlowFsm47', fields: [{ fieldId: 'name' }] } as any);
+  assert.equal(entities.length, 2);
+  assert.deepEqual(entities.find(e => e.moduleName === 'buildFlowFsm47').fields, [{ fieldId: 'name' }]);
 });

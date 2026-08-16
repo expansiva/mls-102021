@@ -37,6 +37,13 @@ owner. A escrita de volta vai no MESMO campo lido e preserva o arquivo como o ge
 Este worker lê/escreve **apenas `todoBackend`**; o `agentChangeFrontend` cuida do `todoFrontend`.
 O L4 é read-only para este agente. Se owners legados ainda tiverem `statusBackend` inline, esse campo é ignorado para decisão de trabalho; divergência inline × todo vira warning.
 
+**Escopo da reconciliação:** o módulo alvo é resolvido ANTES de reconciliar todo×l4, e divergência
+só é erro **no módulo alvo**. Um projeto guarda as gerações que o ns4 deixou para trás
+(`buildFlowFsm39`…`47` lado a lado, só a última com todo): elas viram 1 warning por módulo e seus
+owners nunca ganham status, então nunca entram como trabalho pendente. Ids de operation se repetem
+entre gerações, então o módulo do owner vem SEMPRE da pasta do l4 — o `moduleName` do todo só serve
+de fallback para o layout v1 achatado, onde o owner não tem um.
+
 **Dialetos do L4 que este agente lê:** `} as const;` (ns/ns3) e `} as const satisfies <Artefato>;`
 (ns4). No ns4 mudou também DE ONDE vem cada coisa: os `relationships` moram em
 `{module}/ontology/index.defs.ts` (não mais no `module.defs.ts`), os papéis são os `profiles` de

@@ -216,7 +216,7 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
-import { scopeBackendScan, backfillEntityFieldsFromOwners } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 
 export interface CbScan {
   project: number;
@@ -318,41 +318,51 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
     .map(({ kind, obj, moduleName }) => ownerFrom(kind, obj, entityToModule, moduleFallback, moduleName))
     .filter((o): o is CbOwner => !!o);
   const todoState = await readBackendTodoState(project);
-  if (rawOwners.length > 0 && todoState.files === 0) {
+  for (const moduleName of todoState.moduleNames) moduleNames.add(moduleName);
+
+  // The target module is resolved BEFORE reconciliation. A project keeps the modules the generator
+  // left behind (ns4 writes buildFlowFsm39…47 side by side and only the last has a todo), and
+  // reconciling project-wide killed a run whose own module was intact.
+  const requestedModule = (targetModuleOverride && targetModuleOverride.trim())
+    || (context ? readTargetModule(context) : '');
+  const targetModule = resolveModuleName(requestedModule, Array.from(moduleNames).sort());
+  const ownersOfTarget = (moduleName: string): boolean => targetModule
+    ? moduleName === targetModule
+    : todoState.filesByModule.has(moduleName) || todoState.moduleNames.includes(moduleName);
+  if (rawOwners.length > 0 && !todoState.files && (!targetModule || allOwners.some(owner => owner.moduleName === targetModule))) {
     throw new Error('l5/{module}/todoBackend.defs.ts not found; backend generation status must come from todoBackend, not inline l4 statusBackend.');
   }
-  const l4OwnerKeys = new Set(allOwners.map(ownerKey));
-  const missingTodo: string[] = [];
   for (const owner of allOwners) {
     const todoOwner = todoState.ownersByKey.get(ownerKey(owner));
-    if (!todoOwner) {
-      missingTodo.push(`${owner.kind}:${owner.id}`);
-      continue;
-    }
+    if (!todoOwner) continue;
     owner.todoStatus = todoOwner.status;
     owner.statusBackend = todoOwner.status;
-    owner.moduleName = todoOwner.moduleName || owner.moduleName;
+    // The todo only NAMES the module for the flat v1 layout, where the owner has none of its own.
+    // Overwriting a folder-derived module made a previous generation's operation (ids repeat across
+    // ns4 generations) claim the target module and join the run as if it belonged to it.
+    if (!owner.moduleName || owner.moduleName === 'unknown') owner.moduleName = todoOwner.moduleName || owner.moduleName;
     if (owner.inlineStatusBackend && owner.inlineStatusBackend !== todoOwner.status) {
       warnings.push(`${owner.kind}:${owner.id} inline statusBackend=${owner.inlineStatusBackend} ignored; todoBackend=${todoOwner.status}`);
     }
   }
-  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !l4OwnerKeys.has(key));
-  if (missingTodo.length || extraTodo.length || todoState.errors.length) {
-    const parts = [
-      ...todoState.errors,
-      ...(missingTodo.length ? [`todoBackend missing l4 owner(s): ${missingTodo.slice(0, 12).join(', ')}`] : []),
-      ...(extraTodo.length ? [`todoBackend has owner(s) absent from l4: ${extraTodo.slice(0, 12).join(', ')}`] : []),
-    ];
-    throw new Error(parts.join('; '));
-  }
-  for (const moduleName of todoState.moduleNames) moduleNames.add(moduleName);
-  warnings.push(...todoState.warnings);
-  const owners = allOwners.filter(o => wanted.has(o.todoStatus));
+  const reconciliation = reconcileBackendTodo({
+    l4Owners: allOwners.map(owner => ({ key: ownerKey(owner), moduleName: owner.moduleName })),
+    todoOwners: [...todoState.ownersByKey.entries()].map(([key, owner]) => ({ key, moduleName: owner.moduleName })),
+    todoErrors: todoState.errors,
+    targetModule,
+  });
+  if (reconciliation.errors.length) throw new Error(reconciliation.errors.join('; '));
+  warnings.push(...reconciliation.warnings, ...todoState.warnings);
+  // An owner of a module with no todo never carries a status, so it can never be pending work.
+  const owners = allOwners.filter(o => wanted.has(o.todoStatus) && ownersOfTarget(o.moduleName));
 
   // Roots that operations own (entity + writes) across ALL operations regardless of status — the
   // aggregate boundaries must be stable even when only some owners are pending (toCreate).
   const operatedRootIds = new Set<string>();
-  for (const { obj } of rawOwners) {
+  for (const { obj, moduleName } of rawOwners) {
+    // Owners of another module never shape THIS module's aggregates: an entity only some previous
+    // generation operates would otherwise get an entity, a port, a table and seeds it has no use for.
+    if (moduleName && !ownersOfTarget(moduleName)) continue;
     const e = readString(obj.entity);
     if (e) operatedRootIds.add(e);
     for (const w of readStringArray(obj.writes)) operatedRootIds.add(w);
@@ -366,9 +376,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   // entities, relationships, workspaces and actors — so the pipeline never spans modules. Pure
   // filtering lives in cbScope (unit-tested there).
   const allModuleNames = Array.from(moduleNames).sort();
-  const requestedModule = (targetModuleOverride && targetModuleOverride.trim())
-    || (context ? readTargetModule(context) : '');
-  const scoped = scopeBackendScan({ owners, entities, relationships, workspaces, actors: actorsList, allModuleNames, requestedModule });
+  const scoped = scopeBackendScan({ owners, entities, relationships, workspaces, actors: actorsList, allModuleNames, requestedModule: targetModule });
   if (scoped.warning) warnings.push(scoped.warning);
 
   // An ontology entity with NO fields (every `kind: "metric"` one in cafeFlow) still becomes a real
@@ -419,10 +427,12 @@ function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELD
 
 interface CbTodoState {
   files: number;
+  /** The l5 folder of each todo file, so an unreadable one can be attributed to its module. */
+  filesByModule: Set<string>;
   moduleNames: string[];
   ownersByKey: Map<string, CbTodoOwner>;
   warnings: string[];
-  errors: string[];
+  errors: Array<{ moduleName: string; message: string }>;
 }
 
 function ownerKey(owner: Pick<CbOwner, 'kind' | 'id'>): string {
@@ -437,15 +447,17 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
   const ownersByKey = new Map<string, CbTodoOwner>();
   const moduleNames = new Set<string>();
   const warnings: string[] = [];
-  const errors: string[] = [];
+  const errors: Array<{ moduleName: string; message: string }> = [];
+  const filesByModule = new Set<string>();
   let files = 0;
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
     files++;
+    filesByModule.add(String(file.folder || ''));
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!isRecord(parsed)) {
-      errors.push(`invalid todoBackend defs at l5/${String(file.folder || '')}/todoBackend.defs.ts`);
+      errors.push({ moduleName: String(file.folder || ''), message: `invalid todoBackend defs at l5/${String(file.folder || '')}/todoBackend.defs.ts` });
       continue;
     }
     const layer = readString(parsed.layer);
@@ -458,11 +470,11 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
       const ownerId = readString(raw.ownerId);
       const status = readString(raw[todoStatusField(raw) || 'status']);
       if (!ownerType || !ownerId) {
-        errors.push(`todoBackend ${moduleName || String(file.folder || '')} has invalid owner entry`);
+        errors.push({ moduleName, message: `todoBackend ${moduleName || String(file.folder || '')} has invalid owner entry` });
         continue;
       }
       if (!isOwnerStatus(status)) {
-        errors.push(`todoBackend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`);
+        errors.push({ moduleName, message: `todoBackend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"` });
         continue;
       }
       const key = todoOwnerKey(ownerType, ownerId);
@@ -470,7 +482,7 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
       else ownersByKey.set(key, { ownerType, ownerId, status, moduleName });
     }
   }
-  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+  return { files, filesByModule, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
 }
 
 // Derived from ALL_STATUSES so the list lives in exactly ONE place (it used to be spelled out here too).
@@ -1279,9 +1291,4 @@ export function toSafeShortName(value: string): string {
 
 function push(list: string[], value: string): void {
   if (value && !list.includes(value)) list.push(value);
-}
-function upsertEntity(entities: CbEntity[], entity: CbEntity): void {
-  const existing = entities.find(e => e.entityId === entity.entityId);
-  if (existing) Object.assign(existing, entity);
-  else entities.push(entity);
 }
