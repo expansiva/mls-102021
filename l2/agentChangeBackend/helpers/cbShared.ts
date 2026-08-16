@@ -217,6 +217,7 @@ export type {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
 import { reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { promptSizeError } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
 
 export interface CbScan {
   project: number;
@@ -1171,6 +1172,11 @@ export function createPromptReadyIntent(
   toolName: string,
 ): mls.msg.AgentIntentPromptReady {
   if (!context.task) throw new Error('[createPromptReadyIntent] task invalid');
+  // A prompt bigger than the transport accepts used to surface as an uncaught 413 in the client and
+  // left the step hanging in waiting_human_input with nothing on the task. Fail it here instead, with
+  // a message that names the step and the size.
+  const oversize = promptSizeError(`[createPromptReadyIntent] ${parentStep.agentName || 'step'}`, humanPrompt, systemPrompt);
+  if (oversize) throw new Error(oversize);
   return {
     type: 'prompt_ready',
     args,
