@@ -67,6 +67,22 @@ export function readModuleActors(obj: Record<string, unknown>, moduleName: strin
     .filter((a): a is CbActor => a !== null);
 }
 
+/**
+ * ns4 has no `actors.defs.ts`: the audience of the module is the access matrix, whose profiles are
+ * exactly the ids the operations already name in `actors[]`. `kind` (internal/external/system) is
+ * the role scope.
+ */
+export function readAccessMatrixActors(obj: Record<string, unknown>, moduleName: string): CbActor[] {
+  const arr = Array.isArray(obj.profiles) ? obj.profiles.filter(isRecord) : [];
+  return arr
+    .map(profile => {
+      const actorId = readString(profile.profileId);
+      if (!actorId) return null;
+      return { actorId, title: readString(profile.title) || actorId, roleScope: readString(profile.kind), moduleName };
+    })
+    .filter((a): a is CbActor => a !== null);
+}
+
 // Parse a l4 v2 workspace defs into a CbWorkspace (bffCalls + projection). Pure/testable: no file I/O.
 export function parseWorkspaceDefs(obj: Record<string, unknown>, moduleName: string): CbWorkspace | null {
   if (!isRecord(obj)) return null;

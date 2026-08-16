@@ -360,10 +360,13 @@ async function readActorDefinitions(project: number): Promise<SeedActorDefinitio
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
-    if (!isRecord(parsed) || !Array.isArray(parsed.actors)) continue;
-    for (const raw of parsed.actors) {
+    if (!isRecord(parsed)) continue;
+    // ns4 has no actors file: the same identities are the profiles of the access matrix.
+    const declared = Array.isArray(parsed.actors) ? parsed.actors : Array.isArray(parsed.profiles) ? parsed.profiles : null;
+    if (!declared) continue;
+    for (const raw of declared) {
       if (!isRecord(raw)) continue;
-      const actorId = readString(raw.actorId);
+      const actorId = readString(raw.actorId) || readString(raw.profileId);
       if (!actorId || seen.has(actorId)) continue;
       seen.add(actorId);
       actors.push({ actorId, title: readString(raw.title) });
@@ -384,7 +387,8 @@ async function readRuleDefinitions(project: number): Promise<SeedRuleDefinition[
     if (!isRecord(parsed) || !Array.isArray(parsed.rules)) continue;
     for (const raw of parsed.rules) {
       if (!isRecord(raw)) continue;
-      const ruleId = readString(raw.ruleId);
+      // ns4 names the rule `id`; the text behind the id is what the planner needs (run13's lesson).
+      const ruleId = readString(raw.ruleId) || readString(raw.id);
       if (!ruleId) continue;
       rules.push({ ruleId, title: readString(raw.title), description: readString(raw.description), appliesTo: readStringArray(raw.appliesTo) });
     }

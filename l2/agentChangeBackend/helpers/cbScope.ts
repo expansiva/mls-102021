@@ -94,7 +94,12 @@ export function backfillEntityFieldsFromOwners(entities: CbEntity[], owners: CbO
 export function scopeBackendScan(input: CbScopeInput): CbScopeResult {
   const pendingModules = [...new Set(input.owners.map(o => o.moduleName).filter(Boolean))].sort();
   const requested = input.requestedModule.trim();
-  const moduleName = requested || pendingModules[0] || input.allModuleNames[0] || '';
+  // A module typed by hand ('buildFlowFSM47') must resolve to the canonical name the artifacts use,
+  // or every collection filters to empty and the run reports "no work" for a module that has work.
+  const canonical = requested
+    ? [...input.allModuleNames, ...pendingModules].find(name => name.toLowerCase() === requested.toLowerCase()) || requested
+    : '';
+  const moduleName = canonical || pendingModules[0] || input.allModuleNames[0] || '';
   if (!moduleName) {
     return {
       moduleName: '',
@@ -104,7 +109,7 @@ export function scopeBackendScan(input: CbScopeInput): CbScopeResult {
   }
   const entities = input.entities.filter(e => e.moduleName === moduleName);
   const inScope = new Set(entities.map(e => e.entityId));
-  const warning = (requested && !input.allModuleNames.includes(requested))
+  const warning = (requested && !input.allModuleNames.includes(canonical))
     ? `requested module '${requested}' not found in project modules [${input.allModuleNames.join(', ') || 'none'}]`
     : null;
   return {

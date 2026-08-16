@@ -30,8 +30,21 @@ A partir desta versão o backend é organizado em **3 camadas, modelo hexagonal 
 
 **Status de reconciliação (arquivos de trabalho por camada):**
 `l5/{module}/todoFrontend.defs.ts` e `l5/{module}/todoBackend.defs.ts`, cada um com owners `workflow | operation` e status `toCreate | toUpdate | toRemove | inProgress | done`.
+O gerador nomeia a unidade no vocabulário dele: o **ns4** escreve `ownerType: "useCase"` com o
+status em `statusBackend` — mesmos ids de operation, então é tradução, não um segundo modelo de
+owner. A escrita de volta vai no MESMO campo lido e preserva o arquivo como o gerador escreveu
+(header, `import type`, `satisfies`): reserializar tiraria o typecheck do projeto gerado.
 Este worker lê/escreve **apenas `todoBackend`**; o `agentChangeFrontend` cuida do `todoFrontend`.
 O L4 é read-only para este agente. Se owners legados ainda tiverem `statusBackend` inline, esse campo é ignorado para decisão de trabalho; divergência inline × todo vira warning.
+
+**Dialetos do L4 que este agente lê:** `} as const;` (ns/ns3) e `} as const satisfies <Artefato>;`
+(ns4). No ns4 mudou também DE ONDE vem cada coisa: os `relationships` moram em
+`{module}/ontology/index.defs.ts` (não mais no `module.defs.ts`), os papéis são os `profiles` de
+`{module}/access/access-matrix.defs.ts` (não há mais `actors.defs.ts`), as regras usam a chave `id`,
+e `workflows/` passou a ser o **lifecycle de uma entidade** (states/transitions) — não é unidade de
+geração e não aparece no todo. Entidade `kind: "projection"` é read-model: mapeia para `metric` — não
+vira raiz de agregado sozinha, mas ganha tabela e seeds quando alguma operation a lê (é assim que um
+dashboard responde em runtime).
 
 **Espaço de IDs:** o backend resolve tabelas a partir dos **ids de ontologia** das operations/entities. **Nunca** confiar em nomes de agregado.
 

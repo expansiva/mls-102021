@@ -11,7 +11,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, parseDefsSource, isRecord,
   saveDefs, buildArtifact, buildPipelineItem, httpControllerFileInfo, usecaseFileInfo,
-  dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand, setTodoBackendStatus,
+  dtsRef, layerSkills, capitalize, lowerFirst, logPrefix, readCliCommand, setTodoBackendStatus, handlerKindOf,
   ALL_STATUSES, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
@@ -178,7 +178,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             command: fn.functionName,
             usecaseRef: fn.functionName,
             inputTypeName: fn.inputTypeName,
-            kind: fn.kind || owner.opKind || 'command',
+            kind: fn.kind || handlerKindOf(owner.opKind),
             inputContract: owner.inputs,
             contextResolution: owner.contextResolution,
             accessPattern: owner.accessPattern,
@@ -211,7 +211,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           command: owner.commandName || ownerId,
           usecaseRef: fn?.functionName || ownerId,
           inputTypeName: fn?.inputTypeName,
-          kind: fn?.kind || owner.opKind || 'command',
+          kind: fn?.kind || handlerKindOf(owner.opKind),
           inputContract: owner.inputs,
           contextResolution: owner.contextResolution,
           accessPattern: owner.accessPattern,

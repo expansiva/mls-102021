@@ -21,9 +21,17 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import {
-  parseWorkspaceDefs, readModuleActors, readActorsField,
+  parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle, type CbEntityKind,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
+import {
+  parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
   type CbWorkspace, type CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
+
+export {
+  parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
+};
+export type { CbEntityKind };
 
 export {
   createPlannerToolSchema,
@@ -66,7 +74,7 @@ export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 
 // `readonly`: now that a SINGLE array instance is shared by every caller, an in-place mutation
 // (push/sort/splice) would silently change what every ownership check sees.
 export const ALL_STATUSES: readonly OwnerStatus[] = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
-export type EntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
+export type EntityKind = CbEntityKind;
 export type L4ContextSource =
   | 'userInput'
   | 'actorSession'
@@ -253,11 +261,17 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
     if (folder === 'operations' || folder.endsWith('/operations')) {
       rawOwners.push({ kind: 'operation', obj: parsed, moduleName: nestedModule || undefined });
     } else if (folder === 'workflows' || folder.endsWith('/workflows')) {
-      rawOwners.push({ kind: 'workflow', obj: parsed, moduleName: nestedModule || undefined });
+      // ns4 workflows are entity lifecycles (states/transitions), not units of generation: nothing
+      // in the todo owns them, so treating them as owners would fail the scan on missing owners.
+      if (!isEntityLifecycle(parsed)) rawOwners.push({ kind: 'workflow', obj: parsed, moduleName: nestedModule || undefined });
     } else if (folder.endsWith('/workspaces')) {
       // l4 v2 only: the workspace declares the page's bffCalls (controller source — see B4).
       const ws = parseWorkspaceDefs(parsed, nestedModule);
       if (ws) { workspaces.push(ws); if (ws.moduleName) moduleNames.add(ws.moduleName); }
+    } else if (shortName === 'access-matrix' || folder.endsWith('/access')) {
+      // ns4: the module audience lives in the access matrix instead of a dedicated actors file.
+      const moduleName = readString(parsed.moduleName) || folder.split('/')[0];
+      for (const a of readAccessMatrixActors(parsed, moduleName)) actorsList.push(a);
     } else if (shortName === 'actors' && folder && !folder.includes('/')) {
       // l4 v2 module actors file: `l4/<module>/actors.defs.ts` (folder === moduleName; actors are objects).
       const moduleName = readString(parsed.moduleName) || folder;
@@ -275,6 +289,12 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
       collectModuleOntology(parsed, moduleName, entities, entityToModule, relationships);
     } else if (folder.endsWith('/ontology')) {
       const moduleName = folder.split('/')[0];
+      // ns4 keeps the relationship graph in the ontology index; it is an index, never an entity.
+      if (shortName === 'index') {
+        if (moduleName) { moduleNames.add(moduleName); collectOntologyRelationships(parsed, relationships); }
+        continue;
+      }
+      // Older generators name the entity only by the file; ns4 always declares `entityId`.
       const entityId = readString(parsed.entityId) || shortName;
       if (moduleName && entityId) {
         moduleNames.add(moduleName);
@@ -282,7 +302,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
         upsertEntity(entities, {
           entityId,
           title: readString(parsed.title) || entityId,
-          kind: (readString(parsed.kind) as EntityKind) || 'core',
+          kind: entityKindOf(readString(parsed.kind)),
           ownership: readString(parsed.ownership) || 'moduleOwned',
           moduleName,
           fields: Array.isArray(parsed.fields) ? parsed.fields.filter(isRecord) : undefined,
@@ -381,6 +401,22 @@ interface CbTodoOwner {
   moduleName: string;
 }
 
+/**
+ * The generator names the unit of backend work in its own vocabulary. ns4 calls it `useCase` and
+ * stores the status in `statusBackend`; ns/ns3 called it `operation` with `status`. The ids are the
+ * same operation ids either way, so the alias is a translation, never a second owner model.
+ */
+const TODO_OWNER_TYPE_ALIASES: Record<string, 'operation' | 'workflow'> = { operation: 'operation', workflow: 'workflow', useCase: 'operation' };
+const TODO_STATUS_FIELDS = ['status', 'statusBackend'] as const;
+
+function todoOwnerType(raw: string): 'operation' | 'workflow' | '' {
+  return TODO_OWNER_TYPE_ALIASES[raw] || '';
+}
+/** The field the file actually uses, so the write-back lands where the read came from. */
+function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] | '' {
+  return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || '';
+}
+
 interface CbTodoState {
   files: number;
   moduleNames: string[];
@@ -418,10 +454,10 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
     if (moduleName) moduleNames.add(moduleName);
     const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
     for (const raw of owners) {
-      const ownerType = readString(raw.ownerType);
+      const ownerType = todoOwnerType(readString(raw.ownerType));
       const ownerId = readString(raw.ownerId);
-      const status = readString(raw.status);
-      if ((ownerType !== 'operation' && ownerType !== 'workflow') || !ownerId) {
+      const status = readString(raw[todoStatusField(raw) || 'status']);
+      if (!ownerType || !ownerId) {
         errors.push(`todoBackend ${moduleName || String(file.folder || '')} has invalid owner entry`);
         continue;
       }
@@ -471,6 +507,17 @@ export function deriveEventTargets(entities: CbEntity[], relationships: CbRelati
     out.push({ entityId: e.entityId, ownerEntity, purpose: policy.purpose, retentionDays, persisted, fields: e.fields });
   }
   return out;
+}
+
+/** ns4 relationships live in `<module>/ontology/index.defs.ts` instead of in module.defs.ts. */
+function collectOntologyRelationships(index: Record<string, unknown>, relationships: CbRelationship[]): void {
+  const rels = Array.isArray(index.relationships) ? index.relationships : [];
+  for (const rel of rels) {
+    if (!isRecord(rel)) continue;
+    const fromEntity = readString(rel.fromEntity);
+    const toEntity = readString(rel.toEntity);
+    if (fromEntity && toEntity) relationships.push({ fromEntity, toEntity, type: readString(rel.type) || 'manyToOne' });
+  }
 }
 
 function collectModuleOntology(
@@ -836,6 +883,12 @@ export async function saveDefs(fileInfo: CbFileInfo, exportName: string, data: u
   let src = `/// <mls fileReference="${ref}" enhancement="_blank"/>\n\n`;
   src += `export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`;
   if (pipeline && pipeline.length) src += `\nexport const pipeline = ${JSON.stringify(pipeline, null, 2)} as const;\n`;
+  return writeDefsSource(fileInfo, src);
+}
+
+/** Write a .defs.ts verbatim. Used to update a file this agent does not own the shape of. */
+export async function writeDefsSource(fileInfo: CbFileInfo, src: string): Promise<string> {
+  const ref = defsRef(fileInfo);
   const info = mls.stor.convertFileReferenceToFile(ref);
   const param: IReqCreateStorFile = { ...info, source: src } as IReqCreateStorFile;
   const file = await createStorFile(param, true, true, true);
@@ -1007,17 +1060,20 @@ export async function setTodoBackendStatus(owner: CbOwner, status: OwnerStatus):
     const parsed = parseDefsSource(content);
     if (!isRecord(parsed)) continue;
     const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
-    const todoOwner = owners.find(raw => readString(raw.ownerType) === owner.kind && readString(raw.ownerId) === owner.id);
+    const todoOwner = owners.find(raw => todoOwnerType(readString(raw.ownerType)) === owner.kind && readString(raw.ownerId) === owner.id);
     if (!todoOwner) continue;
+    const fileInfo = { project, level: 5, folder: String(file.folder || owner.moduleName), shortName: 'todoBackend', extension: '.defs.ts' };
+    // Write the status back into the field it was read from, and keep the rest of the file as the
+    // generator wrote it: re-serializing would drop its `import type` and its `satisfies`.
+    todoOwner[todoStatusField(todoOwner) || 'status'] = status;
+    const preserved = replaceDefsValue(content, parsed);
+    // `updatedAt` is this agent's own bookkeeping: an artifact typed with `satisfies` rejects the
+    // extra property, so it is only added on the path that rewrites the file wholesale.
+    if (preserved) { await writeDefsSource(fileInfo, preserved); return true; }
     const exportName = readExportName(content);
     if (!exportName) return false;
-    todoOwner.status = status;
     parsed.updatedAt = new Date().toISOString();
-    await saveDefs(
-      { project, level: 5, folder: String(file.folder || owner.moduleName), shortName: 'todoBackend', extension: '.defs.ts' },
-      exportName,
-      parsed,
-    );
+    await saveDefs(fileInfo, exportName, parsed);
     return true;
   }
   return false;
@@ -1199,17 +1255,6 @@ export function enqueueNext(
 }
 
 // ── small parsers ──────────────────────────────────────────────────────────────
-
-export function parseDefsSource(content: string): unknown {
-  const start = content.indexOf('= ');
-  const end = content.lastIndexOf(' as const;');
-  if (start === -1 || end === -1 || end <= start) return null;
-  try {
-    return JSON.parse(content.slice(start + 2, end));
-  } catch {
-    return null;
-  }
-}
 
 function readExportName(content: string): string {
   const m = content.match(/export const\s+([A-Za-z0-9_$]+)\s*=/);

@@ -124,3 +124,19 @@ test('backfill ignores malformed fieldRefs and leaves an entity with no declarat
   assert.equal(entity.fields, undefined);
   assert.deepEqual(backfillEntityFieldsFromOwners([metricEntity('NoDotHere')], owners)[0].fields, undefined);
 });
+
+test('scopeBackendScan: a module typed with the wrong case resolves to the canonical name', () => {
+  // 'buildFlowFSM47' typed by hand against a module called 'buildFlowFsm47' used to filter every
+  // collection to empty and report "no work" for a module that had 119 pending owners.
+  const r = scopeBackendScan(base('PETshop'));
+  assert.equal(r.moduleName, 'petShop');
+  assert.deepEqual(r.owners.map(o => (o as { id: string }).id), ['bookRoom']);
+  assert.equal(r.warning, null);
+});
+
+test('scopeBackendScan: a module that exists nowhere still warns', () => {
+  const r = scopeBackendScan(base('cafeFlowX'));
+  assert.equal(r.moduleName, 'cafeFlowX');
+  assert.deepEqual(r.owners, []);
+  assert.match(String(r.warning), /not found in project modules/);
+});
