@@ -12,7 +12,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload, readCbPrompt,
-  createAddStepIntent, createParallelStepIntent,
+  createAddStepIntent, createParallelStepIntent, enqueueNextInPhase,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
@@ -201,11 +201,10 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // JUDGE joins on the single parallel parent (runs after every worker finished): adversarial
     // critique of the saved usecase defs vs the L4 contract, routing error findings back to these
     // workers (repair loop) before controllers/materialization. The judge enqueues cb-gen-http.
-    const jstep = createAgentStepPayload('cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { planId: 'cb-judge', judgeRun: 1 }, [FANOUT_PLAN_ID], 'sequential', 'waiting_dependency');
-    // The judge must never kill a run (its afterPrompt fails soft to cb-gen-http). Without 'continue',
-    // an LLM-CALL failure (proxy 502) would mark the whole task failed before afterPrompt ever ran.
-    jstep.onFailure = 'continue';
-    intents.push(createAddStepIntent(context, parentStep, jstep));
+    // The judge opens its OWN phase: its dispatcher, the batch fan-out, the collector, the repair
+    // rounds and the re-judges all belong to that branch instead of the task root.
+    // It must never kill a run (it fails soft to cb-gen-http), so 'continue' survives an LLM 502.
+    intents.push(enqueueNextInPhase(context, step, 'judge', 'cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { judgeRun: 1 }, 'continue'));
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)`));
     return intents;
   } catch (error) {

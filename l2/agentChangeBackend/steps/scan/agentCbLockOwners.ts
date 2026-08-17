@@ -7,7 +7,7 @@
 // from the l4/l5 scan. See flow.json (index-steps cut) and todo/modernizeChangeBackend.md.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, setTodoBackendStatus, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, setTodoBackendStatus, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbLockOwners', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/scan', agentDescription: 'Deterministic todoBackend toCreate -> inProgress lock', visibility: 'private', beforePromptStep };
@@ -21,7 +21,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (await setTodoBackendStatus(owner, 'inProgress')) locked++;
     }
     return [
-      enqueueNext(context, parentStep, step, 'cb-gen-domain', 'agentCbDomainEntity', 'Gerar entidades de domínio', {}),
+      enqueueNextInPhase(context, step, 'generation', 'cb-gen-domain', 'agentCbDomainEntity', 'Gerar entidades de domínio', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Locked ${locked} owner(s).`),
     ];
   } catch (error) {

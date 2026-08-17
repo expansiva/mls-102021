@@ -70,3 +70,29 @@ export function isEntityLifecycle(parsed: Record<string, unknown>): boolean {
   return typeof parsed.entityRef === 'string' && !!parsed.entityRef.trim()
     && Array.isArray(parsed.states) && Array.isArray(parsed.transitions);
 }
+
+/**
+ * The module a `TS2792 Cannot find module '<path>'` names, or '' for any other diagnostic.
+ *
+ * A generated file that imports a platform contract of another project (`/_102034_/l1/...`) compiles
+ * against a Monaco model this agent borrows for the compile. When the borrow silently fails the
+ * diagnostic is indistinguishable from a real broken import — and the seed run of 2026-08-16 died on
+ * one, after two earlier waves had compiled the very same file. Recognizing the shape is what lets
+ * the caller ask "does this file actually exist?" instead of blaming the plan.
+ */
+export function phantomModulePathOf(diagnostic: string): string {
+  if (!/TS2792/.test(diagnostic)) return '';
+  const match = /Cannot find module ['"]([^'"]+)['"]/.exec(diagnostic);
+  const path = match?.[1] || '';
+  return /^\/_\d+_\/l\d+\//.test(path) ? path : '';
+}
+
+/** `/_102034_/l1/server/.../contracts.js` -> the file coordinates of its source. */
+export function mlsImportPathParts(path: string): { project: number; level: number; folder: string; shortName: string } | null {
+  const match = /^\/_(\d+)_\/l(\d+)\/(.+)$/.exec(path);
+  if (!match) return null;
+  const rest = match[3].replace(/\.js$/, '');
+  const cut = rest.lastIndexOf('/');
+  if (cut <= 0) return null;
+  return { project: Number(match[1]), level: Number(match[2]), folder: rest.slice(0, cut), shortName: rest.slice(cut + 1) };
+}

@@ -19,7 +19,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  readBackendScan, setTodoBackendStatus, createAgentStepPayload, createUpdateStatusIntent, logPrefix,
+  readBackendScan, setTodoBackendStatus, createAgentStepPayload, createUpdateStatusIntent, logPrefix, CB_PHASES,
   ALL_STATUSES,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { parseCli, normalizePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbCli.js';
@@ -97,8 +97,14 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     return [addMessageAI, createBootstrapAddStepIntent(context, createHelpStep())];
   }
 
-  const scanStep = createAgentStepPayload('cb-scan', 'agentCbScanCreateOwners', 'Scan todoBackend (status = toCreate)', { planId: 'cb-scan' }, [], 'sequential', 'waiting_human_input');
-  return [addMessageAI, createBootstrapAddStepIntent(context, scanStep)];
+  // The run opens INSIDE its first phase: every step the scan enqueues is a sibling in that branch,
+  // so the task tree reads as a handful of phases instead of ~44 flat technical lines.
+  const phase = CB_PHASES.preparation;
+  const phaseStep = createAgentStepPayload(phase.planId, 'agentCbPhase', phase.title, {
+    planId: phase.planId,
+    first: { planId: 'cb-scan', agentName: 'agentCbScanCreateOwners', stepTitle: 'Scan todoBackend (status = toCreate)', args: { planId: 'cb-scan' } },
+  }, [], 'sequential', 'waiting_human_input');
+  return [addMessageAI, createBootstrapAddStepIntent(context, phaseStep)];
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {

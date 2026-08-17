@@ -8,6 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
+  mlsImportPathParts, phantomModulePathOf,
 } from './cbDefsSource.js';
 import { readAccessMatrixActors } from './cbWorkspace.js';
 
@@ -85,4 +86,29 @@ test('the module audience comes from the access matrix profiles', () => {
     { actorId: 'companyAdministrator', title: 'Company administrator', roleScope: 'internal', moduleName: 'buildFlowFsm47' },
     { actorId: 'fieldWorker', title: 'fieldWorker', roleScope: 'internal', moduleName: 'buildFlowFsm47' },
   ]);
+});
+
+// ── a phantom module is an environment failure, not a plan defect ────────────
+// Waves 1 and 2 of the seed run compiled the same seeds.ts with the same import minutes before wave 3
+// failed on it: the file was always there, its compiler model was not.
+
+test('a TS2792 over a real project path is recognized, and nothing else is', () => {
+  const real = "file://server/_102046_/l1/x.ts - TS2792 - Cannot find module '/_102034_/l1/server/layer_1_external/persistence/contracts.js'. Did you mean to set moduleResolution?";
+  assert.equal(phantomModulePathOf(real), '/_102034_/l1/server/layer_1_external/persistence/contracts.js');
+  // A package import is not ours to load; a different diagnostic is not this problem.
+  assert.equal(phantomModulePathOf("TS2792 - Cannot find module 'lit'"), '');
+  assert.equal(phantomModulePathOf("TS2339 - Property 'x' does not exist"), '');
+  assert.equal(phantomModulePathOf(''), '');
+});
+
+test('the import path resolves to the file coordinates the loader needs', () => {
+  assert.deepEqual(mlsImportPathParts('/_102034_/l1/server/layer_1_external/persistence/contracts.js'), {
+    project: 102034, level: 1, folder: 'server/layer_1_external/persistence', shortName: 'contracts',
+  });
+  assert.deepEqual(mlsImportPathParts('/_102046_/l2/buildFlowFsm47/web/contracts/page.js'), {
+    project: 102046, level: 2, folder: 'buildFlowFsm47/web/contracts', shortName: 'page',
+  });
+  // No folder, or not an mls path at all: nothing to load.
+  assert.equal(mlsImportPathParts('/_102034_/l1/contracts.js'), null);
+  assert.equal(mlsImportPathParts('lit'), null);
 });

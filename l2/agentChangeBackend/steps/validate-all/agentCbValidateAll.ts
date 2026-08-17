@@ -15,7 +15,7 @@
 // (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
   mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
@@ -557,7 +557,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
         await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
         return [
-          enqueueNext(context, parentStep, step, 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
+          enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
@@ -578,7 +578,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
       : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote;
     return [
-      enqueueNext(context, parentStep, step, preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
+      enqueueNextInPhase(context, step, preSeeds ? 'seeds' : 'finalization', preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),
     ];
   } catch (error) {

@@ -216,7 +216,9 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
-import { reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { CB_PHASES, reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners, type CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+export { CB_PHASES } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+export type { CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 import { promptSizeError } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
 
 export interface CbScan {
@@ -1144,6 +1146,59 @@ export function createAgentStepPayload(
     rags: [],
     planning: { planId, dependsOn, executionMode, executionHost: 'client', ...(dynamicSource ? { dynamicSource } : {}) },
   } as any;
+}
+
+
+/**
+ * Start the next step INSIDE its phase. Steps that stay in the same phase keep using `enqueueNext`:
+ * their parent already IS the phase, so a sibling lands in it for free. Only a phase TRANSITION goes
+ * through here.
+ *
+ * A phase can only receive children while it is open, so it is created lazily with its first child
+ * inside it (agentCbPhase adds that child from within the phase's own hook) — never pre-created empty
+ * and then completed, which would make every later child throw.
+ */
+export function enqueueNextInPhase(
+  context: mls.msg.ExecutionContext,
+  currentStep: mls.msg.AIAgentStep,
+  phase: CbPhaseKey,
+  planId: string,
+  agentName: string,
+  stepTitle: string,
+  args: unknown = {},
+  onFailure?: mls.msg.AIAgentStep['onFailure'],
+): mls.msg.AgentIntentAddStep {
+  const dep = planIdOf(currentStep);
+  const { planId: phasePlanId, title } = CB_PHASES[phase];
+  const child = { planId, agentName, stepTitle, args: { planId, ...(args && typeof args === 'object' ? args as Record<string, unknown> : {}) }, onFailure };
+  const open = findOpenStepByPlanId(context, phasePlanId);
+  if (open) {
+    const next = createAgentStepPayload(planId, agentName, stepTitle, child.args, dep ? [dep] : [], 'sequential', 'waiting_dependency');
+    if (onFailure) next.onFailure = onFailure;
+    return createAddStepIntent(context, open, next);
+  }
+  const phaseStep = createAgentStepPayload(phasePlanId, 'agentCbPhase', title, { planId: phasePlanId, first: child }, dep ? [dep] : [], 'sequential', 'waiting_dependency');
+  // The phase belongs to the run, not to the step that opened it: it hangs from the task root.
+  return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: 1, step: phaseStep };
+}
+
+/** An agent step with this planId that can still receive children. */
+export function findOpenStepByPlanId(context: mls.msg.ExecutionContext, planId: string): mls.msg.AIAgentStep | null {
+  const steps = flattenSteps(context.task?.iaCompressed?.nextSteps as unknown[] | undefined);
+  return steps.find(step => step.type === 'agent'
+    && (step.planning as { planId?: string } | undefined)?.planId === planId
+    && step.status !== 'completed' && step.status !== 'failed') || null;
+}
+
+function flattenSteps(steps: unknown[] | undefined): mls.msg.AIAgentStep[] {
+  const out: mls.msg.AIAgentStep[] = [];
+  for (const item of steps || []) {
+    if (!item || typeof item !== 'object') continue;
+    const step = item as mls.msg.AIAgentStep & { nextSteps?: unknown[] };
+    out.push(step);
+    out.push(...flattenSteps(step.nextSteps));
+  }
+  return out;
 }
 
 export function createAddStepIntent(

@@ -7,7 +7,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
-  createAgentStepPayload, createUpdateStatusIntent, enqueueNext, isRecord, logPrefix, readBackendScan,
+  createAgentStepPayload, createUpdateStatusIntent, enqueueNext, enqueueNextInPhase, isRecord, logPrefix, readBackendScan,
   readCbPrompt, readNoAssets,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { extractSeedPlanFromSource, updateSeedAssetUrlsInSource, type SeedEntityDefinition } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
@@ -162,14 +162,14 @@ async function completeAssets(context: mls.msg.ExecutionContext, parentStep: mls
   const capNote = readNoAssets(context) ? '' : seedAssetCapWarning(cappedRequests(state).dropped);
   if (capNote) console.warn(`[agentCbSeedAssets] ${capNote}`);
   return [
-    enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
+    enqueueNextInPhase(context, step, 'finalization', 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace}${warnings.length ? ` ${warnings.length} optional asset warning(s): ${warnings.join('; ')}` : ''}${capNote ? ` ${capNote}` : ''}`, 'input_output'),
   ];
 }
 
 function registerWithoutAssets(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, trace: string): mls.msg.AgentIntent[] {
   return [
-    enqueueNext(context, parentStep, step, 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
+    enqueueNextInPhase(context, step, 'finalization', 'cb-register', 'agentCbRegister', 'Registrar backend', {}),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace, 'input_output'),
   ];
 }

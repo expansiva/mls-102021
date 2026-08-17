@@ -493,7 +493,12 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw new Error(`saveGeneratedTs failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
     }
     if (saved.compileErrors.length) {
-      const repairEntry = await getComponentRepair(defRef);
+      // An import whose source is on disk did not get its compiler model: not a defect of this file,
+      // and a repair round rewriting it would only spend budget to produce the same diagnostic. It is
+      // deferred like a first-pass finding — the whole-project compile of validate-all sees the truth.
+      const realErrors = saved.compileErrors.filter(error => !saved.infraErrors.includes(error));
+      const infraOnly = saved.infraErrors.length > 0 && realErrors.length === 0;
+      const repairEntry = infraOnly ? null : await getComponentRepair(defRef);
       // Syntax findings are intra-file and deterministic — never false, so they gate IMMEDIATELY
       // even on the first pass (run 102049-g: a deferred TS5076 '||'/'??' mix survived to the end).
       if (repairEntry || saved.syntaxErrors.length) {
@@ -509,7 +514,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // be FALSE (siblings/other layers still materializing), so the compile gate is DEFERRED: the .ts
       // stays saved and cb-validate-all's whole-project compile re-checks with every file present,
       // routing REAL errors to the global repair rounds. Content checks above remain immediate gates.
-      trace = `[compile-deferred] ${saved.compileErrors.length} error(s) — re-checked by validate-all: ${saved.compileErrors.slice(0, 3).join('; ')}`;
+      trace = infraOnly
+        ? `[infra] ${saved.infraErrors.length} import(s) exist on disk but their compiler model did not load; deferred to validate-all: ${saved.infraErrors.slice(0, 2).join('; ')}`
+        : `[compile-deferred] ${saved.compileErrors.length} error(s) — re-checked by validate-all: ${saved.compileErrors.slice(0, 3).join('; ')}`;
     }
     if (!saved.compilerAvailable) {
       trace = `[infra] Monaco compiler unavailable for ${defRef}; deterministic syntax checks passed, project gate remains required`;

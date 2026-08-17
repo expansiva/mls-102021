@@ -18,12 +18,30 @@ const MLS_BASE = path.resolve(HERE, '../../../../..');
 const TOOL_NAME = 'submitJudgeFindings';
 const MODEL_TYPES = ['code', 'design'] as const;
 
-void test('agentCbJudge declares the LLM judge step agent contract', () => {
-  const src = readFileSync(path.join(HERE, 'agentCbJudge.ts'), 'utf8');
+void test('the judge is a dispatcher, N batch workers and one collector', () => {
+  const dispatcher = readFileSync(path.join(HERE, 'agentCbJudge.ts'), 'utf8');
+  const worker = readFileSync(path.join(HERE, 'agentCbJudgeBatch.ts'), 'utf8');
+  const collector = readFileSync(path.join(HERE, 'agentCbJudgeCollect.ts'), 'utf8');
   const flow = readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8');
-  assert.match(src, /agentCbJudge/);
-  assert.match(src, /createPromptReadyIntent/);
-  assert.match(src, /afterPromptStep/);
+
+  // The dispatcher plans and fans out; it must not call the model itself (that was the 413).
+  assert.match(dispatcher, /createParallelStepIntent\(context, parentStep, fanoutPlanId, 'agentCbJudgeBatch'/);
+  assert.match(dispatcher, /\{\{completed\}\}\/\{\{total\}\}/);
+  assert.doesNotMatch(dispatcher, /createPromptReadyIntent/);
+  assert.doesNotMatch(dispatcher, /afterPromptStep/);
+
+  // The worker judges its slice and persists it — the runtime discards a child's return value —
+  // and it never fails (a failed child fails the whole task) and never adds steps.
+  assert.match(worker, /createPromptReadyIntent/);
+  assert.match(worker, /saveBatchFindings/);
+  assert.doesNotMatch(worker, /'failed'/);
+  assert.doesNotMatch(worker, /createAddStepIntent|createParallelStepIntent/);
+
+  // The collector owns the single routing decision, over the union of the batches.
+  assert.match(collector, /readBatchFindings\(judgeRun\)/);
+  assert.match(collector, /createParallelStepIntent\(context, parentStep, repairPlanId, 'agentCbUsecase'/);
+  assert.match(collector, /'cb-gen-http'/);
+
   assert.match(flow, /"agentName": "agentCbJudge"/);
 });
 
@@ -104,20 +122,24 @@ void test('a pair bigger than the whole budget still drains, alone', () => {
   assert.deepEqual(plan.pending, ['next']);
 });
 
-void test('the judge chains its batches and only routes when the queue is empty', () => {
-  const src = readFileSync(path.join(HERE, 'agentCbJudge.ts'), 'utf8');
-  // Both hooks plan the same slice from the same step args — the after-hook must judge exactly the
-  // owners the model saw, never the whole scope.
-  assert.equal((src.match(/planJudgeSlice\(step, operations/g) || []).length, 2);
-  assert.match(src, /if \(slice\.pending\.length\) \{[\s\S]{0,900}createAddStepIntent\(context, parentStep, nextStep\)/);
-  // Findings of earlier batches survive in the repair state and join the final decision.
-  assert.match(src, /judgePendingOwners/);
-  assert.match(src, /const routedOwners = new Set<string>\(\[[\s\S]{0,200}judgePendingOwners[\s\S]{0,120}errorsByOwner\.keys\(\)/);
-  // The first batch of a run never inherits an accumulator a soft-failed previous run left behind.
-  assert.match(src, /slice\.batchIndex > 1 \? state\.judgePendingOwners \|\| \[\] : \[\]/);
-  assert.match(src, /if \(routedByOwner\.size > 0 && judgeRun < JUDGE_MAX_RUNS\)/);
-  // The deterministic findings are computed over the batch, not over the whole scope.
-  assert.match(src, /missingDefsFindings\(await readUsecaseDefsByOwner\(scan, batchOwners\), scan, batchOwners\)/);
+void test('the batches are planned once and their findings meet only in the collector', () => {
+  const dispatcher = readFileSync(path.join(HERE, 'agentCbJudge.ts'), 'utf8');
+  const worker = readFileSync(path.join(HERE, 'agentCbJudgeBatch.ts'), 'utf8');
+  const collector = readFileSync(path.join(HERE, 'agentCbJudgeCollect.ts'), 'utf8');
+
+  // Planned ONCE by the dispatcher; the worker receives its owners as the arg and re-plans nothing.
+  assert.match(dispatcher, /planBatches\(await pairSizes\(scan, operations\)\)/);
+  assert.doesNotMatch(worker, /planJudgeBatch/);
+  assert.match(worker, /const wanted = new Set\(parsed\.queue \|\| parsed\.owners\)/);
+
+  // Parallel workers must not read-modify-write one shared accumulator: each writes its own file and
+  // the collector unions them (concurrent writers to cb-repair-state would drop findings).
+  assert.match(worker, /judgeFindingsFileInfo/);
+  assert.match(collector, /for \(const file of Object\.values\(mls\.stor\.files\)/);
+  assert.doesNotMatch(worker, /saveRepairState/);
+  // The routing decision — and only it — writes the repair state.
+  assert.match(collector, /saveRepairState\(state\)/);
+  assert.match(collector, /judgeRun < JUDGE_MAX_RUNS/);
 });
 
 void test('a prompt over the transport limit fails the step instead of hanging it', () => {

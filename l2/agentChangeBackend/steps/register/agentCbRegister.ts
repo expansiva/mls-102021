@@ -13,7 +13,7 @@
 // to 102034).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { extractSeedSkippedFromSource, type SeedSkippedTargets } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
@@ -158,7 +158,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       console.warn(`${logPrefix(agent)} ${configMsg}`);
     }
     return [
-      enqueueNext(context, parentStep, step, 'cb-validate-all', 'agentCbValidateAll', 'Validar artefatos l1', {}),
+      enqueueNextInPhase(context, step, 'finalization', 'cb-validate-all', 'agentCbValidateAll', 'Validar artefatos l1', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Registered ${moduleTables.length} module table(s). ${compositionMsg}. ${configMsg}`),
     ];
   } catch (error) {

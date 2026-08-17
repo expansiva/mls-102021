@@ -44,13 +44,15 @@ test('summarizeCost (T7): empty report -> no top phase', () => {
   assert.deepEqual(summarizeCost({}), { totalCost: 0, totalCalls: 0, topPhase: null, topPhaseCost: 0 });
 });
 
-test('formatCostSummary (T7): human line, phases sorted by cost desc; empty -> ""', () => {
+test('formatCostSummary (T7): human line, calls per phase; empty -> ""', () => {
   assert.equal(formatCostSummary({}), '');
   const line = formatCostSummary({
     'gen-domain': { cost: 0.20, calls: 4, inputTokens: 0, outputTokens: 0 },
     materialize: { cost: 7.45, calls: 146, inputTokens: 0, outputTokens: 0 },
   });
   assert.match(line, /cost \$7\.65 in 150 call\(s\)/u);
-  assert.match(line, /materialize \$7\.45\/146, gen-domain \$0\.20\/4/u); // sorted desc
+  // "where did the 411 calls go?" is the question this line answers, so the calls are spelled out
+  // and the phases are ordered by how many they took.
+  assert.match(line, /by phase: materialize 146 call\(s\) \$7\.45, gen-domain 4 call\(s\) \$0\.20/u);
   assert.match(line, /priciest: materialize \$7\.45/u);
 });

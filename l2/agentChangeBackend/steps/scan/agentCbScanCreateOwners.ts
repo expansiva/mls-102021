@@ -4,7 +4,7 @@
 // No work -> finish (no file/status writes). Work -> continue to validate.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
 export function createAgent(): IAgentAsync {
@@ -21,7 +21,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (readCliCommand(context) === 'rebuild-seeds') {
       await clearRepairState();
       return [
-        enqueueNext(context, parentStep, step, 'cb-gen-seeds', 'agentCbSeeds', 'Regenerar seeds (rebuild-seeds)', {}),
+        enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Regenerar seeds (rebuild-seeds)', {}),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'rebuild seeds: regenerando somente seeds.ts (+ assets).'),
       ];
     }
@@ -41,7 +41,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const targetModule = readTargetModule(context);
       if (!targetModule) {
         return [
-          enqueueNext(context, parentStep, step, 'cb-final-summary', 'agentCbFinalSummary', 'Resumo do run', {
+          enqueueNextInPhase(context, step, 'finalization', 'cb-final-summary', 'agentCbFinalSummary', 'Resumo do run', {
             noWork: true,
             reason: 'nenhum módulo com owners pendentes (todoBackend toCreate|inProgress). Um módulo já construído fica com os owners `done`, então não aparece como pendente: para retomar/revalidar um módulo específico use `/run <módulo>` (ex: /run cafeFlow), ou `/rebuild all <módulo>` para regerar do zero.',
           }),

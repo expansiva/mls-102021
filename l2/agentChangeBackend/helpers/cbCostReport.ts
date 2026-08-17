@@ -55,9 +55,11 @@ export function summarizeCost(report: CbCostReport): { totalCost: number; totalC
 export function formatCostSummary(report: CbCostReport): string {
   const { totalCost, totalCalls, topPhase, topPhaseCost } = summarizeCost(report);
   if (!totalCalls) return '';
+  // "$1.20/11" read as a rate to more than one person; the calls are the question being answered
+  // (where did the 411 calls of a run go?), so they are spelled out.
   const per = Object.entries(report)
-    .sort(([, a], [, b]) => b.cost - a.cost)
-    .map(([phase, c]) => `${phase} $${c.cost.toFixed(2)}/${c.calls}`)
+    .sort(([, a], [, b]) => b.calls - a.calls)
+    .map(([phase, c]) => `${phase} ${c.calls} call(s) $${c.cost.toFixed(2)}`)
     .join(', ');
-  return ` cost $${totalCost.toFixed(2)} in ${totalCalls} call(s) [${per}]${topPhase ? `; priciest: ${topPhase} $${topPhaseCost.toFixed(2)}` : ''}`;
+  return ` cost $${totalCost.toFixed(2)} in ${totalCalls} call(s) — by phase: ${per}${topPhase ? `; priciest: ${topPhase} $${topPhaseCost.toFixed(2)}` : ''}`;
 }

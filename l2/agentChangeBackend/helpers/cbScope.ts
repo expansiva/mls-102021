@@ -6,6 +6,21 @@
 
 import type { CbOwner, CbEntity, CbRelationship, CbWorkspace, CbActor } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 
+/**
+ * The phases a run is grouped into, in order. Pure so a test can read them without the platform:
+ * cbShared re-exports and uses them.
+ */
+export const CB_PHASES = {
+  preparation: { planId: 'cb-phase-preparation', title: 'Preparação' },
+  generation: { planId: 'cb-phase-generation', title: 'Geração' },
+  judge: { planId: 'cb-phase-judge', title: 'Validação (juiz)' },
+  materialization: { planId: 'cb-phase-materialization', title: 'Materialização' },
+  seeds: { planId: 'cb-phase-seeds', title: 'Seeds' },
+  finalization: { planId: 'cb-phase-finalization', title: 'Finalização' },
+} as const;
+
+export type CbPhaseKey = keyof typeof CB_PHASES;
+
 export interface CbScopeInput {
   owners: CbOwner[];
   entities: CbEntity[];

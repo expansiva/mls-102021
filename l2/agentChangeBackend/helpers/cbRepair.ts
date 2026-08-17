@@ -56,10 +56,6 @@ export interface CbRepairState {
   componentRepairs: Record<string, CbComponentRepair>;
   globalAttempts: number;  // validate-all repair rounds consumed
   judgeRuns: number;       // judge passes consumed
-  /** Owners the judge already routed to repair in the CURRENT run, accumulated across its batches:
-   *  the judge reads the module in slices, so the routing decision can only be taken when the last
-   *  slice lands and must not lose what the earlier ones found. */
-  judgePendingOwners?: string[];
   /** Durable audit of every repair occurrence in the run ("target :: attempt n :: finding"). The
    * fan-out children are DELETED by the runtime after completion, so this history is what survives;
    * cb-validate-all embeds it in the task trace before clearing the state. */

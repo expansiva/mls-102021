@@ -273,6 +273,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const next = nextSeedBatch(input, merged);
     const partial = buildPartialSeedSource(input, { plan: merged, completedWaveIndexes: completedWaveIndexes(input, merged) });
     const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', partial);
+    if (saved.infraErrors.length) throw new Error(seedInfraFailure(saved.infraErrors));
     if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to persist partial seeds.ts: ${saved.compileErrors.join('; ')}`);
     if (!next) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, merged, `Generated final seed wave ${batch.index} (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
     return scheduleSeedStep(context, parentStep, step, hookSequential, { seedAttempt: 1, seedFindings: [], forcedBatch: next }, `Validated seed wave ${batch.index}; persisted partial plan and scheduled the next wave (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
@@ -281,6 +282,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     console.error(`${logPrefix(agent)} ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+/** An environment failure, in the words of the person who has to act on it. */
+function seedInfraFailure(infraErrors: string[]): string {
+  return `SEEDS-ENVIRONMENT-FAILURE: the import(s) below exist on disk but their compiler model did not load, so this is not a defect of the seed plan and no repair round can fix it. Re-run the step; if it repeats, the Studio compiler environment is the cause.\n${infraErrors.slice(0, 4).join('\n')}`;
 }
 
 function scheduleSeedStep(
@@ -314,6 +320,9 @@ async function finalizeSeedPlan(
   const built = buildSeedSource({ ...input, plan });
   if (built.errors.length || !built.content) throw new Error(`final seed plan validation failed: ${built.errors.slice(0, 30).join('; ')}`);
   const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
+  // The plan is not on trial here: these name imports whose source is on disk, so the compile ran
+  // without their model. Say so — the seeds already written stay, and a re-run picks them up.
+  if (saved.infraErrors.length) throw new Error(seedInfraFailure(saved.infraErrors));
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
   return [
     enqueueSeedAssets(context, parentStep, step),

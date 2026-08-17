@@ -4,6 +4,7 @@
 // so it does not depend on agentMaterializeSolution (being removed). Pure mls.stor / libStor access; the
 // pure prompt/parse/order logic lives in cbMaterializeCore.ts (shared with the Node CLI).
 
+import { mlsImportPathParts, phantomModulePathOf } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
@@ -166,12 +167,45 @@ async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
     if (mls.editor.models[mls.editor.getKeyModel(importProject, shortName, folder, 1)]) continue;
     const fileKey = mls.stor.getKeyToFile({ project: importProject, level: 1, folder, shortName, extension: '.ts' });
     if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
-    try {
-      await mls.editor.addModels(importProject, shortName, folder, 1);
-      borrowed.push({ project: importProject, shortName, folder, level: 1 });
-    } catch { /* best effort: the compile error stays precise */ }
+    const model = await loadImportModel(importProject, folder, shortName, false);
+    if (model) borrowed.push({ project: importProject, shortName, folder, level: 1 });
   }
   return borrowed;
+}
+
+/**
+ * Load one import model, loudly. `addModels` used to be a bare best-effort call: a transient failure
+ * left the compile without the model and produced a TS2792 that reads exactly like a broken import.
+ * `force` drops whatever the registry holds first — a retry that respects the registry guard would be
+ * a no-op precisely in the case worth retrying (an entry that exists but is unusable).
+ */
+async function loadImportModel(project: number, folder: string, shortName: string, force: boolean): Promise<boolean> {
+  if (force) {
+    try { mls.editor.deleteModels(project, shortName, folder, true, 1); } catch { /* nothing to drop */ }
+  }
+  try {
+    await mls.editor.addModels(project, shortName, folder, 1);
+    return true;
+  } catch (error) {
+    console.warn(`[cbMaterializeIo] could not load import model /_${project}_/l1/${folder}/${shortName}.ts`, error);
+    return false;
+  }
+}
+
+/**
+ * Diagnostics that blame an import whose SOURCE IS ON DISK. The file exists, so the module is not
+ * missing: the model behind it did not load. Treating these as plan errors is what burned the seed
+ * repair budget and then failed a run whose plan was correct.
+ */
+function phantomModuleErrors(errors: string[]): Array<{ error: string; path: string }> {
+  return errors.flatMap(error => {
+    const path = phantomModulePathOf(error);
+    if (!path) return [];
+    const parts = mlsImportPathParts(path);
+    if (!parts) return [];
+    const key = mls.stor.getKeyToFile({ ...parts, extension: '.ts' });
+    return (mls.stor.files as Record<string, unknown>)[key] ? [{ error, path }] : [];
+  });
 }
 
 // Materialize workers run in a POOL (parallel_dynamic, 10 slots), so two compiles can overlap. Worker B
@@ -208,7 +242,7 @@ function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
 }
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
-async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; available: boolean }> {
+async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; infraErrors: string[]; available: boolean }> {
   // Borrowed OUTSIDE the try so the finally can always release them, even on a compile exception.
   let borrowed: BorrowedModel[] = [];
   activeCompiles++;
@@ -218,20 +252,35 @@ async function compileGeneratedTs(project: number, level: number, folder: string
     let modelBase = mls.editor.models[editorKey];
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
     const modelTs = modelBase?.ts as mls.editor.IModelTS;
-    if (!modelTs) return { errors: [], available: false };
+    if (!modelTs) return { errors: [], infraErrors: [], available: false };
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
     mls.editor.forceModelUpdate(modelTs.model);
     // category 1 = Error in monaco/ts DiagnosticCategory; keep only real errors, capped.
-    const diags = (modelTs.compilerResults?.errors ?? []) as any[];
-    return { errors: diags
+    const readErrors = (): string[] => ((modelTs.compilerResults?.errors ?? []) as any[])
       .filter(d => d?.category === undefined || d.category === 1)
       .map(flattenDiagnostic)
       .filter(Boolean)
-      .slice(0, 12), available: true };
+      .slice(0, 12);
+    let errors = readErrors();
+    // An import that exists on disk cannot be "not found": the model behind it failed to load. Force
+    // it back and compile once more before believing the diagnostic.
+    let phantom = phantomModuleErrors(errors);
+    if (phantom.length) {
+      for (const item of phantom) {
+        const parts = mlsImportPathParts(item.path);
+        if (parts) await loadImportModel(parts.project, parts.folder, parts.shortName, true);
+      }
+      if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+      await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
+      mls.editor.forceModelUpdate(modelTs.model);
+      errors = readErrors();
+      phantom = phantomModuleErrors(errors);
+    }
+    return { errors, infraErrors: phantom.map(item => item.error), available: true };
   } catch (err) {
     console.warn('[cbMaterializeIo] compileGeneratedTs failed', err);
-    return { errors: [], available: false };
+    return { errors: [], infraErrors: [], available: false };
   } finally {
     // NB: the model of the file BEING compiled (added above) is deliberately kept — it is a real project
     // artifact the editor/publish path and the repair loop reuse. Only the borrowed imports are released.
@@ -249,6 +298,11 @@ export interface SaveGeneratedTsResult {
   /** Deterministic INTRA-FILE syntax findings (subset of compileErrors). Never a false positive —
    * callers gate on these immediately even when the cross-file compile is deferred. */
   syntaxErrors: string[];
+  /**
+   * Errors blaming an import whose source IS on disk — the model did not load, the plan is fine.
+   * They are also in `compileErrors`; a caller must never route these to an LLM repair.
+   */
+  infraErrors: string[];
   /** False means Monaco/project compilation was unavailable; syntax fallback still ran. */
   compilerAvailable: boolean;
 }
@@ -315,16 +369,16 @@ export async function saveGeneratedTs(
     // across runs); libStor.createStorFile / setContent do not set it.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
-    const compiled = shortName.endsWith('.defs') ? { errors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
+    const compiled = shortName.endsWith('.defs') ? { errors: [], infraErrors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
     // The content is already durable in stor; the monaco model was a working copy for the compile. Queue
     // it (released at the next quiescent point, so a peer compile in the pool can still import it).
     if (ownsModel) releaseBorrowedModels([{ project, shortName, folder, level }]);
     const syntaxErrors = syntaxDiagnostics(content).slice(0, 12);
     const compileErrors = [...syntaxErrors, ...compiled.errors].slice(0, 12);
-    return { ok: true, compileErrors, syntaxErrors, compilerAvailable: compiled.available };
+    return { ok: true, compileErrors, syntaxErrors, infraErrors: compiled.infraErrors, compilerAvailable: compiled.available };
   } catch (err) {
     console.warn('[cbMaterializeIo] saveGeneratedTs failed', err);
-    return { ok: false, compileErrors: [], syntaxErrors: [], compilerAvailable: false };
+    return { ok: false, compileErrors: [], syntaxErrors: [], infraErrors: [], compilerAvailable: false };
   }
 }
 
