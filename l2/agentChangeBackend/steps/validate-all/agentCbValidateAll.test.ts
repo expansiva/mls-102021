@@ -16,3 +16,20 @@ void test('agentCbValidateAll declares the validate-all step agent contract', ()
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCbValidateAll"/);
 });
+
+// ── o sweep não pode consumir a memória da aba nem morrer mudo ────────────────
+// Run be3: este step compilou ~200 arquivos (cada compile empresta os modelos dos imports) e a aba
+// estourou a memória antes de o step registrar qualquer coisa.
+void test('the compile sweep drains the borrow queue in blocks and leaves a durable trail', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  // A fila de release só drena em ponto quiescente, que uma varredura longa nunca alcança sozinha.
+  assert.match(src, /const compileBlock = 25;/);
+  assert.match(src, /if \(compiled % compileBlock === 0\) \{[\s\S]{0,240}flushBorrowedModels\(\)/);
+  // E ao final do sweep, antes de decidir qualquer coisa.
+  assert.match(src, /const endFlush = await flushBorrowedModels\(\);/);
+  // Progresso durável: se a aba morrer no meio, o último arquivo diz ONDE parou.
+  assert.match(src, /saveValidateProgress\(project, \{ phase: 'compile', done: 0/);
+  assert.match(src, /shortName: 'cb-validate-progress'/);
+  // Diagnóstico nunca derruba o step.
+  assert.match(src, /catch \{ \/\* progress is diagnostics: never fail the step over it \*\/ \}/);
+});

@@ -235,9 +235,12 @@ async function loadImportModel(project: number, folder: string, shortName: strin
     await mls.editor.addModels(project, shortName, folder, 1);
     return true;
   } catch (error) {
-    // "model already exists" means the model IS in Monaco — under a key this agent's guard does not
-    // compute, so the guard never sees it, addModels always throws and the old code logged the same
-    // warning forever while the import stayed unborrowed. The goal (a loaded model) is met: succeed.
+    // "model already exists" is the platform's OLD behaviour: the model IS in Monaco under a key this
+    // registry lost, so the create threw and the import stayed unborrowed. The editor now ADOPTS the
+    // existing model instead of throwing (cfe-collab-front-end F1), so this branch should be dead — it
+    // stays because the agent also runs on Studio builds that predate that fix, and there the goal (a
+    // loaded model) is still met. The release is no longer a no-op either: a delete now reaches the
+    // model by URI even when the two indexes diverge (F2).
     if (isModelAlreadyExistsError(error instanceof Error ? error.message : String(error))) {
       reportModelKeyMismatch(project, folder, shortName);
       return true;
@@ -310,6 +313,32 @@ function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
     // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
     try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, model.level); } catch { /* best effort */ }
   }
+}
+
+/**
+ * Release everything the compiles queued, once no compile is in flight. `releaseBorrowedModels` only
+ * drains at a quiescent point, and a long sweep (the whole-module compile borrows the imports of ~200
+ * files) never reaches one on its own: the queue grows, the Monaco models pile up and the tab runs
+ * out of memory. A caller that works in blocks calls this between them.
+ */
+export async function flushBorrowedModels(): Promise<{ released: number; pending: number }> {
+  const queued = pendingRelease.length;
+  // Nothing forces a wait here: the queue drains as soon as the count of in-flight compiles is zero,
+  // and this agent's compiles are awaited one at a time.
+  releaseBorrowedModels([]);
+  return { released: queued - pendingRelease.length, pending: pendingRelease.length };
+}
+
+/**
+ * How many models the registry holds and how many releases are still queued — the cheap way to see a
+ * leak coming, and to prove it is gone. (Monaco's own store is not reachable from here; the registry
+ * is the index this agent can account for, and since the platform fix a delete reaches the model even
+ * when the two diverge.)
+ */
+export function modelCounts(): { registry: number; pendingRelease: number } {
+  let registry = 0;
+  try { registry = Object.keys(mls.editor.models || {}).length; } catch { /* registry unavailable */ }
+  return { registry, pendingRelease: pendingRelease.length };
 }
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */

@@ -15,12 +15,16 @@
 // (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { createStorFile } from '/_102027_/l2/libStor.js';
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
   mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { fileIsPresent, getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import {
+  fileIsPresent, getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath,
+  flushBorrowedModels, modelCounts,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isStale, shouldTargetedRescue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
 // T6: one targeted rescue round (outside the global budget) fires only for a SMALL, compiler-only
@@ -47,6 +51,25 @@ function parseArtifact(content: string): Record<string, unknown> | undefined {
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbValidateAll', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/validate-all', agentDescription: 'Deterministic non-blocking l1 coverage/integrity report', visibility: 'private', beforePromptStep };
+}
+
+/**
+ * A durable "where am I" for the longest step of the run. The task record only learns the outcome at
+ * the end, so a sweep that dies (out of memory, killed tab) used to leave the step in
+ * waiting_human_input with nothing recorded anywhere. One small file, overwritten per block.
+ */
+async function saveValidateProgress(
+  project: number,
+  progress: { phase: string; done: number; total: number; models: { registry: number; pendingRelease: number }; released?: number },
+): Promise<void> {
+  try {
+    const info = { project, level: 4, folder: 'trace', shortName: 'cb-validate-progress', extension: '.json' };
+    const source = `${JSON.stringify({ ...progress, savedAt: new Date().toISOString() }, null, 2)}\n`;
+    const key = mls.stor.getKeyToFile(info);
+    let file = mls.stor.files[key];
+    if (!file) file = await createStorFile({ ...info, source }, false, false, false);
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+  } catch { /* progress is diagnostics: never fail the step over it */ }
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -348,8 +371,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // recomputes from scratch and the post-register pass compiles all files, so a suppressed finding that
     // is real re-appears and is caught later.
     const compileFlagged = new Map<string, { folder: string; real: string; errors: string[] }>();
+    // MEMORY + VISIBILITY (run be3: this step compiled ~200 files, each borrowing the models of its
+    // imports, and the tab ran out of memory before the step could say anything). The borrow queue
+    // only drains at a quiescent point, which a long sweep never reaches on its own, so it is drained
+    // every block; and each block leaves a durable progress line, so a run that dies mid-sweep still
+    // says WHERE it was.
+    const compileBlock = 25;
+    let compiled = 0;
+    const startCounts = modelCounts();
+    await saveValidateProgress(project, { phase: 'compile', done: 0, total: defsFiles.length, models: startCounts });
     for (const d of defsFiles) {
       if (!tsSet.has(`${d.folder}::${d.shortName}`)) continue; // completeness finding already covers it
+      compiled++;
+      if (compiled % compileBlock === 0) {
+        const flushed = await flushBorrowedModels();
+        await saveValidateProgress(project, { phase: 'compile', done: compiled, total: defsFiles.length, models: modelCounts(), released: flushed.released });
+      }
       const first = await compileSavedTsAndGetErrors(project, d.folder, d.real);
       if (!first.length) continue;
       // STEP 2 (double-check vs H1 — flaky): recompile once more (models/imports now settled) and keep
@@ -369,6 +406,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const tsContent = await getContentByMlsPath(`_${project}_/l1/${info.folder}/${info.real}.ts`);
       importsByKey.set(key, tsContent ? collectL1Imports(tsContent, project).map(req => req.key) : []);
     }
+    const endFlush = await flushBorrowedModels();
+    await saveValidateProgress(project, { phase: 'compile-done', done: compiled, total: defsFiles.length, models: modelCounts(), released: endFlush.released });
     const { cascades } = selectCompilerRepairRoots(compileFlagged.keys(), key => importsByKey.get(key) ?? []);
     const cascadeSet = new Set(cascades);
     for (const [key, info] of compileFlagged) {
