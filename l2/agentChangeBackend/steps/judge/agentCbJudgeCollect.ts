@@ -18,7 +18,7 @@ import {
   COMPONENT_REPAIR_BUDGET, JUDGE_MAX_RUNS, type CbJudgeFinding,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import {
-  judgeArgsOf, judgeFindingsFileInfo, scopedOperations, type CbJudgeBatchFindings,
+  judgeArgsOf, judgeFindingsPrefix, scopedOperations, type CbJudgeBatchFindings,
 } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeShared.js';
 
 const AGENT_NAME = 'agentCbJudgeCollect';
@@ -33,11 +33,11 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
-    const { judgeRun } = judgeArgsOf(step);
+    const { judgeRun, runId } = judgeArgsOf(step);
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const { operations } = scopedOperations(scan, step);
     const operationIds = new Set(operations.map(owner => owner.id));
-    const findings = (await readBatchFindings(judgeRun)).filter(finding => operationIds.has(finding.ownerId));
+    const findings = (await readBatchFindings(runId, judgeRun)).filter(finding => operationIds.has(finding.ownerId));
     const warnings = findings.filter(finding => finding.severity !== 'error');
 
     // Route only errors that name a real owner with repair budget left.
@@ -102,10 +102,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-/** Every batch file of this run. A batch that wrote nothing simply said nothing. */
-async function readBatchFindings(judgeRun: number): Promise<CbJudgeFinding[]> {
+/** Every batch file of THIS run. A batch that wrote nothing simply said nothing. */
+async function readBatchFindings(runId: string, judgeRun: number): Promise<CbJudgeFinding[]> {
   const project = mls.actualProject || 0;
-  const prefix = judgeFindingsFileInfo(judgeRun, 1).shortName.replace(/-b1$/, '-b');
+  const prefix = judgeFindingsPrefix(runId, judgeRun);
   const findings: CbJudgeFinding[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;

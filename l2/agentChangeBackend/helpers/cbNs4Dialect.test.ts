@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
-  mlsImportPathParts, phantomModulePathOf,
+  mlsImportPathParts, phantomModulePathOf, isModelAlreadyExistsError,
 } from './cbDefsSource.js';
 import { readAccessMatrixActors } from './cbWorkspace.js';
 
@@ -111,4 +111,15 @@ test('the import path resolves to the file coordinates the loader needs', () => 
   // No folder, or not an mls path at all: nothing to load.
   assert.equal(mlsImportPathParts('/_102034_/l1/contracts.js'), null);
   assert.equal(mlsImportPathParts('lit'), null);
+});
+
+// ── a model that is already there is not a failure ───────────────────────────
+// `addModels` throws "model already exists" when Monaco holds the model under a key this agent's
+// guard does not compute: the guard says "absent", the call throws, and the import stayed unborrowed
+// while the same warning repeated for the whole run.
+test('"model already exists" is the goal, not an error', () => {
+  assert.equal(isModelAlreadyExistsError('Error: model already exists, uri: file://server/_102034_/l1/server/layer_2_controllers/contracts.ts'), true);
+  assert.equal(isModelAlreadyExistsError('MODEL ALREADY EXISTS'), true);
+  assert.equal(isModelAlreadyExistsError('network error'), false);
+  assert.equal(isModelAlreadyExistsError(''), false);
 });

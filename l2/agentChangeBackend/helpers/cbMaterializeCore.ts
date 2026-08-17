@@ -72,10 +72,16 @@ export function orderItems(items: PipelineItem[]): PipelineItem[] {
 
 // ─── Staleness ───────────────────────────────────────────────────────────────
 
-// Regenerate when the output is missing, or the .defs.ts is newer than the generated .ts. Pure: the
+// Regenerate when the output is MISSING, or the .defs.ts is newer than the generated .ts. Pure: the
 // caller supplies the timestamps (fs mtime in Node, file.updatedAt in the studio).
-export function isStale(defsMs: number | null, tsMs: number | null): boolean {
-  if (tsMs == null) return true;          // output not generated yet
+//
+// `tsExists` separates "never generated" from "generated, but this session has no timestamp for it".
+// The Studio index does not always carry `updatedAt` across sessions, and reading a missing timestamp
+// as a missing FILE is what made a resumed run re-materialize controllers that were already current —
+// LLM calls spent to rewrite correct files, which is also how a past run regressed them. Unknown
+// freshness keeps the artifact; `/rebuild` is the explicit way to force regeneration.
+export function isStale(defsMs: number | null, tsMs: number | null, tsExists = tsMs != null): boolean {
+  if (tsMs == null) return !tsExists;     // absent -> generate; present without a stamp -> keep
   if (defsMs == null) return false;       // no defs timestamp -> assume up to date
   return defsMs > tsMs;                   // defs changed after the last generation
 }

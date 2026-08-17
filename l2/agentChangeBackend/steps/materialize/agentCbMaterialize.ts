@@ -11,6 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
+  fileIsPresent,
   scanL1DefsWithPipeline, getContentByMlsPath, getFileModified, saveGeneratedTs, parseMlsPath,
   extractToolCallArgs,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
@@ -77,7 +78,8 @@ function entryIsStale(project: number, defRef: string, item: PipelineItem): bool
     .map(path => path ? getFileModified(path.project, path.level, path.folder, path.shortName, '.ts') : null)
     .filter((value): value is number => value !== null);
   const inputMs = Math.max(defsMs ?? -1, ...dependencyTimes);
-  return isStale(inputMs < 0 ? null : inputMs, tsMs);
+  const tsExists = !!o && fileIsPresent(o.project, o.level, o.folder, o.shortName, '.ts');
+  return isStale(inputMs < 0 ? null : inputMs, tsMs, tsExists);
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {

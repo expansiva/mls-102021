@@ -94,7 +94,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       .filter((f: CbJudgeFinding) => !!f.message && f.type !== 'fora_de_escopo' && owners.has(f.ownerId));
     const findings = [...missingDefsFindings(batch.defsByOwner, scan, batch.operations), ...llmFindings];
     await saveBatchFindings({
-      judgeRun: batch.judgeRun, batchIndex: batch.batchIndex,
+      runId: batch.runId, judgeRun: batch.judgeRun, batchIndex: batch.batchIndex,
       owners: [...owners], findings, savedAt: new Date().toISOString(),
     });
     const errors = findings.filter(finding => finding.severity === 'error').length;
@@ -114,6 +114,7 @@ async function resolveBatch(scan: Awaited<ReturnType<typeof readBackendScan>>, s
   const wanted = new Set(parsed.queue || parsed.owners);
   const mine = operations.filter(owner => wanted.has(owner.id));
   return {
+    runId: parsed.runId,
     judgeRun: parsed.judgeRun,
     batchIndex: parsed.batchIndex,
     operations: mine,
@@ -122,7 +123,7 @@ async function resolveBatch(scan: Awaited<ReturnType<typeof readBackendScan>>, s
 }
 
 async function saveBatchFindings(value: CbJudgeBatchFindings): Promise<void> {
-  const info = judgeFindingsFileInfo(value.judgeRun, value.batchIndex);
+  const info = judgeFindingsFileInfo(value.runId, value.judgeRun, value.batchIndex);
   const source = `${JSON.stringify(value, null, 2)}\n`;
   const key = mls.stor.getKeyToFile(info);
   let file = mls.stor.files[key];

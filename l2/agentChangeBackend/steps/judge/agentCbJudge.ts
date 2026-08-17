@@ -49,12 +49,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const batches = planBatches(await pairSizes(scan, operations));
     const fanoutPlanId = `cb-judge-b${judgeRun}`;
     const collectPlanId = `cb-judge-collect-r${judgeRun}`;
+    // The findings files of a previous execution stay in l4/trace as its audit; naming this run's
+    // files after the task keeps a fresh judge run 1 from reading them as its own.
+    const runId = judgeArgsOf(step).runId || String(context.task?.PK || context.message.orderAt || '');
     const batchArgs = batches.map((owners, index) => JSON.stringify({
-      planId: `${fanoutPlanId}-${index + 1}`, judgeRun, batchIndex: index + 1, queue: owners,
+      planId: `${fanoutPlanId}-${index + 1}`, judgeRun, batchIndex: index + 1, queue: owners, runId,
     }));
     const collect = createAgentStepPayload(
       collectPlanId, 'agentCbJudgeCollect', 'Consolidar achados do juiz',
-      { planId: collectPlanId, judgeRun, owners: judgeRun > 1 ? operations.map(owner => owner.id) : [] },
+      { planId: collectPlanId, judgeRun, runId, owners: judgeRun > 1 ? operations.map(owner => owner.id) : [] },
       [fanoutPlanId], 'sequential', 'waiting_dependency',
     );
     collect.onFailure = 'continue';

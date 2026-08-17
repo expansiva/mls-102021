@@ -38,7 +38,7 @@ void test('the judge is a dispatcher, N batch workers and one collector', () => 
   assert.doesNotMatch(worker, /createAddStepIntent|createParallelStepIntent/);
 
   // The collector owns the single routing decision, over the union of the batches.
-  assert.match(collector, /readBatchFindings\(judgeRun\)/);
+  assert.match(collector, /readBatchFindings\(runId, judgeRun\)/);
   assert.match(collector, /createParallelStepIntent\(context, parentStep, repairPlanId, 'agentCbUsecase'/);
   assert.match(collector, /'cb-gen-http'/);
 
@@ -135,6 +135,11 @@ void test('the batches are planned once and their findings meet only in the coll
   // Parallel workers must not read-modify-write one shared accumulator: each writes its own file and
   // the collector unions them (concurrent writers to cb-repair-state would drop findings).
   assert.match(worker, /judgeFindingsFileInfo/);
+  // The findings of a PREVIOUS execution stay in l4/trace as its audit; this run's files carry the
+  // task in the name so a fresh judge run 1 never reads them as its own.
+  assert.match(dispatcher, /const runId = judgeArgsOf\(step\)\.runId \|\| String\(context\.task\?\.PK/);
+  assert.match(worker, /runId: batch\.runId/);
+  assert.match(collector, /const prefix = judgeFindingsPrefix\(runId, judgeRun\)/);
   assert.match(collector, /for \(const file of Object\.values\(mls\.stor\.files\)/);
   assert.doesNotMatch(worker, /saveRepairState/);
   // The routing decision — and only it — writes the repair state.

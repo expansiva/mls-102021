@@ -19,6 +19,8 @@ export interface CbJudgeArgs {
   owners: string[];
   queue: string[] | null;
   batchIndex: number;
+  /** Which RUN of the task these findings belong to (see judgeFindingsFileInfo). */
+  runId: string;
 }
 
 export function judgeArgsOf(step: mls.msg.AIAgentStep): CbJudgeArgs {
@@ -30,9 +32,10 @@ export function judgeArgsOf(step: mls.msg.AIAgentStep): CbJudgeArgs {
       owners: p ? ids(p.owners) : [],
       queue: p && Array.isArray(p.queue) ? ids(p.queue) : null,
       batchIndex: p && typeof p.batchIndex === 'number' && p.batchIndex > 0 ? p.batchIndex : 1,
+      runId: p && typeof p.runId === 'string' ? p.runId : '',
     };
   } catch {
-    return { judgeRun: 1, owners: [], queue: null, batchIndex: 1 };
+    return { judgeRun: 1, owners: [], queue: null, batchIndex: 1, runId: '' };
   }
 }
 
@@ -141,13 +144,26 @@ export function ownerContract(o: CbOwner) {
 }
 
 
-/** Where a worker leaves what it found, so the collector can union the batches. The disk is truth:
- *  the runtime discards a fan-out child's return value. */
-export function judgeFindingsFileInfo(judgeRun: number, batchIndex: number): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
-  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: `cb-judge-findings-r${judgeRun}-b${batchIndex}`, extension: '.json' };
+/**
+ * Where a worker leaves what it found, so the collector can union the batches. The disk is truth: the
+ * runtime discards a fan-out child's return value.
+ *
+ * The RUN is part of the name. The findings of a previous execution stay in `l4/trace` (they are the
+ * audit of that run), and a new judge run 1 would otherwise read them as its own and route usecases to
+ * repair over findings nobody made this time.
+ */
+export function judgeFindingsFileInfo(runId: string, judgeRun: number, batchIndex: number): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
+  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: `${judgeFindingsPrefix(runId, judgeRun)}b${batchIndex}`, extension: '.json' };
+}
+
+/** The shortName prefix every batch file of one (run, judge pass) shares. */
+export function judgeFindingsPrefix(runId: string, judgeRun: number): string {
+  const run = runId ? `-${runId.replace(/[^A-Za-z0-9]/gu, '')}` : '';
+  return `cb-judge-findings${run}-r${judgeRun}-`;
 }
 
 export interface CbJudgeBatchFindings {
+  runId: string;
   judgeRun: number;
   batchIndex: number;
   owners: string[];

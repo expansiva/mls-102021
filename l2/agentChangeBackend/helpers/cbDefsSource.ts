@@ -112,3 +112,13 @@ export function aliasModuleResolutionPathOf(diagnostic: string): string {
   const path = match?.[1] || '';
   return /^\/_\d+_\/l\d+\//.test(path) ? path : '';
 }
+
+/**
+ * Monaco's "model already exists" — raised by `addModels` for a file whose model IS loaded, under a
+ * registry key this agent's guard does not compute. The goal of the call (a usable model) is already
+ * met, so the caller treats it as success; reading it as a failure logged the same warning forever
+ * and left the import unborrowed.
+ */
+export function isModelAlreadyExistsError(message: string): boolean {
+  return /model already exists/iu.test(message);
+}

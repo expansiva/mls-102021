@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue } from './cbMaterializeCore.js';
+import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale } from './cbMaterializeCore.js';
 
 test('shouldTargetedRescue (T6): fires once for a small compiler-only residual at exactly the spent budget', () => {
   const base = { budget: 2, maxTargets: 4 };
@@ -87,4 +87,23 @@ test('expandContextRef (T5): persistence table gets only TableDefinition; adapte
 test('expandContextRef (T5): an UNKNOWN artifact type falls back to the full bundle (never starved)', () => {
   assert.deepEqual(expandContextRef('_102034_.d.ts', 'somethingNew'), [...CONTRACTS_102034]);
   assert.deepEqual(expandContextRef('_102034_.d.ts'), [...CONTRACTS_102034]); // no type given -> full bundle
+});
+
+// ── freshness must survive the session ───────────────────────────────────────
+// The Studio index does not always carry `updatedAt` across sessions, and the old rule read a missing
+// timestamp as a missing FILE: a resumed run re-materialized 14 of 34 controllers that were already
+// current — LLM calls spent rewriting correct files, which is also how a past run regressed them.
+test('isStale: an output that EXISTS without a timestamp is kept, not regenerated', () => {
+  // Never generated -> generate.
+  assert.equal(isStale(100, null, false), true);
+  // Generated, but this session has no timestamp for it -> unknown freshness keeps the artifact.
+  assert.equal(isStale(100, null, true), false);
+  // The real comparisons are untouched.
+  assert.equal(isStale(200, 100), true);          // defs newer than the .ts
+  assert.equal(isStale(100, 200), false);         // .ts newer than the defs
+  assert.equal(isStale(null, 100), false);        // no defs timestamp -> assume current
+  // Both sides unstamped-but-present (the classic tie) is NOT stale.
+  assert.equal(isStale(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER), false);
+  // Default keeps the old signature honest: no third argument means "exists iff it has a timestamp".
+  assert.equal(isStale(100, null), true);
 });

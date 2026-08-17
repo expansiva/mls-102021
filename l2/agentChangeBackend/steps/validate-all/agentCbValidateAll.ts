@@ -15,12 +15,12 @@
 // (Repair loop block: todo/ajustesFinaisChangeBackend.md §2.)
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, enqueueNextInPhase, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
   mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { fileIsPresent, getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isStale, shouldTargetedRescue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
 // T6: one targeted rescue round (outside the global budget) fires only for a SMALL, compiler-only
@@ -299,7 +299,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // materialized -> blocking finding, re-materializable.
       const defsMs = getFileModified(project, 1, d.folder, d.real, '.defs.ts');
       const tsMs = getFileModified(project, 1, d.folder, d.real, '.ts');
-      if (isStale(defsMs, tsMs)) {
+      if (isStale(defsMs, tsMs, fileIsPresent(project, 1, d.folder, d.real, '.ts'))) {
         const msg = `materialization stale -> ${d.folder}/${d.shortName}.ts is older than its .defs.ts (failed worker masked by a previous run's output)`;
         missing.push(msg);
         addRepair(defRefOf(d.folder, d.real), msg);

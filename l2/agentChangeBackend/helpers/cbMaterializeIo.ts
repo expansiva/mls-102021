@@ -4,7 +4,7 @@
 // so it does not depend on agentMaterializeSolution (being removed). Pure mls.stor / libStor access; the
 // pure prompt/parse/order logic lives in cbMaterializeCore.ts (shared with the Node CLI).
 
-import { mlsImportPathParts, phantomModulePathOf } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
+import { isModelAlreadyExistsError, mlsImportPathParts, phantomModulePathOf } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
@@ -58,6 +58,28 @@ export async function scanL1DefsWithPipeline(
     console.warn('[cbMaterializeIo] scanL1DefsWithPipeline failed', err);
   }
   return result;
+}
+
+/**
+ * Whether the file is in this session's index at all — which `getFileModified` cannot say, because it
+ * answers `null` both for "absent" and for "present, no usable timestamp". Conflating the two made a
+ * resumed session read every generated .ts as never-generated and re-materialize files that were
+ * already current (run of 2026-08-17: 14 of 34 controllers rewritten for nothing).
+ */
+export function fileIsPresent(
+  project: number,
+  level: number,
+  folder: string,
+  shortName: string,
+  extension: string,
+): boolean {
+  try {
+    const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
+    const file = (mls.stor.files as Record<string, mls.stor.IFileInfo>)[key];
+    return !!file && file.status !== 'deleted';
+  } catch {
+    return false;
+  }
 }
 
 /** updatedAt (ms) of a file, MAX_SAFE_INTEGER when new/changed without a timestamp, else null. */
@@ -213,9 +235,32 @@ async function loadImportModel(project: number, folder: string, shortName: strin
     await mls.editor.addModels(project, shortName, folder, 1);
     return true;
   } catch (error) {
+    // "model already exists" means the model IS in Monaco — under a key this agent's guard does not
+    // compute, so the guard never sees it, addModels always throws and the old code logged the same
+    // warning forever while the import stayed unborrowed. The goal (a loaded model) is met: succeed.
+    if (isModelAlreadyExistsError(error instanceof Error ? error.message : String(error))) {
+      reportModelKeyMismatch(project, folder, shortName);
+      return true;
+    }
     console.warn(`[cbMaterializeIo] could not load import model /_${project}_/l1/${folder}/${shortName}.ts`, error);
     return false;
   }
+}
+
+/** Registry keys already reported: the mismatch is one fact per file, not one per compile. */
+const reportedKeyMismatches = new Set<string>();
+
+/**
+ * Log the key this agent computes next to the keys Monaco actually holds for the same file, ONCE.
+ * The mismatch is what makes the registry guard blind (the model exists, the guard says it does not);
+ * fixing `getKeyModel`/`createModelTS` is a platform decision, so this only produces the evidence.
+ */
+function reportModelKeyMismatch(project: number, folder: string, shortName: string): void {
+  const computed = mls.editor.getKeyModel(project, shortName, folder, 1);
+  if (reportedKeyMismatches.has(computed)) return;
+  reportedKeyMismatches.add(computed);
+  const present = Object.keys(mls.editor.models || {}).filter(key => key.includes(shortName)).slice(0, 4);
+  console.info(`[cbMaterializeIo] model registry key mismatch for /_${project}_/l1/${folder}/${shortName}.ts — computed "${computed}", present ${JSON.stringify(present)}`);
 }
 
 /**
