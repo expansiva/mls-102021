@@ -7,6 +7,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { aliasModuleResolutionPathOf } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
@@ -34,6 +35,8 @@ interface SeedStepArgs {
   seedFindings: string[];
   forcedBatch?: SeedPlanningWave;
   partialPlanRef?: 'seeds.ts';
+  /** This step is the ONE retry of an environment failure — not a replan (see seedEnvironmentErrors). */
+  infraRetry?: boolean;
 }
 
 export function createAgent(): IAgentAsync {
@@ -55,6 +58,7 @@ function seedArgsOf(step: mls.msg.AIAgentStep): SeedStepArgs {
       seedAttempt: typeof raw.seedAttempt === 'number' && raw.seedAttempt > 0 ? raw.seedAttempt : 1,
       seedFindings: Array.isArray(raw.seedFindings) ? raw.seedFindings.filter((value): value is string => typeof value === 'string').slice(0, 40) : [],
       forcedBatch: parseWave(raw.forcedBatch),
+      ...(raw.infraRetry === true ? { infraRetry: true as const } : {}),
     };
   } catch {
     return { seedAttempt: 1, seedFindings: [] };
@@ -162,7 +166,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     }
     const progress = persisted?.partial ? persisted : { plan: emptyPlan(), partial: true, completedWaveIndexes: [] };
     const batch = nextSeedBatch(input, progress.plan, args.forcedBatch);
-    if (!batch) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, progress.plan, 'Resumed all validated seed waves.');
+    if (!batch) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, progress.plan, 'Resumed all validated seed waves.', args);
     const waveInput = seedPlanInputForWave(input, batch);
     const estimatedTokens = estimateSeedPlanningWaveTokens(input, batch);
     const human = seedPlanPromptContext(waveInput, args.seedFindings, {
@@ -273,7 +277,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const next = nextSeedBatch(input, merged);
     const partial = buildPartialSeedSource(input, { plan: merged, completedWaveIndexes: completedWaveIndexes(input, merged) });
     const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', partial);
-    if (saved.infraErrors.length) throw new Error(seedInfraFailure(saved.infraErrors));
+    const partialEnvironment = seedEnvironmentErrors(saved);
+    if (partialEnvironment.length) throw new Error(seedInfraFailure(partialEnvironment));
     if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to persist partial seeds.ts: ${saved.compileErrors.join('; ')}`);
     if (!next) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, merged, `Generated final seed wave ${batch.index} (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
     return scheduleSeedStep(context, parentStep, step, hookSequential, { seedAttempt: 1, seedFindings: [], forcedBatch: next }, `Validated seed wave ${batch.index}; persisted partial plan and scheduled the next wave (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
@@ -284,9 +289,23 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   }
 }
 
+/**
+ * Module-resolution failures of seeds.ts are ALWAYS environment, never plan.
+ *
+ * `buildSeedSource` writes this file whole — imports included; the model only plans data rows. So an
+ * import that does not resolve is something no replan can fix, and the first version of this fix got
+ * it wrong by asking `mls.stor.files` whether the target existed: that measures whether the session
+ * indexed the other project, and when it had not, the diagnostic was routed to the plan repair budget
+ * and killed the run (run 5, module buildFlowFsm).
+ */
+function seedEnvironmentErrors(saved: { compileErrors: string[]; infraErrors: string[] }): string[] {
+  const byConstruction = saved.compileErrors.filter(error => !!aliasModuleResolutionPathOf(error));
+  return [...new Set([...saved.infraErrors, ...byConstruction])];
+}
+
 /** An environment failure, in the words of the person who has to act on it. */
 function seedInfraFailure(infraErrors: string[]): string {
-  return `SEEDS-ENVIRONMENT-FAILURE: the import(s) below exist on disk but their compiler model did not load, so this is not a defect of the seed plan and no repair round can fix it. Re-run the step; if it repeats, the Studio compiler environment is the cause.\n${infraErrors.slice(0, 4).join('\n')}`;
+  return `SEEDS-ENVIRONMENT-FAILURE: seeds.ts is written whole by this agent (the model only plans data rows), so the module(s) below failing to resolve is an environment fault — no seed replan can fix it, and the partial seeds.ts on disk is preserved. It already failed a compile retry; check that project's files are available to this Studio session.\n${infraErrors.slice(0, 4).join('\n')}`;
 }
 
 function scheduleSeedStep(
@@ -297,11 +316,13 @@ function scheduleSeedStep(
   args: SeedStepArgs,
   trace: string,
 ): mls.msg.AgentIntent[] {
-  const planId = `cb-gen-seeds-w${args.forcedBatch?.index ?? 'next'}-r${args.seedAttempt}-${Date.now()}`;
+  const planId = `cb-gen-seeds-w${args.forcedBatch?.index ?? 'next'}-r${args.seedAttempt}${args.infraRetry ? '-infra' : ''}-${Date.now()}`;
   return [
     createAddStepIntent(context, parentStep, createAgentStepPayload(
       planId, AGENT_NAME,
-      args.seedAttempt > 1 ? `Reparar plano de seeds (${args.seedAttempt}/${MAX_PLAN_ATTEMPTS})` : `Planejar próxima onda de seeds`,
+      args.infraRetry
+        ? 'Recompilar seeds (falha de ambiente)'
+        : args.seedAttempt > 1 ? `Reparar plano de seeds (${args.seedAttempt}/${MAX_PLAN_ATTEMPTS})` : `Planejar próxima onda de seeds`,
       { planId, ...args, partialPlanRef: 'seeds.ts' }, [], 'sequential', 'waiting_human_input',
     )),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace, 'input_output'),
@@ -316,13 +337,23 @@ async function finalizeSeedPlan(
   input: Omit<SeedBuildInput, 'plan'>,
   plan: SeedPlan,
   trace: string,
+  args?: SeedStepArgs,
 ): Promise<mls.msg.AgentIntent[]> {
   const built = buildSeedSource({ ...input, plan });
   if (built.errors.length || !built.content) throw new Error(`final seed plan validation failed: ${built.errors.slice(0, 30).join('; ')}`);
   const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
-  // The plan is not on trial here: these name imports whose source is on disk, so the compile ran
-  // without their model. Say so — the seeds already written stay, and a re-run picks them up.
-  if (saved.infraErrors.length) throw new Error(seedInfraFailure(saved.infraErrors));
+  const environment = seedEnvironmentErrors(saved);
+  if (environment.length) {
+    // The plan is not on trial. Give the environment ONE more chance — the retry re-enters this same
+    // step, finds every wave already planned and only recompiles (no LLM call, no plan budget spent:
+    // `seedAttempt` counts REPLANS and must not be consumed by an environment fault).
+    if (!args?.infraRetry) {
+      return scheduleSeedStep(context, parentStep, step, hookSequential,
+        { seedAttempt: args?.seedAttempt ?? 1, seedFindings: [], infraRetry: true },
+        `Seeds compiled against an unresolved module (environment, not plan): ${environment[0]}. Recompiling once.`);
+    }
+    throw new Error(seedInfraFailure(environment));
+  }
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
   return [
     enqueueSeedAssets(context, parentStep, step),

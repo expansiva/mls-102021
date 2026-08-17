@@ -165,12 +165,38 @@ async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
     const folder = path.slice(0, idx);
     const shortName = path.slice(idx + 1);
     if (mls.editor.models[mls.editor.getKeyModel(importProject, shortName, folder, 1)]) continue;
-    const fileKey = mls.stor.getKeyToFile({ project: importProject, level: 1, folder, shortName, extension: '.ts' });
-    if (!(mls.stor.files as Record<string, unknown>)[fileKey]) continue;
+    const fileInfo = { project: importProject, level: 1, folder, shortName, extension: '.ts' };
+    let fileKey = mls.stor.getKeyToFile(fileInfo);
+    if (!(mls.stor.files as Record<string, unknown>)[fileKey]) {
+      // The session may simply not have indexed the other project yet — the same thing libModel does
+      // before creating a model for a cross-project file. It is a READ of the project index; nothing
+      // is written anywhere. Without it the import is skipped in silence and the compile blames the
+      // generated file for a module that was there all along.
+      await loadProjectIndexOnce(importProject);
+      fileKey = mls.stor.getKeyToFile(fileInfo);
+      if (!(mls.stor.files as Record<string, unknown>)[fileKey]) {
+        console.warn(`[cbMaterializeIo] import /_${importProject}_/l1/${folder}/${shortName}.ts is not in this session's storage; its types cannot be loaded`);
+        continue;
+      }
+    }
     const model = await loadImportModel(importProject, folder, shortName, false);
     if (model) borrowed.push({ project: importProject, shortName, folder, level: 1 });
   }
   return borrowed;
+}
+
+/** Project indexes already asked for in this session: the load is idempotent but not free. */
+const loadedProjectIndexes = new Set<number>();
+
+/** Ask the server for another project's file index (read-only), once per session. */
+async function loadProjectIndexOnce(project: number): Promise<void> {
+  if (loadedProjectIndexes.has(project)) return;
+  loadedProjectIndexes.add(project);
+  try {
+    await mls.stor.server.loadProjectInfoIfNeeded(project);
+  } catch (error) {
+    console.warn(`[cbMaterializeIo] could not load the file index of project ${project}`, error);
+  }
 }
 
 /**

@@ -96,3 +96,19 @@ export function mlsImportPathParts(path: string): { project: number; level: numb
   if (cut <= 0) return null;
   return { project: Number(match[1]), level: Number(match[2]), folder: rest.slice(0, cut), shortName: rest.slice(cut + 1) };
 }
+
+/**
+ * The cross-project module a resolution diagnostic names, whatever the compiler called it
+ * (TS2792 "cannot find module … did you mean to set moduleResolution", TS2307 "cannot find module").
+ *
+ * Used where the file under compile is written by THIS agent from a fixed template — the seeds. There
+ * the import is not a claim the LLM made (it only plans data rows), so a module that does not resolve
+ * is an environment fact, and asking `mls.stor.files` whether the target exists measures the wrong
+ * thing: it measures whether the session indexed the other project, not whether the plan is wrong.
+ */
+export function aliasModuleResolutionPathOf(diagnostic: string): string {
+  if (!/TS(?:2792|2307)/.test(diagnostic)) return '';
+  const match = /Cannot find module ['"]([^'"]+)['"]/.exec(diagnostic);
+  const path = match?.[1] || '';
+  return /^\/_\d+_\/l\d+\//.test(path) ? path : '';
+}

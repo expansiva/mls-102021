@@ -63,3 +63,51 @@ function assertLiveResponse(r: { modelType: string; status: number; text: string
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+// ── seeds.ts is written by THIS agent, so a module that does not resolve is the environment ─────
+// Round 1 of this fix classified as infra only what `mls.stor.files` already knew about — which
+// measures whether the session indexed the other project, not whether the plan is wrong. On the run
+// of 2026-08-17 the session had not indexed 102034, the TS2792 was routed to the plan repair budget,
+// and the task died with "failed to compile seeds.ts" over a file the agent itself wrote.
+
+void test('a module-resolution error on an alias import is environment, by construction', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  // Classification does NOT consult the storage — the import comes from the fixed template.
+  assert.match(src, /function seedEnvironmentErrors\(saved: \{ compileErrors: string\[\]; infraErrors: string\[\] \}\): string\[\]/);
+  assert.match(src, /saved\.compileErrors\.filter\(error => !!aliasModuleResolutionPathOf\(error\)\)/);
+  assert.doesNotMatch(src, /seedEnvironmentErrors[\s\S]{0,400}mls\.stor\.files/);
+  // Both compile points of the seeds go through it (the partial persist and the final build).
+  assert.equal((src.match(/seedEnvironmentErrors\(saved\)/g) || []).length, 2);
+});
+
+void test('an environment failure retries the compile once, without spending the replan budget', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  // First occurrence: the SAME step is rescheduled with the flag; seedAttempt is carried over, never
+  // incremented (it counts replans, which are a different budget).
+  assert.match(src, /if \(!args\?\.infraRetry\) \{[\s\S]{0,400}seedAttempt: args\?\.seedAttempt \?\? 1, seedFindings: \[\], infraRetry: true/);
+  // Second: the actionable message, and no plan is thrown away (the partial seeds.ts stays on disk).
+  assert.match(src, /throw new Error\(seedInfraFailure\(environment\)\)/);
+  assert.match(src, /SEEDS-ENVIRONMENT-FAILURE[\s\S]{0,200}no seed replan can fix it/);
+  // The retry step says what it is.
+  assert.match(src, /'Recompilar seeds \(falha de ambiente\)'/);
+});
+
+void test('the materialize keeps the storage-based distinction (there the LLM writes the imports)', () => {
+  const materialize = readFileSync(path.join(HERE, '..', 'materialize', 'agentCbMaterialize.ts'), 'utf8');
+  const io = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbMaterializeIo.ts'), 'utf8');
+  // An import invented by the model IS a plan defect there, so infra means "exists on disk".
+  assert.match(io, /function phantomModuleErrors[\s\S]{0,600}mls\.stor\.files/);
+  assert.match(materialize, /saved\.compileErrors\.filter\(error => !saved\.infraErrors\.includes\(error\)\)/);
+  assert.doesNotMatch(materialize, /aliasModuleResolutionPathOf/);
+});
+
+void test('a cross-project import missing from the session index is loaded before being skipped', () => {
+  const io = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbMaterializeIo.ts'), 'utf8');
+  // Read-only: the same call libModel makes before creating a model for another project's file.
+  assert.match(io, /await loadProjectIndexOnce\(importProject\)/);
+  assert.match(io, /mls\.stor\.server\.loadProjectInfoIfNeeded\(project\)/);
+  // And once it is still absent, it says so instead of skipping in silence.
+  assert.match(io, /is not in this session's storage; its types cannot be loaded/);
+  // Nothing is ever written into the other project.
+  assert.doesNotMatch(io, /loadProjectIndexOnce[\s\S]{0,300}createStorFile/);
+});
