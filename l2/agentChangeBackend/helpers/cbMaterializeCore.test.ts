@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale } from './cbMaterializeCore.js';
+import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale, applyHeader } from './cbMaterializeCore.js';
 
 test('shouldTargetedRescue (T6): fires once for a small compiler-only residual at exactly the spent budget', () => {
   const base = { budget: 2, maxTargets: 4 };
@@ -106,4 +106,29 @@ test('isStale: an output that EXISTS without a timestamp is kept, not regenerate
   assert.equal(isStale(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER), false);
   // Default keeps the old signature honest: no third argument means "exists iff it has a timestamp".
   assert.equal(isStale(100, null), true);
+});
+
+// T12: two files of the buildFlowFsm run were saved with `enhancement="blank"` — the model retyped the
+// header during a repair round and the writer trusted anything starting with `///`.
+test('applyHeader rebuilds the platform header instead of trusting the model output', () => {
+  const outputPath = '_102046_/l1/buildFlowFsm/layer_2_application/usecases/updateChangeOrder.ts';
+  const expected = `/// <mls fileReference="${outputPath}" enhancement="_blank"/>`;
+
+  // The real defect: `blank` instead of `_blank`.
+  assert.equal(
+    applyHeader(outputPath, '/// <mls fileReference="_102046_/l1/buildFlowFsm/layer_2_application/usecases/updateChangeOrder.ts" enhancement="blank"/>\n\nexport const x = 1;\n'),
+    `${expected}\n\nexport const x = 1;\n`,
+  );
+  // The path is just as forgeable — a header pointing at another file is rewritten too.
+  assert.equal(
+    applyHeader(outputPath, '/// <mls fileReference="_102046_/l1/other/place.ts" enhancement="_blank"/>\nexport const x = 1;\n'),
+    `${expected}\n\nexport const x = 1;\n`,
+  );
+  // No header at all: one is prepended, as before.
+  assert.equal(applyHeader(outputPath, 'export const x = 1;\n'), `${expected}\n\nexport const x = 1;\n`);
+  // A leading comment that is NOT an mls header is content, and keeps its place after the header.
+  assert.equal(
+    applyHeader(outputPath, '/// reference to something else\nexport const x = 1;\n'),
+    `${expected}\n\n/// reference to something else\nexport const x = 1;\n`,
+  );
 });

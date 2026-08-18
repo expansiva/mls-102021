@@ -192,10 +192,23 @@ export function buildHumanPrompt(data: unknown, contextSections: string[], outpu
 }
 
 // Ensure the generated file carries the mls header (the studio gen prepends it when missing).
+/**
+ * The platform header is DERIVED from the file being written, never taken from the model's output.
+ *
+ * It used to be kept whenever the output already began with `///`, on the assumption that a model
+ * echoing the header echoes it right. Two files of the buildFlowFsm run came back with
+ * `enhancement="blank"` instead of `_blank` (`usecases/updateChangeOrder.ts` and
+ * `adapters/persistence/changeOrderRepositoryAdapter.ts`) — written during a repair round, where the
+ * model rewrites the whole file and retypes the first line. Nothing downstream reads the header, so it
+ * failed silently. The path is just as forgeable as the enhancement, so both are rebuilt here: this
+ * agent knows exactly which file it is saving, and the model's opinion about it is not needed.
+ */
 export function applyHeader(outputPath: string, code: string): string {
   const header = `/// <mls fileReference="${outputPath}" enhancement="_blank"/>`;
   const trimmed = code.trimStart();
-  return trimmed.startsWith('///') ? code : `${header}\n\n${code}`;
+  const existingHeader = /^\/\/\/\s*<mls\b[^>]*\/>\s*/u;
+  if (existingHeader.test(trimmed)) return trimmed.replace(existingHeader, `${header}\n\n`);
+  return `${header}\n\n${trimmed}`;
 }
 
 /** True when a repair finding is a pure COMPILER error (from the per-file compile `compiler: ...` or the
