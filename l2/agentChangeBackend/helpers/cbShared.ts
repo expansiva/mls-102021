@@ -21,7 +21,9 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import {
-  parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle, type CbEntityKind,
+  parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
+  classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
+  type CbEntityKind,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
   parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
@@ -30,6 +32,7 @@ import {
 
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
+  classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
 };
 export type { CbEntityKind };
 
@@ -181,12 +184,20 @@ export interface CbEntity {
   moduleName: string;
   fields?: Record<string, unknown>[];
   eventPolicy?: EventPolicy; // only for kind === 'event'
+  // What the l4 DECLARED about persistence, kept next to the derived kind so a policy finding can name
+  // the declaration it contradicts (and so the write path can address 102034 by its canonical type).
+  storageTarget?: string;
+  mdmType?: string;
+  idField?: string;
 }
 
 export interface CbRelationship {
   fromEntity: string;
   toEntity: string;
   type: string; // oneToMany | manyToOne | oneToOne
+  // ns4 marks a reference that crosses a store boundary (`crossStoreReference`): the FK holds an id
+  // resolved elsewhere (102034 / the platform directory), never a local foreign key.
+  persistenceMode?: string;
 }
 
 export interface CbAggregate {
@@ -220,6 +231,8 @@ import { CB_PHASES, reconcileBackendTodo, resolveModuleName, scopeBackendScan, u
 export { CB_PHASES } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 export type { CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 import { promptSizeError } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
+import { parseStepCost } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
+import { setCbTraceModule } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 export interface CbScan {
   project: number;
@@ -304,11 +317,15 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
         entityToModule.set(entityId, moduleName);
         const declaredKind = readString(parsed.kind);
         const ownership = readString(parsed.ownership) || 'moduleOwned';
-        const kind = entityKindOf(declaredKind, ownership);
+        const storage = readEntityStorage(parsed);
+        const kind = classifyEntityKind({ kind: declaredKind, ownership, storage });
+        const contradiction = MDM_WRITE_PATH_ENABLED ? contradictoryStorageDeclaration({ kind: declaredKind, ownership, storage }) : '';
+        if (contradiction) warnings.push(`entity ${entityId}: ${contradiction}`);
         // The mapping is a DECISION about a foreign vocabulary, so it is visible in the scan trace
         // instead of only in the code (same treatment as the projection mapping).
         if (declaredKind && declaredKind !== kind) {
-          warnings.push(`entity ${entityId}: l4 kind '${declaredKind}' (${ownership}) read as '${kind}'`);
+          const declared = storage.target ? `${declaredKind}/${storage.target}` : declaredKind;
+          warnings.push(`entity ${entityId}: l4 kind '${declared}' (${ownership}) read as '${kind}'`);
         }
         upsertEntity(entities, {
           entityId,
@@ -318,6 +335,9 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           moduleName,
           fields: Array.isArray(parsed.fields) ? parsed.fields.filter(isRecord) : undefined,
           eventPolicy: readEventPolicy(parsed.eventPolicy),
+          ...(storage.target ? { storageTarget: storage.target } : {}),
+          ...(storage.mdmType ? { mdmType: storage.mdmType } : {}),
+          ...(storage.idField ? { idField: storage.idField } : {}),
         });
       }
     }
@@ -388,6 +408,8 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   // filtering lives in cbScope (unit-tested there).
   const allModuleNames = Array.from(moduleNames).sort();
   const scoped = scopeBackendScan({ owners, entities, relationships, workspaces, actors: actorsList, allModuleNames, requestedModule: targetModule });
+  // From here on every trace/state artifact of the run is written under `l4/<module>/trace`.
+  setCbTraceModule(scoped.moduleName);
   if (scoped.warning) warnings.push(scoped.warning);
 
   // An ontology entity with NO fields (every `kind: "metric"` one in cafeFlow) still becomes a real
@@ -539,7 +561,13 @@ function collectOntologyRelationships(index: Record<string, unknown>, relationsh
     if (!isRecord(rel)) continue;
     const fromEntity = readString(rel.fromEntity);
     const toEntity = readString(rel.toEntity);
-    if (fromEntity && toEntity) relationships.push({ fromEntity, toEntity, type: readString(rel.type) || 'manyToOne' });
+    const persistenceMode = isRecord(rel.persistence) ? readString(rel.persistence.mode) : '';
+    if (fromEntity && toEntity) {
+      relationships.push({
+        fromEntity, toEntity, type: readString(rel.type) || 'manyToOne',
+        ...(persistenceMode ? { persistenceMode } : {}),
+      });
+    }
   }
 }
 
@@ -696,6 +724,8 @@ export function deriveAggregates(
       if (child.kind === 'supporting' && (rel.type === 'oneToMany' || rel.type === 'oneToOne')) push(embeddedMembers, childId);
       else if (child.kind === 'event') push(events, childId);
       else if (child.kind === 'mdm') push(mdmRefs, childId);
+      // `external` children are neither members nor mdm refs: the FK carries an id resolved outside.
+
     }
     return { aggregateId: root.entityId, rootEntity: root.entityId, embeddedMembers, events, mdmRefs };
   };
@@ -711,7 +741,7 @@ export function deriveAggregates(
   const roots = new Set(aggregates.map(a => a.rootEntity));
   for (const id of operatedRootIds) {
     const e = byId.get(id);
-    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event') continue;
+    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event' || e.kind === 'external') continue;
     aggregates.push(buildAggregate(e));
     roots.add(id);
   }
@@ -1019,19 +1049,29 @@ function readId(value: unknown): string {
   return readString(value);
 }
 
-export async function saveAgentTrace(context: mls.msg.ExecutionContext, agentName: string, step: mls.msg.AIAgentStep): Promise<void> {
+export async function saveAgentTrace(
+  context: mls.msg.ExecutionContext,
+  agentName: string,
+  step: mls.msg.AIAgentStep,
+  counters?: Record<string, unknown>,
+): Promise<void> {
   if (!shouldSaveTrace(context)) return;
   try {
     const payload = step.interaction?.payload?.[0];
     if (!payload) return;
     const scan = await readBackendScan(ALL_STATUSES, context).catch(() => null);
     const moduleName = scan?.moduleNames?.[0] || 'backend';
+    // The trace is what a post-mortem reads. Besides the payload it carries WHAT THE STEP COST and what
+    // it did: the model/tokens/cost of the interaction and the counters the caller chose to publish —
+    // otherwise every analysis has to be reconstructed by hand from the msgtask plus the console.
     const source = `${JSON.stringify({
       savedAt: new Date().toISOString(),
       agentName,
       stepId: step.stepId,
       planning: (step as { planning?: unknown }).planning || null,
       status: step.status,
+      interaction: interactionSummary(step.interaction),
+      counters: counters || null,
       payload,
     }, null, 2)}\n`;
     const fileInfo: CbFileInfo = {
@@ -1048,6 +1088,20 @@ export async function saveAgentTrace(context: mls.msg.ExecutionContext, agentNam
   } catch (error) {
     console.warn(`[cb saveAgentTrace] failed for ${agentName}`, error);
   }
+}
+
+/** Cost, tokens and model of one interaction — the numbers a run report sums up. */
+function interactionSummary(interaction: mls.msg.AIInteraction | null | undefined): Record<string, unknown> | null {
+  if (!interaction) return null;
+  const trace = (interaction.trace ?? []).map(String);
+  const parsed = parseStepCost(trace);
+  const model = trace.map(line => /model[:=]\s*([\w.\-/]+)/i.exec(line)?.[1]).find(Boolean) || '';
+  return {
+    cost: typeof interaction.cost === 'number' && interaction.cost > 0 ? interaction.cost : parsed.cost,
+    inputTokens: parsed.inputTokens,
+    outputTokens: parsed.outputTokens,
+    ...(model ? { model } : {}),
+  };
 }
 
 function shouldSaveTrace(context: mls.msg.ExecutionContext): boolean {
@@ -1255,6 +1309,13 @@ export function createPromptReadyIntent(
   };
 }
 
+/**
+ * How many children of a fan-out run at once. Run 9 finished with 0 provider errors and 0 fallbacks
+ * while the effective parallelism was only ~2× (LLM time 2:06 against 1:02 of wall clock) — the
+ * provider had room, so the default moved from 5/10 to 20. A single place decides it.
+ */
+export const CB_MAX_PARALLEL = 20;
+
 /** Spawn a parallel_dynamic fan-out: one child per selector arg, bounded by maxParallel. */
 export function createParallelStepIntent(
   context: mls.msg.ExecutionContext,
@@ -1264,7 +1325,7 @@ export function createParallelStepIntent(
   stepTitle: string,
   args: string[],
   dependsOn: string[] = [],
-  maxParallel = 10,
+  maxParallel = CB_MAX_PARALLEL,
 ): mls.msg.AgentIntentAddStep {
   const step = createAgentStepPayload(planId, agentName, stepTitle, {}, dependsOn, 'parallel_dynamic', 'in_progress');
   // Children inherit onFailure from the fan-out parent. Without 'continue', an LLM-CALL failure

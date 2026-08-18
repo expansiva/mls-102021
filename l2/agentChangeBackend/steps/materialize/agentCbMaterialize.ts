@@ -17,7 +17,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
-  createAddStepIntent, createParallelStepIntent, isRecord, readStringArray, logPrefix,
+  createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, isRecord, readStringArray, logPrefix,
   repositoryPortFileInfo, domainEntityFileInfo, dtsRef,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
@@ -171,7 +171,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const label = layerLabel([...new Set(bucket.map(e => e.item.type))]);
     const intents: mls.msg.AgentIntent[] = [
       // Current layer starts now (its inner layers are already materialized -> no dependsOn needed).
-      createParallelStepIntent(context, parentStep, planId, AGENT_NAME, `Materializar ${label} {{completed}}/{{total}} (repairs no trace)`, refs, [], 10),
+      createParallelStepIntent(context, parentStep, planId, AGENT_NAME, `Materializar ${label} {{completed}}/{{total}} (repairs no trace)`, refs, [], CB_MAX_PARALLEL),
     ];
     if (remainingLayers > 1) {
       // More layers to go: a continue-dispatcher runs ONLY after this layer completes (real barrier),

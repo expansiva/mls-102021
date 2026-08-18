@@ -6,8 +6,109 @@
  * `} as const satisfies <Artifact>;` over a typed import.
  */
 
-export type CbEntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm';
+export type CbEntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm' | 'external';
+// The kinds a l4 ontology may DECLARE. `external` is never declared: it is derived from
+// `storage.target`, so keeping it out of this list also keeps a typo'd `kind: "external"` falling back
+// to `core` instead of silently erasing an entity's persistence.
 const ENTITY_KINDS: readonly CbEntityKind[] = ['core', 'supporting', 'event', 'metric', 'mdm'];
+
+/**
+ * MDM WRITE PATH — off until the general rebuild (todo/changeBackend/ajustes_mdm_write_path.md).
+ *
+ * The l4 already declares the intention this switch honours (`storage.target: mdm | external |
+ * moduleDatabase`, `storage.mdmType`, v6 vocabulary), so reading it is not a new-vocabulary migration:
+ * it would change the classification of the module Wagner is testing (run 9 of buildFlowFsm, where
+ * Client/Project/InventoryItem carry `target: mdm` and FieldWorker/PlatformUser carry `target:
+ * external`) the moment the next generation runs. That is exactly what the ⏸️ of the spec forbids.
+ *
+ * Flipping this to `true` moves four things at once, which is why it is one constant and not four:
+ *   1. `classifyEntityKind` stops mapping `mdm + moduleOwned` to `core` and starts honouring
+ *      `storage.target` — so an MDM entity gets no local domain entity, port, adapter or table, and an
+ *      `external` one gets none of those and no seeds either;
+ *   2. the seed planner routes those entities to `mdmEntities` (102034 registry) instead of
+ *      `localTables`, and drops `external` entities from the plan entirely;
+ *   3. the usecase item carries `mdmWrites` (mdmType + subtype + idField), so create/update/delete of
+ *      master data is generated against `ctx.mdm` — the surface skills/applicationUsecase.md already
+ *      documents — instead of a local port;
+ *   4. validate-all blocks on a local persistence/port/domain artifact for an MDM entity instead of
+ *      only warning about it (`collectPersistencePolicyIssues`).
+ *
+ * The order of the general rebuild is in the spec: ns4 vocabulary first (`party`, `platformUserId`),
+ * then this flag, then `/rebuild all`.
+ */
+export const MDM_WRITE_PATH_ENABLED = false;
+
+/** What `storage` declares about an entity: where it lives, and under which master-data type. */
+export interface CbEntityStorage {
+  target: string;     // 'mdm' | 'external' | 'moduleDatabase' | '' when the l4 predates the field
+  scope: string;      // 'organization' | 'platform' | 'module'
+  mdmType: string;    // canonical `<moduleId>.<Entity>` — the key ctx.mdm.collection.listByType reads
+  idField: string;    // the module-side id field; for an MDM entity it CARRIES the mdmId (see seeds)
+}
+
+export function readEntityStorage(parsed: Record<string, unknown>): CbEntityStorage {
+  const raw = parsed.storage;
+  const storage = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const str = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+  return {
+    target: str(storage.target),
+    scope: str(storage.scope),
+    mdmType: str(storage.mdmType),
+    idField: str(storage.idField),
+  };
+}
+
+/**
+ * The kind this agent generates from, deciding between the two vocabularies AND the two policies.
+ *
+ * With the write path OFF the answer is exactly what it has always been (`entityKindOf`), so a run of
+ * the current module is byte-identical. With it ON, `storage.target` — the field that actually carries
+ * the l4 intention — wins over the pair kind/ownership: `mdm` means master data owned by 102034 (the
+ * module writes it THROUGH the facade), and `external` means an identity that lives outside this
+ * product (a platform user), which must never become a local table and must never be seeded.
+ */
+/**
+ * What a caller knows about an entity. `storage` is PARTIAL because only `readEntityStorage` produces the
+ * complete block — a caller that has just `{ target }` (a fixture, a scan of an older l4) asks the same
+ * question and must not have to invent the other three fields.
+ */
+export interface CbEntityClassification {
+  kind: string;
+  ownership?: string;
+  storage?: Partial<CbEntityStorage>;
+}
+
+/** A declaration that contradicts itself, for the scan to announce instead of resolving in silence. */
+export function contradictoryStorageDeclaration(
+  input: CbEntityClassification,
+): string {
+  const target = input.storage?.target || '';
+  const ownership = input.ownership || '';
+  if (target === 'mdm' && ownership === 'external') {
+    return `declares storage.target 'mdm' with ownership 'external' (undefined by the policy) — read as 'external', so it gets no MDM record`;
+  }
+  if (target === 'external' && input.kind === 'mdm') {
+    return "declares kind 'mdm' with storage.target 'external' — read as 'external', so it gets no MDM record";
+  }
+  return '';
+}
+
+export function classifyEntityKind(
+  input: CbEntityClassification,
+  mdmWritePath: boolean = MDM_WRITE_PATH_ENABLED,
+): CbEntityKind {
+  const ownership = input.ownership || '';
+  if (!mdmWritePath) return entityKindOf(input.kind, ownership);
+  const target = input.storage?.target || '';
+  if (target === 'external' || ownership === 'external') return 'external';
+  // `target: mdm` + `ownership: external` is undefined by the policy — the same hole `core + external`
+  // was (ajustesMDM.md item 2). It cannot reach here (external wins above), which is why the CALLER is
+  // told to announce it instead of the entity silently leaving MDM.
+
+  if (target === 'mdm') return 'mdm';
+  if (input.kind === 'projection') return 'metric';
+  return ENTITY_KINDS.includes(input.kind as CbEntityKind) ? input.kind as CbEntityKind : 'core';
+}
 
 /** The cut points of the exported value, in the order they should be tried. */
 function valueBounds(content: string): Array<[number, number]> {

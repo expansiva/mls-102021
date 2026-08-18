@@ -12,6 +12,7 @@ import { missingPrincipalPortIssues } from '/_102021_/l2/agentChangeBackend/help
 import { parseDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { type CbJudgeFinding } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { byteLength, planJudgeBatch } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
+import { cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 /** Step args of every judge step of a run: which pass it is, its scope and (for a worker) its slice. */
 export interface CbJudgeArgs {
@@ -153,7 +154,7 @@ export function ownerContract(o: CbOwner) {
  * repair over findings nobody made this time.
  */
 export function judgeFindingsFileInfo(runId: string, judgeRun: number, batchIndex: number): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
-  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: `${judgeFindingsPrefix(runId, judgeRun)}b${batchIndex}`, extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(), shortName: `${judgeFindingsPrefix(runId, judgeRun)}b${batchIndex}`, extension: '.json' };
 }
 
 /** The shortName prefix every batch file of one (run, judge pass) shares. */

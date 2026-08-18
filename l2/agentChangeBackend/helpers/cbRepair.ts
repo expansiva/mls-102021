@@ -17,6 +17,7 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
+import { cbTraceFolder, CB_TRACE_LEGACY_FOLDER } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 import { buildHealthReportContent } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 import { parseStepCost, accumulatePhaseCost, summarizeCost, type CbCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import {
@@ -65,8 +66,13 @@ export interface CbRepairState {
 
 const SCHEMA_VERSION = '2026-07-03-cb-repair';
 
-function stateFileInfo(): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
-  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-repair-state', extension: '.json' };
+/** The stor entry of a trace artifact, or undefined when this session does not have it. */
+function traceFile(info: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>) {
+  return mls.stor.files[mls.stor.getKeyToFile(info)];
+}
+
+function stateFileInfo(folder = cbTraceFolder()): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
+  return { project: mls.actualProject || 0, level: 4, folder, shortName: 'cb-repair-state', extension: '.json' };
 }
 
 function emptyState(): CbRepairState {
@@ -87,8 +93,9 @@ export function pushHistory(state: CbRepairState, entry: string): void {
 
 export async function readRepairState(): Promise<CbRepairState> {
   try {
-    const info = stateFileInfo();
-    const file = mls.stor.files[mls.stor.getKeyToFile(info)];
+    // The module-scoped path first, then where previous versions wrote: a run that started before the
+    // trace was scoped still finds its own state, and the next write lands in the module folder.
+    const file = traceFile(stateFileInfo()) || traceFile(stateFileInfo(CB_TRACE_LEGACY_FOLDER));
     if (!file || file.status === 'deleted') return emptyState();
     const parsed = parseMaybeJson(String(await file.getContent()));
     if (!isRecord(parsed)) return emptyState();
@@ -187,7 +194,7 @@ export function hasRepairBudget(entry: CbComponentRepair | null | undefined): bo
 export async function saveHealthReport(report: Record<string, unknown>): Promise<void> {
   try {
     const info: Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> =
-      { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-health-report', extension: '.json' };
+      { project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(), shortName: 'cb-health-report', extension: '.json' };
     const key = mls.stor.getKeyToFile(info);
     let file = mls.stor.files[key];
     // Read the existing report so the new snapshot ACCUMULATES into `rounds` instead of overwriting it
@@ -211,7 +218,7 @@ export async function saveHealthReport(report: Record<string, unknown>): Promise
 // ── per-phase cost telemetry (T7) ────────────────────────────────────────────────
 
 function costFileInfo(): Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'> {
-  return { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-cost', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(), shortName: 'cb-cost', extension: '.json' };
 }
 
 /** Accumulate ONE LLM step's cost into l4/trace/cb-cost.json under `phase`. Cost comes from the
@@ -242,7 +249,7 @@ export async function recordLlmCost(phase: string, interaction: mls.msg.AIIntera
 
 export async function readCostReport(): Promise<CbCostReport> {
   try {
-    const file = mls.stor.files[mls.stor.getKeyToFile(costFileInfo())];
+    const file = traceFile(costFileInfo()) || traceFile({ ...costFileInfo(), folder: CB_TRACE_LEGACY_FOLDER });
     if (!file || file.status === 'deleted') return {};
     const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as CbCostReport : {};
@@ -255,7 +262,7 @@ export async function readCostReport(): Promise<CbCostReport> {
  *  (T6) to surface residual compiler findings that would otherwise live only in this file. */
 export async function readHealthReport(): Promise<Record<string, unknown> | null> {
   try {
-    const info = { project: mls.actualProject || 0, level: 4, folder: 'trace', shortName: 'cb-health-report', extension: '.json' } as Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
+    const info = { project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(), shortName: 'cb-health-report', extension: '.json' } as Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
     const file = mls.stor.files[mls.stor.getKeyToFile(info)];
     if (!file || file.status === 'deleted') return null;
     const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
@@ -279,5 +286,31 @@ export function forceDefsStale(defRef: string): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * The dossier of one run, written where the module's trace lives.
+ *
+ * Everything here was reconstructed BY HAND after each run, from the task record plus the console: the
+ * cost and calls per phase, the repair history, the residual findings and the model counts. Writing it
+ * once, at the end, makes the next post-mortem a file read.
+ */
+export async function saveRunReport(report: Record<string, unknown>): Promise<string | null> {
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const info = {
+      project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(),
+      shortName: `cb-run-${stamp}`, extension: '.json',
+    };
+    const source = `${JSON.stringify({ savedAt: new Date().toISOString(), ...report }, null, 2)}\n`;
+    const key = mls.stor.getKeyToFile(info);
+    let file = mls.stor.files[key];
+    if (!file) file = await createStorFile({ ...info, source }, false, false, false);
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+    return `l4/${info.folder}/${info.shortName}.json`;
+  } catch (error) {
+    console.warn('[cbRepair] saveRunReport failed', error);
+    return null;
   }
 }

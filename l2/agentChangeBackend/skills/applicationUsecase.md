@@ -208,6 +208,12 @@ await ctx.mdm.entity.link({
 });
 ```
 
+When `data.mdmWrites` names the entity, it carries the three things the code cannot guess: `mdmType`
+(the canonical `<moduleId>.<Entity>` that must go in `moduleTypes`, or `ctx.mdm.collection.listByType`
+will never see the record), `subtype` (the 102034 closed union) and `idField` — the module-side field
+that CARRIES the returned `mdmId`. Store `created.mdmId` in that field; never mint a separate local id
+for a master-data record.
+
 For update, load the entity, preserve fields you do not change, and pass the optimistic version.
 For create use `ctx.mdm.entity.create`. For update use `ctx.mdm.entity.update`. For cadastral
 deactivation prefer `ctx.mdm.entity.inactivate`; use physical `ctx.mdm.entity.delete` only when the

@@ -1,11 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/cbNs4Dialect.test.ts" enhancement="_blank"/>
 
-// The l4/l5 this agent reads is now written by agentNewSolution4, which emits a different dialect:
+// The l4/l5 this agent reads is now written by agentNewSolution, which emits a different dialect:
 // `as const satisfies <Artifact>`, `ownerType: 'useCase'` with `statusBackend`, entity lifecycles
 // under workflows/, the relationship graph in ontology/index, profiles instead of actors.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   mlsImportPathParts, phantomModulePathOf, isModelAlreadyExistsError,
@@ -15,7 +16,7 @@ import { readAccessMatrixActors } from './cbWorkspace.js';
 const ns4Defs = (value: unknown) => [
   '/// <mls fileReference="_102046_/l5/buildFlowFsm47/todoBackend.defs.ts" enhancement="_blank"/>',
   '',
-  "import type { Ns4L5TodoBackendArtifact } from '/_102020_/l2/agentNewSolution4/types.js';",
+  "import type { Ns4L5TodoBackendArtifact } from '/_102020_/l2/agentNewSolution/types.js';",
   '',
   `export const buildFlowFsm47TodoBackend = ${JSON.stringify(value, null, 2)} as const satisfies Ns4L5TodoBackendArtifact;`,
   '',
@@ -138,4 +139,16 @@ test('mdm owned by the module is a local aggregate; mdm de fora continua read-on
   assert.equal(entityKindOf('projection', 'derived'), 'metric');
   assert.equal(entityKindOf('core', 'moduleOwned'), 'core');
   assert.equal(entityKindOf('somethingNew', 'moduleOwned'), 'core');
+});
+
+// ── varredura de modelos e telemetria (resíduo 464 monaco × 256 registry) ─────
+test('the model sweep skips what the Studio had open and reports what it removed', () => {
+  const io = readFileSync(new URL('cbMaterializeIo.ts', import.meta.url), 'utf8');
+  // Só modelos do l1 do módulo alvo entram na varredura.
+  assert.match(io, /if \(moduleName && !String\(storFile\.folder \|\| ''\)\.startsWith\(`\$\{moduleName\}\/`\)\) continue;/);
+  // A regra de ownership: o que já estava no registry antes do run é aba do usuário e é PRESERVADO.
+  assert.match(io, /if \(keep\.has\(key\)\) \{ kept\+\+; continue; \}/);
+  assert.match(io, /return \{ swept, kept \}/);
+  // A telemetria conta o que este agente pode contabilizar (o store do Monaco não é alcançável daqui).
+  assert.match(io, /export function modelCounts\(\): \{ registry: number; pendingRelease: number \}/);
 });

@@ -365,7 +365,10 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   const project = scan.project;
   const moduleName = scan.moduleNames[0] || 'unknown';
   const language = await readDefaultLanguage(project);
-  const entities: SeedEntityDefinition[] = scan.entities.map((entity) => ({
+  // An `external` entity has no store of this module's to seed: it IS the platform directory (a
+  // platform user). Leaving it here would make its `<entity>Id` FKs look resolvable to the validator
+  // and then demand a symbolic { ref } to rows that can never exist.
+  const entities: SeedEntityDefinition[] = scan.entities.filter(entity => entity.kind !== 'external').map((entity) => ({
     entityId: entity.entityId,
     title: entity.title,
     kind: entity.kind,

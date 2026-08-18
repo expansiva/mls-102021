@@ -282,7 +282,7 @@ function phantomModuleErrors(errors: string[]): Array<{ error: string; path: str
   });
 }
 
-// Materialize workers run in a POOL (parallel_dynamic, 10 slots), so two compiles can overlap. Worker B
+// Materialize workers run in a POOL (parallel_dynamic, CB_MAX_PARALLEL slots), so two compiles can overlap. Worker B
 // skips borrowing a model that worker A already loaded (the registry guard above), so releasing A's
 // borrows while B is mid-compile could pull a model out from under B and produce a FALSE TS2792 that
 // burns repair budget. Releases are therefore deferred until no compile is in flight — the registry
@@ -327,6 +327,44 @@ export async function flushBorrowedModels(): Promise<{ released: number; pending
   // and this agent's compiles are awaited one at a time.
   releaseBorrowedModels([]);
   return { released: queued - pendingRelease.length, pending: pendingRelease.length };
+}
+
+/**
+ * Release every model of the module this agent is responsible for.
+ *
+ * `addModels` loads ALL siblings of a shortName — the `.defs.ts` rides along with the `.ts` — and not
+ * every path releases symmetrically, so after run 9 the tab held 464 Monaco models against 256 registry
+ * entries (208 orphans) plus ~all the module's defs. The delete now reaches an orphan by URI (platform
+ * F2), so a final sweep can actually clean up.
+ *
+ * A file whose model was ALREADY in the registry when the run started belongs to the Studio (an open
+ * tab) and is never touched — the same ownership rule the per-compile borrow uses.
+ */
+export function sweepModuleModels(project: number, moduleName: string, keep: ReadonlySet<string>): { swept: number; kept: number } {
+  let swept = 0;
+  let kept = 0;
+  for (const key of Object.keys(mls.editor.models || {})) {
+    const entry = (mls.editor.models as Record<string, mls.editor.IModels | undefined>)[key];
+    const storFile = entry?.ts?.storFile || entry?.defs?.storFile || entry?.test?.storFile;
+    if (!storFile || storFile.project !== project || storFile.level !== 1) continue;
+    if (moduleName && !String(storFile.folder || '').startsWith(`${moduleName}/`)) continue;
+    if (keep.has(key)) { kept++; continue; }
+    try {
+      mls.editor.deleteModels(storFile.project, storFile.shortName, storFile.folder, true, storFile.level);
+      swept++;
+    } catch { /* best effort: a model that resists disposal is not worth failing a run over */ }
+  }
+  return { swept, kept };
+}
+
+/** The registry keys present right now — the caller snapshots them at the start of a run to know
+ *  which models were NOT loaded by this agent (an open Studio tab). */
+export function modelRegistryKeys(): Set<string> {
+  try {
+    return new Set(Object.keys(mls.editor.models || {}));
+  } catch {
+    return new Set();
+  }
 }
 
 /**

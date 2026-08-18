@@ -86,6 +86,28 @@ test('buildSeedSource: narrowing entities to the seeded MDM entities lets a part
   assert.ok(narrowed.content && !narrowed.content.includes('mdm:MenuItem'), 'skipped MDM entity must not be seeded');
 });
 
+// Item 5 of the MDM write path: a local FK that points AT master data resolves against the MDM rows of
+// the plan (the 102034 registry), never against a local table — with the write path on, the target
+// entity has no local table at all, so validating against one would reject every correct plan.
+test('validateSeedPlan resolves a local FK to an MDM row, and rejects a literal id there', () => {
+  const input = validInput();
+  const order = input.plan.localTables.find(table => table.tableId === 'Order')!;
+  input.entities.find(entity => entity.entityId === 'Order')!.fields.push(field('menuItemId'));
+  input.tablePlans.find(table => table.tableId === 'Order')!.columns.push({ name: 'menu_item_id', type: 'UUID', nullable: false });
+  order.rows[0].columns.push({ name: 'menu_item_id', value: { ref: 'mdm:MenuItem.espresso' } });
+  assert.deepEqual(validateSeedPlan(input), []);
+
+  const literal = validInput();
+  const literalOrder = literal.plan.localTables.find(table => table.tableId === 'Order')!;
+  literal.entities.find(entity => entity.entityId === 'Order')!.fields.push(field('menuItemId'));
+  literal.tablePlans.find(table => table.tableId === 'Order')!.columns.push({ name: 'menu_item_id', type: 'UUID', nullable: false });
+  literalOrder.rows[0].columns.push({ name: 'menu_item_id', value: '3f0e6b1e-0000-4000-8000-000000000000' });
+  // The entity-level check is the one that fires here: the column-level FK rule matches by
+  // `<entity>Id`, and the snake_case column name (`menu_item_id`) does not reach it. Either way the row
+  // is rejected, which is what matters — a literal MDM id in a seed silently points at nothing.
+  assert.ok(validateSeedPlan(literal).some(error => /menuItemId: entity references must use a symbolic \{ ref \}/.test(error)), validateSeedPlan(literal).join('\n'));
+});
+
 test('deriveSeedPlanningWaves orders the cafeFlow graph deterministically', () => {
   assert.deepEqual(deriveSeedPlanningWaves(validInput()), [
     { index: 1, tableIds: [], mdmEntityIds: ['MenuCategory', 'StockItem'] },

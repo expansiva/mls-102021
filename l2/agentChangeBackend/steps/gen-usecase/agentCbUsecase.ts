@@ -3,8 +3,8 @@
 // Generate the usecases (layer_2_application/usecases), ONE per pending operation/workflow. To keep
 // each LLM response small (the per-usecase defs carry explicit functions[] input/output), this agent
 // fans out via the runtime's parallel_dynamic/progress: a DISPATCHER step (deterministic, no LLM)
-// emits ONE parallel step whose args queue = the owner ids (createParallelStepIntent, maxParallel 10).
-// The runtime runs the workers in a pool of 10 slots and DISCARDS each child's payload as it finishes
+// emits ONE parallel step whose args queue = the owner ids (createParallelStepIntent, CB_MAX_PARALLEL slots).
+// The runtime runs the workers in a pool of CB_MAX_PARALLEL slots and DISCARDS each child's payload as it finishes
 // (the task stays small), instead of keeping N persistent steps. Each WORKER (same agent, reached with
 // its ownerId in hook.args) does one LLM call and saves one usecase .defs.ts. The controller step JOINS
 // on the single parallel parent (dependsOn its planId).
@@ -12,9 +12,10 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload, readCbPrompt,
-  createAddStepIntent, createParallelStepIntent, enqueueNextInPhase,
+  createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, enqueueNextInPhase,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
+  MDM_WRITE_PATH_ENABLED,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOwner, type CbOutputShape,
@@ -22,6 +23,7 @@ import {
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { eventPortBelongsToOwner } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { mdmSubtypeFor } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbUsecase';
 const TOOL_NAME = 'submitUsecase';
@@ -145,6 +147,21 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     .concat([...mutated].flatMap(id => eventsByOwner.get(id) || []))
     .filter((ev, i, arr) => arr.findIndex(x => x.entityId === ev.entityId) === i)
     .map(ev => ({ entityId: ev.entityId, owner: ev.ownerEntity, purpose: ev.purpose, persisted: ev.persisted, port: ev.persisted ? ev.entityId : null }));
+  // Gated: an entity declared `kind: mdm` with an ownership other than `moduleOwned` still classifies as
+  // `mdm` with the write path OFF, so without the gate a module in that shape would already see a
+  // different prompt — and "the current module is untouched" has to be true by construction, not by luck.
+  const mdmWrites = (MDM_WRITE_PATH_ENABLED ? [...new Set([o.entity, ...o.writes].filter(Boolean))] : [])
+    .filter(id => mdmIds.has(id))
+    .map(id => {
+      const entity = byId.get(id);
+      return {
+        entityId: id,
+        mdmType: entity?.mdmType || '',
+        subtype: mdmSubtypeFor(id),
+        idField: entity?.idField || '',
+      };
+    })
+    .filter(write => !!write.mdmType);
   return {
     usecaseId: o.id,
     ownerKind: o.kind,
@@ -163,6 +180,11 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     acceptanceAssertions: o.acceptanceAssertions,
     ports: portRefs.filter(id => roots.has(id) && !mdmIds.has(id)),
     mdmRefs: rawRefs.filter(id => mdmIds.has(id)),
+    // Master data this operation WRITES. The skill documents the ctx.mdm write surface; what it cannot
+    // know is the canonical type 102034 indexes by, the subtype its closed union requires, and which
+    // module field carries the mdmId — those come from the l4 `storage` block. Absent (not empty) when
+    // the operation writes no master data, so a module without MDM writes sees the same prompt as before.
+    ...(mdmWrites.length ? { mdmWrites } : {}),
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
     entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
   };
@@ -207,7 +229,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // stepTitle is used by the runtime as the progress templateTitle ({{completed}}/{{total}}/{{failed}}
     // are substituted live as workers finish), e.g. "Gerar usecases 27/27, falhas 0".
     const intents: mls.msg.AgentIntent[] = [
-      createParallelStepIntent(context, parentStep, FANOUT_PLAN_ID, AGENT_NAME, 'Gerar usecases {{completed}}/{{total}}, falhas {{failed}}', ownerIds, [], 10),
+      createParallelStepIntent(context, parentStep, FANOUT_PLAN_ID, AGENT_NAME, 'Gerar usecases {{completed}}/{{total}}, falhas {{failed}}', ownerIds, [], CB_MAX_PARALLEL),
     ];
     // JUDGE joins on the single parallel parent (runs after every worker finished): adversarial
     // critique of the saved usecase defs vs the L4 contract, routing error findings back to these

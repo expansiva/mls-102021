@@ -24,11 +24,12 @@ void test('agentCbDomainEntity declares the LLM step agent contract', () => {
   assert.match(flow, /"agentName": "agentCbDomainEntity"/);
 });
 
-void test('agentCbDomainEntity fans out one worker per domain (10 slots) and cb-gen-port joins', () => {
+void test('agentCbDomainEntity fans out one worker per domain and cb-gen-port joins', () => {
   const src = readFileSync(path.join(HERE, 'agentCbDomainEntity.ts'), 'utf8');
   const flow = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8'));
-  // Source: dispatcher fans out via createParallelStepIntent with 10 slots; workers never hard-fail.
-  assert.match(src, /createParallelStepIntent\([^)]*10\)/s, 'must fan out with 10 slots');
+  // Source: the dispatcher fans out via createParallelStepIntent; the slot count is ONE decision for
+  // the whole agent (CB_MAX_PARALLEL), so no call site repeats a number.
+  assert.match(src, /createParallelStepIntent\([^)]*CB_MAX_PARALLEL\)/s, 'must fan out with the shared slot count');
   assert.match(src, /cb-domain-fanout/);
   // Flow contract: the fan-out step exists as parallel_dynamic and cb-gen-port joins ON it.
   const steps = flow.steps as Array<{ planId: string; executionMode?: string; dependsOn?: string[] }>;

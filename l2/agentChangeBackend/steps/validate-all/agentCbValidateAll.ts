@@ -16,7 +16,9 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES, MDM_WRITE_PATH_ENABLED } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { collectPersistencePolicyIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmPolicy.js';
 import {
   readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
   mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
@@ -58,12 +60,18 @@ export function createAgent(): IAgentAsync {
  * the end, so a sweep that dies (out of memory, killed tab) used to leave the step in
  * waiting_human_input with nothing recorded anywhere. One small file, overwritten per block.
  */
+/** `models: registry=X pending=Y` — the question the console answered by hand, now on the task. */
+function modelsTrace(): string {
+  const counts = modelCounts();
+  return ` models: registry=${counts.registry} pendingRelease=${counts.pendingRelease}.`;
+}
+
 async function saveValidateProgress(
   project: number,
   progress: { phase: string; done: number; total: number; models: { registry: number; pendingRelease: number }; released?: number },
 ): Promise<void> {
   try {
-    const info = { project, level: 4, folder: 'trace', shortName: 'cb-validate-progress', extension: '.json' };
+    const info = { project, level: 4, folder: cbTraceFolder(), shortName: 'cb-validate-progress', extension: '.json' };
     const source = `${JSON.stringify({ ...progress, savedAt: new Date().toISOString() }, null, 2)}\n`;
     const key = mls.stor.getKeyToFile(info);
     let file = mls.stor.files[key];
@@ -94,6 +102,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     let l1Defs = 0;
     let mdmTableViolations = 0;
     const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId.toLowerCase()));
+    // Item 4 of the MDM write path: the entities whose l4 declares where they live, so the policy gate
+    // can compare the DECLARATION against the artifacts that were actually generated.
+    const policyEntities = scan.entities.map(e => ({ entityId: e.entityId, kind: e.kind, storageTarget: e.storageTarget || '' }));
+    const persistenceArtifacts: string[] = [];
     const portDefs = new Set<string>();    // lowercased shortNames present in layer_2_application/ports
     const domainDefs = new Set<string>();  // lowercased shortNames present in layer_3_domain/entities
     const mdmDomainArtifacts: string[] = [];
@@ -198,7 +210,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       defsFiles.push({ folder, shortName, real: shortName0 });
       if (folder.endsWith('/layer_2_application/usecases')) defRefByLc.set(`usecases::${shortName}`, defRefOf(folder, shortName0));
       if (folder.endsWith('/adapters/http/controllers')) defRefByLc.set(`controllers::${shortName}`, defRefOf(folder, shortName0));
-      if (folder.includes('/adapters/persistence') && mdmIds.has(shortName)) mdmTableViolations++;
+      if (folder.includes('/adapters/persistence')) {
+        persistenceArtifacts.push(shortName);
+        if (mdmIds.has(shortName)) mdmTableViolations++;
+      }
       if (folder.endsWith('/layer_2_application/ports')) portDefs.add(shortName);
       else if (folder.endsWith('/layer_3_domain/entities')) {
         if (mdmIds.has(shortName)) mdmDomainArtifacts.push(`${folder}/${shortName}.defs.ts`);
@@ -236,6 +251,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const missing: string[] = [];
     for (const artifact of mdmDomainArtifacts) {
       missing.push(`mdm local domain artifact forbidden -> ${artifact}`);
+    }
+    // A local table for master data is valid CODE, which is why nothing failed in run 9 while three
+    // shared registries were being duplicated per module. Only a policy finding makes it blocking; it
+    // stays behind the write-path flag because with the flag off `mdm + moduleOwned` legitimately IS a
+    // local aggregate (the band-aid this replaces).
+    if (MDM_WRITE_PATH_ENABLED) {
+      missing.push(...collectPersistencePolicyIssues(policyEntities, {
+        domainEntities: [...mdmDomainArtifacts.map(a => a.split('/').pop()?.replace(/\.defs\.ts$/u, '') || ''), ...domainDefs],
+        ports: portDefs,
+        persistence: persistenceArtifacts,
+      }));
     }
     for (const uc of usecases) {
       for (const p of uc.ports) {
@@ -588,9 +614,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const suppressedNote = (flakyCompilerSuppressed || cascadeCompilerSuppressed)
           ? ` (T2 suppressed ${flakyCompilerSuppressed} flaky + ${cascadeCompilerSuppressed} cascade compiler finding(s))`
           : '';
-        const trace = isRescue
+        const trace = (isRescue
           ? `INTEGRITY targeted rescue (global budget spent; ${repairTargets.size} compiler-only component(s))${suppressedNote}: ${unique.slice(0, 12).join('; ')}`
-          : `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s)${suppressedNote}: ${unique.slice(0, 12).join('; ')}`;
+          : `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s)${suppressedNote}: ${unique.slice(0, 12).join('; ')}`) + modelsTrace();
         // T1: the round snapshot carries the FULL forced-stale target list (defRef + finding count) so
         // cb-health-report.json's `rounds` array is a durable, per-round audit of what each g{n} decided.
         // T2: the suppressed counts make the double-check/dedup auditable (a suppressed finding that is
@@ -614,17 +640,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (preSeeds) {
         // No console dump (user decision 2026-07-17, run f): the full findings list already lives on
         // the step trace and in the health report — printing it again only floods the console.
-        const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
+        const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
         await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
         return [
           enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
-      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}`;
+      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
       await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
+    // Every terminal trace of this step carries the model counts: it is the measurement that used to be
+    // taken by hand in the console, now recorded on the task forever (permanent leak detector).
+    const modelsNote = modelsTrace();
     // Clean run: embed the repair audit in the TASK trace (the fan-out children were deleted by the
     // runtime, so this is where the repaired findings survive), then clear the state.
     const finalState = await readRepairState();
@@ -636,7 +665,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
     const okTrace = (warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
-      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote;
+      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote + modelsNote;
     return [
       enqueueNextInPhase(context, step, preSeeds ? 'seeds' : 'finalization', preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),

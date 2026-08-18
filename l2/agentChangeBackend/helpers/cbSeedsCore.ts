@@ -698,7 +698,15 @@ function entityIdField(entity: SeedEntityDefinition): string {
   return entity.fields.find(field => field.fieldId.toLowerCase() === `${entity.entityId.toLowerCase()}id`)?.fieldId || `${entity.entityId.charAt(0).toLowerCase()}${entity.entityId.slice(1)}Id`;
 }
 
-function mdmSubtypeFor(entityId: string): string {
+/**
+ * The 102034 `MdmSubtype` union is CLOSED (Person | Company | Product | Service | Location | Asset* |
+ * Animal | BankAccount | Document | ContactChannel), so every module entity that lands in MDM has to be
+ * mapped onto one of them. The heuristic is shared with the usecase generator (the write path passes the
+ * same subtype `ctx.mdm.entity.create` expects) so a seeded row and a runtime-created row of the same
+ * entity never disagree. Its limit is real and recorded in ajustes_ns4.md: an entity with no natural
+ * subtype (a construction project) falls back to 'Product'.
+ */
+export function mdmSubtypeFor(entityId: string): string {
   const lower = entityId.toLowerCase();
   if (lower.includes('table') || lower.includes('location') || lower.includes('room')) return 'Location';
   if (lower.includes('customer') || lower.includes('person') || lower.includes('user')) return 'Person';

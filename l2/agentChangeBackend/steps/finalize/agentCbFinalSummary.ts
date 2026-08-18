@@ -5,7 +5,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
-import { readHealthReport, readCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { readHealthReport, readCostReport, saveRunReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { modelCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { formatCostSummary } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import { isCompilerFinding } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
@@ -67,5 +68,29 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const summary = (noWork
     ? noWorkReason
     : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual;
-  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary)];
+  // The dossier of the run, next to the module's trace: phases with cost/calls, the repair history, the
+  // residual findings and the model counts — what used to be assembled by hand after every run.
+  const health = await readHealthReport();
+  const reportRef = await saveRunReport({
+    moduleName: typeof args.moduleName === 'string' ? args.moduleName : '',
+    noWork,
+    owners: {
+      done: typeof args.ownersDone === 'number' ? args.ownersDone : 0,
+      flippedAtFinalize: typeof args.ownersFlipped === 'number' ? args.ownersFlipped : 0,
+      alreadyDoneAtGenHttp: typeof args.ownersAlreadyDone === 'number' ? args.ownersAlreadyDone : 0,
+    },
+    llmByPhase: await readCostReport(),
+    models: modelCounts(),
+    health: health ? {
+      outcome: health.outcome ?? null,
+      findings: Array.isArray(health.findings) ? health.findings.length : 0,
+      warnings: Array.isArray(health.warnings) ? health.warnings.length : 0,
+      globalAttempts: health.globalAttempts ?? null,
+      judgeRuns: health.judgeRuns ?? null,
+      repairHistory: Array.isArray(health.repairHistory) ? health.repairHistory : [],
+    } : null,
+    summary,
+  });
+  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+    reportRef ? `${summary} Run report: ${reportRef}.` : summary)];
 }

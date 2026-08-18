@@ -5,7 +5,7 @@
 // from the ontology fields. Writes pipeline-complete .defs.ts (self-sufficient for agentMaterializeGen).
 //
 // v2 (2026-07-24) FANS OUT like agentCbUsecase: a DISPATCHER step (deterministic, no LLM) emits ONE
-// parallel_dynamic step whose args queue = the domain ids (createParallelStepIntent, 10 slots); the
+// parallel_dynamic step whose args queue = the domain ids (createParallelStepIntent, CB_MAX_PARALLEL slots); the
 // runtime runs the workers in a pool and DISCARDS each child payload as it finishes. Each WORKER (same
 // agent, reached with its domain id in hook.args) does ONE LLM call for a SINGLE domain and saves one
 // .defs.ts. cb-gen-port JOINS on the fan-out (dependsOn cb-domain-fanout). This replaced the v1
@@ -17,7 +17,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, enqueueNext, readCbPrompt,
-  createParallelStepIntent, createAddStepIntent, createAgentStepPayload,
+  createParallelStepIntent, CB_MAX_PARALLEL, createAddStepIntent, createAgentStepPayload,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, batchSchema, asArray, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, domainEntityFileInfo, layerSkills, readString, lowerFirst, logPrefix,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
@@ -156,7 +156,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 // DISPATCHER (deterministic, no LLM): reuse fast-path, else ONE parallel_dynamic step whose args queue
-// is the domain ids (10 slots) + the cb-gen-port JOIN on that fan-out.
+// is the domain ids (CB_MAX_PARALLEL slots) + the cb-gen-port JOIN on that fan-out.
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
@@ -180,13 +180,13 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no domain entities to generate'),
       ];
     }
-    // Fan out one worker per domain (10 slots), then JOIN cb-gen-port on the fan-out parent.
+    // Fan out one worker per domain (CB_MAX_PARALLEL slots), then JOIN cb-gen-port on the fan-out parent.
     const intents: mls.msg.AgentIntent[] = [
-      createParallelStepIntent(context, parentStep, FANOUT_PLAN_ID, AGENT_NAME, 'Gerar entidades de domínio {{completed}}/{{total}}, falhas {{failed}}', targets, [], 10),
+      createParallelStepIntent(context, parentStep, FANOUT_PLAN_ID, AGENT_NAME, 'Gerar entidades de domínio {{completed}}/{{total}}, falhas {{failed}}', targets, [], CB_MAX_PARALLEL),
     ];
     const nextStep = createAgentStepPayload(NEXT_PLAN_ID, 'agentCbRepositoryPort', 'Gerar ports de repositório', { planId: NEXT_PLAN_ID }, [FANOUT_PLAN_ID], 'sequential', 'waiting_dependency');
     intents.push(createAddStepIntent(context, parentStep, nextStep));
-    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${targets.length} domain entity worker(s) (parallel_dynamic, 10 slots)`));
+    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${targets.length} domain entity worker(s) (parallel_dynamic, CB_MAX_PARALLEL slots)`));
     return intents;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

@@ -11,7 +11,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, createUpdateStatusIntent, createAgentStepPayload, createAddStepIntent,
-  createParallelStepIntent, enqueueNext, enqueueNextInPhase, logPrefix,
+  createParallelStepIntent, CB_MAX_PARALLEL, enqueueNext, enqueueNextInPhase, logPrefix,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
   readRepairState, saveRepairState, usecaseDefsTarget,
@@ -20,6 +20,7 @@ import {
 import {
   judgeArgsOf, judgeFindingsPrefix, scopedOperations, type CbJudgeBatchFindings,
 } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeShared.js';
+import { cbTraceFolder, CB_TRACE_LEGACY_FOLDER } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 const AGENT_NAME = 'agentCbJudgeCollect';
 
@@ -86,7 +87,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       );
       nextJudge.onFailure = 'continue';   // an LLM 502 must never kill the task
       return [
-        createParallelStepIntent(context, parentStep, repairPlanId, 'agentCbUsecase', 'Reparar usecases {{completed}}/{{total}}, falhas {{failed}}', repaired, [], 10),
+        createParallelStepIntent(context, parentStep, repairPlanId, 'agentCbUsecase', 'Reparar usecases {{completed}}/{{total}}, falhas {{failed}}', repaired, [], CB_MAX_PARALLEL),
         createAddStepIntent(context, parentStep, nextJudge),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
           `judge run ${judgeRun}/${JUDGE_MAX_RUNS}: ${errorsByOwner.size} usecase(s) routed to repair; ${warnings.length} warning(s)`, 'input_output'),
@@ -121,7 +122,10 @@ async function readBatchFindings(runId: string, judgeRun: number): Promise<CbJud
   const findings: CbJudgeFinding[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || String(file.folder || '') !== 'trace') continue;
+    // The findings live in the module's trace folder; a run that started before the trace was scoped
+    // wrote them to the bare `trace`, so both are read.
+    const folder = String(file.folder || '');
+    if (file.extension !== '.json' || (folder !== cbTraceFolder() && folder !== CB_TRACE_LEGACY_FOLDER)) continue;
     if (!String(file.shortName || '').startsWith(prefix)) continue;
     try {
       const parsed = JSON.parse(String(await file.getContent())) as CbJudgeBatchFindings;

@@ -17,7 +17,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   readBackendScan, createUpdateStatusIntent, createAgentStepPayload, createAddStepIntent,
-  createParallelStepIntent, enqueueNext, enqueueNextInPhase, logPrefix,
+  createParallelStepIntent, CB_MAX_PARALLEL, enqueueNext, enqueueNextInPhase, logPrefix,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { byteLength, planJudgeBatch } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
 import {
@@ -69,7 +69,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     collect.onFailure = 'continue';
     return [
       createParallelStepIntent(context, parentStep, fanoutPlanId, 'agentCbJudgeBatch',
-        'Juiz LLM {{completed}}/{{total}} lotes, falhas {{failed}}', batchArgs, [], 5),
+        'Juiz LLM {{completed}}/{{total}} lotes, falhas {{failed}}', batchArgs, [], CB_MAX_PARALLEL),
       createAddStepIntent(context, parentStep, collect),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
         `judge run ${judgeRun}: ${operations.length} usecase(s) in ${batches.length} batch(es)`, 'input_output'),
