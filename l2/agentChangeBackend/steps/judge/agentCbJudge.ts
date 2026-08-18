@@ -36,6 +36,12 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    // The judge runs right after the usecase fan-out, and the dependency only proves the children
+    // COMPLETED — not that this client's file index already observed what they wrote. In run 5 it did
+    // not: all 85 usecase defs read as missing, every owner was routed to repair and a full round of 85
+    // LLM calls was spent regenerating files that were already on disk. Refreshing the index first is
+    // read-only and costs one request (skills/collab_messages.md: visibility barrier).
+    await refreshProjectIndex();
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const { judgeRun, operations } = scopedOperations(scan, step);
     if (!operations.length) {
@@ -76,6 +82,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       enqueueNextInPhase(context, step, 'materialization', 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `judge skipped (error): ${message}`),
     ];
+  }
+}
+
+/** Ask the server for this project's current file index; never fails the step. */
+async function refreshProjectIndex(): Promise<void> {
+  try {
+    await mls.stor.server.loadProjectInfoIfNeeded(mls.actualProject || 0, true);
+  } catch (error) {
+    console.warn('[agentCbJudge] could not refresh the project file index before judging', error);
   }
 }
 

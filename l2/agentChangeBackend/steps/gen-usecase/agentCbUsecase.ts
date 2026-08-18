@@ -62,6 +62,17 @@ function deriveMaps(scan: CbScan) {
  * mismatch into broken TypeScript. */
 function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string[] {
   const issues: string[] = [];
+  // A usecase that declares NO function for its own operation is a stub: nothing to materialize, and
+  // every controller that references it fails the final gate with "export not found" — defs-level, so
+  // no re-materialization can repair it (run 8 of buildFlowFsm: 4 stubs, 12 findings, run dead at the
+  // last step). The operationId must be among the functions, whatever the reason for the omission.
+  const functionNames = (Array.isArray(result?.functions) ? result.functions : [])
+    .map((fn: any) => readString(fn?.functionName)).filter(Boolean);
+  if (!functionNames.includes(ownerId)) {
+    issues.push(functionNames.length
+      ? `usecase ${ownerId}: no function named '${ownerId}' (declared: ${functionNames.join(', ')}) — the operation must be implemented by a function of its own name`
+      : `usecase ${ownerId}: functions[] is empty — a stub usecase is forbidden; implement the operation as a function named '${ownerId}'`);
+  }
   const entities = new Map(scan.entities.map(entity => [entity.entityId, entity]));
   const knownPorts = new Set([
     ...scan.aggregates.map(aggregate => aggregate.rootEntity),

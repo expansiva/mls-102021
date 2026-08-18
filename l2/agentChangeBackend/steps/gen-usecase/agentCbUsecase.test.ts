@@ -74,3 +74,17 @@ function assertLiveResponse(r: { modelType: string; status: number; text: string
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+// ── nenhum usecase stub sobrevive à geração ───────────────────────────────────
+// Run 8: 4 usecases saíram com `functions: []` (irmãos do MESMO tipo saíram completos), o juiz não
+// olhava isso e os controllers que os referenciam derrubaram o gate final com "export not found" —
+// achado defs-level, que nenhuma rematerialização conserta.
+void test('a usecase without a function for its own operationId is rejected', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  // O gate é no validador do plano, antes de qualquer persistência, e roteia pelo repair existente.
+  assert.match(src, /const functionNames = \(Array\.isArray\(result\?\.functions\) \? result\.functions : \[\]\)/);
+  assert.match(src, /if \(!functionNames\.includes\(ownerId\)\)/);
+  assert.match(src, /functions\[\] is empty — a stub usecase is forbidden/);
+  // A mensagem do caso "tem funções, mas nenhuma com o nome da operação" diz quais existem.
+  assert.match(src, /no function named '\$\{ownerId\}' \(declared: \$\{functionNames\.join\(', '\)\}\)/);
+});

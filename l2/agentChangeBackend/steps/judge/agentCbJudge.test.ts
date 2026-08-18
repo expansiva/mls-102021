@@ -158,3 +158,19 @@ void test('a prompt over the transport limit fails the step instead of hanging i
   const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbShared.ts'), 'utf8');
   assert.match(shared, /const oversize = promptSizeError\([\s\S]{0,120}\n\s*if \(oversize\) throw new Error\(oversize\);/);
 });
+
+// ── V1: os 85/85 do run 5 não eram o juiz exagerando ─────────────────────────
+// Os 121 achados eram todos "usecase .defs.ts missing for operation X": este cliente não tinha
+// observado o que o fan-out escreveu (no re-judge, com os arquivos visíveis, sobraram 10 achados
+// reais). Custou uma rodada de repair de 85 usecases em chamadas de LLM.
+void test('the judge refreshes the file index before judging, and never repairs a whole module for invisibility', () => {
+  const dispatcher = readFileSync(path.join(HERE, 'agentCbJudge.ts'), 'utf8');
+  const collector = readFileSync(path.join(HERE, 'agentCbJudgeCollect.ts'), 'utf8');
+  // Barreira de visibilidade antes de planejar (leitura, uma requisição).
+  assert.match(dispatcher, /await refreshProjectIndex\(\);/);
+  assert.match(dispatcher, /loadProjectInfoIfNeeded\(mls\.actualProject \|\| 0, true\)/);
+  // E o collector trata "todos ausentes" como ambiente, sem rotear repair.
+  assert.match(collector, /JUDGE-ENVIRONMENT-FAILURE/);
+  assert.match(collector, /new Set\(missingDefs\.map\(finding => finding\.ownerId\)\)\.size === operationIds\.size/);
+  assert.match(collector, /operationIds\.size > 2/);   // um módulo minúsculo não vira diagnóstico de ambiente
+});

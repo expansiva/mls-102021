@@ -302,11 +302,19 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
       if (moduleName && entityId) {
         moduleNames.add(moduleName);
         entityToModule.set(entityId, moduleName);
+        const declaredKind = readString(parsed.kind);
+        const ownership = readString(parsed.ownership) || 'moduleOwned';
+        const kind = entityKindOf(declaredKind, ownership);
+        // The mapping is a DECISION about a foreign vocabulary, so it is visible in the scan trace
+        // instead of only in the code (same treatment as the projection mapping).
+        if (declaredKind && declaredKind !== kind) {
+          warnings.push(`entity ${entityId}: l4 kind '${declaredKind}' (${ownership}) read as '${kind}'`);
+        }
         upsertEntity(entities, {
           entityId,
           title: readString(parsed.title) || entityId,
-          kind: entityKindOf(readString(parsed.kind)),
-          ownership: readString(parsed.ownership) || 'moduleOwned',
+          kind,
+          ownership,
           moduleName,
           fields: Array.isArray(parsed.fields) ? parsed.fields.filter(isRecord) : undefined,
           eventPolicy: readEventPolicy(parsed.eventPolicy),

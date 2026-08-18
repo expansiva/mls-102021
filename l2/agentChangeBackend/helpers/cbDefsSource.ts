@@ -59,9 +59,18 @@ export function handlerKindOf(opKind: string): 'query' | 'command' {
  * aggregate root by itself, but still backed by a table and seeds WHEN an operation reads it (that
  * is how a dashboard answers at runtime). Casting it silently would land on `core` and give a
  * projection nobody queries a table of its own.
+ *
+ * `mdm` means two different things in the two vocabularies, and the difference is the OWNERSHIP:
+ * here it has always meant "master data read by id through 102034 — no local table, no port, never
+ * written locally", while ns4 writes `mdm` + `ownership: moduleOwned` for master data THIS MODULE
+ * owns and publishes, and compiles create/update/delete over it. Read as external, those operations
+ * have nowhere to live: run 8 of buildFlowFsm generated 4 stub usecases (`functions: []`) for
+ * Client/InventoryItem/Project and the final gate failed with 12 "export not found". Owned master
+ * data is a local aggregate — table, port, CRUD, seeds — which is exactly `core`.
  */
-export function entityKindOf(kind: string): CbEntityKind {
+export function entityKindOf(kind: string, ownership = ''): CbEntityKind {
   if (kind === 'projection') return 'metric';
+  if (kind === 'mdm' && ownership === 'moduleOwned') return 'core';
   return ENTITY_KINDS.includes(kind as CbEntityKind) ? kind as CbEntityKind : 'core';
 }
 

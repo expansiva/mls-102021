@@ -341,6 +341,91 @@ export function modelCounts(): { registry: number; pendingRelease: number } {
   return { registry, pendingRelease: pendingRelease.length };
 }
 
+/**
+ * ONE compile pass over a whole set of files.
+ *
+ * `compileSavedTsAndGetErrors` per file costs `N × the platform`: each call re-borrows the models of
+ * its imports, re-typechecks everything the program reaches, and releases — ~6s per file, so the
+ * validate gate of a 193-file module took ~20 minutes and the flagged ones paid it twice (the
+ * anti-flaky double check). The TS worker, on the other hand, keeps an incremental program: load the
+ * models ONCE and asking it for the diagnostics of each file is cheap from the second question on.
+ *
+ * The stable model set also removes the source of the flakiness the double compile existed for (a
+ * model appearing halfway through the sweep), so callers ask once and re-ask only the flagged ones.
+ *
+ * Returns null when the worker is unavailable — the caller then keeps the per-file path, because a
+ * missing optimization must never cost the gate.
+ */
+export async function compileModuleAndGetErrors(
+  project: number,
+  files: Array<{ folder: string; shortName: string }>,
+): Promise<Map<string, string[]> | null> {
+  if (!files.length) return new Map();
+  const borrowed: BorrowedModel[] = [];
+  activeCompiles++;
+  try {
+    // 1. Load the module's own files and the closure of their l1 imports — one borrow set.
+    const models: Array<{ key: string; model: mls.editor.IModelTS }> = [];
+    for (const file of files) {
+      const content = await readSavedTs(project, file.folder, file.shortName);
+      if (content === null) continue;
+      borrowed.push(...await ensureImportModels(content));
+      const model = await loadTsModel(project, 1, file.folder, file.shortName, content);
+      if (model) models.push({ key: `${file.folder}::${file.shortName}`, model });
+    }
+    if (!models.length) return null;
+    // 2. One worker for the whole set; it owns the incremental program.
+    const worker = await mls.l2.typescript.getTypeScriptWorker(models[0].model.model);
+    if (!worker) return null;
+    const errors = new Map<string, string[]>();
+    for (const entry of models) {
+      const diagnostics = await mls.l2.typescript.getDiagnostics(entry.model.model.uri.toString(), worker);
+      const list = (diagnostics || [])
+        .filter((d: any) => d?.category === undefined || d.category === 1)
+        .map(flattenDiagnostic)
+        .filter(Boolean)
+        .slice(0, 12);
+      errors.set(entry.key, list);
+    }
+    return errors;
+  } catch (error) {
+    console.warn('[cbMaterializeIo] compileModuleAndGetErrors unavailable; falling back to per-file compile', error);
+    return null;
+  } finally {
+    activeCompiles--;
+    releaseBorrowedModels(borrowed);
+  }
+}
+
+/** The saved content of a generated .ts, or null when the file is not in this session. */
+async function readSavedTs(project: number, folder: string, shortName: string): Promise<string | null> {
+  try {
+    const key = mls.stor.getKeyToFile({ project, level: 1, folder, shortName, extension: '.ts' });
+    const file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo | undefined;
+    if (!file || file.status === 'deleted') return null;
+    return String(await file.getContent() ?? '');
+  } catch {
+    return null;
+  }
+}
+
+/** The loaded TS model of a file, creating it when this session does not have it yet. */
+async function loadTsModel(project: number, level: number, folder: string, shortName: string, content: string): Promise<mls.editor.IModelTS | null> {
+  try {
+    const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
+    let base = mls.editor.models[editorKey];
+    if (!base) base = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
+    const model = base?.ts as mls.editor.IModelTS | undefined;
+    if (!model) return null;
+    // The saved content is the truth for the gate: a model left over from an earlier phase of the run
+    // may still hold the pre-repair text.
+    if (model.model.getValue() !== content) model.model.setValue(content);
+    return model;
+  } catch {
+    return null;
+  }
+}
+
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
 async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; infraErrors: string[]; available: boolean }> {
   // Borrowed OUTSIDE the try so the finally can always release them, even on a compile exception.

@@ -123,3 +123,19 @@ test('"model already exists" is the goal, not an error', () => {
   assert.equal(isModelAlreadyExistsError('network error'), false);
   assert.equal(isModelAlreadyExistsError(''), false);
 });
+
+// ── mdm no ns4 significa duas coisas, e quem decide é o ownership ─────────────
+// Run 8 do buildFlowFsm: Client/InventoryItem/Project vieram `mdm` + `moduleOwned` com CRUD gerado.
+// Lidos como master data EXTERNA, o create/update/delete não tinham onde morar — 4 usecases stub e o
+// gate final acusou 12 "export not found".
+test('mdm owned by the module is a local aggregate; mdm de fora continua read-only', () => {
+  assert.equal(entityKindOf('mdm', 'moduleOwned'), 'core');
+  assert.equal(entityKindOf('mdm', 'platformOwned'), 'mdm');
+  assert.equal(entityKindOf('mdm', 'external'), 'mdm');
+  assert.equal(entityKindOf('mdm', ''), 'mdm');          // sem ownership declarado: comportamento atual
+  assert.equal(entityKindOf('mdm'), 'mdm');
+  // As outras classificações não mudam.
+  assert.equal(entityKindOf('projection', 'derived'), 'metric');
+  assert.equal(entityKindOf('core', 'moduleOwned'), 'core');
+  assert.equal(entityKindOf('somethingNew', 'moduleOwned'), 'core');
+});

@@ -40,6 +40,18 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const findings = (await readBatchFindings(runId, judgeRun)).filter(finding => operationIds.has(finding.ownerId));
     const warnings = findings.filter(finding => finding.severity !== 'error');
 
+    // EVERY usecase missing is not N worker failures: it is this client not seeing what the fan-out
+    // wrote (run 5: 85/85 routed to repair, 85 LLM calls spent regenerating files that were on disk).
+    // Say so once and route nothing — the same doctrine the materialization gates already use.
+    const missingDefs = findings.filter(finding => /usecase \.defs\.ts missing for operation/u.test(finding.message));
+    if (operationIds.size > 2 && new Set(missingDefs.map(finding => finding.ownerId)).size === operationIds.size) {
+      return [
+        enqueueNextInPhase(context, step, 'materialization', 'cb-gen-http', 'agentCbHttpController', 'Gerar controllers HTTP (BFF)', {}),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+          `JUDGE-ENVIRONMENT-FAILURE: all ${operationIds.size} usecase defs read as missing, so this client did not observe what the fan-out wrote — not a defect of ${operationIds.size} usecases. No repair was routed; the deterministic gates of materialization and validate-all still check the artifacts.`, 'input_output'),
+      ];
+    }
+
     // Route only errors that name a real owner with repair budget left.
     const state = await readRepairState();
     const errorsByOwner = new Map<string, CbJudgeFinding[]>();
