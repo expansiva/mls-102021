@@ -368,6 +368,7 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   // An `external` entity has no store of this module's to seed: it IS the platform directory (a
   // platform user). Leaving it here would make its `<entity>Id` FKs look resolvable to the validator
   // and then demand a symbolic { ref } to rows that can never exist.
+  const operatedStates = await readOperatedStates(project, moduleName);
   const entities: SeedEntityDefinition[] = scan.entities.filter(entity => entity.kind !== 'external').map((entity) => ({
     entityId: entity.entityId,
     title: entity.title,
@@ -378,6 +379,7 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
       required: field.required === true,
       enumValues: readStringArray(field.enum),
     })).filter(field => !!field.fieldId),
+    ...(operatedStates.get(entity.entityId)?.length ? { operatedStates: operatedStates.get(entity.entityId) } : {}),
   }));
   const ruleIds = [...new Set(scan.owners.flatMap(owner => owner.rulesApplied))].sort();
   const ruleDefs = await readRuleDefinitions(project);
@@ -421,6 +423,37 @@ async function readActorDefinitions(project: number): Promise<SeedActorDefinitio
 /** Full L4 rule text (id + title + description + appliesTo) from every rule set def in the project.
  * The planner receives the semantics of each applied rule instead of an opaque id, so it can satisfy
  * the rules without any domain-specific check hardcoded into the generator. */
+/**
+ * entityRef -> the states some transition READS (`fromStates`), from `l4/<module>/workflows/*.defs.ts`.
+ *
+ * This is the only place the seed planner learns which states the module actually operates on; the scan
+ * drops entity lifecycles on purpose (they own no generated artifact). Without it, a screen that acts on
+ * `submitted` opens empty because nothing was seeded in that state — 5 of the 22 failures of the
+ * buildFlowFsm production suite were exactly that.
+ */
+async function readOperatedStates(project: number, moduleName: string): Promise<Map<string, string[]>> {
+  const byEntity = new Map<string, Set<string>>();
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts') continue;
+    const folder = String(file.folder || '');
+    if (folder !== `${moduleName}/workflows` && folder !== 'workflows') continue;
+    if (String(file.shortName || '') === 'index') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!isRecord(parsed) || !Array.isArray(parsed.transitions)) continue;
+    const entityRef = readString(parsed.entityRef);
+    for (const raw of parsed.transitions) {
+      if (!isRecord(raw)) continue;
+      const target = readString(raw.entityRef) || entityRef;
+      if (!target) continue;
+      const states = byEntity.get(target) ?? new Set<string>();
+      for (const state of readStringArray(raw.fromStates)) states.add(state);
+      byEntity.set(target, states);
+    }
+  }
+  return new Map([...byEntity].map(([entityId, states]) => [entityId, [...states].sort()]));
+}
+
 async function readRuleDefinitions(project: number): Promise<SeedRuleDefinition[]> {
   const rules: SeedRuleDefinition[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {

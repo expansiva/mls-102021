@@ -108,6 +108,36 @@ test('validateSeedPlan resolves a local FK to an MDM row, and rejects a literal 
   assert.ok(validateSeedPlan(literal).some(error => /menuItemId: entity references must use a symbolic \{ ref \}/.test(error)), validateSeedPlan(literal).join('\n'));
 });
 
+// F3 (bugTests.md): the three change-order journeys of the buildFlowFsm production run all reported
+// `expected >= 1 item(s), got 0` — the screens filter by `submitted`/`pendingClientApproval` and the
+// seeds created no ChangeOrder in either state. The rule follows the WORKFLOW (states some transition
+// reads), not the enum: requiring every declared state would demand rows for terminal states nobody
+// queries.
+test('validateSeedPlan requires a seeded row for every OPERATED lifecycle state', () => {
+  const input = validInput();
+  const order = input.entities.find(entity => entity.entityId === 'Order')!;
+  // Order's workflow transitions read `registered` and `ready`; the plan seeds only `registered`.
+  order.operatedStates = ['registered', 'ready'];
+  const errors = validateSeedPlan(input);
+  assert.equal(errors.length, 1, errors.join('\n'));
+  assert.match(errors[0], /Order: no seeded row in lifecycle state\(s\) ready/u);
+  assert.match(errors[0], /one row per operated state/u);
+
+  // Seeding the missing state clears it.
+  const covered = validInput();
+  covered.entities.find(entity => entity.entityId === 'Order')!.operatedStates = ['registered', 'ready'];
+  const table = covered.plan.localTables.find(plan => plan.tableId === 'Order')!;
+  table.rows.push({
+    ...structuredClone(table.rows[0]),
+    key: 'ready',
+    columns: table.rows[0].columns.map(column => (column.name === 'status' ? { name: 'status', value: 'ready' } : structuredClone(column))),
+  });
+  assert.deepEqual(validateSeedPlan(covered), []);
+
+  // No workflow -> nothing is "operated", and the rule stays silent (the baseline fixture).
+  assert.deepEqual(validateSeedPlan(validInput()), []);
+});
+
 test('deriveSeedPlanningWaves orders the cafeFlow graph deterministically', () => {
   assert.deepEqual(deriveSeedPlanningWaves(validInput()), [
     { index: 1, tableIds: [], mdmEntityIds: ['MenuCategory', 'StockItem'] },

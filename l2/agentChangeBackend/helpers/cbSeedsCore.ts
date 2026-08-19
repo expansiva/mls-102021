@@ -28,6 +28,12 @@ export interface SeedEntityDefinition {
   title: string;
   kind: string;
   fields: SeedFieldDefinition[];
+  /**
+   * The lifecycle states this module actually OPERATES on — the union of `fromStates` of the entity's
+   * workflow transitions. Not every declared state: a screen that decides on a state filters by it, and
+   * that is the set a seed has to cover. Absent for an entity with no workflow (nothing to cover).
+   */
+  operatedStates?: string[];
 }
 
 export interface SeedTableColumn {
@@ -1099,7 +1105,57 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
   for (const entity of input.entities.filter(entity => entity.kind === 'mdm')) {
     if (!seenMdmEntities.has(entity.entityId)) errors.push(`mdmEntities: missing plan for '${entity.entityId}'`);
   }
+  errors.push(...collectLifecycleStateCoverage(input));
   return [...new Set(errors)];
+}
+
+/**
+ * Every OPERATED lifecycle state of an entity needs at least one seeded row in it.
+ *
+ * A screen that decides on a state filters by it, so a state nobody seeded makes that screen open empty
+ * and its test fail for a reason that has nothing to do with the screen: the buildFlowFsm production run
+ * had all three change-order journeys reporting `expected >= 1 item(s), got 0` because no ChangeOrder
+ * was seeded as `submitted` or `pendingClientApproval`. One incomplete generator, five failures.
+ *
+ * "Operated" is the union of the `fromStates` of the entity's workflow transitions — the states some
+ * transition READS. Requiring every DECLARED state instead would demand a row for terminal states nobody
+ * queries and inflate every plan (the cafeFlow fixture alone would need 6 more rows), so the rule follows
+ * the workflow, not the enum. Entities with no workflow, and entities the plan gave up on, are silent.
+ */
+export function collectLifecycleStateCoverage(input: SeedBuildInput): string[] {
+  const errors: string[] = [];
+  const rowsByEntity = new Map<string, Array<{ key: string; values: Map<string, SeedValue> }>>();
+  for (const table of input.plan.localTables) {
+    const definition = input.tablePlans.find(plan => plan.tableId === table.tableId);
+    if (!definition) continue;
+    rowsByEntity.set(table.tableId, table.rows.map(row => ({
+      key: row.key,
+      values: new Map([
+        ...row.columns.map(column => [toCamel(column.name), column.value] as const),
+        ...row.details.map(detail => [detail.name, detail.value] as const),
+      ]),
+    })));
+  }
+  for (const entity of input.plan.mdmEntities) {
+    rowsByEntity.set(entity.entityId, entity.rows.map(row => ({
+      key: row.key,
+      values: new Map(row.fields.map(field => [field.name, field.value] as const)),
+    })));
+  }
+  for (const entity of input.entities) {
+    const operated = entity.operatedStates ?? [];
+    if (operated.length === 0) continue;        // no workflow -> no state anyone operates on
+    const rows = rowsByEntity.get(entity.entityId);
+    if (!rows || rows.length === 0) continue;   // not planned (or given up on) -> not this rule's business
+    const statusField = entity.fields.find(field => (field.enumValues?.length ?? 0) > 0 && /status$/iu.test(field.fieldId));
+    if (!statusField) continue;
+    const seeded = new Set(rows.map(row => row.values.get(statusField.fieldId)).filter(value => typeof value === 'string'));
+    const missing = operated.filter(state => !seeded.has(state));
+    if (missing.length) {
+      errors.push(`${entity.entityId}: no seeded row in lifecycle state(s) ${missing.join(', ')} — a screen that acts on them opens empty; give '${statusField.fieldId}' one row per operated state`);
+    }
+  }
+  return errors;
 }
 
 interface SeedAssetValueMarker { __agentCbSeedAsset: string; }

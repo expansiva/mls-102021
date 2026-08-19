@@ -110,6 +110,21 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   `relationshipRefs` stay consistent.
 - Ids via `ctx.idGenerator.newId()`, timestamps via `ctx.clock.nowIso()`.
 
+### An operation the port does not support
+
+NEVER cast a repository to reach a method it does not declare — `const x = orders as unknown as
+{ delete(id: string): Promise<void> }` compiles and then throws `undefined is not a function` at run
+time, which reaches the client as `INTERNAL_ERROR: Unexpected error` (7 of 22 cases of one production
+suite). The port IS the contract: if it declares no `delete`, this entity is not deletable, and the
+usecase must say so in a way the caller can read:
+
+```ts
+throw new AppError('CONFLICT', 'ProjectCoordinationAssignment repository does not support deletion.', 409, { projectCoordinationAssignmentId: input.projectCoordinationAssignmentId });
+```
+
+The same holds for any other missing method. A generic error in a predictable path is a defect of
+handling, independent of the policy behind it.
+
 ## Child-entity operations (embedded members)
 
 An operation may target a CHILD entity that is embedded in a parent aggregate (it lives in the parent's

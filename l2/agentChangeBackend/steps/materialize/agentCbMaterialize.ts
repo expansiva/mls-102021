@@ -32,7 +32,7 @@ import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpe
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-  extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
+  extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues, collectRepositoryCastIssues,
   portsMissingFromDependsFiles, collectDetailsDefaultingIssues,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
@@ -388,6 +388,7 @@ function validateUsecaseComponent(project: number, data: unknown, code: string, 
     issues.push('mdmRelationship uses invented source_entity/target_entity fields; use MdmRelationshipRecord fromId/toId/type');
   }
   issues.push(...collectInventedRelationshipKeyIssues(code));
+  issues.push(...collectRepositoryCastIssues(code));
   for (const rule of collectUsecaseRules(data)) {
     if (!new RegExp(`\\b${escapeRegExp(rule)}\\b`).test(code)) {
       issues.push(`rulesApplied '${rule}' not present in generated .ts`);

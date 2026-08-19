@@ -192,6 +192,41 @@ export function collectRepositoryMethodMisuse(code: string, methodsByInterface: 
 }
 
 /**
+ * A repository re-bound through a CAST to invent a method it does not have.
+ *
+ * The delete usecases of the buildFlowFsm run all did this:
+ * `const deletedClient = clients as unknown as { delete(id: string): Promise<void> }; await
+ * deletedClient.delete(...)`. The port declares no `delete`, so at runtime the property is `undefined`,
+ * the call throws a TypeError, and the client sees `INTERNAL_ERROR: Unexpected error` — 7 of the 22
+ * failures of the production suite, all of them unreadable. `collectRepositoryMethodMisuse` cannot see
+ * it: it tracks bindings made by `resolveRepository<I…>`, and the cast creates a NEW name it never
+ * heard of. The cast IS the escape from that gate.
+ *
+ * There is no legitimate version of this: if the port has no `delete`, the entity is not deletable, and
+ * the usecase has to SAY so — the one generated file that did (`ProjectCoordinationAssignment
+ * repository does not support deletion`, a readable CONFLICT) is the shape the other seven owe.
+ */
+export function collectRepositoryCastIssues(code: string): string[] {
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  const repositories = new Set<string>();
+  for (const match of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?resolveRepository\s*</gu)) {
+    repositories.add(match[1]);
+  }
+  if (!repositories.size) return issues;
+  // `<name> as unknown as { … }` / `as any` / `as { … }` over a resolved repository.
+  for (const match of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s+as\s+(?:unknown\s+as\s+)?([^;\n]+)/gu)) {
+    const [, alias, source, casted] = match;
+    if (!repositories.has(source)) continue;
+    const method = /\{\s*([A-Za-z_$][\w$]*)\s*[(<]/u.exec(casted)?.[1] || 'a method';
+    if (seen.has(alias)) continue;
+    seen.add(alias);
+    issues.push(`repository cast forbidden -> \`${alias} = ${source} as ${casted.trim().slice(0, 60)}\`; casting a repository to give it \`${method}\` produces \`undefined is not a function\` at runtime (the client sees INTERNAL_ERROR: Unexpected error). If the port does not declare it, the entity does not support that operation — throw a readable AppError('CONFLICT', '<Entity> repository does not support <operation>') instead`);
+  }
+  return issues;
+}
+
+/**
  * The MDM facade's `entity.related(key)` takes a TYPED CompactRelationshipRefKey. Models invent a key
  * and force it past the type with a string-literal cast — `entity.related(key as 'o')`,
  * `x.relatedIds(rel as "OffersProduct")` (todo/changeBackend erro4). The isolated in-loop compile missed

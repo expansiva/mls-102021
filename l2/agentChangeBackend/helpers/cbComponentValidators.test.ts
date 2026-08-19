@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
-  eventPortBelongsToOwner, missingPrincipalPortIssues, portsMissingFromDependsFiles,
+  eventPortBelongsToOwner, missingPrincipalPortIssues, portsMissingFromDependsFiles, collectRepositoryCastIssues,
   ownershipCheckIsInconclusive, ownershipInconclusiveWarning,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
@@ -447,4 +447,35 @@ test('extractCollectionFieldNames keeps the FIRST declaration and ignores non-ar
   `);
   assert.equal(map.get('Thing'), 'primary');
   assert.equal(map.size, 1, 'a non-array field must not register');
+});
+
+// F1.2 (bugTests.md): 7 of the 22 production failures were `INTERNAL_ERROR: Unexpected error` — every
+// generated delete usecase cast its repository to invent a `delete` the port never declared, so the call
+// was `undefined` at runtime. The cast is exactly what hides it from collectRepositoryMethodMisuse.
+test('a repository cast that invents a method is rejected, with the readable alternative named', () => {
+  const code = [
+    "const clients = resolveRepository<IClientRepository>(ctx, 'Client');",
+    'const deletedClient = clients as unknown as { delete(id: string): Promise<void> };',
+    'await deletedClient.delete(client.clientId);',
+  ].join('\n');
+  const issues = collectRepositoryCastIssues(code);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /repository cast forbidden/u);
+  assert.match(issues[0], /undefined is not a function/u);
+  assert.match(issues[0], /CONFLICT/u);
+
+  // `as any` is the same escape by another spelling.
+  assert.equal(collectRepositoryCastIssues([
+    "const invoices = resolveRepository<IInvoiceRepository>(ctx, 'Invoice');",
+    'const anyInvoices = invoices as any;',
+  ].join('\n')).length, 1);
+
+  // What the honest file does — no cast at all — says nothing.
+  assert.deepEqual(collectRepositoryCastIssues([
+    "const assignments = resolveRepository<IProjectCoordinationAssignmentRepository>(ctx, 'ProjectCoordinationAssignment');",
+    "throw new AppError('CONFLICT', 'ProjectCoordinationAssignment repository does not support deletion.', 409, {});",
+  ].join('\n')), []);
+
+  // A cast of something that is NOT a resolved repository is none of this gate's business.
+  assert.deepEqual(collectRepositoryCastIssues('const row = payload as unknown as { delete(): void };'), []);
 });
