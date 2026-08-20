@@ -167,7 +167,7 @@ function sanitizeModuleHint(message: string): string {
 // (the platform, e.g. /_102034_/). The in-loop compile used to load only SAME-project models, so types
 // that live in another project (the platform RequestContext/ctx.mdm facade, CompactRelationshipRefKey,
 // a port's nullable return) resolved loosely and their misuse escaped the compile — surfacing only in
-// the real project `tsc` (see todo/changeBackend erro4: updatedAt on an append-only event, entity.related
+// the real project `tsc` erro4: updatedAt on an append-only event, entity.related
 // with an invented key, a nullable findCurrent() assigned to a non-null). Loading each import under ITS
 // OWN project closes that fidelity gap. Best-effort: an import whose source is not in stor is skipped, so
 // this never regresses a workspace that lacks the platform source (types then come from the bundled d.ts).

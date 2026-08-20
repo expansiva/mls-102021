@@ -4,7 +4,7 @@
 // mutation before successful completion). Then continue straight to domain generation.
 // NOTE (2026-07-11): the LLM index steps (aggregate/persistence/usecase/bff) were removed — their
 // output was discarded and the generators re-derive aggregates/columns/usecases deterministically
-// from the l4/l5 scan. See flow.json (index-steps cut) and todo/modernizeChangeBackend.md.
+// from the l4/l5 scan. See flow.json (index-steps cut) and
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, setTodoBackendStatus, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';

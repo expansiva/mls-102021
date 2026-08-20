@@ -34,6 +34,7 @@ export interface CbPolicyArtifacts {
 const REASON: Record<string, string> = {
   mdm: 'master data is owned by 102034 and written through ctx.mdm (no local entity/port/adapter/table)',
   external: 'the identity lives outside this module; the FK keeps the external id (no local artifact, no seeds)',
+  derived: 'the l4 declares it COMPUTED, with no persistence of its own — the read query materializes it (no table, no seeds)',
 };
 
 const PERSISTENCE_SUFFIXES = new Set(['repository', 'repositoryadapter', 'adapter', 'table']);
@@ -56,9 +57,9 @@ export function collectPersistencePolicyIssues(
   const seeded = lowerSet(artifacts.seededLocalEntities);
   const issues: string[] = [];
   for (const entity of entities) {
-    const target = entity.storageTarget === 'mdm' || entity.storageTarget === 'external'
-      ? entity.storageTarget
-      : entity.kind === 'mdm' || entity.kind === 'external' ? entity.kind : '';
+    const declared = entity.storageTarget === 'mdm' || entity.storageTarget === 'external' || entity.storageTarget === 'derived';
+    const derivedKind = entity.kind === 'mdm' || entity.kind === 'external' || entity.kind === 'derived';
+    const target = declared ? entity.storageTarget : derivedKind ? entity.kind : '';
     if (!target) continue;
     const id = entity.entityId;
     const lc = id.toLowerCase();

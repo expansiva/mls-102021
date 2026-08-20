@@ -5,7 +5,7 @@ import { isClientBoundarySource } from '/_102029_/l2/clientBoundarySources.js';
 // Shared component-inspection helpers for the generated l1 .ts / .defs.ts artifacts. These pure
 // functions were duplicated (near-identically) in agentCbMaterialize.ts and agentCbValidateAll.ts;
 // a fix on one side kept drifting from the other. Extracted here on 2026-07-11 as the SINGLE source
-// (todo/modernizeChangeBackend.md step 3). Behavior is preserved exactly — they parse generated code
+// step 3). Behavior is preserved exactly — they parse generated code
 // and defs to check BFF boundary/route coherence and rule coverage. No step-specific knowledge.
 
 // Self-contained (like cbMdmGuards/cbSeedsCore): inlines the three trivial primitives instead of
@@ -229,7 +229,7 @@ export function collectRepositoryCastIssues(code: string): string[] {
 /**
  * The MDM facade's `entity.related(key)` takes a TYPED CompactRelationshipRefKey. Models invent a key
  * and force it past the type with a string-literal cast — `entity.related(key as 'o')`,
- * `x.relatedIds(rel as "OffersProduct")` (todo/changeBackend erro4). The isolated in-loop compile missed
+ * `x.relatedIds(rel as "OffersProduct")` erro4). The isolated in-loop compile missed
  * it (the platform type was not loaded), so it only surfaced in the project `tsc`. A cast to a string
  * literal inside a related()/relatedIds() call is never legitimate — a real key is a typed constant,
  * never something you cast a literal into. Flag it as a repair finding: the linked id must be read from a

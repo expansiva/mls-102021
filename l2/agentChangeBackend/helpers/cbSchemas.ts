@@ -17,7 +17,7 @@ function objArray(required: string[], properties: Record<string, unknown>) {
 // ── generation / defs ───────────────────────────────────────────────────────────
 // NOTE (2026-07-11): the planning/index schemas (aggregate/persistence/usecase/bff Index) were
 // removed together with their LLM steps — the output was discarded and the generators re-derive
-// aggregates/columns/usecases deterministically. See todo/modernizeChangeBackend.md.
+// aggregates/columns/usecases deterministically.
 
 const fieldSchema = { type: 'object', additionalProperties: false, required: ['fieldId', 'type', 'required'], properties: { fieldId: str, type: str, required: bool, description: str, enum: strArray } } as const;
 

@@ -264,7 +264,6 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // the repair round of the 2 real errors. cb-validate-all now scans ALL_STATUSES (A1) and degrades an
     // ownership check with an empty owner set to a warning (the guard). Downstream steps that legitimately
     // ask "what is still PENDING?" keep the filtered scan. Decision + audit:
-    // todo/changeBackend/erro5_changeBackend_tasks.md §T10.
     if (!defsOnly) {
       for (const owner of scan.owners) await setTodoBackendStatus(owner, 'done');
     }

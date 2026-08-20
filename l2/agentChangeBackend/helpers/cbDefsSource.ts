@@ -6,14 +6,14 @@
  * `} as const satisfies <Artifact>;` over a typed import.
  */
 
-export type CbEntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm' | 'external';
+export type CbEntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm' | 'external' | 'derived';
 // The kinds a l4 ontology may DECLARE. `external` is never declared: it is derived from
 // `storage.target`, so keeping it out of this list also keeps a typo'd `kind: "external"` falling back
 // to `core` instead of silently erasing an entity's persistence.
 const ENTITY_KINDS: readonly CbEntityKind[] = ['core', 'supporting', 'event', 'metric', 'mdm'];
 
 /**
- * MDM WRITE PATH — off until the general rebuild (todo/changeBackend/ajustes_mdm_write_path.md).
+ * MDM WRITE PATH — off until the general rebuild.
  *
  * The l4 already declares the intention this switch honours (`storage.target: mdm | external |
  * moduleDatabase`, `storage.mdmType`, v6 vocabulary), so reading it is not a new-vocabulary migration:
@@ -106,6 +106,12 @@ export function classifyEntityKind(
   // told to announce it instead of the entity silently leaving MDM.
 
   if (target === 'mdm') return 'mdm';
+  // `derived` is the third member of the same family as mdm/external: the l4 says the record is COMPUTED
+  // ("não possui persistência própria", ProjectDashboard of buildFlowFsm), so it owns no table and no
+  // seeds — the read query materializes it. Without this branch it fell through to `projection → metric`,
+  // which DOES get a table and seeds, and the run then had to invent a primary key for a table nobody
+  // should have emitted (the two hand-patched tables of that module).
+  if (target === 'derived') return 'derived';
   if (input.kind === 'projection') return 'metric';
   return ENTITY_KINDS.includes(input.kind as CbEntityKind) ? input.kind as CbEntityKind : 'core';
 }

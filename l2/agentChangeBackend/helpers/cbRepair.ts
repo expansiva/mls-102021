@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // Repair-loop + juiz state for the agentChangeBackend flow (Stage 3). Implements the shared
-// "repair loop / juiz LLM" block (todo/ajustesFinaisChangeBackend.md §2 + improveAddNewSolution2_1.md
+// "repair loop / juiz LLM" block+ improveAddNewSolution2_1.md
 // §4.3/§4.4): findings are routed back to the component that produced them, the worker retries WITH
 // the findings in context, and exhausted budgets produce a CLEAN failure with an objective trace.
 //

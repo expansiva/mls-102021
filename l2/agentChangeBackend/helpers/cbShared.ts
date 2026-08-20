@@ -741,7 +741,7 @@ export function deriveAggregates(
   const roots = new Set(aggregates.map(a => a.rootEntity));
   for (const id of operatedRootIds) {
     const e = byId.get(id);
-    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event' || e.kind === 'external') continue;
+    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event' || e.kind === 'external' || e.kind === 'derived') continue;
     aggregates.push(buildAggregate(e));
     roots.add(id);
   }
@@ -850,7 +850,7 @@ export const CB_AGENT_FOLDER = 'agentChangeBackend';
 
 /** Read a co-located LLM prompt at runtime. Prompts live next to their step agent as
  * `agentChangeBackend/steps/<slug>/prompt.md` (moved into the step folders on 2026-07-11,
- * todo/modernizeChangeBackend.md step 4; inline template strings were extracted in step 2). Each file
+ * step 4; inline template strings were extracted in step 2). Each file
  * keeps its `<!-- modelType: ... -->` marker; the caller still replaces the {{toolName}} placeholder.
  * `folderRel` is relative to this agent folder (e.g. 'steps/gen-domain'); fixed to project 102021 (the
  * agent's own files), NOT the client mls.actualProject. */

@@ -45,6 +45,23 @@ test('readEntityStorage reads the block the l4 writes, and tolerates its absence
   assert.deepEqual(readEntityStorage({ entityId: 'Legacy' }), { target: '', scope: '', mdmType: '', idField: '' });
 });
 
+// `derived` is the third member of the mdm/external family: the l4 says the record is computed, so it
+// owns no table and no seeds. It used to fall through to `projection -> metric`, which DOES get both —
+// and the run then had a table nobody should have emitted, rescued by hand with an invented primary key.
+test('a derived entity owns no local persistence', () => {
+  const dashboard = { kind: 'projection', ownership: 'derived', storage: { target: 'derived', scope: 'none', mdmType: '', idField: '' } };
+  assert.equal(classifyEntityKind(dashboard, true), 'derived');
+  // Flag off: unchanged from what the current module was generated with.
+  assert.equal(classifyEntityKind(dashboard, false), 'metric');
+  const issues = collectPersistencePolicyIssues(
+    [{ entityId: 'ProjectDashboard', kind: 'derived', storageTarget: 'derived' }],
+    { persistence: ['projectdashboard'], domainEntities: ['projectdashboard'] },
+  );
+  assert.equal(issues.length, 2, issues.join(' | '));
+  assert.ok(issues.every(issue => /declares storage\.target 'derived'/.test(issue)), issues.join(' | '));
+  assert.ok(issues.some(issue => /the read query materializes it/.test(issue)));
+});
+
 test('a contradictory declaration is announced, not resolved in silence', () => {
   // `core + external` was already an undefined combination nobody noticed (it is what FieldWorker used).
   // A freshly changed ns4 vocabulary can just as easily emit `mdm + external`; the scan must say so.

@@ -369,7 +369,7 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   // platform user). Leaving it here would make its `<entity>Id` FKs look resolvable to the validator
   // and then demand a symbolic { ref } to rows that can never exist.
   const operatedStates = await readOperatedStates(project, moduleName);
-  const entities: SeedEntityDefinition[] = scan.entities.filter(entity => entity.kind !== 'external').map((entity) => ({
+  const entities: SeedEntityDefinition[] = scan.entities.filter(entity => entity.kind !== 'external' && entity.kind !== 'derived').map((entity) => ({
     entityId: entity.entityId,
     title: entity.title,
     kind: entity.kind,
