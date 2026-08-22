@@ -79,6 +79,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       flippedAtFinalize: typeof args.ownersFlipped === 'number' ? args.ownersFlipped : 0,
       alreadyDoneAtGenHttp: typeof args.ownersAlreadyDone === 'number' ? args.ownersAlreadyDone : 0,
     },
+    // What cb-finalize actually found in the persisted file, per surface (stor and Monaco model), after
+    // writing the statuses. `owners.done` is what the run BELIEVES; this is what it VERIFIED — the run 5
+    // report claimed 65 done next to a file on disk that said 64 toCreate, and nothing recorded the gap.
+    todoReadBack: isRecord(args.todoReadBack) ? args.todoReadBack : null,
     llmByPhase: await readCostReport(),
     models: modelCounts(),
     health: health ? {

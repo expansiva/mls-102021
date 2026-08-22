@@ -238,3 +238,66 @@ export function aliasModuleResolutionPathOf(diagnostic: string): string {
 export function isModelAlreadyExistsError(message: string): boolean {
   return /model already exists/iu.test(message);
 }
+
+// ── todoBackend dialect + read-back comparator ────────────────────────────────
+
+/**
+ * The generator names the unit of backend work in its own vocabulary. ns4 calls it `useCase` and
+ * stores the status in `statusBackend`; ns/ns3 called it `operation` with `status`. The ids are the
+ * same operation ids either way, so the alias is a translation, never a second owner model.
+ */
+const TODO_OWNER_TYPE_ALIASES: Record<string, 'operation' | 'workflow'> = { operation: 'operation', workflow: 'workflow', useCase: 'operation' };
+const TODO_STATUS_FIELDS = ['status', 'statusBackend'] as const;
+
+export function todoOwnerType(raw: string): 'operation' | 'workflow' | '' {
+  return TODO_OWNER_TYPE_ALIASES[raw] || '';
+}
+
+/** The field the file actually uses, so the write-back lands where the read came from. */
+export function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] | '' {
+  return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || '';
+}
+
+/** The key both sides of a read-back agree on: the owner kind AFTER the dialect alias, plus its id. */
+export function todoOwnerKey(kind: string, id: string): string {
+  return `${kind}:${id}`;
+}
+
+export interface CbTodoDivergence {
+  /** `operation:listBusinessHours` — todoOwnerKey of the owner that does not match. */
+  key: string;
+  expected: string;
+  /** The status the source carries, or `<missing>` when the owner is not in it at all. */
+  found: string;
+}
+
+/**
+ * Compare the statuses a run BELIEVES it wrote against the ones a todoBackend source actually carries.
+ * Pure on purpose: this is the comparator behind the finalize read-back, and it has to be testable
+ * without a stor, a model or a browser.
+ *
+ * Returns `null` when the source cannot be parsed at all — for the caller that is not "no divergence",
+ * it is "unreadable", which is its own kind of failure.
+ */
+export function todoStatusDivergences(content: string, expected: ReadonlyMap<string, string>): CbTodoDivergence[] | null {
+  const parsed = parseDefsSource(content);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const owners = (parsed as Record<string, unknown>).owners;
+  if (!Array.isArray(owners)) return null;
+  const found = new Map<string, string>();
+  for (const raw of owners) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const record = raw as Record<string, unknown>;
+    const kind = todoOwnerType(typeof record.ownerType === 'string' ? record.ownerType : '');
+    const id = typeof record.ownerId === 'string' ? record.ownerId : '';
+    if (!kind || !id) continue;
+    const field = todoStatusField(record);
+    found.set(todoOwnerKey(kind, id), field ? String(record[field]) : '<missing>');
+  }
+  const divergences: CbTodoDivergence[] = [];
+  for (const [key, want] of expected) {
+    const got = found.get(key) ?? '<missing>';
+    if (got !== want) divergences.push({ key, expected: want, found: got });
+  }
+  return divergences;
+}

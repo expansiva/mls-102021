@@ -23,7 +23,8 @@ import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
 import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
-  type CbEntityKind,
+  todoOwnerType, todoStatusField, todoStatusDivergences,
+  type CbEntityKind, type CbTodoDivergence,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
   parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
@@ -440,22 +441,6 @@ interface CbTodoOwner {
   ownerId: string;
   status: string;
   moduleName: string;
-}
-
-/**
- * The generator names the unit of backend work in its own vocabulary. ns4 calls it `useCase` and
- * stores the status in `statusBackend`; ns/ns3 called it `operation` with `status`. The ids are the
- * same operation ids either way, so the alias is a translation, never a second owner model.
- */
-const TODO_OWNER_TYPE_ALIASES: Record<string, 'operation' | 'workflow'> = { operation: 'operation', workflow: 'workflow', useCase: 'operation' };
-const TODO_STATUS_FIELDS = ['status', 'statusBackend'] as const;
-
-function todoOwnerType(raw: string): 'operation' | 'workflow' | '' {
-  return TODO_OWNER_TYPE_ALIASES[raw] || '';
-}
-/** The field the file actually uses, so the write-back lands where the read came from. */
-function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] | '' {
-  return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || '';
 }
 
 interface CbTodoState {
@@ -949,7 +934,28 @@ export async function writeDefsSource(fileInfo: CbFileInfo, src: string): Promis
   // shared libStor.createStorFile does not set it (unlike core agentDefs.createStorFile).
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content: src });
+  refreshExistingModel(file, src);
   return ref;
+}
+
+/**
+ * Keep an ALREADY EXISTING Monaco model in sync with the content just persisted. Not cosmetic: the
+ * Studio<->disk sync reads a file from its model first and only falls back to the stor content when
+ * there is no model, and libModel.createModel hands back an existing model untouched (no setValue).
+ * So without this, the SECOND write onwards updates the stor while the model stays frozen at the
+ * first one, and the next export writes that first snapshot over the good content — the petShop lost
+ * update of 2026-08-21 (65 todoBackend writes, disk got the state after write #1).
+ *
+ * Never CREATES a model: an unowned model is a leak (see releaseBorrowedModels/sweepModuleModels), and
+ * with no model the export already reads the stor, which is correct.
+ */
+function refreshExistingModel(file: mls.stor.IFileInfo, src: string): void {
+  try {
+    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    if (model?.model && model.model.getValue() !== src) model.model.setValue(src);
+  } catch (error) {
+    console.warn('[cb writeDefsSource] model refresh failed', error);
+  }
 }
 
 export async function saveBackendWorkspaceConfig(): Promise<string> {
@@ -1020,6 +1026,10 @@ async function saveJsonStor(fileInfo: CbFileInfo, data: unknown): Promise<void> 
   if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+  // Same reason as writeDefsSource, and it bites even on a SINGLE write: createStorFile registers no
+  // model for `.json`, but a config.json open in a Studio tab has one, and the export prefers it — the
+  // backend merge would be silently lost, and this is the one write here that a re-run does not redo.
+  refreshExistingModel(file, source);
 }
 
 function ensureRecordProperty(target: Record<string, unknown>, key: string): Record<string, unknown> {
@@ -1154,6 +1164,72 @@ export async function setTodoBackendStatus(owner: CbOwner, status: OwnerStatus):
     return true;
   }
   return false;
+}
+
+export interface CbTodoReadBack {
+  /** l5 ref of the file that was checked, or '' when no todoBackend file was found. */
+  ref: string;
+  checked: number;
+  /** The durable content (localStor/IndexedDB). This is what a NEXT run of this agent reads. */
+  stor: { unreadable: boolean; divergent: CbTodoDivergence[] };
+  /** The Monaco model, when one exists. This is what an EXPORT to disk writes. */
+  model: { present: boolean; unreadable: boolean; divergent: CbTodoDivergence[] };
+}
+
+/** Every surface of the read-back that disagrees with what the run believes it wrote. */
+export function todoReadBackDivergences(readBack: CbTodoReadBack | null): CbTodoDivergence[] {
+  if (!readBack) return [];
+  return [...readBack.stor.divergent, ...readBack.model.divergent];
+}
+
+export function todoReadBackIsClean(readBack: CbTodoReadBack | null): boolean {
+  return Boolean(readBack) && !readBack!.stor.unreadable && !readBack!.model.unreadable && todoReadBackDivergences(readBack).length === 0;
+}
+
+/**
+ * Is this a read-back the run must DIE on? Divergence on either surface, yes — that is the lost update.
+ * An unparseable STOR, yes — the durable state stopped being readable. An unparseable MODEL, no, only a
+ * loud warning: that is somebody editing todoBackend.defs.ts in a Studio tab with the syntax momentarily
+ * broken, which is their editor and not this agent's write.
+ */
+export function todoReadBackIsFatal(readBack: CbTodoReadBack | null): boolean {
+  if (!readBack) return false;
+  return readBack.stor.unreadable || todoReadBackDivergences(readBack).length > 0;
+}
+
+/**
+ * Re-read todoBackend and compare it with the statuses this run believes it wrote — on BOTH surfaces
+ * that can become the file on disk. Reading only the stor is not enough: in the petShop incident the
+ * stor was RIGHT (65 done) and the stale Monaco model was what got exported, so a stor-only read-back
+ * would have passed the run that produced the corrupt file.
+ */
+export async function readBackTodoBackend(expected: ReadonlyMap<string, string>): Promise<CbTodoReadBack | null> {
+  const project = mls.actualProject || 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
+    const storContent = String(await file.getContent());
+    const storDivergent = todoStatusDivergences(storContent, expected);
+    let modelPresent = false;
+    let modelDivergent: CbTodoDivergence[] | null = [];
+    try {
+      const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+      if (model?.model) {
+        modelPresent = true;
+        modelDivergent = todoStatusDivergences(model.model.getValue(), expected);
+      }
+    } catch (error) {
+      console.warn('[cb readBackTodoBackend] model read failed', error);
+      modelDivergent = null;
+    }
+    return {
+      ref: `l5/${String(file.folder || '')}/todoBackend.defs.ts`,
+      checked: expected.size,
+      stor: { unreadable: storDivergent === null, divergent: storDivergent || [] },
+      model: { present: modelPresent, unreadable: modelPresent && modelDivergent === null, divergent: modelDivergent || [] },
+    };
+  }
+  return null;
 }
 
 // ── intent / step helpers (mirrored, self-contained) ───────────────────────────

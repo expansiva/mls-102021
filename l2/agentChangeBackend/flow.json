@@ -82,7 +82,8 @@
       "lockStatus": "inProgress",
       "successStatus": "done",
       "failureStatus": "leave as inProgress and write a trace record; v1 has no failed enum",
-      "independentOf": "statusFrontend (agentChangeFrontend) — no mandatory order between the two reconcilers"
+      "independentOf": "statusFrontend (agentChangeFrontend) — no mandatory order between the two reconcilers",
+      "readBackAtFinalize": "cb-finalize NEVER trusts its own writes. After the flips it re-reads todoBackend from BOTH surfaces that can become the file on disk — the stor content AND the Monaco model, when one exists — and compares them with the statuses it believes it wrote. Divergence: high warning in the trace + ONE retry of the divergent owners; still divergent -> step FAILED. Checking only the stor content would not have caught the 2026-08-21 petShop incident (see defsWritePersistence): stor was right, the model was stale, and the model is what got exported."
     },
     "layerKnowledge": {
       "problem": "The BFF must know the application (layer_2) functions; the application must know the domain; and persistence must serve the domain — but the DOMAIN must not know persistence. How is the chain wired?",
@@ -94,6 +95,7 @@
     "materialization": "Reuses the L1 pipeline: gen-* writes the `data` block; agentPrepareDefsL1 appends `export const pipeline` to each.defs.ts in dependency order; agentMaterializeL1Def resolves outputPath + dependsFiles + attaches skills/rulesPath per item via tool call; agentMaterializeGen generates the.ts from the self-sufficient.defs.ts. Then deterministic registrars wire the manifest, the router and the composition root.",
     "fanOutReads": "Parallel fan-out children are pre-allocated, reused and DELETED after completion. Consumers that run AFTER a fan-out read the SAVED.defs.ts files (file-fallback), never task payloads.",
     "verification": "Deterministic, NON-blocking preflight (cb-validate-readiness) checks entity/operation refs resolve against canonical l4 ids (unresolved -> warnings); the final validate (cb-validate-all) reads the SAVED l1 files (ctx.data only in adapters/persistence; no MDM table; contract shape honored).",
+    "defsWritePersistence": "A.defs.ts this agent rewrites MORE THAN ONCE in a run must keep its Monaco model in sync with what it writes. Two platform behaviours make this load-bearing: libModel.createModel returns an ALREADY EXISTING model as-is (no setValue), and the Studio<->disk sync reads a file's content from its model FIRST, falling back to the stor content only when no model exists. So the first write creates a model, later writes update only the stor, and an export persists the FIRST write — a silent lost update. Real incident (petShop, 2026-08-21): the lock step wrote todoBackend 65 times, the export wrote back the snapshot taken after write #1 (1 inProgress + 64 toCreate) over a stor that correctly said 65 done. writeDefsSource therefore refreshes an existing model after every write, and never CREATES one just to keep it in sync (an unowned model is a leak). saveGeneratedFile/saveGeneratedTs already did this — which is exactly why the 65 l1 artifacts of that same run are intact on disk.",
     "modelPolicy": "No LLM for deterministic scan, status mutation, registration and validation — NOR for aggregate/column/usecase planning (that is now derived deterministically from the scan; the LLM index steps were removed 2026-07-11). When an LLM is required, force strict JSON-schema tool output. Use modelType code for backend defs, usecase workers, technical judging and final.ts materialization; use modelType image only for optional seed asset generation."
   },
   "modernization": {
@@ -494,7 +496,7 @@
       "dependsOn": [
         "cb-validate-all (materialize path), or cb-rebuild-defs-cleanup (/rebuild defs path)"
       ],
-      "goal": "DETERMINISTIC. Set todoBackend status = done for the processed owners (operations AND workflows). On the materialize path runs only after cb-validate-all passes (materialization proven complete); on the /rebuild defs path runs after cb-rebuild-defs-cleanup (defs regenerated;.ts intentionally absent — the next /rebuild all resets owners to toCreate and materializes). Enqueue cb-final-summary."
+      "goal": "DETERMINISTIC. Set todoBackend status = done for the processed owners (operations AND workflows), then READ BACK the persisted file and fail the run on divergence (conventions.ownerStatus.readBackAtFinalize). On the materialize path runs only after cb-validate-all passes (materialization proven complete); on the /rebuild defs path runs after cb-rebuild-defs-cleanup (defs regenerated;.ts intentionally absent — the next /rebuild all resets owners to toCreate and materializes). Enqueue cb-final-summary with the read-back result, which lands in the cb-run report as `todoReadBack`."
     },
     {
       "planId": "cb-final-summary",

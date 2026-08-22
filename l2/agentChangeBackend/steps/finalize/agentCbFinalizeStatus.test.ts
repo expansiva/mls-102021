@@ -32,3 +32,26 @@ void test('finalize recovers an owner whose artifacts exist and names the ones i
   assert.match(src, /sweepModuleModels\(scan\.project, moduleName, new Set\(\)\)/);
   assert.match(src, /models: registry \$\{before\.registry\}->\$\{after\.registry\}/);
 });
+
+// ── o run nunca mais termina verde sobre um todoBackend podre ─────────────────
+// petShop, 21/08/2026: o run reportou 65 owners `done`, o arquivo persistido ficou com o estado
+// PRÉ-run (64 toCreate + 1 inProgress) e nada acusou. Este step passou a reler e a falhar.
+void test('finalize re-reads todoBackend on both surfaces, retries once and then fails', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbFinalizeStatus.ts'), 'utf8');
+  // A expectativa é construída A PARTIR DAS ESCRITAS, não do que se queria escrever: um
+  // setTodoBackendStatus que devolve false não escreveu nada e não muda a expectativa.
+  assert.match(src, /if \(await setTodoBackendStatus\(owner, 'done'\)\) \{ flipped\+\+; expected\.set\(todoOwnerKey\(owner\.kind, owner\.id\), 'done'\); \}/);
+  assert.match(src, /const firstReadBack = await readBackTodoBackend\(expected\);/);
+  // Retry ÚNICO, e só dos owners divergentes.
+  assert.match(src, /for \(const divergence of todoReadBackDivergences\(readBack\)\)/);
+  assert.match(src, /readBack = await readBackTodoBackend\(expected\);\s*\n\s*\}/);
+  // Persistindo a divergência, o step FALHA — inclusive quando nada pôde ser reescrito.
+  assert.match(src, /if \(todoReadBackIsFatal\(readBack\)\) \{/);
+  assert.match(src, /throw new Error\(`todoBackend read-back FAILED after 1 retry/);
+  // O relatório carrega a PRIMEIRA leitura: o retry é justamente o que apagaria a evidência.
+  assert.match(src, /divergences: todoReadBackDivergences\(firstReadBack\)\.slice\(0, 8\)/);
+  assert.match(src, /stor: surfaceState\(firstReadBack, 'stor'\)/);
+  assert.match(src, /afterRetry: retried \?/);
+  const summary = readFileSync(path.join(HERE, 'agentCbFinalSummary.ts'), 'utf8');
+  assert.match(summary, /todoReadBack: isRecord\(args\.todoReadBack\) \? args\.todoReadBack : null,/);
+});
