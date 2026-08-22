@@ -33,3 +33,12 @@ void test('the compile sweep drains the borrow queue in blocks and leaves a dura
   // Diagnóstico nunca derruba o step.
   assert.match(src, /catch \{ \/\* progress is diagnostics: never fail the step over it \*\/ \}/);
 });
+
+void test('the compile sweep paints an ephemeral local title and never replaces the durable progress file', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /step\.stepTitle \|\| 'Validate l1 artifacts'.*compiling \$\{inScope\.length\} files/);
+  assert.match(src, /step\.stepTitle \|\| 'Validate l1 artifacts'.*compile \$\{compiled\}\/\$\{inScope\.length\}/);
+  assert.match(src, /saveValidateProgress\(project, \{ phase: 'compile', done: 0/);
+  assert.match(src, /shortName: 'cb-validate-progress'/);
+  assert.doesNotMatch(src, /step\.stepTitle\s*=/);
+});

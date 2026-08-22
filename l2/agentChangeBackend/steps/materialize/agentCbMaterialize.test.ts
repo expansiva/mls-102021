@@ -22,6 +22,14 @@ void test('agentCbMaterialize declares the LLM materialization step agent contra
   assert.match(flow, /"agentName": "agentCbMaterialize"/);
 });
 
+void test('the materialize dispatcher paints an ephemeral title during the stale-file scan', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /startLocalStepTick\(context, step,/);
+  assert.match(src, /step\.stepTitle \|\| 'Materialize'/);
+  assert.match(src, /scanning \(\$\{sec\}s\)/);
+  assert.doesNotMatch(src, /step\.stepTitle\s*=/);
+});
+
 void test('agentCbMaterialize tool schema is provider-clean', () => {
   const errs = lintToolSchema(JSON.stringify(GEN_TOOL.function.parameters));
   assert.equal(errs, null, errs?.join(' | '));

@@ -16,3 +16,10 @@ void test('agentCbFinalSummary declares the final-summary step agent contract', 
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCbFinalSummary"/);
 });
+
+void test('the run dossier records per-step traces and the provenance stamp', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbFinalSummary.ts'), 'utf8');
+  assert.match(src, /collectRunStepRecords\(context\.task\?\.iaCompressed\?\.nextSteps\)/);
+  assert.match(src, /agentBuild/);
+  assert.match(src, /saveRunReport/);
+});

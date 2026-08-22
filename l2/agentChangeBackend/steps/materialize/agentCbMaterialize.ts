@@ -29,6 +29,7 @@ import {
   buildRepairPromptSection, forceDefsStale, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRawMdmAccessIssues, collectMdmLifecycleIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
+import { startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
@@ -92,6 +93,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // DISPATCHER (deterministic, no LLM): one parallel_dynamic step per layer, chained by dependsOn so the
 // runtime materializes inner layers before outer ones; cb-gen-seeds joins the last layer.
 async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+  const stopTick = startLocalStepTick(context, step, (sec) =>
+    `${step.stepTitle || 'Materialize'} — scanning (${sec}s)`);
   try {
     const project = mls.actualProject || 0;
     const entries = await scanEntries(context);
@@ -193,6 +196,8 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${msg}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', msg)];
+  } finally {
+    stopTick();
   }
 }
 

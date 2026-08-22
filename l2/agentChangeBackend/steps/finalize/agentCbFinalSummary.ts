@@ -6,6 +6,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { readHealthReport, readCostReport, saveRunReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { collectRunStepRecords } from '/_102021_/l2/agentChangeBackend/helpers/cbRunDossier.js';
 import { modelCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 import { formatCostSummary } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
@@ -94,6 +95,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // The identity of the code that RAN. Without it, a post-mortem cannot tell "the generator is wrong"
     // from "the fix was never in this build" — the two look identical in every other field.
     agentBuild,
+    steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
     health: health ? {
       outcome: health.outcome ?? null,
       findings: Array.isArray(health.findings) ? health.findings.length : 0,

@@ -27,6 +27,7 @@ import {
   fileIsPresent, getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath,
   flushBorrowedModels, modelCounts, compileModuleAndGetErrors,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { localStepTitle, startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
 import { isStale, shouldTargetedRescue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
 // T6: one targeted rescue round (outside the global budget) fires only for a SMALL, compiler-only
@@ -143,6 +144,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const usecaseSources = new Map<string, string>(); // usecase shortName (lc) -> generated .ts
     const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
     const persistenceSources = new Map<string, string>(); // adapters/persistence shortName (lc) -> generated .ts
+    const stopReadTick = startLocalStepTick(context, step, (sec) =>
+      `${step.stepTitle || 'Validate l1 artifacts'} — reading files (${sec}s)`);
+    try {
     for (const file of Object.values(mls.stor.files) as any[]) {
       if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
       const folder0 = String(file.folder || '');
@@ -247,6 +251,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         });
       }
     }
+    } finally { stopReadTick(); }
 
     // INTEGRITY: every port a usecase references must have a port .defs.ts AND a domain entity .defs.ts.
     // Catches the "usecase imports a module that was never generated" class of errors before tsc.
@@ -428,40 +433,48 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // ONE pass over the module: the models are loaded once and the TS worker answers per file from its
     // incremental program. The old loop paid `N × the platform` (~6s/file, ~20 min for 193 files) and
     // paid it twice for every flagged file. Falls back to the per-file path when the worker is absent.
-    const single = await compileModuleAndGetErrors(project, inScope.map(d => ({ folder: d.folder, shortName: d.real })));
-    if (single) {
-      const flaggedFirst = inScope.filter(d => (single.get(`${d.folder}::${d.real}`) || []).length);
-      // The stable model set removes the flakiness the double compile existed for; ONE re-ask of the
-      // flagged files, in the same worker session, keeps `stableCompilerErrors` meaningful and cheap.
-      const second = flaggedFirst.length
-        ? await compileModuleAndGetErrors(project, flaggedFirst.map(d => ({ folder: d.folder, shortName: d.real })))
-        : new Map<string, string[]>();
-      for (const d of flaggedFirst) {
-        const key = `${d.folder}::${d.real}`;
-        const first = single.get(key) || [];
-        const stable = stableCompilerErrors(first, second?.get(key) || first);
-        flakyCompilerSuppressed += first.length - stable.length;
-        if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
-      }
-      await saveValidateProgress(project, { phase: 'compile-single-pass', done: inScope.length, total: defsFiles.length, models: modelCounts() });
-    } else {
-      let compiled = 0;
-      for (const d of inScope) {
-        compiled++;
-        if (compiled % compileBlock === 0) {
-          const flushed = await flushBorrowedModels();
-          await saveValidateProgress(project, { phase: 'compile', done: compiled, total: inScope.length, models: modelCounts(), released: flushed.released });
+    const stopCompileTick = startLocalStepTick(context, step, (sec) =>
+      `${step.stepTitle || 'Validate l1 artifacts'} — compiling ${inScope.length} files (${sec}s)`);
+    try {
+      const single = await compileModuleAndGetErrors(project, inScope.map(d => ({ folder: d.folder, shortName: d.real })));
+      if (single) {
+        const flaggedFirst = inScope.filter(d => (single.get(`${d.folder}::${d.real}`) || []).length);
+        // The stable model set removes the flakiness the double compile existed for; ONE re-ask of the
+        // flagged files, in the same worker session, keeps `stableCompilerErrors` meaningful and cheap.
+        const second = flaggedFirst.length
+          ? await compileModuleAndGetErrors(project, flaggedFirst.map(d => ({ folder: d.folder, shortName: d.real })))
+          : new Map<string, string[]>();
+        for (const d of flaggedFirst) {
+          const key = `${d.folder}::${d.real}`;
+          const first = single.get(key) || [];
+          const stable = stableCompilerErrors(first, second?.get(key) || first);
+          flakyCompilerSuppressed += first.length - stable.length;
+          if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
         }
-        const first = await compileSavedTsAndGetErrors(project, d.folder, d.real);
-        if (!first.length) continue;
-        // STEP 2 (double-check vs H1 — flaky): recompile once more (models/imports now settled) and keep
-        // only errors that reproduce. A transient finding (Monaco model lag / ensureImportModels
-        // best-effort) must not force a full re-generation of a file that was already correct.
-        const second = await compileSavedTsAndGetErrors(project, d.folder, d.real);
-        const stable = stableCompilerErrors(first, second);
-        flakyCompilerSuppressed += first.length - stable.length;
-        if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
+        await saveValidateProgress(project, { phase: 'compile-single-pass', done: inScope.length, total: defsFiles.length, models: modelCounts() });
+      } else {
+        stopCompileTick();
+        let compiled = 0;
+        for (const d of inScope) {
+          compiled++;
+          if (compiled % compileBlock === 0) {
+            const flushed = await flushBorrowedModels();
+            await saveValidateProgress(project, { phase: 'compile', done: compiled, total: inScope.length, models: modelCounts(), released: flushed.released });
+            localStepTitle(context, step, `${step.stepTitle || 'Validate l1 artifacts'} — compile ${compiled}/${inScope.length}`);
+          }
+          const first = await compileSavedTsAndGetErrors(project, d.folder, d.real);
+          if (!first.length) continue;
+          // STEP 2 (double-check vs H1 — flaky): recompile once more (models/imports now settled) and keep
+          // only errors that reproduce. A transient finding (Monaco model lag / ensureImportModels
+          // best-effort) must not force a full re-generation of a file that was already correct.
+          const second = await compileSavedTsAndGetErrors(project, d.folder, d.real);
+          const stable = stableCompilerErrors(first, second);
+          flakyCompilerSuppressed += first.length - stable.length;
+          if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
+        }
       }
+    } finally {
+      stopCompileTick();
     }
     // STEP 3 (cascade dedup vs H2 — derived): a broken file B stays saved (saveGeneratedTs writes before
     // the gate), so importers of B report DERIVED errors. Resolve each flagged file's l1 imports, then
