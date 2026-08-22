@@ -185,6 +185,13 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     // module field carries the mdmId — those come from the l4 `storage` block. Absent (not empty) when
     // the operation writes no master data, so a module without MDM writes sees the same prompt as before.
     ...(mdmWrites.length ? { mdmWrites } : {}),
+    // MDM semantics of the operation, verbatim from the l4 (`Ns4E8MdmSemantics`): the cadastral
+    // lifecycle pair, the name of the active-only opt-out input, the derived situation output. Absent
+    // (not empty) when the l4 carries no `mdm` block, so a module generated before the block exists
+    // sees exactly the prompt it saw before. Not gated by MDM_WRITE_PATH_ENABLED: routing a lifecycle
+    // to ctx.mdm.entity.inactivate/reactivate is the ONLY correct code for an operation the catalogue
+    // emitted instead of a delete — with or without the local-artifact flip.
+    ...(o.mdm ? { mdm: o.mdm } : {}),
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
     entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
   };

@@ -7,6 +7,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { readHealthReport, readCostReport, saveRunReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { modelCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 import { formatCostSummary } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import { isCompilerFinding } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 
@@ -57,6 +58,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     }
   }
   const residual = await residualCompilerWarning();
+  // WHICH VERSION of this agent produced this run. The 2026-08-22 incident was diagnosed backwards for
+  // want of exactly this line: the build was consistent and correct, and the fix simply had never been
+  // committed — something only a comparison against git can tell, which is what buildRef enables.
+  const agentBuild = await readAgentProvenance();
+  const stamp = describeProvenance(agentBuild);
   // T7: per-phase LLM cost, accumulated by recordLlmCost across the run (l4/trace/cb-cost.json). Surfaced
   // here so the run cost + priciest phase are visible without hand-summing the task dump.
   const cost = formatCostSummary(await readCostReport());
@@ -67,7 +73,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     : 'agentChangeBackend: nothing to create (no todoBackend status = toCreate).';
   const summary = (noWork
     ? noWorkReason
-    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual;
+    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual + stamp;
   // The dossier of the run, next to the module's trace: phases with cost/calls, the repair history, the
   // residual findings and the model counts — what used to be assembled by hand after every run.
   const health = await readHealthReport();
@@ -85,6 +91,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     todoReadBack: isRecord(args.todoReadBack) ? args.todoReadBack : null,
     llmByPhase: await readCostReport(),
     models: modelCounts(),
+    // The identity of the code that RAN. Without it, a post-mortem cannot tell "the generator is wrong"
+    // from "the fix was never in this build" — the two look identical in every other field.
+    agentBuild,
     health: health ? {
       outcome: health.outcome ?? null,
       findings: Array.isArray(health.findings) ? health.findings.length : 0,

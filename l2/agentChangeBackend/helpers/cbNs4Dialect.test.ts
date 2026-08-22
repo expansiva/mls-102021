@@ -11,7 +11,9 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   mlsImportPathParts, phantomModulePathOf, isModelAlreadyExistsError,
   todoStatusDivergences, todoOwnerType, todoStatusField, todoOwnerKey,
+  readOwnerMdm, isMdmLifecycle, synthesizeMdmInputs,
 } from './cbDefsSource.js';
+import { collectMdmLifecycleIssues } from './cbMdmGuards.js';
 import { readAccessMatrixActors } from './cbWorkspace.js';
 
 const ns4Defs = (value: unknown) => [
@@ -231,4 +233,106 @@ test('writeDefsSource mantém o modelo existente em sincronia com o que persisti
   assert.match(shared, /export function todoReadBackIsFatal[\s\S]{0,240}return readBack\.stor\.unreadable \|\| todoReadBackDivergences\(readBack\)\.length > 0;/);
   // O merge do l5\/config.json cai na MESMA classe de defeito, e numa escrita única.
   assert.match(shared, /content: source \}\);[\s\S]{0,400}refreshExistingModel\(file, source\);/);
+});
+
+// ── bloco `mdm` da operação (F1 do mdm_write_path) ───────────────────────────
+// Payload REAL do petShop (mls-102047/l4/petShop/operations/), que é o primeiro l4 gerado com o
+// vocabulário novo. Repare no `inputs: []` do list: o `includeInactive` que o `activeFilterInput`
+// nomeia NÃO existe no l4 — o gate do ns4 exige que todo fieldRef resolva para campo da ontologia, e
+// `includeInactive` não é campo de nada. Quem materializa esse input é o CB.
+const OP_INACTIVATE_CUSTOMER = {
+  operationId: 'inactivateCustomer',
+  entity: 'Customer',
+  kind: 'update',
+  reads: ['Customer'],
+  writes: ['Customer'],
+  inputs: [{ inputId: 'customerId', fieldRef: 'Customer.customerId', required: true, source: 'selectedEntity', description: 'Identificador estável' }],
+  mdm: { lifecycle: 'inactivate' },
+  pageId: 'customerCatalogue',
+  commandName: 'cmdInactivateCustomer',
+  bffName: 'cmdInactivateCustomer',
+};
+const OP_LIST_CUSTOMER = {
+  operationId: 'listCustomer',
+  entity: 'Customer',
+  kind: 'query',
+  reads: ['Customer'],
+  writes: [],
+  inputs: [],
+  mdm: { activeFilterInput: 'includeInactive', situationOutput: 'active' },
+  pageId: 'attachPetServiceImage',
+  commandName: 'qryCustomerPicker',
+  bffName: 'qryCustomerPicker',
+};
+
+test('readOwnerMdm lê o bloco real e é AUSENTE (não vazio) quando o l4 não tem', () => {
+  assert.deepEqual(readOwnerMdm(OP_INACTIVATE_CUSTOMER), { lifecycle: 'inactivate' });
+  assert.deepEqual(readOwnerMdm(OP_LIST_CUSTOMER), { activeFilterInput: 'includeInactive', situationOutput: 'active' });
+  // Critério 1 da spec: l4 antigo (sem bloco) tem de produzir owner IDÊNTICO ao de antes.
+  assert.equal(readOwnerMdm({ operationId: 'createCustomer', entity: 'Customer' }), undefined);
+  // Bloco presente mas vazio/inválido também é ausente — nada de `mdm: {}` no item do prompt.
+  assert.equal(readOwnerMdm({ mdm: {} }), undefined);
+  assert.equal(readOwnerMdm({ mdm: { lifecycle: 42 } }), undefined);
+  assert.equal(readOwnerMdm({ mdm: [] }), undefined);
+  assert.equal(isMdmLifecycle(readOwnerMdm(OP_INACTIVATE_CUSTOMER)), true);
+  assert.equal(isMdmLifecycle(readOwnerMdm(OP_LIST_CUSTOMER)), false);
+});
+
+// ── o usecase de lifecycle não pode destruir nada ────────────────────────────
+test('collectMdmLifecycleIssues acusa delete, porta local e tabela local — e o no-op', () => {
+  const ok = `export async function inactivateCustomer(ctx, input) {
+    const current = await ctx.mdm.entity.get({ mdmId: input.customerId });
+    return ctx.mdm.entity.inactivate({ mdmId: input.customerId, expectedVersion: current.version });
+  }`;
+  assert.deepEqual(collectMdmLifecycleIssues(ok, 'inactivate'), []);
+  // Fixture ADULTERADA do payload real: o lifecycle chamando delete é o defeito que a spec nomeia.
+  const deleting = ok.replace('ctx.mdm.entity.inactivate', 'ctx.mdm.entity.delete');
+  const issues = collectMdmLifecycleIssues(deleting, 'inactivate');
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /must not delete/);
+  assert.match(issues[0], /use ctx\.mdm\.entity\.inactivate/);
+  // Porta local e tabela local: o bug original do 102046 (mls102046_client no lugar do índice MDM).
+  assert.match(collectMdmLifecycleIssues(`customerRepository.delete({ id })`, 'inactivate')[0], /local port/);
+  assert.match(collectMdmLifecycleIssues(`await ctx.data.customer.update({ where, data })`, 'reactivate')[0], /local table/);
+  // Não fazer nada também é defeito: a ação na tela viraria no-op silencioso.
+  assert.match(collectMdmLifecycleIssues(`export async function x(){ return {}; }`, 'reactivate')[0], /does not call ctx\.mdm\.entity\.reactivate/);
+  // LEITURA por porta é legítima num lifecycle (carregar o registro, validar regra) — não acusa.
+  const readsPort = `const found = await customerRepository.findById(input.customerId);
+    return ctx.mdm.entity.reactivate({ mdmId: found.customerId, expectedVersion: found.version });`;
+  assert.deepEqual(collectMdmLifecycleIssues(readsPort, 'reactivate'), []);
+  // Fora de lifecycle o validador é inerte (list, create, ou l4 sem bloco).
+  assert.deepEqual(collectMdmLifecycleIssues(deleting, ''), []);
+  assert.deepEqual(collectMdmLifecycleIssues(deleting, undefined), []);
+});
+
+// ── o input que o l4 NÃO pode declarar ───────────────────────────────────────
+// `activeFilterInput: 'includeInactive'` nomeia um input que não existe em nenhum l4 (o gate do ns4
+// exige fieldRef resolvível, e `includeInactive` não é campo da ontologia). Sem materializá-lo, o
+// controller — que deriva o contrato de fronteira de `owner.inputs` — nunca aprenderia a flag, e o
+// chamador não teria como pedir os inativos.
+test('synthesizeMdmInputs materializa o includeInactive como booleano OPCIONAL', () => {
+  const created = synthesizeMdmInputs([], readOwnerMdm(OP_LIST_CUSTOMER));
+  assert.equal(created.length, 1);
+  assert.deepEqual(created[0], {
+    inputId: 'includeInactive',
+    fieldRef: '',
+    type: 'boolean',
+    required: false,
+    source: 'userInput',
+    description: 'Include records inactivated in the MDM index (default: only active ones).',
+  });
+  // `required: false` não é detalhe: `requiredBoundaryFields` só coleta required===true, então nenhuma
+  // checagem obrigatória nova aparece nos controllers já gerados.
+  assert.equal(created[0].required, false);
+});
+
+test('synthesizeMdmInputs não toca em quem não pediu, e nunca duplica', () => {
+  const originals = [{ inputId: 'customerId', fieldRef: 'Customer.customerId', required: true, source: 'selectedEntity', description: 'x' }];
+  // Critério 1: sem bloco `mdm`, os inputs saem pela MESMA referência — zero mudança de comportamento.
+  assert.equal(synthesizeMdmInputs(originals, undefined), originals);
+  // Lifecycle não tem activeFilterInput: também intocado.
+  assert.equal(synthesizeMdmInputs(originals, readOwnerMdm(OP_INACTIVATE_CUSTOMER)), originals);
+  // Um l4 futuro que JÁ declare o input não ganha uma segunda cópia.
+  const already = [{ inputId: 'includeInactive', fieldRef: '', type: 'boolean', required: false, source: 'userInput', description: 'já existe' }];
+  assert.equal(synthesizeMdmInputs(already, readOwnerMdm(OP_LIST_CUSTOMER)), already);
 });

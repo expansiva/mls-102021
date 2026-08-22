@@ -301,3 +301,89 @@ export function todoStatusDivergences(content: string, expected: ReadonlyMap<str
   }
   return divergences;
 }
+
+// ── the `mdm` block of an operation ───────────────────────────────────────────
+
+/**
+ * MDM semantics the ns4 catalogue attaches to an operation whose entity declares
+ * `storage.target: 'mdm'` (`Ns4E8MdmSemantics` -> `Ns4ClassicOperation.mdm`). Measured on
+ * `mls-102047/l4/petShop/operations/`:
+ *
+ *   inactivateCustomer.defs.ts -> `"mdm": { "lifecycle": "inactivate" }`
+ *   listCustomer.defs.ts       -> `"mdm": { "activeFilterInput": "includeInactive",
+ *                                           "situationOutput": "active" }`
+ *
+ * It exists because master data is NEVER deleted: the tier-1 catalogue emits the inactivate/reactivate
+ * pair instead of a delete, the list hides inactive records by default, and the situation shown on
+ * screen derives from the MDM index status — never from an invented local `active` field.
+ *
+ * `activeFilterInput` names an input that does NOT exist in the operation's `inputs[]` (the ns4 gate
+ * requires every input fieldRef to resolve to a real ontology field, and `includeInactive` is not one),
+ * so the CB is what has to materialize it. See `synthesizeMdmInputs` in cbShared.
+ */
+export interface CbOwnerMdm {
+  /** 'inactivate' | 'reactivate' — the cadastral pair that replaces delete for master data. */
+  lifecycle?: string;
+  /** Name of the boolean input that opts INTO seeing inactive records. */
+  activeFilterInput?: string;
+  /** Name of the derived output field carrying the situation (from the index status). */
+  situationOutput?: string;
+}
+
+/**
+ * Absent (not empty) when the operation carries no `mdm` block — the l4s that predate the block must
+ * produce byte-identical owners, which is what makes this readable without touching the write-path flag.
+ */
+export function readOwnerMdm(parsed: Record<string, unknown>): CbOwnerMdm | undefined {
+  const raw = parsed.mdm;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const str = (key: string): string => (typeof record[key] === 'string' ? (record[key] as string) : '');
+  const mdm: CbOwnerMdm = {
+    ...(str('lifecycle') ? { lifecycle: str('lifecycle') } : {}),
+    ...(str('activeFilterInput') ? { activeFilterInput: str('activeFilterInput') } : {}),
+    ...(str('situationOutput') ? { situationOutput: str('situationOutput') } : {}),
+  };
+  return Object.keys(mdm).length ? mdm : undefined;
+}
+
+/** Is this the cadastral pair (as opposed to an ordinary MDM update)? */
+export function isMdmLifecycle(mdm: CbOwnerMdm | undefined): boolean {
+  return mdm?.lifecycle === 'inactivate' || mdm?.lifecycle === 'reactivate';
+}
+
+/** Structural mirror of cbShared.CbOperationInput — declared here so this module stays platform-free. */
+export interface CbMdmOperationInput {
+  inputId: string;
+  fieldRef: string;
+  type?: string;
+  required: boolean;
+  source: string;
+  description: string;
+}
+
+/**
+ * The one input the l4 CANNOT declare. `mdm.activeFilterInput` names a boolean flag (`includeInactive`)
+ * that opts into seeing inactive records, but the ns4 gate requires every input `fieldRef` to resolve to
+ * a real ontology field — and `includeInactive` is not a field of anything. Measured on the evidence:
+ * `listCustomer.defs.ts` declares `activeFilterInput: 'includeInactive'` with `inputs: []`.
+ *
+ * So the CB materializes it here, at the SINGLE place owners are read, instead of only in the usecase
+ * prompt: the http controller derives its boundary contract from `owner.inputs` too, and an input the
+ * controller never learned about is a flag the caller cannot pass.
+ *
+ * `required: false` on purpose — the default behaviour is active-only, and a required flag would make
+ * every existing caller of the list illegal.
+ */
+export function synthesizeMdmInputs(inputs: CbMdmOperationInput[], mdm: CbOwnerMdm | undefined): CbMdmOperationInput[] {
+  const name = mdm?.activeFilterInput || '';
+  if (!name || inputs.some(input => input.inputId === name)) return inputs;
+  return [...inputs, {
+    inputId: name,
+    fieldRef: '',
+    type: 'boolean',
+    required: false,
+    source: 'userInput',
+    description: 'Include records inactivated in the MDM index (default: only active ones).',
+  }];
+}

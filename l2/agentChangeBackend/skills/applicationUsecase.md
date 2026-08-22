@@ -241,6 +241,30 @@ For prospect/pre-qualified lead flows use the explicit prospect facade:
 `ctx.mdm.prospect.update` and `ctx.mdm.prospect.promoteToEntity`; do not model prospects through
 `ctx.mdm.entity`.
 
+### `data.mdm` — the cadastral rules of a master-data operation
+
+When the item carries `data.mdm`, the l4 has declared that this operation acts on master data, and the
+block says HOW. Master data is never destroyed: the catalogue emits an inactivate/reactivate pair in
+place of a delete, because removing a record would break the history and the references other modules
+keep to it.
+
+| `data.mdm` | what the usecase must do |
+| --- | --- |
+| `lifecycle: 'inactivate'` | call `ctx.mdm.entity.inactivate({ mdmId, expectedVersion })` and nothing else destructive. NEVER `ctx.mdm.entity.delete`, never a local port/table write. |
+| `lifecycle: 'reactivate'` | call `ctx.mdm.entity.reactivate({ mdmId, expectedVersion })` — the exact mirror. |
+| `activeFilterInput: '<name>'` | the list filters `status: 'Active'` by DEFAULT; when that input is `true`, pass no status and return everything. The input is already in `data.inputs` as an optional boolean. |
+| `situationOutput: '<name>'` | that output field is DERIVED from the MDM index status (`index.status === 'Active'`). Never read or invent a local `active`/`situation` field — there is no such column. |
+
+Two rules that do not appear in the block and still hold:
+
+- **A lookup by id never filters by status.** The detail screen has to resolve an inactivated record —
+  that is the whole point of preserving it. Only LIST reads are active-only by default.
+- **The `mdmId` comes from the module field named by `mdmWrites[].idField`** (when present); a lifecycle
+  operation receives it through its own `selectedEntity` input.
+
+The optimistic `expectedVersion` is mandatory on both halves: read the entity, pass the version you
+read. Two concurrent screens deactivating the same record must not silently overwrite each other.
+
 Relationship decision guide:
 
 | Situation | MDM relationship |

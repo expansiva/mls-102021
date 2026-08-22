@@ -6,13 +6,30 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbScanCreateOwners', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/scan', agentDescription: 'Deterministic todoBackend=toCreate scan', visibility: 'private', beforePromptStep };
 }
 
+/**
+ * First thing the run says: WHICH version of this agent is executing, as an identity a human matches
+ * with git. Informational by design — there is no "stale" verdict to give (see cbBuildStamp): a source
+ * edited locally is the normal state of whoever is editing, and work that was never pushed is invisible
+ * to the platform, so any alarm here would be noise.
+ *
+ * In the console (visible while the run happens) and in this step's trace (visible in the task after).
+ */
+async function buildStampTrace(agent: IAgentMeta): Promise<string> {
+  const provenance = await readAgentProvenance();
+  const described = describeProvenance(provenance);
+  if (described) console.info(`${logPrefix(agent)}${described}`);
+  return described;
+}
+
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    const buildTrace = await buildStampTrace(agent);
     // toCreate is the trigger; inProgress is treated as resumable (a previous run locked but did not
     // finish) so the reconciler is idempotent and never gets stuck after a partial run.
     // /rebuild seeds: the backend is already built — skip the whole generation chain (validate/lock/
@@ -22,7 +39,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       await clearRepairState();
       return [
         enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Regenerar seeds (rebuild-seeds)', {}),
-        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'rebuild seeds: regenerando somente seeds.ts (+ assets).'),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `rebuild seeds: regenerando somente seeds.ts (+ assets).${buildTrace}`),
       ];
     }
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
@@ -45,7 +62,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             noWork: true,
             reason: 'nenhum módulo com owners pendentes (todoBackend toCreate|inProgress). Um módulo já construído fica com os owners `done`, então não aparece como pendente: para retomar/revalidar um módulo específico use `/run <módulo>` (ex: /run cafeFlow), ou `/rebuild all <módulo>` para regerar do zero.',
           }),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}`),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}${buildTrace}`),
         ];
       }
       // Explicit module: don't stop: still MATERIALIZE any stale
@@ -55,12 +72,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // module is fully current. This is the cheap recovery path the `done` flip exists for.
       return [
         enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .ts desatualizados', {}),
-        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner in ${targetModule}; materializing stale .ts + seeds if missing.${warningTrace}`),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner in ${targetModule}; materializing stale .ts + seeds if missing.${warningTrace}${buildTrace}`),
       ];
     }
     return [
       enqueueNext(context, parentStep, step, 'cb-validate-readiness', 'agentCbValidateL4Readiness', 'Preflight l4', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}`),
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}${buildTrace}`),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

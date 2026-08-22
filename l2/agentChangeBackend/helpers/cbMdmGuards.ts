@@ -75,3 +75,45 @@ export function collectRawMdmAccessIssues(code: string): string[] {
   }
   return issues;
 }
+
+// ── the cadastral pair: a lifecycle usecase may NEVER delete ──────────────────
+
+/**
+ * A lifecycle operation (`mdm.lifecycle: 'inactivate' | 'reactivate'`) exists precisely BECAUSE master
+ * data is never removed: it preserves the record and its references, and only flips the MDM index
+ * status. So the one thing its usecase must not do is destroy anything — the original bug of the class
+ * is `mls102046_client`, a local table standing in for the MDM index.
+ *
+ * Scoped by construction: the caller only has an `mdm.lifecycle` for an entity whose l4 declares
+ * `storage.target: 'mdm'`, so a module-owned entity's own delete usecase never reaches here.
+ *
+ * Anchored on WRITE verbs only. A lifecycle usecase legitimately READS through ports (loading the
+ * record, validating a rule), so flagging any port reference would reject correct code; what is illegal
+ * is destroying or locally persisting the record.
+ */
+const MDM_DELETE_CALL = /\bctx\.mdm\.entity\.delete\s*\(/g;
+const LOCAL_DESTRUCTIVE_WRITE = /\b(?:[A-Za-z_$][\w$]*)?[Rr]epository\s*\.\s*(delete|remove|destroy|save|insert|update)\s*\(/g;
+const LOCAL_TABLE_WRITE = /\bctx\.data\.[A-Za-z_$][\w$]*\s*\.\s*(delete|deleteMany|remove|create|update|upsert)\s*\(/g;
+
+export function collectMdmLifecycleIssues(code: string, lifecycle: string | undefined): string[] {
+  if (lifecycle !== 'inactivate' && lifecycle !== 'reactivate') return [];
+  const expected = lifecycle === 'inactivate' ? 'ctx.mdm.entity.inactivate' : 'ctx.mdm.entity.reactivate';
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  const push = (msg: string): void => { if (!seen.has(msg)) { seen.add(msg); issues.push(msg); } };
+  for (const match of code.matchAll(MDM_DELETE_CALL)) {
+    push(`mdm lifecycle '${lifecycle}' must not delete -> ${match[0].trim()}; master data is deactivated, never removed: use ${expected}`);
+  }
+  for (const match of code.matchAll(LOCAL_DESTRUCTIVE_WRITE)) {
+    push(`mdm lifecycle '${lifecycle}' must not write a local port -> ${match[0].trim()}; the record lives in the MDM index: use ${expected}`);
+  }
+  for (const match of code.matchAll(LOCAL_TABLE_WRITE)) {
+    push(`mdm lifecycle '${lifecycle}' must not write a local table -> ${match[0].trim()}; the record lives in the MDM index: use ${expected}`);
+  }
+  // Doing nothing is also wrong: a usecase that calls neither half of the pair silently no-ops the
+  // action on screen. Only checked when nothing else was found, so the message names one defect.
+  if (issues.length === 0 && !code.includes(expected)) {
+    push(`mdm lifecycle '${lifecycle}' does not call ${expected}; the generated usecase has no effect on the MDM index`);
+  }
+  return issues;
+}

@@ -28,7 +28,7 @@ import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
   buildRepairPromptSection, forceDefsStale, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
+import { collectRawMdmAccessIssues, collectMdmLifecycleIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
@@ -365,6 +365,10 @@ function lowerFirstLocal(value: string): string {
 
 function validateUsecaseComponent(project: number, data: unknown, code: string, tsKeys: Set<string>): string[] {
   const issues: string[] = [];
+  // The cadastral pair of an MDM entity: `mdm.lifecycle` only exists for storage.target 'mdm', so this
+  // is self-scoping and never touches a module-owned entity's own delete.
+  const mdmBlock = isRecord(data) && isRecord(data.mdm) ? data.mdm : null;
+  issues.push(...collectMdmLifecycleIssues(code, mdmBlock && typeof mdmBlock.lifecycle === 'string' ? mdmBlock.lifecycle : ''));
   const mdmRefs = new Set(isRecord(data) ? readStringArray(data.mdmRefs).map(ref => ref.toLowerCase()) : []);
   for (const req of collectL1Imports(code, project)) {
     if (!tsKeys.has(req.key)) issues.push(`import unresolved -> imports '${req.target}' which was not generated`);

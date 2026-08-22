@@ -24,7 +24,8 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
   todoOwnerType, todoStatusField, todoStatusDivergences,
-  type CbEntityKind, type CbTodoDivergence,
+  readOwnerMdm, synthesizeMdmInputs,
+  type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
   parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
@@ -168,6 +169,10 @@ export interface CbOwner {
   inputs: CbOperationInput[];
   contextResolution: CbContextResolution[];
   acceptanceAssertions: string[];
+  /** MDM semantics of the operation (`Ns4E8MdmSemantics`): the cadastral lifecycle pair, the
+   *  active-only filter of a list, the derived situation output. Absent for every l4 that predates the
+   *  block, which is what keeps those modules generating exactly as before. */
+  mdm?: CbOwnerMdm;
   /** Status from l5/{module}/todoBackend.defs.ts. This is the only source of generation state. */
   todoStatus: string;
   /** Deprecated compatibility alias for prompts that still print owners as statusBackend. */
@@ -598,6 +603,7 @@ function ownerFrom(
   const reads = [...new Set([...bare(readStringArray(obj.reads)), ...entitiesArr])];
   const writes = [...new Set([...bare(readStringArray(obj.writes)), ...entitiesArr])];
   const moduleName = explicitModule || entityToModule.get(entity) || entityToModule.get(reads[0]) || entityToModule.get(writes[0]) || fallbackModule;
+  const mdm = readOwnerMdm(obj);
   return {
     kind,
     id,
@@ -613,7 +619,8 @@ function ownerFrom(
     rulesApplied: readStringArray(obj.rulesApplied),
     accessPattern: readAccessPattern(obj.accessPattern),
     outputShape: readOutputShape(obj.outputShape),
-    inputs: readOperationInputs(obj.inputs),
+    inputs: synthesizeMdmInputs(readOperationInputs(obj.inputs), mdm),
+    ...(mdm ? { mdm } : {}),
     contextResolution: readContextResolution(obj.contextResolution),
     acceptanceAssertions: readStringArray(obj.acceptanceAssertions),
     todoStatus: '',
