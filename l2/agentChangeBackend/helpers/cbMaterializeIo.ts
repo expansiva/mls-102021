@@ -402,7 +402,9 @@ export async function compileModuleAndGetErrors(
   const borrowed: BorrowedModel[] = [];
   activeCompiles++;
   try {
-    // 1. Load the module's own files and the closure of their l1 imports — one borrow set.
+    // 1. Load the module's own .ts files and the closure of their l1 imports — one borrow set.
+    // `.defs.ts` is not in the type closure (Wagner): we never ask the worker for its diagnostics.
+    // `addModels` still loads siblings of a shortName; those ride along as platform behaviour.
     const models: Array<{ key: string; model: mls.editor.IModelTS }> = [];
     for (const file of files) {
       const content = await readSavedTs(project, file.folder, file.shortName);

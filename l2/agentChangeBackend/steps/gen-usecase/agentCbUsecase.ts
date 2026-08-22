@@ -15,7 +15,7 @@ import {
   createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, enqueueNextInPhase,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
-  MDM_WRITE_PATH_ENABLED,
+  MDM_WRITE_PATH_ENABLED, pinUsecaseL4Mdm,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOwner, type CbOutputShape,
@@ -347,6 +347,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       resultFns[0].outputShape = owner.outputShape;
       resultFns[0].output = cbOutputShapeToDefsFields(owner.outputShape);
     }
+    // The l4 `mdm` block is data, not invention: pin it the same way as ports/mdmRefs/outputShape.
+    pinUsecaseL4Mdm(result, owner?.mdm);
     const fi = usecaseFileInfo(module, usecaseId);
     const dependsFiles = [
       ...ports.map(p => dtsRef(repositoryPortFileInfo(module, p))),

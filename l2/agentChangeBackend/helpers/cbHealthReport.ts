@@ -32,3 +32,43 @@ export function buildHealthReportContent(existingRaw: string | null, report: Rec
   const rounds = [...priorRounds, snapshot].slice(-MAX_HEALTH_ROUNDS);
   return `${JSON.stringify({ ...snapshot, rounds }, null, 2)}\n`;
 }
+
+/**
+ * The last validate-all of a run is often a CLEAN pass (post-seeds, findings 0). It used to write
+ * `repairHistory: []` and `globalAttempts: 0` over the top of the file because repair state was
+ * cleared after the previous success. The rounds array still held the repair-round snapshots.
+ * Fold the longest history and the max attempts so the top-level health a post-mortem reads first
+ * matches the steps that actually ran.
+ */
+export function foldRepairAudit(
+  existingRaw: string | null,
+  current: { repairHistory?: unknown; globalAttempts?: unknown },
+): { repairHistory: string[]; globalAttempts: number } {
+  const asHistory = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  const asAttempts = (value: unknown): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+
+  let repairHistory = asHistory(current.repairHistory);
+  let globalAttempts = asAttempts(current.globalAttempts);
+  if (!existingRaw) return { repairHistory, globalAttempts };
+  try {
+    const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
+    const consider = (history: unknown, attempts: unknown): void => {
+      const priorHistory = asHistory(history);
+      if (priorHistory.length > repairHistory.length) repairHistory = priorHistory;
+      globalAttempts = Math.max(globalAttempts, asAttempts(attempts));
+    };
+    consider(parsed.repairHistory, parsed.globalAttempts);
+    if (Array.isArray(parsed.rounds)) {
+      for (const round of parsed.rounds) {
+        if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
+        const rec = round as Record<string, unknown>;
+        consider(rec.repairHistory, rec.globalAttempts);
+      }
+    }
+  } catch {
+    /* corrupt prior content: keep current */
+  }
+  return { repairHistory, globalAttempts };
+}

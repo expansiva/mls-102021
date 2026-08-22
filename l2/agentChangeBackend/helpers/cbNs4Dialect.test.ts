@@ -11,7 +11,7 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   mlsImportPathParts, phantomModulePathOf, isModelAlreadyExistsError,
   todoStatusDivergences, todoOwnerType, todoStatusField, todoOwnerKey,
-  readOwnerMdm, isMdmLifecycle, synthesizeMdmInputs,
+  readOwnerMdm, pinUsecaseL4Mdm, isMdmLifecycle, synthesizeMdmInputs,
 } from './cbDefsSource.js';
 import { collectMdmLifecycleIssues } from './cbMdmGuards.js';
 import { readAccessMatrixActors } from './cbWorkspace.js';
@@ -225,6 +225,9 @@ test('writeDefsSource mantém o modelo existente em sincronia com o que persisti
   // Atualiza só o que JÁ existe: nada de getOrCreateModel aqui.
   assert.match(shared, /const model = mls\.editor\.getModel\(file\) as mls\.editor\.IModelBase \| undefined;\s*\n\s*if \(model\?\.model && model\.model\.getValue\(\) !== src\) model\.model\.setValue\(src\);/);
   assert.doesNotMatch(shared, /refreshExistingModel[\s\S]{0,400}getOrCreateModel/);
+  // be4: createStorFile(..., true, true, true) created a Monaco model for every defs write.
+  assert.doesNotMatch(shared, /createStorFile\(param, true, true, true\)/);
+  assert.match(shared, /createStorFile\(param, false, false, false\)/);
   // E o read-back olha as DUAS superfícies: o stor (o que o próximo run lê) e o modelo (o que o export escreve).
   assert.match(shared, /export async function readBackTodoBackend\(expected: ReadonlyMap<string, string>\)/);
   assert.match(shared, /modelDivergent = todoStatusDivergences\(model\.model\.getValue\(\), expected\);/);
@@ -276,6 +279,23 @@ test('readOwnerMdm lê o bloco real e é AUSENTE (não vazio) quando o l4 não t
   assert.equal(readOwnerMdm({ mdm: [] }), undefined);
   assert.equal(isMdmLifecycle(readOwnerMdm(OP_INACTIVATE_CUSTOMER)), true);
   assert.equal(isMdmLifecycle(readOwnerMdm(OP_LIST_CUSTOMER)), false);
+});
+
+test('pinUsecaseL4Mdm writes the l4 block onto the model output — otherwise the defs never have mdm', () => {
+  const fromL4 = readOwnerMdm(OP_INACTIVATE_CUSTOMER);
+  const missing = { ports: ['Customer'], functions: [] } as Record<string, unknown>;
+  pinUsecaseL4Mdm(missing, fromL4);
+  assert.deepEqual(missing.mdm, { lifecycle: 'inactivate' });
+  const invented = { mdm: { lifecycle: 'delete' }, ports: [] } as Record<string, unknown>;
+  pinUsecaseL4Mdm(invented, undefined);
+  assert.equal('mdm' in invented, false);
+  const src = readFileSync(new URL('../steps/gen-usecase/agentCbUsecase.ts', import.meta.url), 'utf8');
+  assert.match(src, /pinUsecaseL4Mdm\(result, owner\?\.mdm\)/);
+  // The materialize guard reads data.mdm of the DEFS. With the pin, a no-op body is visible.
+  assert.match(
+    collectMdmLifecycleIssues('export async function x(){ return {}; }', (missing.mdm as { lifecycle: string }).lifecycle)[0],
+    /does not call ctx\.mdm\.entity\.inactivate/,
+  );
 });
 
 // ── o usecase de lifecycle não pode destruir nada ────────────────────────────

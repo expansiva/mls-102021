@@ -24,7 +24,7 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
   todoOwnerType, todoStatusField, todoStatusDivergences,
-  readOwnerMdm, synthesizeMdmInputs,
+  readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
   type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
@@ -36,6 +36,7 @@ import { agentTraceFileInfo } from '/_102021_/l2/agentChangeBackend/helpers/cbTr
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
+  readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
 };
 export type { CbEntityKind };
 
@@ -936,8 +937,17 @@ export async function saveDefs(fileInfo: CbFileInfo, exportName: string, data: u
 export async function writeDefsSource(fileInfo: CbFileInfo, src: string): Promise<string> {
   const ref = defsRef(fileInfo);
   const info = mls.stor.convertFileReferenceToFile(ref);
-  const param: IReqCreateStorFile = { ...info, source: src } as IReqCreateStorFile;
-  const file = await createStorFile(param, true, true, true);
+  const key = mls.stor.getKeyToFile(info);
+  let file = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[key];
+  // A .defs.ts is data for this agent, not a compile input. Creating a Monaco model just to WRITE
+  // it is the leak measured on be4 (createStorFile -> createModel, listeners 200 -> 336). An
+  // existing file is updated in place — re-add with versionRef '0' is also the SW `add` with
+  // content length undefined (F4). New files: createStorFile without a model (same as saveJsonStor).
+  if (!file) {
+    const param: IReqCreateStorFile = { ...info, source: src } as IReqCreateStorFile;
+    file = await createStorFile(param, false, false, false);
+  }
+  if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
   // Bump updatedAt so staleness (isStale: defs newer than .ts) re-materializes after a regen — the
   // shared libStor.createStorFile does not set it (unlike core agentDefs.createStorFile).
   file.updatedAt = new Date().toISOString();

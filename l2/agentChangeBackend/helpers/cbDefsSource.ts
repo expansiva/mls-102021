@@ -352,6 +352,17 @@ export function isMdmLifecycle(mdm: CbOwnerMdm | undefined): boolean {
   return mdm?.lifecycle === 'inactivate' || mdm?.lifecycle === 'reactivate';
 }
 
+/**
+ * Pin the l4 `mdm` block onto the usecase defs the model just returned. The model implements the
+ * body; this block is not its to invent or drop. Without the pin, `saveDefs` writes the model
+ * output and `collectMdmLifecycleIssues` (which reads `data.mdm` of that defs) stays blind — three
+ * petShop runs in a row emitted no-op lifecycles with the agent already correct in the build.
+ */
+export function pinUsecaseL4Mdm(result: Record<string, unknown>, ownerMdm: CbOwnerMdm | undefined): void {
+  if (ownerMdm) result.mdm = ownerMdm;
+  else delete result.mdm;
+}
+
 /** Structural mirror of cbShared.CbOperationInput — declared here so this module stays platform-free. */
 export interface CbMdmOperationInput {
   inputId: string;

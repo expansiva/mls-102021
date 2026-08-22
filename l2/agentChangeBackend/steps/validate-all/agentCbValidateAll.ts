@@ -730,7 +730,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? `; repaired during this run: ${finalState.history.length} occurrence(s) [${finalState.history.slice(-8).join(' | ')}]`
       : '';
     await saveHealthReport({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns });
-    await clearRepairState();
+    // Keep repair state until the LAST validate-all (post-seeds). Clearing on a pre-seeds pass is
+    // what left be4's dossier with repairHistory: [] after three real repair rounds.
+    if (!preSeeds) await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
     const okTrace = (warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`

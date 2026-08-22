@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeRepairMutation } from './cbRepairLock.js';
-import { buildHealthReportContent, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
+import { buildHealthReportContent, foldRepairAudit, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
 import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
 
 test('mergeComponentRepair (T3): a global round preserves priorFindings + lastCode and resets attempts to 0', () => {
@@ -76,6 +76,27 @@ test('buildHealthReportContent: rounds array is bounded and tolerates corrupt ex
   const parsed = JSON.parse(content);
   assert.equal(parsed.rounds.length, MAX_HEALTH_ROUNDS, 'rounds capped');
   assert.equal(parsed.rounds[parsed.rounds.length - 1].n, MAX_HEALTH_ROUNDS + 5, 'newest kept');
+});
+
+test('foldRepairAudit keeps the repair rounds when the last snapshot is a clean pass', () => {
+  const t1 = '2026-08-22T21:40:00.000Z';
+  const t2 = '2026-08-22T21:50:00.000Z';
+  const history = ['2026-08-22T21:40:00.000Z :: usecase.defs.ts :: validate-all g1 :: TS2339'];
+  const afterRound = buildHealthReportContent(null, {
+    outcome: 'repair-round', round: 1, globalAttempts: 1, repairHistory: history,
+  }, t1);
+  const afterPass = buildHealthReportContent(afterRound, {
+    outcome: 'passed', findings: [], globalAttempts: 0, repairHistory: [],
+  }, t2);
+  const folded = foldRepairAudit(afterRound, { repairHistory: [], globalAttempts: 0 });
+  assert.deepEqual(folded.repairHistory, history);
+  assert.equal(folded.globalAttempts, 1);
+  const top = JSON.parse(buildHealthReportContent(afterRound, {
+    outcome: 'passed', findings: [], ...folded,
+  }, t2));
+  assert.equal(top.globalAttempts, 1);
+  assert.deepEqual(top.repairHistory, history);
+  assert.equal(JSON.parse(afterPass).repairHistory.length, 0, 'without the fold the last pass wipes history — that is the be4 bug');
 });
 
 test('serializeRepairMutation preserves every concurrent read-modify-write', async () => {

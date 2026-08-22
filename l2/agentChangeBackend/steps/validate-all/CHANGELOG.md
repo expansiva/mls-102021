@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-08-22 — repairHistory no dossiê (be4)
+
+O último validate-all (pass limpo, pós-seeds) gravava `repairHistory: []` / `globalAttempts: 0`
+porque o estado de repair tinha sido limpo no pass anterior. `foldRepairAudit` recupera o
+histórico das `rounds`; `clearRepairState` só no validate-all FINAL (`preSeeds=false`).
+
 ## 2026-08-22 — guard: JSON.parse(row.<jsonb>) em adapter
 
 Um `JSON.parse(row.<coluna>)` sobre coluna JSONB (pg já devolve objeto) vira finding reparável.
