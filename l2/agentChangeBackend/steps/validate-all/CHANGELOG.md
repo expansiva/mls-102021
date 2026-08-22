@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-08-22 — guard: JSON.parse(row.<jsonb>) em adapter
+
+Um `JSON.parse(row.<coluna>)` sobre coluna JSONB (pg já devolve objeto) vira finding reparável.
+Caminho legítimo: `typeof row.col === 'string' ? JSON.parse(row.col) : (row.col ?? {})`.
+
+## 2026-08-22 — guard: índice redundante `_pkey` / colunas da PK
+
+Junto do guard de `primaryKey: []`: um índice cujo nome é `<table>_pkey` (reservado pelo Postgres) ou
+cujas colunas são exatamente a `primaryKey` vira finding. O writer do gen-table é o caminho
+legítimo (saneamento mecânico); o gate não afrouxa.
+
 ## 2026-07-16 — boundary DTO folder allowlisted no orphan check (Item 5 / Opção 3)
 Os DTOs de boundary (`adapters/http/dto/<op>.ts` + `toDto`, gerados determinísticamente por gen-http,
 sem `.defs.ts` por design) eram acusados como "orphan generated ts ... has no matching .defs.ts" e

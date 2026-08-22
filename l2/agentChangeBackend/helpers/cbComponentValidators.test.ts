@@ -1,6 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/.test.ts" enhancement="_blank"/>
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
@@ -10,6 +13,7 @@ import {
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
   stableCompilerErrors, selectCompilerRepairRoots,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
+  jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 test('stableCompilerErrors (T2): keeps only findings that reproduce on the double-check (flaky dropped)', () => {
@@ -406,6 +410,33 @@ test('collectDetailsDefaultingIssues ignores code that never parses a details en
   assert.deepEqual(collectDetailsDefaultingIssues(`
     function toDomain(row: EventRow): Event { return { eventId: row.event_id, at: row.created_at }; }
   `), []);
+});
+
+const JSONB_FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../steps/gen-adapter/fixtures');
+
+test('collectJsonbRowParseFindings flags the real pet adapter and stays quiet on the dual-shape parse', () => {
+  const adapter = readFileSync(path.join(JSONB_FIXTURE_DIR, 'petRepositoryAdapter.ts'), 'utf8');
+  const table = readFileSync(path.join(JSONB_FIXTURE_DIR, 'pet.ts'), 'utf8');
+  const declared = jsonbColumnsFromTableSource(table);
+  assert.equal(declared?.tableName, 'pet');
+  assert.deepEqual(declared?.columns, ['details']);
+  const issues = collectJsonbRowParseFindings(adapter, new Set(declared!.columns), 'petRepositoryAdapter.ts');
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /JSON\.parse\(row\.details\)/);
+  const fixed = `
+    function parseDetails(row: PetRow): PetDetails {
+      let parsed: Partial<PetDetails> = {};
+      try {
+        const raw = typeof row.details === 'string' ? JSON.parse(row.details) : (row.details ?? {});
+        parsed = (raw ?? {}) as Partial<PetDetails>;
+      } catch (error) {
+        console.warn('[parseDetails] pet ' + row.pet_id + ': details is not JSON', error);
+        parsed = {};
+      }
+      return { ...detailsDefaults(), ...parsed };
+    }
+  `;
+  assert.deepEqual(collectJsonbRowParseFindings(fixed, new Set(['details']), 'petRepositoryAdapter.ts'), []);
 });
 
 test('extractFunctionBlocks brace-matches nested bodies for both function and arrow forms', () => {

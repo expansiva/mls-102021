@@ -18,10 +18,14 @@ const MODEL_TYPES = ['code', 'design'] as const;
 void test('agentCbPersistenceTable declares the LLM step agent contract', () => {
   const src = readFileSync(path.join(HERE, 'agentCbPersistenceTable.ts'), 'utf8');
   const flow = readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8');
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'persistenceTable.md'), 'utf8');
   assert.match(src, /agentCbPersistenceTable/);
   assert.match(src, /createPromptReadyIntent/);
   assert.match(src, /afterPromptStep/);
+  assert.match(src, /sanitizePlannerTableItem/);
   assert.match(flow, /"agentName": "agentCbPersistenceTable"/);
+  assert.match(skill, /appointment_availability_pkey/);
+  assert.match(skill, /_idx/);
 });
 
 void test('agentCbPersistenceTable tool schema is provider-clean', () => {

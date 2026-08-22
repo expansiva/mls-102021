@@ -495,6 +495,42 @@ export function collectDetailsDefaultingIssues(code: string): string[] {
   return [...new Set(issues)];
 }
 
+/** JSONB column names declared on a table def (.ts with postgresType, or planner .defs.ts with type). */
+export function jsonbColumnsFromTableSource(source: string): { tableName: string; columns: string[] } | null {
+  const tableName = /tableName:\s*'([^']+)'/.exec(source)?.[1]
+    || /"tableName"\s*:\s*"([^"]+)"/.exec(source)?.[1]
+    || '';
+  const columns = new Set<string>();
+  const ts = /name:\s*'([^']+)'[\s\S]{0,120}?postgresType:\s*'JSONB'/gi;
+  let match: RegExpExecArray | null;
+  while ((match = ts.exec(source)) !== null) columns.add(match[1]);
+  const defs = /"name"\s*:\s*"([^"]+)"[\s\S]{0,120}?"type"\s*:\s*"jsonb"/gi;
+  while ((match = defs.exec(source)) !== null) columns.add(match[1]);
+  if (!columns.size) return tableName ? { tableName, columns: [] } : null;
+  return { tableName, columns: [...columns] };
+}
+
+/**
+ * `JSON.parse(row.<col>)` on a JSONB column: pg already returns an object, parse throws, mute catch
+ * empties the domain. Finding is textual; the legitimate parse is `typeof row.col === 'string' ? JSON.parse(row.col) : (row.col ?? {})`.
+ */
+export function collectJsonbRowParseFindings(adapterSource: string, jsonbColumns: ReadonlySet<string>, label: string): string[] {
+  if (!jsonbColumns.size) return [];
+  const findings: string[] = [];
+  const re = /JSON\.parse\(\s*row\.([A-Za-z_][\w]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(adapterSource)) !== null) {
+    const column = match[1];
+    if (!jsonbColumns.has(column)) continue;
+    const around = adapterSource.slice(Math.max(0, match.index - 96), match.index + match[0].length);
+    if (new RegExp(`typeof\\s+row\\.${column}\\s*===\\s*['"]string['"]`).test(around)) continue;
+    findings.push(
+      `jsonb parse -> ${label} JSON.parse(row.${column}) on a JSONB column; pg already returns an object and JSON.parse throws into a silent catch (blank fields on read). Accept object or string: typeof row.${column} === 'string' ? JSON.parse(row.${column}) : (row.${column} ?? {})`,
+    );
+  }
+  return [...new Set(findings)];
+}
+
 /** Collection fields of a generated domain entity, as `valueObjectName -> the entity's field name`
  * (e.g. `OrderItem -> items` for `items: OrderItem[]`).
  *

@@ -14,6 +14,7 @@ import {
   newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { persistenceTableResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
+import { sanitizePlannerTableItem } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 
 const AGENT_NAME = 'agentCbPersistenceTable';
 const TOOL_NAME = 'submitPersistenceTables';
@@ -67,10 +68,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     for (const item of asArray((out.result as any).items)) {
       const tableId = readString(item.tableId);
       if (!tableId) continue;
+      const sanitized = sanitizePlannerTableItem(item as Record<string, unknown>);
       const fi = persistenceTableFileInfo(module, tableId);
       const dependsFiles = [dtsRef(domainEntityFileInfo(module, tableId))];
       const pipeline = [buildPipelineItem(lowerFirst(tableId), 'persistenceTable', fi, dependsFiles, layerSkills('persistenceTable.md'))];
-      await saveDefs(fi, `${lowerFirst(tableId)}TableDefinition`, buildArtifact('table', tableId, module, AGENT_NAME, item), pipeline);
+      await saveDefs(fi, `${lowerFirst(tableId)}TableDefinition`, buildArtifact('table', tableId, module, AGENT_NAME, sanitized), pipeline);
       saved++;
     }
     if (out.status === 'failed') { status = 'failed'; trace = 'model returned failed'; }

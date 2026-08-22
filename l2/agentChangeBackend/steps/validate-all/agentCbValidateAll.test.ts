@@ -17,6 +17,18 @@ void test('agentCbValidateAll declares the validate-all step agent contract', ()
   assert.match(flow, /"agentName": "agentCbValidateAll"/);
 });
 
+void test('validate-all flags a redundant PK index next to the empty-primaryKey guard', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /table without primary key ->/);
+  assert.match(src, /collectRedundantPkIndexFindings\(def\.source/);
+});
+
+void test('validate-all flags JSON.parse of a JSONB row column on repository adapters', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectJsonbRowParseFindings\(/);
+  assert.match(src, /jsonbColumnsFromTableSource/);
+});
+
 // ── o sweep não pode consumir a memória da aba nem morrer mudo ────────────────
 // Run be3: este step compilou ~200 arquivos (cada compile empresta os modelos dos imports) e a aba
 // estourou a memória antes de o step registrar qualquer coisa.

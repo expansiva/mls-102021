@@ -34,7 +34,7 @@ import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues, collectRepositoryCastIssues,
-  portsMissingFromDependsFiles, collectDetailsDefaultingIssues,
+  portsMissingFromDependsFiles, collectDetailsDefaultingIssues, collectJsonbRowParseFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
@@ -444,7 +444,10 @@ function validateGeneratedComponent(project: number, item: PipelineItem, data: u
   if (item.type === 'applicationUsecase') issues.push(...validateUsecaseComponent(project, data, code, tsKeys));
   if (item.type === 'httpController') issues.push(...validateControllerComponent(data, code));
   // Adapters own the `details` JSONB envelope: reject parse-without-merge (the 500-on-read class).
-  if (item.type === 'repositoryAdapter') issues.push(...collectDetailsDefaultingIssues(code));
+  if (item.type === 'repositoryAdapter') {
+    issues.push(...collectDetailsDefaultingIssues(code));
+    issues.push(...collectJsonbRowParseFindings(code, new Set(['details']), item.outputPath || 'repositoryAdapter.ts'));
+  }
   return issues;
 }
 

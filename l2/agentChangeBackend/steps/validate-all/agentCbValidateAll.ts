@@ -40,7 +40,9 @@ import {
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   stableCompilerErrors, selectCompilerRepairRoots,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
+  jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -270,6 +272,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (!/"?primaryKey"?\s*:/.test(def.source)) continue;
       if (!/"?primaryKey"?\s*:\s*\[\s*\]/.test(def.source)) continue;
       missing.push(`table without primary key -> ${def.folder}/${def.real}.defs.ts declares primaryKey: [] and cannot be published; derive it from the l4 storage.idField (or, for an entity that should not have a table at all, remove the table)`);
+    }
+    // Postgres already creates <table>_pkey from PRIMARY KEY. A generated index with that reserved
+    // name (or the same columns) collides at publish (42P07). The gen-table writer strips it;
+    // this finding is the net if another path saves the defect.
+    for (const def of tableDefSources) {
+      missing.push(...collectRedundantPkIndexFindings(def.source, `${def.folder}/${def.real}.defs.ts`));
     }
     // The platform header is emitted, never copied from a model: `enhancement="blank"` (missing the
     // underscore) shipped in two files of that same run. The writer rebuilds line 1 now; this is the net
@@ -518,8 +526,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // getTable('<name>') in a repository adapter must be a tableName declared by one of the module's
     // TableDefinition artifacts — an unknown name only explodes at runtime (PERSISTENCE_TABLE_NOT_FOUND).
     const declaredTableNames = new Set<string>();
+    const jsonbColumnsByTable = new Map<string, Set<string>>();
+    const jsonbColumnsAll = new Set<string>();
     for (const [, source] of persistenceSources) {
       for (const m of source.matchAll(/tableName:\s*'([^']+)'/g)) declaredTableNames.add(m[1]);
+      const jsonb = jsonbColumnsFromTableSource(source);
+      if (!jsonb?.columns.length) continue;
+      const bucket = jsonbColumnsByTable.get(jsonb.tableName) ?? new Set<string>();
+      for (const column of jsonb.columns) { bucket.add(column); jsonbColumnsAll.add(column); }
+      jsonbColumnsByTable.set(jsonb.tableName, bucket);
+    }
+    for (const def of tableDefSources) {
+      const jsonb = jsonbColumnsFromTableSource(def.source);
+      if (!jsonb?.columns.length) continue;
+      const bucket = jsonbColumnsByTable.get(jsonb.tableName) ?? new Set<string>();
+      for (const column of jsonb.columns) { bucket.add(column); jsonbColumnsAll.add(column); }
+      if (jsonb.tableName) jsonbColumnsByTable.set(jsonb.tableName, bucket);
     }
     if (declaredTableNames.size > 0) {
       for (const [sn, source] of persistenceSources) {
@@ -530,6 +552,21 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           missing.push(msg);
           const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
           if (defs) addRepair(defRefOf(defs.folder, defs.real), msg); // bad .ts -> re-materializable
+        }
+      }
+    }
+    // JSON.parse(row.<jsonb>) on a JSONB column: pg already returns an object; parse throws and a
+    // mute catch empties every field. The skill's dual-shape parse is the legitimate path.
+    if (jsonbColumnsAll.size > 0) {
+      for (const [sn, source] of persistenceSources) {
+        if (!sn.endsWith('repositoryadapter')) continue;
+        const tableName = /getTable(?:<[^>]*>)?\(\s*'([^']+)'\s*\)/.exec(source)?.[1];
+        const columns = (tableName && jsonbColumnsByTable.get(tableName)) || jsonbColumnsAll;
+        const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+        const label = defs ? `${defs.folder}/${defs.real}.ts` : sn;
+        for (const msg of collectJsonbRowParseFindings(source, columns, label)) {
+          missing.push(msg);
+          if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
         }
       }
     }

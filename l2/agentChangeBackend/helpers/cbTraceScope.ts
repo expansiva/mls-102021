@@ -26,3 +26,30 @@ export function cbTraceFolder(): string {
 /** Where the previous versions of this agent wrote: readers fall back to it so a run in flight that
  *  started before this change still finds its own state. */
 export const CB_TRACE_LEGACY_FOLDER = 'trace';
+
+function traceShortName(agentName: string, stepId: unknown): string {
+  const safe = agentName
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+  return `${String(stepId ?? 0).padStart(3, '0')}-${safe || 'agent'}`;
+}
+
+/** Stor identity of a CB step dump. JSON on purpose — not a defs artifact.
+ *  (`defsRef` would force `.defs.ts` and the buildCI tsc would compile the JSON.) */
+export function agentTraceFileInfo(moduleName: string, agentName: string, stepId: unknown, project = 0): {
+  project: number;
+  level: number;
+  folder: string;
+  shortName: string;
+  extension: string;
+} {
+  return {
+    project,
+    level: 4,
+    folder: `${moduleName}/trace`,
+    shortName: traceShortName(agentName, stepId),
+    extension: '.json',
+  };
+}

@@ -50,6 +50,10 @@ export const orderTableDef: TableDefinition = {
 - ALWAYS include a `details` column `{ name: 'details', postgresType: 'JSONB', nullable: true }` when
   the aggregate has non-indexed fields or embedded collections.
 - One index per queryable column (FKs, status, ordering timestamp). `version: 1` for new tables.
+  Postgres already creates `<tableName>_pkey` from `primaryKey` — do not emit that index. Secondary
+  index names end in `_idx` (real incident: `appointment_availability_pkey` on
+  `primaryKey: ['availability_id']` collided at publish with 42P07; the correct sibling is
+  `appointment_availability_service_id_idx`).
 - `event` entities (`data.appendOnly === true`): append-only table. Set `purpose: 'controle'`, index the
   owner FK and the ordering timestamp, and when `data.retentionDays` is present add `retentionDays: <n>`
   to the `TableDefinition` (the platform applies the TTL); omit it for a permanent audit trail. Same

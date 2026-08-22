@@ -31,6 +31,7 @@ import {
   parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
   type CbWorkspace, type CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
+import { agentTraceFileInfo } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
@@ -1081,7 +1082,9 @@ export async function saveAgentTrace(
     // The trace is what a post-mortem reads. Besides the payload it carries WHAT THE STEP COST and what
     // it did: the model/tokens/cost of the interaction and the counters the caller chose to publish —
     // otherwise every analysis has to be reconstructed by hand from the msgtask plus the console.
-    const source = `${JSON.stringify({
+    // Write the declared .json via fileInfo directly (same path as saveRunReport). Do NOT go through
+    // defsRef: that helper is for table/entity defs and crushes the extension to `.defs.ts`.
+    await saveJsonStor(agentTraceFileInfo(moduleName, agentName, step.stepId, mls.actualProject || 0), {
       savedAt: new Date().toISOString(),
       agentName,
       stepId: step.stepId,
@@ -1090,18 +1093,7 @@ export async function saveAgentTrace(
       interaction: interactionSummary(step.interaction),
       counters: counters || null,
       payload,
-    }, null, 2)}\n`;
-    const fileInfo: CbFileInfo = {
-      project: mls.actualProject || 0,
-      level: 4,
-      folder: `${moduleName}/trace`,
-      shortName: traceShortName(agentName, step.stepId),
-      extension: '.json',
-    };
-    const ref = defsRef(fileInfo);
-    const info = mls.stor.convertFileReferenceToFile(ref);
-    const file = await createStorFile({ ...info, source } as IReqCreateStorFile, true, true, false);
-    await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
+    });
   } catch (error) {
     console.warn(`[cb saveAgentTrace] failed for ${agentName}`, error);
   }
@@ -1131,15 +1123,6 @@ function shouldSaveTrace(context: mls.msg.ExecutionContext): boolean {
     // use default
   }
   return true;
-}
-
-function traceShortName(agentName: string, stepId: unknown): string {
-  const safe = agentName
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase();
-  return `${String(stepId ?? 0).padStart(3, '0')}-${safe || 'agent'}`;
 }
 
 // ── todoBackend mutation (deterministic) ───────────────────────────────────────

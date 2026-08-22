@@ -16,7 +16,8 @@ import type { Order, OrderItem } from '/_{project}_/l1/{module}/layer_3_domain/e
 
 interface OrderRow {
   order_id: string; daily_shift_id: string; table_id: string | null; kitchen_ticket_id: string | null;
-  order_type: string; status: string; created_at: string; details: string | null;
+  order_type: string; status: string; created_at: string;
+  details: Record<string, unknown> | string | null;
 }
 interface OrderDetails {
   totalAmount: number; notes: string | null; customerName: string | null; customerPhone: string | null;
@@ -46,11 +47,16 @@ function detailsDefaults(row: OrderRow): OrderDetails {
   };
 }
 function parseDetails(row: OrderRow): OrderDetails {
-  // Partial (NOT `as OrderDetails`): the envelope may be null, '{}' or missing keys. JSON.parse('{}')
-  // does NOT throw, so defaulting only in `catch` would leave required fields undefined at runtime.
+  // pg returns JSONB as an object. JSON.parse(object) becomes JSON.parse("[object Object]") and
+  // throws; a mute catch then yields empty defaults (every field blank on read). Accept both shapes.
   let parsed: Partial<OrderDetails> = {};
-  try { parsed = (JSON.parse(row.details ?? '{}') ?? {}) as Partial<OrderDetails>; }
-  catch { parsed = {}; }
+  try {
+    const raw = typeof row.details === 'string' ? JSON.parse(row.details) : (row.details ?? {});
+    parsed = (raw ?? {}) as Partial<OrderDetails>;
+  } catch (error) {
+    console.warn(`[parseDetails] order ${row.order_id}: details is not JSON`, error);
+    parsed = {};
+  }
   return { ...detailsDefaults(row), ...parsed };   // merge over the defaults, field by field
 }
 function toDomain(row: OrderRow): Order {
@@ -100,7 +106,12 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
 
 - Define a `{Entity}Row` (snake_case columns matching the TableDefinition) and a `{Entity}Details`
   (the JSONB payload: non-indexed fields + embedded collections). `toRow`/`toDomain`/`parseDetails`
-  convert between them; `details` is `JSON.stringify` on write, safe-parse on read.
+  convert between them; `details` is `JSON.stringify` on write. On read, `pg` already gives an
+  **object** for JSONB (`details: Record<string, unknown> | string | null`). Never
+  `JSON.parse(row.details)`: that throws on an object, a mute `catch` empties every field, and the
+  app shows ids with blank names. Parse with
+  `typeof row.details === 'string' ? JSON.parse(row.details) : (row.details ?? {})`. A real parse
+  failure `console.warn`s table/id before falling back to defaults.
 - **`parseDetails` MUST merge over complete defaults — never cast the parse result.** A stored row can
   have `details` NULL, `'{}'` or missing keys (older rows, seeds, partial writes), and
   `JSON.parse('{}')` does NOT throw — so defaulting only inside `catch` silently produces `undefined`
