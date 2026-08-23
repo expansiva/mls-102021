@@ -1,0 +1,263 @@
+{
+  "summary": "Compact pet shop presentation, pet, and schedule-block seed data using prior business-hours and customer catalog references only where supported by the current persistence contracts.",
+  "localTables": [
+    {
+      "tableId": "InstitutionalPresentation",
+      "rows": [
+        {
+          "key": "main-presentation",
+          "columns": [
+            {
+              "name": "institutional_presentation_id",
+              "value": null
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "businessName",
+              "value": "Patas & Companhia Pet Shop"
+            },
+            {
+              "name": "headline",
+              "value": "Cuidado completo para cada fase da vida do seu pet"
+            },
+            {
+              "name": "presentationText",
+              "value": "Oferecemos banho, tosa e avaliação veterinária com atendimento acolhedor, equipe preparada e horários organizados para facilitar a rotina das famílias."
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "community-presentation",
+          "columns": [
+            {
+              "name": "institutional_presentation_id",
+              "value": null
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "businessName",
+              "value": "Patas & Companhia Pet Shop"
+            },
+            {
+              "name": "headline",
+              "value": "Bem-estar animal perto de você"
+            },
+            {
+              "name": "presentationText",
+              "value": "Um espaço de confiança para higiene, cuidados preventivos e acompanhamento próximo de cães e gatos."
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "Pet",
+      "rows": [
+        {
+          "key": "luna",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": null
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Luna"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "thor",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": null
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Thor"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "mel",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": null
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Mel"
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "ScheduleBlock",
+      "rows": [
+        {
+          "key": "weekday-maintenance",
+          "columns": [
+            {
+              "name": "schedule_block_id",
+              "value": null
+            },
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekday-standard"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "hour"
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-01T12:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-01T13:00:00.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Intervalo de manutenção e higienização da área de banho"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "holiday-closure",
+          "columns": [
+            {
+              "name": "schedule_block_id",
+              "value": null
+            },
+            {
+              "name": "status",
+              "value": "expired"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekend-limited"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "fullDay"
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-04T00:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-04T23:59:00.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Fechamento excepcional para treinamento da equipe"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "veterinary-reserve",
+          "columns": [
+            {
+              "name": "schedule_block_id",
+              "value": null
+            },
+            {
+              "name": "status",
+              "value": "cancelled"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekday-standard"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "hour"
+            },
+            {
+              "name": "details",
+              "value": null
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-06T15:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-06T16:00:00.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Reserva temporária para avaliação veterinária"
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "mdmEntities": []
+}

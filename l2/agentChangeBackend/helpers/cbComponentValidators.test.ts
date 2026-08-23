@@ -11,6 +11,7 @@ import {
   ownershipCheckIsInconclusive, ownershipInconclusiveWarning,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
+  collectDeleteOperationPortGaps,
   stableCompilerErrors, selectCompilerRepairRoots,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
@@ -84,6 +85,25 @@ test('collectRepositoryMethodMisuse flags a call to a method the port does not d
   assert.equal(issues.length, 1, issues.join('\n'));
   assert.match(issues[0], /stockAdjustments\.save\(\) is not declared on IStockAdjustmentRepository/);
   assert.match(issues[0], /use one of: append, listByPeriod, listByProductId/);
+});
+
+test('collectDeleteOperationPortGaps fires on petShop deleteScheduleBlock whose port has no delete', () => {
+  const port = `
+export interface IScheduleBlockRepository {
+  getById(id: string): Promise<ScheduleBlock | null>;
+  list(filter: ScheduleBlockFilter): Promise<ScheduleBlock[]>;
+  save(aggregate: ScheduleBlock): Promise<ScheduleBlock>;
+}
+`;
+  const methods = new Map([['IScheduleBlockRepository', extractInterfaceMethods(port, 'IScheduleBlockRepository')]]);
+  const issues = collectDeleteOperationPortGaps('deleteScheduleBlock', methods);
+  assert.equal(issues.length, 1, issues.join('\n'));
+  assert.match(issues[0], /deleteScheduleBlock' requires IScheduleBlockRepository\.delete/);
+  assert.match(issues[0], /getById, list, save/);
+  const withDelete = new Map([['IScheduleBlockRepository', new Set(['getById', 'list', 'save', 'delete'])]]);
+  assert.deepEqual(collectDeleteOperationPortGaps('deleteScheduleBlock', withDelete), []);
+  assert.deepEqual(collectDeleteOperationPortGaps('updateScheduleBlock', methods), []);
+  assert.deepEqual(collectDeleteOperationPortGaps('deleteScheduleBlock', new Map()), []);
 });
 
 test('collectRepositoryMethodMisuse accepts only-declared calls and skips unresolved interfaces', () => {

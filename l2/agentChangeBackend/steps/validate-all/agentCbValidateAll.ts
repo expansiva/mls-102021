@@ -41,6 +41,7 @@ import {
   stableCompilerErrors, selectCompilerRepairRoots,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
+  extractInterfaceMethods, collectDeleteOperationPortGaps,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 
@@ -113,7 +114,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const portDefs = new Set<string>();    // lowercased shortNames present in layer_2_application/ports
     const domainDefs = new Set<string>();  // lowercased shortNames present in layer_3_domain/entities
     const mdmDomainArtifacts: string[] = [];
-    const usecases: { id: string; ports: string[]; rulesApplied: string[] }[] = [];
+    const usecases: { id: string; usecaseId: string; ports: string[]; rulesApplied: string[] }[] = [];
+    const portSources = new Map<string, string>(); // lc shortName -> generated port .ts
     const usecaseFnNames = new Map<string, Set<string>>(); // usecaseId (lc) -> exported function names
     const controllers: {
       id: string;
@@ -178,6 +180,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         }
         if (folder0.endsWith('/adapters/http/controllers')) controllerSources.set(shortName0.toLowerCase(), content);
         if (folder0.endsWith('/adapters/persistence')) persistenceSources.set(shortName0.toLowerCase(), content);
+        if (folder0.endsWith('/layer_2_application/ports')) portSources.set(shortName0.toLowerCase(), content);
         for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
         }
@@ -217,6 +220,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       defsFiles.push({ folder, shortName, real: shortName0 });
       if (folder.endsWith('/layer_2_application/usecases')) defRefByLc.set(`usecases::${shortName}`, defRefOf(folder, shortName0));
       if (folder.endsWith('/adapters/http/controllers')) defRefByLc.set(`controllers::${shortName}`, defRefOf(folder, shortName0));
+      if (folder.endsWith('/layer_2_application/ports')) defRefByLc.set(`ports::${shortName}`, defRefOf(folder, shortName0));
       if (folder.includes('/adapters/persistence')) {
         persistenceArtifacts.push(shortName);
         if (mdmIds.has(shortName)) mdmTableViolations++;
@@ -230,7 +234,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       else if (folder.endsWith('/layer_2_application/usecases')) {
         const artifact = parseArtifact(String(await file.getContent()));
         const data = artifact && isRecord(artifact.data) ? artifact.data : undefined;
-        usecases.push({ id: shortName, ports: data ? readStringArray(data.ports) : [], rulesApplied: collectUsecaseRules(data) });
+        usecases.push({
+          id: shortName,
+          usecaseId: (data && typeof data.usecaseId === 'string' && data.usecaseId.trim()) ? data.usecaseId.trim() : shortName0,
+          ports: data ? readStringArray(data.ports) : [],
+          rulesApplied: collectUsecaseRules(data),
+        });
         const fns = data && Array.isArray((data as any).functions) ? (data as any).functions : [];
         usecaseFnNames.set(shortName, new Set<string>(fns.map((f: any) => String(f?.functionName || '')).filter(Boolean)));
       } else if (folder.endsWith('/adapters/http/controllers')) {
@@ -302,6 +311,27 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const domSn = lowerFirst(p).toLowerCase();
         if (!portDefs.has(portSn)) missing.push(`usecase ${uc.id} -> missing port ${lowerFirst(p)}Repository`);
         if (!domainDefs.has(domSn)) missing.push(`usecase ${uc.id} -> missing entity ${lowerFirst(p)}`);
+      }
+    }
+
+    // Delete operation whose PORT has no `delete`: the usecase cannot repair this (it would burn the
+    // materialize budget on an unfixable finding, or drop resolveRepository to silence the old gate).
+    // Route to the PORT defRef so rematerialize/gen-port owns it. Port source unread -> skip (no FP).
+    for (const uc of usecases) {
+      for (const entityId of uc.ports) {
+        if (mdmIds.has(entityId.toLowerCase())) continue;
+        const portSn = `${lowerFirst(entityId)}Repository`.toLowerCase();
+        const src = portSources.get(portSn);
+        if (!src) continue;
+        const iface = `I${entityId}Repository`;
+        const methods = extractInterfaceMethods(src, iface);
+        if (!methods.size) continue;
+        const gaps = collectDeleteOperationPortGaps(uc.usecaseId, new Map([[iface, methods]]));
+        const portDefRef = defRefByLc.get(`ports::${portSn}`);
+        for (const msg of gaps) {
+          missing.push(msg);
+          if (portDefRef) addRepair(portDefRef, msg);
+        }
       }
     }
 

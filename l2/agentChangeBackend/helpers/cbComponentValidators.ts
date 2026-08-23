@@ -206,6 +206,29 @@ export function collectRepositoryMethodMisuse(code: string, methodsByInterface: 
  * the usecase has to SAY so — the one generated file that did (`ProjectCoordinationAssignment
  * repository does not support deletion`, a readable CONFLICT) is the shape the other seven owe.
  */
+/**
+ * A delete operation whose port has no `delete` compiles, then 409s
+ * `"<Entity> repository does not support deletion"` (petShop `cmdDeleteScheduleBlock`).
+ * Either the port declares `delete`, or the operation should not exist. Ports that could not be
+ * loaded are skipped (empty map) so this never false-positives. Called from validate-all against
+ * the PORT source (finding routed to the port defRef); not from the usecase materialize worker.
+ */
+export function collectDeleteOperationPortGaps(
+  usecaseId: string,
+  methodsByInterface: Map<string, Set<string>>,
+): string[] {
+  if (!/^delete[A-Z]/u.test(usecaseId)) return [];
+  const issues: string[] = [];
+  for (const [iface, methods] of methodsByInterface) {
+    if (methods.has('delete')) continue;
+    const declared = [...methods].sort().join(', ') || '(none)';
+    issues.push(
+      `delete operation '${usecaseId}' requires ${iface}.delete(...); the port declares ${declared} — add delete to the port or do not emit a delete operation`,
+    );
+  }
+  return issues;
+}
+
 export function collectRepositoryCastIssues(code: string): string[] {
   const issues: string[] = [];
   const seen = new Set<string>();

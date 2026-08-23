@@ -253,6 +253,8 @@ async function repositoryMethodIssues(code: string, module: string): Promise<str
     const methods = extractInterfaceMethods(src, iface);
     if (methods.size) methodsByInterface.set(iface, methods);
   }
+  // A delete-without-port-method gap is NOT repairable here: the usecase cannot add `delete` to a
+  // port that already materialized. That finding is routed to the PORT defRef in agentCbValidateAll.
   return collectRepositoryMethodMisuse(code, methodsByInterface);
 }
 

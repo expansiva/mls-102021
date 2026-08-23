@@ -23,6 +23,16 @@ void test('validate-all flags a redundant PK index next to the empty-primaryKey 
   assert.match(src, /collectRedundantPkIndexFindings\(def\.source/);
 });
 
+void test('a delete-without-port-method gap is repaired on the PORT, not the usecase', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  const materialize = readFileSync(path.join(HERE, '..', 'materialize', 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /collectDeleteOperationPortGaps\(uc\.usecaseId/);
+  assert.match(src, /addRepair\(portDefRef, msg\)/);
+  assert.match(src, /defRefByLc\.set\(`ports::\$\{shortName\}`/);
+  // The usecase worker must NOT burn its repair budget on a finding it cannot satisfy.
+  assert.doesNotMatch(materialize, /collectDeleteOperationPortGaps/);
+});
+
 void test('validate-all flags JSON.parse of a JSONB row column on repository adapters', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /collectJsonbRowParseFindings\(/);

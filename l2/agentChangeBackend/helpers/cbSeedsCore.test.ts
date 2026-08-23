@@ -7,8 +7,12 @@ import {
   extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
   seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
   SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf,
-  isDateOnlyField, idFieldHasResolvableTarget, type SeedBuildInput,
+  isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan,
+  type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function field(fieldId: string, required = true, enumValues: string[] = []) {
   return { fieldId, type: 'string', required, enumValues };
@@ -463,6 +467,86 @@ test('C: an all-skipped module still compiles to a VALID artifact (no crash, no 
   assert.doesNotMatch(src, /import type \{ TableSeedRows \}/u, 'no unused import when nothing is seeded');
   assert.match(src, /export \{\};/u, 'the file must still be a module');
   assert.deepEqual(extractSeedSkippedFromSource(src), { tables: ['A', 'B'], mdmEntities: ['C'], reason: 'wave 1 did not converge' });
+});
+
+// petShop first /monitor/tests run: wave 3 produced Pet/ScheduleBlock/InstitutionalPresentation then
+// the repair put PK + `details: null` into `columns`, validateSeedPlan said "unknown persistence
+// column", and the give-up skipped those tables (30 fails "got 0"). Fixture = the real 208/209 payloads.
+const WAVE_FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+
+function collectOutboundRefs(plan: SeedBuildInput['plan']): string[] {
+  const refs: string[] = [];
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(walk); return; }
+    if (!value || typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    if (typeof record.ref === 'string') refs.push(record.ref);
+    Object.values(record).forEach(walk);
+  };
+  walk(plan);
+  return [...new Set(refs)].filter(ref => !/^local:(Pet|ScheduleBlock|InstitutionalPresentation)\./u.test(ref));
+}
+
+function petShopWave3Input(plan: SeedBuildInput['plan']): SeedBuildInput {
+  const col = (name: string, nullable = false): SeedTableDefinition['columns'][number] => (
+    { name, type: name.endsWith('_id') ? 'UUID' : name === 'details' ? 'JSONB' : 'TEXT', nullable }
+  );
+  const tables: SeedTableDefinition[] = [
+    { tableId: 'Pet', tableName: 'pet', seedFor: 'petShopPet', primaryKey: ['pet_id'], detailsColumnName: 'details', columns: [col('pet_id'), col('details', true)] },
+    { tableId: 'InstitutionalPresentation', tableName: 'institutional_presentation', seedFor: 'petShopInstitutionalPresentation', primaryKey: ['institutional_presentation_id'], detailsColumnName: 'details', columns: [col('institutional_presentation_id'), col('details', true)] },
+    { tableId: 'ScheduleBlock', tableName: 'schedule_block', seedFor: 'petShopScheduleBlock', primaryKey: ['schedule_block_id'], detailsColumnName: 'details', columns: [col('schedule_block_id'), col('status'), col('business_hours_id'), col('block_type'), col('details', true)] },
+  ];
+  return {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'pt-BR',
+    ruleIds: [],
+    entities: [
+      { entityId: 'Pet', title: 'Pet', kind: 'core', fields: [field('petId'), field('name')] },
+      { entityId: 'InstitutionalPresentation', title: 'Institutional presentation', kind: 'core', fields: [field('institutionalPresentationId'), field('businessName'), field('headline', false), field('presentationText')] },
+      { entityId: 'ScheduleBlock', title: 'Schedule block', kind: 'core', fields: [field('scheduleBlockId'), field('status', true, ['active', 'expired', 'cancelled']), field('businessHoursId'), field('blockType', true, ['hour', 'fullDay']), field('startsAt'), field('endsAt'), field('purpose')] },
+      { entityId: 'BusinessHours', title: 'Business hours', kind: 'core', fields: [field('businessHoursId')] },
+      { entityId: 'Customer', title: 'Customer', kind: 'core', fields: [field('customerId')] },
+    ],
+    tablePlans: tables,
+    plan,
+  };
+}
+
+test('petShop wave 209: details/PK echoed in columns fail today; normalizeSeedPlan lets the wave merge', () => {
+  const raw = JSON.parse(readFileSync(path.join(WAVE_FIXTURE_DIR, 'petShop-seed-wave209.json'), 'utf8')) as unknown;
+  const plan = parseSeedPlan(raw);
+  const input = petShopWave3Input(plan);
+  const priorRefs = collectOutboundRefs(plan);
+  const before = validateSeedPlan(input, priorRefs);
+  assert.ok(before.some(e => /columns\.details: unknown persistence column/u.test(e)), before.join('\n'));
+
+  const normalized = normalizeSeedPlan(plan, input.tablePlans);
+  const after = validateSeedPlan({ ...input, plan: normalized }, priorRefs);
+  assert.deepEqual(after, [], after.join('\n'));
+  assert.deepEqual(normalized.localTables.map(t => t.tableId).sort(), ['InstitutionalPresentation', 'Pet', 'ScheduleBlock']);
+  assert.ok(normalized.localTables.every(t => t.rows.every(r => !r.columns.some(c => c.name === 'details' || c.name.endsWith('_id') && ['pet_id', 'institutional_presentation_id', 'schedule_block_id'].includes(c.name)))));
+
+  const wave1: SeedBuildInput['plan'] = {
+    summary: 'wave 1',
+    localTables: [
+      { tableId: 'BusinessHours', rows: [{ key: 'weekday-standard', columns: [], details: [], children: [] }] },
+      { tableId: 'Customer', rows: [{ key: 'customer-primary', columns: [], details: [], children: [] }] },
+      { tableId: 'Service', rows: [{ key: 'banho', columns: [], details: [], children: [] }] },
+    ],
+    mdmEntities: [],
+  };
+  const merged = mergeSeedPlans(wave1, normalized);
+  assert.deepEqual(merged.localTables.map(t => t.tableId).sort(), [
+    'BusinessHours', 'Customer', 'InstitutionalPresentation', 'Pet', 'ScheduleBlock', 'Service',
+  ]);
+});
+
+test('petShop wave 208 (attempt 1) still names unknown details fields — the gate is not loosened', () => {
+  const raw = JSON.parse(readFileSync(path.join(WAVE_FIXTURE_DIR, 'petShop-seed-wave208.json'), 'utf8')) as unknown;
+  const plan = normalizeSeedPlan(parseSeedPlan(raw), petShopWave3Input(parseSeedPlan(raw)).tablePlans);
+  const errors = validateSeedPlan(petShopWave3Input(plan), collectOutboundRefs(plan));
+  assert.ok(errors.some(e => /unknown entity field/u.test(e)), errors.join('\n'));
 });
 
 test('C: an EMPTY summary is what crashed run05 — a blank plan is still rejected', () => {

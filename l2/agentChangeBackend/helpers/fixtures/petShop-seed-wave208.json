@@ -1,0 +1,199 @@
+{
+  "summary": "wave3:institutional-presentation,pet,schedule-block",
+  "localTables": [
+    {
+      "tableId": "InstitutionalPresentation",
+      "rows": [
+        {
+          "key": "main-presentation",
+          "columns": [],
+          "details": [
+            {
+              "name": "businessName",
+              "value": "Patas & Companhia Pet Shop"
+            },
+            {
+              "name": "headline",
+              "value": "Cuidado completo para cada fase da vida do seu pet"
+            },
+            {
+              "name": "presentationText",
+              "value": "Serviços de banho, tosa e atendimento veterinário com cuidado personalizado para cães e gatos."
+            },
+            {
+              "name": "businessHoursId",
+              "value": {
+                "ref": "local:BusinessHours.weekday-standard"
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "Pet",
+      "rows": [
+        {
+          "key": "luna",
+          "columns": [],
+          "details": [
+            {
+              "name": "name",
+              "value": "Luna"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer-primary"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "thor",
+          "columns": [],
+          "details": [
+            {
+              "name": "name",
+              "value": "Thor"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer-secondary"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "mel",
+          "columns": [],
+          "details": [
+            {
+              "name": "name",
+              "value": "Mel"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer-tertiary"
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "ScheduleBlock",
+      "rows": [
+        {
+          "key": "holiday-morning",
+          "columns": [
+            {
+              "name": "status",
+              "value": "active"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekday-standard"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "hour"
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-02T12:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-02T15:00:00.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Equipe em treinamento interno"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "maintenance-window",
+          "columns": [
+            {
+              "name": "status",
+              "value": "expired"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekday-standard"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "hour"
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-01T09:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-01T10:30:00.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Manutenção do sistema de agendamento"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "weekend-event",
+          "columns": [
+            {
+              "name": "status",
+              "value": "cancelled"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.weekend-limited"
+              }
+            },
+            {
+              "name": "block_type",
+              "value": "fullDay"
+            }
+          ],
+          "details": [
+            {
+              "name": "startsAt",
+              "value": "2026-07-05T00:00:00.000Z"
+            },
+            {
+              "name": "endsAt",
+              "value": "2026-07-05T23:59:59.000Z"
+            },
+            {
+              "name": "purpose",
+              "value": "Evento externo cancelado"
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "mdmEntities": []
+}

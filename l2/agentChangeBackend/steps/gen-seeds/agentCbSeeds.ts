@@ -18,7 +18,7 @@ import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cb
 import { extractCollectionFieldNames } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, estimateSeedPlanningWaveTokens,
-  extractSeedPlanProgressFromSource, mergeSeedPlans, parseSeedPlan, seedPlanInputForWave,
+  extractSeedPlanProgressFromSource, mergeSeedPlans, normalizeSeedPlan, parseSeedPlan, seedPlanInputForWave,
   seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
@@ -209,8 +209,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       }, `Seed batch split after output limit (wave ${batch.index}; estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens).`);
       throw error;
     }
-    const plan = parseSeedPlan(out.result);
     const waveInput = seedPlanInputForWave(input, batch);
+    const plan = normalizeSeedPlan(parseSeedPlan(out.result), waveInput.tablePlans);
     const errors = validateSeedPlan({ ...waveInput, plan }, seedReferenceCatalog(progress.plan).map(item => item.ref));
     await saveAgentTrace(context, AGENT_NAME, step);
 

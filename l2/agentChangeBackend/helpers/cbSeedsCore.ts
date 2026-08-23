@@ -533,6 +533,38 @@ function parsePlanRows(value: unknown): SeedLocalRow[] {
 
 /** Turns a tool-call result into a defensive internal representation. Validation below remains the
  * authority: malformed values become empty and produce objective findings instead of being trusted. */
+/**
+ * Drop columns the compiler already owns, so a planner that echoes them does not fail the wave.
+ *
+ * The prompt says PKs are compiled from tableId+row key and the JSONB envelope is `row.details`,
+ * never a `columns` entry. Repair waves still put `"name":"pet_id","value":null` and
+ * `"name":"details","value":null` in `columns` — which `validateSeedPlan` reports as
+ * `unknown persistence column` and then skips the rest of the module (petShop wave 3: Pet /
+ * ScheduleBlock / InstitutionalPresentation generated, then discarded). Stripping those names is
+ * the legitimate path; unknown *other* columns stay fatal.
+ */
+export function normalizeSeedPlan(plan: SeedPlan, tablePlans: Iterable<SeedTableDefinition> = []): SeedPlan {
+  const tableById = new Map([...tablePlans].map(table => [table.tableId, table]));
+  return {
+    summary: plan.summary,
+    mdmEntities: plan.mdmEntities,
+    localTables: plan.localTables.map((table) => {
+      const definition = tableById.get(table.tableId);
+      const envelope = definition ? detailsColumnOf(definition) : 'details';
+      const generated = new Set(definition?.primaryKey ?? []);
+      if (envelope) generated.add(envelope);
+      else generated.add('details');
+      return {
+        ...table,
+        rows: table.rows.map(row => ({
+          ...row,
+          columns: row.columns.filter(field => !generated.has(field.name)),
+        })),
+      };
+    }),
+  };
+}
+
 export function parseSeedPlan(value: unknown): SeedPlan {
   const record = isRecord(value) ? value : {};
   return {

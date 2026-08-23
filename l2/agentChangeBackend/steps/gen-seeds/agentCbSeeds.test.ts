@@ -78,6 +78,7 @@ void test('a module-resolution error on an alias import is environment, by const
   assert.doesNotMatch(src, /seedEnvironmentErrors[\s\S]{0,400}mls\.stor\.files/);
   // Both compile points of the seeds go through it (the partial persist and the final build).
   assert.equal((src.match(/seedEnvironmentErrors\(saved\)/g) || []).length, 2);
+  assert.match(src, /normalizeSeedPlan\(parseSeedPlan\(out\.result\), waveInput\.tablePlans\)/);
 });
 
 void test('an environment failure retries the compile once, without spending the replan budget', () => {
