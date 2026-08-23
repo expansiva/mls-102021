@@ -15,7 +15,7 @@ import {
   stableCompilerErrors, selectCompilerRepairRoots,
   compilerErrorFamily, compilerErrorsAfterRepair, compilerFindingsBlockingPassed,
   collectNonEnglishAppErrorMessages,
-  collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectIoShapeSymmetryIssues,
+  collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectDottedShortNameFindings, collectIoShapeSymmetryIssues,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -39,10 +39,20 @@ test('W2: weeklySchedule json input vs string output is a defs-level finding; em
   }), []);
 });
 
+test('dotted shortName on l1/l4 defs is a filename-out-of-standard finding', () => {
+  assert.deepEqual(collectDottedShortNameFindings([
+    { shortName: 'createService' },
+    { shortName: 'serviceCatalogue--cmdCreateService' },
+  ]), []);
+  assert.deepEqual(collectDottedShortNameFindings([
+    { shortName: 'serviceCatalogue.cmdCreateService' },
+  ]), ["filename out of standard: 'serviceCatalogue.cmdCreateService' — shortName must not contain dots"]);
+});
+
 test('unread l4 contract dependsFiles are findings, not a silent omit', () => {
-  const defs = `dependsFiles: ["_102047_/l4/petShop/contracts/serviceCatalogue.cmdCreateService.defs.ts", "_102047_/l1/petShop/layer_2_application/usecases/createService.d.ts"]`;
+  const defs = `dependsFiles: ["_102047_/l4/petShop/contracts/serviceCatalogue--cmdCreateService.defs.ts", "_102047_/l1/petShop/layer_2_application/usecases/createService.d.ts"]`;
   assert.deepEqual(collectL4ContractDependsRefs(defs), [
-    '_102047_/l4/petShop/contracts/serviceCatalogue.cmdCreateService.defs.ts',
+    '_102047_/l4/petShop/contracts/serviceCatalogue--cmdCreateService.defs.ts',
   ]);
   const unread = collectUnreadL4ContractFindings(defs, () => false);
   assert.equal(unread.length, 1);

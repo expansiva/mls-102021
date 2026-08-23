@@ -109,6 +109,13 @@ export function collectUnreadL4ContractFindings(defsSource: string, readable: (r
     .map(ref => `l4 contract unreadable -> ${ref} (empty or missing; materialize would omit it from the prompt)`);
 }
 
+/** Generated defs shortName must not contain extra dots (convention after nomes_sem_ponto). */
+export function collectDottedShortNameFindings(files: { shortName: string }[]): string[] {
+  return files
+    .filter(file => file.shortName.includes('.'))
+    .map(file => `filename out of standard: '${file.shortName}' — shortName must not contain dots`);
+}
+
 export function collectRelativeImportIssues(code: string): string[] {
   const issues: string[] = [];
   const re = /\b(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]*)['"]/g;

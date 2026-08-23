@@ -670,7 +670,8 @@ test('be5 wave 216: ServiceExecution missing arrived fails; coverMissingOperated
   const statuses = covered.localTables[0].rows.map(row => row.columns.find(c => c.name === 'status')?.value);
   assert.ok(statuses.includes('arrived') && statuses.includes('inProgress') && statuses.includes('completed'), String(statuses));
 
-  const prompt = seedPlanPromptContext({ ...input, plan: covered }, [], {
+  // seedPlanPromptContext ignores the plan by signature (Omit<SeedBuildInput,'plan'>).
+  const prompt = seedPlanPromptContext(input, [], {
     wave: { index: 6, tableIds: ['ServiceExecution'], mdmEntityIds: [] },
   });
   assert.match(prompt, /"operatedStates": \[\s*"arrived"/);

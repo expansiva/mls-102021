@@ -36,7 +36,7 @@ const RESCUE_MAX_TARGETS = 4;
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
-  collectL1Imports, collectRelativeImportIssues, collectL4ContractDependsRefs, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, collectL4ContractDependsRefs, collectDottedShortNameFindings, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   stableCompilerErrors, selectCompilerRepairRoots, compilerErrorFamily, compilerErrorsAfterRepair,
   collectNonEnglishAppErrorMessages,
@@ -298,6 +298,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         if (typeof content === 'string' && content.trim()) continue;
         missing.push(`l4 contract unreadable -> ${ref} (empty or missing; materialize would omit it from the prompt)`);
       }
+    }
+    // Filename convention: extra dots in shortName are a product defect (ns/CB/CF must emit `--` /
+    // kebab). l1 can rematerialize when the writer still owns the name; l4 is ns-owned (rebuild).
+    for (const def of defsFiles) {
+      for (const msg of collectDottedShortNameFindings([{ shortName: def.real }])) {
+        missing.push(msg);
+        addRepair(defRefOf(def.folder, def.real), msg);
+      }
+    }
+    for (const file of Object.values(mls.stor.files) as any[]) {
+      if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+      if (file.extension !== '.defs.ts') continue;
+      const folder = String(file.folder || '');
+      if (folder !== moduleName && !folder.startsWith(moduleFolderPrefix)) continue;
+      const shortName = String(file.shortName || '');
+      missing.push(...collectDottedShortNameFindings([{ shortName }]));
     }
     for (const artifact of mdmDomainArtifacts) {
       missing.push(`mdm local domain artifact forbidden -> ${artifact}`);

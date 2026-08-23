@@ -53,6 +53,12 @@ void test('validate-all flags an unreadable l4 contract dependsFile instead of o
   assert.match(src, /l4 contract unreadable ->/);
 });
 
+void test('validate-all flags dotted shortName on l1 (repairable) and l4 (defs-level) defs', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectDottedShortNameFindings/);
+  assert.match(src, /addRepair\(defRefOf\(def\.folder, def\.real\), msg\)/);
+});
+
 void test('after a repair round the whole-project compile re-asks every file and keeps remaining families', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /const afterRepair = repairStateForCompile\.globalAttempts > 0/);

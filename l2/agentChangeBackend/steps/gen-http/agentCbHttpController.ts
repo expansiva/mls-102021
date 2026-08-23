@@ -313,7 +313,7 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
       // Contract CONTEXT for the materializer prompt: the l4 contract .defs.ts (ALWAYS exists — fetchable
       // even in defs-only). Context only — the controller does NOT import it (there is no l1 contract; it
       // uses the usecase types + projects structurally). The wire type of record stays in l4.
-      dependsFiles.add(`_${project}_/l4/${module}/contracts/${ws.workspaceId}.${bff.bffId}.defs.ts`);
+      dependsFiles.add(`_${project}_/l4/${module}/contracts/${ws.workspaceId}--${bff.bffId}.defs.ts`);
       handlers.push({
         handlerName,
         command: bff.bffId,
