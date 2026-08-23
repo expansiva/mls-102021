@@ -12,7 +12,7 @@ import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   createAddStepIntent, createAgentStepPayload, isRecord, readString, readStringArray, logPrefix,
-  parseDefsSource, readCliCommand, type CbScan,
+  parseDefsSource, readCliCommand, ALL_STATUSES, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { extractCollectionFieldNames } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -152,7 +152,7 @@ function outputTokenTrace(payload: unknown): string {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const scan = await readBackendScan(seedScanStatuses(context), context);
-    const input = await readSeedBuildInput(scan);
+    const input = await readSeedBuildInput(scan, context);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
     // A COMPLETE seeds.ts already exists and this is not /rebuild all|seeds -> KEEP it as-is (no re-plan,
@@ -189,7 +189,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   await recordLlmCost('seeds', step.interaction); // T7: per-phase cost telemetry (best-effort)
   try {
     const scan = await readBackendScan(seedScanStatuses(context), context);
-    const input = await readSeedBuildInput(scan);
+    const input = await readSeedBuildInput(scan, context);
     const args = seedArgsOf(step);
     const persisted = await readPersistedPlan(input.project, input.moduleName);
     const progress = persisted?.partial ? persisted : { plan: emptyPlan(), partial: true, completedWaveIndexes: [] };
@@ -374,7 +374,7 @@ async function finalizeSeedPlan(
   ];
 }
 
-async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'plan'>> {
+async function readSeedBuildInput(scan: CbScan, context: mls.msg.ExecutionContext): Promise<Omit<SeedBuildInput, 'plan'>> {
   const project = scan.project;
   const moduleName = scan.moduleNames[0] || 'unknown';
   const language = await readDefaultLanguage(project);
@@ -382,7 +382,9 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   // platform user). Leaving it here would make its `<entity>Id` FKs look resolvable to the validator
   // and then demand a symbolic { ref } to rows that can never exist.
   const operatedStates = await readOperatedStates(project, moduleName);
-  const entities: SeedEntityDefinition[] = scan.entities.filter(entity => entity.kind !== 'external' && entity.kind !== 'derived').map((entity) => ({
+  const entities: SeedEntityDefinition[] = scan.entities
+    .filter(entity => entity.kind !== 'external' && entity.kind !== 'derived' && entity.storageTarget !== 'derived')
+    .map((entity) => ({
     entityId: entity.entityId,
     title: entity.title,
     kind: entity.kind,
@@ -401,9 +403,13 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
   const actors = await readActorDefinitions(project);
   const usecaseSources = await readGeneratedUsecaseSources(project, moduleName);
+  // PROPERTY question ("which operations pin an mdm block?") — not "what is still pending".
+  // seedScanStatuses stays for HAVER trabalho; a pending-only scan here emptied tags after defs
+  // marked owners done (run03: 4 MDM entities, 0 mirror rows). Same lesson as validate-all T10.
+  const propertyScan = await readBackendScan(ALL_STATUSES, context);
   const mdmRequiredTags = collectRequiredMdmTags({
     moduleName,
-    mdmOwners: scan.owners.filter(owner => owner.mdm).map(owner => ({ entity: owner.entity, mdm: owner.mdm })),
+    mdmOwners: propertyScan.owners.filter(owner => owner.mdm).map(owner => ({ entity: owner.entity, mdm: owner.mdm })),
     usecaseSources,
   });
   return {

@@ -15,6 +15,13 @@ const MLS_BASE = path.resolve(HERE, '../../../../..');
 const TOOL_NAME = 'submitSeedScenario';
 const MODEL_TYPES = ['code', 'design'] as const;
 
+void test('mdmRequiredTags come from ALL_STATUSES, not the pending-work scan', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /seedScanStatuses\(context\)/);
+  assert.match(src, /readBackendScan\(ALL_STATUSES, context\)/);
+  assert.match(src, /propertyScan\.owners\.filter\(owner => owner\.mdm\)/);
+});
+
 void test('agentCbSeeds declares the LLM seed planner step agent contract', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   const flow = readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8');

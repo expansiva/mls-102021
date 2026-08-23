@@ -351,6 +351,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ports: portDefs,
         persistence: persistenceArtifacts,
       }));
+    } else {
+      // derived is independent of the write path: a projection with storage.target 'derived' must not
+      // have leaked a table/port/adapter (run03 InstitutionalHome/PendingItem).
+      missing.push(...collectPersistencePolicyIssues(
+        policyEntities.filter(e => e.storageTarget === 'derived' || e.kind === 'derived'),
+        { ports: portDefs, persistence: persistenceArtifacts },
+      ));
     }
     for (const uc of usecases) {
       for (const p of uc.ports) {

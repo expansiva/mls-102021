@@ -53,6 +53,12 @@ void test('validate-all flags an unreadable l4 contract dependsFile instead of o
   assert.match(src, /l4 contract unreadable ->/);
 });
 
+void test('validate-all flags derived persistence even with the MDM write path off', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /storageTarget === 'derived' \|\| e\.kind === 'derived'/);
+  assert.match(src, /collectPersistencePolicyIssues\(/);
+});
+
 void test('validate-all flags dotted shortName on l1 (repairable) and l4 (defs-level) defs', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /collectDottedShortNameFindings/);

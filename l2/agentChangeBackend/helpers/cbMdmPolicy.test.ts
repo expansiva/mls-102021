@@ -51,8 +51,8 @@ test('readEntityStorage reads the block the l4 writes, and tolerates its absence
 test('a derived entity owns no local persistence', () => {
   const dashboard = { kind: 'projection', ownership: 'derived', storage: { target: 'derived', scope: 'none', mdmType: '', idField: '' } };
   assert.equal(classifyEntityKind(dashboard, true), 'derived');
-  // Flag off: unchanged from what the current module was generated with.
-  assert.equal(classifyEntityKind(dashboard, false), 'metric');
+  // Flag off too: derived is not the MDM write path (run03 InstitutionalHome/PendingItem).
+  assert.equal(classifyEntityKind(dashboard, false), 'derived');
   const issues = collectPersistencePolicyIssues(
     [{ entityId: 'ProjectDashboard', kind: 'derived', storageTarget: 'derived' }],
     { persistence: ['projectdashboard'], domainEntities: ['projectdashboard'] },
@@ -60,6 +60,24 @@ test('a derived entity owns no local persistence', () => {
   assert.equal(issues.length, 2, issues.join(' | '));
   assert.ok(issues.every(issue => /declares storage\.target 'derived'/.test(issue)), issues.join(' | '));
   assert.ok(issues.some(issue => /the read query materializes it/.test(issue)));
+});
+
+test('run03 InstitutionalHome and PendingItem: derived, so a leaked table is a policy finding', () => {
+  // Verbatim storage blocks from mls-102047/l4/petShop/ontology/{InstitutionalHome,PendingItem}.defs.ts
+  const institutionalHome = { kind: 'projection', ownership: 'derived', storage: { target: 'derived', scope: 'none' } };
+  const pendingItem = { kind: 'projection', ownership: 'derived', storage: { target: 'derived', scope: 'none' } };
+  assert.equal(classifyEntityKind(institutionalHome, false), 'derived');
+  assert.equal(classifyEntityKind(pendingItem, false), 'derived');
+  const issues = collectPersistencePolicyIssues(
+    [
+      { entityId: 'InstitutionalHome', kind: 'derived', storageTarget: 'derived' },
+      { entityId: 'PendingItem', kind: 'derived', storageTarget: 'derived' },
+    ],
+    { persistence: ['institutionalhome', 'pendingitem', 'pendingitemrepositoryadapter'] },
+  );
+  assert.ok(issues.some(i => /InstitutionalHome/.test(i) && /institutionalhome/.test(i)), issues.join('\n'));
+  assert.ok(issues.some(i => /PendingItem/.test(i) && /pendingitemrepositoryadapter/.test(i)), issues.join('\n'));
+  assert.equal(issues.length, 3, issues.join('\n'));
 });
 
 test('a contradictory declaration is announced, not resolved in silence', () => {

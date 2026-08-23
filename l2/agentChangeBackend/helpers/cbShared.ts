@@ -735,7 +735,7 @@ export function deriveAggregates(
   const roots = new Set(aggregates.map(a => a.rootEntity));
   for (const id of operatedRootIds) {
     const e = byId.get(id);
-    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event' || e.kind === 'external' || e.kind === 'derived') continue;
+    if (!e || roots.has(id) || embedded.has(id) || e.kind === 'mdm' || e.kind === 'event' || e.kind === 'external' || e.kind === 'derived' || e.storageTarget === 'derived') continue;
     aggregates.push(buildAggregate(e));
     roots.add(id);
   }

@@ -98,20 +98,18 @@ export function classifyEntityKind(
   mdmWritePath: boolean = MDM_WRITE_PATH_ENABLED,
 ): CbEntityKind {
   const ownership = input.ownership || '';
-  if (!mdmWritePath) return entityKindOf(input.kind, ownership);
   const target = input.storage?.target || '';
+  // Independent of the MDM write path: the l4 says the record is COMPUTED (no table, no seeds).
+  // Flag-off used to map `projection + derived` to `metric`, which DOES get a table — run03 emitted
+  // InstitutionalHome/PendingItem persistence and died on an empty primaryKey.
+  if (target === 'derived') return 'derived';
+  if (!mdmWritePath) return entityKindOf(input.kind, ownership);
   if (target === 'external' || ownership === 'external') return 'external';
   // `target: mdm` + `ownership: external` is undefined by the policy — the same hole `core + external`
   // was (ajustesMDM.md item 2). It cannot reach here (external wins above), which is why the CALLER is
   // told to announce it instead of the entity silently leaving MDM.
 
   if (target === 'mdm') return 'mdm';
-  // `derived` is the third member of the same family as mdm/external: the l4 says the record is COMPUTED
-  // ("não possui persistência própria", ProjectDashboard of buildFlowFsm), so it owns no table and no
-  // seeds — the read query materializes it. Without this branch it fell through to `projection → metric`,
-  // which DOES get a table and seeds, and the run then had to invent a primary key for a table nobody
-  // should have emitted (the two hand-patched tables of that module).
-  if (target === 'derived') return 'derived';
   if (input.kind === 'projection') return 'metric';
   return ENTITY_KINDS.includes(input.kind as CbEntityKind) ? input.kind as CbEntityKind : 'core';
 }

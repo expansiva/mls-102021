@@ -604,6 +604,19 @@ test('be5: plan without MDM rows for a ctx.mdm tag is rejected; mirrored plan em
   assert.match(built.content ?? '', /export const serviceSeeds/);
 });
 
+test('R3-2: owners already done still produce MDM tags — pending-only scan is the empty set', () => {
+  const doneOwners = [
+    { entity: 'BusinessHours', mdm: { lifecycle: 'inactivate' } },
+    { entity: 'Customer', mdm: { lifecycle: 'inactivate' } },
+    { entity: 'Pet', mdm: { lifecycle: 'inactivate' } },
+    { entity: 'ServiceOffering', mdm: { lifecycle: 'inactivate' } },
+  ];
+  assert.deepEqual(collectRequiredMdmTags({ moduleName: 'petShop', mdmOwners: [] }), []);
+  assert.deepEqual(collectRequiredMdmTags({ moduleName: 'petShop', mdmOwners: doneOwners }), [
+    'petShop.BusinessHours', 'petShop.Customer', 'petShop.Pet', 'petShop.ServiceOffering',
+  ]);
+});
+
 test('collectRequiredMdmTags does not invent a tag from an entity name without a pinned mdm block', () => {
   assert.deepEqual(collectRequiredMdmTags({
     moduleName: 'petShop',
