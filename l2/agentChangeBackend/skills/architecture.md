@@ -59,7 +59,7 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 - **JSONB-first persistence**: only indexed fields are real columns; everything else + child
   collections go in a single `details` JSONB column (the adapter serializes/parses it).
 - Ids via `ctx.idGenerator.newId()`; timestamps via `ctx.clock.nowIso()`.
-- `AppError(code, message, httpStatus, details?)`: `VALIDATION_ERROR` 400, `NOT_FOUND` 404,
+- `AppError(code, message, httpStatus, details?)`: `VALIDATION_ERROR` 400, `NOT_FOUND` 404. `message` is English (or i18n), never a hardcoded locale.
   `CONFLICT` 409. Generate only what the `.defs.ts` declares.
 
 ## TypeScript strictness (the generated .ts is compiled with strict:true — it MUST compile clean)

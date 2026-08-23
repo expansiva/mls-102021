@@ -22,6 +22,12 @@ void test('agentCbMaterialize declares the LLM materialization step agent contra
   assert.match(flow, /"agentName": "agentCbMaterialize"/);
 });
 
+void test('materialize flushes borrowed Monaco models between workers and layers', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /await flushBorrowedModels\(\);/);
+  assert.ok((src.match(/flushBorrowedModels/g) || []).length >= 2, 'worker + dispatcher');
+});
+
 void test('the materialize dispatcher paints an ephemeral title during the stale-file scan', () => {
   const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
   assert.match(src, /startLocalStepTick\(context, step,/);

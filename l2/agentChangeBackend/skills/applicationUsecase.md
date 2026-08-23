@@ -40,7 +40,7 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   };
 
   if (!orderRequiresItem(order)) {
-    throw new AppError('VALIDATION_ERROR', 'orderRequiresItem: o pedido precisa de ao menos um item.', 400, { ruleId: 'orderRequiresItem' });
+    throw new AppError('VALIDATION_ERROR', 'orderRequiresItem: the order must have at least one item.', 400, { ruleId: 'orderRequiresItem' });
   }
 
   const saved = await orders.save(order);
@@ -109,6 +109,9 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and
   `relationshipRefs` stay consistent.
 - Ids via `ctx.idGenerator.newId()`, timestamps via `ctx.clock.nowIso()`.
+- **User-facing `AppError` messages are English** (or come from i18n). Never hardcode Portuguese (or
+  any other locale) in the message string — `code`/`details` stay machine-readable; the message is
+  what `/monitor/tests` and the client show. Example: `new AppError('NOT_FOUND', 'No authenticated user was identified for the responsible customer.', 404, { ... })`.
 
 ### An operation the port does not support
 

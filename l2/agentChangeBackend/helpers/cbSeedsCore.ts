@@ -207,6 +207,13 @@ export interface SeedBuildInput {
   /** Targets deliberately left with NO seed rows (a wave that never converged). Recorded in the
    * emitted artifact so downstream consumers can tell "empty by design" from "generation lost it". */
   skipped?: SeedSkippedTargets;
+  /**
+   * Canonical tags (`<module>.<Entity>`) that generated usecases actually read through `ctx.mdm`
+   * (`listByType` or lifecycle). Derived from the pinned `mdm` block + generated sources — never
+   * guessed from an entity name. While `MDM_WRITE_PATH_ENABLED` is false those entities still have
+   * LOCAL tables; the index must be seeded too or lists/inactivate return empty/NOT_FOUND (be5).
+   */
+  mdmRequiredTags?: string[];
   plan: SeedPlan;
 }
 
@@ -832,6 +839,35 @@ function validateReference(value: SeedValue, path: string, references: Set<strin
   }
 }
 
+/**
+ * A `{ ref }` is only legitimate on a foreign key. `weeklySchedule: { ref: "local:BusinessHours.x" }`
+ * was compiled to the row's own uuid (be5 qryListBusinessHours). Auto-reference is always an error.
+ */
+export function fieldAllowsSeedRef(fieldName: string, knownEntityIds: Iterable<string>): boolean {
+  const camel = toCamel(fieldName);
+  // Suffix *Id / *_id names a key. Whether it MUST be a ref is idFieldHasResolvableTarget;
+  // whether it MAY be a ref is the suffix (weeklySchedule is neither).
+  if (fieldName.endsWith('_id') || /Id$/u.test(camel)) return true;
+  return idFieldHasResolvableTarget(fieldName, knownEntityIds);
+}
+
+function validateSeedRefPlacement(
+  value: SeedValue,
+  path: string,
+  fieldName: string,
+  rowRef: string,
+  knownEntityIds: Iterable<string>,
+  errors: string[],
+): void {
+  if (!isSeedReference(value)) return;
+  if (value.ref === rowRef) {
+    errors.push(`${path}: self-reference '${value.ref}' is forbidden — a field cannot point at its own row`);
+  }
+  if (!fieldAllowsSeedRef(fieldName, knownEntityIds)) {
+    errors.push(`${path}: { ref } is only valid on a foreign-key field (*Id / *_id); '${fieldName}' is not a key`);
+  }
+}
+
 function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue | undefined, path: string, errors: string[]) {
   // null is a cleared/absent optional value (e.g. a not-yet-set enum on an in-progress row); the
   // required check below enforces presence separately, so an optional enum may be null.
@@ -1024,6 +1060,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         // A NOT NULL column must have a concrete value: neither missing (undefined) nor null.
         if (!column.nullable && (value === undefined || value === null)) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
+        validateSeedRefPlacement(value as SeedValue, `${rowPath}.columns.${column.name}`, column.name, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
         validateTimestamp(window, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
         const field = entityFields.get(toCamel(column.name));
         validateEnum(field, value, `${rowPath}.columns.${column.name}`, errors);
@@ -1043,6 +1080,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         const value = storedAsColumn ? columns.get(mappedColumn) : details.get(field.fieldId);
         if (field.required && !generatedPrimaryKey && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
+        validateSeedRefPlacement(value as SeedValue, `${rowPath}.${field.fieldId}`, field.fieldId, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
         validateTimestamp(window, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
         validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
@@ -1084,7 +1122,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
   for (const mdmEntity of input.plan.mdmEntities) {
     const path = `mdmEntities.${mdmEntity.entityId || '<missing>'}`;
     const definition = entityById.get(mdmEntity.entityId);
-    if (!definition || definition.kind !== 'mdm') {
+    if (!definition || !isMdmSeedTarget(definition, input)) {
       errors.push(`${path}: unknown or non-MDM entity`);
       continue;
     }
@@ -1103,6 +1141,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         const field = fieldsById.get(name);
         if (!field) errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
+        validateSeedRefPlacement(value, `${rowPath}.fields.${name}`, name, `mdm:${mdmEntity.entityId}.${row.key}`, knownEntityIds, errors);
         validateTimestamp(window, name, value, `${rowPath}.fields.${name}`, errors);
         validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
         validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
@@ -1138,7 +1177,164 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
     if (!seenMdmEntities.has(entity.entityId)) errors.push(`mdmEntities: missing plan for '${entity.entityId}'`);
   }
   errors.push(...collectLifecycleStateCoverage(input));
+  errors.push(...collectRequiredMdmTagCoverage(input));
   return [...new Set(errors)];
+}
+
+/**
+ * Canonical tags generated usecases actually hit via `ctx.mdm`. The pinned `mdm` block does not
+ * carry the entity name — that comes from the operation's `entity`. `listByType({ type })` in the
+ * generated .ts is the other surface. Never infer a tag from a name that has no mdm block / call.
+ */
+export function collectRequiredMdmTags(input: {
+  moduleName: string;
+  mdmOwners: Array<{ entity: string; mdm?: unknown }>;
+  usecaseSources?: Iterable<string>;
+}): string[] {
+  const tags = new Set<string>();
+  const moduleName = input.moduleName.trim();
+  if (!moduleName) return [];
+  for (const owner of input.mdmOwners) {
+    if (!owner.mdm || typeof owner.mdm !== 'object' || !owner.entity.trim()) continue;
+    tags.add(`${moduleName}.${owner.entity.trim()}`);
+  }
+  for (const source of input.usecaseSources ?? []) {
+    for (const match of source.matchAll(/listByType\(\s*\{[^}]*\btype\s*:\s*['"]([^'"]+)['"]/gu)) {
+      if (match[1]) tags.add(match[1]);
+    }
+  }
+  return [...tags].sort();
+}
+
+function entityIdFromMdmTag(tag: string, moduleName: string): string {
+  const prefix = `${moduleName}.`;
+  return tag.startsWith(prefix) ? tag.slice(prefix.length) : '';
+}
+
+function isMdmSeedTarget(entity: SeedEntityDefinition, input: SeedBuildInput): boolean {
+  if (entity.kind === 'mdm') return true;
+  const tag = `${input.moduleName}.${entity.entityId}`;
+  return (input.mdmRequiredTags ?? []).includes(tag);
+}
+
+function mdmTagSeededInPlan(input: SeedBuildInput, tag: string): boolean {
+  const entityId = entityIdFromMdmTag(tag, input.moduleName);
+  if (!entityId) {
+    return input.plan.mdmEntities.some(entity => `${input.moduleName}.${entity.entityId}` === tag && entity.rows.length > 0);
+  }
+  const planned = input.plan.mdmEntities.find(entity => entity.entityId === entityId);
+  return !!planned && planned.rows.length > 0;
+}
+
+/** Every tag a generated usecase reads through ctx.mdm needs at least one MDM plan row with that tag. */
+export function collectRequiredMdmTagCoverage(input: SeedBuildInput): string[] {
+  const errors: string[] = [];
+  for (const tag of input.mdmRequiredTags ?? []) {
+    if (mdmTagSeededInPlan(input, tag)) continue;
+    errors.push(`mdmEntities: usecases call ctx.mdm listByType/lifecycle for '${tag}' but the plan has no MDM row with that tag`);
+  }
+  return errors;
+}
+
+/**
+ * Copy local rows of a ctx.mdm-read entity into `mdmEntities`, same keys (so emitted ids match).
+ * MDM cadastral `status` is Active — the local lifecycle status stays on the local table.
+ */
+export function mirrorLocalRowsAsMdmPlan(
+  plan: SeedPlan,
+  tags: readonly string[],
+  moduleName: string,
+  timeWindow: SeedTimeWindow = { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
+): SeedPlan {
+  const prefix = `${moduleName}.`;
+  const existing = new Set(plan.mdmEntities.map(entity => entity.entityId));
+  const extra: SeedMdmEntity[] = [];
+  for (const tag of tags) {
+    if (!tag.startsWith(prefix)) continue;
+    const entityId = tag.slice(prefix.length);
+    if (!entityId || existing.has(entityId)) continue;
+    const local = plan.localTables.find(table => table.tableId === entityId);
+    if (!local?.rows.length) continue;
+    extra.push({
+      entityId,
+      rows: local.rows.map((row) => {
+        const fields: SeedFieldValue[] = [
+          ...row.details.map(field => ({ ...field })),
+          ...row.columns.map(column => ({ name: toCamel(column.name), value: column.value })),
+        ];
+        if (!fields.some(field => field.name === 'name')) {
+          const named = fields.find(field => field.name === 'title' && typeof field.value === 'string' && field.value.trim());
+          fields.push({ name: 'name', value: typeof named?.value === 'string' ? named.value : row.key });
+        }
+        if (!fields.some(field => field.name === 'createdAt')) fields.push({ name: 'createdAt', value: timeWindow.start });
+        if (!fields.some(field => field.name === 'updatedAt')) fields.push({ name: 'updatedAt', value: timeWindow.start });
+        return { key: row.key, fields, relationships: [] };
+      }),
+    });
+    existing.add(entityId);
+  }
+  return extra.length ? { ...plan, mdmEntities: [...plan.mdmEntities, ...extra] } : plan;
+}
+
+/**
+ * Clone a planned row for each OPERATED lifecycle state the plan missed. The validator already
+ * demands one row per operated state; the planner historically covered only "main" states and
+ * the wave gave up (be5 wave 6: ServiceExecution arrived).
+ */
+export function coverMissingOperatedStates(plan: SeedPlan, input: Pick<SeedBuildInput, 'entities'>): SeedPlan {
+  const localTables = plan.localTables.map(table => ({
+    ...table,
+    rows: table.rows.map(row => ({
+      ...row,
+      columns: row.columns.map(column => ({ ...column })),
+      details: row.details.map(detail => ({ ...detail })),
+      children: row.children,
+    })),
+  }));
+  for (const entity of input.entities) {
+    const operated = entity.operatedStates ?? [];
+    if (!operated.length) continue;
+    const table = localTables.find(item => item.tableId === entity.entityId);
+    if (!table?.rows.length) continue;
+    const statusField = entity.fields.find(field => (field.enumValues?.length ?? 0) > 0 && /status$/iu.test(field.fieldId));
+    if (!statusField) continue;
+    const statusOf = (row: SeedLocalRow): unknown => {
+      const column = row.columns.find(item => toCamel(item.name) === statusField.fieldId);
+      const detail = row.details.find(item => item.name === statusField.fieldId);
+      return column?.value ?? detail?.value;
+    };
+    const seeded = new Set(table.rows.map(statusOf).filter((value): value is string => typeof value === 'string'));
+    const template = table.rows[0];
+    for (const state of operated) {
+      if (seeded.has(state)) continue;
+      const keyBase = `${template.key}-${state}`.replace(/[^A-Za-z0-9_-]/gu, '');
+      const key = hasKey(keyBase) ? keyBase : `state-${state}`;
+      const setStatus = (fields: SeedFieldValue[], name: string): SeedFieldValue[] =>
+        fields.some(field => field.name === name)
+          ? fields.map(field => (field.name === name ? { name, value: state } : { ...field }))
+          : fields;
+      table.rows.push({
+        key,
+        columns: setStatus(template.columns.map(column => ({ ...column })), toSnake(statusField.fieldId)),
+        details: setStatus(template.details.map(detail => ({ ...detail })), statusField.fieldId),
+        children: template.children,
+      });
+      seeded.add(state);
+    }
+  }
+  return { ...plan, localTables, mdmEntities: plan.mdmEntities };
+}
+
+/** Deterministic repairs the LLM is taught to do but often misses in two attempts: operated-state
+ * coverage and MDM index rows for tags the generated usecases already call. */
+export function repairSeedPlanDeterministically(plan: SeedPlan, input: Omit<SeedBuildInput, 'plan'> & { plan?: SeedPlan }): SeedPlan {
+  const covered = coverMissingOperatedStates(plan, input);
+  return mirrorLocalRowsAsMdmPlan(
+    covered,
+    input.mdmRequiredTags ?? [],
+    input.moduleName,
+    input.timeWindow ?? { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
+  );
 }
 
 /**
@@ -1239,7 +1435,11 @@ function idMap(input: SeedBuildInput): Map<string, string> {
     for (const row of table.rows) ids.set(`local:${table.tableId}.${row.key}`, stableUuid(`${input.moduleName}:local:${table.tableId}:${row.key}`));
   }
   for (const entity of input.plan.mdmEntities) {
-    for (const row of entity.rows) ids.set(`mdm:${entity.entityId}.${row.key}`, stableUuid(`${input.moduleName}:mdm:${entity.entityId}:${row.key}`));
+    for (const row of entity.rows) {
+      const localId = ids.get(`local:${entity.entityId}.${row.key}`);
+      // Same key as a local row → same uuid so ctx.mdm and the local adapter see one record (be5).
+      ids.set(`mdm:${entity.entityId}.${row.key}`, localId ?? stableUuid(`${input.moduleName}:mdm:${entity.entityId}:${row.key}`));
+    }
   }
   for (const identity of actorIdentities(input)) ids.set(identity.ref, identity.mdmId);
   return ids;
@@ -1282,8 +1482,9 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
   const indexRows: Record<string, unknown>[] = [];
   const documentRows: Record<string, unknown>[] = [];
   const relationshipRows: Record<string, unknown>[] = [];
-  for (const entity of input.entities.filter(entity => entity.kind === 'mdm')) {
-    const planned = plannedEntities.get(entity.entityId)!;
+  for (const entity of input.entities.filter(entity => isMdmSeedTarget(entity, input))) {
+    const planned = plannedEntities.get(entity.entityId);
+    if (!planned) continue;
     const idField = entityIdField(entity);
     for (const row of planned.rows) {
       const mdmId = ids.get(`mdm:${entity.entityId}.${row.key}`)!;
@@ -1414,6 +1615,7 @@ export function seedPlanPromptContext(
     title: entity.title,
     kind: entity.kind,
     fields: entity.fields.map(field => ({ fieldId: field.fieldId, type: field.type, required: field.required, enum: field.enumValues })),
+    ...(entity.operatedStates?.length ? { operatedStates: entity.operatedStates } : {}),
   }));
   const tables = input.tablePlans.map(table => ({
     tableId: table.tableId,
@@ -1455,6 +1657,9 @@ export function seedPlanPromptContext(
     ...(options.priorSummary ? [`## Scenario summary from earlier waves\n${options.priorSummary}`] : []),
     ...(catalog.length ? [`## Valid references from earlier waves\nUse these refs when needed; do not recreate their rows.\n${JSON.stringify(catalog, null, 2)}`] : []),
     `## Platform users (actor identities)\nThese identities already exist; reference them for any field that points to a platform user (an assignee, or a field resolved from the actor session such as a worker/owner id). Do NOT create a table or MDM entity for them.\n${JSON.stringify(actorIdentityRefs, null, 2)}`,
+    ...(input.mdmRequiredTags?.length
+      ? [`## ctx.mdm tags this module already calls\nGenerated usecases read these canonical tags through ctx.mdm.collection.listByType / entity.inactivate/reactivate. Plan mdmEntities rows for each (status Active, same keys as the local rows of that entity). Keep the local table rows.\n${JSON.stringify(input.mdmRequiredTags)}`]
+      : []),
     `## L4 rules the scenario must satisfy (full text)\n${JSON.stringify(rules, null, 2)}`,
     '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" }, { "ref": "mdm:EntityId.rowKey" } or { "ref": "actor:ActorId.key" } for foreign keys. Never emit UUIDs.',
     [
@@ -1462,7 +1667,10 @@ export function seedPlanPromptContext(
       'Plan ONLY the local tables and MDM entities listed in "Planning wave". Do not create rows for any other table/entity; reference earlier waves only through the supplied catalog.',
       'Keep this wave COMPACT but representative and below its output budget. Use these approximate caps (never just one row where several make the feature usable, never a huge dataset):',
       '- MDM/catalog entities: ~3-5 rows each.',
-      '- Core/operational entities: ~2-4 rows each, covering the MAIN lifecycle states and including at least one open/in-progress instance. You do NOT need every state × every filter combination.',
+      '- Core/operational entities: ~2-4 rows each. When an entity lists `operatedStates`, seed ONE row per listed state of its status field (the validator rejects a wave that misses any). Also include at least one open/in-progress instance. You do NOT need every state × every filter combination — only the operated states.',
+      ...(input.mdmRequiredTags?.length
+        ? [`- MDM index for ctx.mdm: generated usecases already call listByType/lifecycle for ${JSON.stringify(input.mdmRequiredTags)}. For each of those tags, emit mdmEntities rows (canonical tag '<module>.<Entity>', status Active) mirroring the local rows of that entity (same keys). Keep the local table rows too — both surfaces coexist.`]
+        : []),
       '- Supporting/child entities: 1-2 children per parent.',
       '- Event entities: one row per operational row that would have produced it.',
       'A row is only usable if it is COMPLETE against its entity contract, not just its indexed columns: every non-indexed field goes in `details` (with a coherent value — a real number, not a placeholder) when the table reports a `detailsColumn`; when `detailsColumn` is null that table accepts ONLY real columns, so leave its `details` and `children` empty. For each name in that table\'s `childCollections` add a `children` entry whose `name` is EXACTLY that string (it is the entity\'s collection field, which is what reads the data back — do not substitute the child entity id or a plural of your own) with 1-2 rows. A parent whose child collection is empty makes the feature look broken (an order with no items), and a metric row whose numbers are absent breaks any consumer that formats them.',

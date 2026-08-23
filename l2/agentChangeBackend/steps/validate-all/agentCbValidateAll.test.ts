@@ -42,6 +42,27 @@ void test('validate-all flags JSON.parse of a JSONB row column on repository ada
 // ── o sweep não pode consumir a memória da aba nem morrer mudo ────────────────
 // Run be3: este step compilou ~200 arquivos (cada compile empresta os modelos dos imports) e a aba
 // estourou a memória antes de o step registrar qualquer coisa.
+void test('validate-all flags io shape mismatch on usecase defs', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectIoShapeSymmetryIssues/);
+});
+
+void test('validate-all flags an unreadable l4 contract dependsFile instead of omitting it in silence', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectL4ContractDependsRefs/);
+  assert.match(src, /l4 contract unreadable ->/);
+});
+
+void test('after a repair round the whole-project compile re-asks every file and keeps remaining families', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /const afterRepair = repairStateForCompile\.globalAttempts > 0/);
+  assert.match(src, /const secondTargets = afterRepair \? inScope : flaggedFirst/);
+  assert.match(src, /compilerErrorsAfterRepair\(first,/);
+  assert.match(src, /selectCompilerRepairRoots\([\s\S]{0,200}compilerErrorFamily/);
+  assert.match(src, /collectNonEnglishAppErrorMessages/);
+  assert.match(src, /peak=/);
+});
+
 void test('the compile sweep drains the borrow queue in blocks and leaves a durable trail', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   // A fila de release só drena em ponto quiescente, que uma varredura longa nunca alcança sozinha.

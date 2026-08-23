@@ -72,3 +72,42 @@ export function foldRepairAudit(
   }
   return { repairHistory, globalAttempts };
 }
+
+/** Keep the highest models.peak seen in any snapshot — be5 closed with registry 104 but the leak is the peak. */
+export function foldModelsPeak(
+  existingRaw: string | null,
+  current: { models?: unknown },
+): { registry: number; pendingRelease: number; peak: number } | undefined {
+  const asModels = (value: unknown): { registry: number; pendingRelease: number; peak: number } | undefined => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const rec = value as Record<string, unknown>;
+    const num = (key: string): number => (typeof rec[key] === 'number' && Number.isFinite(rec[key]) ? rec[key] as number : 0);
+    if (!('registry' in rec) && !('peak' in rec)) return undefined;
+    return { registry: num('registry'), pendingRelease: num('pendingRelease'), peak: num('peak') };
+  };
+  let models = asModels(current.models);
+  if (!existingRaw) return models;
+  try {
+    const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
+    const consider = (value: unknown): void => {
+      const prior = asModels(value);
+      if (!prior) return;
+      if (!models) models = { ...prior };
+      else models = {
+        registry: models.registry,
+        pendingRelease: models.pendingRelease,
+        peak: Math.max(models.peak, prior.peak, prior.registry),
+      };
+    };
+    consider(parsed.models);
+    if (Array.isArray(parsed.rounds)) {
+      for (const round of parsed.rounds) {
+        if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
+        consider((round as Record<string, unknown>).models);
+      }
+    }
+  } catch {
+    /* keep current */
+  }
+  return models;
+}

@@ -20,6 +20,7 @@ import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, estimateSeedPlanningWaveTokens,
   extractSeedPlanProgressFromSource, mergeSeedPlans, normalizeSeedPlan, parseSeedPlan, seedPlanInputForWave,
   seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
+  collectRequiredMdmTags, repairSeedPlanDeterministically,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
   type SeedRuleDefinition, type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
@@ -210,8 +211,20 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw error;
     }
     const waveInput = seedPlanInputForWave(input, batch);
-    const plan = normalizeSeedPlan(parseSeedPlan(out.result), waveInput.tablePlans);
-    const errors = validateSeedPlan({ ...waveInput, plan }, seedReferenceCatalog(progress.plan).map(item => item.ref));
+    const catalogRefs = seedReferenceCatalog(progress.plan).map(item => item.ref);
+    let plan = normalizeSeedPlan(parseSeedPlan(out.result), waveInput.tablePlans);
+    let errors = validateSeedPlan({ ...waveInput, plan }, catalogRefs);
+    if (errors.length) {
+      // Operated-state coverage and MDM index rows for tags the generated usecases already call are
+      // structural, not scenario: fill them locally so a wave does not give up on a finding the
+      // planner was taught but missed (be5 wave 6 / split-brain MDM).
+      const repaired = repairSeedPlanDeterministically(plan, waveInput);
+      const afterRepair = validateSeedPlan({ ...waveInput, plan: repaired }, catalogRefs);
+      if (afterRepair.length < errors.length) {
+        plan = repaired;
+        errors = afterRepair;
+      }
+    }
     await saveAgentTrace(context, AGENT_NAME, step);
 
     if (errors.length) {
@@ -387,12 +400,31 @@ async function readSeedBuildInput(scan: CbScan): Promise<Omit<SeedBuildInput, 'p
   const rules: SeedRuleDefinition[] = ruleIds.map(ruleId => ruleById.get(ruleId) ?? { ruleId, title: '', description: '', appliesTo: [] });
   const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
   const actors = await readActorDefinitions(project);
+  const usecaseSources = await readGeneratedUsecaseSources(project, moduleName);
+  const mdmRequiredTags = collectRequiredMdmTags({
+    moduleName,
+    mdmOwners: scan.owners.filter(owner => owner.mdm).map(owner => ({ entity: owner.entity, mdm: owner.mdm })),
+    usecaseSources,
+  });
   return {
     project, moduleName, language, entities,
     tablePlans: await readTablePlans(project, moduleName),
     ruleIds, rules, relationships, actors,
     timeWindow: { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
+    ...(mdmRequiredTags.length ? { mdmRequiredTags } : {}),
   };
+}
+
+async function readGeneratedUsecaseSources(project: number, moduleName: string): Promise<string[]> {
+  const folder = `${moduleName}/layer_2_application/usecases`;
+  const sources: string[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
+    if (String(file.folder || '') !== folder || file.extension !== '.ts') continue;
+    if (String(file.shortName || '').endsWith('.defs')) continue;
+    sources.push(String(await file.getContent()));
+  }
+  return sources;
 }
 
 /** L4 actors (id + title) from every actor set def in the project. The planner references these as

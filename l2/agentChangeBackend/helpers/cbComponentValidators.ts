@@ -43,6 +43,72 @@ export function collectL1Imports(content: string, project: number): { key: strin
  * even resolves under tsc, but it breaks the studio path convention — and it is the typical way the
  * model tries to silence a not-yet-materialized alias import (TS2792 hint, run task2/102049: six
  * controllers rewritten to '../../../../...' during repair). Rejected deterministically here. */
+const STRUCTURED_IO_TYPES = new Set(['json', 'object', 'array']);
+const SCALAR_IO_TYPES = new Set(['string', 'number', 'boolean', 'uuid', 'text', 'date', 'datetime']);
+
+function ioTypeFamily(type: string): 'structured' | 'scalar' | 'other' {
+  const normalized = type.trim().toLowerCase();
+  if (STRUCTURED_IO_TYPES.has(normalized)) return 'structured';
+  if (SCALAR_IO_TYPES.has(normalized)) return 'scalar';
+  return 'other';
+}
+
+/**
+ * Same field (name + ofEntity) on input and output must have the same form. be5: weeklySchedule
+ * input `json` × output `string` — list shows a blob, create/update reject the string the list emits.
+ * Gate the DEFS, not the generated .ts (aliases like WeeklySchedule vs string are unresolvable).
+ */
+export function collectIoShapeSymmetryIssues(fn: {
+  functionName?: string;
+  input?: unknown;
+  output?: unknown;
+}): string[] {
+  const issues: string[] = [];
+  const fnName = typeof fn.functionName === 'string' && fn.functionName ? fn.functionName : '<function>';
+  const inputs = Array.isArray(fn.input) ? fn.input.filter(isRecord) : [];
+  const outputs = Array.isArray(fn.output) ? fn.output.filter(isRecord) : [];
+  for (const input of inputs) {
+    const name = readString(input.name);
+    const ofEntity = readString(input.ofEntity);
+    const inType = readString(input.type) || 'unknown';
+    if (!name || !ofEntity) continue;
+    const output = outputs.find(item => readString(item.name) === name && readString(item.ofEntity) === ofEntity);
+    if (output) {
+      const outType = readString(output.type) || 'unknown';
+      const inFam = ioTypeFamily(inType);
+      const outFam = ioTypeFamily(outType);
+      if (inFam !== 'other' && outFam !== 'other' && inFam !== outFam) {
+        issues.push(`io shape mismatch -> ${fnName} ${ofEntity}.${name}: input type '${inType}' vs output type '${outType}' — a structured field must have the same form on read and write`);
+      }
+    }
+    if (STRUCTURED_IO_TYPES.has(inType.toLowerCase())) {
+      const item = isRecord(input.item) ? input.item : undefined;
+      const fields = item && Array.isArray(item.fields) ? item.fields : [];
+      if (fields.length === 0) {
+        issues.push(`json field '${name}' on ${fnName} declares no item.fields — the materializer invents a type and seeds cannot fill the structure`);
+      }
+    }
+  }
+  return issues;
+}
+
+/** l4 contract defs a generated controller lists in `dependsFiles`. Empty/unreadable content used to
+ * be dropped from the materialize prompt with only a console.warn, so controllers shipped without
+ * their wire contract (ctx422 / versionRef 0). */
+export function collectL4ContractDependsRefs(defsSource: string): string[] {
+  const refs: string[] = [];
+  for (const match of defsSource.matchAll(/['"`](_\d+_\/l4\/[^'"`]+\/contracts\/[^'"`]+)['"`]/gu)) {
+    if (match[1]) refs.push(match[1]);
+  }
+  return [...new Set(refs)];
+}
+
+export function collectUnreadL4ContractFindings(defsSource: string, readable: (ref: string) => boolean): string[] {
+  return collectL4ContractDependsRefs(defsSource)
+    .filter(ref => !readable(ref))
+    .map(ref => `l4 contract unreadable -> ${ref} (empty or missing; materialize would omit it from the prompt)`);
+}
+
 export function collectRelativeImportIssues(code: string): string[] {
   const issues: string[] = [];
   const re = /\b(?:from|import)\s*\(?\s*['"](\.{1,2}\/[^'"]*)['"]/g;
@@ -287,15 +353,79 @@ export function stableCompilerErrors(first: string[], second: string[]): string[
 export function selectCompilerRepairRoots(
   flaggedKeys: Iterable<string>,
   importsOf: (key: string) => string[],
+  familiesOf?: (key: string) => string[],
 ): { roots: string[]; cascades: string[] } {
   const flagged = new Set(flaggedKeys);
   const roots: string[] = [];
   const cascades: string[] = [];
   for (const key of flagged) {
-    const importsAnotherFlagged = importsOf(key).some(k => k !== key && flagged.has(k));
-    (importsAnotherFlagged ? cascades : roots).push(key);
+    const importedFlagged = importsOf(key).filter(k => k !== key && flagged.has(k));
+    if (!importedFlagged.length) {
+      roots.push(key);
+      continue;
+    }
+    // A file that imports a broken sibling is a cascade ONLY when every error family it reports
+    // also lives on those siblings. Two families in the same file (be5: `'pet' is possibly 'null'`
+    // and `'service' is possibly 'null'`) must stay a root — otherwise g2 repairs the import and
+    // never re-checks the leftover family.
+    if (familiesOf) {
+      const imported = new Set(importedFlagged.flatMap(k => familiesOf(k)));
+      const hasOwnFamily = familiesOf(key).some(family => !imported.has(family));
+      if (hasOwnFamily) {
+        roots.push(key);
+        continue;
+      }
+    }
+    cascades.push(key);
   }
   return { roots, cascades };
+}
+
+/** TS code + quoted identifier, so `'pet' is possibly 'null'` and `'service' is possibly 'null'` are distinct. */
+export function compilerErrorFamily(error: string): string {
+  const code = error.match(/TS\d+/u)?.[0] ?? 'TS';
+  const ident = error.match(/'([^']+)'/u)?.[1];
+  return ident ? `${code}:${ident}` : `${code}:${error.trim().slice(0, 80)}`;
+}
+
+/**
+ * After a repair, keep the UNION of both compiles — never drop a family as "flaky". g1 found two
+ * families in createServiceAppointment, the repair fixed `pet`, g2's double-check then discarded
+ * `service` as non-reproducing and health closed `passed` with a real tsc error still on disk.
+ */
+export function compilerErrorsAfterRepair(first: string[], second: string[]): string[] {
+  return [...new Set([...first, ...second])];
+}
+
+/** Health may close `passed` only when every previous family was re-checked on this pass. */
+export function compilerFindingsBlockingPassed(input: {
+  currentByFile: Map<string, string[]>;
+  previousFamiliesByFile?: Map<string, string[]>;
+}): string[] {
+  const findings: string[] = [];
+  for (const [file, errors] of input.currentByFile) {
+    for (const error of errors) findings.push(`compiler -> ${file}: ${error}`);
+  }
+  for (const [file, previous] of input.previousFamiliesByFile ?? []) {
+    if (input.currentByFile.has(file)) continue;
+    if (!previous.length) continue;
+    findings.push(`compiler -> ${file}: previous compile had ${previous.length} error family(ies) and this pass did not re-check the file`);
+  }
+  return findings;
+}
+
+const PORTUGUESE_APP_ERROR = /[áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]|\b(Nenhum|nenhum|não|obrigatór|usuário|identificado)\b/u;
+
+/** User-facing AppError messages must be English (or i18n). Cheap scan of generated usecases. */
+export function collectNonEnglishAppErrorMessages(code: string): string[] {
+  const issues: string[] = [];
+  for (const match of code.matchAll(/new\s+AppError\(\s*(['"])[^'"]+\1\s*,\s*(['"`])([\s\S]*?)\2/gu)) {
+    const message = match[3].replace(/\s+/gu, ' ').trim();
+    if (PORTUGUESE_APP_ERROR.test(message)) {
+      issues.push(`user-facing AppError message is not English: "${message.slice(0, 96)}"`);
+    }
+  }
+  return issues;
 }
 
 // ── T12: persisted-event port ownership ─────────────────────────────────────────

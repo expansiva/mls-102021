@@ -13,9 +13,42 @@ import {
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
   collectDeleteOperationPortGaps,
   stableCompilerErrors, selectCompilerRepairRoots,
+  compilerErrorFamily, compilerErrorsAfterRepair, compilerFindingsBlockingPassed,
+  collectNonEnglishAppErrorMessages,
+  collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectIoShapeSymmetryIssues,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+
+test('W2: weeklySchedule json input vs string output is a defs-level finding; empty item.fields too', () => {
+  const fn = {
+    functionName: 'createBusinessHours',
+    input: [{
+      name: 'weeklySchedule', type: 'json', ofEntity: 'BusinessHours',
+      fieldRef: 'BusinessHours.weeklySchedule', item: { fields: [] },
+    }],
+    output: [{ name: 'weeklySchedule', type: 'string', ofEntity: 'BusinessHours' }],
+  };
+  const issues = collectIoShapeSymmetryIssues(fn);
+  assert.ok(issues.some(i => /io shape mismatch/.test(i) && /json/.test(i) && /string/.test(i)), issues.join('\n'));
+  assert.ok(issues.some(i => /item\.fields/.test(i)), issues.join('\n'));
+  assert.deepEqual(collectIoShapeSymmetryIssues({
+    functionName: 'createCustomer',
+    input: [{ name: 'name', type: 'string', ofEntity: 'Customer' }],
+    output: [{ name: 'name', type: 'string', ofEntity: 'Customer' }],
+  }), []);
+});
+
+test('unread l4 contract dependsFiles are findings, not a silent omit', () => {
+  const defs = `dependsFiles: ["_102047_/l4/petShop/contracts/serviceCatalogue.cmdCreateService.defs.ts", "_102047_/l1/petShop/layer_2_application/usecases/createService.d.ts"]`;
+  assert.deepEqual(collectL4ContractDependsRefs(defs), [
+    '_102047_/l4/petShop/contracts/serviceCatalogue.cmdCreateService.defs.ts',
+  ]);
+  const unread = collectUnreadL4ContractFindings(defs, () => false);
+  assert.equal(unread.length, 1);
+  assert.match(unread[0], /l4 contract unreadable/);
+  assert.deepEqual(collectUnreadL4ContractFindings(defs, () => true), []);
+});
 
 test('stableCompilerErrors (T2): keeps only findings that reproduce on the double-check (flaky dropped)', () => {
   const first = ['compiler: TS2792 cannot find module', 'compiler: TS2322 real type error'];
@@ -42,6 +75,44 @@ test('selectCompilerRepairRoots (T2): a file importing a NON-flagged file is a r
   const { roots, cascades } = selectCompilerRepairRoots(['a'], () => ['some/other::cleanfile']);
   assert.deepEqual(roots, ['a']);
   assert.deepEqual(cascades, []);
+});
+
+test('be5-2: two compiler families in the same file stay a root even if it imports a flagged file', () => {
+  const flagged = ['mod/usecases::createserviceappointment', 'mod/usecases::listservice'];
+  const importsOf = (key: string) => key === 'mod/usecases::createserviceappointment' ? ['mod/usecases::listservice'] : [];
+  const families = (key: string) => key === 'mod/usecases::createserviceappointment'
+    ? ['TS18047:pet', 'TS18047:service']
+    : ['TS2322:MdmListByTypeResult'];
+  const { roots, cascades } = selectCompilerRepairRoots(flagged, importsOf, families);
+  assert.ok(roots.includes('mod/usecases::createserviceappointment'), 'own families must not be deferred as cascade');
+  assert.deepEqual(cascades, []);
+});
+
+test('be5-2: g1 finds two families, repair fixes one — health cannot close passed', () => {
+  const g1 = ["'pet' is possibly 'null'.", "'service' is possibly 'null'."];
+  assert.deepEqual(g1.map(compilerErrorFamily).sort(), ['TS:pet', 'TS:service']);
+  const afterRepair = ["'service' is possibly 'null'."];
+  const remaining = compilerErrorsAfterRepair(g1, afterRepair);
+  assert.ok(remaining.some(e => /service/.test(e)));
+  const blocking = compilerFindingsBlockingPassed({
+    currentByFile: new Map([['createServiceAppointment.ts', remaining]]),
+  });
+  assert.ok(blocking.length > 0);
+  assert.equal(compilerFindingsBlockingPassed({ currentByFile: new Map() }).length, 0);
+  assert.match(
+    compilerFindingsBlockingPassed({
+      currentByFile: new Map(),
+      previousFamiliesByFile: new Map([['createServiceAppointment.ts', ['TS18047:service']]]),
+    })[0],
+    /did not re-check/,
+  );
+});
+
+test('BE5-5: Portuguese AppError messages are flagged; English is silent', () => {
+  const pt = `throw new AppError('NOT_FOUND', 'Nenhum usuário autenticado foi identificado para o cliente responsável.', 404);`;
+  assert.match(collectNonEnglishAppErrorMessages(pt)[0] || '', /not English/);
+  const en = `throw new AppError('NOT_FOUND', 'No authenticated user was identified for the responsible customer.', 404);`;
+  assert.deepEqual(collectNonEnglishAppErrorMessages(en), []);
 });
 
 // An append-only ledger port (StockAdjustment): NO save/create — only append + queries.

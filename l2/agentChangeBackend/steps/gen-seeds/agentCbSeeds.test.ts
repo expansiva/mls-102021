@@ -78,7 +78,15 @@ void test('a module-resolution error on an alias import is environment, by const
   assert.doesNotMatch(src, /seedEnvironmentErrors[\s\S]{0,400}mls\.stor\.files/);
   // Both compile points of the seeds go through it (the partial persist and the final build).
   assert.equal((src.match(/seedEnvironmentErrors\(saved\)/g) || []).length, 2);
-  assert.match(src, /normalizeSeedPlan\(parseSeedPlan\(out\.result\), waveInput\.tablePlans\)/);
+});
+
+void test('gen-seeds applies deterministic operated-state + MDM-tag repair before giving up a wave', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /repairSeedPlanDeterministically/);
+  assert.match(src, /collectRequiredMdmTags/);
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /operatedStates/);
+  assert.match(prompt, /ctx\.mdm/);
 });
 
 void test('an environment failure retries the compile once, without spending the replan budget', () => {

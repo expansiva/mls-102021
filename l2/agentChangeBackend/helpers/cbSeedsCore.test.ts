@@ -8,6 +8,7 @@ import {
   seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
   SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf,
   isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan,
+  collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { readFileSync } from 'node:fs';
@@ -547,6 +548,181 @@ test('petShop wave 208 (attempt 1) still names unknown details fields — the ga
   const plan = normalizeSeedPlan(parseSeedPlan(raw), petShopWave3Input(parseSeedPlan(raw)).tablePlans);
   const errors = validateSeedPlan(petShopWave3Input(plan), collectOutboundRefs(plan));
   assert.ok(errors.some(e => /unknown entity field/u.test(e)), errors.join('\n'));
+});
+
+// BE5-1: listService.defs.ts (real pin) + the Service local rows from be5 seeds.ts. Usecases read
+// ctx.mdm.collection.listByType({ type: 'petShop.Service' }); the plan only seeded Person actors.
+test('be5: plan without MDM rows for a ctx.mdm tag is rejected; mirrored plan emits the tag with the same ids', () => {
+  const listServiceDefs = {
+    mdm: { activeFilterInput: 'includeInactive', situationOutput: 'active' },
+  };
+  const listServiceTs = "const records = await ctx.mdm.collection.listByType({ type: 'petShop.Service' });\n";
+  const tags = collectRequiredMdmTags({
+    moduleName: 'petShop',
+    mdmOwners: [{ entity: 'Service', mdm: listServiceDefs.mdm }],
+    usecaseSources: [listServiceTs],
+  });
+  assert.deepEqual(tags, ['petShop.Service']);
+
+  const serviceRows = [
+    { key: 'service-bath', columns: [], details: [{ name: 'name', value: 'Banho e secagem' }, { name: 'description', value: 'Higienização, secagem e escovação básica.' }], children: [] },
+    { key: 'service-grooming', columns: [], details: [{ name: 'name', value: 'Tosa higiênica' }, { name: 'description', value: 'Tosa higiênica com acabamento.' }], children: [] },
+    { key: 'service-veterinary-check', columns: [], details: [{ name: 'name', value: 'Avaliação veterinária' }, { name: 'description', value: 'Consulta breve.' }], children: [] },
+  ];
+  const input: SeedBuildInput = {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'en',
+    ruleIds: [],
+    mdmRequiredTags: tags,
+    entities: [
+      { entityId: 'Service', title: 'Service', kind: 'core', fields: [field('serviceId'), field('name'), field('description', false), field('createdAt', false), field('updatedAt', false)] },
+    ],
+    tablePlans: [
+      { tableId: 'Service', tableName: 'service', seedFor: 'petShopService', primaryKey: ['service_id'], detailsColumnName: 'details', columns: [{ name: 'service_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+    ],
+    plan: {
+      summary: 'Three catalog services (be5 local-only).',
+      localTables: [{ tableId: 'Service', rows: serviceRows }],
+      mdmEntities: [],
+    },
+  };
+  const rejected = validateSeedPlan(input);
+  assert.ok(rejected.some(e => /petShop\.Service/.test(e) && /no MDM row/.test(e)), rejected.join('\n'));
+
+  const mirrored = repairSeedPlanDeterministically(input.plan, input);
+  const accepted = validateSeedPlan({ ...input, plan: mirrored });
+  assert.deepEqual(accepted, [], accepted.join('\n'));
+  const built = buildSeedSource({ ...input, plan: mirrored });
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /"petShop\.Service"/);
+  assert.match(built.content ?? '', /mdmEntityIndexSeeds/);
+  // Same key as the local row → same uuid on the index (adapters and ctx.mdm share the id).
+  const localId = (built.content ?? '').match(/serviceSeeds[\s\S]*?"service_id": "([0-9a-f-]+)"/)?.[1];
+  const mdmId = (built.content ?? '').match(/mdmEntityIndexSeeds[\s\S]*?"mdmId": "([0-9a-f-]+)"/)?.[1];
+  assert.ok(localId && mdmId && localId === mdmId, `local ${localId} vs mdm ${mdmId}`);
+  assert.match(built.content ?? '', /export const serviceSeeds/);
+});
+
+test('collectRequiredMdmTags does not invent a tag from an entity name without a pinned mdm block', () => {
+  assert.deepEqual(collectRequiredMdmTags({
+    moduleName: 'petShop',
+    mdmOwners: [{ entity: 'Service' }, { entity: 'Customer', mdm: { lifecycle: 'inactivate' } }],
+  }), ['petShop.Customer']);
+});
+
+// BE5-3: real wave 6 attempt 2 (216-agent-cb-seeds.json). Validator already demanded `arrived`;
+// the planner seeded inProgress+completed and the wave gave up. Deterministic cover fills it.
+test('be5 wave 216: ServiceExecution missing arrived fails; coverMissingOperatedStates converges', () => {
+  const raw = JSON.parse(readFileSync(path.join(WAVE_FIXTURE_DIR, 'petShop-seed-wave216.json'), 'utf8')) as unknown;
+  const plan = normalizeSeedPlan(parseSeedPlan(raw), [{
+    tableId: 'ServiceExecution', tableName: 'service_execution', seedFor: 'petShopServiceExecution',
+    primaryKey: ['service_execution_id'], detailsColumnName: 'details',
+    columns: [
+      { name: 'service_execution_id', type: 'UUID', nullable: false },
+      { name: 'status', type: 'VARCHAR', nullable: false },
+      { name: 'service_appointment_id', type: 'UUID', nullable: false },
+      { name: 'details', type: 'JSONB', nullable: true },
+    ],
+  }]);
+  const input: SeedBuildInput = {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'en',
+    ruleIds: [],
+    entities: [{
+      entityId: 'ServiceExecution',
+      title: 'Service execution',
+      kind: 'event',
+      operatedStates: ['arrived', 'inProgress', 'completed'],
+      fields: [
+        field('serviceExecutionId'),
+        field('serviceAppointmentId'),
+        field('status', true, ['arrived', 'inProgress', 'completed', 'pickedUp']),
+        field('arrivedAt', false),
+        field('serviceStartedAt', false),
+        field('completedAt', false),
+        field('pickedUpAt', false),
+      ],
+    }],
+    tablePlans: [{
+      tableId: 'ServiceExecution', tableName: 'service_execution', seedFor: 'petShopServiceExecution',
+      primaryKey: ['service_execution_id'], detailsColumnName: 'details',
+      columns: [
+        { name: 'service_execution_id', type: 'UUID', nullable: false },
+        { name: 'status', type: 'VARCHAR', nullable: false },
+        { name: 'service_appointment_id', type: 'UUID', nullable: false },
+        { name: 'details', type: 'JSONB', nullable: true },
+      ],
+    }],
+    plan,
+  };
+  const prior = [
+    'local:ServiceAppointment.appointment-mel-grooming-confirmed',
+    'local:ServiceAppointment.appointment-luna-bath-pending',
+  ];
+  const before = validateSeedPlan(input, prior);
+  assert.ok(before.some(e => /ServiceExecution: no seeded row in lifecycle state\(s\) arrived/.test(e)), before.join('\n'));
+
+  const covered = coverMissingOperatedStates(plan, input);
+  const after = validateSeedPlan({ ...input, plan: covered }, prior);
+  assert.deepEqual(after, [], after.join('\n'));
+  const statuses = covered.localTables[0].rows.map(row => row.columns.find(c => c.name === 'status')?.value);
+  assert.ok(statuses.includes('arrived') && statuses.includes('inProgress') && statuses.includes('completed'), String(statuses));
+
+  const prompt = seedPlanPromptContext({ ...input, plan: covered }, [], {
+    wave: { index: 6, tableIds: ['ServiceExecution'], mdmEntityIds: [] },
+  });
+  assert.match(prompt, /"operatedStates": \[\s*"arrived"/);
+  assert.match(prompt, /ONE row per listed state/);
+});
+
+test('W1: {ref} on a non-FK field and a self-ref are rejected; legitimate *Id refs stay quiet', () => {
+  assert.equal(fieldAllowsSeedRef('weeklySchedule', ['BusinessHours', 'Customer']), false);
+  assert.equal(fieldAllowsSeedRef('customerId', ['Customer']), true);
+
+  const input: SeedBuildInput = {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'en',
+    ruleIds: [],
+    entities: [
+      { entityId: 'BusinessHours', title: 'Business hours', kind: 'core', fields: [field('businessHoursId'), field('weeklySchedule')] },
+      { entityId: 'Customer', title: 'Customer', kind: 'core', fields: [field('customerId'), field('name')] },
+    ],
+    tablePlans: [
+      { tableId: 'BusinessHours', tableName: 'business_hours', seedFor: 'petShopBusinessHours', primaryKey: ['business_hours_id'], detailsColumnName: 'details', columns: [{ name: 'business_hours_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+      { tableId: 'Customer', tableName: 'customer', seedFor: 'petShopCustomer', primaryKey: ['customer_id'], detailsColumnName: 'details', columns: [{ name: 'customer_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+    ],
+    plan: {
+      summary: 'be5 weekday-standard auto-ref on weeklySchedule.',
+      localTables: [
+        {
+          tableId: 'BusinessHours',
+          rows: [{
+            key: 'weekday-standard',
+            columns: [],
+            details: [{ name: 'weeklySchedule', value: { ref: 'local:BusinessHours.weekday-standard' } }],
+            children: [],
+          }],
+        },
+        {
+          tableId: 'Customer',
+          rows: [{
+            key: 'customer-primary',
+            columns: [],
+            details: [{ name: 'name', value: 'Ana' }],
+            children: [],
+          }],
+        },
+      ],
+      mdmEntities: [],
+    },
+  };
+  const errors = validateSeedPlan(input);
+  assert.ok(errors.some(e => /self-reference/.test(e)), errors.join('\n'));
+  assert.ok(errors.some(e => /weeklySchedule/.test(e) && /foreign-key/.test(e)), errors.join('\n'));
+  assert.equal(errors.some(e => /Customer/.test(e)), false, errors.join('\n'));
 });
 
 test('C: an EMPTY summary is what crashed run05 — a blank plan is still rejected', () => {

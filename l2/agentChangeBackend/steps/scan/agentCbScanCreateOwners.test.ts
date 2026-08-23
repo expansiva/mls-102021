@@ -16,3 +16,10 @@ void test('agentCbScanCreateOwners declares the scan step agent contract', () =>
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCbScanCreateOwners"/);
 });
+
+void test('the provenance stamp is not printed to the console (dossiê/summary already carry it)', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbScanCreateOwners.ts'), 'utf8');
+  assert.match(src, /describeProvenance\(provenance\)/);
+  assert.doesNotMatch(src, /console\.info\(`\$\{logPrefix\(agent\)\}\$\{described\}`\)/);
+  assert.doesNotMatch(src, /console\.info\(/);
+});

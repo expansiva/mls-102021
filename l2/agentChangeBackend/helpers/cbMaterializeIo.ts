@@ -202,7 +202,15 @@ async function ensureImportModels(content: string): Promise<BorrowedModel[]> {
       }
     }
     const model = await loadImportModel(importProject, folder, shortName, false);
-    if (model) borrowed.push({ project: importProject, shortName, folder, level: 1 });
+    if (model) {
+      borrowed.push({ project: importProject, shortName, folder, level: 1 });
+      // addModels loads sibling .defs.ts onto a separate registry key (shortName + '.defs').
+      // Releasing only the .ts left those models resident (be5: 10× listener leak).
+      const defsShort = `${shortName}.defs`;
+      if (mls.editor.models[mls.editor.getKeyModel(importProject, defsShort, folder, 1)]) {
+        borrowed.push({ project: importProject, shortName: defsShort, folder, level: 1 });
+      }
+    }
   }
   return borrowed;
 }
@@ -373,10 +381,13 @@ export function modelRegistryKeys(): Set<string> {
  * is the index this agent can account for, and since the platform fix a delete reaches the model even
  * when the two diverge.)
  */
-export function modelCounts(): { registry: number; pendingRelease: number } {
+let peakRegistry = 0;
+
+export function modelCounts(): { registry: number; pendingRelease: number; peak: number } {
   let registry = 0;
   try { registry = Object.keys(mls.editor.models || {}).length; } catch { /* registry unavailable */ }
-  return { registry, pendingRelease: pendingRelease.length };
+  if (registry > peakRegistry) peakRegistry = registry;
+  return { registry, pendingRelease: pendingRelease.length, peak: peakRegistry };
 }
 
 /**
@@ -411,7 +422,14 @@ export async function compileModuleAndGetErrors(
       if (content === null) continue;
       borrowed.push(...await ensureImportModels(content));
       const model = await loadTsModel(project, 1, file.folder, file.shortName, content);
-      if (model) models.push({ key: `${file.folder}::${file.shortName}`, model });
+      if (model) {
+        models.push({ key: `${file.folder}::${file.shortName}`, model });
+        const defsShort = `${file.shortName}.defs`;
+        if (mls.editor.models[mls.editor.getKeyModel(project, defsShort, file.folder, 1)]) {
+          borrowed.push({ project, shortName: defsShort, folder: file.folder, level: 1 });
+        }
+      }
+      modelCounts();
     }
     if (!models.length) return null;
     // 2. One worker for the whole set; it owns the incremental program.
@@ -597,7 +615,15 @@ export async function saveGeneratedTs(
     const compiled = shortName.endsWith('.defs') ? { errors: [], infraErrors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
     // The content is already durable in stor; the monaco model was a working copy for the compile. Queue
     // it (released at the next quiescent point, so a peer compile in the pool can still import it).
-    if (ownsModel) releaseBorrowedModels([{ project, shortName, folder, level }]);
+    if (ownsModel) {
+      const borrowed: BorrowedModel[] = [{ project, shortName, folder, level }];
+      const defsShort = `${shortName}.defs`;
+      if (mls.editor.models[mls.editor.getKeyModel(project, defsShort, folder, level)]) {
+        borrowed.push({ project, shortName: defsShort, folder, level });
+      }
+      releaseBorrowedModels(borrowed);
+    }
+    modelCounts(); // record peak after each save/compile
     const syntaxErrors = syntaxDiagnostics(content).slice(0, 12);
     const compileErrors = [...syntaxErrors, ...compiled.errors].slice(0, 12);
     return { ok: true, compileErrors, syntaxErrors, infraErrors: compiled.infraErrors, compilerAvailable: compiled.available };

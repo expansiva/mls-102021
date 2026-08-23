@@ -153,7 +153,8 @@ test('the model sweep skips what the Studio had open and reports what it removed
   assert.match(io, /if \(keep\.has\(key\)\) \{ kept\+\+; continue; \}/);
   assert.match(io, /return \{ swept, kept \}/);
   // A telemetria conta o que este agente pode contabilizar (o store do Monaco não é alcançável daqui).
-  assert.match(io, /export function modelCounts\(\): \{ registry: number; pendingRelease: number \}/);
+  assert.match(io, /export function modelCounts\(\): \{ registry: number; pendingRelease: number; peak: number \}/);
+  assert.match(io, /shortName: defsShort/);
 });
 
 // ── read-back do todoBackend (lost update do petShop, 21/08/2026) ─────────────

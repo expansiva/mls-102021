@@ -13,7 +13,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   fileIsPresent,
   scanL1DefsWithPipeline, getContentByMlsPath, getFileModified, saveGeneratedTs, parseMlsPath,
-  extractToolCallArgs,
+  extractToolCallArgs, flushBorrowedModels,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
@@ -198,6 +198,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', msg)];
   } finally {
     stopTick();
+    await flushBorrowedModels();
   }
 }
 
@@ -540,6 +541,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       await saveHealthReport({ outcome: 'materialize-infra-warning', defRef, compilerAvailable: false, message: trace });
     }
     await clearComponentRepair(defRef); // converged: drop the repair record
+    await flushBorrowedModels();
   } catch (error) {
     // No console output: repair is an expected, handled path. The trace below lands on the step, the
     // findings live in cb-repair-state, and cb-validate-all is where a real failure surfaces.

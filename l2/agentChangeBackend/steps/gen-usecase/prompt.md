@@ -73,6 +73,9 @@ layer_3_domain/rules generator. Apply each listed rule inline in this usecase fi
 domain invariant when one exists in dependsFiles, or write a small local helper/function in this file.
 NEVER import from layer_3_domain/rules/*, NEVER invent modules such as comboRule or menuItemRules, and
 include the rule id in validation error details when the rule blocks the operation.
+AppError messages shown to the user MUST be English (or i18n). Never hardcode Portuguese in the
+message string — codes/details stay machine-readable; the message is what the client and the test
+suite display.
 
 Return functions[] (usually ONE, named from the operationId; MAY be several with different IO). Each
 function declares EXPLICIT fields:

@@ -91,7 +91,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // report claimed 65 done next to a file on disk that said 64 toCreate, and nothing recorded the gap.
     todoReadBack: isRecord(args.todoReadBack) ? args.todoReadBack : null,
     llmByPhase: await readCostReport(),
-    models: modelCounts(),
+    models: modelCounts(), // includes peak — be5 closed with registry 104, the leak is the peak
     // The identity of the code that RAN. Without it, a post-mortem cannot tell "the generator is wrong"
     // from "the fix was never in this build" — the two look identical in every other field.
     agentBuild,

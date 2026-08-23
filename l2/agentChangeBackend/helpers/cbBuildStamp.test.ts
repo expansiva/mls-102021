@@ -100,7 +100,10 @@ test('o helper não tem mecanismo de timestamp nem promete detectar código velh
 test('os 5 pontos de instrumentação seguem ligados, agora com proveniência', () => {
   const scan = readFileSync(new URL('../steps/scan/agentCbScanCreateOwners.ts', import.meta.url), 'utf8');
   assert.match(scan, /const provenance = await readAgentProvenance\(\);/);
-  assert.match(scan, /console\.info\(`\$\{logPrefix\(agent\)\}\$\{described\}`\)/);
+  // be5 (BE5-4): o stamp NÃO vai mais para o console — o dossiê (`agentBuild`) e o summary do
+  // finalize já o carregam; o trace do step continua recebendo (`buildTrace` entra no status).
+  assert.doesNotMatch(scan, /console\.info\(`\$\{logPrefix\(agent\)\}\$\{described\}`\)/);
+  assert.match(scan, /\$\{buildTrace\}`/);
   assert.doesNotMatch(scan, /console\.warn|staleAgentWarning/u);
   const summary = readFileSync(new URL('../steps/finalize/agentCbFinalSummary.ts', import.meta.url), 'utf8');
   assert.match(summary, /const agentBuild = await readAgentProvenance\(\);/);

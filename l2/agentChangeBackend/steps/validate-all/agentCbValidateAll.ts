@@ -36,9 +36,10 @@ const RESCUE_MAX_TARGETS = 4;
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
-  collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, collectL4ContractDependsRefs, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
-  stableCompilerErrors, selectCompilerRepairRoots,
+  stableCompilerErrors, selectCompilerRepairRoots, compilerErrorFamily, compilerErrorsAfterRepair,
+  collectNonEnglishAppErrorMessages,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
   extractInterfaceMethods, collectDeleteOperationPortGaps,
@@ -67,7 +68,11 @@ export function createAgent(): IAgentAsync {
 /** `models: registry=X pending=Y` — the question the console answered by hand, now on the task. */
 function modelsTrace(): string {
   const counts = modelCounts();
-  return ` models: registry=${counts.registry} pendingRelease=${counts.pendingRelease}.`;
+  return ` models: registry=${counts.registry} pendingRelease=${counts.pendingRelease} peak=${counts.peak}.`;
+}
+
+function modelsForHealth(): { registry: number; pendingRelease: number; peak: number } {
+  return modelCounts();
 }
 
 async function saveValidateProgress(
@@ -111,6 +116,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const policyEntities = scan.entities.map(e => ({ entityId: e.entityId, kind: e.kind, storageTarget: e.storageTarget || '' }));
     const persistenceArtifacts: string[] = [];
     const tableDefSources: { folder: string; real: string; source: string }[] = [];
+    const controllerDefsSources: string[] = [];
+    const ioShapeFindings: Array<{ defRef: string; msg: string }> = [];
     const portDefs = new Set<string>();    // lowercased shortNames present in layer_2_application/ports
     const domainDefs = new Set<string>();  // lowercased shortNames present in layer_3_domain/entities
     const mdmDomainArtifacts: string[] = [];
@@ -170,6 +177,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         }
         if (folder0.endsWith('/layer_2_application/usecases')) {
           usecaseSources.set(shortName0.toLowerCase(), content);
+          for (const issue of collectNonEnglishAppErrorMessages(content)) {
+            importReqs.push({
+              from: `${folder0}/${shortName0}`,
+              key: '__non_english_app_error__',
+              target: issue,
+            });
+          }
           if (/\/_\d+_\/l1\/[^'"]*\/layer_3_domain\/rules\//.test(content)) {
             importReqs.push({
               from: `${folder0}/${shortName0}`,
@@ -242,8 +256,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         });
         const fns = data && Array.isArray((data as any).functions) ? (data as any).functions : [];
         usecaseFnNames.set(shortName, new Set<string>(fns.map((f: any) => String(f?.functionName || '')).filter(Boolean)));
+        for (const fn of fns) {
+          for (const issue of collectIoShapeSymmetryIssues(fn)) {
+            ioShapeFindings.push({ defRef: defRefOf(folder, shortName0), msg: `usecase ${shortName0} -> ${issue}` });
+          }
+        }
       } else if (folder.endsWith('/adapters/http/controllers')) {
-        const artifact = parseArtifact(String(await file.getContent()));
+        const controllerDefsSource = String(await file.getContent());
+        controllerDefsSources.push(controllerDefsSource);
+        const artifact = parseArtifact(controllerDefsSource);
         const data = artifact && isRecord(artifact.data) ? artifact.data : undefined;
         const handlers = data && Array.isArray((data as any).handlers) ? (data as any).handlers : [];
         const routes = data && Array.isArray((data as any).routes) ? (data as any).routes : [];
@@ -267,6 +288,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // INTEGRITY: every port a usecase references must have a port .defs.ts AND a domain entity .defs.ts.
     // Catches the "usecase imports a module that was never generated" class of errors before tsc.
     const missing: string[] = [];
+    for (const finding of ioShapeFindings) {
+      missing.push(finding.msg);
+      addRepair(finding.defRef, finding.msg);
+    }
+    for (const source of controllerDefsSources) {
+      for (const ref of collectL4ContractDependsRefs(source)) {
+        const content = await getContentByMlsPath(ref);
+        if (typeof content === 'string' && content.trim()) continue;
+        missing.push(`l4 contract unreadable -> ${ref} (empty or missing; materialize would omit it from the prompt)`);
+      }
+    }
     for (const artifact of mdmDomainArtifacts) {
       missing.push(`mdm local domain artifact forbidden -> ${artifact}`);
     }
@@ -435,7 +467,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
         continue;
       }
-      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__' || req.key === '__invalid_raw_mdm_access__') {
+      if (req.key === '__invalid_mdm_index_filter__' || req.key === '__invalid_mdm_relationship_shape__' || req.key === '__invalid_rule_import__' || req.key === '__invalid_raw_mdm_access__' || req.key === '__non_english_app_error__') {
         const msg = `platform contract violation -> ${req.from}.ts: ${req.target}`;
         missing.push(msg);
         addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
@@ -466,6 +498,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // says WHERE it was.
     const compileBlock = 25;
     const startCounts = modelCounts();
+    const repairStateForCompile = await readRepairState();
+    const afterRepair = repairStateForCompile.globalAttempts > 0 || repairStateForCompile.history.length > 0;
     await saveValidateProgress(project, { phase: 'compile', done: 0, total: defsFiles.length, models: startCounts });
     const inScope = defsFiles.filter(d => tsSet.has(`${d.folder}::${d.shortName}`)); // the rest is a completeness finding
     // ONE pass over the module: the models are loaded once and the TS worker answers per file from its
@@ -475,18 +509,24 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       `${step.stepTitle || 'Validate l1 artifacts'} — compiling ${inScope.length} files (${sec}s)`);
     try {
       const single = await compileModuleAndGetErrors(project, inScope.map(d => ({ folder: d.folder, shortName: d.real })));
+      await flushBorrowedModels();
       if (single) {
         const flaggedFirst = inScope.filter(d => (single.get(`${d.folder}::${d.real}`) || []).length);
-        // The stable model set removes the flakiness the double compile existed for; ONE re-ask of the
-        // flagged files, in the same worker session, keeps `stableCompilerErrors` meaningful and cheap.
-        const second = flaggedFirst.length
-          ? await compileModuleAndGetErrors(project, flaggedFirst.map(d => ({ folder: d.folder, shortName: d.real })))
+        // After a repair round, re-ask EVERY file — g2 used to re-ask only the files still flagged
+        // on the first pass and missed the leftover family in createServiceAppointment (be5).
+        const secondTargets = afterRepair ? inScope : flaggedFirst;
+        const second = secondTargets.length
+          ? await compileModuleAndGetErrors(project, secondTargets.map(d => ({ folder: d.folder, shortName: d.real })))
           : new Map<string, string[]>();
-        for (const d of flaggedFirst) {
+        const consider = afterRepair ? inScope : flaggedFirst;
+        for (const d of consider) {
           const key = `${d.folder}::${d.real}`;
           const first = single.get(key) || [];
-          const stable = stableCompilerErrors(first, second?.get(key) || first);
-          flakyCompilerSuppressed += first.length - stable.length;
+          const secondErrs = second?.get(key) || (afterRepair ? [] : first);
+          const stable = afterRepair
+            ? compilerErrorsAfterRepair(first, secondErrs)
+            : stableCompilerErrors(first, secondErrs);
+          if (!afterRepair) flakyCompilerSuppressed += first.length - stable.length;
           if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
         }
         await saveValidateProgress(project, { phase: 'compile-single-pass', done: inScope.length, total: defsFiles.length, models: modelCounts() });
@@ -501,13 +541,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             localStepTitle(context, step, `${step.stepTitle || 'Validate l1 artifacts'} — compile ${compiled}/${inScope.length}`);
           }
           const first = await compileSavedTsAndGetErrors(project, d.folder, d.real);
-          if (!first.length) continue;
-          // STEP 2 (double-check vs H1 — flaky): recompile once more (models/imports now settled) and keep
-          // only errors that reproduce. A transient finding (Monaco model lag / ensureImportModels
-          // best-effort) must not force a full re-generation of a file that was already correct.
+          if (!first.length && !afterRepair) continue;
           const second = await compileSavedTsAndGetErrors(project, d.folder, d.real);
-          const stable = stableCompilerErrors(first, second);
-          flakyCompilerSuppressed += first.length - stable.length;
+          const stable = afterRepair
+            ? compilerErrorsAfterRepair(first, second)
+            : stableCompilerErrors(first, second);
+          if (!afterRepair) flakyCompilerSuppressed += first.length - stable.length;
           if (stable.length) compileFlagged.set(`${d.folder}::${d.shortName}`, { folder: d.folder, real: d.real, errors: stable });
         }
       }
@@ -525,7 +564,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     }
     const endFlush = await flushBorrowedModels();
     await saveValidateProgress(project, { phase: 'compile-done', done: inScope.length, total: defsFiles.length, models: modelCounts(), released: endFlush.released });
-    const { cascades } = selectCompilerRepairRoots(compileFlagged.keys(), key => importsByKey.get(key) ?? []);
+    const { cascades } = selectCompilerRepairRoots(
+      compileFlagged.keys(),
+      key => importsByKey.get(key) ?? [],
+      key => (compileFlagged.get(key)?.errors ?? []).map(compilerErrorFamily),
+    );
     const cascadeSet = new Set(cascades);
     for (const [key, info] of compileFlagged) {
       if (cascadeSet.has(key)) { cascadeCompilerSuppressed += info.errors.length; continue; }
@@ -720,7 +763,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         // cb-health-report.json's `rounds` array is a durable, per-round audit of what each g{n} decided.
         // T2: the suppressed counts make the double-check/dedup auditable (a suppressed finding that is
         // real re-appears next round / at the final pass — deferred, never lost).
-        await saveHealthReport({ outcome: isRescue ? 'rescue-round' : 'repair-round', round: state.globalAttempts, globalAttempts: state.globalAttempts, repairTargets: roundTargets, targetCount: roundTargets.length, flakyCompilerSuppressed, cascadeCompilerSuppressed, l1Defs, findings: unique, warnings, repairHistory: state.history });
+        await saveHealthReport({ outcome: isRescue ? 'rescue-round' : 'repair-round', round: state.globalAttempts, globalAttempts: state.globalAttempts, repairTargets: roundTargets, targetCount: roundTargets.length, flakyCompilerSuppressed, cascadeCompilerSuppressed, l1Defs, findings: unique, warnings, repairHistory: state.history, models: modelsForHealth() });
         return [
           enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true, ...(preSeeds ? { preSeeds: true } : {}) }),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
@@ -740,14 +783,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         // No console dump (user decision 2026-07-17, run f): the full findings list already lives on
         // the step trace and in the health report — printing it again only floods the console.
         const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-        await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
+        await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
         return [
           enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts });
+      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Every terminal trace of this step carries the model counts: it is the measurement that used to be
@@ -759,7 +802,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const repairNote = finalState.history.length
       ? `; repaired during this run: ${finalState.history.length} occurrence(s) [${finalState.history.slice(-8).join(' | ')}]`
       : '';
-    await saveHealthReport({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns });
+    await saveHealthReport({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns, models: modelsForHealth() });
     // Keep repair state until the LAST validate-all (post-seeds). Clearing on a pre-seeds pass is
     // what left be4's dossier with repairHistory: [] after three real repair rounds.
     if (!preSeeds) await clearRepairState();

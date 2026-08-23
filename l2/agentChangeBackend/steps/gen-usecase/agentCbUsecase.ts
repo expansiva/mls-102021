@@ -22,7 +22,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { eventPortBelongsToOwner } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { mdmSubtypeFor } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbUsecase';
@@ -94,6 +94,7 @@ function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string
       }
     }
     const allowedStatuses = new Set(scan.entities.flatMap(entity => (entity.fields ?? []).flatMap((field: any) => Array.isArray(field.enum) ? field.enum : [])));
+    issues.push(...collectIoShapeSymmetryIssues(fn).map(issue => `usecase ${ownerId}.${fn?.functionName || '<function>'}: ${issue}`));
     for (const step of readStringArray(fn?.steps)) {
       // Steps are primarily natural-language explanations. Only validate an explicit QUOTED
       // assignment (`status = "delivered"`, `status: 'delivered'`, `status is "delivered"`), never
@@ -349,6 +350,8 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     // The l4 `mdm` block is data, not invention: pin it the same way as ports/mdmRefs/outputShape.
     pinUsecaseL4Mdm(result, owner?.mdm);
+    const shapeIssues = resultFns.flatMap((fn: { functionName?: string; input?: unknown; output?: unknown }) => collectIoShapeSymmetryIssues(fn));
+    if (shapeIssues.length) throw new Error(`usecase defs validation failed: ${shapeIssues.slice(0, 12).join('; ')}`);
     const fi = usecaseFileInfo(module, usecaseId);
     const dependsFiles = [
       ...ports.map(p => dtsRef(repositoryPortFileInfo(module, p))),

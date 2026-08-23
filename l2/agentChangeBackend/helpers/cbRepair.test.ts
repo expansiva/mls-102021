@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeRepairMutation } from './cbRepairLock.js';
-import { buildHealthReportContent, foldRepairAudit, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
+import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
 import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
 
 test('mergeComponentRepair (T3): a global round preserves priorFindings + lastCode and resets attempts to 0', () => {
@@ -97,6 +97,13 @@ test('foldRepairAudit keeps the repair rounds when the last snapshot is a clean 
   assert.equal(top.globalAttempts, 1);
   assert.deepEqual(top.repairHistory, history);
   assert.equal(JSON.parse(afterPass).repairHistory.length, 0, 'without the fold the last pass wipes history — that is the be4 bug');
+});
+
+test('foldModelsPeak keeps the highest peak across rounds (be5 closed at 104, leak was the peak)', () => {
+  const first = JSON.stringify({ models: { registry: 200, pendingRelease: 12, peak: 298 } });
+  const folded = foldModelsPeak(first, { models: { registry: 104, pendingRelease: 0, peak: 104 } });
+  assert.equal(folded?.peak, 298);
+  assert.equal(folded?.registry, 104);
 });
 
 test('serializeRepairMutation preserves every concurrent read-modify-write', async () => {

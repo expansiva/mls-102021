@@ -24,6 +24,12 @@ void test('agentCbUsecase declares the LLM fan-out step agent contract', () => {
   assert.match(flow, /"agentName": "agentCbUsecase"/);
 });
 
+void test('usecase defs pin and validate io shape symmetry after outputShape is applied', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  assert.match(src, /collectIoShapeSymmetryIssues/);
+  assert.match(src, /pinUsecaseL4Mdm\(result, owner\?\.mdm\)/);
+});
+
 void test('agentCbUsecase tool schema is provider-clean', () => {
   const errs = lintToolSchema(JSON.stringify(tool().function.parameters));
   assert.equal(errs, null, errs?.join(' | '));

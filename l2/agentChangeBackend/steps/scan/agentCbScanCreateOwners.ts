@@ -18,12 +18,12 @@ export function createAgent(): IAgentAsync {
  * edited locally is the normal state of whoever is editing, and work that was never pushed is invisible
  * to the platform, so any alarm here would be noise.
  *
- * In the console (visible while the run happens) and in this step's trace (visible in the task after).
+ * The dossiê (`agentBuild`) and the finalize summary already carry the stamp — do not print it to
+ * the console (be5: it was the first line of console_be5.txt). The trace of this step still gets it.
  */
 async function buildStampTrace(agent: IAgentMeta): Promise<string> {
   const provenance = await readAgentProvenance();
   const described = describeProvenance(provenance);
-  if (described) console.info(`${logPrefix(agent)}${described}`);
   return described;
 }
 
