@@ -15,6 +15,12 @@ const MLS_BASE = path.resolve(HERE, '../../../../..');
 const TOOL_NAME = 'submitSeedScenario';
 const MODEL_TYPES = ['code', 'design'] as const;
 
+void test('seed give-up publishes skipped MDM tags via skippedMdmEntityIds', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /skippedMdmEntityIds\(input, seededMdmIds\)/);
+  assert.match(src, /normalizeSeedPlan\(parseSeedPlan\(out\.result\), waveInput\.tablePlans, waveInput\.moduleName\)/);
+});
+
 void test('mdmRequiredTags come from ALL_STATUSES, not the pending-work scan', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   assert.match(src, /seedScanStatuses\(context\)/);

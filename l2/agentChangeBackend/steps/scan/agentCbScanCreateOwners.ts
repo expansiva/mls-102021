@@ -4,7 +4,7 @@
 // No work -> finish (no file/status writes). Work -> continue to validate.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 
@@ -30,6 +30,8 @@ async function buildStampTrace(agent: IAgentMeta): Promise<string> {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const buildTrace = await buildStampTrace(agent);
+    const archived = readRebuildArchived(context);
+    const archiveTrace = archived ? ` rebuild-all archived ${archived} l1 files.` : '';
     // toCreate is the trigger; inProgress is treated as resumable (a previous run locked but did not
     // finish) so the reconciler is idempotent and never gets stuck after a partial run.
     // /rebuild seeds: the backend is already built — skip the whole generation chain (validate/lock/
@@ -39,7 +41,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       await clearRepairState();
       return [
         enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Regenerar seeds (rebuild-seeds)', {}),
-        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `rebuild seeds: regenerando somente seeds.ts (+ assets).${buildTrace}`),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `rebuild seeds: regenerando somente seeds.ts (+ assets).${archiveTrace}${buildTrace}`),
       ];
     }
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
@@ -62,7 +64,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             noWork: true,
             reason: 'nenhum módulo com owners pendentes (todoBackend toCreate|inProgress). Um módulo já construído fica com os owners `done`, então não aparece como pendente: para retomar/revalidar um módulo específico use `/run <módulo>` (ex: /run cafeFlow), ou `/rebuild all <módulo>` para regerar do zero.',
           }),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}${buildTrace}`),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}${archiveTrace}${buildTrace}`),
         ];
       }
       // Explicit module: don't stop: still MATERIALIZE any stale
@@ -72,12 +74,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // module is fully current. This is the cheap recovery path the `done` flip exists for.
       return [
         enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .ts desatualizados', {}),
-        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner in ${targetModule}; materializing stale .ts + seeds if missing.${warningTrace}${buildTrace}`),
+        createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner in ${targetModule}; materializing stale .ts + seeds if missing.${warningTrace}${archiveTrace}${buildTrace}`),
       ];
     }
     return [
       enqueueNext(context, parentStep, step, 'cb-validate-readiness', 'agentCbValidateL4Readiness', 'Preflight l4', {}),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}${buildTrace}`),
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Selected ${scan.owners.length} owner(s).${warningTrace}${archiveTrace}${buildTrace}`),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

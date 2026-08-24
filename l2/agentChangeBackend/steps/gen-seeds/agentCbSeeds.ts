@@ -20,7 +20,7 @@ import {
   buildPartialSeedSource, buildSeedSource, deriveSeedPlanningWaves, estimateSeedPlanningWaveTokens,
   extractSeedPlanProgressFromSource, mergeSeedPlans, normalizeSeedPlan, parseSeedPlan, seedPlanInputForWave,
   seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
-  collectRequiredMdmTags, repairSeedPlanDeterministically,
+  collectRequiredMdmTags, repairSeedPlanDeterministically, skippedMdmEntityIds,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
   type SeedRuleDefinition, type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
@@ -212,7 +212,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     const waveInput = seedPlanInputForWave(input, batch);
     const catalogRefs = seedReferenceCatalog(progress.plan).map(item => item.ref);
-    let plan = normalizeSeedPlan(parseSeedPlan(out.result), waveInput.tablePlans);
+    let plan = normalizeSeedPlan(parseSeedPlan(out.result), waveInput.tablePlans, waveInput.moduleName);
     let errors = validateSeedPlan({ ...waveInput, plan }, catalogRefs);
     if (errors.length) {
       // Operated-state coverage and MDM index rows for tags the generated usecases already call are
@@ -254,7 +254,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // (and propagated to l5 by cb-register) instead of living only in this trace string.
       const skipped = {
         tables: input.tablePlans.filter(t => !seededTableIds.has(t.tableId)).map(t => t.tableId).sort(),
-        mdmEntities: input.entities.filter(e => e.kind === 'mdm' && !seededMdmIds.has(e.entityId)).map(e => e.entityId).sort(),
+        mdmEntities: skippedMdmEntityIds(input, seededMdmIds),
         reason: `seed wave ${batch.index} did not converge after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS} attempts: ${errors.slice(0, 6).join('; ')}`,
       };
       const partialInput = {

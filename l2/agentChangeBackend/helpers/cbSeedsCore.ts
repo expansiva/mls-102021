@@ -550,11 +550,17 @@ function parsePlanRows(value: unknown): SeedLocalRow[] {
  * ScheduleBlock / InstitutionalPresentation generated, then discarded). Stripping those names is
  * the legitimate path; unknown *other* columns stay fatal.
  */
-export function normalizeSeedPlan(plan: SeedPlan, tablePlans: Iterable<SeedTableDefinition> = []): SeedPlan {
+/** `petShop.BusinessHours` (the ctx.mdm tag) → `BusinessHours` (the entity id). */
+export function stripModuleEntityPrefix(id: string, moduleName: string): string {
+  const prefix = moduleName ? `${moduleName}.` : '';
+  return prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
+export function normalizeSeedPlan(plan: SeedPlan, tablePlans: Iterable<SeedTableDefinition> = [], moduleName = ''): SeedPlan {
   const tableById = new Map([...tablePlans].map(table => [table.tableId, table]));
   return {
     summary: plan.summary,
-    mdmEntities: plan.mdmEntities,
+    mdmEntities: plan.mdmEntities.map(entity => ({ ...entity, entityId: stripModuleEntityPrefix(entity.entityId, moduleName) })),
     localTables: plan.localTables.map((table) => {
       const definition = tableById.get(table.tableId);
       const envelope = definition ? detailsColumnOf(definition) : 'details';
@@ -1211,6 +1217,15 @@ function entityIdFromMdmTag(tag: string, moduleName: string): string {
   return tag.startsWith(prefix) ? tag.slice(prefix.length) : '';
 }
 
+/** MDM ids that a give-up must publish: kind `mdm` OR a required ctx.mdm tag that has no plan row. */
+export function skippedMdmEntityIds(input: Pick<SeedBuildInput, 'entities' | 'mdmRequiredTags' | 'moduleName'>, seededMdmIds: Set<string>): string[] {
+  const fromKind = input.entities.filter(entity => entity.kind === 'mdm' && !seededMdmIds.has(entity.entityId)).map(entity => entity.entityId);
+  const fromTags = (input.mdmRequiredTags ?? [])
+    .map(tag => entityIdFromMdmTag(tag, input.moduleName))
+    .filter(id => !!id && !seededMdmIds.has(id));
+  return [...new Set([...fromKind, ...fromTags])].sort();
+}
+
 function isMdmSeedTarget(entity: SeedEntityDefinition, input: SeedBuildInput): boolean {
   if (entity.kind === 'mdm') return true;
   const tag = `${input.moduleName}.${entity.entityId}`;
@@ -1229,7 +1244,10 @@ function mdmTagSeededInPlan(input: SeedBuildInput, tag: string): boolean {
 /** Every tag a generated usecase reads through ctx.mdm needs at least one MDM plan row with that tag. */
 export function collectRequiredMdmTagCoverage(input: SeedBuildInput): string[] {
   const errors: string[] = [];
+  const skipped = new Set(input.skipped?.mdmEntities ?? []);
   for (const tag of input.mdmRequiredTags ?? []) {
+    const entityId = entityIdFromMdmTag(tag, input.moduleName);
+    if (entityId && skipped.has(entityId)) continue;
     if (mdmTagSeededInPlan(input, tag)) continue;
     errors.push(`mdmEntities: usecases call ctx.mdm listByType/lifecycle for '${tag}' but the plan has no MDM row with that tag`);
   }
@@ -1658,7 +1676,7 @@ export function seedPlanPromptContext(
     ...(catalog.length ? [`## Valid references from earlier waves\nUse these refs when needed; do not recreate their rows.\n${JSON.stringify(catalog, null, 2)}`] : []),
     `## Platform users (actor identities)\nThese identities already exist; reference them for any field that points to a platform user (an assignee, or a field resolved from the actor session such as a worker/owner id). Do NOT create a table or MDM entity for them.\n${JSON.stringify(actorIdentityRefs, null, 2)}`,
     ...(input.mdmRequiredTags?.length
-      ? [`## ctx.mdm tags this module already calls\nGenerated usecases read these canonical tags through ctx.mdm.collection.listByType / entity.inactivate/reactivate. Plan mdmEntities rows for each (status Active, same keys as the local rows of that entity). Keep the local table rows.\n${JSON.stringify(input.mdmRequiredTags)}`]
+      ? [`## ctx.mdm tags this module already calls\nGenerated usecases read these canonical tags through ctx.mdm.collection.listByType / entity.inactivate/reactivate. Plan mdmEntities rows for each. entityId is the BARE entity name (BusinessHours), never the tag (petShop.BusinessHours). Status Active, same keys as the local rows of that entity. Keep the local table rows.\n${JSON.stringify(input.mdmRequiredTags)}`]
       : []),
     `## L4 rules the scenario must satisfy (full text)\n${JSON.stringify(rules, null, 2)}`,
     '## Symbolic references\nUse only { "ref": "local:TableId.rowKey" }, { "ref": "mdm:EntityId.rowKey" } or { "ref": "actor:ActorId.key" } for foreign keys. Never emit UUIDs.',
@@ -1669,7 +1687,7 @@ export function seedPlanPromptContext(
       '- MDM/catalog entities: ~3-5 rows each.',
       '- Core/operational entities: ~2-4 rows each. When an entity lists `operatedStates`, seed ONE row per listed state of its status field (the validator rejects a wave that misses any). Also include at least one open/in-progress instance. You do NOT need every state × every filter combination — only the operated states.',
       ...(input.mdmRequiredTags?.length
-        ? [`- MDM index for ctx.mdm: generated usecases already call listByType/lifecycle for ${JSON.stringify(input.mdmRequiredTags)}. For each of those tags, emit mdmEntities rows (canonical tag '<module>.<Entity>', status Active) mirroring the local rows of that entity (same keys). Keep the local table rows too — both surfaces coexist.`]
+        ? [`- MDM index for ctx.mdm: generated usecases already call listByType/lifecycle for ${JSON.stringify(input.mdmRequiredTags)}. For each of those tags, emit mdmEntities rows with entityId = the BARE entity name (BusinessHours), NEVER the tag (petShop.BusinessHours). The tag is the ctx.mdm type string only. Status Active, same keys as the local rows of that entity. Keep the local table rows too — both surfaces coexist.`]
         : []),
       '- Supporting/child entities: 1-2 children per parent.',
       '- Event entities: one row per operational row that would have produced it.',

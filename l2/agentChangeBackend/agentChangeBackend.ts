@@ -39,6 +39,7 @@ export function createAgent(): IAgentAsync {
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const raw = userPrompt || context.message.content || '';
   const { kind: cmd, module: requestedModule, noAssets } = parseCli(raw);
+  let rebuildArchived = '';
 
   // Resolve the ONE module this run targets, and (for rebuild) reset only that module's owners so the
   // task stays small. No explicit module -> the first (sorted) module with owners; readBackendScan
@@ -52,6 +53,15 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       targetModule = scan.moduleNames[0] || requestedModule;
       for (const owner of scan.owners) {
         if (await setTodoBackendStatus(owner, 'toCreate')) reset++;
+      }
+      // `/rebuild all` must not inherit leftover l1 from a prior classification (run05: derived
+      // tables the new planner no longer emits still failed the policy gate). Soft-delete the
+      // module's l1, then gen-* recreates the current plan. `/rebuild defs` keeps defs in place
+      // and only strips derived .ts at the end (cb-rebuild-defs-cleanup).
+      if (cmd === 'rebuild-all' && targetModule) {
+        const { archiveGeneratedBackendModule } = await import('/_102021_/l2/agentChangeBackend/steps/rebuild-defs-cleanup/agentCbRebuildDefsCleanup.js');
+        const archived = await archiveGeneratedBackendModule(mls.actualProject || 0, targetModule);
+        rebuildArchived = String(archived.length);
       }
     } catch (e) {
       console.error(`${logPrefix(agent)} ${cmd} reset failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -89,7 +99,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}) },
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}) },
     },
   };
 
@@ -146,7 +156,7 @@ o primeiro módulo (ordem alfabética) com pendências; com [módulo], processa 
 palavra do comando, nunca nome de módulo.
 
 Comandos:
-- /rebuild all [módulo]  : reseta os owners do módulo-alvo para toCreate e regenera o backend — defs E materialização dos .ts (arquivos sobrescritos in place; sem deletar).
+- /rebuild all [módulo]  : reseta os owners do módulo-alvo para toCreate, arquiva o l1 do módulo (soft-delete da plataforma) e regenera defs E .ts.
 - /rebuild defs [módulo] : reseta os owners do módulo-alvo para toCreate e regenera SOMENTE os .defs.ts (NÃO materializa os .ts).
 - /rebuild seeds [módulo]: regenera SOMENTE o seeds.ts (+ assets) do módulo já construído e termina — não reseta owners, não toca domínio/ports/tabelas/usecases/controllers. Use após ajustar dados/regra de seed sem refazer todo o backend.
 - /run [módulo]          : gera os owners pendentes (todoBackend = toCreate | inProgress) sem resetar; materializa os .ts faltando/desatualizados.

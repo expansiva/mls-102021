@@ -1447,6 +1447,12 @@ export function readTargetModule(context: mls.msg.ExecutionContext): string {
   return typeof lm?.targetModule === 'string' ? lm.targetModule.trim() : '';
 }
 
+/** Count of l1 files `/rebuild all` archived at bootstrap — empty when this run did not archive. */
+export function readRebuildArchived(context: mls.msg.ExecutionContext): string {
+  const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
+  return typeof lm?.rebuildArchived === 'string' ? lm.rebuildArchived.trim() : '';
+}
+
 /** Enqueue the next sequential step under the same parent, depending on the current step. v1 uses a
  * simple linear chain (not the parallel_dynamic fan-out in flow.json) — easier to reason about and
  * compile; parallelization is a later optimization. */

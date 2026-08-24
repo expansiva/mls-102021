@@ -7,8 +7,9 @@ import {
   extractSeedPlanProgressFromSource, mergeSeedPlans, seedPlanInputForWave, seedPlanPromptContext,
   seedReferenceCatalog, splitSeedPlanningWave, updateSeedAssetUrlsInSource, validateSeedPlan,
   SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf,
-  isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan,
+  isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan, stripModuleEntityPrefix,
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
+  skippedMdmEntityIds,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { readFileSync } from 'node:fs';
@@ -602,6 +603,81 @@ test('be5: plan without MDM rows for a ctx.mdm tag is rejected; mirrored plan em
   const mdmId = (built.content ?? '').match(/mdmEntityIndexSeeds[\s\S]*?"mdmId": "([0-9a-f-]+)"/)?.[1];
   assert.ok(localId && mdmId && localId === mdmId, `local ${localId} vs mdm ${mdmId}`);
   assert.match(built.content ?? '', /export const serviceSeeds/);
+});
+
+test('R5-2: prefixed mdm entityId (trace 150) strips to the bare name and validates', () => {
+  const raw = {
+    summary: 'MDM hours',
+    localTables: [],
+    mdmEntities: [{
+      entityId: 'petShop.BusinessHours',
+      rows: [{
+        key: 'bh-mon',
+        fields: [
+          { name: 'dayOfWeek', value: 'monday' },
+          { name: 'startTime', value: '08:00' },
+          { name: 'name', value: 'Weekday morning' },
+          { name: 'createdAt', value: SEED_T0 },
+          { name: 'updatedAt', value: SEED_T0 },
+        ],
+        relationships: [],
+      }],
+    }],
+  };
+  assert.equal(stripModuleEntityPrefix('petShop.BusinessHours', 'petShop'), 'BusinessHours');
+  const rejected = validateSeedPlan({
+    project: 1, moduleName: 'petShop', language: 'en', ruleIds: [],
+    mdmRequiredTags: ['petShop.BusinessHours'],
+    entities: [{
+      entityId: 'BusinessHours', title: 'Business hours', kind: 'core',
+      fields: [field('businessHoursId'), field('dayOfWeek'), field('startTime'), field('name'), field('createdAt', false), field('updatedAt', false)],
+    }],
+    tablePlans: [],
+    plan: parseSeedPlan(raw),
+    timeWindow: { start: SEED_T0, end: SEED_T1 },
+  });
+  assert.ok(rejected.some(e => /unknown or non-MDM entity/.test(e)), rejected.join('\n'));
+
+  const plan = normalizeSeedPlan(parseSeedPlan(raw), [], 'petShop');
+  assert.equal(plan.mdmEntities[0].entityId, 'BusinessHours');
+  const accepted = validateSeedPlan({
+    project: 1, moduleName: 'petShop', language: 'en', ruleIds: [],
+    mdmRequiredTags: ['petShop.BusinessHours'],
+    entities: [{
+      entityId: 'BusinessHours', title: 'Business hours', kind: 'core',
+      fields: [field('businessHoursId'), field('dayOfWeek'), field('startTime'), field('name'), field('createdAt', false), field('updatedAt', false)],
+    }],
+    tablePlans: [],
+    plan,
+    timeWindow: { start: SEED_T0, end: SEED_T1 },
+  });
+  assert.deepEqual(accepted, [], accepted.join('\n'));
+});
+
+test('a published skipped MDM tag is coverage, not a missing-row finding', () => {
+  const errors = validateSeedPlan({
+    project: 1, moduleName: 'petShop', language: 'en', ruleIds: [],
+    mdmRequiredTags: ['petShop.BusinessHours'],
+    entities: [{ entityId: 'BusinessHours', title: 'h', kind: 'core', fields: [field('businessHoursId')] }],
+    tablePlans: [],
+    skipped: { tables: [], mdmEntities: ['BusinessHours'], reason: 'wave did not converge' },
+    plan: { summary: 'give-up', localTables: [], mdmEntities: [] },
+    timeWindow: { start: SEED_T0, end: SEED_T1 },
+  });
+  assert.equal(errors.filter(e => /no MDM row/.test(e)).length, 0, errors.join('\n'));
+});
+
+test('R5-2: unseeded ctx.mdm tags are published in skipped, not dropped in silence', () => {
+  assert.deepEqual(skippedMdmEntityIds({
+    moduleName: 'petShop',
+    entities: [{ entityId: 'BusinessHours', title: 'h', kind: 'core', fields: [] }],
+    mdmRequiredTags: ['petShop.BusinessHours', 'petShop.Customer'],
+  }, new Set()), ['BusinessHours', 'Customer']);
+  assert.deepEqual(skippedMdmEntityIds({
+    moduleName: 'petShop',
+    entities: [{ entityId: 'Catalog', title: 'c', kind: 'mdm', fields: [] }],
+    mdmRequiredTags: ['petShop.BusinessHours'],
+  }, new Set(['BusinessHours'])), ['Catalog']);
 });
 
 test('R3-2: owners already done still produce MDM tags — pending-only scan is the empty set', () => {

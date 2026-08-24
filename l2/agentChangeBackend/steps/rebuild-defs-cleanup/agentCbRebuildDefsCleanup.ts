@@ -15,6 +15,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { deleteFile } from '/_102027_/l2/libStor.js';
 import { enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { isGeneratedBackendFolder, listBackendL1ArchiveKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 
 const AGENT_NAME = 'agentCbRebuildDefsCleanup';
 const MAX_TRACE_PATHS = 60;
@@ -68,10 +69,19 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-// Backend generated l1 code lives under `<module>/layer_1_external|layer_2_application|layer_3_domain/…`.
-// Scope the sweep to the run's modules so a rebuild-defs of one module never touches another.
-export function isGeneratedBackendFolder(folder: string, modules: string[]): boolean {
-  return modules.some(module => !!module && (folder === module || folder.startsWith(`${module}/`)));
+export { isGeneratedBackendFolder, listBackendL1ArchiveKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
+
+/** Soft-delete every l1 artifact of the module (defs and derived .ts). Platform trash, never `rm`. */
+export async function archiveGeneratedBackendModule(project: number, moduleName: string): Promise<string[]> {
+  const keys = listBackendL1ArchiveKeys(mls.stor.files as Record<string, any>, project, moduleName);
+  const archived: string[] = [];
+  for (const key of keys) {
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) continue;
+    await deleteFile(file);
+    archived.push(key);
+  }
+  return archived;
 }
 
 function summarize(paths: string[]): string {
