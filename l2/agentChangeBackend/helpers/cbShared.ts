@@ -121,7 +121,7 @@ export interface CbAccessPattern {
 // l4 shape — neither master re-infers. Mirrors Ns3E5OutputShape/OutputField.
 export interface CbOutputField {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  type: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'json';
   required: boolean;
   fieldRef?: string;
   item?: { fields: CbOutputField[] };

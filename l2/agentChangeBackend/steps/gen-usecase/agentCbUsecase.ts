@@ -22,7 +22,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
-import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues, alignOutputShapeToOntology } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { mdmSubtypeFor } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbUsecase';
@@ -345,8 +345,23 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     // usecase output = DTO = l4 and never re-drifts. Multi-function/dispatcher owners keep the model
     // output (best-effort — no single l4 shape maps to several functions).
     if (owner?.outputShape && resultFns.length === 1) {
-      resultFns[0].outputShape = owner.outputShape;
-      resultFns[0].output = cbOutputShapeToDefsFields(owner.outputShape);
+      // l4 may have flattened json→string (ns classicType). Align to the ontology fieldRef type
+      // before W2: decide-register-continue, never drop the usecase for an inherited mismatch.
+      const { shape, aligned } = alignOutputShapeToOntology(owner.outputShape, scan.entities);
+      resultFns[0].outputShape = shape;
+      resultFns[0].output = cbOutputShapeToDefsFields(shape);
+      if (aligned.length) {
+        result.systemDecisions = aligned.map(item => ({
+          decisionId: `cbAlignOutput_${item.fieldRef.replace(/\./g, '_')}`,
+          stage: 'cb-usecase',
+          question: `l4 outputShape type '${item.from}' for ${item.fieldRef} differs from the ontology field type '${item.to}'`,
+          chosen: 'alignToOntology',
+          alternatives: ['keepL4DeclaredType'],
+          decidedBy: 'system',
+          findingRef: `CB_R6_OUTPUT_ALIGN:${item.fieldRef}`,
+          changeHint: `Set output ${item.fieldRef} type to ${item.to} (json stays json).`,
+        }));
+      }
     }
     // The l4 `mdm` block is data, not invention: pin it the same way as ports/mdmRefs/outputShape.
     pinUsecaseL4Mdm(result, owner?.mdm);

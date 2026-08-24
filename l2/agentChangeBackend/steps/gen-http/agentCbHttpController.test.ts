@@ -16,4 +16,6 @@ void test('agentCbHttpController declares the deterministic http controller step
   assert.match(src, /beforePromptStep/);
   assert.doesNotMatch(src, /createPromptReadyIntent/);
   assert.match(flow, /"agentName": "agentCbHttpController"/);
+  assert.match(src, /bffCallsWithMaterializedUsecase/);
+  assert.match(src, /if \(!fns\.length\) continue/);
 });

@@ -92,6 +92,60 @@ export function collectIoShapeSymmetryIssues(fn: {
   return issues;
 }
 
+/** Ontology type named by `Entity.field` (empty when the ref does not resolve). */
+export function ontologyTypeForFieldRef(
+  fieldRef: string,
+  entities: Array<{ entityId: string; fields?: unknown[] }>,
+): string {
+  const dot = fieldRef.indexOf('.');
+  if (dot <= 0) return '';
+  const entityId = fieldRef.slice(0, dot);
+  const fieldId = fieldRef.slice(dot + 1);
+  const fields = entities.find(entity => entity.entityId === entityId)?.fields ?? [];
+  for (const item of fields) {
+    if (!isRecord(item)) continue;
+    if (readString(item.fieldId) !== fieldId) continue;
+    return readString(item.type);
+  }
+  return '';
+}
+
+/**
+ * When l4 flattened a structured ontology field (json → string) onto outputShape, rewrite the
+ * output type to the ontology type so W2 can pass. Caller records a systemDecision per change.
+ */
+export function alignOutputShapeToOntology<S extends { kind: string; fields: Array<{ name: string; type: string; required: boolean; fieldRef?: string }> }>(
+  shape: S,
+  entities: Array<{ entityId: string; fields?: unknown[] }>,
+): { shape: S; aligned: Array<{ fieldRef: string; from: string; to: string }> } {
+  const aligned: Array<{ fieldRef: string; from: string; to: string }> = [];
+  const fields = shape.fields.map((field) => {
+    const ont = ontologyTypeForFieldRef(field.fieldRef ?? '', entities);
+    if (!ont) return field;
+    const fromFam = ioTypeFamily(field.type);
+    const toFam = ioTypeFamily(ont);
+    if (fromFam === 'other' || toFam === 'other' || fromFam === toFam) return field;
+    aligned.push({ fieldRef: field.fieldRef || field.name, from: field.type, to: ont });
+    return { ...field, type: ont };
+  });
+  return { shape: { ...shape, fields }, aligned };
+}
+
+/** Drop bffCalls whose required usecase was never materialized (abandoned owner — no controller pair). */
+export function bffCallsWithMaterializedUsecase<T extends { uses: Array<{ operationId: string; optional?: boolean }> }>(
+  calls: T[],
+  usecaseIds: ReadonlySet<string>,
+): { kept: T[]; skipped: string[] } {
+  const skipped: string[] = [];
+  const kept: T[] = [];
+  for (const call of calls) {
+    const missing = call.uses.filter(use => !use.optional && !usecaseIds.has(use.operationId)).map(use => use.operationId);
+    if (missing.length) skipped.push(...missing);
+    else kept.push(call);
+  }
+  return { kept, skipped: [...new Set(skipped)] };
+}
+
 /** l4 contract defs a generated controller lists in `dependsFiles`. Empty/unreadable content used to
  * be dropped from the materialize prompt with only a console.warn, so controllers shipped without
  * their wire contract (ctx422 / versionRef 0). */

@@ -9,7 +9,7 @@ import {
   SEED_T0, SEED_T1, extractSeedSkippedFromSource, detailsColumnOf,
   isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan, stripModuleEntityPrefix,
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
-  skippedMdmEntityIds,
+  skippedMdmEntityIds, mdmIndexName,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { readFileSync } from 'node:fs';
@@ -698,6 +698,97 @@ test('collectRequiredMdmTags does not invent a tag from an entity name without a
     moduleName: 'petShop',
     mdmOwners: [{ entity: 'Service' }, { entity: 'Customer', mdm: { lifecycle: 'inactivate' } }],
   }), ['petShop.Customer']);
+});
+
+function run06Wave2Input(plan: SeedBuildInput['plan']): SeedBuildInput {
+  const hoursFields = [field('businessHoursId'), field('dayOfWeek'), field('startTime'), field('name'), field('createdAt', false), field('updatedAt', false)];
+  const customerFields = [field('customerId'), field('authenticatedAccountId', false), field('fullName'), field('status'), field('createdAt', false), field('updatedAt', false)];
+  const offeringFields = [field('serviceOfferingId'), field('title'), field('name', false), field('createdAt', false), field('updatedAt', false)];
+  return {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'pt',
+    ruleIds: [],
+    mdmRequiredTags: ['petShop.BusinessHours', 'petShop.Customer', 'petShop.Pet', 'petShop.ServiceOffering'],
+    entities: [
+      { entityId: 'BusinessHours', title: 'Hours', kind: 'core', fields: hoursFields },
+      { entityId: 'Customer', title: 'Customer', kind: 'core', fields: customerFields },
+      { entityId: 'ServiceOffering', title: 'Offering', kind: 'core', fields: offeringFields },
+      { entityId: 'Pet', title: 'Pet', kind: 'core', fields: [field('petId'), field('name'), field('createdAt', false), field('updatedAt', false)] },
+    ],
+    tablePlans: [
+      { tableId: 'BusinessHours', tableName: 'business_hours', seedFor: 'petShopBusinessHours', primaryKey: ['business_hours_id'], detailsColumnName: 'details', columns: [{ name: 'business_hours_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+      { tableId: 'Customer', tableName: 'customer', seedFor: 'petShopCustomer', primaryKey: ['customer_id'], detailsColumnName: 'details', columns: [{ name: 'customer_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+      { tableId: 'ServiceOffering', tableName: 'service_offering', seedFor: 'petShopServiceOffering', primaryKey: ['service_offering_id'], detailsColumnName: 'details', columns: [{ name: 'service_offering_id', type: 'UUID', nullable: false }, { name: 'details', type: 'JSONB', nullable: true }] },
+    ],
+    plan,
+    timeWindow: { start: SEED_T0, end: SEED_T1 },
+  };
+}
+
+test('R6-1: wave 2 coverage asks only for tags in the wave; Pet is demanded on the merge, not the wave', () => {
+  const wave = { index: 2, tableIds: ['BusinessHours', 'Customer', 'ServiceOffering'], mdmEntityIds: ['BusinessHours', 'Customer', 'ServiceOffering'] };
+  const plan: SeedBuildInput['plan'] = {
+    summary: 'Hours, customers and offerings (run06 wave 2).',
+    localTables: [
+      { tableId: 'BusinessHours', rows: [{ key: 'bh-mon', columns: [], details: [{ name: 'dayOfWeek', value: 'monday' }, { name: 'startTime', value: '08:00' }, { name: 'name', value: 'Manhã' }], children: [] }] },
+      { tableId: 'Customer', rows: [{ key: 'customer-bruno', columns: [], details: [{ name: 'fullName', value: 'Bruno' }, { name: 'status', value: 'Active' }], children: [] }] },
+      { tableId: 'ServiceOffering', rows: [{ key: 'offering-bath', columns: [], details: [{ name: 'title', value: 'Banho' }, { name: 'name', value: 'Banho' }], children: [] }] },
+    ],
+    mdmEntities: [
+      { entityId: 'BusinessHours', rows: [{ key: 'bh-mon', fields: [{ name: 'dayOfWeek', value: 'monday' }, { name: 'startTime', value: '08:00' }, { name: 'name', value: 'Manhã' }, { name: 'createdAt', value: SEED_T0 }, { name: 'updatedAt', value: SEED_T0 }], relationships: [] }] },
+      { entityId: 'Customer', rows: [{ key: 'customer-bruno', fields: [{ name: 'fullName', value: 'Bruno' }, { name: 'status', value: 'Active' }, { name: 'createdAt', value: SEED_T0 }, { name: 'updatedAt', value: SEED_T0 }], relationships: [] }] },
+      { entityId: 'ServiceOffering', rows: [{ key: 'offering-bath', fields: [{ name: 'title', value: 'Banho' }, { name: 'name', value: 'Banho' }, { name: 'createdAt', value: SEED_T0 }, { name: 'updatedAt', value: SEED_T0 }], relationships: [] }] },
+    ],
+  };
+  const full = run06Wave2Input(plan);
+  const scoped = seedPlanInputForWave(full, wave);
+  assert.deepEqual(scoped.mdmRequiredTags, ['petShop.BusinessHours', 'petShop.Customer', 'petShop.ServiceOffering']);
+  assert.equal(scoped.entities.some(entity => entity.entityId === 'Pet'), false);
+  const waveErrors = validateSeedPlan({ ...scoped, plan });
+  assert.equal(waveErrors.filter(e => /petShop\.Pet/.test(e)).length, 0, waveErrors.join('\n'));
+  assert.deepEqual(waveErrors, [], waveErrors.join('\n'));
+
+  const mergedErrors = validateSeedPlan(full);
+  assert.ok(mergedErrors.some(e => /petShop\.Pet/.test(e) && /no MDM row/.test(e)), mergedErrors.join('\n'));
+
+  const withPet = { ...plan, mdmEntities: [...plan.mdmEntities, { entityId: 'Pet', rows: [{ key: 'pet-rex', fields: [{ name: 'name', value: 'Rex' }, { name: 'createdAt', value: SEED_T0 }, { name: 'updatedAt', value: SEED_T0 }], relationships: [] }] }] };
+  const waveWithPet = validateSeedPlan({ ...scoped, plan: withPet });
+  assert.ok(waveWithPet.some(e => /mdmEntities\.Pet/.test(e) && /unknown or non-MDM entity/.test(e)), waveWithPet.join('\n'));
+});
+
+test('R6-2: synthetic MDM index name is allowed; customer-bruno derives from fullName', () => {
+  assert.equal(mdmIndexName([{ name: 'fullName', value: 'Bruno' }], 'customer-bruno'), 'Bruno');
+  assert.equal(mdmIndexName([{ name: 'name', value: 'Bruno Costa' }, { name: 'fullName', value: 'Bruno' }], 'customer-bruno'), 'Bruno Costa');
+  assert.equal(mdmIndexName([], 'customer-bruno'), 'customer-bruno');
+
+  const plan: SeedBuildInput['plan'] = {
+    summary: 'Bruno as MDM Customer.',
+    localTables: [],
+    mdmEntities: [{
+      entityId: 'Customer',
+      rows: [{
+        key: 'customer-bruno',
+        fields: [
+          { name: 'name', value: 'Bruno' },
+          { name: 'fullName', value: 'Bruno' },
+          { name: 'status', value: 'Active' },
+          { name: 'createdAt', value: SEED_T0 },
+          { name: 'updatedAt', value: SEED_T0 },
+        ],
+        relationships: [],
+      }],
+    }],
+  };
+  const input = run06Wave2Input(plan);
+  input.entities = input.entities.filter(entity => entity.entityId === 'Customer');
+  input.tablePlans = [];
+  input.mdmRequiredTags = ['petShop.Customer'];
+  const errors = validateSeedPlan(input);
+  assert.deepEqual(errors, [], errors.join('\n'));
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /"name": "Bruno"/);
 });
 
 // BE5-3: real wave 6 attempt 2 (216-agent-cb-seeds.json). Validator already demanded `arrived`;

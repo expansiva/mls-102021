@@ -16,6 +16,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
+import { bffCallsWithMaterializedUsecase } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 // Item 5 — boundary DTO (adapter HTTP owns the wire shape). The DTO .ts is a thin alias of the
 // usecase output type + identity toDto: it is the projection SEAM (the ownership boundary), so the day
@@ -158,6 +159,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // the usecase never produced (the orderFlow-class break). Fallback to the ownerId only if the defs
       // are missing/unparsed.
       const fns = usecaseFns.get(ownerId) || [];
+      // Abandoned usecase (repair budget spent, defs never written): do not emit a controller/route
+      // that would import an export that does not exist. The give-up is the repair finding on the owner.
+      if (!fns.length) continue;
       const handlers: {
         handlerName: string;
         command: string;
@@ -304,7 +308,10 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
     const handlers: Record<string, unknown>[] = [];
     const routes: { key: string; handlerName: string }[] = [];
     const dependsFiles = new Set<string>();
-    for (const bff of ws.bffCalls) {
+    const usecaseIds = new Set(usecaseFns.keys());
+    const { kept: bffCalls } = bffCallsWithMaterializedUsecase(ws.bffCalls, usecaseIds);
+    if (!bffCalls.length) continue;
+    for (const bff of bffCalls) {
       const handlerName = `${ws.workspaceId}${capitalize(bff.bffId)}Handler`;
       const proj = resolveBffProjection(bff);
       const usecaseRefs = bff.uses.map(u => opFn.get(u.operationId)?.functionName || u.operationId);

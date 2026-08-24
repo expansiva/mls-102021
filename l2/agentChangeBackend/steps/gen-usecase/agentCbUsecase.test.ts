@@ -28,6 +28,8 @@ void test('usecase defs pin and validate io shape symmetry after outputShape is 
   const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
   assert.match(src, /collectIoShapeSymmetryIssues/);
   assert.match(src, /pinUsecaseL4Mdm\(result, owner\?\.mdm\)/);
+  assert.match(src, /alignOutputShapeToOntology/);
+  assert.match(src, /systemDecisions/);
 });
 
 void test('agentCbUsecase tool schema is provider-clean', () => {

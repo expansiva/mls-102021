@@ -19,7 +19,11 @@ least one row; never create rows outside that wave.
 When the prompt lists "ctx.mdm tags this module already calls", those entities are read through
 ctx.mdm (listByType / inactivate / reactivate) even if they also have a local table. Emit
 mdmEntities rows for each tag (canonical tag `<module>.<Entity>`, status Active) mirroring the
-local rows of that entity (same keys). Keep the local table rows — both surfaces coexist. Use exact persistence column names in local columns; put non-indexed entity fields in
+local rows of that entity (same keys). Keep the local table rows — both surfaces coexist.
+Only tags whose entities are in THIS wave appear in that list; later-wave tags are not this wave's
+job. On each MDM row, `name` is the index label (not necessarily an entity field — Customer has
+`fullName`); the other fields are the entity's. If `name` is absent it is derived from `fullName`,
+`title`, or the row key. Use exact persistence column names in local columns; put non-indexed entity fields in
 details. References to prior waves must use the supplied catalog. Respect every supplied rule per its description. On repair, fix every listed finding.
 
 FOREIGN KEYS (both the persistence column, e.g. `payment_id`, and the entity-reference detail field,

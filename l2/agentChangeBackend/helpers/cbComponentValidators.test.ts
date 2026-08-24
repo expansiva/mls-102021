@@ -18,6 +18,7 @@ import {
   collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectDottedShortNameFindings, collectIoShapeSymmetryIssues,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
+  alignOutputShapeToOntology, bffCallsWithMaterializedUsecase,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 test('W2: weeklySchedule json input vs string output is a defs-level finding; empty item.fields too', () => {
@@ -37,6 +38,47 @@ test('W2: weeklySchedule json input vs string output is a defs-level finding; em
     input: [{ name: 'name', type: 'string', ofEntity: 'Customer' }],
     output: [{ name: 'name', type: 'string', ofEntity: 'Customer' }],
   }), []);
+});
+
+test('R6-3: inherited l4 string output for ontology json aligns; W2 then passes', () => {
+  const l4Shape = {
+    kind: 'object',
+    fields: [
+      { name: 'beforeImages', type: 'string', required: false, fieldRef: 'ServiceExecution.beforeImages' },
+      { name: 'afterImages', type: 'string', required: false, fieldRef: 'ServiceExecution.afterImages' },
+    ],
+  };
+  const entities = [{
+    entityId: 'ServiceExecution',
+    fields: [
+      { fieldId: 'beforeImages', type: 'json' },
+      { fieldId: 'afterImages', type: 'json' },
+    ],
+  }];
+  const { shape, aligned } = alignOutputShapeToOntology(l4Shape, entities);
+  assert.equal(shape.fields.find(f => f.name === 'beforeImages')?.type, 'json');
+  assert.equal(shape.fields.find(f => f.name === 'afterImages')?.type, 'json');
+  assert.equal(aligned.length, 2);
+  const issues = collectIoShapeSymmetryIssues({
+    functionName: 'updateServiceExecution',
+    input: [
+      { name: 'beforeImages', type: 'json', ofEntity: 'ServiceExecution', fieldRef: 'ServiceExecution.beforeImages', item: { fields: [{ name: 'url', type: 'string' }] } },
+      { name: 'afterImages', type: 'json', ofEntity: 'ServiceExecution', fieldRef: 'ServiceExecution.afterImages', item: { fields: [{ name: 'url', type: 'string' }] } },
+    ],
+    output: shape.fields.map(field => ({ name: field.name, type: field.type, ofEntity: 'ServiceExecution' })),
+  });
+  assert.deepEqual(issues, [], issues.join('\n'));
+});
+
+test('R6-3: gen-http skips a bffCall whose usecase was never written', () => {
+  const { kept, skipped } = bffCallsWithMaterializedUsecase([
+    { uses: [{ operationId: 'listService' }] },
+    { uses: [{ operationId: 'updateServiceExecution' }] },
+    { uses: [{ operationId: 'listService' }, { operationId: 'updateServiceExecution', optional: true }] },
+  ], new Set(['listService']));
+  assert.deepEqual(skipped, ['updateServiceExecution']);
+  assert.equal(kept.length, 2);
+  assert.equal(kept[0].uses[0].operationId, 'listService');
 });
 
 test('dotted shortName on l1/l4 defs is a filename-out-of-standard finding', () => {

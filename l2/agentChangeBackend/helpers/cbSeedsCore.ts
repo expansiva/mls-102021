@@ -462,12 +462,18 @@ export function estimateSeedPlanningWaveTokens(
 }
 
 /** Selects exactly the L4/table definitions that a wave may create. Rules and relationships are
- * filtered too, so unrelated definitions never inflate the planner context. */
+ * filtered too, so unrelated definitions never inflate the planner context. Coverage of ctx.mdm
+ * tags is scoped the same way: a wave cannot seed (or be failed for) a tag whose entity is not
+ * in the wave. Full-tag coverage is the merge-final validator's job. */
 export function seedPlanInputForWave(input: Omit<SeedBuildInput, 'plan'>, wave: SeedPlanningWave): Omit<SeedBuildInput, 'plan'> {
   const targetIds = new Set([...wave.tableIds, ...wave.mdmEntityIds]);
   const tableIds = new Set(wave.tableIds);
   const entities = input.entities.filter(entity => targetIds.has(entity.entityId));
   const rules = input.rules?.filter(rule => !rule.appliesTo.length || rule.appliesTo.some(id => targetIds.has(id)));
+  const mdmRequiredTags = (input.mdmRequiredTags ?? []).filter(tag => {
+    const entityId = entityIdFromMdmTag(tag, input.moduleName);
+    return !!entityId && targetIds.has(entityId);
+  });
   return {
     ...input,
     entities,
@@ -475,6 +481,7 @@ export function seedPlanInputForWave(input: Omit<SeedBuildInput, 'plan'>, wave: 
     relationships: (input.relationships ?? []).filter(rel => targetIds.has(rel.fromEntity) || targetIds.has(rel.toEntity)),
     rules,
     ruleIds: (rules ?? []).map(rule => rule.ruleId),
+    mdmRequiredTags,
   };
 }
 
@@ -996,6 +1003,27 @@ export function idFieldHasResolvableTarget(fieldId: string, knownEntityIds: Iter
 // still lacks a single source of truth — the MDM relationship TYPE the runtime usecases read — should
 // be declared in L4 and shared with the usecase generator, not reintroduced here.
 
+const MDM_INDEX_NAME_SOURCES = ['name', 'fullName', 'title'] as const;
+
+function lookupSeedField(fields: Map<string, unknown> | Record<string, unknown> | SeedFieldValue[], key: string): unknown {
+  if (fields instanceof Map) return fields.get(key);
+  if (Array.isArray(fields)) return fields.find(field => field.name === key)?.value;
+  return fields[key];
+}
+
+/** MDM index label: `name` on the envelope, else `fullName`/`title`, else the row key. Shared by
+ * the validator (allows synthetic `name`), the local→MDM mirror, and the index emitter. */
+export function mdmIndexName(
+  fields: Map<string, unknown> | Record<string, unknown> | SeedFieldValue[],
+  fallbackKey: string,
+): string {
+  for (const source of MDM_INDEX_NAME_SOURCES) {
+    const value = lookupSeedField(fields, source);
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return fallbackKey.trim();
+}
+
 /** Deterministic validation of the plan before any seed source is saved. */
 export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterable<string> = []): string[] {
   const errors: string[] = [];
@@ -1145,12 +1173,15 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
       const fields = mapFields(row.fields, `${rowPath}.fields`, errors);
       for (const [name, value] of fields) {
         const field = fieldsById.get(name);
-        if (!field) errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
+        // `name` is the MDM index label, not necessarily an entity field (Customer has fullName).
+        if (!field && name !== 'name') errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
         validateSeedRefPlacement(value, `${rowPath}.fields.${name}`, name, `mdm:${mdmEntity.entityId}.${row.key}`, knownEntityIds, errors);
         validateTimestamp(window, name, value, `${rowPath}.fields.${name}`, errors);
-        validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
-        validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
+        if (field) {
+          validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
+          validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
+        }
       }
       for (const field of definition.fields) {
         const automaticId = field.fieldId === entityIdField(definition);
@@ -1162,8 +1193,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
           errors.push(`${rowPath}.${field.fieldId}: MDM references must use a symbolic { ref }`);
         }
       }
-      const name = fields.get('name');
-      if (typeof name !== 'string' || !name.trim()) errors.push(`${rowPath}: MDM rows require a readable name`);
+      if (!mdmIndexName(fields, row.key)) errors.push(`${rowPath}: MDM rows require a readable name (name, fullName, title, or the row key)`);
       for (const relationship of row.relationships) {
         const relationshipPath = `${rowPath}.relationships.${relationship.type || '<missing>'}`;
         if (!relationship.type.trim()) errors.push(`${relationshipPath}: type is required`);
@@ -1281,8 +1311,7 @@ export function mirrorLocalRowsAsMdmPlan(
           ...row.columns.map(column => ({ name: toCamel(column.name), value: column.value })),
         ];
         if (!fields.some(field => field.name === 'name')) {
-          const named = fields.find(field => field.name === 'title' && typeof field.value === 'string' && field.value.trim());
-          fields.push({ name: 'name', value: typeof named?.value === 'string' ? named.value : row.key });
+          fields.push({ name: 'name', value: mdmIndexName(fields, row.key) });
         }
         if (!fields.some(field => field.name === 'createdAt')) fields.push({ name: 'createdAt', value: timeWindow.start });
         if (!fields.some(field => field.name === 'updatedAt')) fields.push({ name: 'updatedAt', value: timeWindow.start });
@@ -1508,7 +1537,8 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       const mdmId = ids.get(`mdm:${entity.entityId}.${row.key}`)!;
       const fields = resolveFields(row.fields, ids);
       fields[idField] = mdmId;
-      const name = String(fields.name);
+      const name = mdmIndexName(fields, row.key);
+      fields.name = name;
       const subtype = mdmSubtypeFor(entity.entityId);
       // mdmFacade.listByType matches record.tags.includes('<moduleId>.<Type>') — the canonical tag
       // MUST be present as a single string or every seeded entity is invisible to the module reads.
@@ -1687,7 +1717,7 @@ export function seedPlanPromptContext(
       '- MDM/catalog entities: ~3-5 rows each.',
       '- Core/operational entities: ~2-4 rows each. When an entity lists `operatedStates`, seed ONE row per listed state of its status field (the validator rejects a wave that misses any). Also include at least one open/in-progress instance. You do NOT need every state × every filter combination — only the operated states.',
       ...(input.mdmRequiredTags?.length
-        ? [`- MDM index for ctx.mdm: generated usecases already call listByType/lifecycle for ${JSON.stringify(input.mdmRequiredTags)}. For each of those tags, emit mdmEntities rows with entityId = the BARE entity name (BusinessHours), NEVER the tag (petShop.BusinessHours). The tag is the ctx.mdm type string only. Status Active, same keys as the local rows of that entity. Keep the local table rows too — both surfaces coexist.`]
+        ? [`- MDM index for ctx.mdm: generated usecases already call listByType/lifecycle for ${JSON.stringify(input.mdmRequiredTags)}. For each of those tags, emit mdmEntities rows with entityId = the BARE entity name (BusinessHours), NEVER the tag (petShop.BusinessHours). The tag is the ctx.mdm type string only. Status Active, same keys as the local rows of that entity. Keep the local table rows too — both surfaces coexist. On each MDM row, \`name\` is the INDEX LABEL (not necessarily an entity field — Customer has fullName, not name). Other fields are the entity's. If name is absent, it is derived from fullName, title, or the row key.`]
         : []),
       '- Supporting/child entities: 1-2 children per parent.',
       '- Event entities: one row per operational row that would have produced it.',
