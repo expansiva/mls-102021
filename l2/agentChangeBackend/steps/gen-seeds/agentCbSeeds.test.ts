@@ -119,6 +119,15 @@ void test('a seeds-phase failure degrades and continues the run (never fails the
   assert.doesNotMatch(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'failed'/);
 });
 
+void test('wave give-up degrades health and keeps every attempt\'s violations', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /recoverSeedPlanFromPrior/);
+  assert.match(src, /selectSeedPlanAfterAttempts/);
+  assert.match(src, /formatSeedGiveUpReason/);
+  assert.match(src, /saveHealthReport\(\{ seeds: 'degraded', seedError: reason, seedSkipped: skipped \}\)/);
+  assert.match(src, /priorAttempts: recordedAttempts/);
+});
+
 void test('an environment failure retries the compile once, without spending the replan budget', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   // First occurrence: the SAME step is rescheduled with the flag; seedAttempt is carried over, never

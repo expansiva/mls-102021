@@ -107,10 +107,11 @@ test('foldModelsPeak keeps the highest peak across rounds (be5 closed at 104, le
 });
 
 test('foldSeedsDegraded keeps seeds: degraded when a later snapshot omits it', () => {
-  const first = JSON.stringify({ seeds: 'degraded', seedError: 'SEED WAVE 6 SKIPPED', outcome: 'pre-seeds-warning' });
+  const first = JSON.stringify({ seeds: 'degraded', seedError: 'SEED WAVE 6 SKIPPED', seedSkipped: { tables: ['Pet'], mdmEntities: [], reason: 'wave 3' }, outcome: 'pre-seeds-warning' });
   const folded = foldSeedsDegraded(first, { outcome: 'passed-degraded' } as { seeds?: unknown; seedError?: unknown });
   assert.equal(folded.seeds, 'degraded');
   assert.equal(folded.seedError, 'SEED WAVE 6 SKIPPED');
+  assert.deepEqual(folded.seedSkipped, { tables: ['Pet'], mdmEntities: [], reason: 'wave 3' });
   const currentWins = foldSeedsDegraded(first, { seeds: 'degraded', seedError: 'new reason' });
   assert.equal(currentWins.seedError, 'new reason');
 });

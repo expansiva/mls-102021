@@ -339,6 +339,7 @@ export function collectRepositoryMethodMisuse(code: string, methodsByInterface: 
  * Either the port declares `delete`, or the operation should not exist. Ports that could not be
  * loaded are skipped (empty map) so this never false-positives. Called from validate-all against
  * the PORT source (finding routed to the port defRef); not from the usecase materialize worker.
+ * `inactivate*` is a status update (`getById` → `save`), not a port method — do not match it here.
  */
 export function collectDeleteOperationPortGaps(
   usecaseId: string,

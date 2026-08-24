@@ -79,27 +79,34 @@ export function foldRepairAudit(
  */
 export function foldSeedsDegraded(
   existingRaw: string | null,
-  current: { seeds?: unknown; seedError?: unknown },
-): { seeds?: 'degraded'; seedError?: string } {
-  const from = (seeds: unknown, seedError: unknown): { seeds?: 'degraded'; seedError?: string } => {
-    const out: { seeds?: 'degraded'; seedError?: string } = {};
+  current: { seeds?: unknown; seedError?: unknown; seedSkipped?: unknown },
+): { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown } {
+  const asSkipped = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const rec = value as Record<string, unknown>;
+    return Array.isArray(rec.tables) || Array.isArray(rec.mdmEntities) ? value : undefined;
+  };
+  const from = (seeds: unknown, seedError: unknown, seedSkipped: unknown): { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown } => {
+    const out: { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown } = {};
     if (seeds === 'degraded') out.seeds = 'degraded';
     if (typeof seedError === 'string' && seedError) out.seedError = seedError;
+    const skipped = asSkipped(seedSkipped);
+    if (skipped) out.seedSkipped = skipped;
     return out;
   };
-  const currentFold = from(current.seeds, current.seedError);
+  const currentFold = from(current.seeds, current.seedError, current.seedSkipped);
   if (currentFold.seeds) return currentFold;
   if (!existingRaw) return currentFold;
   try {
     const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
-    const prior = from(parsed.seeds, parsed.seedError);
+    const prior = from(parsed.seeds, parsed.seedError, parsed.seedSkipped);
     if (prior.seeds) return prior;
     if (Array.isArray(parsed.rounds)) {
       for (let i = parsed.rounds.length - 1; i >= 0; i--) {
         const round = parsed.rounds[i];
         if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
         const rec = round as Record<string, unknown>;
-        const folded = from(rec.seeds, rec.seedError);
+        const folded = from(rec.seeds, rec.seedError, rec.seedSkipped);
         if (folded.seeds) return folded;
       }
     }

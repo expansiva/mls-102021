@@ -227,6 +227,8 @@ export interface IScheduleBlockRepository {
   assert.deepEqual(collectDeleteOperationPortGaps('deleteScheduleBlock', withDelete), []);
   assert.deepEqual(collectDeleteOperationPortGaps('updateScheduleBlock', methods), []);
   assert.deepEqual(collectDeleteOperationPortGaps('deleteScheduleBlock', new Map()), []);
+  // inactivate* is getById→save (status update), not a port method — matching it is a false positive.
+  assert.deepEqual(collectDeleteOperationPortGaps('inactivatePet', methods), []);
 });
 
 test('collectRepositoryMethodMisuse accepts only-declared calls and skips unresolved interfaces', () => {

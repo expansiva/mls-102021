@@ -1,0 +1,192 @@
+{
+  "summary": "Wave 3: AvailabilityBlock vigente/cancelado; Pet ativo/inativo; Pet local+MDM index",
+  "localTables": [
+    {
+      "tableId": "AvailabilityBlock",
+      "rows": [
+        {
+          "key": "block_monday_morning",
+          "columns": [
+            {
+              "name": "availability_block_id",
+              "value": "block_monday_morning"
+            },
+            {
+              "name": "status",
+              "value": "vigente"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.monday"
+              }
+            },
+            {
+              "name": "block_granularity",
+              "value": "hora"
+            }
+          ],
+          "details": [
+            {
+              "name": "blockDate",
+              "value": "2026-07-06T09:00:00.000Z"
+            },
+            {
+              "name": "blockedHour",
+              "value": "09:00"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "block_saturday_full",
+          "columns": [
+            {
+              "name": "availability_block_id",
+              "value": "block_saturday_full"
+            },
+            {
+              "name": "status",
+              "value": "cancelado"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.saturday"
+              }
+            },
+            {
+              "name": "block_granularity",
+              "value": "diaInteiro"
+            }
+          ],
+          "details": [
+            {
+              "name": "blockDate",
+              "value": "2026-07-04T00:00:00.000Z"
+            },
+            {
+              "name": "blockedHour",
+              "value": null
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "Pet",
+      "rows": [
+        {
+          "key": "pet_luna",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_luna"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Luna"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "pet_thor",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_thor"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Thor"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "pet_nina",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_nina"
+            },
+            {
+              "name": "status",
+              "value": "inativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Nina"
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "mdmEntities": [
+    {
+      "entityId": "Pet",
+      "rows": [
+        {
+          "key": "pet_luna",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Luna"
+            },
+            {
+              "name": "status",
+              "value": "Active"
+            }
+          ],
+          "relationships": []
+        },
+        {
+          "key": "pet_thor",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Thor"
+            },
+            {
+              "name": "status",
+              "value": "Active"
+            }
+          ],
+          "relationships": []
+        },
+        {
+          "key": "pet_nina",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Nina"
+            },
+            {
+              "name": "status",
+              "value": "Active"
+            }
+          ],
+          "relationships": []
+        }
+      ]
+    }
+  ]
+}

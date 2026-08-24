@@ -225,6 +225,16 @@ export interface SeedSkippedTargets {
   tables: string[];
   mdmEntities: string[];
   reason: string;
+  /** Violations of EACH planner attempt, in order. The give-up reason used to keep only the last. */
+  attempts?: { attempt: number; errors: string[] }[];
+}
+
+/** One planner try for a seed wave. Kept across repair steps so a later try cannot silently regress
+ * a field that already validated, and so give-up can name every attempt's violations. */
+export interface SeedAttemptRecord {
+  attempt: number;
+  plan: SeedPlan;
+  errors: string[];
 }
 
 export interface SeedBuildResult {
@@ -661,10 +671,223 @@ export function extractSeedSkippedFromSource(source: string): SeedSkippedTargets
     const tables = ids(skipped.tables);
     const mdmEntities = ids(skipped.mdmEntities);
     if (!tables.length && !mdmEntities.length) return null;
-    return { tables, mdmEntities, reason: stringValue(skipped.reason) };
+    const attempts = parseSeedAttemptRecords(skipped.attempts).map(({ attempt, errors }) => ({ attempt, errors }));
+    return { tables, mdmEntities, reason: stringValue(skipped.reason), ...(attempts.length ? { attempts } : {}) };
   } catch {
     return null;
   }
+}
+
+export function parseSeedAttemptRecords(value: unknown): SeedAttemptRecord[] {
+  if (!Array.isArray(value)) return [];
+  const out: SeedAttemptRecord[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const attempt = typeof item.attempt === 'number' && Number.isInteger(item.attempt) && item.attempt > 0 ? item.attempt : 0;
+    if (!attempt) continue;
+    const errors = Array.isArray(item.errors) ? item.errors.filter((entry): entry is string => typeof entry === 'string') : [];
+    out.push({ attempt, plan: parseSeedPlan(item.plan), errors });
+  }
+  return out;
+}
+
+function seedErrorPath(error: string): string {
+  const cut = error.indexOf(': ');
+  return cut === -1 ? error : error.slice(0, cut);
+}
+
+function seedErrorMissingField(error: string): { rowPath: string; field: string } | null {
+  const field = /required field '([^']+)' missing/u.exec(error)?.[1];
+  return field ? { rowPath: seedErrorPath(error), field } : null;
+}
+
+function seedRowIsFatal(errors: string[], rowPath: string): boolean {
+  return errors.some(error => seedErrorPath(error) === rowPath
+    && /key must be a stable identifier|duplicate key|unknown tableId|unknown or non-MDM entity/u.test(error));
+}
+
+function seedErrorsTouchField(errors: string[], rowPath: string, fieldName: string): boolean {
+  const snake = toSnake(fieldName);
+  const paths = new Set([
+    `${rowPath}.${fieldName}`,
+    `${rowPath}.columns.${fieldName}`,
+    `${rowPath}.columns.${snake}`,
+    `${rowPath}.details.${fieldName}`,
+    `${rowPath}.fields.${fieldName}`,
+  ]);
+  return errors.some((error) => {
+    if (paths.has(seedErrorPath(error))) return true;
+    const missing = seedErrorMissingField(error);
+    return !!missing && missing.rowPath === rowPath && missing.field === fieldName;
+  });
+}
+
+function normalizeSeedRowKey(key: string): string {
+  return key.replace(/[^A-Za-z0-9_-]+/gu, '_').replace(/^_+|_+$/gu, '');
+}
+
+function indexSeedRows<T extends { key: string }>(rows: T[]): Map<string, T> {
+  const map = new Map<string, T>();
+  for (const row of rows) {
+    map.set(row.key, row);
+    const normalized = normalizeSeedRowKey(row.key);
+    if (normalized && !map.has(normalized)) map.set(normalized, row);
+  }
+  return map;
+}
+
+function recoverSeedFields(
+  prior: SeedFieldValue[],
+  next: SeedFieldValue[],
+  priorRowPath: string,
+  nextRowPath: string,
+  priorErrors: string[],
+  nextErrors: string[],
+): SeedFieldValue[] {
+  const priorBy = new Map(prior.map(field => [field.name, field]));
+  const nextBy = new Map(next.map(field => [field.name, field]));
+  const names = [...new Set([...priorBy.keys(), ...nextBy.keys()])];
+  const out: SeedFieldValue[] = [];
+  for (const name of names) {
+    const fromPrior = priorBy.get(name);
+    const fromNext = nextBy.get(name);
+    const priorOk = !!fromPrior && !seedErrorsTouchField(priorErrors, priorRowPath, name);
+    const nextBad = !fromNext || seedErrorsTouchField(nextErrors, nextRowPath, name);
+    if (priorOk && nextBad) out.push(fromPrior!);
+    else if (fromNext) out.push(fromNext);
+    else if (priorOk) out.push(fromPrior!);
+  }
+  return out;
+}
+
+function recoverLocalRows(
+  priorRows: SeedLocalRow[],
+  nextRows: SeedLocalRow[],
+  tablePath: string,
+  priorErrors: string[],
+  nextErrors: string[],
+): SeedLocalRow[] {
+  const priorBy = indexSeedRows(priorRows);
+  const seen = new Set<string>();
+  const out: SeedLocalRow[] = [];
+  for (const next of nextRows) {
+    const prior = priorBy.get(next.key) ?? priorBy.get(normalizeSeedRowKey(next.key));
+    seen.add(next.key);
+    if (prior) seen.add(prior.key);
+    if (!prior) { out.push(next); continue; }
+    const priorPath = `${tablePath}.${prior.key}`;
+    const nextPath = `${tablePath}.${next.key}`;
+    out.push({
+      key: seedRowIsFatal(nextErrors, nextPath) && !seedRowIsFatal(priorErrors, priorPath) ? prior.key : next.key,
+      columns: recoverSeedFields(prior.columns, next.columns, priorPath, nextPath, priorErrors, nextErrors),
+      details: recoverSeedFields(prior.details, next.details, priorPath, nextPath, priorErrors, nextErrors),
+      children: next.children.length || seedRowIsFatal(priorErrors, priorPath) ? next.children : prior.children,
+    });
+  }
+  for (const prior of priorRows) {
+    if (seen.has(prior.key) || seen.has(normalizeSeedRowKey(prior.key))) continue;
+    if (seedRowIsFatal(priorErrors, `${tablePath}.${prior.key}`)) continue;
+    out.push(prior);
+  }
+  return out;
+}
+
+function recoverMdmRows(
+  priorRows: SeedMdmRow[],
+  nextRows: SeedMdmRow[],
+  entityPath: string,
+  priorErrors: string[],
+  nextErrors: string[],
+): SeedMdmRow[] {
+  const priorBy = indexSeedRows(priorRows);
+  const seen = new Set<string>();
+  const out: SeedMdmRow[] = [];
+  for (const next of nextRows) {
+    const prior = priorBy.get(next.key) ?? priorBy.get(normalizeSeedRowKey(next.key));
+    seen.add(next.key);
+    if (prior) seen.add(prior.key);
+    if (!prior) { out.push(next); continue; }
+    const priorPath = `${entityPath}.${prior.key}`;
+    const nextPath = `${entityPath}.${next.key}`;
+    out.push({
+      key: next.key,
+      fields: recoverSeedFields(prior.fields, next.fields, priorPath, nextPath, priorErrors, nextErrors),
+      relationships: next.relationships.length || seedRowIsFatal(priorErrors, priorPath)
+        ? next.relationships
+        : prior.relationships,
+    });
+  }
+  for (const prior of priorRows) {
+    if (seen.has(prior.key) || seen.has(normalizeSeedRowKey(prior.key))) continue;
+    if (seedRowIsFatal(priorErrors, `${entityPath}.${prior.key}`)) continue;
+    out.push(prior);
+  }
+  return out;
+}
+
+/**
+ * A repair must not regress a field that already validated. Take the newer plan as the skeleton
+ * (keys, extra rows) and restore any prior value that was valid when the newer one is missing or
+ * invalid. Row keys that only differ by whitespace (`pet thor` vs `pet_thor`) match so a repair
+ * that fixed the key does not drop the fields that were already good.
+ */
+export function recoverSeedPlanFromPrior(
+  prior: SeedPlan,
+  next: SeedPlan,
+  priorErrors: string[],
+  nextErrors: string[],
+): SeedPlan {
+  const priorTables = new Map(prior.localTables.map(table => [table.tableId, table]));
+  const nextTables = new Map(next.localTables.map(table => [table.tableId, table]));
+  const localTables: SeedLocalTable[] = [];
+  for (const id of new Set([...nextTables.keys(), ...priorTables.keys()])) {
+    const fromPrior = priorTables.get(id);
+    const fromNext = nextTables.get(id);
+    if (!fromNext) { if (fromPrior) localTables.push(fromPrior); continue; }
+    if (!fromPrior) { localTables.push(fromNext); continue; }
+    localTables.push({
+      tableId: id,
+      rows: recoverLocalRows(fromPrior.rows, fromNext.rows, `localTables.${id}`, priorErrors, nextErrors),
+    });
+  }
+  const priorMdm = new Map(prior.mdmEntities.map(entity => [entity.entityId, entity]));
+  const nextMdm = new Map(next.mdmEntities.map(entity => [entity.entityId, entity]));
+  const mdmEntities: SeedMdmEntity[] = [];
+  for (const id of new Set([...nextMdm.keys(), ...priorMdm.keys()])) {
+    const fromPrior = priorMdm.get(id);
+    const fromNext = nextMdm.get(id);
+    if (!fromNext) { if (fromPrior) mdmEntities.push(fromPrior); continue; }
+    if (!fromPrior) { mdmEntities.push(fromNext); continue; }
+    mdmEntities.push({
+      entityId: id,
+      rows: recoverMdmRows(fromPrior.rows, fromNext.rows, `mdmEntities.${id}`, priorErrors, nextErrors),
+    });
+  }
+  return { summary: next.summary.trim() || prior.summary, localTables, mdmEntities };
+}
+
+export function formatSeedGiveUpReason(waveIndex: number, attempts: SeedAttemptRecord[], maxAttempts: number): string {
+  const parts = attempts.map(entry =>
+    `attempt ${entry.attempt}: ${entry.errors.slice(0, 8).join('; ') || '(no violations recorded)'}`);
+  return `seed wave ${waveIndex} did not converge after ${attempts.length}/${maxAttempts} attempts. ${parts.join('. ')}`;
+}
+
+/** Prefer a fully valid attempt; otherwise recover valid fields forward from earlier tries. The
+ * recovered plan is used only when it validates — a still-invalid plan must not be planted. */
+export function selectSeedPlanAfterAttempts(
+  attempts: SeedAttemptRecord[],
+  validate: (plan: SeedPlan) => string[],
+): { plan: SeedPlan; errors: string[] } {
+  if (!attempts.length) return { plan: { summary: '', localTables: [], mdmEntities: [] }, errors: ['no seed attempts'] };
+  const clean = [...attempts].reverse().find(entry => entry.errors.length === 0);
+  if (clean) return { plan: clean.plan, errors: [] };
+  let recovered = attempts[0].plan;
+  let recoveredErrors = attempts[0].errors;
+  for (let i = 1; i < attempts.length; i++) {
+    recovered = recoverSeedPlanFromPrior(recovered, attempts[i].plan, recoveredErrors, attempts[i].errors);
+    recoveredErrors = validate(recovered);
+  }
+  return { plan: recovered, errors: recoveredErrors };
 }
 
 /** A partial seeds.ts remains valid TypeScript so an interrupted flow can be resumed without

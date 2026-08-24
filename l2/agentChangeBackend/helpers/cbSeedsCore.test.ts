@@ -10,6 +10,7 @@ import {
   isDateOnlyField, idFieldHasResolvableTarget, normalizeSeedPlan, parseSeedPlan, stripModuleEntityPrefix,
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
   skippedMdmEntityIds, mdmIndexName,
+  recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { readFileSync } from 'node:fs';
@@ -912,4 +913,100 @@ test('C: an EMPTY summary is what crashed run05 — a blank plan is still reject
     plan: { summary: '   ', localTables: [], mdmEntities: [] },
   });
   assert.ok(built.errors.includes('plan.summary is required'), built.errors.join('\n'));
+});
+
+// run08 wave 3: attempt 1 had valid enum+refs (and an invalid row key "pet thor"); attempt 2
+// translated status to Active and dropped customerId. Repair must keep the good fields so Pet is
+// not seeded empty. Payloads are the real dumps, copied into this project (not read from 102047).
+function run08Wave3Input(plan: ReturnType<typeof parseSeedPlan>): SeedBuildInput {
+  return {
+    project: 102047,
+    moduleName: 'petShop',
+    language: 'pt',
+    ruleIds: [],
+    entities: [
+      { entityId: 'Customer', title: 'Customer', kind: 'core', fields: [field('customerId'), field('fullName')] },
+      { entityId: 'BusinessHours', title: 'BusinessHours', kind: 'core', fields: [field('businessHoursId'), field('dayOfWeek')] },
+      { entityId: 'AvailabilityBlock', title: 'AvailabilityBlock', kind: 'core', fields: [
+        field('availabilityBlockId'), field('status', true, ['vigente', 'cancelado']), field('businessHoursId'),
+        field('blockGranularity', true, ['hora', 'diaInteiro']), field('blockDate'), field('blockedHour', false),
+      ] },
+      { entityId: 'Pet', title: 'Pet', kind: 'mdm', fields: [
+        field('petId'), field('name'), field('status', true, ['ativo', 'inativo']), field('customerId'),
+      ] },
+    ],
+    tablePlans: [
+      { tableId: 'AvailabilityBlock', tableName: 'availability_block', seedFor: 'petShopAvailabilityBlock', primaryKey: ['availability_block_id'], columns: [
+        { name: 'availability_block_id', type: 'UUID', nullable: false },
+        { name: 'status', type: 'VARCHAR', nullable: false },
+        { name: 'business_hours_id', type: 'UUID', nullable: false },
+        { name: 'block_granularity', type: 'VARCHAR', nullable: false },
+        { name: 'details', type: 'JSONB', nullable: true },
+      ] },
+      { tableId: 'Pet', tableName: 'pet', seedFor: 'petShopPet', primaryKey: ['pet_id'], columns: [
+        { name: 'pet_id', type: 'UUID', nullable: false },
+        { name: 'status', type: 'VARCHAR', nullable: false },
+        { name: 'details', type: 'JSONB', nullable: true },
+      ] },
+    ],
+    plan,
+  };
+}
+
+const RUN08_CATALOG = [
+  'local:Customer.customer1', 'local:Customer.customer2', 'local:Customer.customer3',
+  'local:BusinessHours.monday', 'local:BusinessHours.saturday',
+];
+
+test('run08 wave 3: recovering attempt 2 from attempt 1 keeps Pet/AvailabilityBlock and valid fields', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const attempt1 = normalizeSeedPlan(parseSeedPlan(JSON.parse(readFileSync(path.join(here, 'fixtures/run08-wave3-attempt1.json'), 'utf8'))), run08Wave3Input({ summary: '', localTables: [], mdmEntities: [] }).tablePlans, 'petShop');
+  const attempt2 = normalizeSeedPlan(parseSeedPlan(JSON.parse(readFileSync(path.join(here, 'fixtures/run08-wave3-attempt2.json'), 'utf8'))), run08Wave3Input({ summary: '', localTables: [], mdmEntities: [] }).tablePlans, 'petShop');
+  const errors1 = validateSeedPlan(run08Wave3Input(attempt1), RUN08_CATALOG);
+  const errors2 = validateSeedPlan(run08Wave3Input(attempt2), RUN08_CATALOG);
+  assert.ok(errors1.some(e => /pet thor/.test(e) && /stable identifier/.test(e)), errors1.join('\n'));
+  assert.ok(errors2.some(e => /expected one of ativo, inativo/.test(e)), errors2.join('\n'));
+  assert.ok(errors2.some(e => /customerId/.test(e)), errors2.join('\n'));
+
+  const chosen = selectSeedPlanAfterAttempts(
+    [{ attempt: 1, plan: attempt1, errors: errors1 }, { attempt: 2, plan: attempt2, errors: errors2 }],
+    plan => validateSeedPlan(run08Wave3Input(plan), RUN08_CATALOG),
+  );
+  assert.deepEqual(chosen.errors, [], chosen.errors.join('\n'));
+  const petMdm = chosen.plan.mdmEntities.find(entity => entity.entityId === 'Pet');
+  assert.ok(petMdm && petMdm.rows.length >= 2, 'Pet MDM must not be empty');
+  const luna = petMdm!.rows.find(row => row.key === 'pet_luna');
+  assert.equal(luna?.fields.find(f => f.name === 'status')?.value, 'ativo');
+  assert.deepEqual(luna?.fields.find(f => f.name === 'customerId')?.value, { ref: 'local:Customer.customer1' });
+  assert.ok(chosen.plan.localTables.some(table => table.tableId === 'AvailabilityBlock' && table.rows.length > 0));
+  assert.ok(chosen.plan.localTables.some(table => table.tableId === 'Pet' && table.rows.length > 0));
+
+  const reason = formatSeedGiveUpReason(3, [
+    { attempt: 1, plan: attempt1, errors: errors1 },
+    { attempt: 2, plan: attempt2, errors: errors2 },
+  ], 2);
+  assert.match(reason, /attempt 1:/);
+  assert.match(reason, /attempt 2:/);
+  assert.match(reason, /pet thor/);
+  assert.match(reason, /expected one of ativo, inativo/);
+});
+
+test('recoverSeedPlanFromPrior does not restore a prior value that was already invalid', () => {
+  const prior = parseSeedPlan({
+    summary: 'pets',
+    localTables: [],
+    mdmEntities: [{ entityId: 'Pet', rows: [{ key: 'luna', fields: [{ name: 'status', value: 'Active' }], relationships: [] }] }],
+  });
+  const next = parseSeedPlan({
+    summary: 'pets',
+    localTables: [],
+    mdmEntities: [{ entityId: 'Pet', rows: [{ key: 'luna', fields: [{ name: 'status', value: 'ativo' }], relationships: [] }] }],
+  });
+  const recovered = recoverSeedPlanFromPrior(
+    prior,
+    next,
+    ['mdmEntities.Pet.luna.fields.status: expected one of ativo, inativo'],
+    [],
+  );
+  assert.equal(recovered.mdmEntities[0]?.rows[0]?.fields.find(f => f.name === 'status')?.value, 'ativo');
 });

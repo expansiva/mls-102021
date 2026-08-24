@@ -24,6 +24,8 @@ void test('the run dossier records per-step traces and the provenance stamp', ()
   assert.match(src, /saveRunReport/);
   assert.match(src, /degraded: Array\.isArray\(health\.degraded\)/);
   assert.match(src, /seeds: health\.seeds/);
+  assert.match(src, /seedSkipped: health\.seedSkipped/);
+  assert.match(src, /skipped tables/);
   assert.match(src, /health passed-degraded/);
   assert.match(src, /\/rebuild seeds/);
 });

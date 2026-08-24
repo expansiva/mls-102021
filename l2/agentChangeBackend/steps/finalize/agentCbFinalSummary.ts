@@ -23,7 +23,15 @@ async function residualCompilerWarning(): Promise<string> {
     ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/trace/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
     : '';
   const degraded = Array.isArray(report?.degraded) ? report!.degraded.filter((f): f is string => typeof f === 'string') : [];
-  const seeds = report?.seeds === 'degraded' ? ' ⚠ seeds: degraded (empty tables are valid; @@changeBackend /rebuild seeds to refine).' : '';
+  const skipped = report?.seedSkipped && typeof report.seedSkipped === 'object' && !Array.isArray(report.seedSkipped)
+    ? report.seedSkipped as { tables?: unknown; mdmEntities?: unknown; reason?: unknown }
+    : null;
+  const skippedTables = Array.isArray(skipped?.tables) ? skipped.tables.filter((id): id is string => typeof id === 'string') : [];
+  const skippedMdm = Array.isArray(skipped?.mdmEntities) ? skipped.mdmEntities.filter((id): id is string => typeof id === 'string') : [];
+  const skippedNote = skippedTables.length || skippedMdm.length
+    ? ` skipped tables [${skippedTables.join(', ') || 'none'}] MDM [${skippedMdm.join(', ') || 'none'}]`
+    : '';
+  const seeds = report?.seeds === 'degraded' ? ` ⚠ seeds: degraded${skippedNote} (empty tables are valid; @@changeBackend /rebuild seeds to refine).` : '';
   const degradedNote = degraded.length
     ? ` ⚠ ${degraded.length} degradable finding(s) (health passed-degraded): ${degraded.slice(0, 5).join('; ')}`
     : seeds;
@@ -108,6 +116,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       warnings: Array.isArray(health.warnings) ? health.warnings.length : 0,
       degraded: Array.isArray(health.degraded) ? health.degraded.length : 0,
       seeds: health.seeds ?? null,
+      seedSkipped: health.seedSkipped ?? null,
       globalAttempts: health.globalAttempts ?? null,
       judgeRuns: health.judgeRuns ?? null,
       repairHistory: Array.isArray(health.repairHistory) ? health.repairHistory : [],

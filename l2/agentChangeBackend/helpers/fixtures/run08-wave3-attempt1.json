@@ -1,0 +1,248 @@
+{
+  "summary": "Compact petShop wave 3 scenario with active and inactive pets, plus current and cancelled availability blocks linked to prior BusinessHours rows.",
+  "localTables": [
+    {
+      "tableId": "AvailabilityBlock",
+      "rows": [
+        {
+          "key": "block_monday_morning",
+          "columns": [
+            {
+              "name": "availability_block_id",
+              "value": "block_monday_morning"
+            },
+            {
+              "name": "status",
+              "value": "vigente"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.monday"
+              }
+            },
+            {
+              "name": "block_granularity",
+              "value": "hora"
+            }
+          ],
+          "details": [
+            {
+              "name": "businessHoursId",
+              "value": {
+                "ref": "local:BusinessHours.monday"
+              }
+            },
+            {
+              "name": "blockDate",
+              "value": "2026-07-06T00:00:00.000Z"
+            },
+            {
+              "name": "blockGranularity",
+              "value": "hora"
+            },
+            {
+              "name": "blockedHour",
+              "value": "10:00"
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "block_saturday_full",
+          "columns": [
+            {
+              "name": "availability_block_id",
+              "value": "block_saturday_full"
+            },
+            {
+              "name": "status",
+              "value": "cancelado"
+            },
+            {
+              "name": "business_hours_id",
+              "value": {
+                "ref": "local:BusinessHours.saturday"
+              }
+            },
+            {
+              "name": "block_granularity",
+              "value": "diaInteiro"
+            }
+          ],
+          "details": [
+            {
+              "name": "businessHoursId",
+              "value": {
+                "ref": "local:BusinessHours.saturday"
+              }
+            },
+            {
+              "name": "blockDate",
+              "value": "2026-07-04T00:00:00.000Z"
+            },
+            {
+              "name": "blockGranularity",
+              "value": "diaInteiro"
+            },
+            {
+              "name": "blockedHour",
+              "value": null
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "tableId": "Pet",
+      "rows": [
+        {
+          "key": "pet_luna",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_luna"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Luna"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer1"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "pet thor",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_thor"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Thor"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer2"
+              }
+            }
+          ],
+          "children": []
+        },
+        {
+          "key": "pet_nina",
+          "columns": [
+            {
+              "name": "pet_id",
+              "value": "pet_nina"
+            },
+            {
+              "name": "status",
+              "value": "inativo"
+            }
+          ],
+          "details": [
+            {
+              "name": "name",
+              "value": "Nina"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer3"
+              }
+            }
+          ],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "mdmEntities": [
+    {
+      "entityId": "Pet",
+      "rows": [
+        {
+          "key": "pet_luna",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Luna"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer1"
+              }
+            }
+          ],
+          "relationships": []
+        },
+        {
+          "key": "pet_thor",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Thor"
+            },
+            {
+              "name": "status",
+              "value": "ativo"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer2"
+              }
+            }
+          ],
+          "relationships": []
+        },
+        {
+          "key": "pet_nina",
+          "fields": [
+            {
+              "name": "name",
+              "value": "Nina"
+            },
+            {
+              "name": "status",
+              "value": "inativo"
+            },
+            {
+              "name": "customerId",
+              "value": {
+                "ref": "local:Customer.customer3"
+              }
+            }
+          ],
+          "relationships": []
+        }
+      ]
+    }
+  ]
+}

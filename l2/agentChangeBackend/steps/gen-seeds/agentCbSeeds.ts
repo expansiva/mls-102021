@@ -21,9 +21,11 @@ import {
   extractSeedPlanProgressFromSource, mergeSeedPlans, normalizeSeedPlan, parseSeedPlan, seedPlanInputForWave,
   seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
   collectRequiredMdmTags, repairSeedPlanDeterministically, skippedMdmEntityIds,
+  parseSeedAttemptRecords, recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
   SEED_WINDOW_START, SEED_WINDOW_END,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
   type SeedRuleDefinition, type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
+  type SeedAttemptRecord,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 
 const AGENT_NAME = 'agentCbSeeds';
@@ -38,6 +40,8 @@ interface SeedStepArgs {
   partialPlanRef?: 'seeds.ts';
   /** This step is the ONE retry of an environment failure — not a replan (see seedEnvironmentErrors). */
   infraRetry?: boolean;
+  /** Prior planner tries for this wave (plan + violations). Used to reject field regressions. */
+  priorAttempts?: SeedAttemptRecord[];
 }
 
 export function createAgent(): IAgentAsync {
@@ -55,11 +59,13 @@ export function createAgent(): IAgentAsync {
 function seedArgsOf(step: mls.msg.AIAgentStep): SeedStepArgs {
   try {
     const raw = JSON.parse(String(step.prompt || '{}')) as Record<string, unknown>;
+    const priorAttempts = parseSeedAttemptRecords(raw.priorAttempts);
     return {
       seedAttempt: typeof raw.seedAttempt === 'number' && raw.seedAttempt > 0 ? raw.seedAttempt : 1,
       seedFindings: Array.isArray(raw.seedFindings) ? raw.seedFindings.filter((value): value is string => typeof value === 'string').slice(0, 40) : [],
       forcedBatch: parseWave(raw.forcedBatch),
       ...(raw.infraRetry === true ? { infraRetry: true as const } : {}),
+      ...(priorAttempts.length ? { priorAttempts } : {}),
     };
   } catch {
     return { seedAttempt: 1, seedFindings: [] };
@@ -227,6 +233,21 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     await saveAgentTrace(context, AGENT_NAME, step);
 
+    const incomingPlan = plan;
+    const incomingErrors = errors;
+    const priorAttempts = args.priorAttempts ?? [];
+    if (errors.length && priorAttempts.length) {
+      const last = priorAttempts[priorAttempts.length - 1]!;
+      const recovered = recoverSeedPlanFromPrior(last.plan, plan, last.errors, errors);
+      const recoveredErrors = validateSeedPlan({ ...waveInput, plan: recovered }, catalogRefs);
+      if (recoveredErrors.length < errors.length) {
+        plan = recovered;
+        errors = recoveredErrors;
+      }
+    }
+    const recordedAttempts: SeedAttemptRecord[] = [...priorAttempts, { attempt: args.seedAttempt, plan: incomingPlan, errors: incomingErrors }];
+    const validateChosen = (candidate: SeedPlan) => validateSeedPlan({ ...waveInput, plan: candidate }, catalogRefs);
+
     if (errors.length) {
       if (args.seedAttempt < MAX_PLAN_ATTEMPTS) {
         const nextAttempt = args.seedAttempt + 1;
@@ -234,8 +255,17 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
           seedAttempt: nextAttempt,
           seedFindings: errors.slice(0, 40),
           forcedBatch: batch,
+          priorAttempts: recordedAttempts,
         }, `Seed wave ${batch.index} rejected; repair ${nextAttempt}/${MAX_PLAN_ATTEMPTS} scheduled: ${errors.slice(0, 12).join('; ')}`);
       }
+      const chosen = selectSeedPlanAfterAttempts(recordedAttempts, validateChosen);
+      if (!chosen.errors.length) {
+        plan = chosen.plan;
+        errors = [];
+      }
+    }
+
+    if (errors.length) {
       // Repair budget exhausted for this wave. Seeds are TEST DATA — a wave that will not converge must
       // NOT fail the whole backend: the composition root (registerRepositories) + l5 config + finalize
       // are downstream of seeds and far more important than seed rows. FINALIZE with the PARTIAL plan
@@ -252,11 +282,14 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       // loss, so a test generator asserted "at least one row" against tables that are empty BY DESIGN
       // (102051: AiSalesSummary, AiPromotionSuggestion). The skipped ids are recorded in the artifact
       // (and propagated to l5 by cb-register) instead of living only in this trace string.
+      const reason = formatSeedGiveUpReason(batch.index, recordedAttempts, MAX_PLAN_ATTEMPTS);
       const skipped = {
         tables: input.tablePlans.filter(t => !seededTableIds.has(t.tableId)).map(t => t.tableId).sort(),
         mdmEntities: skippedMdmEntityIds(input, seededMdmIds),
-        reason: `seed wave ${batch.index} did not converge after ${args.seedAttempt}/${MAX_PLAN_ATTEMPTS} attempts: ${errors.slice(0, 6).join('; ')}`,
+        reason,
+        attempts: recordedAttempts.map(({ attempt, errors: attemptErrors }) => ({ attempt, errors: attemptErrors })),
       };
+      await saveHealthReport({ seeds: 'degraded', seedError: reason, seedSkipped: skipped });
       const partialInput = {
         ...input,
         tablePlans: input.tablePlans.filter(t => seededTableIds.has(t.tableId)),
