@@ -102,6 +102,23 @@ void test('gen-seeds applies deterministic operated-state + MDM-tag repair befor
   assert.match(prompt, /ctx\.mdm/);
 });
 
+void test('HELP documents /rebuild seeds as the post-publish data iteration cycle', () => {
+  const help = readFileSync(path.join(HERE, '..', '..', 'agentChangeBackend.ts'), 'utf8');
+  assert.match(help, /ciclo NORMAL de refinar dados DEPOIS do app no ar/);
+  assert.match(help, /passed-degraded \/ seeds: degraded/);
+  assert.match(help, /inconclusive/);
+});
+
+void test('a seeds-phase failure degrades and continues the run (never fails the task)', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /function continueSeedsDegraded\(/);
+  assert.match(src, /seeds: 'degraded'/);
+  assert.match(src, /SEEDS DEGRADED \(run continues to register\/validate-all\/finalize\)/);
+  assert.equal((src.match(/continueSeedsDegraded\(context, parentStep, step, hookSequential, message\)/g) || []).length, 2);
+  // The two catch blocks used to fail the step — that is the loop this spec closes.
+  assert.doesNotMatch(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'failed'/);
+});
+
 void test('an environment failure retries the compile once, without spending the replan budget', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   // First occurrence: the SAME step is rescheduled with the flag; seedAttempt is carried over, never

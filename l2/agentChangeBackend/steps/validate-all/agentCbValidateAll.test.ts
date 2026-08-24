@@ -89,6 +89,19 @@ void test('the compile sweep drains the borrow queue in blocks and leaves a dura
   assert.match(src, /catch \{ \/\* progress is diagnostics: never fail the step over it \*\/ \}/);
 });
 
+void test('validate-all partitions blocking vs degradable and finalizes when only degradable remain', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /partitionFindings\(unique\)/);
+  assert.match(src, /unmappedBlocking/);
+  assert.match(src, /canRepair/);
+  assert.match(src, /outcome: 'passed-degraded'/);
+  assert.match(src, /INTEGRITY PASSED-DEGRADED/);
+  assert.match(src, /blocking\.length === 0/);
+  // Blocking still fails the run; degradable does not skip repair when mapped.
+  assert.match(src, /INTEGRITY FAILED/);
+  assert.match(src, /canRepair && \(state\.globalAttempts < GLOBAL_REPAIR_BUDGET \|\| isRescue\)/);
+});
+
 void test('the compile sweep paints an ephemeral local title and never replaces the durable progress file', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /step\.stepTitle \|\| 'Validate l1 artifacts'.*compiling \$\{inScope\.length\} files/);

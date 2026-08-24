@@ -5,7 +5,7 @@
 // deterministic TableSeedRows plus MDM entity/document/relationship rows.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { recordLlmCost, saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { aliasModuleResolutionPathOf } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
@@ -181,7 +181,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${message}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+    return continueSeedsDegraded(context, parentStep, step, hookSequential, message);
   }
 }
 
@@ -298,8 +298,28 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${message}`);
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+    return continueSeedsDegraded(context, parentStep, step, hookSequential, message);
   }
+}
+
+/**
+ * A seeds-phase failure never fails the run: empty/partial tables are a valid published app.
+ * Health records `seeds: degraded` (folded into later snapshots) and the chain continues to
+ * seed-assets → register → validate-all → finalize. `/rebuild seeds` is the iteration cycle.
+ */
+async function continueSeedsDegraded(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  message: string,
+): Promise<mls.msg.AgentIntent[]> {
+  await saveHealthReport({ seeds: 'degraded', seedError: message });
+  return [
+    enqueueSeedAssets(context, parentStep, step),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+      `SEEDS DEGRADED (run continues to register/validate-all/finalize): ${message}`, 'input_output'),
+  ];
 }
 
 /**

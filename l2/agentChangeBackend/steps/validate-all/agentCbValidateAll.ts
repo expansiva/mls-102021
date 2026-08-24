@@ -5,13 +5,17 @@
 // It reads the SAVED l1 .defs.ts files and checks coverage/integrity (each
 // owner produced its artifacts; no MDM/horizontal table emitted), and runs the WHOLE-PROJECT compile
 // over the materialized .ts (the layer sweep defers its compile gate — findings there can be false
-// while siblings materialize; here they are real). On success -> finalize. On failure,
-// findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger up to
+// while siblings materialize; here they are real). On success -> finalize.
+// Two severities (cbFindingSeverity): BLOCKING fails the run (compile of live code, missing
+// controller/usecase export, invalid table for migrate, composition root). DEGRADABLE (seeds,
+// omitable policy) is recorded on health as `passed-degraded` and the run STILL finalizes — empty
+// tables are a valid published app. Repair still tries mapped degradable findings inside the budget;
+// degrade is the fallback when the budget ends, not the first move. Gates are not relaxed.
+// Findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger up to
 // GLOBAL_REPAIR_BUDGET global repair rounds: the component defs are forced stale, the findings are
 // recorded (cbRepair) and cb-materialize is re-enqueued in repair mode — the flow reconverges back
-// here (unique planId). Findings that are DEFS-level (missing port/entity defs, defs route missing,
-// controller/usecase defs mismatch) are NOT repairable by re-materializing: the run fails CLEAN with
-// the objective trace. Budget exhausted -> clean failure too.
+// here (unique planId). Unmapped BLOCKING findings (defs-level) fail CLEAN. Unmapped degradable
+// findings do not prevent repair of mapped ones, and do not fail the run.
 // (Repair loop block:
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
@@ -45,6 +49,7 @@ import {
   extractInterfaceMethods, collectDeleteOperationPortGaps,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
+import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -739,8 +744,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
     if (missing.length) {
       const unique = [...new Set(missing)];
+      const { blocking, degradable } = partitionFindings(unique);
       const unmapped = unique.filter(m => !mappedMsgs.has(m));
-      const allMapped = unmapped.length === 0 && repairTargets.size > 0;
+      const unmappedBlocking = blocking.filter(m => !mappedMsgs.has(m));
+      // Repair when something is rematerializable and no UNMAPPED BLOCKING finding remains.
+      // Unmapped degradable (seed/policy) must not starve the repair of mapped compiler findings.
+      const canRepair = repairTargets.size > 0 && unmappedBlocking.length === 0;
       const state = await readRepairState();
       // T6 TARGETED RESCUE: the global budget is spent, but only a FEW compiler-only findings remain — one
       // more round (OUTSIDE the budget) fixes them cheaply (T2 scopes it, T4 makes each call surgical)
@@ -748,11 +757,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       // once: it bumps globalAttempts to budget+1, so the gate (=== budget) is false on the re-check, and
       // it never applies to defs-level findings (not fixable by re-materialization) or a large residual.
       const isRescue = shouldTargetedRescue({ globalAttempts: state.globalAttempts, budget: GLOBAL_REPAIR_BUDGET, targetCount: repairTargets.size, maxTargets: RESCUE_MAX_TARGETS, findings: unique });
-      // GLOBAL REPAIR ROUND: only when EVERY finding is materialization-level (re-generating the .ts
-      // can fix it) and the global budget is not exhausted. Defs did not change, so seeds/register stay
-      // valid — the materialize dispatcher (repair mode) re-runs the stale components with the findings
-      // in context and enqueues cb-validate-all-g{n} to re-check.
-      if (allMapped && (state.globalAttempts < GLOBAL_REPAIR_BUDGET || isRescue)) {
+      // GLOBAL REPAIR ROUND: mapped findings (including degradable compilers on seeds.ts) still get
+      // the budget. Defs did not change, so seeds/register stay valid — the materialize dispatcher
+      // (repair mode) re-runs the stale components with the findings in context and enqueues
+      // cb-validate-all-g{n} to re-check. Degrade is the fallback AFTER the budget, not the first move.
+      if (canRepair && (state.globalAttempts < GLOBAL_REPAIR_BUDGET || isRescue)) {
         state.globalAttempts += 1;
         const roundTargets: Array<{ defRef: string; findings: number; first: string }> = [];
         for (const [defRef, findings] of repairTargets) {
@@ -792,16 +801,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
-      // CLEAN FAILURE: budget exhausted, or at least one finding is defs-level (re-materializing cannot
-      // fix it — the defect is upstream). Objective trace; owners stay inProgress; nothing marked done.
-      const reason = !allMapped
-        ? `${unmapped.length} finding(s) are defs-level (not repairable by re-materialization)`
-        : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
+      // CLEAN FAILURE or DEGRADE: budget exhausted, or at least one finding is not rematerializable.
+      const reason = unmappedBlocking.length
+        ? `${unmappedBlocking.length} finding(s) are defs-level (not repairable by re-materialization)`
+        : unmapped.length && !blocking.length
+          ? `${degradable.length} degradable finding(s) remain (seeds/policy; run continues)`
+          : `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET})`;
       const historyNote = state.history.length ? ` | repair history (${state.history.length}): ${state.history.slice(-8).join(' | ')}` : '';
       // PRE-SEEDS: NON-BLOCKING (user decision 2026-07-14). The pre-seeds barrier only reports —
       // findings go to the console/health report as warnings and the flow proceeds to cb-gen-seeds,
       // so seeds can be exercised over a partially converged l1. The post-register cb-validate-all
-      // (preSeeds=false) keeps the blocking semantics: nothing is finalized over these findings.
+      // (preSeeds=false) is where blocking vs degradable is decided.
       if (preSeeds) {
         // No console dump (user decision 2026-07-17, run f): the full findings list already lives on
         // the step trace and in the health report — printing it again only floods the console.
@@ -812,8 +822,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
+      if (blocking.length === 0) {
+        const trace = `INTEGRITY PASSED-DEGRADED (${degradable.length} degradable finding(s); run continues to finalize): ${degradable.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
+        await saveHealthReport({
+          outcome: 'passed-degraded', reason, l1Defs, findings: unique, degraded: degradable, unmapped, warnings,
+          repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth(),
+        });
+        await clearRepairState();
+        return [
+          enqueueNextInPhase(context, step, 'finalization', 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar todoBackend', {}),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
+        ];
+      }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
+      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Every terminal trace of this step carries the model counts: it is the measurement that used to be

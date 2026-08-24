@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeRepairMutation } from './cbRepairLock.js';
-import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
+import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
 import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
 
 test('mergeComponentRepair (T3): a global round preserves priorFindings + lastCode and resets attempts to 0', () => {
@@ -104,6 +104,15 @@ test('foldModelsPeak keeps the highest peak across rounds (be5 closed at 104, le
   const folded = foldModelsPeak(first, { models: { registry: 104, pendingRelease: 0, peak: 104 } });
   assert.equal(folded?.peak, 298);
   assert.equal(folded?.registry, 104);
+});
+
+test('foldSeedsDegraded keeps seeds: degraded when a later snapshot omits it', () => {
+  const first = JSON.stringify({ seeds: 'degraded', seedError: 'SEED WAVE 6 SKIPPED', outcome: 'pre-seeds-warning' });
+  const folded = foldSeedsDegraded(first, { outcome: 'passed-degraded' } as { seeds?: unknown; seedError?: unknown });
+  assert.equal(folded.seeds, 'degraded');
+  assert.equal(folded.seedError, 'SEED WAVE 6 SKIPPED');
+  const currentWins = foldSeedsDegraded(first, { seeds: 'degraded', seedError: 'new reason' });
+  assert.equal(currentWins.seedError, 'new reason');
 });
 
 test('serializeRepairMutation preserves every concurrent read-modify-write', async () => {

@@ -19,9 +19,15 @@ async function residualCompilerWarning(): Promise<string> {
   const findings = Array.isArray(report?.findings)
     ? (report!.findings as unknown[]).filter((f): f is string => typeof f === 'string').filter(isCompilerFinding)
     : [];
-  return findings.length
+  const compiler = findings.length
     ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/trace/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
     : '';
+  const degraded = Array.isArray(report?.degraded) ? report!.degraded.filter((f): f is string => typeof f === 'string') : [];
+  const seeds = report?.seeds === 'degraded' ? ' ⚠ seeds: degraded (empty tables are valid; @@changeBackend /rebuild seeds to refine).' : '';
+  const degradedNote = degraded.length
+    ? ` ⚠ ${degraded.length} degradable finding(s) (health passed-degraded): ${degraded.slice(0, 5).join('; ')}`
+    : seeds;
+  return `${compiler}${degradedNote}`;
 }
 
 /** A2 (T10): never report a bare "owners done = 0". gen-http flips the owners to `done` as soon as the
@@ -100,6 +106,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       outcome: health.outcome ?? null,
       findings: Array.isArray(health.findings) ? health.findings.length : 0,
       warnings: Array.isArray(health.warnings) ? health.warnings.length : 0,
+      degraded: Array.isArray(health.degraded) ? health.degraded.length : 0,
+      seeds: health.seeds ?? null,
       globalAttempts: health.globalAttempts ?? null,
       judgeRuns: health.judgeRuns ?? null,
       repairHistory: Array.isArray(health.repairHistory) ? health.repairHistory : [],

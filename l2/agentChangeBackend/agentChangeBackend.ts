@@ -158,7 +158,7 @@ palavra do comando, nunca nome de módulo.
 Comandos:
 - /rebuild all [módulo]  : reseta os owners do módulo-alvo para toCreate, arquiva o l1 do módulo (soft-delete da plataforma) e regenera defs E .ts.
 - /rebuild defs [módulo] : reseta os owners do módulo-alvo para toCreate e regenera SOMENTE os .defs.ts (NÃO materializa os .ts).
-- /rebuild seeds [módulo]: regenera SOMENTE o seeds.ts (+ assets) do módulo já construído e termina — não reseta owners, não toca domínio/ports/tabelas/usecases/controllers. Use após ajustar dados/regra de seed sem refazer todo o backend.
+- /rebuild seeds [módulo]: regenera SOMENTE o seeds.ts (+ assets) do módulo já construído e termina — não reseta owners, não toca domínio/ports/tabelas/usecases/controllers. Este é o ciclo NORMAL de refinar dados DEPOIS do app no ar (minutos, não um run inteiro). Falha de seeds NUNCA derruba o run: o app sobe com tabelas vazias (health passed-degraded / seeds: degraded); /monitor/tests conta casos de <seedRef> ausente como inconclusive, e o número de referência é "pass + inconclusive por seed", nunca run failed.
 - /run [módulo]          : gera os owners pendentes (todoBackend = toCreate | inProgress) sem resetar; materializa os .ts faltando/desatualizados.
 - <módulo>               : igual ao /run daquele módulo (ex: @@changeBackend cafeFlow).
 - (sem comando)          : igual ao /run — varre o todoBackend e continua o primeiro módulo pendente.

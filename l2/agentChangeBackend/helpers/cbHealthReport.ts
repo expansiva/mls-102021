@@ -73,6 +73,42 @@ export function foldRepairAudit(
   return { repairHistory, globalAttempts };
 }
 
+/**
+ * Seeds degradation is written by gen-seeds and must survive a later validate-all snapshot that does
+ * not mention seeds. Without the fold, `passed-degraded` / `passed` at the top would erase `seeds: degraded`.
+ */
+export function foldSeedsDegraded(
+  existingRaw: string | null,
+  current: { seeds?: unknown; seedError?: unknown },
+): { seeds?: 'degraded'; seedError?: string } {
+  const from = (seeds: unknown, seedError: unknown): { seeds?: 'degraded'; seedError?: string } => {
+    const out: { seeds?: 'degraded'; seedError?: string } = {};
+    if (seeds === 'degraded') out.seeds = 'degraded';
+    if (typeof seedError === 'string' && seedError) out.seedError = seedError;
+    return out;
+  };
+  const currentFold = from(current.seeds, current.seedError);
+  if (currentFold.seeds) return currentFold;
+  if (!existingRaw) return currentFold;
+  try {
+    const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
+    const prior = from(parsed.seeds, parsed.seedError);
+    if (prior.seeds) return prior;
+    if (Array.isArray(parsed.rounds)) {
+      for (let i = parsed.rounds.length - 1; i >= 0; i--) {
+        const round = parsed.rounds[i];
+        if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
+        const rec = round as Record<string, unknown>;
+        const folded = from(rec.seeds, rec.seedError);
+        if (folded.seeds) return folded;
+      }
+    }
+  } catch {
+    /* keep current */
+  }
+  return currentFold;
+}
+
 /** Keep the highest models.peak seen in any snapshot — be5 closed with registry 104 but the leak is the peak. */
 export function foldModelsPeak(
   existingRaw: string | null,
