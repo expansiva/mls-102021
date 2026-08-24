@@ -18,8 +18,10 @@ const client = { kind: 'mdm', ownership: 'moduleOwned', storage: { target: 'mdm'
 const fieldWorker = { kind: 'core', ownership: 'external', storage: { target: 'external', scope: 'platform' } };
 const changeOrder = { kind: 'core', ownership: 'moduleOwned', storage: { target: 'moduleDatabase', scope: 'module', idField: 'changeOrderId' } };
 
-test('the write path ships OFF: nothing about the current module changes', () => {
-  assert.equal(MDM_WRITE_PATH_ENABLED, false);
+// Flipped ON 24/08. Both behaviours stay covered because every classifyEntityKind assertion passes
+// the flag EXPLICITLY — only the shipped default moved.
+test('the write path ships ON; the old classification is still what `false` means', () => {
+  assert.equal(MDM_WRITE_PATH_ENABLED, true);
   // Client keeps the band-aid classification (local aggregate) that run 9 was generated with…
   assert.equal(classifyEntityKind(client, false), 'core');
   assert.equal(classifyEntityKind(client, false), entityKindOf('mdm', 'moduleOwned'));

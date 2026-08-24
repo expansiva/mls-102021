@@ -30,7 +30,14 @@ export function buildHealthReportContent(existingRaw: string | null, report: Rec
     }
   }
   const rounds = [...priorRounds, snapshot].slice(-MAX_HEALTH_ROUNDS);
-  return `${JSON.stringify({ ...snapshot, rounds }, null, 2)}\n`;
+  // `ok` lives in `rounds` so a later mute snapshot does not resurrect a prior-run `degraded`.
+  // The flattened top-level omits it — full coverage closes without `operations`/`operationsMissing`.
+  const top: Record<string, unknown> = { ...snapshot, rounds };
+  if (top.operations === 'ok') {
+    delete top.operations;
+    delete top.operationsMissing;
+  }
+  return `${JSON.stringify(top, null, 2)}\n`;
 }
 
 /**
@@ -74,8 +81,48 @@ export function foldRepairAudit(
 }
 
 /**
- * Seeds degradation is written by gen-seeds and must survive a later validate-all snapshot that does
- * not mention seeds. Without the fold, `passed-degraded` / `passed` at the top would erase `seeds: degraded`.
+ * Most-recent snapshot that mentions `field` (`ok` or `degraded`) wins. Mute snapshots (validate-all
+ * for seeds, gen-seeds for operations) fall through. `ok` returns `{}` so a prior-run `degraded`
+ * still sitting in `rounds` is not resurrected.
+ */
+function foldLatestVerdict(
+  existingRaw: string | null,
+  current: Record<string, unknown>,
+  field: string,
+  fromDegraded: (rec: Record<string, unknown>) => Record<string, unknown>,
+): Record<string, unknown> {
+  const consider = (rec: Record<string, unknown> | null | undefined): Record<string, unknown> | undefined => {
+    if (!rec) return undefined;
+    if (rec[field] === 'ok') return {};
+    if (rec[field] === 'degraded') return fromDegraded(rec);
+    return undefined;
+  };
+  const currentFold = consider(current);
+  if (currentFold !== undefined) return currentFold;
+  if (!existingRaw) return {};
+  try {
+    const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
+    const prior = consider(parsed);
+    if (prior !== undefined) return prior;
+    if (Array.isArray(parsed.rounds)) {
+      for (let i = parsed.rounds.length - 1; i >= 0; i--) {
+        const round = parsed.rounds[i];
+        if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
+        const folded = consider(round as Record<string, unknown>);
+        if (folded !== undefined) return folded;
+      }
+    }
+  } catch {
+    /* keep current */
+  }
+  return {};
+}
+
+/**
+ * Seeds verdicts are written by gen-seeds (`degraded` on give-up, `ok` on full convergence) and must
+ * survive a later validate-all snapshot that does not mention seeds. The fold takes the MOST RECENT
+ * snapshot that mentions seeds: `ok` clears the top-level fields (a prior-run `degraded` still sitting
+ * in `rounds` is a ghost); `degraded` is copied through so `passed` at the top does not erase the give-up.
  */
 export function foldSeedsDegraded(
   existingRaw: string | null,
@@ -86,34 +133,125 @@ export function foldSeedsDegraded(
     const rec = value as Record<string, unknown>;
     return Array.isArray(rec.tables) || Array.isArray(rec.mdmEntities) ? value : undefined;
   };
-  const from = (seeds: unknown, seedError: unknown, seedSkipped: unknown): { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown } => {
+  return foldLatestVerdict(existingRaw, current as Record<string, unknown>, 'seeds', rec => {
     const out: { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown } = {};
-    if (seeds === 'degraded') out.seeds = 'degraded';
-    if (typeof seedError === 'string' && seedError) out.seedError = seedError;
-    const skipped = asSkipped(seedSkipped);
+    if (rec.seeds === 'degraded') out.seeds = 'degraded';
+    if (typeof rec.seedError === 'string' && rec.seedError) out.seedError = rec.seedError;
+    const skipped = asSkipped(rec.seedSkipped);
     if (skipped) out.seedSkipped = skipped;
     return out;
+  }) as { seeds?: 'degraded'; seedError?: string; seedSkipped?: unknown };
+}
+
+export function foldOperationsCoverage(
+  existingRaw: string | null,
+  current: { operations?: unknown; operationsMissing?: unknown },
+): { operations?: 'degraded'; operationsMissing?: unknown } {
+  const asMissing = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const rec = value as Record<string, unknown>;
+    return Array.isArray(rec.noUsecase) || Array.isArray(rec.noEndpoint) ? value : undefined;
   };
-  const currentFold = from(current.seeds, current.seedError, current.seedSkipped);
-  if (currentFold.seeds) return currentFold;
-  if (!existingRaw) return currentFold;
-  try {
-    const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
-    const prior = from(parsed.seeds, parsed.seedError, parsed.seedSkipped);
-    if (prior.seeds) return prior;
-    if (Array.isArray(parsed.rounds)) {
-      for (let i = parsed.rounds.length - 1; i >= 0; i--) {
-        const round = parsed.rounds[i];
-        if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
-        const rec = round as Record<string, unknown>;
-        const folded = from(rec.seeds, rec.seedError, rec.seedSkipped);
-        if (folded.seeds) return folded;
+  return foldLatestVerdict(existingRaw, current as Record<string, unknown>, 'operations', rec => {
+    const out: { operations?: 'degraded'; operationsMissing?: unknown } = {};
+    if (rec.operations === 'degraded') out.operations = 'degraded';
+    const missing = asMissing(rec.operationsMissing);
+    if (missing) out.operationsMissing = missing;
+    return out;
+  }) as { operations?: 'degraded'; operationsMissing?: unknown };
+}
+
+export interface OperationsMissingReport {
+  noUsecase: string[];
+  noEndpoint: string[];
+  declared: number;
+  covered: number;
+}
+
+export type OperationsCoverageVerdict =
+  | { operations: 'ok' }
+  | { operations: 'degraded'; operationsMissing: OperationsMissingReport };
+
+export function expectedRoutesByOperation(
+  workspaces: ReadonlyArray<{
+    bffCalls: ReadonlyArray<{ route: string; uses: ReadonlyArray<{ operationId: string }> }>;
+  }>,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const workspace of workspaces) {
+    for (const call of workspace.bffCalls) {
+      if (!call.route) continue;
+      for (const use of call.uses) {
+        const id = use.operationId;
+        if (!id) continue;
+        const list = out[id] || (out[id] = []);
+        if (!list.includes(call.route)) list.push(call.route);
       }
     }
-  } catch {
-    /* keep current */
   }
-  return currentFold;
+  return out;
+}
+
+function routeCoversOperation(routeKey: string, operationId: string): boolean {
+  const last = (routeKey.split('.').pop() || '').toLowerCase();
+  const op = operationId.toLowerCase();
+  return last === op || last === `cmd${op}` || last === `qry${op}`;
+}
+
+function operationHasEndpoint(
+  operationId: string,
+  routes: Set<string>,
+  expected: readonly string[] | undefined,
+): boolean {
+  if (expected && expected.length > 0) return expected.some(route => routes.has(route));
+  for (const key of routes) {
+    if (routeCoversOperation(key, operationId)) return true;
+  }
+  return false;
+}
+
+/**
+ * One-way check: l4-declared operations that did not become a usecase and/or a route.
+ * Extra usecases nobody calls are ignored on purpose.
+ */
+export function compareOperationsCoverage(input: {
+  declared: readonly string[];
+  usecaseNames: Iterable<string>;
+  routeKeys: Iterable<string>;
+  expectedRoutesByOperation?: Readonly<Record<string, readonly string[]>>;
+}): OperationsCoverageVerdict {
+  const declared = [...new Set(input.declared.filter(Boolean))];
+  const usecases = new Set([...input.usecaseNames].map(name => name.toLowerCase()));
+  const routes = new Set(input.routeKeys);
+  const expected = input.expectedRoutesByOperation || {};
+  const noUsecase: string[] = [];
+  const noEndpoint: string[] = [];
+  let covered = 0;
+  for (const op of declared) {
+    const hasUsecase = usecases.has(op.toLowerCase());
+    const hasEndpoint = operationHasEndpoint(op, routes, expected[op]);
+    if (!hasUsecase) noUsecase.push(op);
+    else if (!hasEndpoint) noEndpoint.push(op);
+    else covered += 1;
+  }
+  noUsecase.sort((a, b) => a.localeCompare(b));
+  noEndpoint.sort((a, b) => a.localeCompare(b));
+  if (noUsecase.length === 0 && noEndpoint.length === 0) return { operations: 'ok' };
+  return {
+    operations: 'degraded',
+    operationsMissing: { noUsecase, noEndpoint, declared: declared.length, covered },
+  };
+}
+
+export function operationsCoverageLogLine(verdict: OperationsCoverageVerdict): string {
+  if (verdict.operations === 'ok') return 'operations: ok';
+  const missing = verdict.operationsMissing;
+  // English: this line lands in the step status the user reads in the studio, next to
+  // `INTEGRITY FAILED` / `l1 defs=` — every neighbour is English and the product ships global.
+  const parts = [`${missing.declared} declared`, `${missing.covered} covered`];
+  if (missing.noUsecase.length) parts.push(`${missing.noUsecase.length} without usecase`);
+  if (missing.noEndpoint.length) parts.push(`${missing.noEndpoint.length} without endpoint`);
+  return `operations: ${parts.join(', ')}`;
 }
 
 /** Keep the highest models.peak seen in any snapshot — be5 closed with registry 104 but the leak is the peak. */

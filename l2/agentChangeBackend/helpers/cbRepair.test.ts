@@ -3,7 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeRepairMutation } from './cbRepairLock.js';
-import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, MAX_HEALTH_ROUNDS } from './cbHealthReport.js';
+import {
+  buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage,
+  compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine, MAX_HEALTH_ROUNDS,
+} from './cbHealthReport.js';
 import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
 
 test('mergeComponentRepair (T3): a global round preserves priorFindings + lastCode and resets attempts to 0', () => {
@@ -114,6 +117,124 @@ test('foldSeedsDegraded keeps seeds: degraded when a later snapshot omits it', (
   assert.deepEqual(folded.seedSkipped, { tables: ['Pet'], mdmEntities: [], reason: 'wave 3' });
   const currentWins = foldSeedsDegraded(first, { seeds: 'degraded', seedError: 'new reason' });
   assert.equal(currentWins.seedError, 'new reason');
+});
+
+test('foldSeedsDegraded: current seeds: ok beats an older degraded in rounds', () => {
+  const existing = JSON.stringify({
+    seeds: 'degraded',
+    seedError: 'seed wave 2 did not converge',
+    seedSkipped: { tables: ['Appointment'], mdmEntities: ['X'] },
+    rounds: [
+      { seeds: 'degraded', seedError: 'seed wave 2 did not converge', seedSkipped: { tables: ['Appointment'], mdmEntities: ['X'] } },
+    ],
+  });
+  const folded = foldSeedsDegraded(existing, { seeds: 'ok' });
+  assert.equal(folded.seeds, undefined);
+  assert.equal(folded.seedError, undefined);
+  assert.equal(folded.seedSkipped, undefined);
+});
+
+test('foldSeedsDegraded: later ok then a mute snapshot stays clear of seeds', () => {
+  const afterOk = JSON.stringify({
+    seeds: 'ok',
+    rounds: [
+      { seeds: 'degraded', seedError: 'old', seedSkipped: { tables: ['Pet'], mdmEntities: [] } },
+      { seeds: 'ok' },
+    ],
+  });
+  const folded = foldSeedsDegraded(afterOk, { outcome: 'passed' } as { seeds?: unknown });
+  assert.equal(folded.seeds, undefined);
+  assert.equal(folded.seedError, undefined);
+  assert.equal(folded.seedSkipped, undefined);
+});
+
+test('compareOperationsCoverage: 102047-shaped gap is noUsecase only, extra usecase is ignored', () => {
+  const missingOps = ['createServiceExecution', 'startServiceExecution', 'updateServiceExecution'];
+  const coveredOps = Array.from({ length: 44 }, (_, i) => `coveredOp${i}`);
+  const declared = [...coveredOps, ...missingOps];
+  const usecases = [...coveredOps, 'researchByIdTableX'];
+  const routes = coveredOps.map(op => `petShop.ws.cmd${op}`);
+  const expected = Object.fromEntries([
+    ...coveredOps.map(op => [op, [`petShop.ws.cmd${op}`]]),
+    ...missingOps.map(op => [op, [`petShop.ws.cmd${op}`]]),
+  ]);
+  const verdict = compareOperationsCoverage({
+    declared, usecaseNames: usecases, routeKeys: routes, expectedRoutesByOperation: expected,
+  });
+  assert.equal(verdict.operations, 'degraded');
+  if (verdict.operations !== 'degraded') return;
+  assert.deepEqual(verdict.operationsMissing.noUsecase, missingOps);
+  assert.deepEqual(verdict.operationsMissing.noEndpoint, []);
+  assert.equal(verdict.operationsMissing.declared, 47);
+  assert.equal(verdict.operationsMissing.covered, 44);
+  assert.ok(!JSON.stringify(verdict).includes('researchByIdTableX'));
+  assert.match(operationsCoverageLogLine(verdict), /47 declared, 44 covered, 3 without usecase/);
+});
+
+test('compareOperationsCoverage: usecase without its command route is noEndpoint, not a finding of extra usecases', () => {
+  const expected = expectedRoutesByOperation([
+    {
+      bffCalls: [
+        { route: 'petShop.startServiceExecution.cmdStartServiceExecution', uses: [{ operationId: 'startServiceExecution' }] },
+        { route: 'petShop.startServiceExecution.qryLocateAppointment', uses: [{ operationId: 'locateAppointment' }] },
+        { route: 'petShop.startServiceExecution.qryCustomerPicker', uses: [{ operationId: 'listCustomer' }] },
+      ],
+    },
+  ]);
+  const verdict = compareOperationsCoverage({
+    declared: ['startServiceExecution', 'listCustomer'],
+    usecaseNames: ['startServiceExecution', 'listCustomer', 'orphanResearch'],
+    routeKeys: [
+      'petShop.startServiceExecution.qryLocateAppointment',
+      'petShop.startServiceExecution.qryCustomerPicker',
+    ],
+    expectedRoutesByOperation: expected,
+  });
+  assert.equal(verdict.operations, 'degraded');
+  if (verdict.operations !== 'degraded') return;
+  assert.deepEqual(verdict.operationsMissing.noUsecase, []);
+  assert.deepEqual(verdict.operationsMissing.noEndpoint, ['startServiceExecution']);
+  assert.equal(verdict.operationsMissing.covered, 1);
+  assert.ok(!JSON.stringify(verdict).includes('orphanResearch'));
+});
+
+test('compareOperationsCoverage: full coverage is operations: ok and does not list extras', () => {
+  const verdict = compareOperationsCoverage({
+    declared: ['listCustomer'],
+    usecaseNames: ['listCustomer', 'researchByIdTableX'],
+    routeKeys: ['petShop.startServiceExecution.qryCustomerPicker'],
+    expectedRoutesByOperation: { listCustomer: ['petShop.startServiceExecution.qryCustomerPicker'] },
+  });
+  assert.deepEqual(verdict, { operations: 'ok' });
+  assert.equal(operationsCoverageLogLine(verdict), 'operations: ok');
+});
+
+test('foldOperationsCoverage: mute snapshot keeps degraded; current ok beats an older degraded', () => {
+  const first = JSON.stringify({
+    operations: 'degraded',
+    operationsMissing: { noUsecase: ['startServiceExecution'], noEndpoint: [], declared: 47, covered: 44 },
+  });
+  const muted = foldOperationsCoverage(first, { outcome: 'passed' } as { operations?: unknown });
+  assert.equal(muted.operations, 'degraded');
+  assert.deepEqual(muted.operationsMissing, { noUsecase: ['startServiceExecution'], noEndpoint: [], declared: 47, covered: 44 });
+  const existing = JSON.stringify({
+    operations: 'degraded',
+    operationsMissing: { noUsecase: ['startServiceExecution'], noEndpoint: [], declared: 47, covered: 44 },
+    rounds: [{ operations: 'degraded', operationsMissing: { noUsecase: ['startServiceExecution'], noEndpoint: [], declared: 47, covered: 44 } }],
+  });
+  const folded = foldOperationsCoverage(existing, { operations: 'ok' });
+  assert.equal(folded.operations, undefined);
+  assert.equal(folded.operationsMissing, undefined);
+});
+
+test('buildHealthReportContent: operations ok stays in rounds and is omitted from the top level', () => {
+  const content = buildHealthReportContent(null, { outcome: 'passed', operations: 'ok' }, '2026-08-24T00:00:00.000Z');
+  const parsed = JSON.parse(content);
+  assert.equal(parsed.operations, undefined);
+  assert.equal(parsed.operationsMissing, undefined);
+  assert.equal(parsed.rounds[0].operations, 'ok');
+  const muted = foldOperationsCoverage(content, { outcome: 'passed' } as { operations?: unknown });
+  assert.equal(muted.operations, undefined);
 });
 
 test('serializeRepairMutation preserves every concurrent read-modify-write', async () => {

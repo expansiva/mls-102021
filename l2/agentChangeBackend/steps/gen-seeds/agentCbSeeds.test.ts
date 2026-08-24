@@ -128,6 +128,11 @@ void test('wave give-up degrades health and keeps every attempt\'s violations', 
   assert.match(src, /priorAttempts: recordedAttempts/);
 });
 
+void test('full seed convergence writes seeds: ok so a prior-run degraded cannot ghost', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /if \(!input\.skipped\) await saveHealthReport\(\{ seeds: 'ok' \}\)/);
+});
+
 void test('an environment failure retries the compile once, without spending the replan budget', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   // First occurrence: the SAME step is rescheduled with the flag; seedAttempt is carried over, never

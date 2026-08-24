@@ -102,6 +102,15 @@ void test('validate-all partitions blocking vs degradable and finalizes when onl
   assert.match(src, /canRepair && \(state\.globalAttempts < GLOBAL_REPAIR_BUDGET \|\| isRescue\)/);
 });
 
+void test('validate-all records operations coverage on health and never turns it into a finding', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /compareOperationsCoverage/);
+  assert.match(src, /persistHealth/);
+  assert.match(src, /operationsCoverageLogLine/);
+  assert.match(src, /declaredOperations/);
+  assert.doesNotMatch(src, /missing\.push\([^)]*operations/);
+});
+
 void test('the compile sweep paints an ephemeral local title and never replaces the durable progress file', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /step\.stepTitle \|\| 'Validate l1 artifacts'.*compiling \$\{inScope\.length\} files/);

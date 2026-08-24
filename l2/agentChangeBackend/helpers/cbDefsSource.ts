@@ -35,8 +35,13 @@ const ENTITY_KINDS: readonly CbEntityKind[] = ['core', 'supporting', 'event', 'm
  *
  * The order of the general rebuild is in the spec: ns4 vocabulary first (`party`, `platformUserId`),
  * then this flag, then `/rebuild all`.
+ *
+ * FLIPPED ON 2026-08-24 by Wagner's decision, with the next run being a `/rebuild all`. The two
+ * prerequisites above were already met. Note what the flip does NOT do: it changes how the NEXT
+ * generation classifies entities, so a module generated while it was `false` keeps its local tables
+ * until it is rebuilt. There is no partial reversal — a module is generated in one shape or the other.
  */
-export const MDM_WRITE_PATH_ENABLED = false;
+export const MDM_WRITE_PATH_ENABLED = true;
 
 /** What `storage` declares about an entity: where it lives, and under which master-data type. */
 export interface CbEntityStorage {

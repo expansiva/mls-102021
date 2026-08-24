@@ -421,6 +421,10 @@ async function finalizeSeedPlan(
     throw new Error(seedInfraFailure(environment));
   }
   if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
+  // Full convergence writes a positive verdict so foldSeedsDegraded will not resurrect a `degraded`
+  // snapshot from a previous run still sitting in `rounds`. Give-up already wrote `seeds: degraded`
+  // (and passes `input.skipped`); do not overwrite it with ok.
+  if (!input.skipped) await saveHealthReport({ seeds: 'ok' });
   return [
     enqueueSeedAssets(context, parentStep, step),
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${trace} Final validation succeeded (${built.summary}).`, 'input_output'),

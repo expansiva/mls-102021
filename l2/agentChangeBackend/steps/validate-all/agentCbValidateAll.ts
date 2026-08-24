@@ -50,6 +50,9 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
+import {
+  compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -159,6 +162,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const importReqs: { from: string; key: string; target: string }[] = []; // module-local l1 imports to resolve
     const usecaseSources = new Map<string, string>(); // usecase shortName (lc) -> generated .ts
     const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
+    const declaredOperations: string[] = [];
     const persistenceSources = new Map<string, string>(); // adapters/persistence shortName (lc) -> generated .ts
     const stopReadTick = startLocalStepTick(context, step, (sec) =>
       `${step.stepTitle || 'Validate l1 artifacts'} — reading files (${sec}s)`);
@@ -316,10 +320,31 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
       if (file.extension !== '.defs.ts') continue;
       const folder = String(file.folder || '');
-      if (folder !== moduleName && !folder.startsWith(moduleFolderPrefix)) continue;
       const shortName = String(file.shortName || '');
+      const isModuleOps = folder === `${moduleName}/operations`;
+      const isV1Ops = folder === 'operations';
+      if ((isModuleOps || isV1Ops) && shortName && !declaredOperations.includes(shortName)) {
+        declaredOperations.push(shortName);
+      }
+      if (folder !== moduleName && !folder.startsWith(moduleFolderPrefix)) continue;
       missing.push(...collectDottedShortNameFindings([{ shortName }]));
     }
+    const routeKeys = new Set<string>();
+    for (const controller of controllers) for (const route of controller.routes) routeKeys.add(route.key);
+    for (const source of controllerSources.values()) {
+      for (const key of collectRouteHandlers(source).keys()) routeKeys.add(key);
+    }
+    const operationsCoverage = compareOperationsCoverage({
+      declared: declaredOperations,
+      usecaseNames: usecaseSources.keys(),
+      routeKeys,
+      expectedRoutesByOperation: expectedRoutesByOperation(moduleWorkspaces),
+    });
+    const operationsHealth = operationsCoverage.operations === 'ok'
+      ? { operations: 'ok' as const }
+      : { operations: 'degraded' as const, operationsMissing: operationsCoverage.operationsMissing };
+    const operationsNote = ` ${operationsCoverageLogLine(operationsCoverage)}.`;
+    const persistHealth = (report: Record<string, unknown>) => saveHealthReport({ ...report, ...operationsHealth });
     for (const artifact of mdmDomainArtifacts) {
       missing.push(`mdm local domain artifact forbidden -> ${artifact}`);
     }
@@ -790,12 +815,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           : '';
         const trace = (isRescue
           ? `INTEGRITY targeted rescue (global budget spent; ${repairTargets.size} compiler-only component(s))${suppressedNote}: ${unique.slice(0, 12).join('; ')}`
-          : `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s)${suppressedNote}: ${unique.slice(0, 12).join('; ')}`) + modelsTrace();
+          : `INTEGRITY repair round ${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}: re-materializing ${repairTargets.size} component(s)${suppressedNote}: ${unique.slice(0, 12).join('; ')}`) + modelsTrace() + operationsNote;
         // T1: the round snapshot carries the FULL forced-stale target list (defRef + finding count) so
         // cb-health-report.json's `rounds` array is a durable, per-round audit of what each g{n} decided.
         // T2: the suppressed counts make the double-check/dedup auditable (a suppressed finding that is
         // real re-appears next round / at the final pass — deferred, never lost).
-        await saveHealthReport({ outcome: isRescue ? 'rescue-round' : 'repair-round', round: state.globalAttempts, globalAttempts: state.globalAttempts, repairTargets: roundTargets, targetCount: roundTargets.length, flakyCompilerSuppressed, cascadeCompilerSuppressed, l1Defs, findings: unique, warnings, repairHistory: state.history, models: modelsForHealth() });
+        await persistHealth({ outcome: isRescue ? 'rescue-round' : 'repair-round', round: state.globalAttempts, globalAttempts: state.globalAttempts, repairTargets: roundTargets, targetCount: roundTargets.length, flakyCompilerSuppressed, cascadeCompilerSuppressed, l1Defs, findings: unique, warnings, repairHistory: state.history, models: modelsForHealth() });
         return [
           enqueueNext(context, parentStep, step, `cb-materialize-g${state.globalAttempts}`, 'agentCbMaterialize', 'Re-materializar (repair)', { repair: true, ...(preSeeds ? { preSeeds: true } : {}) }),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
@@ -815,16 +840,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (preSeeds) {
         // No console dump (user decision 2026-07-17, run f): the full findings list already lives on
         // the step trace and in the health report — printing it again only floods the console.
-        const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-        await saveHealthReport({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
+        const trace = `INTEGRITY WARNING (non-blocking before seeds; ${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
+        await persistHealth({ outcome: 'pre-seeds-warning', reason, l1Defs, findings: unique, unmapped, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
         return [
           enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Gerar seeds', {}),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
       if (blocking.length === 0) {
-        const trace = `INTEGRITY PASSED-DEGRADED (${degradable.length} degradable finding(s); run continues to finalize): ${degradable.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-        await saveHealthReport({
+        const trace = `INTEGRITY PASSED-DEGRADED (${degradable.length} degradable finding(s); run continues to finalize): ${degradable.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
+        await persistHealth({
           outcome: 'passed-degraded', reason, l1Defs, findings: unique, degraded: degradable, unmapped, warnings,
           repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth(),
         });
@@ -834,8 +859,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
-      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}`;
-      await saveHealthReport({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
+      const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
+      await persistHealth({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Every terminal trace of this step carries the model counts: it is the measurement that used to be
@@ -847,14 +872,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const repairNote = finalState.history.length
       ? `; repaired during this run: ${finalState.history.length} occurrence(s) [${finalState.history.slice(-8).join(' | ')}]`
       : '';
-    await saveHealthReport({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns, models: modelsForHealth() });
+    await persistHealth({ outcome: 'passed', l1Defs, findings: [], warnings, repairHistory: finalState.history, globalAttempts: finalState.globalAttempts, judgeRuns: finalState.judgeRuns, models: modelsForHealth() });
     // Keep repair state until the LAST validate-all (post-seeds). Clearing on a pre-seeds pass is
     // what left be4's dossier with repairHistory: [] after three real repair rounds.
     if (!preSeeds) await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
     const okTrace = (warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
-      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote + modelsNote;
+      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote + modelsNote + operationsNote;
     return [
       enqueueNextInPhase(context, step, preSeeds ? 'seeds' : 'finalization', preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),
