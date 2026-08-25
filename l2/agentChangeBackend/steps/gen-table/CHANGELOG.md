@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-08-25 — title/name e datas são colunas (busca/ordenação)
+
+`planTableColumns` indexa `title`/`name` (search) e `date`/`datetime`/`*At` (ordering), além de PK,
+FK, status/enum e `createdAt`. Sem coluna, o adapter não tem onde fazer `ILIKE`/`ORDER BY`.
+
+## 2026-08-24 — JSONB details keys = fieldId
+
+Skill: keys inside the `details` envelope are the entity fieldId verbatim (camelCase). snake_case
+is only for `tableName` and column `name`. The table def does not rename those keys.
+
 ## 2026-08-22 — fixtures de l2 não importam l1/server do 102034
 
 Código de agente em `l2` nunca importa (nem como tipo) o `l1/server` do 102034 — o

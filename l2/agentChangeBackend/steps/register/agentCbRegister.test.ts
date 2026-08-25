@@ -14,5 +14,6 @@ void test('agentCbRegister declares the register step agent contract', () => {
   assert.match(src, /agentCbRegister/);
   assert.match(src, /export function createAgent/);
   assert.match(src, /beforePromptStep/);
+  assert.match(src, /pruneOrphanL5BackendModules/);
   assert.match(flow, /"agentName": "agentCbRegister"/);
 });

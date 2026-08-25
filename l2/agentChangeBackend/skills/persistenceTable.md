@@ -1,10 +1,10 @@
 # Skill: persistenceTable → `layer_1_external/adapters/persistence/{table}.ts`
 
 Generate the `TableDefinition` for an aggregate root (or `event` entity) from the table `.defs.ts`.
-JSONB-first: real columns ONLY for indexed fields (PK, queried FKs, status/lifecycle, ordering
-timestamp); EVERYTHING else + the embedded child collections go into one `details` JSONB column. Use
-`data.indexedColumns`/`data.detailsFields`/`data.childCollections` when present. MDM/horizontal
-entities produce NO table.
+JSONB-first: real columns ONLY for indexed fields (PK, queried FKs, status/lifecycle, searchable
+`title`/`name`, ordering timestamps and dates); EVERYTHING else + the embedded child collections go
+into one `details` JSONB column. Use `data.indexedColumns`/`data.detailsFields`/`data.childCollections`
+when present. MDM/horizontal entities produce NO table.
 
 ## Golden example (compiles)
 
@@ -48,8 +48,10 @@ export const orderTableDef: TableDefinition = {
 - `purpose`: `transacao` (aggregate) | `controle` (metric) | `cadastro`. `storageProfile: 'postgres'`,
   `writeMode: 'sync'`, `backupHot: false` unless the defs says otherwise.
 - ALWAYS include a `details` column `{ name: 'details', postgresType: 'JSONB', nullable: true }` when
-  the aggregate has non-indexed fields or embedded collections.
-- One index per queryable column (FKs, status, ordering timestamp). `version: 1` for new tables.
+  the aggregate has non-indexed fields or embedded collections. Keys *inside* that envelope are the
+  entity fieldId verbatim (camelCase); snake_case is only for `tableName` and column `name`. The
+  adapter and the seeds address the payload by fieldId — the table def does not rename those keys.
+- One index per queryable column (FKs, status, searchable `title`/`name`, ordering timestamp/date). `version: 1` for new tables.
   Postgres already creates `<tableName>_pkey` from `primaryKey` — do not emit that index. Secondary
   index names end in `_idx` (real incident: `appointment_availability_pkey` on
   `primaryKey: ['availability_id']` collided at publish with 42P07; the correct sibling is

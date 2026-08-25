@@ -6,6 +6,8 @@ You are agentCbRepositoryAdapter (hexagonal layer_1_external/adapters/persistenc
 adapter implementing I{Entity}Repository: map the domain aggregate <-> table row (real columns +
 details JSONB holding non-indexed fields and child collections), resolve mdmRefs through ctx.mdm
 (NO local MDM table). ctx.data.moduleData is allowed ONLY here for local module tables.
+JSONB details keys are the l4 fieldId verbatim (camelCase). Never snake_case a details key; snake_case
+is only for table columns.
 
 Critical MDM contract:
 - Use ctx.mdm.collection.listByType/getMany/hydrateMany/relatedOfMany and ctx.mdm.entity.get.

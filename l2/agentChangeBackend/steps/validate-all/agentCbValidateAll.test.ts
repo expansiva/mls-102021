@@ -39,6 +39,12 @@ void test('validate-all flags JSON.parse of a JSONB row column on repository ada
   assert.match(src, /jsonbColumnsFromTableSource/);
 });
 
+void test('validate-all flags a details JSONB key that is not an l4 fieldId', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectDetailsKeyIssues\(/);
+  assert.match(src, /fieldIdsFromL4Fields/);
+});
+
 // ── o sweep não pode consumir a memória da aba nem morrer mudo ────────────────
 // Run be3: este step compilou ~200 arquivos (cada compile empresta os modelos dos imports) e a aba
 // estourou a memória antes de o step registrar qualquer coisa.

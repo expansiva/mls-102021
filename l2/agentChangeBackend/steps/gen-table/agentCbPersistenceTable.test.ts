@@ -26,6 +26,10 @@ void test('agentCbPersistenceTable declares the LLM step agent contract', () => 
   assert.match(flow, /"agentName": "agentCbPersistenceTable"/);
   assert.match(skill, /appointment_availability_pkey/);
   assert.match(skill, /_idx/);
+  assert.match(skill, /title/);
+  const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbShared.ts'), 'utf8');
+  assert.match(shared, /fieldId === 'title' \|\| fieldId === 'name'/);
+  assert.match(shared, /type === 'date' \|\| type === 'datetime'/);
 });
 
 void test('agentCbPersistenceTable tool schema is provider-clean', () => {

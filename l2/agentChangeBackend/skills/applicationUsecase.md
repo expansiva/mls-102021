@@ -69,6 +69,10 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   `routeParam` are public required fields. Values whose source is `systemDefault`, `currentWorkspace`,
   `actorSession`, `businessContext` or `activeLifecycleInstance` are resolved server-side — they are NOT
   part of the public Input interface and are NOT required as user-entered params.
+  - List controls the l4 declared as optional inputs — `search`, `sortBy` (closed enum of field ids),
+    `sortOrder` (`'asc' | 'desc'`) — are public Input fields (`required: false`) and MUST be forwarded
+    to `port.list({ search, sortBy, sortOrder, …equality filters })`. Do not drop them. `sortBy` is
+    never a free string: type it as the union from `inputs[].enumValues`.
   - `businessContext.activeCompanyId` -> `ctx.sessionContext.activeCompanyId`
   - `businessContext.activeUnitId` -> `ctx.sessionContext.activeUnitId`
   - `activeLifecycleInstance` -> load the single OPEN/active instance of the lifecycle aggregate via its

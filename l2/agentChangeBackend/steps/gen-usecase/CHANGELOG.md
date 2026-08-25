@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-08-25 — list encaminha search/sortBy/sortOrder ao port.list
+
+Inputs opcionais da lista de catálogo são públicos (`required: false`) e vão para
+`port.list({ search, sortBy, sortOrder })`. `sortBy` é a união de `inputs[].enumValues`.
+
 ## 2026-08-22 — pinar `mdm` no defs (be4)
 
 O l4 traz `"mdm": {"lifecycle": "inactivate"}`, o scan lê, o prompt do gen-usecase manda — e o

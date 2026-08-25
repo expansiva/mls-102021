@@ -32,6 +32,11 @@ import {
   type CbWorkspace, type CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 import { agentTraceFileInfo } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import {
+  formatDiscardedOrphans,
+  liveBackendModulesFromL5,
+  reconcileClientBackendRegistration,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbReconcileBackendConfig.js';
 
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
@@ -141,6 +146,8 @@ export interface CbOperationInput {
   required: boolean;
   source: string;
   description: string;
+  /** Closed union for list controls (`sortBy` field ids, `sortOrder` asc|desc). */
+  enumValues?: string[];
 }
 
 export interface CbContextResolution {
@@ -683,6 +690,7 @@ function readOperationInputs(value: unknown): CbOperationInput[] {
     required: raw.required === true,
     source: readString(raw.source),
     description: readString(raw.description),
+    ...(Array.isArray(raw.enumValues) ? { enumValues: raw.enumValues.filter((item): item is string => typeof item === 'string') } : {}),
   })).filter(input => !!input.inputId || !!input.fieldRef) : [];
 }
 
@@ -767,9 +775,13 @@ export function planTableColumns(fields: Record<string, unknown>[], knownEntityI
     const isId = fieldId === 'id' || /Id$/.test(fieldId);
     const isRef = knownEntityIds.has(type);
     const isStatus = fieldId === 'status' || Array.isArray((f as any).enum);
-    const isOrderTs = fieldId === 'createdAt';
-    if (isId || isRef || isStatus || isOrderTs) {
-      indexed.push({ fieldId, reason: isId ? 'pk/fk' : isRef ? 'fk' : isStatus ? 'status' : 'ordering' });
+    const isSearch = fieldId === 'title' || fieldId === 'name';
+    const isOrderTs = fieldId === 'createdAt' || /At$/.test(fieldId) || type === 'date' || type === 'datetime';
+    if (isId || isRef || isStatus || isSearch || isOrderTs) {
+      indexed.push({
+        fieldId,
+        reason: isId ? 'pk/fk' : isRef ? 'fk' : isStatus ? 'status' : isSearch ? 'search' : 'ordering',
+      });
     } else {
       details.push(fieldId);
     }
@@ -994,37 +1006,19 @@ export async function saveBackendWorkspaceConfig(): Promise<string> {
   projects[runtimeId] = { ...backendRuntime, root: `../mls-${runtimeId}`, type: 'master backend' };
   projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
 
-  const clientModules = Array.isArray(client.modules) ? client.modules.filter(isRecord) : [];
-  const persistenceModules = Array.isArray(client.persistenceModules) ? client.persistenceModules.filter(isRecord) : [];
-  client.modules = clientModules;
-  client.persistenceModules = persistenceModules;
+  const live = liveBackendModulesFromL5(l5.modules);
+  if (live.length === 0) return 'l5/config.json backend merged (0 module(s))';
 
-  let backendModules = 0;
-  const l5Modules = Array.isArray(l5.modules) ? l5.modules.filter(isRecord) : [];
-  for (const l5mod of l5Modules) {
-    const moduleName = readString(l5mod.moduleName);
-    const backend = isRecord(l5mod.backend) ? l5mod.backend : null;
-    if (!moduleName || !backend) continue;
-    const persistence = isRecord(backend.persistence) ? backend.persistence : {};
-    const backendControllers = readString(backend.backendControllers);
-    const tableDefsDir = readString(persistence.tableDefsDir);
-    if (!backendControllers || !tableDefsDir) continue;
-    let mod = clientModules.find(item => readString(item.moduleId) === moduleName);
-    if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
-    mod.basePath = readString(mod.basePath) || `/${moduleName}`;
-    mod.shellMode = readString(mod.shellMode) || 'spa';
-    mod.backendControllers = backendControllers;
-    delete mod.backendRouter;
-
-    let pm = persistenceModules.find(item => readString(item.moduleId) === moduleName);
-    if (!pm) { pm = { moduleId: moduleName }; persistenceModules.push(pm); }
-    pm.tableDefsDir = tableDefsDir;
-    delete pm.persistenceEntrypoint;
-    backendModules += 1;
-  }
+  const reconciled = reconcileClientBackendRegistration(
+    Array.isArray(client.modules) ? client.modules.filter(isRecord) : [],
+    Array.isArray(client.persistenceModules) ? client.persistenceModules.filter(isRecord) : [],
+    live,
+  );
+  client.modules = reconciled.modules;
+  client.persistenceModules = reconciled.persistenceModules;
 
   await saveJsonStor({ project, level: 5, folder: '', shortName: 'config', extension: '.json' }, workspace);
-  return `l5/config.json backend merged (${backendModules} module(s))`;
+  return `l5/config.json backend merged (${live.length} module(s))${formatDiscardedOrphans(reconciled.discarded)}`;
 }
 
 async function readJsonStor(fileInfo: CbFileInfo): Promise<unknown> {

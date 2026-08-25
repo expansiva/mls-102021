@@ -17,9 +17,12 @@ import {
   collectNonEnglishAppErrorMessages,
   collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectDottedShortNameFindings, collectIoShapeSymmetryIssues,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
-  jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
+  jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
   alignOutputShapeToOntology, bffCallsWithMaterializedUsecase,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import {
+  TASK_FIELD_IDS, TASK_L4_FIELDS, TASK_SEED_ROW, toDomain, toRow,
+} from '/_102021_/l2/agentChangeBackend/steps/gen-adapter/fixtures/taskDetailsRoundTrip.js';
 
 test('W2: weeklySchedule json input vs string output is a defs-level finding; empty item.fields too', () => {
   const fn = {
@@ -582,6 +585,57 @@ test('collectJsonbRowParseFindings flags the real pet adapter and stays quiet on
     }
   `;
   assert.deepEqual(collectJsonbRowParseFindings(fixed, new Set(['details']), 'petRepositoryAdapter.ts'), []);
+});
+
+const TASK_FIELD_ID_SET = fieldIdsFromL4Fields(TASK_L4_FIELDS);
+
+const SNAKE_DETAILS_ADAPTER = `
+interface TaskDetails {
+  title: string;
+  due_date: string | null;
+}
+function detailsDefaults(): TaskDetails {
+  return { title: '', due_date: null };
+}
+function parseDetails(row: TaskRow): TaskDetails {
+  let parsed: Partial<TaskDetails> = {};
+  try {
+    const raw = typeof row.details === 'string' ? JSON.parse(row.details) : (row.details ?? {});
+    parsed = (raw ?? {}) as Partial<TaskDetails>;
+  } catch { parsed = {}; }
+  return { ...detailsDefaults(), ...parsed };
+}
+function toDomain(row: TaskRow): Task {
+  const details = parseDetails(row);
+  return { taskId: row.task_id, title: details.title, dueDate: details.due_date };
+}
+function toRow(task: Task): TaskRow {
+  const details: TaskDetails = { title: task.title, due_date: task.dueDate };
+  return { task_id: task.taskId, details: JSON.stringify(details) };
+}
+`;
+
+test('collectDetailsKeyIssues flags a snake_case JSONB key and stays quiet on fieldId keys', () => {
+  const issues = collectDetailsKeyIssues(SNAKE_DETAILS_ADAPTER, TASK_FIELD_ID_SET, 'taskRepositoryAdapter.ts');
+  assert.ok(issues.some(i => /JSONB key 'due_date'/.test(i)), issues.join(' | '));
+  assert.equal(issues.length, 1, issues.join(' | '));
+  const good = readFileSync(path.join(JSONB_FIXTURE_DIR, 'taskDetailsRoundTrip.ts'), 'utf8');
+  assert.deepEqual(collectDetailsKeyIssues(good, TASK_FIELD_ID_SET, 'taskDetailsRoundTrip.ts'), []);
+});
+
+test('collectDetailsKeyIssues skips when the l4 vocabulary is empty', () => {
+  assert.deepEqual(collectDetailsKeyIssues(SNAKE_DETAILS_ADAPTER, new Set(), 'taskRepositoryAdapter.ts'), []);
+});
+
+test('seed-row round-trip through toDomain keeps every l4 field, including dueDate', () => {
+  const task = toDomain(TASK_SEED_ROW);
+  for (const fieldId of TASK_FIELD_IDS) {
+    assert.notEqual((task as unknown as Record<string, unknown>)[fieldId], undefined, fieldId);
+  }
+  assert.equal(task.dueDate, '2026-07-02T12:00:00.000Z');
+  const again = toDomain(toRow(task));
+  assert.equal(again.dueDate, task.dueDate);
+  assert.equal(again.title, task.title);
 });
 
 test('extractFunctionBlocks brace-matches nested bodies for both function and arrow forms', () => {

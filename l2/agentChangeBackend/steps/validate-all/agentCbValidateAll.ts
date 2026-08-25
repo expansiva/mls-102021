@@ -45,7 +45,7 @@ import {
   stableCompilerErrors, selectCompilerRepairRoots, compilerErrorFamily, compilerErrorsAfterRepair,
   collectNonEnglishAppErrorMessages,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
-  jsonbColumnsFromTableSource, collectJsonbRowParseFindings,
+  jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
   extractInterfaceMethods, collectDeleteOperationPortGaps,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
@@ -694,6 +694,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           missing.push(msg);
           if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
         }
+      }
+    }
+    // JSONB details keys = l4 fieldId verbatim. Seeds write camelCase; an adapter that reads
+    // details.due_date leaves the column blank with the value still in the row.
+    const fieldIdsByAdapterSn = new Map<string, Set<string>>();
+    for (const entity of scan.entities) {
+      const sn = `${lowerFirst(entity.entityId)}RepositoryAdapter`.toLowerCase();
+      const ids = fieldIdsFromL4Fields(entity.fields);
+      if (ids.size) fieldIdsByAdapterSn.set(sn, ids);
+    }
+    for (const [sn, source] of persistenceSources) {
+      if (!sn.endsWith('repositoryadapter')) continue;
+      const fieldIds = fieldIdsByAdapterSn.get(sn);
+      if (!fieldIds?.size) continue;
+      const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+      const label = defs ? `${defs.folder}/${defs.real}.ts` : sn;
+      for (const msg of collectDetailsKeyIssues(source, fieldIds, label)) {
+        missing.push(msg);
+        if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
       }
     }
     // COMPOSITION ROOT (102034 requirement — lesson run 24/25): if the module has repository adapters,

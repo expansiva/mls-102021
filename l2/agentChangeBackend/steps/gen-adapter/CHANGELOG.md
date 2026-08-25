@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-25 — list honra search (ILIKE) e sortBy/sortOrder
+
+A lista de catálogo passa a declarar `search`/`sortBy`/`sortOrder`. O adapter materializa:
+`findMany({ ilike: { title|name } })` no runtime 102034; `orderBy` na coluna snake_case; enum
+ordenado em memória pela união do domínio, não por texto SQL. `title`/`name`/datas são colunas
+(planTableColumns), não JSONB.
+
+## 2026-08-24 — JSONB details keys = l4 fieldId (camelCase)
+
+Seeds write `details.dueDate`. An adapter that reads `details.due_date` returns the row without
+the field and the list column is blank. Skill + human prompt: keys inside the envelope are the
+fieldId verbatim; snake_case is only for table columns. Guard `collectDetailsKeyIssues` (validate-all)
+compares adapter keys to l4 fieldIds. Round-trip fixture: seed-row → toDomain keeps every field.
+
 ## 2026-08-22 — fixtures de l2 não importam l1/server do 102034
 
 Código de agente em `l2` nunca importa (nem como tipo) o `l1/server` do 102034 — o

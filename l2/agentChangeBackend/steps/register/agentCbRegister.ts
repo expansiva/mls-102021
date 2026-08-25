@@ -9,13 +9,16 @@
 // the controllers), (b) writes the module's backend registration into the CLIENT-owned
 // l5/project.json (backendControllers dir + tableDefsDir + routeKeys) so the final backend step can
 // merge l5/config.json WITHOUT the masters (102033/102034) importing the client — dependency
-// inversion, spec item 13 — and (c) gates to validateAll. NEVER registers MDM tables (those belong
-// to 102034).
+// inversion, spec item 13 — and (c) gates to validateAll. Registration is reconciliation, not
+// append: a backend block whose persistence dir is gone is dropped here, and the config.json merge
+// (finalize + publish composer) drops the matching persistenceModules/backendControllers entry,
+// naming the orphan in the log. NEVER registers MDM tables (those belong to 102034).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { extractSeedSkippedFromSource, type SeedSkippedTargets } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
+import { formatDiscardedOrphans, pruneOrphanL5BackendModules } from '/_102021_/l2/agentChangeBackend/helpers/cbReconcileBackendConfig.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbRegister', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/register', agentDescription: 'Deterministic backend registration (l5 config + composition root; routes/tables discovered at runtime)', visibility: 'private', beforePromptStep };
@@ -108,20 +111,32 @@ async function updateL5BackendConfig(project: number, moduleName: string, routeK
   cfg.masters.backend = { masterProject: 102021, agentFolder: 'agentChangeBackend', runtimeProject: 102034 };
   const controllersDir = `./_${project}_/l1/${moduleName}/layer_1_external/adapters/http/controllers`;
   const tableDefsDir = `./_${project}_/l1/${moduleName}/layer_1_external/adapters/persistence`;
-  const modules = Array.isArray(cfg.modules) ? cfg.modules : (cfg.modules = []);
-  let mod = modules.find((m: any) => m && m.moduleName === moduleName);
-  if (!mod) { mod = { moduleName }; modules.push(mod); }
-  mod.backend = { backendControllers: controllersDir, persistence: { tableDefsDir }, routeKeys };
+  const existingModules = Array.isArray(cfg.modules) ? cfg.modules.filter(isRecord) : [];
+  const pruned = pruneOrphanL5BackendModules(existingModules, moduleName, (name) => l1PersistenceExists(project, name));
+  cfg.modules = pruned.modules;
+  let mod = pruned.modules.find((m) => m.moduleName === moduleName);
+  if (!mod) { mod = { moduleName }; pruned.modules.push(mod); }
+  const backend: Record<string, unknown> = { backendControllers: controllersDir, persistence: { tableDefsDir }, routeKeys };
   // seedCoverage: targets that are EMPTY BY DESIGN (a seed wave that never converged). Consumers —
   // notably a test generator — must not assert "at least one row" against these. Omitted entirely when
   // coverage is complete, so its mere presence means "there is a known gap".
-  if (seedSkipped) mod.backend.seedCoverage = { skippedTables: seedSkipped.tables, skippedMdmEntities: seedSkipped.mdmEntities, reason: seedSkipped.reason };
-  else if (isRecord(mod.backend)) delete (mod.backend as Record<string, unknown>).seedCoverage;
+  if (seedSkipped) backend.seedCoverage = { skippedTables: seedSkipped.tables, skippedMdmEntities: seedSkipped.mdmEntities, reason: seedSkipped.reason };
+  mod.backend = backend;
   const content = JSON.stringify(cfg, null, 2);
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content });
   const coverageNote = seedSkipped ? `; seedCoverage gap: tables [${seedSkipped.tables.join(', ') || 'none'}], MDM [${seedSkipped.mdmEntities.join(', ') || 'none'}]` : '';
-  return `l5/project.json backend block updated for '${moduleName}' (${routeKeys.length} route(s))${coverageNote}`;
+  return `l5/project.json backend block updated for '${moduleName}' (${routeKeys.length} route(s))${coverageNote}${formatDiscardedOrphans(pruned.discarded)}`;
+}
+
+function l1PersistenceExists(project: number, moduleName: string): boolean {
+  const persistenceFolder = `${moduleName}/layer_1_external/adapters/persistence`;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
+    const folder = String(file.folder || '');
+    if (folder === persistenceFolder || folder.startsWith(`${persistenceFolder}/`)) return true;
+  }
+  return false;
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {

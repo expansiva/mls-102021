@@ -15,6 +15,9 @@ export interface OrderListFilter {
   dailyShiftId?: string;
   status?: OrderStatus;
   tableId?: string;
+  search?: string;
+  sortBy?: 'createdAt' | 'status';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface IOrderRepository {
@@ -32,8 +35,11 @@ export interface IOrderRepository {
   `.d.ts` actually exports it. When it does not, declare the alias locally in the port as
   `export type {Name}Id = string`; never import a type merely because its name is plausible.
 - `save` persists the whole aggregate (root + embedded members) — no per-child methods.
-- A `{Entity}ListFilter` carries only indexed/queryable fields (PK, FKs, status). No filtering by
-  fields that live in `details` JSONB.
+- A `{Entity}ListFilter` carries indexed/queryable fields (PK, FKs, status) **and** the optional
+  list controls the l4 declared: `search` (ILIKE on the `title`/`name` column), `sortBy` (closed
+  enum of sortable field ids from `inputs[].enumValues`), `sortOrder` (`'asc' | 'desc'`). No
+  filtering by fields that live in `details` JSONB — those fields are columns when they are
+  searchable or sortable.
 - No platform imports, no `ctx`, no SQL types.
 - Append-only EVENT ports (`data.appendOnly === true`): expose `append(record): Promise<{Event}>` plus
   read finders (e.g. `listByOwnerId(ownerId)`, `listByPeriod(from, to)`). NO `save`/`update`/`delete` and

@@ -746,6 +746,135 @@ export function collectJsonbRowParseFindings(adapterSource: string, jsonbColumns
   return [...new Set(findings)];
 }
 
+const DETAILS_MAPPING_FNS = new Set(['toRow', 'toDomain', 'parseDetails', 'detailsDefaults']);
+
+function sliceBraceInner(code: string, openIdx: number): string | null {
+  if (openIdx < 0 || code[openIdx] !== '{') return null;
+  let depth = 0;
+  for (let i = openIdx; i < code.length; i++) {
+    const ch = code[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return code.slice(openIdx + 1, i);
+    }
+  }
+  return null;
+}
+
+function firstLevelIdentKeys(inner: string): string[] {
+  const keys: string[] = [];
+  let depth = 0;
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (ch === '{') { depth++; i++; continue; }
+    if (ch === '}') { depth = Math.max(0, depth - 1); i++; continue; }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      i++;
+      while (i < inner.length && inner[i] !== quote) {
+        if (inner[i] === '\\') i++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (depth !== 0) { i++; continue; }
+    if (ch === '.' && inner[i + 1] === '.' && inner[i + 2] === '.') { i += 3; continue; }
+    if (/[A-Za-z_$]/.test(ch)) {
+      let j = i + 1;
+      while (j < inner.length && /[\w$]/.test(inner[j])) j++;
+      const ident = inner.slice(i, j);
+      let k = j;
+      while (k < inner.length && /\s/.test(inner[k])) k++;
+      if (inner[k] === ':') keys.push(ident);
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  return keys;
+}
+
+/** l4 `fields[].fieldId` — the vocabulary of JSONB `details` keys (and of domain fields). */
+export function fieldIdsFromL4Fields(fields: unknown): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(fields)) return ids;
+  for (const item of fields) {
+    if (!isRecord(item)) continue;
+    const id = readString(item.fieldId);
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+function extractDetailsInterfaceKeys(code: string): string[] {
+  const keys: string[] = [];
+  const re = /interface\s+[A-Za-z0-9_$]*Details\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    const open = code.indexOf('{', match.index);
+    const inner = sliceBraceInner(code, open);
+    if (inner) keys.push(...firstLevelIdentKeys(inner));
+  }
+  return keys;
+}
+
+function extractDetailsAccessKeys(body: string): string[] {
+  const keys: string[] = [];
+  const dot = /\b(?:d|parsed|details)\.([A-Za-z_$][A-Za-z0-9_$]*)/g;
+  const bracket = /\b(?:d|parsed|details)\[['"]([A-Za-z_$][A-Za-z0-9_$]*)['"]\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = dot.exec(body)) !== null) keys.push(match[1]);
+  while ((match = bracket.exec(body)) !== null) keys.push(match[1]);
+  return keys;
+}
+
+/**
+ * Adapter `parseDetails`/`toDomain`/`toRow` that addresses `details.<chave>` with a key that is not
+ * an l4 fieldId. Seeds write fieldId (camelCase); a snake_case key inside the JSONB envelope is
+ * unread data (blank column, value still in the row). Inverse: toRow/detailsDefaults writing a key
+ * outside the same vocabulary. Empty fieldIds skips (nothing to compare).
+ */
+export function collectDetailsKeyIssues(
+  adapterSource: string,
+  fieldIds: ReadonlySet<string>,
+  label: string,
+): string[] {
+  if (!fieldIds.size) return [];
+  const used = new Set<string>();
+  for (const key of extractDetailsInterfaceKeys(adapterSource)) used.add(key);
+  for (const { name, body } of extractFunctionBlocks(adapterSource)) {
+    if (!DETAILS_MAPPING_FNS.has(name)) continue;
+    for (const key of extractDetailsAccessKeys(body)) used.add(key);
+    if (name === 'toRow' || name === 'detailsDefaults') {
+      const assign = /\bdetails\s*(?::\s*[A-Za-z0-9_$]+)?\s*=\s*\{/.exec(body);
+      if (assign) {
+        const open = body.indexOf('{', assign.index + assign[0].length - 1);
+        const inner = sliceBraceInner(body, open);
+        if (inner) for (const key of firstLevelIdentKeys(inner)) used.add(key);
+      }
+    }
+    if (name === 'detailsDefaults') {
+      const ret = /return\s*\{/.exec(body);
+      if (ret) {
+        const open = body.indexOf('{', ret.index);
+        const inner = sliceBraceInner(body, open);
+        if (inner) for (const key of firstLevelIdentKeys(inner)) used.add(key);
+      }
+    }
+  }
+  const issues: string[] = [];
+  for (const key of [...used].sort()) {
+    if (fieldIds.has(key)) continue;
+    issues.push(
+      `details key -> ${label} JSONB key '${key}' is not an l4 fieldId (details keys are the fieldId verbatim, never snake_case). Seeds write fieldId; the adapter must read and write the same key`,
+    );
+  }
+  return issues;
+}
+
 /** Collection fields of a generated domain entity, as `valueObjectName -> the entity's field name`
  * (e.g. `OrderItem -> items` for `items: OrderItem[]`).
  *

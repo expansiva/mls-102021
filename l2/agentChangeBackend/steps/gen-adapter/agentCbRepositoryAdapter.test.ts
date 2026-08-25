@@ -21,7 +21,12 @@ void test('agentCbRepositoryAdapter declares the LLM step agent contract', () =>
   assert.match(src, /agentCbRepositoryAdapter/);
   assert.match(src, /createPromptReadyIntent/);
   assert.match(src, /afterPromptStep/);
+  assert.match(src, /fieldId verbatim/);
+  assert.match(src, /ilike/);
   assert.match(flow, /"agentName": "agentCbRepositoryAdapter"/);
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'repositoryAdapter.md'), 'utf8');
+  assert.match(skill, /ilike/);
+  assert.match(skill, /sortBy/);
 });
 
 void test('agentCbRepositoryAdapter tool schema is provider-clean', () => {

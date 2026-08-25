@@ -3,14 +3,21 @@
 // Publish-time composer (backend side). Runs on the dev machine via tsx, BEFORE rsync:
 //   tsx mls-102021/l2/agentChangeBackend/nodejsSaveConfigJson.ts <clientId>
 // Reads the client-owned mls-<clientId>/l5/project.json (written by agentChangeBackend)
-// and merges the backend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
+// and reconciles the backend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // projects (client + master backend + 102029 lib), modules[].backendControllers and
-// persistenceModules[].tableDefsDir. Routes/tables themselves are discovered at RUNTIME by
-// the production master from those folders — this file only wires the dependency inversion.
+// persistenceModules[].tableDefsDir. Leftover modules whose dirs are gone are dropped (named in the
+// log) — append would leave a dead tableDefsDir that crashes publish migration with ENOENT.
+// Routes/tables themselves are discovered at RUNTIME by the production master from those folders.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { L5ProjectJson, MasterRuntimeManifest, ProjectsConfig, ProjectModuleConfig } from '/_102029_/l2/runtimeConfigTypes.js';
+import type { L5ProjectJson, MasterRuntimeManifest, ProjectsConfig } from '/_102029_/l2/runtimeConfigTypes.js';
+// Relative import: this file runs via tsx at publish; path-mapped /_102021_/… is type-only there.
+import {
+  formatDiscardedOrphans,
+  liveBackendModulesFromL5,
+  reconcileClientBackendRegistration,
+} from './helpers/cbReconcileBackendConfig.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -66,32 +73,29 @@ function main(): void {
   if (manifest?.persistenceModules?.length) config.projects[runtimeId].persistenceModules = manifest.persistenceModules;
 
   const client = config.projects[clientId];
-  client.modules = client.modules || [];
-  client.persistenceModules = client.persistenceModules || [];
-
-  let backendModules = 0;
-  for (const l5mod of l5.modules || []) {
-    if (!l5mod?.moduleName || !l5mod.backend) continue;
-    const controllersDir = path.join(ROOT, l5mod.backend.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
-    const tableDefsDir = path.join(ROOT, l5mod.backend.persistence.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+  const live = liveBackendModulesFromL5(l5.modules);
+  for (const item of live) {
+    const controllersDir = path.join(ROOT, item.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+    const tableDefsDir = path.join(ROOT, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
     if (!fs.existsSync(controllersDir)) fail(`backendControllers dir not found on disk: ${controllersDir}`);
     if (!fs.existsSync(tableDefsDir)) fail(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
-
-    let mod = client.modules.find(m => m.moduleId === l5mod.moduleName);
-    if (!mod) { mod = { moduleId: l5mod.moduleName, basePath: `/${l5mod.moduleName}`, shellMode: 'spa' } as ProjectModuleConfig; client.modules.push(mod); }
-    mod.backendControllers = l5mod.backend.backendControllers;
-    delete mod.backendRouter; // hexagonal model only; the legacy router must not survive composition
-
-    let pm = client.persistenceModules.find(m => m.moduleId === l5mod.moduleName);
-    if (!pm) { pm = { moduleId: l5mod.moduleName }; client.persistenceModules.push(pm); }
-    pm.tableDefsDir = l5mod.backend.persistence.tableDefsDir;
-    delete pm.persistenceEntrypoint;
-    backendModules += 1;
   }
-  if (backendModules === 0) fail('l5/project.json declares no modules with a backend block; nothing to compose');
+  if (live.length === 0) fail('l5/project.json declares no modules with a backend block; nothing to compose');
+
+  const reconciled = reconcileClientBackendRegistration(
+    client.modules as Record<string, unknown>[] | undefined,
+    client.persistenceModules as Record<string, unknown>[] | undefined,
+    live,
+  );
+  client.modules = reconciled.modules as unknown as typeof client.modules;
+  client.persistenceModules = reconciled.persistenceModules as unknown as typeof client.persistenceModules;
+  const orphanNote = formatDiscardedOrphans(reconciled.discarded);
+  if (reconciled.discarded.length) {
+    console.warn(`[nodejsSaveConfigJson:backend] discarded orphan module(s): ${reconciled.discarded.join(', ')}`);
+  }
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(`[nodejsSaveRuntimeConfig:backend] composed ${backendModules} module(s) → ${configPath}`);
+  console.log(`[nodejsSaveRuntimeConfig:backend] composed ${live.length} module(s)${orphanNote} → ${configPath}`);
 }
 
 main();

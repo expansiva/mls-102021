@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-08-24 — guard: chave do JSONB details ≠ fieldId do l4
+
+Adapter cujo `parseDetails`/`toDomain` lê (ou `toRow` escreve) `details.<chave>` que não é fieldId
+da entidade vira finding reparável. Vocabulário = `fields[].fieldId` do l4 (camelCase). Caminho
+legítimo: a mesma chave que os seeds já escrevem.
+
 ## 2026-08-22 — repairHistory no dossiê (be4)
 
 O último validate-all (pass limpo, pós-seeds) gravava `repairHistory: []` / `globalAttempts: 0`

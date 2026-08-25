@@ -88,7 +88,10 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
       if (filter?.dailyShiftId) where.daily_shift_id = filter.dailyShiftId;
       if (filter?.status) where.status = filter.status;
       if (filter?.tableId) where.table_id = filter.tableId;
-      const rows = await (await getTable()).findMany({ where, orderBy: { field: 'created_at', direction: 'desc' } });
+      const rows = await (await getTable()).findMany({
+        where,
+        orderBy: { field: 'created_at', direction: filter?.sortOrder === 'asc' ? 'asc' : 'desc' },
+      });
       return rows.map(toDomain);
     },
     async save(order) {
@@ -112,6 +115,10 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
   app shows ids with blank names. Parse with
   `typeof row.details === 'string' ? JSON.parse(row.details) : (row.details ?? {})`. A real parse
   failure `console.warn`s table/id before falling back to defaults.
+- **JSONB `details` keys are the l4 fieldId verbatim (camelCase).** Snake_case is only for table
+  columns on `{Entity}Row`. `{Entity}Details`, `toRow`, `toDomain` and `parseDetails` use the fieldId
+  as written in the l4 (`dueDate`, never `due_date`). Seeds write the same keys. A snake_case key
+  inside the envelope is unread data: the row has the value and the list column is blank.
 - **`parseDetails` MUST merge over complete defaults — never cast the parse result.** A stored row can
   have `details` NULL, `'{}'` or missing keys (older rows, seeds, partial writes), and
   `JSON.parse('{}')` does NOT throw — so defaulting only inside `catch` silently produces `undefined`
@@ -128,6 +135,15 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
   `<entity>.d.ts` in dependsFiles). NEVER pluralize, translate or invent it — an unknown name fails
   only at runtime with PERSISTENCE_TABLE_NOT_FOUND. The defs `tableRef` is a hint; `tableName` wins.
 - `orderBy` is always `{ field: '<column>', direction: 'asc'|'desc' }`. `getById` throws `NOT_FOUND`.
+- **List search/sort (when the l4 list declares them).** `filter.search` is a case-insensitive
+  substring on the `title`/`name` **column** (those fields are indexed, not JSONB): pass
+  `ilike: { title: filter.search }` (or `name`) to `findMany` — do not invent SQL. Empty/absent
+  search is a no-op. `filter.sortBy` is a closed enum of field ids; map to the snake_case column
+  and pass `orderBy`. Default when `sortBy` is absent: `{ field: 'created_at', direction: 'desc' }`
+  if that column exists, otherwise omit. `sortOrder` defaults to `'desc'` for `*At` timestamps and
+  `'asc'` otherwise. **Enum sort is not SQL text order** (`high` < `low` < `medium` lexicographically):
+  after `toDomain`, stable-sort by the index in the domain union (the same order as `fields[].enum`
+  / the TypeScript union). Dates and timestamps use the SQL `orderBy`.
 - **Never let a persistence-driver error escape untranslated.** A lookup by an id the driver rejects
   (e.g. a value that is not a valid key for the column type) throws from the driver, and an untranslated
   throw becomes `INTERNAL_ERROR` (500) exposing the driver message to the client. In a lookup by id,
