@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-08-28 — o juiz espera o fan-out, não o dispatcher
+
+`cb-judge` era enfileirado com `dependsOn` no passo corrente (`cb-gen-usecase`), que completa no
+instante em que despacha. No run do `todo` (102047) o juiz leu 0/9 defs de usecase e o `cb-gen-http`,
+logo atrás, leu 4/9: 5 bffCalls e o controller inteiro do `taskHub` foram descartados em silêncio, e o
+app publicado respondeu `ROUTINE_NOT_FOUND` em 11 dos 15 testes. O enqueue passa agora
+`FANOUT_PLAN_ID` explicitamente (é o que o `cb-gen-domain` sempre fez e o que o flow.json já
+documentava).
+
 ## 2026-08-25 — list encaminha search/sortBy/sortOrder ao port.list
 
 Inputs opcionais da lista de catálogo são públicos (`required: false`) e vão para

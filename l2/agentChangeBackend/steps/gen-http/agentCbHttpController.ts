@@ -117,8 +117,20 @@ async function readUsecaseFunctions(): Promise<Map<string, UsecaseFn[]>> {
   return map;
 }
 
+/** Ask the server for this project's current file index; never fails the step. Same visibility barrier
+ *  agentCbJudge takes: this step READS what the usecase fan-out wrote, and a step dependency only proves
+ *  the workers completed — not that this client's index already observed their files. */
+async function refreshProjectIndex(): Promise<void> {
+  try {
+    await mls.stor.server.loadProjectInfoIfNeeded(mls.actualProject || 0, true);
+  } catch (error) {
+    console.warn(`[${AGENT_NAME}] could not refresh the project file index before generating controllers`, error);
+  }
+}
+
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    await refreshProjectIndex();
     // Read ALL statuses: v2 controllers are per-WORKSPACE and a workspace's bffCalls may `use` operations
     // of mixed status (a partial /run). The v1 loop still processes only the pending owners (filtered below).
     const scan = await readBackendScan(ALL_STATUSES, context);
@@ -136,9 +148,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // the materializer PROMPT read; the controller does not import it). ──
     const v2Modules = new Set(scan.workspaces.map(w => w.moduleName).filter(Boolean));
     let savedV2 = 0;
+    // A bffCall whose usecase defs are not readable is DROPPED — its route never exists and the app
+    // answers ROUTINE_NOT_FOUND. That drop used to be silent (the `skipped` list was discarded), so the
+    // only symptom was a 404 in the published app. It is now named here and re-checked by validate-all.
+    const droppedRoutes: string[] = [];
     for (const module of scan.moduleNames) {
       if (!v2Modules.has(module)) continue;
-      savedV2 += await emitWorkspaceControllerDefs(scan, module, usecaseFns);   // .defs.ts (always)
+      savedV2 += await emitWorkspaceControllerDefs(scan, module, usecaseFns, droppedRoutes);   // .defs.ts (always)
     }
 
     // ── l4 v1 fallback: one controller .defs.ts per pending OPERATION (materialized by cb-materialize). ──
@@ -277,9 +293,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? enqueueNext(context, parentStep, step, 'cb-rebuild-defs-cleanup', 'agentCbRebuildDefsCleanup', 'Limpar .ts derivados (defs-only)', { modules: scan.moduleNames })
       : enqueueNext(context, parentStep, step, 'cb-materialize', 'agentCbMaterialize', 'Materializar .defs.ts -> .ts', {});
     const v2Note = v2Modules.size ? ` + ${savedV2} v2 workspace controller def(s)` : '';
+    const droppedNote = droppedRoutes.length
+      ? ` WARNING: ${droppedRoutes.length} contract route(s) with NO controller (the app will answer ROUTINE_NOT_FOUND): ${droppedRoutes.slice(0, 12).join('; ')}.`
+      : '';
     return [
       next,
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Generated ${saved} v1 controller(s)${v2Note} from l4${defsOnly ? ' (defs-only: .ts skipped)' : ''}.`),
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `Generated ${saved} v1 controller(s)${v2Note} from l4${defsOnly ? ' (defs-only: .ts skipped)' : ''}.${droppedNote}`),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -293,7 +312,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 // needs: the routes, the usecase function to call per bffCall (real export names), the boundary
 // inputContract, the projection spec (pick/rename/$items per bffCall), the wire contract type names, and
 // the workspace actors/scopes for authorization. Deterministic def; the .ts is LLM-materialized. ──
-async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecaseFns: Map<string, UsecaseFn[]>): Promise<number> {
+async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecaseFns: Map<string, UsecaseFn[]>, droppedRoutes: string[]): Promise<number> {
   const project = mls.actualProject || 0;
   const actorRoleScopes = new Map<string, string>();
   for (const a of scan.actors) if (a.moduleName === module) actorRoleScopes.set(a.actorId, a.roleScope);
@@ -310,6 +329,13 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
     const dependsFiles = new Set<string>();
     const usecaseIds = new Set(usecaseFns.keys());
     const { kept: bffCalls } = bffCallsWithMaterializedUsecase(ws.bffCalls, usecaseIds);
+    for (const call of ws.bffCalls) {
+      if (bffCalls.includes(call)) continue;
+      const missing = call.uses.filter(u => !u.optional && !usecaseIds.has(u.operationId)).map(u => u.operationId);
+      droppedRoutes.push(`${call.route} (usecase defs unreadable: ${missing.join(', ')})`);
+    }
+    // An empty controller registers nothing and would only add a file to explain; the drops above are
+    // the record. A workspace that loses EVERY call therefore disappears — say it, do not infer it later.
     if (!bffCalls.length) continue;
     for (const bff of bffCalls) {
       const handlerName = `${ws.workspaceId}${capitalize(bff.bffId)}Handler`;

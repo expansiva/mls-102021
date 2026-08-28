@@ -19,6 +19,7 @@ const ALLOWED: Record<string, { info?: number; log?: number; warn?: number; why:
   'helpers/cbMaterializeIo.ts': { warn: 8, info: 1, why: 'compile/import/save fallbacks; info is registry-key mismatch' },
   'steps/materialize/agentCbMaterialize.ts': { warn: 1, why: 'unreadable context ref omitted from the prompt' },
   'steps/judge/agentCbJudge.ts': { warn: 1, why: 'project file index refresh failed before judging' },
+  'steps/gen-http/agentCbHttpController.ts': { warn: 1, why: 'project file index refresh failed before generating controllers' },
   'steps/gen-seed-assets/agentCbSeedAssets.ts': { warn: 3, why: 'optional image step degrades to warning and continues' },
   'steps/register/agentCbRegister.ts': { warn: 2, why: 'composition/config merge warning, run continues' },
   'steps/validate-all/agentCbValidateAll.ts': { warn: 2, why: 'scan warning + forceDefsStale failed' },

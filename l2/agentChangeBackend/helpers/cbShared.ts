@@ -1289,6 +1289,13 @@ export function createAgentStepPayload(
  * A phase can only receive children while it is open, so it is created lazily with its first child
  * inside it (agentCbPhase adds that child from within the phase's own hook) — never pre-created empty
  * and then completed, which would make every later child throw.
+ *
+ * `dependsOnPlanId` overrides the default barrier (the CURRENT step). A DISPATCHER that just spawned a
+ * parallel fan-out must pass the FAN-OUT's planId: the dispatcher completes the instant it returns its
+ * intents, so depending on it lets the next phase start while the workers are still writing. That is
+ * exactly what happened on 2026-08-28 (102047/todo): cb-judge depended on cb-gen-usecase instead of
+ * cb-usecase-fanout, so the judge saw 0/9 usecase defs and cb-gen-http saw 4/9 — 5 bffCalls and a whole
+ * workspace silently lost their controller. cb-gen-port already does it right (dependsOn the fan-out).
  */
 export function enqueueNextInPhase(
   context: mls.msg.ExecutionContext,
@@ -1299,8 +1306,9 @@ export function enqueueNextInPhase(
   stepTitle: string,
   args: unknown = {},
   onFailure?: mls.msg.AIAgentStep['onFailure'],
+  dependsOnPlanId?: string,
 ): mls.msg.AgentIntentAddStep {
-  const dep = planIdOf(currentStep);
+  const dep = dependsOnPlanId || planIdOf(currentStep);
   const { planId: phasePlanId, title } = CB_PHASES[phase];
   const child = { planId, agentName, stepTitle, args: { planId, ...(args && typeof args === 'object' ? args as Record<string, unknown> : {}) }, onFailure };
   const open = findOpenStepByPlanId(context, phasePlanId);

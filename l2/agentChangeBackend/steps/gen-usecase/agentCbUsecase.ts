@@ -245,7 +245,12 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // The judge opens its OWN phase: its dispatcher, the batch fan-out, the collector, the repair
     // rounds and the re-judges all belong to that branch instead of the task root.
     // It must never kill a run (it fails soft to cb-gen-http), so 'continue' survives an LLM 502.
-    intents.push(enqueueNextInPhase(context, step, 'judge', 'cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { judgeRun: 1 }, 'continue'));
+    // The barrier is the FAN-OUT, never this dispatcher: `dispatch` completes the moment it returns
+    // these intents, so a judge that depends on it starts while the workers are still writing their
+    // defs. On 2026-08-28 (102047/todo) that is precisely what happened — cb-judge read 0/9 usecase
+    // defs and cb-gen-http, right behind it, read 4/9, silently dropping 5 bffCalls and the whole
+    // taskHub controller. cb-gen-domain already joins its fan-out this way (dependsOn FANOUT_PLAN_ID).
+    intents.push(enqueueNextInPhase(context, step, 'judge', 'cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { judgeRun: 1 }, 'continue', FANOUT_PLAN_ID));
     intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)`));
     return intents;
   } catch (error) {

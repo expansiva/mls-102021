@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  findingSeverity, isOmittablePolicyFinding, isSeedFinding, partitionFindings,
+  findingSeverity, isMissingContractRouteFinding, isOmittablePolicyFinding, isSeedFinding, partitionFindings,
 } from './cbFindingSeverity.js';
 
 // Byte-for-byte the 6 findings of run06's terminal validate-all (cb-health-report.json
@@ -61,4 +61,29 @@ test('omittable policy is adapter/port/domain/seed rows; a leaked TABLE stays bl
   assert.equal(isOmittablePolicyFinding(port), true);
   assert.equal(findingSeverity('table without primary key -> petShop/.../institutionalHome.defs.ts declares primaryKey: [] and cannot be published; derive it from the l4 storage.idField (or, for an entity that should not have a table at all, remove the table)'), 'blocking');
   assert.equal(findingSeverity('composition root missing -> registerRepositories.ts absent though 7 repository adapter(s) exist (102034 resolveRepository will 500)'), 'blocking');
+});
+
+// ── rotina do contrato sem controller: reportar, não bloquear ─────────────────
+// 28/ago: 6 das 10 rotinas do contrato do `todo` não tinham controller e nada acusou. O achado passa a
+// existir; a severidade segue a doutrina "bloqueia só o que impede o app de SUBIR" — um BFF parcial
+// sobe, então o run publica com o achado registrado (promover a blocking é decisão de produto).
+const MISSING_ROUTE_FINDINGS = [
+  'contract route without controller -> todo.taskHub.qryListTask (workspace taskHub: the l4 contract declares this routine and no controller registers it; the app answers ROUTINE_NOT_FOUND)',
+  'contract route without controller -> todo.taskCatalogue.cmdCreateTask (workspace taskCatalogue: the l4 contract declares this routine and no controller registers it; the app answers ROUTINE_NOT_FOUND)',
+];
+
+void test('a contract routine without controller is degradable, not blocking', () => {
+  for (const finding of MISSING_ROUTE_FINDINGS) {
+    assert.ok(isMissingContractRouteFinding(finding), finding);
+    assert.equal(findingSeverity(finding), 'degradable', finding);
+  }
+  const { blocking, degradable } = partitionFindings([...MISSING_ROUTE_FINDINGS, ...RUN06_FINDINGS]);
+  assert.equal(degradable.length, MISSING_ROUTE_FINDINGS.length);
+  assert.equal(blocking.length, RUN06_FINDINGS.length);
+});
+
+void test('a missing controller EXPORT stays blocking (different defect, same neighbourhood)', () => {
+  const finding = "controller taskcatalogue -> usecase export 'createTask' not found (has: deleteTask, getTask)";
+  assert.equal(isMissingContractRouteFinding(finding), false);
+  assert.equal(findingSeverity(finding), 'blocking');
 });

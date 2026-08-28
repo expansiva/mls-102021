@@ -96,3 +96,18 @@ void test('a usecase without a function for its own operationId is rejected', ()
   // A mensagem do caso "tem funções, mas nenhuma com o nome da operação" diz quais existem.
   assert.match(src, /no function named '\$\{ownerId\}' \(declared: \$\{functionNames\.join\(', '\)\}\)/);
 });
+
+// ── o juiz (e tudo depois dele) espera o FAN-OUT, não o dispatcher ────────────
+// 28/ago (102047/todo): cb-judge dependia de cb-gen-usecase, que completa no instante em que despacha.
+// O juiz leu 0/9 defs de usecase e o cb-gen-http, logo atrás, leu 4/9 — 5 bffCalls e o controller
+// inteiro do taskHub sumiram em silêncio (11 testes em ROUTINE_NOT_FOUND no app publicado).
+void test('the judge joins on the usecase fan-out, never on the dispatcher', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbShared.ts'), 'utf8');
+  // A barreira é passada explicitamente ao enqueue; sem o último argumento volta a ser o dispatcher.
+  assert.match(src, /enqueueNextInPhase\(context, step, 'judge', 'cb-judge', 'agentCbJudge', [^\n]*, 'continue', FANOUT_PLAN_ID\)/);
+  assert.match(src, /const FANOUT_PLAN_ID = 'cb-usecase-fanout';/);
+  // E o helper precisa honrar o override em vez de sempre usar o planId do passo corrente.
+  assert.match(shared, /dependsOnPlanId\?: string,/);
+  assert.match(shared, /const dep = dependsOnPlanId \|\| planIdOf\(currentStep\);/);
+});

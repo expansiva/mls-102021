@@ -23,7 +23,16 @@ export function findingSeverity(finding: string): FindingSeverity {
 
 /** Opt-in list. Anything not matched stays blocking (compile, missing export, empty PK, composition root). */
 function isDegradableFinding(finding: string): boolean {
-  return isSeedFinding(finding) || isOmittablePolicyFinding(finding);
+  return isSeedFinding(finding) || isOmittablePolicyFinding(finding) || isMissingContractRouteFinding(finding);
+}
+
+/**
+ * A contract routine with no controller: the app BOOTS, the screens that call that routine answer 404.
+ * Degradable by the same doctrine as seeds — the gate blocks what stops the app from coming up, and
+ * reports the rest. The finding is still recorded and shown; only the run's fate changes.
+ */
+export function isMissingContractRouteFinding(finding: string): boolean {
+  return finding.startsWith('contract route without controller ->');
 }
 
 /** Seeds are test data: empty tables are a valid, visible app. Includes compiler errors ON seeds.ts. */

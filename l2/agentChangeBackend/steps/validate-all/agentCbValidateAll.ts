@@ -52,6 +52,7 @@ import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend
 import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
 import {
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine,
+  collectMissingContractRouteFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
@@ -334,6 +335,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     for (const source of controllerSources.values()) {
       for (const key of collectRouteHandlers(source).keys()) routeKeys.add(key);
     }
+    // Every routine the l4 contract declares must have a controller route. This is the check nothing
+    // performed on 2026-08-28 (102047/todo): 10 declared routes, 4 registered, and the run still closed
+    // `passed` — the 6 missing routines only showed up as ROUTINE_NOT_FOUND 404s in the published app.
+    // Degradable on purpose (cbFindingSeverity): a partial BFF still boots, so the run reports and
+    // publishes instead of dying; promoting it to blocking is a product decision, not a validator one.
+    missing.push(...collectMissingContractRouteFindings(moduleWorkspaces, routeKeys));
     const operationsCoverage = compareOperationsCoverage({
       declared: declaredOperations,
       usecaseNames: usecaseSources.keys(),

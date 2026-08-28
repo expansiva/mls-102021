@@ -192,6 +192,34 @@ export function expectedRoutesByOperation(
   return out;
 }
 
+/** Prefix every missing-route finding carries, so severity/tests can recognise the family. */
+export const MISSING_CONTRACT_ROUTE_PREFIX = 'contract route without controller ->';
+
+/**
+ * ROUTE-level coverage: every bffCall the l4 workspaces declare must have a registered controller route.
+ *
+ * compareOperationsCoverage answers a WEAKER question — "does this operation have SOME endpoint?" — and
+ * that is exactly the hole the 102047/todo run fell through: `listTask` is used by taskCatalogue AND
+ * taskHub, taskCatalogue's route survived, so listTask counted as covered while the entire taskHub
+ * controller was missing. Only the per-route check sees a lost workspace.
+ */
+export function collectMissingContractRouteFindings(
+  workspaces: ReadonlyArray<{ workspaceId: string; bffCalls: ReadonlyArray<{ route: string }> }>,
+  routeKeys: Iterable<string>,
+): string[] {
+  const registered = new Set(routeKeys);
+  const seen = new Set<string>();
+  const findings: string[] = [];
+  for (const workspace of workspaces) {
+    for (const call of workspace.bffCalls) {
+      if (!call.route || registered.has(call.route) || seen.has(call.route)) continue;
+      seen.add(call.route);
+      findings.push(`${MISSING_CONTRACT_ROUTE_PREFIX} ${call.route} (workspace ${workspace.workspaceId}: the l4 contract declares this routine and no controller registers it; the app answers ROUTINE_NOT_FOUND)`);
+    }
+  }
+  return findings;
+}
+
 function routeCoversOperation(routeKey: string, operationId: string): boolean {
   const last = (routeKey.split('.').pop() || '').toLowerCase();
   const op = operationId.toLowerCase();
