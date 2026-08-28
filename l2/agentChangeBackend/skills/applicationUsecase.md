@@ -109,6 +109,9 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   absent session or a permission gap is not an assumption violation. Use the rule that actually governs it
   (or state the plain reason) — a wrong ruleId on a real guard hides why the request was rejected.
 - Lifecycle: read current state, check the domain transition (e.g. `canTransition*`), then `save`.
+  When `data.lifecycle` is present, that matrix is the cycle — do not add a local allow-list that
+  rejects a declared from→to pair, and do not treat a state as terminal if `allowed` still lists
+  outgoing edges. The domain `*_STATUS_TRANSITIONS` map is attached from the same matrix.
 - Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Do not use
   raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and
   `relationshipRefs` stay consistent.

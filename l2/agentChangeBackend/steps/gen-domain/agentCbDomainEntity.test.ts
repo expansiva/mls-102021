@@ -44,6 +44,17 @@ void test('agentCbDomainEntity tool schema is provider-clean', () => {
   assert.equal(errs, null, errs?.join(' | '));
 });
 
+void test('gen-domain worker payload carries the declared lifecycle matrix when the module has one', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbDomainEntity.ts'), 'utf8');
+  assert.match(src, /lifecycleForEntity\(scan\.lifecycles, domainId\)/);
+  assert.match(src, /Declared lifecycle \(authoritative\)/);
+  assert.match(src, /do NOT invent a transition restriction/);
+  assert.match(src, /collectLifecycleContradictionFindings/);
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /declared lifecycle/);
+  assert.match(prompt, /Do NOT invent a transition restriction/);
+});
+
 void test('domain item schema requires only entityId (fields are attached deterministically, not by the model)', () => {
   // Regression for erro3: the model used to omit the root `fields` (nesting them under valueObjects) and
   // fail TOOL_ARGS_SCHEMA. `fields`/`valueObjects`/`statusEnum` are now derived from the ontology by the

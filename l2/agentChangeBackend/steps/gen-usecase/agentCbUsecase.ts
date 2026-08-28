@@ -20,6 +20,7 @@ import {
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOwner, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { lifecycleForEntity, type CbEntityLifecycle } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues, alignOutputShapeToOntology } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -136,7 +137,7 @@ function sanitizeOfEntity(result: any, scan: CbScan): void {
 }
 
 // The single-owner item sent to the LLM (explicit ports/mdmRefs + entity fields to shape input/output).
-function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
+function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, lifecycles?: readonly CbEntityLifecycle[]) {
   const { roots, mdmIds, childToRoot, byId, eventsByOwner } = maps;
   const fieldsOf = (id: string) => (byId.get(id)?.fields || []).map((f: any) => ({ fieldId: f.fieldId, type: f.type, required: f.required, ...(f.enum ? { enum: f.enum } : {}) }));
   const rawRefs = [...new Set([o.entity, ...o.reads, ...o.writes].filter(Boolean))];           // keep children + mdm for fields
@@ -163,6 +164,7 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
       };
     })
     .filter(write => !!write.mdmType);
+  const lifecycle = lifecycleForEntity(lifecycles, o.entity) || lifecycleForEntity(lifecycles, childToRoot.get(o.entity) || '');
   return {
     usecaseId: o.id,
     ownerKind: o.kind,
@@ -195,6 +197,10 @@ function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>) {
     ...(o.mdm ? { mdm: o.mdm } : {}),
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
     entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
+    // Declared entity lifecycle (when the module has one). Absent, not empty, so a module without a
+    // workflow sees the same prompt as before. Confirmed needed: this worker does not receive domain
+    // invariants, and it is the code that throws "cannot transition from pending to completed".
+    ...(lifecycle ? { lifecycle } : {}),
   };
 }
 
@@ -278,7 +284,7 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `reused usecase ${ownerId} .defs.ts (L4 unchanged)`)];
     }
   }
-  const item = buildOwnerItem(owner, deriveMaps(scan));
+  const item = buildOwnerItem(owner, deriveMaps(scan), scan.lifecycles);
   let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession/businessContext resolutions into required user input. A usecase MAY expose several functions with different IO.`;
   // REPAIR: when the judge (or a previous failure) left findings for this owner, feed them back so the
   // model FIXES the exact defects instead of regenerating blindly (repair loop, cbRepair.ts).

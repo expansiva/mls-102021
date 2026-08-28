@@ -48,6 +48,7 @@ import {
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
   extractInterfaceMethods, collectDeleteOperationPortGaps,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { collectLifecycleContradictionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
 import {
@@ -165,6 +166,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const controllerSources = new Map<string, string>(); // controller shortName (lc) -> generated .ts
     const declaredOperations: string[] = [];
     const persistenceSources = new Map<string, string>(); // adapters/persistence shortName (lc) -> generated .ts
+    const domainSources = new Map<string, string>(); // layer_3_domain/entities shortName (lc) -> generated .ts
     const stopReadTick = startLocalStepTick(context, step, (sec) =>
       `${step.stepTitle || 'Validate l1 artifacts'} — reading files (${sec}s)`);
     try {
@@ -205,6 +207,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         if (folder0.endsWith('/adapters/http/controllers')) controllerSources.set(shortName0.toLowerCase(), content);
         if (folder0.endsWith('/adapters/persistence')) persistenceSources.set(shortName0.toLowerCase(), content);
         if (folder0.endsWith('/layer_2_application/ports')) portSources.set(shortName0.toLowerCase(), content);
+        if (folder0.endsWith('/layer_3_domain/entities')) domainSources.set(shortName0.toLowerCase(), content);
         for (const req of collectL1Imports(content, project)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: req.key, target: req.target });
         }
@@ -720,6 +723,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       for (const msg of collectDetailsKeyIssues(source, fieldIds, label)) {
         missing.push(msg);
         if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
+      }
+    }
+    // Declared workflow matrix vs generated `*_STATUS_TRANSITIONS`. Choice: the usecase guard is
+    // usually `if (!canTransition*) throw` and does not enumerate pairs — the map the helper reads is
+    // what actually denies pending→completed. No lifecycle on the entity → no finding.
+    if (scan.lifecycles?.length) {
+      const byEntity = new Map(scan.lifecycles.map(lc => [lc.entityRef.toLowerCase(), lc]));
+      for (const entity of scan.entities) {
+        const lc = byEntity.get(entity.entityId.toLowerCase());
+        if (!lc) continue;
+        const sn = lowerFirst(entity.entityId).toLowerCase();
+        const source = domainSources.get(sn);
+        if (!source) continue;
+        const defs = defsFiles.find(d => d.folder.endsWith('/layer_3_domain/entities') && d.shortName === sn);
+        const label = defs ? `${defs.folder}/${defs.real}.ts` : `${sn}.ts`;
+        for (const msg of collectLifecycleContradictionFindings({ lifecycle: lc, source, label })) {
+          missing.push(msg);
+          if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
+        }
       }
     }
     // COMPOSITION ROOT (102034 requirement — lesson run 24/25): if the module has repository adapters,

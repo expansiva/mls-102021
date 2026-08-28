@@ -13,6 +13,11 @@ from "entity"), the operation works through the PARENT port — load the parent,
 in its collection, save the parent. NEVER invent a child repository. "steps" are guidance, not a
 contract: the contract is input/output/ports.
 
+When the item includes `lifecycle` (`allowed` / `terminalStates`), that matrix IS the entity's cycle.
+Do NOT add a guard that rejects a from→to pair `allowed` lists. Call the domain `canTransition*` helper
+(the map is attached from this matrix); do not invent a stricter local allow-list or treat a state as
+terminal when it still has outgoing edges. Without `lifecycle`, behaviour is unchanged.
+
 Use the L4 v2 contract directly:
 - `outputShape` (when present in the item) is the CANONICAL output structure declared by l4. The
   function's `output[]` MUST list its TOP-LEVEL fields with the same names and types — an array field is

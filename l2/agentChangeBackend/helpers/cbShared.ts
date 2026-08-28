@@ -32,6 +32,7 @@ import {
   type CbWorkspace, type CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 import { agentTraceFileInfo } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { parseEntityLifecycle, type CbEntityLifecycle } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import {
   formatDiscardedOrphans,
   liveBackendModulesFromL5,
@@ -44,6 +45,8 @@ export {
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
 };
 export type { CbEntityKind };
+export type { CbEntityLifecycle, CbLifecyclePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
+export { parseEntityLifecycle, compactLifecycleForPrompt, lifecycleForEntity, collectLifecycleContradictionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 
 export {
   createPlannerToolSchema,
@@ -260,6 +263,8 @@ export interface CbScan {
   workspaces: CbWorkspace[];  // l4 v2 only (empty for v1 modules) — the l1 contracts are GENERATED from these
   actors: CbActor[];          // module actors.defs.ts (l4 v2); empty for v1 folder-based actors
   siteMaps: Record<string, Record<string, unknown>>; // moduleName -> siteMap/navigation raw (best-effort view)
+  /** ns4 entity lifecycles (`l4/<module>/workflows`). Not owners; the declared from→to matrix. */
+  lifecycles: CbEntityLifecycle[];
   warnings: string[];
 }
 
@@ -278,6 +283,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   const siteMaps: Record<string, Record<string, unknown>> = {};
   const siteMapSource: Record<string, 'siteMap' | 'navigation'> = {};
   const warnings: string[] = [];
+  const lifecycles: CbEntityLifecycle[] = [];
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
@@ -294,7 +300,14 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
     } else if (folder === 'workflows' || folder.endsWith('/workflows')) {
       // ns4 workflows are entity lifecycles (states/transitions), not units of generation: nothing
       // in the todo owns them, so treating them as owners would fail the scan on missing owners.
-      if (!isEntityLifecycle(parsed)) rawOwners.push({ kind: 'workflow', obj: parsed, moduleName: nestedModule || undefined });
+      // They still have to travel to gen-domain/gen-usecase — otherwise the model invents a
+      // stricter machine than the fromStates→toState matrix (pending→completed denied while declared).
+      if (isEntityLifecycle(parsed)) {
+        const lifecycle = parseEntityLifecycle(parsed, nestedModule);
+        if (lifecycle) lifecycles.push(lifecycle);
+      } else {
+        rawOwners.push({ kind: 'workflow', obj: parsed, moduleName: nestedModule || undefined });
+      }
     } else if (folder.endsWith('/workspaces')) {
       // l4 v2 only: the workspace declares the page's bffCalls (controller source — see B4).
       const ws = parseWorkspaceDefs(parsed, nestedModule);
@@ -443,10 +456,14 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   const events = deriveEventTargets(backfilled, scoped.relationships);
   // NB: the l4 contracts (`.ts`) are NEVER read here — l4 holds only `.defs.ts` (a `.ts` in l4 is not
   // compilable and getContent on it 422s). The l1 contracts are GENERATED from `workspaces` (gen-http).
+  const inScopeIds = new Set(backfilled.map(e => e.entityId));
+  const scopedLifecycles = lifecycles.filter(lc =>
+    (!lc.moduleName || lc.moduleName === scoped.moduleName) && (!inScopeIds.size || inScopeIds.has(lc.entityRef)));
   return {
     project, moduleNames: scoped.moduleName ? [scoped.moduleName] : allModuleNames,
     owners: scoped.owners, entities: backfilled, relationships: scoped.relationships,
-    aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps, warnings,
+    aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps,
+    lifecycles: scopedLifecycles, warnings,
   };
 }
 

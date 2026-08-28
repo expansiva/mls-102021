@@ -24,6 +24,15 @@ void test('agentCbUsecase declares the LLM fan-out step agent contract', () => {
   assert.match(flow, /"agentName": "agentCbUsecase"/);
 });
 
+void test('gen-usecase owner item carries the declared lifecycle when the module has one', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  assert.match(src, /lifecycleForEntity\(lifecycles, o\.entity\)/);
+  assert.match(src, /\.\.\.\(lifecycle \? \{ lifecycle \} : \{\}\)/);
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /When the item includes `lifecycle`/);
+  assert.match(prompt, /Do NOT add a guard that rejects/);
+});
+
 void test('usecase defs pin and validate io shape symmetry after outputShape is applied', () => {
   const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
   assert.match(src, /collectIoShapeSymmetryIssues/);

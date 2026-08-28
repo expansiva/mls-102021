@@ -23,6 +23,7 @@ import {
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { collectLifecycleContradictionFindings, lifecycleForEntity } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { recordComponentFailure, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 
@@ -217,9 +218,15 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   }
   // AGGREGATE: the model returns ONLY the invariants. It still SEES the full ontology fields (root +
   // embedded members) so it can reason about them, but it does NOT restate them — fields/valueObjects/
-  // statusEnum are attached deterministically in afterPromptStep.
+  // statusEnum (and the declared lifecycle matrix, when the module has one) are attached
+  // deterministically in afterPromptStep.
   const item = buildDomainItem(domainId, scan)!;
-  const human = `## Aggregate (root + embedded members, with ontology fields) — CONTEXT to reason about; DO NOT restate these fields\n${JSON.stringify(item.aggregates, null, 2)}\n\nReturn ONE item { entityId: "${domainId}", invariants: [...] } — the business rules the entity must always hold (status transitions, required-when conditions, cross-field and monetary/quantity constraints). Do NOT output fields, valueObjects or statusEnum; they are attached automatically from the ontology.`;
+  const lifecycle = lifecycleForEntity(scan.lifecycles, domainId);
+  let human = `## Aggregate (root + embedded members, with ontology fields) — CONTEXT to reason about; DO NOT restate these fields\n${JSON.stringify(item.aggregates, null, 2)}\n`;
+  if (lifecycle) {
+    human += `\n## Declared lifecycle (authoritative). The cycle is this matrix; do NOT invent a transition restriction the workflow does not declare. terminalStates are states with no outgoing edge in allowed — if empty, no state is terminal. Integrity invariants (uniqueness, dates, required-when, cross-field) are still wanted; status transitions are NOT yours to invent.\n${JSON.stringify(lifecycle, null, 2)}\n`;
+  }
+  human += `\nReturn ONE item { entityId: "${domainId}", invariants: [...] } — the business rules the entity must always hold (${lifecycle ? 'required-when conditions, cross-field and monetary/quantity constraints — NOT a stricter state machine than the declared lifecycle' : 'status transitions, required-when conditions, cross-field and monetary/quantity constraints'}). Do NOT output fields, valueObjects or statusEnum; they are attached automatically from the ontology.`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the domainId) so the runtime
   // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.
   const systemPrompt = await readCbPrompt('steps/gen-domain');
@@ -253,7 +260,14 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const invariants = Array.isArray(modelItem?.invariants)
       ? (modelItem!.invariants as unknown[]).filter((v): v is string => typeof v === 'string')
       : [];
-    await saveDomainEntity(module, domainId, { ...deterministic, invariants });
+    const lifecycle = lifecycleForEntity(scan.lifecycles, domainId);
+    // Choice: the generated `*_STATUS_TRANSITIONS` map is what the usecase guard consults, but the
+    // model writes the restriction first as invariant prose. Catch the prose here (before save) so
+    // repair regenerates defs instead of rematerializing the same lie. validate-all still checks
+    // the map against the matrix.
+    const lifecycleIssues = collectLifecycleContradictionFindings({ lifecycle, invariants, label: domainId });
+    if (lifecycleIssues.length) throw new Error(lifecycleIssues.slice(0, 8).join('; '));
+    await saveDomainEntity(module, domainId, { ...deterministic, ...(lifecycle ? { lifecycle } : {}), invariants });
     if (out.status === 'failed') throw new Error('model returned failed');
   } catch (error) {
     trace = error instanceof Error ? error.message : String(error);

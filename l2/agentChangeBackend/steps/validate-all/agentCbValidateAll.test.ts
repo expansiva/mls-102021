@@ -45,6 +45,12 @@ void test('validate-all flags a details JSONB key that is not an l4 fieldId', ()
   assert.match(src, /fieldIdsFromL4Fields/);
 });
 
+void test('validate-all flags a domain STATUS_TRANSITIONS map that denies a declared workflow pair', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectLifecycleContradictionFindings/);
+  assert.match(src, /domainSources/);
+});
+
 // ── o sweep não pode consumir a memória da aba nem morrer mudo ────────────────
 // Run be3: este step compilou ~200 arquivos (cada compile empresta os modelos dos imports) e a aba
 // estourou a memória antes de o step registrar qualquer coisa.

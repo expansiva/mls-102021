@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-08-28 — o item do owner leva a matriz de lifecycle quando o módulo declara uma
+
+O worker de usecase não via invariantes de domínio nem o workflow. É ele que materializa
+`if (!canTransition*) throw`. Com `lifecycle` no item, o modelo não tem que inventar a máquina; sem
+workflow o item fica igual ao de antes (campo ausente, não vazio).
+
 ## 2026-08-28 — o juiz espera o fan-out, não o dispatcher
 
 `cb-judge` era enfileirado com `dependsOn` no passo corrente (`cb-gen-usecase`), que completa no
