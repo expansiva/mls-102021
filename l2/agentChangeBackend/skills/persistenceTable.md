@@ -44,6 +44,9 @@ export const orderTableDef: TableDefinition = {
 
 ## Rules
 
+- Column `postgresType` follows the l4 field type, never the field name: `string`/`text`/enum →
+  `TEXT` (a field named `priority`/`rank`/`order` with a string enum is TEXT, never INTEGER);
+  `uuid` → `UUID`; `date`/`datetime` → `TIMESTAMPTZ`; `integer` → `INTEGER`; `number` → `NUMERIC`.
 - `tableName` and column `name` are snake_case; export const is `{tableId}TableDef`.
 - `purpose`: `transacao` (aggregate) | `controle` (metric) | `cadastro`. `storageProfile: 'postgres'`,
   `writeMode: 'sync'`, `backupHot: false` unless the defs says otherwise.

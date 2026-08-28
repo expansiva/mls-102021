@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-08-28 — string/enum do l4 nunca vira INTEGER
+
+O planner recebia só `fieldId`+`reason` e escolhia INTEGER para um campo chamado `priority` cujo
+l4 era `string` + enum `low|medium|high` (o `status` vizinho, mesma forma, saía TEXT). Seeds e a
+UI mandam a string do enum; o INSERT quebra. O payload agora leva `type`/`enum`; o writer coerces
+família incompatível antes do save; validate-all emite `column type mismatch` se o defeito
+atravessar.
+
 ## 2026-08-25 — title/name e datas são colunas (busca/ordenação)
 
 `planTableColumns` indexa `title`/`name` (search) e `date`/`datetime`/`*At` (ordering), além de PK,

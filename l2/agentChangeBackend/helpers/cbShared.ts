@@ -769,7 +769,7 @@ export function deriveAggregates(
 
 // ── persistence (JSONB) plan ───────────────────────────────────────────────────
 
-export interface CbColumnPlan { fieldId: string; reason: string; }
+export interface CbColumnPlan { fieldId: string; reason: string; type: string; enum?: string[]; }
 export interface CbTablePlan {
   tableId: string;
   rootEntity: string;
@@ -795,9 +795,14 @@ export function planTableColumns(fields: Record<string, unknown>[], knownEntityI
     const isSearch = fieldId === 'title' || fieldId === 'name';
     const isOrderTs = fieldId === 'createdAt' || /At$/.test(fieldId) || type === 'date' || type === 'datetime';
     if (isId || isRef || isStatus || isSearch || isOrderTs) {
+      const enumValues = Array.isArray((f as { enum?: unknown }).enum)
+        ? (f as { enum: unknown[] }).enum.filter((v): v is string => typeof v === 'string' && !!v.trim())
+        : [];
       indexed.push({
         fieldId,
         reason: isId ? 'pk/fk' : isRef ? 'fk' : isStatus ? 'status' : isSearch ? 'search' : 'ordering',
+        type,
+        ...(enumValues.length ? { enum: enumValues } : {}),
       });
     } else {
       details.push(fieldId);

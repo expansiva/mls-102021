@@ -23,6 +23,12 @@ void test('validate-all flags a redundant PK index next to the empty-primaryKey 
   assert.match(src, /collectRedundantPkIndexFindings\(def\.source/);
 });
 
+void test('validate-all flags a table column whose SQL type contradicts the l4 field', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectColumnTypeMismatchFindings\(def\.source/);
+  assert.match(src, /collectColumnTypeMismatchFindings\(source, fields/);
+});
+
 void test('a delete-without-port-method gap is repaired on the PORT, not the usecase', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   const materialize = readFileSync(path.join(HERE, '..', 'materialize', 'agentCbMaterialize.ts'), 'utf8');

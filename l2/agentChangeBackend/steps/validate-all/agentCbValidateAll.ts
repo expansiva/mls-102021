@@ -50,6 +50,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectLifecycleContradictionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
+import { collectColumnTypeMismatchFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableColumnTypes.js';
 import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
 import {
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine,
@@ -375,6 +376,28 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // this finding is the net if another path saves the defect.
     for (const def of tableDefSources) {
       missing.push(...collectRedundantPkIndexFindings(def.source, `${def.folder}/${def.real}.defs.ts`));
+    }
+    // Column SQL type must follow the l4 field type. The gen-table writer coerces (string/enum
+    // never stays integer); this finding is the net if another path still stores the defect.
+    const fieldsByTableSn = new Map<string, unknown>();
+    for (const entity of scan.entities) {
+      if (entity.fields?.length) fieldsByTableSn.set(lowerFirst(entity.entityId).toLowerCase(), entity.fields);
+    }
+    for (const def of tableDefSources) {
+      if (!def.folder.endsWith('/adapters/persistence')) continue;
+      const sn = def.real.toLowerCase();
+      if (sn.endsWith('repositoryadapter') || sn === 'seeds' || sn === 'persistence' || sn === 'registerrepositories') continue;
+      const fields = fieldsByTableSn.get(sn);
+      if (!fields) continue;
+      missing.push(...collectColumnTypeMismatchFindings(def.source, fields, `${def.folder}/${def.real}.defs.ts`));
+    }
+    for (const [sn, source] of persistenceSources) {
+      if (sn.endsWith('repositoryadapter') || sn === 'seeds' || sn === 'persistence' || sn === 'registerrepositories') continue;
+      const fields = fieldsByTableSn.get(sn);
+      if (!fields) continue;
+      const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+      const label = defs ? `${defs.folder}/${defs.real}.ts` : sn;
+      missing.push(...collectColumnTypeMismatchFindings(source, fields, label));
     }
     // The platform header is emitted, never copied from a model: `enhancement="blank"` (missing the
     // underscore) shipped in two files of that same run. The writer rebuilds line 1 now; this is the net

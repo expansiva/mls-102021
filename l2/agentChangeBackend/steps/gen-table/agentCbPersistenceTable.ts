@@ -15,6 +15,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { persistenceTableResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { sanitizePlannerTableItem } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
+import { sanitizePlannerTableColumnTypes } from '/_102021_/l2/agentChangeBackend/helpers/cbTableColumnTypes.js';
 
 const AGENT_NAME = 'agentCbPersistenceTable';
 const TOOL_NAME = 'submitPersistenceTables';
@@ -49,7 +50,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const plan = planTableColumns(ev.fields || [], entityIds);
     return { tableId: ev.entityId, indexed: plan.indexed, detailsFields: plan.details, childCollections: [] as string[], appendOnly: true, purpose: 'controle', retentionDays: ev.retentionDays };
   });
-  const human = `## Tables to derive (indexed columns vs details JSONB)\n${JSON.stringify(tables, null, 2)}\n\n## Append-only event tables\n${JSON.stringify(eventTables, null, 2)}\n\nReturn one TableDefinition per table: snake_case tableName/columns; only indexed columns are real, the rest live in a details JSONB column (detailsColumn.enabled=true, childCollections listed). For event tables echo appendOnly=true, purpose="controle" and retentionDays (omit it for permanent audit); index the owner FK and the ordering timestamp.`;
+  const human = `## Tables to derive (indexed columns vs details JSONB)\n${JSON.stringify(tables, null, 2)}\n\n## Append-only event tables\n${JSON.stringify(eventTables, null, 2)}\n\nReturn one TableDefinition per table: snake_case tableName/columns; only indexed columns are real, the rest live in a details JSONB column (detailsColumn.enabled=true, childCollections listed). Column type follows indexed[].type from the l4: string/text/enum → text (never integer, even when the field is named priority/rank/order); uuid → uuid; date/datetime → timestamptz; integer → integer; number → numeric. For event tables echo appendOnly=true, purpose="controle" and retentionDays (omit it for permanent audit); index the owner FK and the ordering timestamp.`;
   const systemPrompt = await readCbPrompt('steps/gen-table');
   return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ""), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
@@ -64,11 +65,15 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
+    const byId = new Map(scan.entities.map(e => [e.entityId, e]));
     let saved = 0;
     for (const item of asArray((out.result as any).items)) {
       const tableId = readString(item.tableId);
       if (!tableId) continue;
-      const sanitized = sanitizePlannerTableItem(item as Record<string, unknown>);
+      const sanitized = sanitizePlannerTableColumnTypes(
+        sanitizePlannerTableItem(item as Record<string, unknown>),
+        byId.get(tableId)?.fields,
+      );
       const fi = persistenceTableFileInfo(module, tableId);
       const dependsFiles = [dtsRef(domainEntityFileInfo(module, tableId))];
       const pipeline = [buildPipelineItem(lowerFirst(tableId), 'persistenceTable', fi, dependsFiles, layerSkills('persistenceTable.md'))];
