@@ -1,0 +1,174 @@
+{
+  "projects": {
+    "102046": {
+      "moduleDataAdapter": {
+        "count": 0
+      },
+      "jsonbRowParse": {
+        "count": 7,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/inventoryItemRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/platformUserRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectExecutionOverviewRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectTimelineRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/scheduleRiskAssessmentRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/statusReportRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/timeLogRepositoryAdapter.ts"
+        ]
+      },
+      "redundantPkIndex": {
+        "count": 20,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/changeOrder.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/changeOrderDecision.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/client.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/clientBillingSummary.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/clientPortalAccess.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/fieldWorker.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/inventoryBalance.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/inventoryItem.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/invoice.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/invoiceChangeOrder.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/materialUsage.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/platformUser.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/project.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectCoordinationAssignment.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectExecutionOverview.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectTimeline.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/scheduleRiskAssessment.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/statusReport.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/timeLog.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/workTask.defs.ts"
+        ]
+      },
+      "columnTypeMismatch": {
+        "count": 0
+      },
+      "detailsKey": {
+        "count": 8,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/fieldCoordinatorRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/fieldWorkerRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/workTaskRepositoryAdapter.ts"
+        ]
+      },
+      "rawMdmAccess": {
+        "count": 0
+      }
+    },
+    "102047": {
+      "moduleDataAdapter": {
+        "count": 0
+      },
+      "jsonbRowParse": {
+        "count": 0
+      },
+      "redundantPkIndex": {
+        "count": 0
+      },
+      "columnTypeMismatch": {
+        "count": 0
+      },
+      "detailsKey": {
+        "count": 0
+      },
+      "rawMdmAccess": {
+        "count": 0
+      }
+    },
+    "102048": {
+      "moduleDataAdapter": {
+        "count": 0
+      },
+      "jsonbRowParse": {
+        "count": 7,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/changeOrderRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/invoiceRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/materialUsageRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/projectRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/statusReportRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/timeLogRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/workTaskRepositoryAdapter.ts"
+        ]
+      },
+      "redundantPkIndex": {
+        "count": 0
+      },
+      "columnTypeMismatch": {
+        "count": 16,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/changeOrder.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/invoice.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/materialUsage.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/project.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/statusReport.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/timeLog.defs.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/workTask.defs.ts"
+        ]
+      },
+      "detailsKey": {
+        "count": 19,
+        "files": [
+          "buildFlowFsm/layer_1_external/adapters/persistence/invoiceRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/materialUsageRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/statusReportRepositoryAdapter.ts",
+          "buildFlowFsm/layer_1_external/adapters/persistence/timeLogRepositoryAdapter.ts"
+        ]
+      },
+      "rawMdmAccess": {
+        "count": 0
+      }
+    },
+    "102049": {
+      "moduleDataAdapter": {
+        "count": 0
+      },
+      "jsonbRowParse": {
+        "count": 0
+      },
+      "redundantPkIndex": {
+        "count": 0
+      },
+      "columnTypeMismatch": {
+        "count": 0
+      },
+      "detailsKey": {
+        "count": 1,
+        "files": [
+          "petShop/layer_1_external/adapters/persistence/reservationRepositoryAdapter.ts"
+        ]
+      },
+      "rawMdmAccess": {
+        "count": 0
+      }
+    },
+    "102051": {
+      "moduleDataAdapter": {
+        "count": 0
+      },
+      "jsonbRowParse": {
+        "count": 0
+      },
+      "redundantPkIndex": {
+        "count": 0
+      },
+      "columnTypeMismatch": {
+        "count": 2,
+        "files": [
+          "cafeFlow/layer_1_external/adapters/persistence/aiSalesSummary.defs.ts",
+          "cafeFlow/layer_1_external/adapters/persistence/aiSalesSummary.ts"
+        ]
+      },
+      "detailsKey": {
+        "count": 2,
+        "files": [
+          "cafeFlow/layer_1_external/adapters/persistence/orderRepositoryAdapter.ts"
+        ]
+      },
+      "rawMdmAccess": {
+        "count": 0
+      }
+    }
+  }
+}

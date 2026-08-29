@@ -1,0 +1,26 @@
+/// frozen 28/08 defect: module-level WeakMap store, never talks to the runtime table API.
+/// Not the live mls-102047 adapter (that file was rebuilt). Record of the two signals
+/// collectModuleDataAdapterFindings must keep accusing.
+import { type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+
+type TaskRow = { task_id: string; title: string };
+
+const stores = new WeakMap<RequestContext, Map<string, TaskRow>>();
+
+function getStore(ctx: RequestContext): Map<string, TaskRow> {
+  let store = stores.get(ctx);
+  if (!store) {
+    store = new Map<string, TaskRow>();
+    stores.set(ctx, store);
+  }
+  return store;
+}
+
+export function createTaskRepositoryAdapter(ctx: RequestContext) {
+  return {
+    list: async () => Array.from(getStore(ctx).values()),
+    getById: async (id: string) => getStore(ctx).get(id) ?? null,
+    save: async (row: TaskRow) => { getStore(ctx).set(row.task_id, row); },
+    delete: async (id: string) => { getStore(ctx).delete(id); },
+  };
+}

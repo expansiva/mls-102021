@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-08-29 — corpus offline dos guards
+
+`helpers/cbCorpus.ts` aplica os coletores puros (moduleData, jsonb parse, PK index,
+column type, details key, raw MDM) ao l1 de `102046`/`102047`/`102048`/`102049`/`102051`.
+Baseline em `helpers/fixtures/cbCorpusBaseline.json`. Como regravar: ver readme.
+
 ## 2026-08-28 — guard: adapter de persistência sem `ctx.data.moduleData`
 
 Os guards de `getTable('<nome>')` × `tableName` e de `JSON.parse` em JSONB só
