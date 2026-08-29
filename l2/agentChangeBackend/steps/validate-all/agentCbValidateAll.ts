@@ -51,6 +51,7 @@ import {
 import { collectLifecycleContradictionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
 import { collectColumnTypeMismatchFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableColumnTypes.js';
+import { collectModuleDataAdapterFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbAdapterNotes.js';
 import { partitionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbFindingSeverity.js';
 import {
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine,
@@ -712,6 +713,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
           if (defs) addRepair(defRefOf(defs.folder, defs.real), msg); // bad .ts -> re-materializable
         }
+      }
+    }
+    // Adapter that never calls ctx.data.moduleData (in-memory Map) is invisible to the getTable
+    // name check above: zero getTable calls ⇒ zero findings. Local-table adapters must use
+    // moduleData; a module-level Map/WeakMap/array is never a substitute.
+    for (const [sn, source] of persistenceSources) {
+      if (!sn.endsWith('repositoryadapter')) continue;
+      const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+      for (const msg of collectModuleDataAdapterFindings(source, sn, declaredTableNames)) {
+        missing.push(msg);
+        if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
       }
     }
     // JSON.parse(row.<jsonb>) on a JSONB column: pg already returns an object; parse throws and a

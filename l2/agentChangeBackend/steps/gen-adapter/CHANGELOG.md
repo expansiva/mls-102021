@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-08-28 — persistência = `ctx.data.moduleData.getTable` (obrigação, não permissão)
+
+O planner colapsava a lista de proibições `ctx.data.mdm*` numa nota que também
+proibia `ctx.data.moduleData` — a única API de persistência. O materialize
+obedecia a nota e gerava um `WeakMap` por request (lista vazia, banco intacto).
+
+- Prompt humano: obrigação positiva *antes* das proibições MDM; a frase permissiva
+  ("is allowed only") virou "is scoped to local module tables (never MDM)".
+- `sanitizeAdapterNotes` no save e no reúso (run comum reaproveita .defs.ts
+  envenenado). `rewriteAdapterDefsNotes` só reescreve se as notas mudaram.
+- Skill `repositoryAdapter.md` **não** vai ao planner: é skill de código (~170
+  linhas) do materialize; notas são o contrato do planner, e o sanitizador
+  garante a obrigação mesmo se o modelo parafrasear.
+
 ## 2026-08-25 — list honra search (ILIKE) e sortBy/sortOrder
 
 A lista de catálogo passa a declarar `search`/`sortBy`/`sortOrder`. O adapter materializa:

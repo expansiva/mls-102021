@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectModuleDataAdapterFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbAdapterNotes.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,6 +38,43 @@ void test('a delete-without-port-method gap is repaired on the PORT, not the use
   assert.match(src, /defRefByLc\.set\(`ports::\$\{shortName\}`/);
   // The usecase worker must NOT burn its repair budget on a finding it cannot satisfy.
   assert.doesNotMatch(materialize, /collectDeleteOperationPortGaps/);
+});
+
+void test('validate-all flags a persistence adapter that skips ctx.data.moduleData or keeps a module-level Map', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectModuleDataAdapterFindings\(/);
+  assert.match(src, /sn\.endsWith\('repositoryadapter'\)/);
+
+  const good = [
+    "export function createTaskRepositoryAdapter(ctx: RequestContext) {",
+    "  const getTable = () => ctx.data.moduleData.getTable<TaskRow>('task');",
+    "  return { list: async () => (await getTable()).findMany() };",
+    "}",
+  ].join('\n');
+  assert.deepEqual(collectModuleDataAdapterFindings(good, 'taskrepositoryadapter', new Set(['task'])), []);
+
+  const memoryStore = [
+    'const stores = new WeakMap<RequestContext, Map<string, TaskRow>>();',
+    'function getStore(ctx: RequestContext): Map<string, TaskRow> {',
+    '  let store = stores.get(ctx);',
+    '  if (!store) { store = new Map<string, TaskRow>(); stores.set(ctx, store); }',
+    '  return store;',
+    '}',
+    'export function createTaskRepositoryAdapter(ctx: RequestContext) {',
+    '  return { list: async () => Array.from(getStore(ctx).values()) };',
+    '}',
+  ].join('\n');
+  const withTable = collectModuleDataAdapterFindings(memoryStore, 'taskrepositoryadapter', new Set(['task']));
+  assert.equal(withTable.length, 2, withTable.join(' | '));
+  assert.ok(withTable.some((m) => /missing ctx\.data\.moduleData/.test(m)), withTable.join(' | '));
+  assert.ok(withTable.some((m) => /module-level Map/.test(m)), withTable.join(' | '));
+
+  const mdmOnly = [
+    'export function createClientRepositoryAdapter(ctx: RequestContext) {',
+    "  return { getById: (id: string) => ctx.mdm.entity.get({ mdmId: id }) };",
+    '}',
+  ].join('\n');
+  assert.deepEqual(collectModuleDataAdapterFindings(mdmOnly, 'clientrepositoryadapter', new Set()), []);
 });
 
 void test('validate-all flags JSON.parse of a JSONB row column on repository adapters', () => {

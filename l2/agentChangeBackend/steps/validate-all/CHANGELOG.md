@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-08-28 — guard: adapter de persistência sem `ctx.data.moduleData`
+
+Os guards de `getTable('<nome>')` × `tableName` e de `JSON.parse` em JSONB só
+iteram ocorrências de `getTable`. Adapter com `WeakMap`/`Map` em nível de
+módulo (zero `getTable`) era invisível. `collectModuleDataAdapterFindings`:
+ausência de `ctx.data.moduleData` quando o módulo tem tabela local; store
+mutável (`new Map`/`WeakMap`/array) fora da factory. Repair re-materializa
+a partir do mesmo .defs.ts — as notas já vêm saneadas pelo gen-adapter.
+
 ## 2026-08-24 — guard: chave do JSONB details ≠ fieldId do l4
 
 Adapter cujo `parseDetails`/`toDomain` lê (ou `toRow` escreve) `details.<chave>` que não é fieldId

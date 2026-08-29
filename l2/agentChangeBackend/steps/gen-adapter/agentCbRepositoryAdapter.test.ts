@@ -9,6 +9,9 @@ import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { callToolProvider, liveTestsEnabled, parseEnvFile } from '/_102025_/l2/testLlmClient.js';
 import { createPlannerToolSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { repositoryAdapterResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
+import {
+  ADAPTER_MODULE_DATA_NOTE, rewriteAdapterDefsNotes, sanitizeAdapterNotes,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbAdapterNotes.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..');
@@ -23,6 +26,12 @@ void test('agentCbRepositoryAdapter declares the LLM step agent contract', () =>
   assert.match(src, /afterPromptStep/);
   assert.match(src, /fieldId verbatim/);
   assert.match(src, /ilike/);
+  assert.match(src, /this is REQUIRED and it is the only persistence API/);
+  assert.match(src, /scoped to local module tables \(never MDM\)/);
+  assert.doesNotMatch(src, /is allowed only for local module tables/);
+  assert.match(src, /sanitizeAdapterNotes/);
+  assert.match(src, /rewriteAdapterDefsNotes/);
+  assert.match(src, /sanitizeReusedAdapterDefs/);
   assert.match(flow, /"agentName": "agentCbRepositoryAdapter"/);
   const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'repositoryAdapter.md'), 'utf8');
   assert.match(skill, /ilike/);
@@ -72,3 +81,43 @@ function assertLiveResponse(r: { modelType: string; status: number; text: string
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+const TRACE_NOTE = 'No ctx.mdm calls are required. Do not access ctx.data.moduleData or any raw MDM runtime primitive.';
+const MDM_OK = 'resolve mdmRefs via ctx.mdm.entity.get; never call ctx.mdm.entity.get inside a loop';
+
+void test('sanitizeAdapterNotes drops a moduleData prohibition, keeps an MDM never-note, appends the obligation once', () => {
+  const once = sanitizeAdapterNotes([TRACE_NOTE, MDM_OK]);
+  assert.equal(once.includes(TRACE_NOTE), false);
+  assert.equal(once.includes(MDM_OK), true);
+  assert.equal(once.filter((n) => n.includes('moduleData.getTable')).length, 1);
+  assert.equal(once.includes(ADAPTER_MODULE_DATA_NOTE), true);
+  const twice = sanitizeAdapterNotes(once);
+  assert.deepEqual(twice, once);
+});
+
+void test('sanitizeAdapterNotes treats a Portuguese moduleData ban the same as the English trace note', () => {
+  const notes = sanitizeAdapterNotes(['Não acesse ctx.data.moduleData nem primitivas MDM']);
+  assert.equal(notes.some((n) => /não acesse/i.test(n)), false);
+  assert.equal(notes[notes.length - 1], ADAPTER_MODULE_DATA_NOTE);
+});
+
+void test('rewriteAdapterDefsNotes rewrites only when notes change and is a no-op on a second pass', () => {
+  const defs = [
+    'export const taskRepositoryAdapter = {',
+    '  "schemaVersion": "2026-06-26",',
+    '  "artifactType": "repositoryAdapter",',
+    '  "data": {',
+    '    "entityId": "Task",',
+    `    "notes": ${JSON.stringify([TRACE_NOTE, MDM_OK])}`,
+    '  }',
+    '} as const;',
+    '',
+    'export default taskRepositoryAdapter;',
+  ].join('\n');
+  const rewritten = rewriteAdapterDefsNotes(defs);
+  assert.ok(rewritten);
+  assert.equal(rewritten!.includes(TRACE_NOTE), false);
+  assert.equal(rewritten!.includes(MDM_OK), true);
+  assert.equal(rewritten!.includes(ADAPTER_MODULE_DATA_NOTE), true);
+  assert.equal(rewriteAdapterDefsNotes(rewritten!), null);
+});
