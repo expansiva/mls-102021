@@ -20,7 +20,7 @@ import {
 import {
   judgeArgsOf, judgeFindingsPrefix, scopedOperations, type CbJudgeBatchFindings,
 } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeShared.js';
-import { cbTraceFolder, CB_TRACE_LEGACY_FOLDER } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { cbTraceReadFolders } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 const AGENT_NAME = 'agentCbJudgeCollect';
 
@@ -125,7 +125,7 @@ async function readBatchFindings(runId: string, judgeRun: number): Promise<CbJud
     // The findings live in the module's trace folder; a run that started before the trace was scoped
     // wrote them to the bare `trace`, so both are read.
     const folder = String(file.folder || '');
-    if (file.extension !== '.json' || (folder !== cbTraceFolder() && folder !== CB_TRACE_LEGACY_FOLDER)) continue;
+    if (file.extension !== '.json' || !cbTraceReadFolders().includes(folder)) continue;
     if (!String(file.shortName || '').startsWith(prefix)) continue;
     try {
       const parsed = JSON.parse(String(await file.getContent())) as CbJudgeBatchFindings;

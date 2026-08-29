@@ -18,14 +18,27 @@ export function setCbTraceModule(moduleName: string): void {
   currentModule = moduleName && moduleName !== 'unknown' ? moduleName : '';
 }
 
-/** `<module>/trace` when the module is known, else the legacy bare `trace`. */
+/** `<module>/pipeline/trace` when the module is known, else the legacy bare `trace`. */
 export function cbTraceFolder(): string {
-  return currentModule ? `${currentModule}/trace` : CB_TRACE_LEGACY_FOLDER;
+  return currentModule ? `${currentModule}/pipeline/trace` : CB_TRACE_LEGACY_FOLDER;
 }
 
 /** Where the previous versions of this agent wrote: readers fall back to it so a run in flight that
  *  started before this change still finds its own state. */
 export const CB_TRACE_LEGACY_FOLDER = 'trace';
+
+/** Pre-pipeline module folder (`l4/<module>/trace`). */
+export function cbTraceModuleLegacyFolder(): string {
+  return currentModule ? `${currentModule}/trace` : CB_TRACE_LEGACY_FOLDER;
+}
+
+/** Folders a reader must look at: current write target, then the two previous homes. */
+export function cbTraceReadFolders(): string[] {
+  const folders = [cbTraceFolder()];
+  if (currentModule) folders.push(`${currentModule}/trace`);
+  folders.push(CB_TRACE_LEGACY_FOLDER);
+  return [...new Set(folders)];
+}
 
 function traceShortName(agentName: string, stepId: unknown): string {
   const safe = agentName
@@ -48,7 +61,7 @@ export function agentTraceFileInfo(moduleName: string, agentName: string, stepId
   return {
     project,
     level: 4,
-    folder: `${moduleName}/trace`,
+    folder: `${moduleName}/pipeline/trace`,
     shortName: traceShortName(agentName, stepId),
     extension: '.json',
   };

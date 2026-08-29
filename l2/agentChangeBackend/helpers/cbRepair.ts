@@ -17,7 +17,7 @@ import { createStorFile } from '/_102027_/l2/libStor.js';
 import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
-import { cbTraceFolder, CB_TRACE_LEGACY_FOLDER } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { cbTraceFolder, cbTraceReadFolders } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 import { parseStepCost, accumulatePhaseCost, summarizeCost, type CbCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import {
@@ -95,7 +95,7 @@ export async function readRepairState(): Promise<CbRepairState> {
   try {
     // The module-scoped path first, then where previous versions wrote: a run that started before the
     // trace was scoped still finds its own state, and the next write lands in the module folder.
-    const file = traceFile(stateFileInfo()) || traceFile(stateFileInfo(CB_TRACE_LEGACY_FOLDER));
+    const file = cbTraceReadFolders().map(folder => traceFile(stateFileInfo(folder))).find(item => item && item.status !== 'deleted');
     if (!file || file.status === 'deleted') return emptyState();
     const parsed = parseMaybeJson(String(await file.getContent()));
     if (!isRecord(parsed)) return emptyState();
@@ -261,7 +261,7 @@ export async function recordLlmCost(phase: string, interaction: mls.msg.AIIntera
 
 export async function readCostReport(): Promise<CbCostReport> {
   try {
-    const file = traceFile(costFileInfo()) || traceFile({ ...costFileInfo(), folder: CB_TRACE_LEGACY_FOLDER });
+    const file = cbTraceReadFolders().map(folder => traceFile({ ...costFileInfo(), folder })).find(item => item && item.status !== 'deleted');
     if (!file || file.status === 'deleted') return {};
     const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as CbCostReport : {};
@@ -274,8 +274,9 @@ export async function readCostReport(): Promise<CbCostReport> {
  *  (T6) to surface residual compiler findings that would otherwise live only in this file. */
 export async function readHealthReport(): Promise<Record<string, unknown> | null> {
   try {
-    const info = { project: mls.actualProject || 0, level: 4, folder: cbTraceFolder(), shortName: 'cb-health-report', extension: '.json' } as Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
-    const file = mls.stor.files[mls.stor.getKeyToFile(info)];
+    const file = cbTraceReadFolders()
+      .map(folder => mls.stor.files[mls.stor.getKeyToFile({ project: mls.actualProject || 0, level: 4, folder, shortName: 'cb-health-report', extension: '.json' })])
+      .find(item => item && item.status !== 'deleted');
     if (!file || file.status === 'deleted') return null;
     const parsed = JSON.parse(String((await file.getContent()) ?? '')) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;

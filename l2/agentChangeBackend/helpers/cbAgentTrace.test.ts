@@ -15,7 +15,7 @@ void test('agentTraceFileInfo keeps the declared .json extension (not .defs.ts)'
   const info = agentTraceFileInfo('petShop', 'agentCbSeeds', 193, 102047);
   assert.equal(info.extension, '.json');
   assert.equal(info.level, 4);
-  assert.equal(info.folder, 'petShop/trace');
+  assert.equal(info.folder, 'petShop/pipeline/trace');
   assert.equal(info.shortName, '193-agent-cb-seeds');
   assert.equal(info.project, 102047);
 });

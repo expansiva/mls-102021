@@ -38,7 +38,7 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const raw = userPrompt || context.message.content || '';
-  const { kind: cmd, module: requestedModule, noAssets } = parseCli(raw);
+  const { kind: cmd, module: requestedModule, noAssets, fast } = parseCli(raw);
   let rebuildArchived = '';
 
   // Resolve the ONE module this run targets, and (for rebuild) reset only that module's owners so the
@@ -99,7 +99,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}) },
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}) },
     },
   };
 

@@ -4,13 +4,21 @@
 // no-work path (scan found nothing) and the normal path (owners marked done).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { createAddStepIntent, createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import {
+  CB_FAST_HANDOFF_PLAN_ID,
+  decideCbFastHandoff,
+  hasCbFastHandoff,
+  isCbFastMode,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbFastHandoff.js';
+import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import { readHealthReport, readCostReport, saveRunReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRunStepRecords } from '/_102021_/l2/agentChangeBackend/helpers/cbRunDossier.js';
 import { modelCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 import { formatCostSummary } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import { isCompilerFinding } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { buildCbRunSummary, describeCbCommand, saveCbRunSummary } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 /** T6 visibility: surface any residual COMPILER errors from the health report in the final summary, so a
  *  run never ends looking green while the l1 artifact still carries real type errors (erro4). */
@@ -20,7 +28,7 @@ async function residualCompilerWarning(): Promise<string> {
     ? (report!.findings as unknown[]).filter((f): f is string => typeof f === 'string').filter(isCompilerFinding)
     : [];
   const compiler = findings.length
-    ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/trace/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
+    ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/<module>/pipeline/trace/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
     : '';
   const degraded = Array.isArray(report?.degraded) ? report!.degraded.filter((f): f is string => typeof f === 'string') : [];
   const skipped = report?.seedSkipped && typeof report.seedSkipped === 'object' && !Array.isArray(report.seedSkipped)
@@ -86,14 +94,26 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const noWorkReason = typeof args.reason === 'string' && args.reason
     ? `agentChangeBackend: ${args.reason}`
     : 'agentChangeBackend: nothing to create (no todoBackend status = toCreate).';
+  const ownersDone = typeof args.ownersDone === 'number' ? args.ownersDone : 0;
+  const moduleName = typeof args.moduleName === 'string' && args.moduleName
+    ? args.moduleName
+    : String(context.task?.iaCompressed?.longMemory?.targetModule || '');
+  const health = await readHealthReport();
+  const compilerLeft = (Array.isArray(health?.findings) ? health!.findings : [])
+    .filter((f): f is string => typeof f === 'string')
+    .some(isCompilerFinding);
+  const handoff = await dispatchChangeFrontendHandoff(context, parentStep, {
+    fast: isCbFastMode(context.task?.iaCompressed?.longMemory),
+    success: !noWork && ownersDone > 0 && !compilerLeft,
+    moduleName,
+  });
   const summary = (noWork
     ? noWorkReason
-    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual + stamp;
+    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual + stamp + handoff.note;
   // The dossier of the run, next to the module's trace: phases with cost/calls, the repair history, the
   // residual findings and the model counts — what used to be assembled by hand after every run.
-  const health = await readHealthReport();
   const reportRef = await saveRunReport({
-    moduleName: typeof args.moduleName === 'string' ? args.moduleName : '',
+    moduleName,
     noWork,
     owners: {
       done: typeof args.ownersDone === 'number' ? args.ownersDone : 0,
@@ -123,6 +143,54 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     } : null,
     summary,
   });
-  return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
-    reportRef ? `${summary} Run report: ${reportRef}.` : summary)];
+  try {
+    await saveCbRunSummary(buildCbRunSummary({
+      moduleName,
+      command: describeCbCommand(context.task?.iaCompressed?.longMemory),
+      noWork,
+      ownersDone,
+      ownersFlipped: typeof args.ownersFlipped === 'number' ? args.ownersFlipped : 0,
+      compilerLeft,
+      health,
+      summary,
+    }));
+  } catch { /* run summary must never fail finalize */ }
+  return [
+    ...handoff.intents,
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+      reportRef ? `${summary} Run report: ${reportRef}.` : summary),
+  ];
+}
+
+async function dispatchChangeFrontendHandoff(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  input: { fast: boolean; success: boolean; moduleName: string },
+): Promise<{ intents: mls.msg.AgentIntent[]; note: string }> {
+  const already = hasCbFastHandoff(context.task?.iaCompressed?.nextSteps);
+  const decision = decideCbFastHandoff({ ...input, alreadyDispatched: already });
+  if (!decision.dispatch) {
+    return { intents: [], note: already && input.fast ? '; changeFrontend: already dispatched' : '' };
+  }
+  const threadId = context.message?.threadId;
+  if (!threadId) return { intents: [], note: '; changeFrontend: SKIPPED (no threadId)' };
+  try {
+    await sendThreadMessage(threadId, decision.message);
+    return {
+      intents: [createAddStepIntent(context, parentStep, {
+        type: 'result',
+        stepId: 0,
+        status: 'completed',
+        interaction: null,
+        nextSteps: [],
+        stepTitle: 'Dispatch changeFrontend (/fast)',
+        result: JSON.stringify({ moduleName: input.moduleName, to: 'agentChangeFrontend', message: decision.message }, null, 2),
+        planning: { planId: CB_FAST_HANDOFF_PLAN_ID, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+      } as unknown as mls.msg.AIAgentStep)],
+      note: `; changeFrontend: dispatched (${decision.message})`,
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { intents: [], note: `; changeFrontend: DISPATCH FAILED (${reason}) — re-send manually: ${decision.message}` };
+  }
 }

@@ -107,6 +107,6 @@ test('os 5 pontos de instrumentação seguem ligados, agora com proveniência', 
   assert.doesNotMatch(scan, /console\.warn|staleAgentWarning/u);
   const summary = readFileSync(new URL('../steps/finalize/agentCbFinalSummary.ts', import.meta.url), 'utf8');
   assert.match(summary, /const agentBuild = await readAgentProvenance\(\);/);
-  assert.match(summary, /\+ cost \+ residual \+ stamp;/);
+  assert.match(summary, /\+ cost \+ residual \+ stamp \+ handoff\.note;/);
   assert.match(summary, /^\s*agentBuild,$/m);
 });
