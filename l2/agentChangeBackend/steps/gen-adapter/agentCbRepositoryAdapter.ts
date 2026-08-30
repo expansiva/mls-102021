@@ -13,6 +13,7 @@ import {
   persistenceTableFileInfo, domainEntityFileInfo, dtsRef, layerSkills, readString, lowerFirst, logPrefix, planIdOf,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { repositoryAdapterResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { rewriteAdapterDefsNotes, sanitizeAdapterNotes } from '/_102021_/l2/agentChangeBackend/helpers/cbAdapterNotes.js';
 
@@ -93,6 +94,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     console.error(`${logPrefix(agent)} ${trace}`);
   }
   await saveAgentTrace(context, AGENT_NAME, step);
+  if (status === 'failed') {
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: trace || 'failed' });
+  }
   const intents: mls.msg.AgentIntent[] = [];
   if (status === 'completed') intents.push(enqueueNext(context, parentStep, step, 'cb-gen-usecase', 'agentCbUsecase', 'Gerar usecases', {}));
   intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace, status === 'completed' ? 'input_output' : undefined));

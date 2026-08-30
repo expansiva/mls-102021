@@ -43,6 +43,7 @@ import {
   collectL1Imports, collectRelativeImportIssues, collectL4ContractDependsRefs, collectDottedShortNameFindings, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   stableCompilerErrors, selectCompilerRepairRoots, compilerErrorFamily, compilerErrorsAfterRepair,
+  annotateCompilerError,
   collectNonEnglishAppErrorMessages,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
@@ -57,6 +58,7 @@ import {
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine,
   collectMissingContractRouteFindings,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 // Parse the FIRST `export const ... = {...} as const;` (the artifact). NB: parseDefsSource in cbShared
 // uses the LAST ` as const;`, which on an l1 defs (artifact + pipeline) would span both exports and
@@ -518,7 +520,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // owners done while any .ts is still missing (the "finalize before materialization finished" gap).
     for (const d of defsFiles) {
       if (!tsSet.has(`${d.folder}::${d.shortName}`)) {
-        const msg = `materialization incomplete -> ${d.folder}/${d.shortName}.ts not generated from its .defs.ts`;
+        const msg = `materialization incomplete -> ${d.folder}/${d.real}.ts not generated from its .defs.ts`;
         missing.push(msg);
         addRepair(defRefOf(d.folder, d.real), msg); // missing .ts -> re-materializable
         continue;
@@ -530,7 +532,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const defsMs = getFileModified(project, 1, d.folder, d.real, '.defs.ts');
       const tsMs = getFileModified(project, 1, d.folder, d.real, '.ts');
       if (isStale(defsMs, tsMs, fileIsPresent(project, 1, d.folder, d.real, '.ts'))) {
-        const msg = `materialization stale -> ${d.folder}/${d.shortName}.ts is older than its .defs.ts (failed worker masked by a previous run's output)`;
+        const msg = `materialization stale -> ${d.folder}/${d.real}.ts is older than its .defs.ts (failed worker masked by a previous run's output)`;
         missing.push(msg);
         addRepair(defRefOf(d.folder, d.real), msg);
       }
@@ -660,7 +662,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     for (const [key, info] of compileFlagged) {
       if (cascadeSet.has(key)) { cascadeCompilerSuppressed += info.errors.length; continue; }
       for (const err of info.errors.slice(0, 6)) {
-        const msg = `compiler -> ${info.folder}/${info.real}.ts: ${err}`;
+        const msg = `compiler -> ${info.folder}/${info.real}.ts: ${annotateCompilerError(err)}`;
         missing.push(msg);
         addRepair(defRefOf(info.folder, info.real), msg);
       }
@@ -943,7 +945,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ];
       }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
-      await persistHealth({ outcome: 'failed', reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() });
+      const healthFailed = { outcome: 'failed' as const, reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() };
+      await persistHealth(healthFailed);
+      await recordFailedCbRun({
+        moduleName,
+        longMemory: context.task?.iaCompressed?.longMemory,
+        reason: trace,
+        health: healthFailed,
+      });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Every terminal trace of this step carries the model counts: it is the measurement that used to be
@@ -969,6 +978,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await recordFailedCbRun({
+      longMemory: context.task?.iaCompressed?.longMemory,
+      reason: message,
+    });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }

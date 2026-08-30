@@ -15,6 +15,7 @@ import {
   ALL_STATUSES, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
 import { bffCallsWithMaterializedUsecase } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
@@ -303,6 +304,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${message}`);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: message });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }

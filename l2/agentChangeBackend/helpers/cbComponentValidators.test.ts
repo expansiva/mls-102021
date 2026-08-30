@@ -13,7 +13,7 @@ import {
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
   collectDeleteOperationPortGaps,
   stableCompilerErrors, selectCompilerRepairRoots,
-  compilerErrorFamily, compilerErrorsAfterRepair, compilerFindingsBlockingPassed,
+  compilerErrorFamily, compilerErrorsAfterRepair, compilerFindingsBlockingPassed, annotateCompilerError,
   collectNonEnglishAppErrorMessages,
   collectL4ContractDependsRefs, collectUnreadL4ContractFindings, collectDottedShortNameFindings, collectIoShapeSymmetryIssues,
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
@@ -141,6 +141,36 @@ test('be5-2: two compiler families in the same file stay a root even if it impor
   const { roots, cascades } = selectCompilerRepairRoots(flagged, importsOf, families);
   assert.ok(roots.includes('mod/usecases::createserviceappointment'), 'own families must not be deferred as cascade');
   assert.deepEqual(cascades, []);
+});
+
+test("T2: TS2339 on type 'never' is annotated with the callback-assignment cause", () => {
+  const original = "TS2339: Property 'x' does not exist on type 'never'.";
+  const annotated = annotateCompilerError(original);
+  assert.match(annotated, /possible cause: a value assigned only inside a callback \(e\.g\. `ctx\.data\.runInTransaction`\)/);
+  const finding = compilerFindingsBlockingPassed({
+    currentByFile: new Map([['registerSignature.ts', [original]]]),
+  })[0];
+  assert.match(finding, /possible cause:/);
+});
+
+test("T2: a common TS2339 is not annotated", () => {
+  const original = "TS2339: Property 'y' does not exist on type 'Signature'";
+  assert.equal(annotateCompilerError(original), original);
+  assert.equal(
+    compilerFindingsBlockingPassed({ currentByFile: new Map([['registerSignature.ts', [original]]]) })[0],
+    `compiler -> registerSignature.ts: ${original}`,
+  );
+});
+
+test("T2: the original compiler error remains intact inside the annotated finding", () => {
+  const original = "TS2339: Property 'x' does not exist on type 'never'.";
+  const annotated = annotateCompilerError(original);
+  assert.ok(annotated.startsWith(original), annotated);
+  const finding = compilerFindingsBlockingPassed({
+    currentByFile: new Map([['registerSignature.ts', [original]]]),
+  })[0];
+  assert.ok(finding.includes(original), finding);
+  assert.match(finding, /^compiler -> registerSignature\.ts: TS2339: Property 'x' does not exist on type 'never'\./);
 });
 
 test('be5-2: g1 finds two families, repair fixes one — health cannot close passed', () => {

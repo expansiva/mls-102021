@@ -5,6 +5,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: 'agentCbValidateL4Readiness', agentProject: 102021, agentFolder: 'agentChangeBackend/steps/scan', agentDescription: 'Deterministic l4 create-readiness preflight', visibility: 'private', beforePromptStep };
@@ -43,6 +44,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (errors.length) {
       const trace = `Preflight failed: ${errors.slice(0, 20).join('; ')}`;
       console.error(`${logPrefix(agent)} ${trace}`);
+      await recordFailedCbRun({
+        moduleName: scan.moduleNames[0],
+        longMemory: context.task?.iaCompressed?.longMemory,
+        reason: trace,
+      });
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', trace)];
     }
     // Console stays clean (spec §Console limpo): the warnings are recorded on the step trace below
@@ -56,6 +62,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: message });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }

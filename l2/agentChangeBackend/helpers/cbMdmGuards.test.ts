@@ -71,3 +71,51 @@ test('collectRawMdmAccessIssues blocks singular MDM reads inside loops', () => {
   assert.match(issues.join('\n'), /MDM N\+1 access forbidden/);
   assert.match(issues.join('\n'), /getMany or hydrateMany/);
 });
+
+test('collectRawMdmAccessIssues does not treat pure arithmetic loops as N+1', () => {
+  // Fixture is the for-loop isValidCpf that the 30/08 listaAssinatura run flagged,
+  // followed by a legitimate get outside the loop (copied inline — do not read mls-102047).
+  const issues = collectRawMdmAccessIssues(`
+    function isValidCpf(cpf) {
+      const digits = cpf.replace(/\\D/g, '');
+      if (digits.length !== 11 || /^([0-9])\\1{10}$/.test(digits)) {
+        return false;
+      }
+      let firstSum = 0;
+      for (let index = 0; index < 9; index += 1) {
+        firstSum += Number(digits[index]) * (10 - index);
+      }
+      const firstCheck = (firstSum * 10) % 11 % 10;
+      if (firstCheck !== Number(digits[9])) {
+        return false;
+      }
+      let secondSum = 0;
+      for (let index = 0; index < 10; index += 1) {
+        secondSum += Number(digits[index]) * (11 - index);
+      }
+      const secondCheck = (secondSum * 10) % 11 % 10;
+      return secondCheck === Number(digits[10]);
+    }
+    export async function registerSignature(ctx, input) {
+      if (!isValidCpf(input.cpf)) return null;
+      const petition = await ctx.mdm.entity.get({ mdmId: input.petitionId });
+      return petition;
+    }
+  `);
+
+  assert.equal(issues.filter((msg) => msg.includes('MDM N+1')).length, 0);
+});
+
+test('collectRawMdmAccessIssues flags get nested inside an if in a loop', () => {
+  const issues = collectRawMdmAccessIssues(`
+    for (const mdmId of input.mdmIds) {
+      if (mdmId) {
+        const entity = await ctx.mdm.entity.get({ mdmId });
+        rows.push(entity);
+      }
+    }
+  `);
+
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /MDM N\+1 access forbidden/);
+});

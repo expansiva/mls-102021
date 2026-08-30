@@ -16,6 +16,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, capitalize, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { extractSeedSkippedFromSource, type SeedSkippedTargets } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 import { formatDiscardedOrphans, pruneOrphanL5BackendModules } from '/_102021_/l2/agentChangeBackend/helpers/cbReconcileBackendConfig.js';
@@ -178,6 +179,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: message });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }

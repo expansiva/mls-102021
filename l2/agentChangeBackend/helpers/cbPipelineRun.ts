@@ -1,6 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.ts" enhancement="_blank"/>
 
-import { cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { cbCurrentTraceModule, cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 import { CB_FAST_HANDOFF_MARK_SHORT } from '/_102021_/l2/agentChangeBackend/helpers/cbFastHandoff.js';
 
 export const CB_PIPELINE_AGENT_SLUG = 'changebackend';
@@ -32,6 +32,19 @@ export function nextPipelineRunNn(existingShortNames: readonly string[], agentSl
     if (match) max = Math.max(max, Number(match[1]));
   }
   return String(max + 1).padStart(2, '0');
+}
+
+function asLongMemory(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function resolveCbPipelineModule(explicit?: string, longMemory?: unknown): string {
+  const memory = asLongMemory(longMemory);
+  for (const raw of [explicit, cbCurrentTraceModule(), typeof memory?.targetModule === 'string' ? memory.targetModule : '']) {
+    const name = String(raw || '').trim();
+    if (name && name !== 'unknown') return name;
+  }
+  return '';
 }
 
 export function describeCbCommand(longMemory: Record<string, unknown> | null | undefined): string {
@@ -69,7 +82,8 @@ export function buildCbRunSummary(input: {
 }): PipelineRunSummary {
   const health = input.health;
   const degraded = Array.isArray(health?.degraded) ? health!.degraded.map(String) : [];
-  const findings = Array.isArray(health?.findings) ? health!.findings.length : 0;
+  const findingList = Array.isArray(health?.findings) ? health!.findings.map(String) : [];
+  const findings = findingList.length;
   const degradations: PipelineRunDegradation[] = degraded.map(reason => ({
     at: new Date().toISOString(),
     kind: 'health-degraded',
@@ -79,9 +93,12 @@ export function buildCbRunSummary(input: {
     degradations.push({ at: new Date().toISOString(), kind: 'seeds-degraded', reason: String(health.seedSkipped ?? 'seeds degraded') });
   }
   if (input.extraDegradations?.length) degradations.push(...input.extraDegradations);
-  const verdict: PipelineRunSummary['verdict'] = input.compilerLeft || input.noWork
-    ? (input.compilerLeft ? 'failed' : 'completed')
-    : (degradations.length ? 'degraded' : 'completed');
+  const healthFailed = health?.outcome === 'failed';
+  const verdict: PipelineRunSummary['verdict'] = (input.compilerLeft || healthFailed)
+    ? 'failed'
+    : input.noWork
+      ? 'completed'
+      : (degradations.length ? 'degraded' : 'completed');
   return {
     moduleName: input.moduleName,
     agent: 'agentChangeBackend',
@@ -94,12 +111,49 @@ export function buildCbRunSummary(input: {
       ownersDone: input.ownersDone,
       ownersFlipped: input.ownersFlipped,
       findings,
+      findingList,
       degraded: degraded.length,
       repairs: Array.isArray(health?.repairHistory) ? health!.repairHistory.length : 0,
+      globalAttempts: typeof health?.globalAttempts === 'number' ? health.globalAttempts : 0,
       noWork: input.noWork,
     },
     degradations,
   };
+}
+
+/** Recording must never change the run outcome. A throw from the writer is swallowed. */
+export async function bestEffortRecord(write: () => Promise<unknown>): Promise<void> {
+  try {
+    await write();
+  } catch {
+    /* recording is never on the critical path */
+  }
+}
+
+/** Index the run on a terminal failure so `l4/<module>/pipeline/` is not missing `runNN_changebackend.json`. */
+export async function recordFailedCbRun(input: {
+  moduleName?: string;
+  longMemory?: unknown;
+  reason: string;
+  health?: Record<string, unknown> | null;
+}): Promise<void> {
+  await bestEffortRecord(async () => {
+    const moduleName = resolveCbPipelineModule(input.moduleName, input.longMemory);
+    if (!moduleName) return;
+    const health: Record<string, unknown> = input.health && typeof input.health === 'object' && !Array.isArray(input.health)
+      ? { ...input.health, outcome: 'failed' }
+      : { outcome: 'failed', findings: [], degraded: [], repairHistory: [] };
+    await saveCbRunSummary(buildCbRunSummary({
+      moduleName,
+      command: describeCbCommand(asLongMemory(input.longMemory)),
+      noWork: false,
+      ownersDone: 0,
+      ownersFlipped: 0,
+      compilerLeft: false,
+      health,
+      summary: input.reason,
+    }));
+  });
 }
 
 export async function saveCbRunSummary(summary: PipelineRunSummary): Promise<string | null> {

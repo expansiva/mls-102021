@@ -121,6 +121,12 @@ void test('validate-all flags dotted shortName on l1 (repairable) and l4 (defs-l
   assert.match(src, /addRepair\(defRefOf\(def\.folder, def\.real\), msg\)/);
 });
 
+void test('validate-all annotates TS2339-on-never via annotateCompilerError at the compiler finding site', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /annotateCompilerError/);
+  assert.match(src, /compiler -> \$\{info\.folder\}\/\$\{info\.real\}\.ts: \$\{annotateCompilerError\(err\)\}/);
+});
+
 void test('after a repair round the whole-project compile re-asks every file and keeps remaining families', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /const afterRepair = repairStateForCompile\.globalAttempts > 0/);
@@ -156,6 +162,9 @@ void test('validate-all partitions blocking vs degradable and finalizes when onl
   // Blocking still fails the run; degradable does not skip repair when mapped.
   assert.match(src, /INTEGRITY FAILED/);
   assert.match(src, /canRepair && \(state\.globalAttempts < GLOBAL_REPAIR_BUDGET \|\| isRescue\)/);
+  // Failure path writes runNN_changebackend.json after health, and a recorder throw cannot replace the failed intent.
+  assert.match(src, /await persistHealth\(healthFailed\);\s*await recordFailedCbRun\(/);
+  assert.match(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'failed', trace\)/);
 });
 
 void test('validate-all records operations coverage on health and never turns it into a finding', () => {

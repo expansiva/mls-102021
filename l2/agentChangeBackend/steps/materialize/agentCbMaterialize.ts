@@ -20,6 +20,7 @@ import {
   createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, isRecord, readStringArray, logPrefix,
   repositoryPortFileInfo, domainEntityFileInfo, dtsRef,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
   expandContextRef, buildMicroRepairPrompt, isCompilerFinding, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
@@ -195,6 +196,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${msg}`);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: msg });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', msg)];
   } finally {
     stopTick();

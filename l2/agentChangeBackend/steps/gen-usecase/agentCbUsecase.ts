@@ -20,6 +20,7 @@ import {
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues, alignOutputShapeToOntology } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -127,6 +128,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${msg}`);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: msg });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', msg)];
   }
 }

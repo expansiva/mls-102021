@@ -12,6 +12,7 @@ import {
   layerSkills, readString, lowerFirst, logPrefix, planIdOf,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { repositoryPortResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 
 const AGENT_NAME = 'agentCbRepositoryPort';
@@ -70,6 +71,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     console.error(`${logPrefix(agent)} ${trace}`);
   }
   await saveAgentTrace(context, AGENT_NAME, step);
+  if (status === 'failed') {
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: trace || 'failed' });
+  }
   const intents: mls.msg.AgentIntent[] = [];
   if (status === 'completed') intents.push(enqueueNext(context, parentStep, step, 'cb-gen-table', 'agentCbPersistenceTable', 'Gerar tabelas (persistência)', {}));
   intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace, status === 'completed' ? 'input_output' : undefined));

@@ -459,6 +459,17 @@ export function compilerErrorsAfterRepair(first: string[], second: string[]): st
   return [...new Set([...first, ...second])];
 }
 
+/**
+ * TS2339 on `never` names the symptom, not the cause: TS cannot see assignments inside a callback
+ * and narrows the outer variable to its initializer. Append one sentence; never replace the diagnostic.
+ */
+export function annotateCompilerError(error: string): string {
+  if (/\bTS2339\b/.test(error) && /type 'never'/.test(error)) {
+    return `${error} possible cause: a value assigned only inside a callback (e.g. \`ctx.data.runInTransaction\`) — TS narrows the outer variable to its initializer; return the value from the callback instead`;
+  }
+  return error;
+}
+
 /** Health may close `passed` only when every previous family was re-checked on this pass. */
 export function compilerFindingsBlockingPassed(input: {
   currentByFile: Map<string, string[]>;
@@ -466,7 +477,7 @@ export function compilerFindingsBlockingPassed(input: {
 }): string[] {
   const findings: string[] = [];
   for (const [file, errors] of input.currentByFile) {
-    for (const error of errors) findings.push(`compiler -> ${file}: ${error}`);
+    for (const error of errors) findings.push(`compiler -> ${file}: ${annotateCompilerError(error)}`);
   }
   for (const [file, previous] of input.previousFamiliesByFile ?? []) {
     if (input.currentByFile.has(file)) continue;

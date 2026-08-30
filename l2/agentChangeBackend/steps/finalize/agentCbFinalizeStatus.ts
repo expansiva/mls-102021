@@ -15,6 +15,7 @@ import {
   usecaseFileInfo, httpControllerFileInfo, readBackTodoBackend, todoReadBackDivergences, todoReadBackIsClean, todoReadBackIsFatal,
   type CbOwner, type CbTodoReadBack, type OwnerStatus,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { todoOwnerKey, type CbTodoDivergence } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { fileIsPresent, modelCounts, sweepModuleModels } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 
@@ -158,6 +159,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: message });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 }

@@ -23,6 +23,7 @@ import {
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { collectLifecycleContradictionFindings, lifecycleForEntity } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { recordComponentFailure, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
@@ -192,6 +193,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`${logPrefix(agent)} ${msg}`);
+    await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason: msg });
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', msg)];
   }
 }

@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-08-30 — runNN no caminho de falha
+
+`INTEGRITY FAILED` (e o catch do step) grava `l4/<módulo>/pipeline/runNN_changebackend.json` depois do health. O registro é best-effort: um throw no save não troca o intent `failed`.
+
 ## 2026-08-29 — corpus offline dos guards
 
 `helpers/cbCorpus.ts` aplica os coletores puros (moduleData, jsonb parse, PK index,

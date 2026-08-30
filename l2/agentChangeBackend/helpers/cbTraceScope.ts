@@ -18,6 +18,11 @@ export function setCbTraceModule(moduleName: string): void {
   currentModule = moduleName && moduleName !== 'unknown' ? moduleName : '';
 }
 
+/** Empty when the scan has not resolved a module — callers must not invent a pipeline folder. */
+export function cbCurrentTraceModule(): string {
+  return currentModule;
+}
+
 /** `<module>/pipeline/trace` when the module is known, else the legacy bare `trace`. */
 export function cbTraceFolder(): string {
   return currentModule ? `${currentModule}/pipeline/trace` : CB_TRACE_LEGACY_FOLDER;
