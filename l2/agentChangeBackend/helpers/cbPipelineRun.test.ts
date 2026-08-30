@@ -24,3 +24,23 @@ void test('CB run summary copies health degradations off the console path', () =
   assert.equal(summary.degradations.some(item => item.kind === 'seeds-degraded'), true);
   assert.equal(summary.counts.ownersDone, 8);
 });
+
+void test('a failed changeFrontend handoff degrades without failing the run', () => {
+  const summary = buildCbRunSummary({
+    moduleName: 'listaAssinatura',
+    command: '/fast /rebuild all',
+    noWork: false,
+    ownersDone: 3,
+    ownersFlipped: 0,
+    compilerLeft: false,
+    health: { findings: [], degraded: [] },
+    summary: 'run complete',
+    extraDegradations: [{
+      at: '2026-08-29T01:00:01.000Z',
+      kind: 'fast-handoff-dispatch',
+      reason: 'Parent step cannot be modified — re-send manually: @@agentChangeFrontend /fast /rebuild all listaAssinatura',
+    }],
+  });
+  assert.equal(summary.verdict, 'degraded');
+  assert.equal(summary.degradations.some(item => item.kind === 'fast-handoff-dispatch'), true);
+});

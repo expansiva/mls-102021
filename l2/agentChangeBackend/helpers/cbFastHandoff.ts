@@ -40,3 +40,44 @@ export function decideCbFastHandoff(input: {
   }
   return { dispatch: true, message };
 }
+
+export const CB_FAST_HANDOFF_MARK_SHORT = 'fast-handoff';
+
+export type CbFastHandoffDegradation = { at: string; kind: 'fast-handoff-dispatch'; reason: string };
+
+export type CbFastHandoffSendResult = {
+  dispatched: boolean;
+  note: string;
+  degradation: CbFastHandoffDegradation | null;
+};
+
+/**
+ * Send + persist the `/fast` handoff. Never throws: a dispatch failure is a recorded
+ * degradation so finalize can complete (the CB work is already on disk).
+ */
+export async function sendCbFastHandoff(input: {
+  threadId: string | undefined;
+  message: string;
+  send: (threadId: string, message: string) => Promise<void>;
+  persist: () => Promise<void>;
+}): Promise<CbFastHandoffSendResult> {
+  if (!input.threadId) {
+    return { dispatched: false, note: '; changeFrontend: SKIPPED (no threadId)', degradation: null };
+  }
+  try {
+    await input.send(input.threadId, input.message);
+    await input.persist();
+    return { dispatched: true, note: `; changeFrontend: dispatched (${input.message})`, degradation: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      dispatched: false,
+      note: `; changeFrontend: DISPATCH FAILED (${reason}) — re-send manually: ${input.message}`,
+      degradation: {
+        at: new Date().toISOString(),
+        kind: 'fast-handoff-dispatch',
+        reason: `${reason} — re-send manually: ${input.message}`,
+      },
+    };
+  }
+}

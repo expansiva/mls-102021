@@ -30,10 +30,11 @@ void test('the run dossier records per-step traces and the provenance stamp', ()
   assert.match(src, /\/rebuild seeds/);
 });
 
-void test('/fast success dispatches changeFrontend once and records the result step', () => {
+void test('/fast success dispatches changeFrontend once without an add-step on the parent', () => {
   const src = readFileSync(path.join(HERE, 'agentCbFinalSummary.ts'), 'utf8');
   assert.match(src, /decideCbFastHandoff/);
   assert.match(src, /dispatchChangeFrontendHandoff/);
-  assert.match(src, /CB_FAST_HANDOFF_PLAN_ID/);
+  assert.match(src, /writeCbFastHandoffMark/);
   assert.match(src, /already dispatched/);
+  assert.doesNotMatch(src, /createAddStepIntent/);
 });

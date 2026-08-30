@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.ts" enhancement="_blank"/>
 
 import { cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
+import { CB_FAST_HANDOFF_MARK_SHORT } from '/_102021_/l2/agentChangeBackend/helpers/cbFastHandoff.js';
 
 export const CB_PIPELINE_AGENT_SLUG = 'changebackend';
 
@@ -64,6 +65,7 @@ export function buildCbRunSummary(input: {
   compilerLeft: boolean;
   health: Record<string, unknown> | null;
   summary: string;
+  extraDegradations?: PipelineRunDegradation[];
 }): PipelineRunSummary {
   const health = input.health;
   const degraded = Array.isArray(health?.degraded) ? health!.degraded.map(String) : [];
@@ -76,6 +78,7 @@ export function buildCbRunSummary(input: {
   if (health?.seeds === 'degraded') {
     degradations.push({ at: new Date().toISOString(), kind: 'seeds-degraded', reason: String(health.seedSkipped ?? 'seeds degraded') });
   }
+  if (input.extraDegradations?.length) degradations.push(...input.extraDegradations);
   const verdict: PipelineRunSummary['verdict'] = input.compilerLeft || input.noWork
     ? (input.compilerLeft ? 'failed' : 'completed')
     : (degradations.length ? 'degraded' : 'completed');
@@ -121,6 +124,39 @@ export async function saveCbRunSummary(summary: PipelineRunSummary): Promise<str
   } catch {
     return null;
   }
+}
+
+export function cbFastHandoffMarkInfo(moduleName: string, project = mls.actualProject || 0): {
+  project: number; level: number; folder: string; shortName: string; extension: string;
+} {
+  return { project, level: 4, folder: `${moduleName}/pipeline`, shortName: CB_FAST_HANDOFF_MARK_SHORT, extension: '.json' };
+}
+
+export async function readCbFastHandoffMark(moduleName: string): Promise<{ to: string; message: string; at: string } | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName) return null;
+    const key = mls.stor.getKeyToFile(cbFastHandoffMarkInfo(moduleName, project));
+    const file = mls.stor.files[key] as { status?: string; getContent?: () => Promise<string> } | undefined;
+    if (!file || file.status === 'deleted' || !file.getContent) return null;
+    const parsed = JSON.parse(String(await file.getContent() ?? ''));
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.message !== 'string') return null;
+    return { to: String(parsed.to || 'agentChangeFrontend'), message: parsed.message, at: String(parsed.at || '') };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeCbFastHandoffMark(moduleName: string, message: string): Promise<void> {
+  const project = mls.actualProject || 0;
+  if (!project || !moduleName) return;
+  const info = cbFastHandoffMarkInfo(moduleName, project);
+  const source = `${JSON.stringify({ to: 'agentChangeFrontend', message, at: new Date().toISOString() }, null, 2)}\n`;
+  const { createStorFile } = await import('/_102027_/l2/libStor.js');
+  const key = mls.stor.getKeyToFile(info);
+  let file = mls.stor.files[key];
+  if (!file) file = await createStorFile({ ...info, source }, false, false, false);
+  await mls.stor.localStor.setContent(file, { contentType: 'string', content: source });
 }
 
 /** Keep a reference so the write-folder chokepoint stays in this module's tests. */
