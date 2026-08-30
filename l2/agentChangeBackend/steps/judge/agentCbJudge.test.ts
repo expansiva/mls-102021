@@ -12,6 +12,7 @@ import { judgeResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSch
 import {
   JUDGE_BATCH_MAX_BYTES, JUDGE_BATCH_MAX_PAIRS, MAX_PROMPT_BYTES, planJudgeBatch, promptSizeError,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
+import { judgeBatchContextLines } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeBatchContext.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..');
@@ -173,4 +174,58 @@ void test('the judge refreshes the file index before judging, and never repairs 
   assert.match(collector, /JUDGE-ENVIRONMENT-FAILURE/);
   assert.match(collector, /new Set\(missingDefs\.map\(finding => finding\.ownerId\)\)\.size === operationIds\.size/);
   assert.match(collector, /operationIds\.size > 2/);   // um módulo minúsculo não vira diagnóstico de ambiente
+});
+
+// ── derived projections (carve-out simétrico ao MDM) ──────────────────────────
+// A operação lê a projeção e, de propósito, não declara port. Sem esta lista + a
+// exceção na regra 1 o judge acusa o código certo e o repair queima o orçamento.
+
+const LEGACY_JUDGE_HEADER = (validPorts: readonly string[], mdmIds: readonly string[]) => [
+  `## Valid repository ports (aggregate roots + persisted event stores): ${JSON.stringify([...validPorts])}`,
+  `## MDM entities (read by id via 102034; NEVER a port, NEVER a local entity): ${JSON.stringify([...mdmIds])}`,
+].join('\n');
+
+void test('scan with a derived entity lists it in the judge header and teaches no-port compose', () => {
+  const entities = [
+    { entityId: 'Petition', kind: 'core' },
+    { entityId: 'SignatureExport', kind: 'derived' },
+  ];
+  const derivedIds = entities.filter(e => e.kind === 'derived').map(e => e.entityId);
+  const text = judgeBatchContextLines(['Petition'], [], derivedIds).join('\n');
+  assert.match(text, /SignatureExport/);
+  assert.match(text, /no table, no port/);
+  assert.match(text, /COMPOSES the projection in the output/);
+  assert.match(text, /ofEntity pointing at them is legitimate/);
+  const worker = readFileSync(path.join(HERE, 'agentCbJudgeBatch.ts'), 'utf8');
+  assert.match(worker, /kind === 'derived'/);
+  assert.match(worker, /judgeBatchContextLines\(validPorts, mdmIds, derivedIds\)/);
+});
+
+void test('scan without derived entities leaves the judge header byte-identical to the pre-derived form', () => {
+  const entities = [
+    { entityId: 'Petition', kind: 'core' },
+    { entityId: 'Person', kind: 'mdm' },
+  ];
+  const derivedIds = entities.filter(e => e.kind === 'derived').map(e => e.entityId);
+  const validPorts = ['Petition'];
+  const mdmIds = ['Person'];
+  const text = judgeBatchContextLines(validPorts, mdmIds, derivedIds).join('\n');
+  assert.equal(text, LEGACY_JUDGE_HEADER(validPorts, mdmIds));
+  assert.equal(text.includes('Derived'), false);
+  assert.equal(text.includes('derived'), false);
+  assert.equal(judgeBatchContextLines(validPorts, mdmIds).join('\n'), LEGACY_JUDGE_HEADER(validPorts, mdmIds));
+});
+
+void test('prompt.md item 1 carves out derived projections and keeps MDM plus invented-port bans', () => {
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  const item1Start = prompt.indexOf('1. Ports:');
+  const item2Start = prompt.indexOf('2. rulesApplied:');
+  assert.ok(item1Start >= 0 && item2Start > item1Start, 'item 1 must precede item 2');
+  const item1 = prompt.slice(item1Start, item2Start);
+  assert.match(item1, /An invented\s+port/);
+  assert.match(item1, /a port for an MDM entity/);
+  assert.match(item1, /a port for a derived projection/);
+  assert.match(item1, /does NOT require a port/);
+  assert.match(item1, /missing\s+port for a persisted/);
+  assert.match(item1, /declaring a port for it is the error/);
 });

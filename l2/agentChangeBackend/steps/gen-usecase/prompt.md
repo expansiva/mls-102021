@@ -66,6 +66,13 @@ tx.mdmDocument, tx.mdmEntityIndex or tx.mdmRelationship.
 Plural-first: never call ctx.mdm.entity.get inside a loop; collect ids and use ctx.mdm.collection.getMany
 or hydrateMany before joining results in memory.
 
+Entities in "derivedRefs" are computed projections: they have no table, no repository port, and must
+NEVER appear in ports. They are an OUTPUT shape, not a read source: the usecase reads the persisted
+entities (through the listed ports) and/or master data (through ctx.mdm), and COMPOSES the projection
+in memory. ofEntity: "<projection>" on output fields is legitimate (the entity exists in the scan) —
+that is how you mark that a field belongs to the projection.
+Never put a derivedRef in ports, and never resolveRepository it.
+
 "eventWrites" are append-only events this usecase MUST emit when it mutates the owning aggregate (so the
 history is never lost). For each: if persisted (telemetry/audit), build the event record and append it
 through its port (use its "port" id — it is already in your ports) INSIDE the same transaction as the

@@ -23,6 +23,7 @@ import {
   judgeArgsOf, judgeFindingsFileInfo, missingDefsFindings, ownerContract, readUsecaseDefsByOwner,
   scopedOperations, type CbJudgeBatchFindings,
 } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeShared.js';
+import { judgeBatchContextLines } from '/_102021_/l2/agentChangeBackend/steps/judge/judgeBatchContext.js';
 
 const AGENT_NAME = 'agentCbJudgeBatch';
 const TOOL_NAME = 'submitJudgeFindings';
@@ -48,13 +49,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ...scan.events.filter(ev => ev.persisted).map(ev => ev.entityId),
     ];
     const mdmIds = scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId);
+    const derivedIds = scan.entities.filter(e => e.kind === 'derived').map(e => e.entityId);
     const pairs = batch.operations.map(owner => ({
       l4Contract: ownerContract(owner),
       generatedUsecaseDefs: batch.defsByOwner.get(owner.id) ?? null,
     }));
     const human = [
-      `## Valid repository ports (aggregate roots + persisted event stores): ${JSON.stringify(validPorts)}`,
-      `## MDM entities (read by id via 102034; NEVER a port, NEVER a local entity): ${JSON.stringify(mdmIds)}`,
+      ...judgeBatchContextLines(validPorts, mdmIds, derivedIds),
       '',
       '## Pairs to judge (L4 contract = source of truth vs generated usecase defs)',
       JSON.stringify(pairs, null, 2),

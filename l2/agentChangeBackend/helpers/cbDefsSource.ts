@@ -305,6 +305,63 @@ export function todoStatusDivergences(content: string, expected: ReadonlyMap<str
   return divergences;
 }
 
+/**
+ * Which l5 todoBackend file the finalize read-back should open. `moduleName` empty keeps the
+ * historical first-file-in-the-project behaviour (single-module runs). Folder is compared by
+ * equality, never substring: a module `todo` must not match `todoAvancado`.
+ *
+ * `none` = this project has no todoBackend at all (caller reports skip).
+ * `module-missing` = other modules have a file, this one does not (the run wrote owners whose
+ * file vanished — not the same as skip).
+ */
+export type CbTodoReadBackPick =
+  | { kind: 'file'; folder: string; ref: string }
+  | { kind: 'none' }
+  | { kind: 'module-missing'; moduleName: string; ref: string };
+
+export function pickTodoBackendReadBack(folders: readonly string[], moduleName = ''): CbTodoReadBackPick {
+  const refOf = (folder: string) => `l5/${folder}/todoBackend.defs.ts`;
+  if (!moduleName) {
+    const folder = folders[0];
+    return folder !== undefined ? { kind: 'file', folder, ref: refOf(folder) } : { kind: 'none' };
+  }
+  for (const folder of folders) {
+    if (folder === moduleName) return { kind: 'file', folder, ref: refOf(folder) };
+  }
+  return folders.length === 0 ? { kind: 'none' } : { kind: 'module-missing', moduleName, ref: refOf(moduleName) };
+}
+
+/**
+ * Which l5 todoBackend file a status write should mutate. Prefer the file whose folder is the
+ * owner's module; if that file exists but does not contain the owner, do NOT fall through to
+ * another module (shared ids like `createTask` would corrupt the neighbour). Empty moduleName
+ * keeps the historical search-by-owner-identity.
+ */
+export function selectTodoBackendFileForStatusWrite<T extends { folder: string; content: string }>(
+  files: readonly T[],
+  owner: { kind: string; id: string; moduleName: string },
+): T | undefined {
+  const moduleName = String(owner.moduleName || '');
+  for (const file of files) {
+    if (moduleName && file.folder !== moduleName) continue;
+    const parsed = parseDefsSource(file.content);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+    const owners = Array.isArray((parsed as { owners?: unknown }).owners)
+      ? (parsed as { owners: unknown[] }).owners
+      : [];
+    const found = owners.some(raw => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+      const rec = raw as Record<string, unknown>;
+      const kind = todoOwnerType(typeof rec.ownerType === 'string' ? rec.ownerType : '');
+      const id = typeof rec.ownerId === 'string' ? rec.ownerId : '';
+      return kind === owner.kind && id === owner.id;
+    });
+    if (found) return file;
+    if (moduleName) return undefined;
+  }
+  return undefined;
+}
+
 // ── the `mdm` block of an operation ───────────────────────────────────────────
 
 /**

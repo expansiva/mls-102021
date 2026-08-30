@@ -52,6 +52,7 @@ function surfaceState(readBack: CbTodoReadBack | null, surface: 'stor' | 'model'
 /** Human-readable state of one read-back, for the trace and the run report. */
 function readBackSummary(readBack: CbTodoReadBack | null): string {
   if (!readBack) return 'read-back skipped: no todoBackend file in this project.';
+  if (readBack.missingModule) return `read-back FAILED: no todoBackend file for module ${readBack.missingModule} (looked for ${readBack.ref}).`;
   const surfaces = [
     readBack.stor.unreadable ? 'stor UNREADABLE' : `stor ${readBack.stor.divergent.length ? `${readBack.stor.divergent.length} divergent` : 'ok'}`,
     !readBack.model.present ? 'no model' : readBack.model.unreadable ? 'model UNREADABLE' : `model ${readBack.model.divergent.length ? `${readBack.model.divergent.length} divergent` : 'ok'}`,
@@ -106,7 +107,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // The FIRST read-back is the evidence and is never overwritten: on the self-healing path the retry
     // makes the second one clean, and reporting only that would erase the very divergence the defense
     // caught (`stor ok, model ok, retried: 65` says nothing about WHICH surface was wrong).
-    const firstReadBack = await readBackTodoBackend(expected);
+    const firstReadBack = await readBackTodoBackend(expected, moduleName);
     let readBack = firstReadBack;
     let retried = 0;
     if (!todoReadBackIsClean(readBack)) {
@@ -116,7 +117,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         if (!owner || !want) continue;
         if (await setTodoBackendStatus(owner, want as OwnerStatus)) retried++;
       }
-      readBack = await readBackTodoBackend(expected);
+      readBack = await readBackTodoBackend(expected, moduleName);
     }
     if (todoReadBackIsFatal(readBack)) {
       // The retry used the same write path that just failed, so a second one would fail the same way —

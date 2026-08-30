@@ -15,16 +15,15 @@ import {
   createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, enqueueNextInPhase,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
-  MDM_WRITE_PATH_ENABLED, pinUsecaseL4Mdm,
+  pinUsecaseL4Mdm,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
-  type CbScan, type CbOwner, type CbOutputShape,
+  type CbScan, type CbOutputShape,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
-import { lifecycleForEntity, type CbEntityLifecycle } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { usecaseResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { getComponentRepair, clearComponentRepair, recordComponentFailure, buildRepairPromptSection, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { eventPortBelongsToOwner, collectIoShapeSymmetryIssues, alignOutputShapeToOntology } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
-import { mdmSubtypeFor } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
+import { deriveMaps, buildOwnerItem, validateUsecasePlan } from '/_102021_/l2/agentChangeBackend/steps/gen-usecase/usecaseOwnerItem.js';
 
 const AGENT_NAME = 'agentCbUsecase';
 const TOOL_NAME = 'submitUsecase';
@@ -42,72 +41,6 @@ function workerOwnerId(args: string | undefined, step: mls.msg.AIAgentStep): str
   if (a && !a.startsWith('{')) return a;
   const p = String((step as { prompt?: string })?.prompt ?? '').trim();
   return p && !p.startsWith('{') ? p : '';
-}
-
-// Shared maps derived from the scan (aggregate roots, mdm ids, embedded child -> parent root, events).
-function deriveMaps(scan: CbScan) {
-  const roots = new Set(scan.aggregates.map(a => a.rootEntity));
-  const mdmIds = new Set(scan.entities.filter(e => e.kind === 'mdm').map(e => e.entityId)); // master data: read by id, no port
-  const childToRoot = new Map<string, string>();
-  for (const a of scan.aggregates) for (const m of a.embeddedMembers) childToRoot.set(m, a.rootEntity);
-  const byId = new Map(scan.entities.map(e => [e.entityId, e]));
-  // ownerEntity -> events the owner's usecases must emit when they mutate that aggregate.
-  const eventsByOwner = new Map<string, typeof scan.events>();
-  for (const ev of scan.events) {
-    const list = eventsByOwner.get(ev.ownerEntity) || [];
-    list.push(ev);
-    eventsByOwner.set(ev.ownerEntity, list);
-  }
-  return { roots, mdmIds, childToRoot, byId, eventsByOwner };
-}
-
-/** Reject defs that drift from the current entity/port contract before materialization can turn the
- * mismatch into broken TypeScript. */
-function validateUsecasePlan(result: any, scan: CbScan, ownerId: string): string[] {
-  const issues: string[] = [];
-  // A usecase that declares NO function for its own operation is a stub: nothing to materialize, and
-  // every controller that references it fails the final gate with "export not found" — defs-level, so
-  // no re-materialization can repair it (run 8 of buildFlowFsm: 4 stubs, 12 findings, run dead at the
-  // last step). The operationId must be among the functions, whatever the reason for the omission.
-  const functionNames = (Array.isArray(result?.functions) ? result.functions : [])
-    .map((fn: any) => readString(fn?.functionName)).filter(Boolean);
-  if (!functionNames.includes(ownerId)) {
-    issues.push(functionNames.length
-      ? `usecase ${ownerId}: no function named '${ownerId}' (declared: ${functionNames.join(', ')}) — the operation must be implemented by a function of its own name`
-      : `usecase ${ownerId}: functions[] is empty — a stub usecase is forbidden; implement the operation as a function named '${ownerId}'`);
-  }
-  const entities = new Map(scan.entities.map(entity => [entity.entityId, entity]));
-  const knownPorts = new Set([
-    ...scan.aggregates.map(aggregate => aggregate.rootEntity),
-    ...scan.events.filter(event => event.persisted).map(event => event.entityId),
-  ]);
-  for (const port of readStringArray(result?.ports)) if (!knownPorts.has(port)) issues.push(`usecase ${ownerId}: unknown port '${port}'`);
-  for (const fn of Array.isArray(result?.functions) ? result.functions : []) {
-    for (const port of readStringArray(fn?.ports)) if (!knownPorts.has(port)) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: unknown port '${port}'`);
-    for (const io of [...(Array.isArray(fn?.input) ? fn.input : []), ...(Array.isArray(fn?.output) ? fn.output : [])]) {
-      const entityId = readString(io?.ofEntity);
-      if (!entityId) continue;
-      const entity = entities.get(entityId);
-      if (!entity) { issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: unknown ofEntity '${entityId}'`); continue; }
-      const fieldName = readString(io?.name);
-      if (fieldName && !(entity.fields ?? []).some((field: any) => field.fieldId === fieldName)) {
-        issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: ${entityId}.${fieldName} is not declared by the entity`);
-      }
-    }
-    const allowedStatuses = new Set(scan.entities.flatMap(entity => (entity.fields ?? []).flatMap((field: any) => Array.isArray(field.enum) ? field.enum : [])));
-    issues.push(...collectIoShapeSymmetryIssues(fn).map(issue => `usecase ${ownerId}.${fn?.functionName || '<function>'}: ${issue}`));
-    for (const step of readStringArray(fn?.steps)) {
-      // Steps are primarily natural-language explanations. Only validate an explicit QUOTED
-      // assignment (`status = "delivered"`, `status: 'delivered'`, `status is "delivered"`), never
-      // prose: unquoted forms like "status: must be 'active'" captured 'must' and burned repair
-      // budget on a false positive (run 102049-c, updateReservationStatus).
-      for (const match of step.matchAll(/\bstatus\s*(?:=|:)\s*["']([A-Za-z][A-Za-z0-9_]*)["']|\bstatus\s+is\s+["']([A-Za-z][A-Za-z0-9_]*)["']/giu)) {
-        const status = match[1] || match[2];
-        if (!allowedStatuses.has(status)) issues.push(`usecase ${ownerId}.${fn?.functionName || '<function>'}: status '${status}' is not declared by any entity enum`);
-      }
-    }
-  }
-  return [...new Set(issues)];
 }
 
 /** Deterministic ofEntity repair, BEFORE validation. ofEntity is metadata (never emitted as code),
@@ -134,74 +67,6 @@ function sanitizeOfEntity(result: any, scan: CbScan): void {
       }
     }
   }
-}
-
-// The single-owner item sent to the LLM (explicit ports/mdmRefs + entity fields to shape input/output).
-function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, lifecycles?: readonly CbEntityLifecycle[]) {
-  const { roots, mdmIds, childToRoot, byId, eventsByOwner } = maps;
-  const fieldsOf = (id: string) => (byId.get(id)?.fields || []).map((f: any) => ({ fieldId: f.fieldId, type: f.type, required: f.required, ...(f.enum ? { enum: f.enum } : {}) }));
-  const rawRefs = [...new Set([o.entity, ...o.reads, ...o.writes].filter(Boolean))];           // keep children + mdm for fields
-  const portRefs = [...new Set(rawRefs.map(id => childToRoot.get(id) ?? id))];                  // children -> parent root
-  // Events the owner must emit: those owned by an aggregate this usecase writes (entity + writes).
-  const mutated = new Set([o.entity, ...o.writes].filter(Boolean).map(id => childToRoot.get(id) ?? id));
-  const eventWrites = [...new Set([o.entity, ...o.writes].filter(Boolean))]
-    .flatMap(id => eventsByOwner.get(id) || [])
-    .concat([...mutated].flatMap(id => eventsByOwner.get(id) || []))
-    .filter((ev, i, arr) => arr.findIndex(x => x.entityId === ev.entityId) === i)
-    .map(ev => ({ entityId: ev.entityId, owner: ev.ownerEntity, purpose: ev.purpose, persisted: ev.persisted, port: ev.persisted ? ev.entityId : null }));
-  // Gated: an entity declared `kind: mdm` with an ownership other than `moduleOwned` still classifies as
-  // `mdm` with the write path OFF, so without the gate a module in that shape would already see a
-  // different prompt — and "the current module is untouched" has to be true by construction, not by luck.
-  const mdmWrites = (MDM_WRITE_PATH_ENABLED ? [...new Set([o.entity, ...o.writes].filter(Boolean))] : [])
-    .filter(id => mdmIds.has(id))
-    .map(id => {
-      const entity = byId.get(id);
-      return {
-        entityId: id,
-        mdmType: entity?.mdmType || '',
-        subtype: mdmSubtypeFor(id),
-        idField: entity?.idField || '',
-      };
-    })
-    .filter(write => !!write.mdmType);
-  const lifecycle = lifecycleForEntity(lifecycles, o.entity) || lifecycleForEntity(lifecycles, childToRoot.get(o.entity) || '');
-  return {
-    usecaseId: o.id,
-    ownerKind: o.kind,
-    opKind: o.opKind,
-    entity: o.entity,
-    parentAggregate: childToRoot.get(o.entity) ?? o.entity,
-    reads: o.reads,
-    writes: o.writes,
-    rulesApplied: o.rulesApplied,
-    accessPattern: o.accessPattern ?? null,
-    // Option 3: the canonical wire shape from l4. The function output type is PINNED to this — it is
-    // copied over the model's output below, so the usecase never re-drifts the contract.
-    outputShape: o.outputShape ?? null,
-    inputs: o.inputs,
-    contextResolution: o.contextResolution,
-    acceptanceAssertions: o.acceptanceAssertions,
-    ports: portRefs.filter(id => roots.has(id) && !mdmIds.has(id)),
-    mdmRefs: rawRefs.filter(id => mdmIds.has(id)),
-    // Master data this operation WRITES. The skill documents the ctx.mdm write surface; what it cannot
-    // know is the canonical type 102034 indexes by, the subtype its closed union requires, and which
-    // module field carries the mdmId — those come from the l4 `storage` block. Absent (not empty) when
-    // the operation writes no master data, so a module without MDM writes sees the same prompt as before.
-    ...(mdmWrites.length ? { mdmWrites } : {}),
-    // MDM semantics of the operation, verbatim from the l4 (`Ns4E8MdmSemantics`): the cadastral
-    // lifecycle pair, the name of the active-only opt-out input, the derived situation output. Absent
-    // (not empty) when the l4 carries no `mdm` block, so a module generated before the block exists
-    // sees exactly the prompt it saw before. Not gated by MDM_WRITE_PATH_ENABLED: routing a lifecycle
-    // to ctx.mdm.entity.inactivate/reactivate is the ONLY correct code for an operation the catalogue
-    // emitted instead of a delete — with or without the local-artifact flip.
-    ...(o.mdm ? { mdm: o.mdm } : {}),
-    eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
-    entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
-    // Declared entity lifecycle (when the module has one). Absent, not empty, so a module without a
-    // workflow sees the same prompt as before. Confirmed needed: this worker does not receive domain
-    // invariants, and it is the code that throws "cannot transition from pending to completed".
-    ...(lifecycle ? { lifecycle } : {}),
-  };
 }
 
 // Option 3: flatten the l4 canonical outputShape to the usecase-defs top-level `output` field list
@@ -315,7 +180,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const result = out.result as any;
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
-    const { roots, mdmIds, childToRoot } = deriveMaps(scan);
+    const { roots, mdmIds, derivedIds, childToRoot } = deriveMaps(scan);
     const usecaseId = readString(result?.usecaseId) || workerOwnerId(args, step);
     if (!usecaseId) throw new Error('missing usecaseId');
     const queuedOwnerId = workerOwnerId(args, step);
@@ -333,11 +198,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     // with mdm removed (master data is read by id via 102034, not through a port).
     const owner = scan.owners.find(o => o.id === usecaseId);
     const ownerRefs = owner ? [owner.entity, ...owner.reads, ...owner.writes].filter(Boolean) : [];
-    const detPorts = [...new Set(ownerRefs.map(id => childToRoot.get(id) ?? id))].filter(id => roots.has(id) && !mdmIds.has(id));
+    const detPorts = [...new Set(ownerRefs.map(id => childToRoot.get(id) ?? id))].filter(id => roots.has(id) && !mdmIds.has(id) && !derivedIds.has(id));
     // Trust only REAL aggregate roots: the model sometimes invents port names ("dailyShiftPort",
     // "recipePort", "productionTicket"). Keep model ports only if they are real roots, union with the
     // deterministic ones (derived from the owner's entities, children resolved to their parent).
-    const aggPorts = [...new Set([...readStringArray(result?.ports), ...detPorts])].filter(id => roots.has(id) && !mdmIds.has(id));
+    const aggPorts = [...new Set([...readStringArray(result?.ports), ...detPorts])].filter(id => roots.has(id) && !mdmIds.has(id) && !derivedIds.has(id));
     // Persisted event ports the owner emits (own real ports too) — append-only writes within the txn.
     const mutated = new Set(ownerRefs.map(id => childToRoot.get(id) ?? id));
     const eventPortIds = scan.events

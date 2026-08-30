@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-08-30 — `derivedRefs` para projeção calculada (sem tabela, sem port)
+
+Uma operação que lê `kind: projection` + `storage.target: derived` aparecia em `reads` sem canal no
+payload. O modelo inventava o port, o validador recusava `unknown port`, e o repair queimava o
+orçamento (viewPetitionPublicSummary saiu sem usecase; downloadSignaturesCsv sobreviveu com finding).
+`derivedRefs` espelha `mdmRefs`: ausente quando não há derivado, projeção composta em memória, never
+in ports. O guard ensina em vez de só recusar.
+
 ## 2026-08-28 — o item do owner leva a matriz de lifecycle quando o módulo declara uma
 
 O worker de usecase não via invariantes de domínio nem o workflow. É ele que materializa

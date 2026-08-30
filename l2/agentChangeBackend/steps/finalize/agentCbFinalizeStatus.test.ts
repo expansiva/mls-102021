@@ -41,10 +41,11 @@ void test('finalize re-reads todoBackend on both surfaces, retries once and then
   // A expectativa é construída A PARTIR DAS ESCRITAS, não do que se queria escrever: um
   // setTodoBackendStatus que devolve false não escreveu nada e não muda a expectativa.
   assert.match(src, /if \(await setTodoBackendStatus\(owner, 'done'\)\) \{ flipped\+\+; expected\.set\(todoOwnerKey\(owner\.kind, owner\.id\), 'done'\); \}/);
-  assert.match(src, /const firstReadBack = await readBackTodoBackend\(expected\);/);
+  assert.match(src, /const firstReadBack = await readBackTodoBackend\(expected, moduleName\);/);
   // Retry ÚNICO, e só dos owners divergentes.
   assert.match(src, /for \(const divergence of todoReadBackDivergences\(readBack\)\)/);
-  assert.match(src, /readBack = await readBackTodoBackend\(expected\);\s*\n\s*\}/);
+  assert.match(src, /readBack = await readBackTodoBackend\(expected, moduleName\);\s*\n\s*\}/);
+  assert.match(src, /read-back FAILED: no todoBackend file for module/);
   // Persistindo a divergência, o step FALHA — inclusive quando nada pôde ser reescrito.
   assert.match(src, /if \(todoReadBackIsFatal\(readBack\)\) \{/);
   assert.match(src, /throw new Error\(`todoBackend read-back FAILED after 1 retry/);

@@ -24,6 +24,7 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
   todoOwnerType, todoStatusField, todoStatusDivergences,
+  pickTodoBackendReadBack, selectTodoBackendFileForStatusWrite,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
   type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
@@ -207,6 +208,10 @@ export interface CbEntity {
   storageTarget?: string;
   mdmType?: string;
   idField?: string;
+  /** Verbatim l4 `description` — used by gen-usecase so a derived projection can name its sources. */
+  description?: string;
+  /** Verbatim l4 `storage.notes` — where the l4 writes how a derived projection is composed. */
+  storageNotes?: string;
 }
 
 export interface CbRelationship {
@@ -355,6 +360,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           const declared = storage.target ? `${declaredKind}/${storage.target}` : declaredKind;
           warnings.push(`entity ${entityId}: l4 kind '${declared}' (${ownership}) read as '${kind}'`);
         }
+        const storageNotes = isRecord(parsed.storage) ? readString(parsed.storage.notes) : '';
         upsertEntity(entities, {
           entityId,
           title: readString(parsed.title) || entityId,
@@ -366,6 +372,8 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           ...(storage.target ? { storageTarget: storage.target } : {}),
           ...(storage.mdmType ? { mdmType: storage.mdmType } : {}),
           ...(storage.idField ? { idField: storage.idField } : {}),
+          ...(readString(parsed.description) ? { description: readString(parsed.description) } : {}),
+          ...(storageNotes ? { storageNotes } : {}),
         });
       }
     }
@@ -1156,36 +1164,44 @@ function shouldSaveTrace(context: mls.msg.ExecutionContext): boolean {
 /** Update only l5/{module}/todoBackend.defs.ts. l4 owner defs are read-only for this agent. */
 export async function setTodoBackendStatus(owner: CbOwner, status: OwnerStatus): Promise<boolean> {
   const project = mls.actualProject || 0;
+  const candidates: { folder: string; content: string; file: any }[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
-    const content = String(await file.getContent());
-    const parsed = parseDefsSource(content);
-    if (!isRecord(parsed)) continue;
-    const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
-    const todoOwner = owners.find(raw => todoOwnerType(readString(raw.ownerType)) === owner.kind && readString(raw.ownerId) === owner.id);
-    if (!todoOwner) continue;
-    const fileInfo = { project, level: 5, folder: String(file.folder || owner.moduleName), shortName: 'todoBackend', extension: '.defs.ts' };
-    // Write the status back into the field it was read from, and keep the rest of the file as the
-    // generator wrote it: re-serializing would drop its `import type` and its `satisfies`.
-    todoOwner[todoStatusField(todoOwner) || 'status'] = status;
-    const preserved = replaceDefsValue(content, parsed);
-    // `updatedAt` is this agent's own bookkeeping: an artifact typed with `satisfies` rejects the
-    // extra property, so it is only added on the path that rewrites the file wholesale.
-    if (preserved) { await writeDefsSource(fileInfo, preserved); return true; }
-    const exportName = readExportName(content);
-    if (!exportName) return false;
-    parsed.updatedAt = new Date().toISOString();
-    await saveDefs(fileInfo, exportName, parsed);
-    return true;
+    candidates.push({ folder: String(file.folder || ''), content: String(await file.getContent()), file });
   }
-  return false;
+  const hit = selectTodoBackendFileForStatusWrite(candidates, owner);
+  if (!hit) return false;
+  const { file, content } = hit;
+  const parsed = parseDefsSource(content);
+  if (!isRecord(parsed)) return false;
+  const owners = Array.isArray(parsed.owners) ? parsed.owners.filter(isRecord) : [];
+  const todoOwner = owners.find(raw => todoOwnerType(readString(raw.ownerType)) === owner.kind && readString(raw.ownerId) === owner.id);
+  if (!todoOwner) return false;
+  const fileInfo = { project, level: 5, folder: String(file.folder || owner.moduleName), shortName: 'todoBackend', extension: '.defs.ts' };
+  // Write the status back into the field it was read from, and keep the rest of the file as the
+  // generator wrote it: re-serializing would drop its `import type` and its `satisfies`.
+  todoOwner[todoStatusField(todoOwner) || 'status'] = status;
+  const preserved = replaceDefsValue(content, parsed);
+  // `updatedAt` is this agent's own bookkeeping: an artifact typed with `satisfies` rejects the
+  // extra property, so it is only added on the path that rewrites the file wholesale.
+  if (preserved) { await writeDefsSource(fileInfo, preserved); return true; }
+  const exportName = readExportName(content);
+  if (!exportName) return false;
+  parsed.updatedAt = new Date().toISOString();
+  await saveDefs(fileInfo, exportName, parsed);
+  return true;
 }
 
 export interface CbTodoReadBack {
   /** l5 ref of the file that was checked, or '' when no todoBackend file was found. */
   ref: string;
   checked: number;
+  /**
+   * Set when a module was asked for and other todoBackend files exist, but this module's file does
+   * not. Distinct from `null` (project has no todoBackend at all — caller reports skip).
+   */
+  missingModule?: string;
   /** The durable content (localStor/IndexedDB). This is what a NEXT run of this agent reads. */
   stor: { unreadable: boolean; divergent: CbTodoDivergence[] };
   /** The Monaco model, when one exists. This is what an EXPORT to disk writes. */
@@ -1199,7 +1215,7 @@ export function todoReadBackDivergences(readBack: CbTodoReadBack | null): CbTodo
 }
 
 export function todoReadBackIsClean(readBack: CbTodoReadBack | null): boolean {
-  return Boolean(readBack) && !readBack!.stor.unreadable && !readBack!.model.unreadable && todoReadBackDivergences(readBack).length === 0;
+  return Boolean(readBack) && !readBack!.missingModule && !readBack!.stor.unreadable && !readBack!.model.unreadable && todoReadBackDivergences(readBack).length === 0;
 }
 
 /**
@@ -1210,6 +1226,7 @@ export function todoReadBackIsClean(readBack: CbTodoReadBack | null): boolean {
  */
 export function todoReadBackIsFatal(readBack: CbTodoReadBack | null): boolean {
   if (!readBack) return false;
+  if (readBack.missingModule) return true;
   return readBack.stor.unreadable || todoReadBackDivergences(readBack).length > 0;
 }
 
@@ -1219,33 +1236,46 @@ export function todoReadBackIsFatal(readBack: CbTodoReadBack | null): boolean {
  * stor was RIGHT (65 done) and the stale Monaco model was what got exported, so a stor-only read-back
  * would have passed the run that produced the corrupt file.
  */
-export async function readBackTodoBackend(expected: ReadonlyMap<string, string>): Promise<CbTodoReadBack | null> {
+export async function readBackTodoBackend(expected: ReadonlyMap<string, string>, moduleName = ''): Promise<CbTodoReadBack | null> {
   const project = mls.actualProject || 0;
+  const matches: { folder: string; file: any }[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoBackend') continue;
-    const storContent = String(await file.getContent());
-    const storDivergent = todoStatusDivergences(storContent, expected);
-    let modelPresent = false;
-    let modelDivergent: CbTodoDivergence[] | null = [];
-    try {
-      const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
-      if (model?.model) {
-        modelPresent = true;
-        modelDivergent = todoStatusDivergences(model.model.getValue(), expected);
-      }
-    } catch (error) {
-      console.warn('[cb readBackTodoBackend] model read failed', error);
-      modelDivergent = null;
-    }
+    matches.push({ folder: String(file.folder || ''), file });
+  }
+  const pick = pickTodoBackendReadBack(matches.map(m => m.folder), moduleName);
+  if (pick.kind === 'none') return null;
+  if (pick.kind === 'module-missing') {
     return {
-      ref: `l5/${String(file.folder || '')}/todoBackend.defs.ts`,
+      ref: pick.ref,
       checked: expected.size,
-      stor: { unreadable: storDivergent === null, divergent: storDivergent || [] },
-      model: { present: modelPresent, unreadable: modelPresent && modelDivergent === null, divergent: modelDivergent || [] },
+      missingModule: pick.moduleName,
+      stor: { unreadable: false, divergent: [] },
+      model: { present: false, unreadable: false, divergent: [] },
     };
   }
-  return null;
+  const file = matches.find(m => m.folder === pick.folder)!.file;
+  const storContent = String(await file.getContent());
+  const storDivergent = todoStatusDivergences(storContent, expected);
+  let modelPresent = false;
+  let modelDivergent: CbTodoDivergence[] | null = [];
+  try {
+    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    if (model?.model) {
+      modelPresent = true;
+      modelDivergent = todoStatusDivergences(model.model.getValue(), expected);
+    }
+  } catch (error) {
+    console.warn('[cb readBackTodoBackend] model read failed', error);
+    modelDivergent = null;
+  }
+  return {
+    ref: pick.ref,
+    checked: expected.size,
+    stor: { unreadable: storDivergent === null, divergent: storDivergent || [] },
+    model: { present: modelPresent, unreadable: modelPresent && modelDivergent === null, divergent: modelDivergent || [] },
+  };
 }
 
 // ── intent / step helpers (mirrored, self-contained) ───────────────────────────

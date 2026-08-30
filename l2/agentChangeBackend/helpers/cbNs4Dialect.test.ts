@@ -11,6 +11,7 @@ import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   mlsImportPathParts, phantomModulePathOf, isModelAlreadyExistsError,
   todoStatusDivergences, todoOwnerType, todoStatusField, todoOwnerKey,
+  pickTodoBackendReadBack, selectTodoBackendFileForStatusWrite,
   readOwnerMdm, pinUsecaseL4Mdm, isMdmLifecycle, synthesizeMdmInputs,
 } from './cbDefsSource.js';
 import { collectMdmLifecycleIssues } from './cbMdmGuards.js';
@@ -216,6 +217,103 @@ test('todoStatusDivergences separa "ilegível" de "sem divergência", e acusa ow
   ]);
 });
 
+// ── read-back / write escolhem o módulo (run 30/08 listaAssinatura no 102047) ──
+// O run era do listaAssinatura; a conferência leu o primeiro todoBackend.defs.ts do stor
+// (`l5/todo/`) e acusou as 18 operations como <missing>. As escritas tinham acertado o arquivo
+// certo. Fixture mínima no formato real (statusBackend + import type + `as const`) — NÃO lê o
+// app gerado: ele some no próximo rebuild.
+
+function todoBackendDefs(moduleName: string, exportName: string, owners: { ownerId: string; statusBackend: string }[]): string {
+  const value = {
+    schemaVersion: '2026-08-13-ns4-todo-backend-v1',
+    layer: 'backend',
+    moduleName,
+    owners: owners.map(o => ({ ownerType: 'useCase', ownerId: o.ownerId, statusBackend: o.statusBackend })),
+  };
+  return [
+    `/// <mls fileReference="_102000_/l5/${moduleName}/todoBackend.defs.ts" enhancement="_blank"/>`,
+    '',
+    "import type { Ns4L5TodoBackendArtifact } from '/_102020_/l2/agentNewSolution/types.js';",
+    '',
+    `export const ${exportName} = ${JSON.stringify(value, null, 2)} as const satisfies Ns4L5TodoBackendArtifact;`,
+    '',
+    `export default ${exportName};`,
+    '',
+  ].join('\n');
+}
+
+const LISTA_ASSINATURA_OWNERS = [
+  'createSignatory', 'createSignature', 'decideSignatureAcceptance', 'deleteSignature',
+  'downloadSignaturesCsv', 'getSignatory', 'getSignature', 'inactivateSignatory',
+  'inspectPetition', 'listSignatory', 'listSignature', 'locatePetition',
+  'locateSignatures', 'reactivateSignatory', 'registerSignature', 'updateSignatory',
+  'updateSignature', 'viewPetitionPublicSummary',
+] as const;
+
+const TODO_MODULE_OWNERS = ['createTask', 'listTask', 'updateTask'] as const;
+
+test('read-back of listaAssinatura ignores the todo file that comes first in the stor', () => {
+  const todoFile = todoBackendDefs('todo', 'todoTodoBackend', TODO_MODULE_OWNERS.map(id => ({ ownerId: id, statusBackend: 'done' })));
+  const listaFile = todoBackendDefs('listaAssinatura', 'listaAssinaturaTodoBackend', LISTA_ASSINATURA_OWNERS.map(id => ({ ownerId: id, statusBackend: 'done' })));
+  const folders = ['todo', 'listaAssinatura'];
+  const expected = new Map(LISTA_ASSINATURA_OWNERS.map(id => [`operation:${id}`, 'done'] as const));
+
+  // The defect: first file in iteration order is `todo`, whose 18 owners are all missing.
+  const firstFileDivergences = todoStatusDivergences(todoFile, expected);
+  assert.equal(firstFileDivergences!.length, LISTA_ASSINATURA_OWNERS.length);
+  assert.ok(firstFileDivergences!.every(d => d.found === '<missing>'));
+  assert.equal(firstFileDivergences!.find(d => d.key === 'operation:listSignatory')?.found, '<missing>');
+  assert.equal(firstFileDivergences!.find(d => d.key === 'operation:createSignatory')?.found, '<missing>');
+
+  const pick = pickTodoBackendReadBack(folders, 'listaAssinatura');
+  assert.deepEqual(pick, { kind: 'file', folder: 'listaAssinatura', ref: 'l5/listaAssinatura/todoBackend.defs.ts' });
+  assert.equal(pick.kind === 'file' ? pick.ref : '', 'l5/listaAssinatura/todoBackend.defs.ts');
+  assert.doesNotMatch(pick.kind === 'file' ? pick.ref : '', /todoAvancado|includes/);
+  assert.deepEqual(todoStatusDivergences(listaFile, expected), []);
+
+  // A module `todo` must not match a folder `todoAvancado` (equality, never substring).
+  assert.deepEqual(pickTodoBackendReadBack(['todoAvancado', 'listaAssinatura'], 'todo'), {
+    kind: 'module-missing', moduleName: 'todo', ref: 'l5/todo/todoBackend.defs.ts',
+  });
+});
+
+test('read-back of a single-module project is identical with or without the module name', () => {
+  const folders = ['petShop'];
+  const expected = new Map([
+    ['operation:listBusinessHours', 'inProgress'],
+    ['operation:createPet', 'toCreate'],
+    ['workflow:petIntake', 'done'],
+  ]);
+  assert.deepEqual(pickTodoBackendReadBack(folders, ''), { kind: 'file', folder: 'petShop', ref: 'l5/petShop/todoBackend.defs.ts' });
+  assert.deepEqual(pickTodoBackendReadBack(folders, 'petShop'), { kind: 'file', folder: 'petShop', ref: 'l5/petShop/todoBackend.defs.ts' });
+  assert.deepEqual(todoStatusDivergences(TODO_SOURCE, expected), []);
+  assert.deepEqual(pickTodoBackendReadBack([], ''), { kind: 'none' });
+  assert.deepEqual(pickTodoBackendReadBack([], 'petShop'), { kind: 'none' });
+});
+
+test('writing an owner in module A does not mutate the same owner id in module B', () => {
+  const files = [
+    { folder: 'modA', content: todoBackendDefs('modA', 'modATodoBackend', [{ ownerId: 'createTask', statusBackend: 'toCreate' }]) },
+    { folder: 'modB', content: todoBackendDefs('modB', 'modBTodoBackend', [{ ownerId: 'createTask', statusBackend: 'done' }]) },
+  ];
+  const snapshotB = files[1].content;
+  const target = selectTodoBackendFileForStatusWrite(files, { kind: 'operation', id: 'createTask', moduleName: 'modA' });
+  assert.equal(target, files[0]);
+  const parsed = parseDefsSource(target!.content) as { owners: { ownerId: string; statusBackend: string }[] };
+  parsed.owners[0].statusBackend = 'done';
+  const written = replaceDefsValue(target!.content, parsed);
+  assert.ok(written);
+  target!.content = written!;
+  assert.equal(files[1].content, snapshotB);
+  assert.match(files[0].content, /"statusBackend": "done"/);
+  assert.match(files[1].content, /"statusBackend": "done"/);
+  // Owner missing from its own module: do not fall through to the neighbour.
+  assert.equal(selectTodoBackendFileForStatusWrite(files, { kind: 'operation', id: 'createTask', moduleName: 'modC' }), undefined);
+  assert.equal(selectTodoBackendFileForStatusWrite(files, { kind: 'operation', id: 'listItem', moduleName: 'modA' }), undefined);
+  // Empty moduleName keeps search-by-identity (first file that has the owner).
+  assert.equal(selectTodoBackendFileForStatusWrite(files, { kind: 'operation', id: 'createTask', moduleName: '' }), files[0]);
+});
+
 // ── a causa raiz: modelo Monaco congelado no PRIMEIRO write ───────────────────
 // libModel.createModel devolve um modelo já existente SEM setValue, e o sync Studio<->disco lê o
 // conteúdo do modelo ANTES do stor. Por isso o writeDefsSource tem de atualizar o modelo que existe —
@@ -230,7 +328,9 @@ test('writeDefsSource mantém o modelo existente em sincronia com o que persisti
   assert.doesNotMatch(shared, /createStorFile\(param, true, true, true\)/);
   assert.match(shared, /createStorFile\(param, false, false, false\)/);
   // E o read-back olha as DUAS superfícies: o stor (o que o próximo run lê) e o modelo (o que o export escreve).
-  assert.match(shared, /export async function readBackTodoBackend\(expected: ReadonlyMap<string, string>\)/);
+  assert.match(shared, /export async function readBackTodoBackend\(expected: ReadonlyMap<string, string>, moduleName = ''\)/);
+  assert.match(shared, /pickTodoBackendReadBack\(matches\.map\(m => m\.folder\), moduleName\)/);
+  assert.match(shared, /selectTodoBackendFileForStatusWrite\(candidates, owner\)/);
   assert.match(shared, /modelDivergent = todoStatusDivergences\(model\.model\.getValue\(\), expected\);/);
   // Divergência em qualquer superfície mata o run; stor ilegível também. Modelo ilegível é aba do
   // usuário com sintaxe quebrada no meio da edição — warning alto, não morte do run.

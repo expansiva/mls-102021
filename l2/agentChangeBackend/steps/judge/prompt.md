@@ -8,8 +8,10 @@ FINDINGS. Judge every pair on:
 
 1. Ports: usecase ports must come from the valid list (aggregate roots AND persisted event stores —
    event ports for eventWrites are legitimate and added by design; do NOT flag them). An invented
-   port, a port for an MDM entity, or a missing port for an entity the operation reads/writes ->
-   estrutural error.
+   port, a port for an MDM entity, or a port for a derived projection -> estrutural error. A missing
+   port for a persisted (non-MDM, non-derived) entity the operation reads/writes -> estrutural error.
+   A derived projection the operation reads does NOT require a port (compose it in the output;
+   ofEntity pointing at it is legitimate); declaring a port for it is the error.
 2. rulesApplied: every L4 rule id must appear in the usecase rulesApplied (top-level or function) and
    be applicable with the declared inputs/entities. A rule that cannot run with the modeled data ->
    estrutural error.
