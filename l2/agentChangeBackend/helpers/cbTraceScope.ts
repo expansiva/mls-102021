@@ -23,26 +23,42 @@ export function cbCurrentTraceModule(): string {
   return currentModule;
 }
 
-/** `<module>/pipeline/trace` when the module is known, else the legacy bare `trace`. */
+export const CB_TRACE_LAYER = 'l1';
+
+/** `l4/<module>/pipeline/trace/l1`. Empty when the module is unknown — never the bare `trace`. */
+export function cbLayerTraceFolder(moduleName: string): string {
+  return moduleName ? `${moduleName}/pipeline/trace/${CB_TRACE_LAYER}` : '';
+}
+
 export function cbTraceFolder(): string {
-  return currentModule ? `${currentModule}/pipeline/trace` : CB_TRACE_LEGACY_FOLDER;
+  return cbLayerTraceFolder(currentModule);
 }
 
-/** Where the previous versions of this agent wrote: readers fall back to it so a run in flight that
- *  started before this change still finds its own state. */
-export const CB_TRACE_LEGACY_FOLDER = 'trace';
-
-/** Pre-pipeline module folder (`l4/<module>/trace`). */
-export function cbTraceModuleLegacyFolder(): string {
-  return currentModule ? `${currentModule}/trace` : CB_TRACE_LEGACY_FOLDER;
-}
-
-/** Folders a reader must look at: current write target, then the two previous homes. */
+/** Readers look only at the current layer folder. Leftover layout is invisible on purpose. */
 export function cbTraceReadFolders(): string[] {
-  const folders = [cbTraceFolder()];
-  if (currentModule) folders.push(`${currentModule}/trace`);
-  folders.push(CB_TRACE_LEGACY_FOLDER);
-  return [...new Set(folders)];
+  const folder = cbTraceFolder();
+  return folder ? [folder] : [];
+}
+
+export function isCbLayerTraceFolder(folder: string, moduleName: string): boolean {
+  if (!moduleName) return false;
+  const prefix = cbLayerTraceFolder(moduleName);
+  return folder === prefix || folder.startsWith(`${prefix}/`);
+}
+
+export function listCbLayerTraceKeys(
+  files: Record<string, { project?: number; level?: number; status?: string; folder?: string } | null | undefined>,
+  project: number,
+  moduleName: string,
+): string[] {
+  if (!project || !moduleName) return [];
+  const keys: string[] = [];
+  for (const [key, file] of Object.entries(files)) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (!isCbLayerTraceFolder(String(file.folder || ''), moduleName)) continue;
+    keys.push(key);
+  }
+  return keys;
 }
 
 function traceShortName(agentName: string, stepId: unknown): string {
@@ -66,7 +82,7 @@ export function agentTraceFileInfo(moduleName: string, agentName: string, stepId
   return {
     project,
     level: 4,
-    folder: `${moduleName}/pipeline/trace`,
+    folder: cbLayerTraceFolder(moduleName),
     shortName: traceShortName(agentName, stepId),
     extension: '.json',
   };

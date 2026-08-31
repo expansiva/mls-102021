@@ -93,8 +93,6 @@ export function pushHistory(state: CbRepairState, entry: string): void {
 
 export async function readRepairState(): Promise<CbRepairState> {
   try {
-    // The module-scoped path first, then where previous versions wrote: a run that started before the
-    // trace was scoped still finds its own state, and the next write lands in the module folder.
     const file = cbTraceReadFolders().map(folder => traceFile(stateFileInfo(folder))).find(item => item && item.status !== 'deleted');
     if (!file || file.status === 'deleted') return emptyState();
     const parsed = parseMaybeJson(String(await file.getContent()));

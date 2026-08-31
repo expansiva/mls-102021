@@ -59,8 +59,9 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       // module's l1, then gen-* recreates the current plan. `/rebuild defs` keeps defs in place
       // and only strips derived .ts at the end (cb-rebuild-defs-cleanup).
       if (cmd === 'rebuild-all' && targetModule) {
-        const { archiveGeneratedBackendModule } = await import('/_102021_/l2/agentChangeBackend/steps/rebuild-defs-cleanup/agentCbRebuildDefsCleanup.js');
+        const { archiveGeneratedBackendModule, clearCbLayerTrace } = await import('/_102021_/l2/agentChangeBackend/steps/rebuild-defs-cleanup/agentCbRebuildDefsCleanup.js');
         const archived = await archiveGeneratedBackendModule(mls.actualProject || 0, targetModule);
+        await clearCbLayerTrace(mls.actualProject || 0, targetModule);
         rebuildArchived = String(archived.length);
       }
     } catch (e) {

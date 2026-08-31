@@ -16,6 +16,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { deleteFile } from '/_102027_/l2/libStor.js';
 import { enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { isGeneratedBackendFolder, listBackendL1ArchiveKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
+import { listCbLayerTraceKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
 
 const AGENT_NAME = 'agentCbRebuildDefsCleanup';
 const MAX_TRACE_PATHS = 60;
@@ -70,6 +71,19 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 export { isGeneratedBackendFolder, listBackendL1ArchiveKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
+
+/** Soft-delete `l4/<module>/pipeline/trace/l1/` of this module only. Used by `/rebuild all`. */
+export async function clearCbLayerTrace(project: number, moduleName: string): Promise<string[]> {
+  const keys = listCbLayerTraceKeys(mls.stor.files as Record<string, any>, project, moduleName);
+  const deleted: string[] = [];
+  for (const key of keys) {
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) continue;
+    await deleteFile(file);
+    deleted.push(key);
+  }
+  return deleted;
+}
 
 /** Soft-delete every l1 artifact of the module (defs and derived .ts). Platform trash, never `rm`. */
 export async function archiveGeneratedBackendModule(project: number, moduleName: string): Promise<string[]> {

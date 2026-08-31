@@ -27,6 +27,7 @@ void test('/rebuild all archives l1 before regenerating', () => {
   const root = readFileSync(path.join(HERE, '..', '..', 'agentChangeBackend.ts'), 'utf8');
   assert.match(root, /cmd === 'rebuild-all' && targetModule/);
   assert.match(root, /archiveGeneratedBackendModule/);
+  assert.match(root, /clearCbLayerTrace/);
 });
 
 void test('agentCbRebuildDefsCleanup declares the rebuild cleanup step agent contract', () => {

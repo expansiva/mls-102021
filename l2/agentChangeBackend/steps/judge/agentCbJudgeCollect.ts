@@ -122,8 +122,7 @@ async function readBatchFindings(runId: string, judgeRun: number): Promise<CbJud
   const findings: CbJudgeFinding[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
-    // The findings live in the module's trace folder; a run that started before the trace was scoped
-    // wrote them to the bare `trace`, so both are read.
+    // The findings live in this module's `pipeline/trace/l1` folder.
     const folder = String(file.folder || '');
     if (file.extension !== '.json' || !cbTraceReadFolders().includes(folder)) continue;
     if (!String(file.shortName || '').startsWith(prefix)) continue;

@@ -29,7 +29,7 @@ async function residualCompilerWarning(): Promise<string> {
     ? (report!.findings as unknown[]).filter((f): f is string => typeof f === 'string').filter(isCompilerFinding)
     : [];
   const compiler = findings.length
-    ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/<module>/pipeline/trace/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
+    ? ` ⚠ ${findings.length} compiler error(s) remaining (see l4/<module>/pipeline/trace/l1/cb-health-report.json): ${findings.slice(0, 5).join('; ')}`
     : '';
   const degraded = Array.isArray(report?.degraded) ? report!.degraded.filter((f): f is string => typeof f === 'string') : [];
   const skipped = report?.seedSkipped && typeof report.seedSkipped === 'object' && !Array.isArray(report.seedSkipped)
