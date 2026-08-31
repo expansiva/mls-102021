@@ -58,11 +58,18 @@ const LAYER_RANK: Record<string, number> = {
   repositoryAdapter: 3,
   applicationUsecase: 4,
   httpController: 5,
+  // Compiled by agentCbSeeds from seeds.defs.ts — never by the LLM materializer.
+  persistenceSeeds: 6,
 };
 
 export function layerRank(type: string): number {
   // Unknown types run last so a new layer never silently jumps ahead of its dependencies.
   return type in LAYER_RANK ? LAYER_RANK[type] : 99;
+}
+
+/** Seeds are planned as JSON and compiled locally. An LLM rewrite would break determinism. */
+export function isDeterministicMaterializeType(type: string): boolean {
+  return type === 'persistenceSeeds';
 }
 
 // Stable order: by layer rank, then by id (deterministic across runs).
@@ -300,6 +307,7 @@ function contracts102034ForType(artifactType: string | undefined, hasMdmRefs: bo
       return [];
     case 'persistenceTable':
     case 'persistenceMetricTable':
+    case 'persistenceSeeds':
       return [C_PERSISTENCE];
     case 'repositoryAdapter':
       return [C_CONTRACTS, C_RUNTIME, C_PERSISTENCE, C_REGISTRY];

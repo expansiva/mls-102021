@@ -11,9 +11,12 @@ import {
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
   skippedMdmEntityIds, mdmIndexName,
   recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
+  seedAnchorName, seedStringPassing, seedSourcePurityErrors, findSeedFieldValidatorExport, buildSeedDefsData,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -1009,4 +1012,106 @@ test('recoverSeedPlanFromPrior does not restore a prior value that was already i
     [],
   );
   assert.equal(recovered.mdmEntities[0]?.rows[0]?.fields.find(f => f.name === 'status')?.value, 'ativo');
+});
+
+test('buildSeedSource types local rows by entity and exports named seedIds', () => {
+  const built = buildSeedSource(validInput());
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  const src = built.content ?? '';
+  assert.match(src, /import type \{ Shift \} from '\/_102051_\/l1\/cafeFlow\/layer_3_domain\/entities\/shift\.js'/);
+  assert.match(src, /const shiftMorning: Shift = /);
+  assert.match(src, /const shiftRows: Shift\[\] = \[shiftMorning\]/);
+  assert.match(src, /export const seedIds = \{/);
+  assert.match(src, /shiftMorning: shiftMorning\.shiftId/);
+  assert.match(src, /export const shiftSeeds: TableSeedRows = /);
+  assert.doesNotMatch(src, /\bDate\.now\s*\(/);
+  assert.doesNotMatch(src, /\bMath\.random\s*\(/);
+});
+
+test('a string where the entity declares an array is emitted as a string on the typed row', () => {
+  const input = validInput();
+  input.entities.find(entity => entity.entityId === 'Shift')!.fields.push({ fieldId: 'tags', type: 'string[]', required: true, enumValues: [] });
+  input.plan.localTables[0].rows[0].details.push({ name: 'tags', value: '[]' });
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /const shiftMorning: Shift = /);
+  assert.match(built.content ?? '', /"tags": "\[\]"/);
+  assert.match(built.content ?? '', /const shiftRows: Shift\[\]/);
+});
+
+test('a string where the entity declares an array fails tsc on the typed row', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cb-seeds-typed-'));
+  try {
+    writeFileSync(path.join(dir, 'shift.ts'), 'export interface Shift { shiftId: string; tags: string[]; }\n');
+    writeFileSync(path.join(dir, 'seeds.ts'), [
+      "import type { Shift } from './shift.ts';",
+      'const shiftMorning: Shift = { shiftId: "x", tags: "[]" };',
+      'const shiftRows: Shift[] = [shiftMorning];',
+      'void shiftRows;',
+      '',
+    ].join('\n'));
+    writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, skipLibCheck: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2020' },
+      include: ['.'],
+    }));
+    let stdout = '';
+    let stderr = '';
+    try {
+      execFileSync('npx', ['tsc', '-p', dir, '--noEmit'], { encoding: 'utf8', timeout: 60000 });
+      assert.fail('expected tsc to reject a string assigned to string[]');
+    } catch (error) {
+      const err = error as { stdout?: string; stderr?: string; status?: number };
+      stdout = String(err.stdout ?? '');
+      stderr = String(err.stderr ?? '');
+      assert.notEqual(err.status, 0);
+    }
+    assert.match(`${stdout}\n${stderr}`, /not assignable/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('seedSourcePurityErrors refuses Date.now and Math.random', () => {
+  assert.deepEqual(seedSourcePurityErrors('const t = Date.now();'), ['seed source must be deterministic: Date.now is forbidden']);
+  assert.deepEqual(seedSourcePurityErrors('const n = Math.random();'), ['seed source must be deterministic: Math.random is forbidden']);
+  assert.deepEqual(seedSourcePurityErrors('const n = 1;'), []);
+});
+
+test('a field with a domain validator is emitted as seedStringPassing(thatExport, planned)', () => {
+  const input = validInput();
+  const tax = { fieldId: 'taxId', type: 'string', required: true, enumValues: [] as string[], validatorExport: 'isValidTaxId' };
+  input.entities.find(entity => entity.entityId === 'Shift')!.fields.push(tax);
+  input.plan.localTables[0].rows[0].details.push({ name: 'taxId', value: 'ABC10' });
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /import \{ isValidTaxId, type Shift \} from /);
+  assert.match(built.content ?? '', /seedStringPassing\(isValidTaxId, "ABC10"\)/);
+  const passing = seedStringPassing(value => value.endsWith('12'), 'ABC10');
+  assert.equal(passing, 'ABC12');
+  assert.equal(seedStringPassing(value => value === 'ABC10', 'ABC10'), 'ABC10');
+});
+
+test('findSeedFieldValidatorExport matches the field id, not a neighbouring export', () => {
+  const source = [
+    'export function shiftRequiresOpenStatus(status: string): boolean { return true; }',
+    'export function isValidTaxId(taxId: string): boolean { return taxId.length > 0; }',
+  ].join('\n');
+  assert.equal(findSeedFieldValidatorExport(source, 'taxId', ['validTax']), 'isValidTaxId');
+  assert.equal(findSeedFieldValidatorExport(source, 'missing', []), undefined);
+});
+
+test('buildSeedDefsData is the plan envelope consumed by seeds.defs.ts', () => {
+  const data = buildSeedDefsData(validInput());
+  assert.equal(data.version, 1);
+  assert.equal(data.language, 'en');
+  assert.ok(data.plan);
+  assert.equal(extractSeedPlanFromSource(JSON.stringify({ plan: data.plan })), null);
+  const defs = `export const seedsDefs = ${JSON.stringify({ artifactType: 'seeds', data }, null, 2)} as const;\nexport const pipeline = [] as const;\n`;
+  assert.equal(extractSeedPlanProgressFromSource(defs)?.plan.summary, validInput().plan.summary);
+});
+
+test('seedAnchorName is entity camel + row key', () => {
+  assert.equal(seedAnchorName('Petition', 'published'), 'petitionPublished');
+  assert.equal(seedAnchorName('Customer', 'customer-bruno'), 'customerBruno');
+  assert.equal(seedAnchorName('Shift', 'morning'), 'shiftMorning');
 });

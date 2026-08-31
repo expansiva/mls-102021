@@ -27,6 +27,7 @@ import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPip
 import { collectLifecycleContradictionFindings, lifecycleForEntity } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { domainEntityResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { recordComponentFailure, recordLlmCost } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { appliedRulesPromptSection, readRuleDefinitions, ruleIdsOfEntities } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
 
 const AGENT_NAME = 'agentCbDomainEntity';
 const TOOL_NAME = 'submitDomainEntities';
@@ -228,6 +229,9 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   if (lifecycle) {
     human += `\n## Declared lifecycle (authoritative). The cycle is this matrix; do NOT invent a transition restriction the workflow does not declare. terminalStates are states with no outgoing edge in allowed — if empty, no state is terminal. Integrity invariants (uniqueness, dates, required-when, cross-field) are still wanted; status transitions are NOT yours to invent.\n${JSON.stringify(lifecycle, null, 2)}\n`;
   }
+  const aggregate = scan.aggregates.find(a => a.rootEntity === domainId);
+  const referencedRuleIds = ruleIdsOfEntities(scan.entities, aggregate ? [aggregate.rootEntity, ...aggregate.embeddedMembers] : [domainId]);
+  human += appliedRulesPromptSection(await readRuleDefinitions(scan.project), referencedRuleIds);
   human += `\nReturn ONE item { entityId: "${domainId}", invariants: [...] } — the business rules the entity must always hold (${lifecycle ? 'required-when conditions, cross-field and monetary/quantity constraints — NOT a stricter state machine than the declared lifecycle' : 'status transitions, required-when conditions, cross-field and monetary/quantity constraints'}). Do NOT output fields, valueObjects or statusEnum; they are attached automatically from the ontology.`;
   // prompt_ready args MUST equal the parallel child's queued hook args (the domainId) so the runtime
   // (continueBeforePrompt -> findBeforePromptStep by parentStepId+args) matches it.

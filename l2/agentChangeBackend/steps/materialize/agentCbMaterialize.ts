@@ -23,7 +23,8 @@ import {
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import {
   parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
-  expandContextRef, buildMicroRepairPrompt, isCompilerFinding, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
+  expandContextRef, buildMicroRepairPrompt, isCompilerFinding, isDeterministicMaterializeType,
+  GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
@@ -99,7 +100,7 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   try {
     const project = mls.actualProject || 0;
     const entries = await scanEntries(context);
-    const allStale = entries.filter(e => entryIsStale(project, e.defRef, e.item));
+    const allStale = entries.filter(e => !isDeterministicMaterializeType(e.item.type) && entryIsStale(project, e.defRef, e.item));
     // Materialize ONE layer per dispatch. The runtime's addParallelArgs forces a parallel parent to
     // in_progress and enqueues its children the moment the add-step is applied, so a `dependsOn`
     // between two parallel steps created together is NOT a real barrier — every layer would start at
@@ -212,6 +213,7 @@ const ARTIFACT_LABEL: Record<string, string> = {
   repositoryAdapter: 'adapters',
   applicationUsecase: 'usecases',
   httpController: 'controllers',
+  persistenceSeeds: 'seeds',
 };
 function layerLabel(types: string[]): string {
   const names = types.map(t => ARTIFACT_LABEL[t] || t);
@@ -294,6 +296,10 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   try {
     const parsed = parseDefs(content);
     if (!parsed.item || !parsed.item.outputPath) return completeWorkerFailure(context, parentStep, step, hookSequential, defRef, 'no pipeline item in defs');
+    if (isDeterministicMaterializeType(parsed.item.type)) {
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+        'persistenceSeeds is compiled by agentCbSeeds (deterministic); skipped LLM materialize.')];
+    }
 
     // T5: scope the platform-contracts bundle to what THIS artifact type compiles against (a domain
     // entity / port carry none; mdmFacade only for a usecase that references MDM). Big input-token cut.

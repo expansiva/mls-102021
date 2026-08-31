@@ -44,6 +44,16 @@ void test('agentCbDomainEntity tool schema is provider-clean', () => {
   assert.equal(errs, null, errs?.join(' | '));
 });
 
+void test('gen-domain worker prompt receives referenced rule text, not the whole catalog', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbDomainEntity.ts'), 'utf8');
+  assert.match(src, /appliedRulesPromptSection/);
+  assert.match(src, /ruleIdsOfEntities/);
+  assert.match(src, /readRuleDefinitions\(scan\.project\)/);
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'domainEntity.md'), 'utf8');
+  assert.match(skill, /When in doubt, comment/);
+  assert.match(skill, /useRules/);
+});
+
 void test('gen-domain worker payload carries the declared lifecycle matrix when the module has one', () => {
   const src = readFileSync(path.join(HERE, 'agentCbDomainEntity.ts'), 'utf8');
   assert.match(src, /lifecycleForEntity\(scan\.lifecycles, domainId\)/);

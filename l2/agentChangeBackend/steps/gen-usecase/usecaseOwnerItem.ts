@@ -127,8 +127,15 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
       entityId: id,
       description: entity?.description || '',
       notes: entity?.storageNotes || '',
+      ...(entity?.derivation ? { derivation: entity.derivation } : {}),
     };
   });
+  const derivationSources = derivedRefs
+    .map(ref => ref.derivation?.from)
+    .filter((id): id is string => !!id)
+    .map(id => childToRoot.get(id) ?? id);
+  const fieldRefs = [...new Set([...rawRefs, ...derivationSources])];
+  const portSeed = [...new Set([...portRefs, ...derivationSources])];
   const lifecycle = lifecycleForEntity(lifecycles, o.entity) || lifecycleForEntity(lifecycles, childToRoot.get(o.entity) || '');
   return {
     usecaseId: o.id,
@@ -146,8 +153,8 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     inputs: o.inputs,
     contextResolution: o.contextResolution,
     acceptanceAssertions: o.acceptanceAssertions,
-    ports: portRefs.filter(id => roots.has(id) && !mdmIds.has(id) && !derivedIds.has(id)),
-    mdmRefs: rawRefs.filter(id => mdmIds.has(id)),
+    ports: portSeed.filter(id => roots.has(id) && !mdmIds.has(id) && !derivedIds.has(id)),
+    mdmRefs: fieldRefs.filter(id => mdmIds.has(id)),
     // Master data this operation WRITES. The skill documents the ctx.mdm write surface; what it cannot
     // know is the canonical type 102034 indexes by, the subtype its closed union requires, and which
     // module field carries the mdmId — those come from the l4 `storage` block. Absent (not empty) when
@@ -164,7 +171,7 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     // derived entities sees the same prompt as before. They are an output shape, not a port.
     ...(derivedRefs.length ? { derivedRefs } : {}),
     eventWrites, // append-only events to emit (persisted -> via its port; reaction -> outbox)
-    entityFields: Object.fromEntries(rawRefs.map(id => [id, fieldsOf(id)])),
+    entityFields: Object.fromEntries(fieldRefs.map(id => [id, fieldsOf(id)])),
     // Declared entity lifecycle (when the module has one). Absent, not empty, so a module without a
     // workflow sees the same prompt as before. Confirmed needed: this worker does not receive domain
     // invariants, and it is the code that throws "cannot transition from pending to completed".

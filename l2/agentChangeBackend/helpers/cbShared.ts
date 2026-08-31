@@ -212,6 +212,17 @@ export interface CbEntity {
   description?: string;
   /** Verbatim l4 `storage.notes` — where the l4 writes how a derived projection is composed. */
   storageNotes?: string;
+  /** Ontology `useRules` ids. Absent/empty when the entity declares none. */
+  useRules?: string[];
+  /**
+   * How a derived projection is computed (`from` / `filter` / `aggregate`). Absent on L4 written
+   * before the field — gen-usecase then keeps composing from description/notes.
+   */
+  derivation?: {
+    from: string;
+    filter: string;
+    aggregate: Array<{ fieldId: string; op: string; sourceField?: string }>;
+  };
 }
 
 export interface CbRelationship {
@@ -361,6 +372,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           warnings.push(`entity ${entityId}: l4 kind '${declared}' (${ownership}) read as '${kind}'`);
         }
         const storageNotes = isRecord(parsed.storage) ? readString(parsed.storage.notes) : '';
+        const derivation = readDerivation(parsed.derivation);
         upsertEntity(entities, {
           entityId,
           title: readString(parsed.title) || entityId,
@@ -374,6 +386,8 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           ...(storage.idField ? { idField: storage.idField } : {}),
           ...(readString(parsed.description) ? { description: readString(parsed.description) } : {}),
           ...(storageNotes ? { storageNotes } : {}),
+          ...(readStringArray(parsed.useRules).length ? { useRules: readStringArray(parsed.useRules) } : {}),
+          ...(derivation ? { derivation } : {}),
         });
       }
     }
@@ -562,6 +576,22 @@ function readEventPolicy(value: unknown): EventPolicy | undefined {
   if (purpose !== 'telemetry' && purpose !== 'audit' && purpose !== 'reaction') return undefined;
   const retentionDays = typeof value.retentionDays === 'number' ? value.retentionDays : undefined;
   return retentionDays === undefined ? { purpose } : { purpose, retentionDays };
+}
+
+function readDerivation(value: unknown): CbEntity['derivation'] {
+  if (!isRecord(value)) return undefined;
+  const from = readString(value.from);
+  if (!from) return undefined;
+  const aggregate = Array.isArray(value.aggregate)
+    ? value.aggregate.filter(isRecord).map(raw => {
+      const fieldId = readString(raw.fieldId);
+      const op = readString(raw.op);
+      if (!fieldId || !op) return null;
+      const sourceField = readString(raw.sourceField);
+      return { fieldId, op, ...(sourceField ? { sourceField } : {}) };
+    }).filter((item): item is { fieldId: string; op: string; sourceField?: string } => item !== null)
+    : [];
+  return { from, filter: readString(value.filter), aggregate };
 }
 
 // Turn every kind:"event" entity into a first-class generation target. The owner is the related core
@@ -838,6 +868,7 @@ export function valueObjectFileInfo(m: string, memberId: string): CbFileInfo { r
 export function repositoryPortFileInfo(m: string, entityId: string): CbFileInfo { return defs(`${m}/layer_2_application/ports`, `${lowerFirst(entityId)}Repository`); }
 export function usecaseFileInfo(m: string, usecaseId: string): CbFileInfo { return defs(`${m}/layer_2_application/usecases`, lowerFirst(usecaseId)); }
 export function persistenceTableFileInfo(m: string, tableId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, lowerFirst(tableId)); }
+export function persistenceSeedsFileInfo(m: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, 'seeds'); }
 export function repositoryAdapterFileInfo(m: string, entityId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/persistence`, `${lowerFirst(entityId)}RepositoryAdapter`); }
 export function httpControllerFileInfo(m: string, pageId: string): CbFileInfo { return defs(`${m}/layer_1_external/adapters/http/controllers`, lowerFirst(pageId)); }
 

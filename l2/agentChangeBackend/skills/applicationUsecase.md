@@ -99,8 +99,11 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   THE TEST, applied before writing anything: name the concrete input field or stored state of THIS
   operation that would violate the rule. If you can name it, enforce it (blocking or non-blocking). If you
   cannot — and note you may only have the rule ID, not its prose — do NOT invent a check to satisfy the
-  gate: emit the comment. **When in doubt, comment.** An id that reads as a premise (`…Assumption`,
-  `…Assumed`, `…OnlyPhase`, `…NotSupported`) is a strong signal, but the fallback above governs.
+  gate: emit the comment. **When in doubt, comment.** A reject predicate (`throw` / `return false`)
+  exists ONLY when a declared rule (`useRules` / `rulesApplied`) or a field constraint requires it.
+  What you infer from product prose goes in a COMMENT, never as a rejection. An id that reads as a
+  premise (`…Assumption`, `…Assumed`, `…OnlyPhase`, `…NotSupported`) is a strong signal, but the
+  fallback above governs.
   Why this matters more than it looks: fabricating a validation to satisfy the gate produces a 400 that
   every caller hits, so the route can never return data and can never be tested. Observed in a generated
   query: it rejected all callers with `VALIDATION_ERROR` naming an assumption rule, which also blocked
@@ -301,6 +304,23 @@ repositories.
 NEVER store operational/transactional state (occupancy, movement, balances, `'occupied'`/`'available'`)
 in an MDM record — that is NOT cadastral data and belongs to a local `core` entity with its own table.
 The MDM `status` is always one of the four cadastral `MdmStatus` values.
+
+## Derived projections (`data.derivedRefs`)
+
+Entities listed in `data.derivedRefs` are computed projections: no table, no repository port, never
+`resolveRepository`. Compose them in the output. `ofEntity: '<projection>'` on output fields is
+legitimate.
+
+When a derivedRef carries `derivation`, that block is the account — implement it:
+
+1. Resolve the source `from` through its port (it is already in `data.ports` when the source is a
+   module aggregate) or via `ctx.mdm` if it is master data.
+2. Apply `filter` (empty string means unfiltered).
+3. Compute each `aggregate` entry (`count` | `sum` | `min` | `max` | `first` | `groupKey`) onto the
+   named output field. Use `sourceField` when the op reads a source column (`count` has none).
+
+Do not invent a second formula and do not hardcode zero. When `derivation` is absent (older l4),
+keep composing from `description`/`notes` as today — do not fail the run.
 
 ## Emitting events (append-only history)
 

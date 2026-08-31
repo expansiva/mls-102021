@@ -4,6 +4,9 @@
 // TypeScript: this module validates its JSON plan, resolves symbolic references to stable UUIDs
 // and emits the runtime-discoverable TableSeedRows source.
 
+import type { L4RuleDefinition } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
+export type SeedRuleDefinition = L4RuleDefinition;
+
 export const SEED_T0 = '2026-07-01T08:00:00.000Z';
 export const SEED_T1 = '2026-07-01T09:00:00.000Z';
 // Default deterministic window for seed timestamps. The planner may place ANY ISO 8601 instant
@@ -15,12 +18,15 @@ export const SEED_PLAN_START = '/* <agentCbSeedsPlan>';
 export const SEED_PLAN_END = '</agentCbSeedsPlan> */';
 export const SEED_ASSET_URLS_START = '// <agentCbSeedAssetUrls>';
 export const SEED_ASSET_URLS_END = '// </agentCbSeedAssetUrls>';
+export const SEED_VALIDATOR_ATTEMPTS = 100;
 
 export interface SeedFieldDefinition {
   fieldId: string;
   type: string;
   required: boolean;
   enumValues: string[];
+  /** Domain export that judges this field. The generator never interprets the rule; it only calls this. */
+  validatorExport?: string;
 }
 
 export interface SeedEntityDefinition {
@@ -128,13 +134,6 @@ export interface SeedPlan {
   summary: string;
   localTables: SeedLocalTable[];
   mdmEntities: SeedMdmEntity[];
-}
-
-export interface SeedRuleDefinition {
-  ruleId: string;
-  title: string;
-  description: string;
-  appliesTo: string[];
 }
 
 export interface SeedRelationshipDefinition {
@@ -635,22 +634,63 @@ export function extractSeedPlanFromSource(source: string): SeedPlan | null {
   return progress && !progress.partial ? progress.plan : null;
 }
 
-/** Reads either a completed or interrupted seed run from the persisted envelope. */
+function progressFromEnvelope(envelope: UnknownRecord): SeedPlanProgress | null {
+  const planSource = isRecord(envelope.plan) ? envelope.plan : isRecord(envelope.data) && isRecord(envelope.data.plan) ? envelope.data.plan : null;
+  if (!planSource) return null;
+  const flags = isRecord(envelope.data) ? envelope.data : envelope;
+  return {
+    plan: parseSeedPlan(planSource),
+    partial: flags.partial === true,
+    completedWaveIndexes: arrayValue(flags.completedWaveIndexes)
+      .filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0)
+      .sort((left, right) => left - right),
+  };
+}
+
+/** Reads either a completed or interrupted seed run from the persisted envelope (seeds.ts comment or seeds.defs.ts). */
 export function extractSeedPlanProgressFromSource(source: string): SeedPlanProgress | null {
   const start = source.indexOf(SEED_PLAN_START);
   const end = source.indexOf(SEED_PLAN_END);
-  if (start === -1 || end === -1 || end <= start) return null;
+  if (start !== -1 && end > start) {
+    try {
+      const raw = source.slice(start + SEED_PLAN_START.length, end).trim();
+      const envelope = JSON.parse(raw) as UnknownRecord;
+      if (isRecord(envelope)) return progressFromEnvelope(envelope);
+    } catch { /* fall through to defs artifact */ }
+  }
+  const parsed = extractFirstConstObject(source);
+  return parsed ? progressFromEnvelope(parsed) : null;
+}
+
+function extractFirstConstObject(source: string): UnknownRecord | null {
+  const marker = source.match(/export\s+const\s+\w+\s*=/u);
+  if (!marker || marker.index === undefined) return null;
+  const eq = source.indexOf('=', marker.index);
+  if (eq < 0) return null;
+  let open = eq + 1;
+  while (open < source.length && /\s/.test(source[open])) open += 1;
+  if (source[open] !== '{') return null;
+  let depth = 0;
+  let i = open;
+  let inStr = false;
+  let strCh = '';
+  for (; i < source.length; i += 1) {
+    const char = source[i];
+    if (inStr) {
+      if (char === '\\') { i += 1; continue; }
+      if (char === strCh) inStr = false;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') { inStr = true; strCh = char; continue; }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) { i += 1; break; }
+    }
+  }
   try {
-    const raw = source.slice(start + SEED_PLAN_START.length, end).trim();
-    const envelope = JSON.parse(raw) as UnknownRecord;
-    if (!isRecord(envelope.plan)) return null;
-    return {
-      plan: parseSeedPlan(envelope.plan),
-      partial: envelope.partial === true,
-      completedWaveIndexes: arrayValue(envelope.completedWaveIndexes)
-        .filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0)
-        .sort((left, right) => left - right),
-    };
+    const value = JSON.parse(source.slice(open, i)) as unknown;
+    return isRecord(value) ? value : null;
   } catch {
     return null;
   }
@@ -977,6 +1017,87 @@ function stableUuid(input: string): string {
 
 function entityIdField(entity: SeedEntityDefinition): string {
   return entity.fields.find(field => field.fieldId.toLowerCase() === `${entity.entityId.toLowerCase()}id`)?.fieldId || `${entity.entityId.charAt(0).toLowerCase()}${entity.entityId.slice(1)}Id`;
+}
+
+/** Named anchor for a seeded row (`petitionPublished`). Stable across runs for a given entity+key. */
+export function seedAnchorName(entityId: string, rowKey: string): string {
+  const entity = entityId.charAt(0).toLowerCase() + entityId.slice(1);
+  const parts = rowKey.split(/[^A-Za-z0-9]+/g).filter(Boolean);
+  const camel = parts.map((part, index) => {
+    const body = part.charAt(0).toUpperCase() + part.slice(1);
+    return index === 0 ? part.charAt(0).toLowerCase() + part.slice(1) : body;
+  }).join('');
+  if (!camel) return entity;
+  if (camel.toLowerCase().startsWith(entity.toLowerCase())) return camel.charAt(0).toLowerCase() + camel.slice(1);
+  return entity + camel.charAt(0).toUpperCase() + camel.slice(1);
+}
+
+/** Domain export that judges a field: name contains the field id or an applied rule id. Shortest match wins. */
+export function findSeedFieldValidatorExport(entitySource: string, fieldId: string, ruleIds: string[] = []): string | undefined {
+  const exported: string[] = [];
+  const re = /export\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(entitySource))) exported.push(match[1]);
+  const needle = (value: string) => value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+  const fieldNeedle = needle(fieldId);
+  const byField = exported.filter(name => fieldNeedle && needle(name).includes(fieldNeedle));
+  if (byField.length) return [...byField].sort((left, right) => left.length - right.length)[0];
+  const ruleNeedles = ruleIds.map(needle).filter(Boolean);
+  const byRule = exported.filter(name => ruleNeedles.some(rule => needle(name).includes(rule)));
+  return byRule.length ? [...byRule].sort((left, right) => left.length - right.length)[0] : undefined;
+}
+
+/** Bounded deterministic search: vary trailing digits until `check` accepts, else keep the planned value. */
+export function seedStringPassing(check: (value: string) => boolean, planned: string, attempts = SEED_VALIDATOR_ATTEMPTS): string {
+  if (check(planned)) return planned;
+  const match = planned.match(/^(.*?)(\d+)$/u);
+  const prefix = match ? match[1] : planned;
+  const width = match ? match[2].length : 0;
+  const start = match ? Number.parseInt(match[2], 10) : 0;
+  if (match && !Number.isFinite(start)) return planned;
+  for (let i = 1; i <= attempts; i += 1) {
+    const candidate = match ? prefix + String(start + i).padStart(width, '0') : planned + String(i);
+    if (check(candidate)) return candidate;
+  }
+  return planned;
+}
+
+const SEED_STRING_PASSING_HELPER = `function seedStringPassing(check: (value: string) => boolean, planned: string, attempts = ${SEED_VALIDATOR_ATTEMPTS}): string {
+  if (check(planned)) return planned;
+  const match = planned.match(/^(.*?)(\\d+)$/u);
+  const prefix = match ? match[1] : planned;
+  const width = match ? match[2].length : 0;
+  const start = match ? Number.parseInt(match[2], 10) : 0;
+  if (match && !Number.isFinite(start)) return planned;
+  for (let i = 1; i <= attempts; i += 1) {
+    const candidate = match ? prefix + String(start + i).padStart(width, '0') : planned + String(i);
+    if (check(candidate)) return candidate;
+  }
+  seedValidatorWarnings.push('kept planned value after ' + String(attempts) + ' attempts');
+  return planned;
+}`;
+
+export function seedSourcePurityErrors(source: string): string[] {
+  const errors: string[] = [];
+  if (/\bDate\.now\s*\(/u.test(source)) errors.push('seed source must be deterministic: Date.now is forbidden');
+  if (/\bMath\.random\s*\(/u.test(source)) errors.push('seed source must be deterministic: Math.random is forbidden');
+  return errors;
+}
+
+export function buildSeedDefsData(
+  input: SeedBuildInput,
+  extra?: { partial?: boolean; completedWaveIndexes?: number[] },
+): Record<string, unknown> {
+  return {
+    version: 1,
+    language: input.language,
+    ...(input.skipped && (input.skipped.tables.length || input.skipped.mdmEntities.length) ? { skipped: input.skipped } : {}),
+    ...(extra?.partial === true ? {
+      partial: true,
+      completedWaveIndexes: [...new Set(extra.completedWaveIndexes ?? [])].sort((left, right) => left - right),
+    } : {}),
+    plan: input.plan,
+  };
 }
 
 /**
@@ -1664,11 +1785,35 @@ function resolveValue(value: SeedValue, ids: Map<string, string>): unknown {
   return ids.get(value.ref) ?? value.ref;
 }
 
+interface SeedValidatorMarker { __agentCbSeedValidator: { fn: string; planned: string } }
+
+function wrapValidated(field: SeedFieldDefinition | undefined, value: unknown): unknown {
+  if (!field?.validatorExport || typeof value !== 'string') return value;
+  return { __agentCbSeedValidator: { fn: field.validatorExport, planned: value } } satisfies SeedValidatorMarker;
+}
+
+function fieldByStorageName(entity: SeedEntityDefinition | undefined, name: string): SeedFieldDefinition | undefined {
+  if (!entity) return undefined;
+  return entity.fields.find(field => field.fieldId === name || toSnake(field.fieldId) === name);
+}
+
+function resolveFieldsForEntity(fields: SeedFieldValue[], ids: Map<string, string>, entity?: SeedEntityDefinition): Record<string, unknown> {
+  return Object.fromEntries(fields.map(field => [
+    field.name,
+    wrapValidated(fieldByStorageName(entity, field.name), resolveValue(field.value, ids)),
+  ]));
+}
+
 function seedSourceLiteral(value: unknown): string {
-  return JSON.stringify(value, null, 2).replace(
-    /\{\s*"__agentCbSeedAsset"\s*:\s*"([A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*)"\s*\}/gu,
-    (_match, assetId: string) => `seedAssetUrl(${JSON.stringify(assetId)})`,
-  );
+  return JSON.stringify(value, null, 2)
+    .replace(
+      /\{\s*"__agentCbSeedAsset"\s*:\s*"([A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*)"\s*\}/gu,
+      (_match, assetId: string) => `seedAssetUrl(${JSON.stringify(assetId)})`,
+    )
+    .replace(
+      /\{\s*"__agentCbSeedValidator"\s*:\s*\{\s*"fn"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*"planned"\s*:\s*("(?:\\.|[^"\\])*")\s*\}\s*\}/gu,
+      (_match, fn: string, planned: string) => `seedStringPassing(${fn}, ${planned})`,
+    );
 }
 
 export function seedAssetUrlsBlock(urls: Record<string, string>, warnings: string[] = []): string {
@@ -1717,15 +1862,17 @@ function idMap(input: SeedBuildInput): Map<string, string> {
 
 function buildLocalRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ exportName: string; seedFor: string; rows: Record<string, unknown>[] }> {
   const plannedTables = planMap(input.plan.localTables, 'tableId');
+  const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   return input.tablePlans.map((table) => {
     const planned = plannedTables.get(table.tableId)!;
+    const entity = entityById.get(table.tableId);
     const detailsColumn = detailsColumnOf(table);
     return {
       exportName: `${table.tableId.charAt(0).toLowerCase()}${table.tableId.slice(1)}Seeds`,
       seedFor: table.seedFor,
       rows: planned.rows.map((row) => {
-        const columns = resolveFields(row.columns, ids);
-        const details = resolveFields(row.details, ids);
+        const columns = resolveFieldsForEntity(row.columns, ids, entity);
+        const details = resolveFieldsForEntity(row.details, ids, entity);
         for (const child of row.children) {
           details[child.name] = child.rows.map(childRow => resolveFields(childRow.fields, ids));
         }
@@ -1758,7 +1905,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
     const idField = entityIdField(entity);
     for (const row of planned.rows) {
       const mdmId = ids.get(`mdm:${entity.entityId}.${row.key}`)!;
-      const fields = resolveFields(row.fields, ids);
+      const fields = resolveFieldsForEntity(row.fields, ids, entity);
       fields[idField] = mdmId;
       const name = mdmIndexName(fields, row.key);
       fields.name = name;
@@ -1832,6 +1979,75 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
   ].filter(block => block.rows.length > 0);
 }
 
+function entityModuleRef(project: number, moduleName: string, entityId: string): string {
+  const short = entityId.charAt(0).toLowerCase() + entityId.slice(1);
+  return `/_${project}_/l1/${moduleName}/layer_3_domain/entities/${short}.js`;
+}
+
+function buildLocalEntityConsts(
+  input: SeedBuildInput,
+  ids: Map<string, string>,
+): { lines: string[]; imports: Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>; anchors: Array<{ name: string; idField: string }> } {
+  const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
+  const imports = new Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>();
+  const lines: string[] = [];
+  const anchors: Array<{ name: string; idField: string }> = [];
+  const used = new Set<string>();
+  for (const table of input.plan.localTables) {
+    const entity = entityById.get(table.tableId);
+    if (!entity) continue;
+    const typeName = entity.entityId;
+    const moduleRef = entityModuleRef(input.project, input.moduleName, entity.entityId);
+    const entry = imports.get(moduleRef) ?? { typeName, validators: new Set<string>(), typeUsed: false };
+    entry.typeName = typeName;
+    entry.typeUsed = true;
+    const idField = entityIdField(entity);
+    const rowConsts: string[] = [];
+    for (const row of table.rows) {
+      let name = seedAnchorName(entity.entityId, row.key);
+      if (used.has(name)) name = `${name}_${used.size}`;
+      used.add(name);
+      const obj: Record<string, unknown> = { [idField]: ids.get(`local:${table.tableId}.${row.key}`) };
+      const columns = resolveFieldsForEntity(row.columns, ids, entity);
+      const details = resolveFieldsForEntity(row.details, ids, entity);
+      for (const field of entity.fields) {
+        if (field.fieldId === idField) continue;
+        const snake = toSnake(field.fieldId);
+        if (Object.prototype.hasOwnProperty.call(columns, snake)) obj[field.fieldId] = columns[snake];
+        else if (Object.prototype.hasOwnProperty.call(details, field.fieldId)) obj[field.fieldId] = details[field.fieldId];
+        else {
+          const child = row.children.find(item => item.name === field.fieldId);
+          if (child) obj[field.fieldId] = child.rows.map(childRow => resolveFields(childRow.fields, ids));
+          else if (!field.required) obj[field.fieldId] = null;
+        }
+        if (field.validatorExport) entry.validators.add(field.validatorExport);
+      }
+      for (const child of row.children) {
+        if (!Object.prototype.hasOwnProperty.call(obj, child.name)) {
+          obj[child.name] = child.rows.map(childRow => resolveFields(childRow.fields, ids));
+        }
+      }
+      lines.push(`const ${name}: ${typeName} = ${seedSourceLiteral(obj)};`, '');
+      rowConsts.push(name);
+      anchors.push({ name, idField });
+    }
+    const rowsName = `${table.tableId.charAt(0).toLowerCase()}${table.tableId.slice(1)}Rows`;
+    lines.push(`const ${rowsName}: ${typeName}[] = [${rowConsts.join(', ')}];`, '');
+    imports.set(moduleRef, entry);
+  }
+  return { lines, imports, anchors };
+}
+
+function seedImportLines(imports: Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>): string[] {
+  return [...imports.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([ref, entry]) => {
+    const validators = [...entry.validators].sort();
+    if (entry.typeUsed && validators.length) return `import { ${validators.join(', ')}, type ${entry.typeName} } from '${ref}';`;
+    if (entry.typeUsed) return `import type { ${entry.typeName} } from '${ref}';`;
+    if (validators.length) return `import { ${validators.join(', ')} } from '${ref}';`;
+    return '';
+  }).filter(Boolean);
+}
+
 /** Compile a validated plan. IDs, relationship IDs and structural MDM records are always generated
  * locally; only the business scenario itself comes from the LLM plan. */
 export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
@@ -1842,6 +2058,28 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
   if (errors.length) return { errors, summary };
   const ids = idMap(input);
   const blocks = [...buildLocalRows(input, ids), ...buildMdmRows(input, ids)];
+  const typed = buildLocalEntityConsts(input, ids);
+  for (const entity of input.entities) {
+    const used = input.plan.localTables.some(table => table.tableId === entity.entityId)
+      || input.plan.mdmEntities.some(item => item.entityId === entity.entityId);
+    if (!used) continue;
+    const validators = entity.fields.map(field => field.validatorExport).filter((name): name is string => !!name);
+    if (!validators.length) continue;
+    const moduleRef = entityModuleRef(input.project, input.moduleName, entity.entityId);
+    const entry = typed.imports.get(moduleRef) ?? { typeName: entity.entityId, validators: new Set<string>(), typeUsed: false };
+    for (const name of validators) entry.validators.add(name);
+    typed.imports.set(moduleRef, entry);
+  }
+  const usesValidator = [...typed.imports.values()].some(entry => entry.validators.size > 0);
+  const seedIdsEntries = [
+    ...typed.anchors.map(anchor => `  ${anchor.name}: ${anchor.name}.${anchor.idField},`),
+    ...input.plan.mdmEntities.flatMap(entity => entity.rows.map(row => {
+      const name = seedAnchorName(entity.entityId, row.key);
+      const id = ids.get(`mdm:${entity.entityId}.${row.key}`) ?? '';
+      if (typed.anchors.some(anchor => anchor.name === name)) return '';
+      return `  ${name}: ${JSON.stringify(id)},`;
+    })).filter(Boolean),
+  ];
   const planEnvelope = {
     version: 1, moduleName: input.moduleName, language: input.language,
     // Published so "no rows" is a documented decision, readable without re-running the generator.
@@ -1851,7 +2089,7 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
   const lines = [
     `/// <mls fileReference="_${input.project}_/l1/${input.moduleName}/layer_1_external/adapters/persistence/seeds.ts" enhancement="_blank"/>`,
     '',
-    `// Deterministic initial data for ${input.moduleName}. Scenario planned by agentCbSeeds; rows and ids compiled locally.`,
+    `// Deterministic initial data for ${input.moduleName}. Scenario planned by agentCbSeeds; rows and ids compiled locally from seeds.defs.ts.`,
     '// TableSeedRows exports are discovered by shape and merged by the persistence registry.',
     '',
     SEED_PLAN_START,
@@ -1859,21 +2097,32 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     SEED_PLAN_END,
     '',
     seedAssetUrlsBlock({}, []),
+    usesValidator ? 'const seedValidatorWarnings: string[] = [];' : '',
     '',
     'function seedAssetUrl(assetId: string): string | null { return seedAssetUrls[assetId] ?? null; }',
     '',
+    ...(usesValidator ? [SEED_STRING_PASSING_HELPER, ''] : []),
     // The contracts import and the seed exports only exist when there ARE rows. An all-skipped module
     // (every wave gave up) must still emit a VALID module: no unused import, and `export {}` so the file
     // is unambiguously a module rather than a script whose top-level consts leak into the global scope.
     ...(blocks.length
-      ? [`import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';`, '']
+      ? [
+        `import type { TableSeedRows } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';`,
+        ...seedImportLines(typed.imports),
+        '',
+      ]
       : ['export {};', '']),
+    ...typed.lines,
+    ...(seedIdsEntries.length ? [`export const seedIds = {`, ...seedIdsEntries, `} as const;`, ''] : []),
     ...blocks.flatMap(block => [
       `export const ${block.exportName}: TableSeedRows = ${seedSourceLiteral({ seedFor: block.seedFor, rows: block.rows })};`,
       '',
     ]),
-  ];
-  return { errors: [], content: lines.join('\n'), summary };
+  ].filter((line, index, all) => line !== '' || all[index - 1] !== '');
+  const content = lines.join('\n');
+  const purity = seedSourcePurityErrors(content);
+  if (purity.length) return { errors: purity, summary };
+  return { errors: [], content, summary };
 }
 
 export function seedPlanPromptContext(

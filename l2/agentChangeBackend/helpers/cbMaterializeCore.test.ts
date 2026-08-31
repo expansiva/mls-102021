@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale, applyHeader } from './cbMaterializeCore.js';
+import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale, applyHeader, isDeterministicMaterializeType } from './cbMaterializeCore.js';
 
 test('shouldTargetedRescue (T6): fires once for a small compiler-only residual at exactly the spent budget', () => {
   const base = { budget: 2, maxTargets: 4 };
@@ -75,6 +75,12 @@ test('expandContextRef (T5): mdmFacade (21KB) is included ONLY for a usecase tha
   assert.ok(withMdm.includes(MDM_FACADE), 'usecase with mdmRefs gets the facade');
   assert.ok(!withoutMdm.includes(MDM_FACADE), 'usecase without mdmRefs must NOT get the 21KB facade');
   assert.ok(withoutMdm.includes(CONTRACTS), 'usecase always gets RequestContext/AppError');
+});
+
+test('persistenceSeeds is compiled locally, not by the LLM materializer', () => {
+  assert.equal(isDeterministicMaterializeType('persistenceSeeds'), true);
+  assert.equal(isDeterministicMaterializeType('persistenceTable'), false);
+  assert.deepEqual(expandContextRef('_102034_.d.ts', 'persistenceSeeds'), [PERSISTENCE]);
 });
 
 test('expandContextRef (T5): persistence table gets only TableDefinition; adapter never gets mdmFacade', () => {

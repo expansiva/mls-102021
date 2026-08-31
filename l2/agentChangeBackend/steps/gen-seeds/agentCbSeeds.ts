@@ -12,7 +12,8 @@ import {
   readBackendScan, enqueueNext, createUpdateStatusIntent, createPromptReadyIntent, readCbPrompt,
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   createAddStepIntent, createAgentStepPayload, isRecord, readString, readStringArray, logPrefix,
-  parseDefsSource, readCliCommand, ALL_STATUSES, type CbScan,
+  parseDefsSource, readCliCommand, ALL_STATUSES, saveDefs, buildArtifact, buildPipelineItem,
+  layerSkills, dtsRef, domainEntityFileInfo, persistenceSeedsFileInfo, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { seedPlanResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { extractCollectionFieldNames } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -22,11 +23,12 @@ import {
   seedPlanPromptContext, seedReferenceCatalog, splitSeedPlanningWave, validateSeedPlan,
   collectRequiredMdmTags, repairSeedPlanDeterministically, skippedMdmEntityIds,
   parseSeedAttemptRecords, recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
-  SEED_WINDOW_START, SEED_WINDOW_END,
+  SEED_WINDOW_START, SEED_WINDOW_END, buildSeedDefsData, seedSourcePurityErrors, findSeedFieldValidatorExport,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
-  type SeedRuleDefinition, type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
+  type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
   type SeedAttemptRecord,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
+import { readRuleDefinitions, resolveAppliedRules } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
 
 const AGENT_NAME = 'agentCbSeeds';
 const TOOL_NAME = 'submitSeedScenario';
@@ -321,7 +323,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const tokenTrace = outputTokenTrace(payload);
     const merged = mergeSeedPlans(progress.plan, plan);
     const next = nextSeedBatch(input, merged);
-    const partial = buildPartialSeedSource(input, { plan: merged, completedWaveIndexes: completedWaveIndexes(input, merged) });
+    const waveProgress = { plan: merged, completedWaveIndexes: completedWaveIndexes(input, merged) };
+    await writeSeedsDefs({ ...input, plan: merged }, { partial: true, completedWaveIndexes: waveProgress.completedWaveIndexes });
+    const partial = buildPartialSeedSource(input, waveProgress);
     const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', partial);
     const partialEnvironment = seedEnvironmentErrors(saved);
     if (partialEnvironment.length) throw new Error(seedInfraFailure(partialEnvironment));
@@ -407,6 +411,9 @@ async function finalizeSeedPlan(
 ): Promise<mls.msg.AgentIntent[]> {
   const built = buildSeedSource({ ...input, plan });
   if (built.errors.length || !built.content) throw new Error(`final seed plan validation failed: ${built.errors.slice(0, 30).join('; ')}`);
+  const purity = seedSourcePurityErrors(built.content);
+  if (purity.length) throw new Error(`final seed source rejected: ${purity.join('; ')}`);
+  await writeSeedsDefs({ ...input, plan });
   const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', built.content);
   const environment = seedEnvironmentErrors(saved);
   if (environment.length) {
@@ -454,9 +461,7 @@ async function readSeedBuildInput(scan: CbScan, context: mls.msg.ExecutionContex
     ...(operatedStates.get(entity.entityId)?.length ? { operatedStates: operatedStates.get(entity.entityId) } : {}),
   }));
   const ruleIds = [...new Set(scan.owners.flatMap(owner => owner.rulesApplied))].sort();
-  const ruleDefs = await readRuleDefinitions(project);
-  const ruleById = new Map(ruleDefs.map(rule => [rule.ruleId, rule]));
-  const rules: SeedRuleDefinition[] = ruleIds.map(ruleId => ruleById.get(ruleId) ?? { ruleId, title: '', description: '', appliesTo: [] });
+  const rules = resolveAppliedRules(await readRuleDefinitions(project), ruleIds);
   const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
   const actors = await readActorDefinitions(project);
   const usecaseSources = await readGeneratedUsecaseSources(project, moduleName);
@@ -469,13 +474,51 @@ async function readSeedBuildInput(scan: CbScan, context: mls.msg.ExecutionContex
     mdmOwners: propertyScan.owners.filter(owner => owner.mdm).map(owner => ({ entity: owner.entity, mdm: owner.mdm })),
     usecaseSources,
   });
+  const tablePlans = await readTablePlans(project, moduleName);
+  await attachFieldValidators(project, moduleName, entities, rules);
   return {
     project, moduleName, language, entities,
-    tablePlans: await readTablePlans(project, moduleName),
+    tablePlans,
     ruleIds, rules, relationships, actors,
     timeWindow: { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
     ...(mdmRequiredTags.length ? { mdmRequiredTags } : {}),
   };
+}
+
+async function writeSeedsDefs(
+  input: Omit<SeedBuildInput, 'plan'> & { plan: SeedPlan },
+  extra?: { partial?: boolean; completedWaveIndexes?: number[] },
+): Promise<void> {
+  const fileInfo = persistenceSeedsFileInfo(input.moduleName);
+  const entityIds = [...new Set(input.plan.localTables.map(table => table.tableId))];
+  const dependsFiles = entityIds.map(entityId => dtsRef(domainEntityFileInfo(input.moduleName, entityId)));
+  const pipeline = [buildPipelineItem('seeds', 'persistenceSeeds', fileInfo, dependsFiles, layerSkills('persistenceSeeds.md'))];
+  await saveDefs(fileInfo, 'seedsDefs', buildArtifact('seeds', 'seeds', input.moduleName, AGENT_NAME, buildSeedDefsData(input, extra)), pipeline);
+}
+
+async function attachFieldValidators(
+  project: number,
+  moduleName: string,
+  entities: SeedEntityDefinition[],
+  rules: { ruleId: string; appliesTo: string[] }[],
+): Promise<void> {
+  for (const entity of entities) {
+    let source = '';
+    try {
+      const shortName = entity.entityId.charAt(0).toLowerCase() + entity.entityId.slice(1);
+      const fileInfo = { project, level: 1, folder: `${moduleName}/layer_3_domain/entities`, shortName, extension: '.ts' };
+      const key = mls.stor.getKeyToFile(fileInfo as unknown as mls.stor.IFileInfo);
+      const file = (mls.stor.files as Record<string, any>)[key];
+      if (!file || file.status === 'deleted') continue;
+      source = String(await file.getContent());
+    } catch { continue; }
+    if (!source) continue;
+    for (const field of entity.fields) {
+      const ruleIds = rules.filter(rule => rule.appliesTo.some(target => target === field.fieldId || target.endsWith(`.${field.fieldId}`))).map(rule => rule.ruleId);
+      const exported = findSeedFieldValidatorExport(source, field.fieldId, ruleIds);
+      if (exported) field.validatorExport = exported;
+    }
+  }
 }
 
 async function readGeneratedUsecaseSources(project: number, moduleName: string): Promise<string[]> {
@@ -515,9 +558,6 @@ async function readActorDefinitions(project: number): Promise<SeedActorDefinitio
   return actors;
 }
 
-/** Full L4 rule text (id + title + description + appliesTo) from every rule set def in the project.
- * The planner receives the semantics of each applied rule instead of an opaque id, so it can satisfy
- * the rules without any domain-specific check hardcoded into the generator. */
 /**
  * entityRef -> the states some transition READS (`fromStates`), from `l4/<module>/workflows/*.defs.ts`.
  *
@@ -547,24 +587,6 @@ async function readOperatedStates(project: number, moduleName: string): Promise<
     }
   }
   return new Map([...byEntity].map(([entityId, states]) => [entityId, [...states].sort()]));
-}
-
-async function readRuleDefinitions(project: number): Promise<SeedRuleDefinition[]> {
-  const rules: SeedRuleDefinition[] = [];
-  for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
-    if (file.extension !== '.defs.ts') continue;
-    const parsed = parseDefsSource(String(await file.getContent()));
-    if (!isRecord(parsed) || !Array.isArray(parsed.rules)) continue;
-    for (const raw of parsed.rules) {
-      if (!isRecord(raw)) continue;
-      // ns4 names the rule `id`; the text behind the id is what the planner needs (run13's lesson).
-      const ruleId = readString(raw.ruleId) || readString(raw.id);
-      if (!ruleId) continue;
-      rules.push({ ruleId, title: readString(raw.title), description: readString(raw.description), appliesTo: readStringArray(raw.appliesTo) });
-    }
-  }
-  return rules;
 }
 
 async function readDefaultLanguage(project: number): Promise<string> {
@@ -660,13 +682,16 @@ function parseArtifact(content: string): Record<string, unknown> | undefined {
 }
 
 async function readPersistedPlan(project: number, moduleName: string): Promise<SeedPlanProgress | null> {
-  try {
-    const fileInfo = { project, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.ts' };
-    const key = mls.stor.getKeyToFile(fileInfo);
-    const file = (mls.stor.files as Record<string, any>)[key];
-    if (!file || file.status === 'deleted') return null;
-    return extractSeedPlanProgressFromSource(String(await file.getContent()));
-  } catch {
-    return null;
+  const folder = `${moduleName}/layer_1_external/adapters/persistence`;
+  for (const extension of ['.ts', '.defs.ts'] as const) {
+    try {
+      const fileInfo = { project, level: 1, folder, shortName: 'seeds', extension };
+      const key = mls.stor.getKeyToFile(fileInfo);
+      const file = (mls.stor.files as Record<string, any>)[key];
+      if (!file || file.status === 'deleted') continue;
+      const progress = extractSeedPlanProgressFromSource(String(await file.getContent()));
+      if (progress) return progress;
+    } catch { /* try the next source */ }
   }
+  return null;
 }

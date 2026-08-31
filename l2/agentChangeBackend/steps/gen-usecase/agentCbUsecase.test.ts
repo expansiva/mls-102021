@@ -26,6 +26,16 @@ void test('agentCbUsecase declares the LLM fan-out step agent contract', () => {
   assert.match(flow, /"agentName": "agentCbUsecase"/);
 });
 
+void test('gen-usecase worker prompt receives referenced rule text, not the whole catalog', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  assert.match(src, /appliedRulesPromptSection/);
+  assert.match(src, /readRuleDefinitions\(scan\.project\)/);
+  assert.match(src, /owner\.rulesApplied/);
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'applicationUsecase.md'), 'utf8');
+  assert.match(skill, /When in doubt, comment/);
+  assert.match(skill, /useRules/);
+});
+
 void test('gen-usecase owner item carries the declared lifecycle when the module has one', () => {
   const src = readFileSync(path.join(HERE, 'usecaseOwnerItem.ts'), 'utf8');
   assert.match(src, /lifecycleForEntity\(lifecycles, o\.entity\)/);
@@ -254,6 +264,49 @@ void test('derived projection in reads goes to derivedRefs, never ports or mdmRe
   assert.ok(!item.mdmRefs.includes('SignatureExport'));
   assert.ok(item.ports.includes('Petition'));
   assert.ok('SignatureExport' in item.entityFields);
+  assert.equal(Object.prototype.hasOwnProperty.call(item.derivedRefs[0], 'derivation'), false,
+    'older l4 without derivation must keep the same derivedRefs shape');
+});
+
+void test('derivedRefs carries derivation and folds the source into ports when the l4 declared the account', () => {
+  const derivation = {
+    from: 'PetitionSignature',
+    filter: 'status = valid',
+    aggregate: [
+      { fieldId: 'petitionId', op: 'groupKey', sourceField: 'petitionId' },
+      { fieldId: 'validSignatureCount', op: 'count' },
+    ],
+  };
+  const counter = {
+    entityId: 'PetitionSignatureCounter',
+    title: 'Contador de assinaturas',
+    description: 'Total de assinaturas válidas da petição.',
+    kind: 'derived' as const,
+    ownership: 'derived',
+    moduleName: 'listaAssinatura',
+    fields: [
+      { fieldId: 'petitionId', type: 'uuid', required: true },
+      { fieldId: 'validSignatureCount', type: 'integer', required: true },
+    ],
+    storageTarget: 'derived',
+    storageNotes: 'Calculado sob demanda.',
+    derivation,
+  };
+  const signature = coreEntity('PetitionSignature');
+  const o = owner({
+    id: 'viewPetitionSignatureCounter',
+    entity: 'PetitionSignatureCounter',
+    reads: ['PetitionSignatureCounter'],
+  });
+  const scan = scanOf([counter, signature], [o], [aggregate('PetitionSignature')]);
+  const item = buildOwnerItem(o as any, deriveMaps(scan), scan.lifecycles);
+  assert.ok(Array.isArray(item.derivedRefs));
+  assert.deepEqual(item.derivedRefs.map((r: { entityId: string }) => r.entityId), ['PetitionSignatureCounter']);
+  assert.deepEqual(item.derivedRefs[0].derivation, derivation);
+  assert.ok(item.ports.includes('PetitionSignature'), 'derivation.from must be reachable as a port');
+  assert.ok(!item.ports.includes('PetitionSignatureCounter'));
+  assert.ok('PetitionSignature' in item.entityFields);
+  assert.equal(JSON.stringify(item).includes('"derivation"'), true);
 });
 
 void test('module without derived entities omits the derivedRefs key', () => {
@@ -325,10 +378,15 @@ void test('prompt.md teaches derivedRefs next to mdmRefs and keeps ports non-emp
   const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
   assert.match(prompt, /Entities in "derivedRefs" are computed projections/);
   assert.match(prompt, /Never put a derivedRef in ports, and never resolveRepository it/);
+  assert.match(prompt, /When a derivedRef carries `derivation`/);
+  assert.match(prompt, /When `derivation` is absent/);
   assert.match(prompt, /ports must NOT be empty/);
   assert.match(prompt, /Entities in "mdmRefs"/);
   const mdmAt = prompt.indexOf('Entities in "mdmRefs"');
   const derivedAt = prompt.indexOf('Entities in "derivedRefs"');
   assert.ok(mdmAt >= 0 && derivedAt > mdmAt, 'derivedRefs paragraph must sit after mdmRefs');
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'applicationUsecase.md'), 'utf8');
+  assert.match(skill, /When a derivedRef carries `derivation`/);
+  assert.match(skill, /When `derivation` is absent/);
 });
 

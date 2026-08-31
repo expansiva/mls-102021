@@ -14,6 +14,10 @@ state terminal if it has outgoing edges in `allowed`, do not drop a declared fro
 redundant (the matrix is attached to the defs). Without a declared lifecycle, status-transition
 invariants remain in scope as today.
 
+When the payload includes **L4 rules referenced**, those texts (plus field constraints) are the only
+source of reject invariants. Do not invent a non-empty / "must have images" check from product prose;
+if a field is required, it may still be an empty array unless a listed rule or constraint forbids it.
+
 Do NOT output fields, valueObjects, title or statusEnum: the ontology fields of the root AND of every
 embedded member, the value-object structure and the status enum are attached automatically from the
 ontology — restating them wastes output and is ignored. Keep the output compact.

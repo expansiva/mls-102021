@@ -28,6 +28,16 @@ void test('mdmRequiredTags come from ALL_STATUSES, not the pending-work scan', (
   assert.match(src, /propertyScan\.owners\.filter\(owner => owner\.mdm\)/);
 });
 
+void test('gen-seeds still reads full L4 rule text through the shared helper', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /readRuleDefinitions\(project\)/);
+  assert.match(src, /resolveAppliedRules\(/);
+  assert.match(src, /helpers\/cbRules\.js/);
+  const core = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbSeedsCore.ts'), 'utf8');
+  assert.match(core, /L4 rules the scenario must satisfy \(full text\)/);
+  assert.match(core, /appliesTo: rule\.appliesTo/);
+});
+
 void test('agentCbSeeds declares the LLM seed planner step agent contract', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   const flow = readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8');
@@ -131,6 +141,17 @@ void test('wave give-up degrades health and keeps every attempt\'s violations', 
 void test('full seed convergence writes seeds: ok so a prior-run degraded cannot ghost', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   assert.match(src, /if \(!input\.skipped\) await saveHealthReport\(\{ seeds: 'ok' \}\)/);
+});
+
+void test('gen-seeds writes seeds.defs.ts in the buildArtifact envelope then compiles seeds.ts', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.match(src, /writeSeedsDefs\(/);
+  assert.match(src, /buildArtifact\('seeds', 'seeds'/);
+  assert.match(src, /persistenceSeedsFileInfo/);
+  assert.match(src, /layerSkills\('persistenceSeeds\.md'\)/);
+  assert.match(src, /seedSourcePurityErrors/);
+  assert.match(src, /findSeedFieldValidatorExport/);
+  assert.doesNotMatch(src, /todo\//);
 });
 
 void test('an environment failure retries the compile once, without spending the replan budget', () => {

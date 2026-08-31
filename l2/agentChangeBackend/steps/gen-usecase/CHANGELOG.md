@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-08-31 — `derivedRefs` leva `derivation` quando o l4 a declara
+
+A conta da projeção (fonte, filtro, agregação) agora viaja no item do owner junto de
+`description`/`notes`. Com `derivation`, o usecase implementa a agregação lendo a fonte pelo port
+(o `from` entra em `ports`/`mdmRefs`/`entityFields`). Sem o campo (l4 antigo), o item é o de
+hoje — o run não falha. Skill e `prompt.md` dizem os dois caminhos.
+
+## 2026-08-31 — o texto das regras L4 chega ao prompt (não só o id)
+
+O worker recebia `rulesApplied` como ids opacos. O prompt agora inclui id + título + descrição só
+das regras do owner. Skill: predicado que rejeita só existe com regra/constraint; na dúvida, comente.
+
 ## 2026-08-30 — `derivedRefs` para projeção calculada (sem tabela, sem port)
 
 Uma operação que lê `kind: projection` + `storage.target: derived` aparecia em `reads` sem canal no

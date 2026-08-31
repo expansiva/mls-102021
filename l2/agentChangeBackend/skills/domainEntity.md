@@ -78,6 +78,10 @@ export function recomputeOrderTotal(items: OrderItem[]): number {
   (oneToOne). Export the member interface too.
 - Provide the invariants from `data.invariants` as pure helpers (status transitions, `requiresItem`,
   totals). No I/O, no `ctx`, no imports.
+- A predicate that REJECTS (`return false`, a validator that fails) exists ONLY when a declared
+  rule (`useRules`) or a field constraint requires it. What you infer from product prose goes in a
+  COMMENT, never as `throw` or `return false`. A required field still allows an empty array/object
+  unless a rule or constraint says otherwise. **When in doubt, comment.**
 - When `data.lifecycle` is present (`allowed: { from: to[] }`), the `*_STATUS_TRANSITIONS` map MUST be
   that matrix verbatim: every declared from→to pair, and no empty array on a state that still has
   outgoing edges. Do not invent terminal states the matrix does not have. `canTransition*` reads this

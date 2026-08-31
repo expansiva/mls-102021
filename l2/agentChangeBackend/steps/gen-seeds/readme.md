@@ -10,7 +10,8 @@ L4/L5 + table defs.
 
 ## Output
 
-l1/{module}/.../persistence/seeds.ts. Enfileira cb-register.
+l1/{module}/.../persistence/seeds.defs.ts (plano no envelope `buildArtifact`) e `seeds.ts` compilado
+localmente a partir dele (linhas tipadas pela entidade, `TableSeedRows` na fronteira). Enfileira cb-register.
 
 ## Invariantes
 
