@@ -154,6 +154,20 @@ void test('gen-seeds writes seeds.defs.ts in the buildArtifact envelope then com
   assert.doesNotMatch(src, /todo\//);
 });
 
+void test('a seeds.ts compile error records, degrades, and continues to register', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
+  assert.doesNotMatch(src, /throw new Error\(`failed to compile seeds\.ts/);
+  assert.doesNotMatch(src, /throw new Error\(`failed to persist partial seeds\.ts/);
+  assert.match(src, /function continueAfterSeedCompileFailure\(/);
+  assert.match(src, /await recordFailedCbRun\(\{ longMemory: context\.task\?\.iaCompressed\?\.longMemory, reason \}\)/);
+  assert.match(src, /return continueSeedsDegraded\(context, parentStep, step, hookSequential, reason\)/);
+  assert.equal((src.match(/continueAfterSeedCompileFailure\(context, parentStep, step, hookSequential, saved\.compileErrors\)/g) || []).length, 2);
+  // The continue path still enqueues seed-assets → register, so registerRepositories.ts is written.
+  assert.match(src, /enqueueSeedAssets\(context, parentStep, step\)/);
+  // Infra failure still throws — that path is not this rule.
+  assert.match(src, /throw new Error\(seedInfraFailure\(environment\)\)/);
+});
+
 void test('an environment failure retries the compile once, without spending the replan budget', () => {
   const src = readFileSync(path.join(HERE, 'agentCbSeeds.ts'), 'utf8');
   // First occurrence: the SAME step is rescheduled with the flag; seedAttempt is carried over, never

@@ -24,11 +24,13 @@ import {
   collectRequiredMdmTags, repairSeedPlanDeterministically, skippedMdmEntityIds,
   parseSeedAttemptRecords, recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
   SEED_WINDOW_START, SEED_WINDOW_END, buildSeedDefsData, seedSourcePurityErrors, findSeedFieldValidatorExport,
+  seedFieldIsBareString,
   type SeedBuildInput, type SeedEntityDefinition, type SeedPlan, type SeedTableDefinition,
   type SeedActorDefinition, type SeedPlanProgress, type SeedPlanningWave,
   type SeedAttemptRecord,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 import { readRuleDefinitions, resolveAppliedRules } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
+import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 const AGENT_NAME = 'agentCbSeeds';
 const TOOL_NAME = 'submitSeedScenario';
@@ -329,7 +331,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const saved = await saveGeneratedTs(input.project, 1, `${input.moduleName}/layer_1_external/adapters/persistence`, 'seeds', partial);
     const partialEnvironment = seedEnvironmentErrors(saved);
     if (partialEnvironment.length) throw new Error(seedInfraFailure(partialEnvironment));
-    if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to persist partial seeds.ts: ${saved.compileErrors.join('; ')}`);
+    if (!saved.ok || saved.compileErrors.length) {
+      return continueAfterSeedCompileFailure(context, parentStep, step, hookSequential, saved.compileErrors);
+    }
     if (!next) return finalizeSeedPlan(context, parentStep, step, hookSequential, input, merged, `Generated final seed wave ${batch.index} (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
     return scheduleSeedStep(context, parentStep, step, hookSequential, { seedAttempt: 1, seedFindings: [], forcedBatch: next }, `Validated seed wave ${batch.index}; persisted partial plan and scheduled the next wave (estimated ${estimateSeedPlanningWaveTokens(input, batch)} tokens; ${tokenTrace}).`);
   } catch (error) {
@@ -357,6 +361,19 @@ async function continueSeedsDegraded(
     createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
       `SEEDS DEGRADED (run continues to register/validate-all/finalize): ${message}`, 'input_output'),
   ];
+}
+
+/** Compile errors of the agent's own seeds.ts: record, degrade, continue. Infra still throws. */
+async function continueAfterSeedCompileFailure(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  compileErrors: string[],
+): Promise<mls.msg.AgentIntent[]> {
+  const reason = `failed to compile seeds.ts: ${compileErrors.join('; ')}`;
+  await recordFailedCbRun({ longMemory: context.task?.iaCompressed?.longMemory, reason });
+  return continueSeedsDegraded(context, parentStep, step, hookSequential, reason);
 }
 
 /**
@@ -427,7 +444,10 @@ async function finalizeSeedPlan(
     }
     throw new Error(seedInfraFailure(environment));
   }
-  if (!saved.ok || saved.compileErrors.length) throw new Error(`failed to compile seeds.ts: ${saved.compileErrors.join('; ')}`);
+  // Seed data is not on the critical path: a type error in seeds.ts must not skip register/validate-all.
+  if (!saved.ok || saved.compileErrors.length) {
+    return continueAfterSeedCompileFailure(context, parentStep, step, hookSequential, saved.compileErrors);
+  }
   // Full convergence writes a positive verdict so foldSeedsDegraded will not resurrect a `degraded`
   // snapshot from a previous run still sitting in `rounds`. Give-up already wrote `seeds: degraded`
   // (and passes `input.skipped`); do not overwrite it with ok.
@@ -515,8 +535,8 @@ async function attachFieldValidators(
     if (!source) continue;
     for (const field of entity.fields) {
       const ruleIds = rules.filter(rule => rule.appliesTo.some(target => target === field.fieldId || target.endsWith(`.${field.fieldId}`))).map(rule => rule.ruleId);
-      const exported = findSeedFieldValidatorExport(source, field.fieldId, ruleIds);
-      if (exported) field.validatorExport = exported;
+      const exported = findSeedFieldValidatorExport(source, field.fieldId, ruleIds, field);
+      if (exported && seedFieldIsBareString(field)) field.validatorExport = exported;
     }
   }
 }

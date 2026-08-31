@@ -34,8 +34,12 @@ export const petitionSeeds: TableSeedRows = {
 - Rows are typed by the **entity** (`const rows: Petition[]`). A string where the entity declares an
   array is a compile error — do not coerce. The `TableSeedRows` export is the runtime boundary only
   (`rows: Array<Record<string, unknown>>`); do not change that contract.
-- When a field has a domain validator, **call that validator** and search deterministically for a
-  value it accepts (vary trailing digits, cap 100 attempts). If none passes, keep the planned value
-  and record a warning. The generator does not interpret the rule; the app's function does.
+- When a field is a bare `string` (not a literal union) **and** a domain validator accepts `string`,
+  call that validator and search deterministically for a value it accepts (vary trailing digits, cap
+  100 attempts). If none passes, keep the planned value and record a warning. A literal-union field
+  is already checked by the compiler — do not wrap it (`seedStringPassing` returns `string` and
+  takes `(value: string) => boolean`). In doubt, emit the planned value as-is. The generator does
+  not interpret the rule; the app's function does. The decision is the declared field type and the
+  function signature, never the function name.
 - Export `seedIds` with one named anchor per seeded row (`entityId` camel + row key).
 - Never invent a country-, document-, or domain-specific check in this file.

@@ -11,7 +11,7 @@ import {
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
   skippedMdmEntityIds, mdmIndexName,
   recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
-  seedAnchorName, seedStringPassing, seedSourcePurityErrors, findSeedFieldValidatorExport, buildSeedDefsData,
+  seedAnchorName, seedStringPassing, seedSourcePurityErrors, findSeedFieldValidatorExport, seedFieldIsBareString, buildSeedDefsData,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -1098,6 +1098,40 @@ test('findSeedFieldValidatorExport matches the field id, not a neighbouring expo
   ].join('\n');
   assert.equal(findSeedFieldValidatorExport(source, 'taxId', ['validTax']), 'isValidTaxId');
   assert.equal(findSeedFieldValidatorExport(source, 'missing', []), undefined);
+});
+
+test('a literal-union field with a type guard is not wrapped; a bare string validator is', () => {
+  const input = validInput();
+  const shift = input.entities.find(entity => entity.entityId === 'Shift')!;
+  shift.fields.find(item => item.fieldId === 'status')!.validatorExport = 'isValidShiftStatus';
+  shift.fields.push({ fieldId: 'taxId', type: 'string', required: true, enumValues: [], validatorExport: 'isValidTaxId' });
+  input.plan.localTables[0].rows[0].details.push({ name: 'taxId', value: 'ABC10' });
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /seedStringPassing\(isValidTaxId, "ABC10"\)/);
+  assert.doesNotMatch(built.content ?? '', /seedStringPassing\(isValidShiftStatus/);
+  assert.match(built.content ?? '', /"status": "open"/);
+  assert.doesNotMatch(built.content ?? '', /isValidShiftStatus/);
+});
+
+test('findSeedFieldValidatorExport skips a type guard on a literal union and keeps a string validator', () => {
+  const source = [
+    'export type ItemStatus = "open" | "closed";',
+    'export interface Item {',
+    '  taxId: string;',
+    '  status: ItemStatus;',
+    '}',
+    'export function isValidTaxId(value: string): boolean { return true; }',
+    'export function isValidItemStatus(',
+    '  status: ItemStatus,',
+    '): boolean { return true; }',
+  ].join('\n');
+  assert.equal(seedFieldIsBareString({ type: 'string', enumValues: [] }), true);
+  assert.equal(seedFieldIsBareString({ type: 'string', enumValues: ['open', 'closed'] }), false);
+  assert.equal(findSeedFieldValidatorExport(source, 'taxId', [], { type: 'string', enumValues: [] }), 'isValidTaxId');
+  assert.equal(findSeedFieldValidatorExport(source, 'status', [], { type: 'string', enumValues: ['open', 'closed'] }), undefined);
+  // In doubt from the generated type (not `string`) — do not wrap even if L4 forgot the enum.
+  assert.equal(findSeedFieldValidatorExport(source, 'status', [], { type: 'string', enumValues: [] }), undefined);
 });
 
 test('buildSeedDefsData is the plan envelope consumed by seeds.defs.ts', () => {

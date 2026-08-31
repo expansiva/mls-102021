@@ -1032,8 +1032,46 @@ export function seedAnchorName(entityId: string, rowKey: string): string {
   return entity + camel.charAt(0).toUpperCase() + camel.slice(1);
 }
 
-/** Domain export that judges a field: name contains the field id or an applied rule id. Shortest match wins. */
-export function findSeedFieldValidatorExport(entitySource: string, fieldId: string, ruleIds: string[] = []): string | undefined {
+/** Bare `string` (not a literal union). Wrapping anything else with seedStringPassing is a type error. */
+export function seedFieldIsBareString(field: Pick<SeedFieldDefinition, 'type' | 'enumValues'>): boolean {
+  return field.type === 'string' && !(field.enumValues?.length);
+}
+
+function seedTsIdent(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value);
+}
+
+/** Declared TypeScript type of a field on the generated entity, when it can be read. */
+function seedDeclaredFieldType(entitySource: string, fieldId: string): string | undefined {
+  if (!seedTsIdent(fieldId)) return undefined;
+  const match = new RegExp(`(?:^|\\n)\\s*${fieldId}\\??\\s*:\\s*([^;\\n]+)`, 'u').exec(entitySource);
+  return match ? match[1].trim().replace(/\s+/g, ' ') : undefined;
+}
+
+/** First-parameter type of `export function name(...)`, when it can be read. */
+function seedValidatorParamType(entitySource: string, exportName: string): string | undefined {
+  if (!seedTsIdent(exportName)) return undefined;
+  const match = new RegExp(
+    `export\\s+function\\s+${exportName}\\s*\\(\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:\\s*([^,\\)]+)`,
+    'u',
+  ).exec(entitySource);
+  return match ? match[1].trim().replace(/\s+/g, ' ') : undefined;
+}
+
+/**
+ * Domain export that judges a field, only when wrapping it is type-safe: the field is a bare `string`
+ * and the function accepts `string`. A literal union is already checked by tsc — wrapping it yields
+ * TS2322 (returns `string`) and TS2345 (type-guard param is the union, not `string`). In doubt, skip.
+ */
+export function findSeedFieldValidatorExport(
+  entitySource: string,
+  fieldId: string,
+  ruleIds: string[] = [],
+  field?: Pick<SeedFieldDefinition, 'type' | 'enumValues'>,
+): string | undefined {
+  if (field && !seedFieldIsBareString(field)) return undefined;
+  const declared = seedDeclaredFieldType(entitySource, fieldId);
+  if (declared !== undefined && declared !== 'string') return undefined;
   const exported: string[] = [];
   const re = /export\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
   let match: RegExpExecArray | null;
@@ -1041,10 +1079,15 @@ export function findSeedFieldValidatorExport(entitySource: string, fieldId: stri
   const needle = (value: string) => value.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
   const fieldNeedle = needle(fieldId);
   const byField = exported.filter(name => fieldNeedle && needle(name).includes(fieldNeedle));
-  if (byField.length) return [...byField].sort((left, right) => left.length - right.length)[0];
   const ruleNeedles = ruleIds.map(needle).filter(Boolean);
   const byRule = exported.filter(name => ruleNeedles.some(rule => needle(name).includes(rule)));
-  return byRule.length ? [...byRule].sort((left, right) => left.length - right.length)[0] : undefined;
+  const name = byField.length
+    ? [...byField].sort((left, right) => left.length - right.length)[0]
+    : byRule.length ? [...byRule].sort((left, right) => left.length - right.length)[0] : undefined;
+  if (!name) return undefined;
+  // Unparsed signature = in doubt = do not wrap.
+  if (seedValidatorParamType(entitySource, name) !== 'string') return undefined;
+  return name;
 }
 
 /** Bounded deterministic search: vary trailing digits until `check` accepts, else keep the planned value. */
@@ -1787,8 +1830,12 @@ function resolveValue(value: SeedValue, ids: Map<string, string>): unknown {
 
 interface SeedValidatorMarker { __agentCbSeedValidator: { fn: string; planned: string } }
 
+function seedStringPassingApplies(field: SeedFieldDefinition): field is SeedFieldDefinition & { validatorExport: string } {
+  return !!field.validatorExport && seedFieldIsBareString(field);
+}
+
 function wrapValidated(field: SeedFieldDefinition | undefined, value: unknown): unknown {
-  if (!field?.validatorExport || typeof value !== 'string') return value;
+  if (!field || typeof value !== 'string' || !seedStringPassingApplies(field)) return value;
   return { __agentCbSeedValidator: { fn: field.validatorExport, planned: value } } satisfies SeedValidatorMarker;
 }
 
@@ -2020,7 +2067,7 @@ function buildLocalEntityConsts(
           if (child) obj[field.fieldId] = child.rows.map(childRow => resolveFields(childRow.fields, ids));
           else if (!field.required) obj[field.fieldId] = null;
         }
-        if (field.validatorExport) entry.validators.add(field.validatorExport);
+        if (seedStringPassingApplies(field)) entry.validators.add(field.validatorExport);
       }
       for (const child of row.children) {
         if (!Object.prototype.hasOwnProperty.call(obj, child.name)) {
@@ -2063,7 +2110,7 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     const used = input.plan.localTables.some(table => table.tableId === entity.entityId)
       || input.plan.mdmEntities.some(item => item.entityId === entity.entityId);
     if (!used) continue;
-    const validators = entity.fields.map(field => field.validatorExport).filter((name): name is string => !!name);
+    const validators = entity.fields.filter(seedStringPassingApplies).map(field => field.validatorExport);
     if (!validators.length) continue;
     const moduleRef = entityModuleRef(input.project, input.moduleName, entity.entityId);
     const entry = typed.imports.get(moduleRef) ?? { typeName: entity.entityId, validators: new Set<string>(), typeUsed: false };
