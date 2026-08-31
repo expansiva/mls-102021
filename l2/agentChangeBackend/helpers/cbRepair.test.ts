@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serializeRepairMutation } from './cbRepairLock.js';
 import {
-  buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage,
+  buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage, foldPipelineNotices,
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine, MAX_HEALTH_ROUNDS,
 } from './cbHealthReport.js';
 import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
@@ -79,6 +79,22 @@ test('buildHealthReportContent: rounds array is bounded and tolerates corrupt ex
   const parsed = JSON.parse(content);
   assert.equal(parsed.rounds.length, MAX_HEALTH_ROUNDS, 'rounds capped');
   assert.equal(parsed.rounds[parsed.rounds.length - 1].n, MAX_HEALTH_ROUNDS + 5, 'newest kept');
+});
+
+test('foldPipelineNotices keeps scan warnings and read-back across mute snapshots', () => {
+  const first = buildHealthReportContent(null, {
+    outcome: 'scan',
+    scanWarnings: ['duplicate todoBackend owner operation:createSignature; first entry kept'],
+  }, '2026-08-31T13:44:00.000Z');
+  const muted = JSON.parse(buildHealthReportContent(first, { outcome: 'passed', findings: [] }, '2026-08-31T13:50:00.000Z'));
+  const folded = foldPipelineNotices(JSON.stringify(muted), { outcome: 'passed' });
+  assert.deepEqual(folded.scanWarnings, ['duplicate todoBackend owner operation:createSignature; first entry kept']);
+  const withReadBack = foldPipelineNotices(first, {
+    todoReadBack: { retried: 7, lostUpdate: true, summary: 'stor 7 divergent' },
+  });
+  assert.equal((withReadBack.todoReadBack as { retried: number }).retried, 7);
+  const emptyScan = foldPipelineNotices(first, { scanWarnings: [] });
+  assert.deepEqual(emptyScan.scanWarnings, []);
 });
 
 test('foldRepairAudit keeps the repair rounds when the last snapshot is a clean pass', () => {

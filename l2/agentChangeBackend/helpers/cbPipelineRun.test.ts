@@ -23,6 +23,28 @@ void test('CB run summary copies health degradations off the console path', () =
   assert.equal(summary.degradations.some(item => item.kind === 'health-degraded'), true);
   assert.equal(summary.degradations.some(item => item.kind === 'seeds-degraded'), true);
   assert.equal(summary.counts.ownersDone, 8);
+  assert.deepEqual(summary.scanWarnings, []);
+  assert.equal(summary.todoReadBack, null);
+});
+
+void test('CB run summary copies scan warnings and todo read-back off the step-status path', () => {
+  const summary = buildCbRunSummary({
+    moduleName: 'listaAssinatura2',
+    command: '/rebuild all',
+    noWork: false,
+    ownersDone: 3,
+    ownersFlipped: 0,
+    compilerLeft: false,
+    health: {
+      findings: [],
+      degraded: [],
+      scanWarnings: ['duplicate todoBackend owner useCase:createSignature; first entry kept'],
+      todoReadBack: { retried: 7, lostUpdate: true, message: 'HIGH lost update: 7 owner(s) rewritten' },
+    },
+    summary: 'run complete',
+  });
+  assert.deepEqual(summary.scanWarnings, ['duplicate todoBackend owner useCase:createSignature; first entry kept']);
+  assert.equal((summary.todoReadBack as { retried: number }).retried, 7);
 });
 
 void test('a failed changeFrontend handoff degrades without failing the run', () => {

@@ -6,7 +6,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
-import { clearRepairState } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { clearRepairState, saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 
 export function createAgent(): IAgentAsync {
@@ -51,6 +51,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // with the repair budget already burned. A new run regenerates the artifacts anyway — old
     // findings reference code that is about to be replaced; reset everything at run start.
     await clearRepairState();
+    await saveHealthReport({ scanWarnings: scan.warnings });
     const warningTrace = scan.warnings.length ? ` Warnings: ${scan.warnings.slice(0, 8).join('; ')}` : '';
     if (scan.owners.length === 0) {
       // A4 (T10): with NO pending owner AND no explicit module there is nothing to scope to — the

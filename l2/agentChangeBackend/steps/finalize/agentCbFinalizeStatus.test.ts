@@ -44,6 +44,8 @@ void test('finalize re-reads todoBackend on both surfaces, retries once and then
   assert.match(src, /const firstReadBack = await readBackTodoBackend\(expected, moduleName\);/);
   // Retry ÚNICO, e só dos owners divergentes.
   assert.match(src, /for \(const divergence of todoReadBackDivergences\(readBack\)\)/);
+  assert.match(src, /retryMayWriteTodoStatus\(want, await ownerArtifactsExist\(owner, moduleName\)\)/);
+  assert.match(src, /saveHealthReport\(\{ todoReadBack: todoReadBackNotice \}\)/);
   assert.match(src, /readBack = await readBackTodoBackend\(expected, moduleName\);\s*\n\s*\}/);
   assert.match(src, /read-back FAILED: no todoBackend file for module/);
   // Persistindo a divergência, o step FALHA — inclusive quando nada pôde ser reescrito.

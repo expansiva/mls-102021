@@ -282,6 +282,47 @@ export function operationsCoverageLogLine(verdict: OperationsCoverageVerdict): s
   return `operations: ${parts.join(', ')}`;
 }
 
+/**
+ * Scan warnings and the finalize read-back/retry summary must survive later snapshots that do not
+ * mention them. A snapshot that SETS the field (even to []) is the latest run's value.
+ */
+export function foldPipelineNotices(
+  existingRaw: string | null,
+  current: Record<string, unknown>,
+): { scanWarnings?: string[]; todoReadBack?: unknown } {
+  const asWarnings = (value: unknown): string[] | undefined =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
+  const asReadBack = (value: unknown): unknown =>
+    value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+
+  const pick = <T>(field: string, from: (value: unknown) => T | undefined): T | undefined => {
+    if (Object.prototype.hasOwnProperty.call(current, field)) return from(current[field]);
+    if (!existingRaw) return undefined;
+    try {
+      const parsed = JSON.parse(existingRaw) as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(parsed, field)) return from(parsed[field]);
+      if (Array.isArray(parsed.rounds)) {
+        for (let i = parsed.rounds.length - 1; i >= 0; i--) {
+          const round = parsed.rounds[i];
+          if (!round || typeof round !== 'object' || Array.isArray(round)) continue;
+          const rec = round as Record<string, unknown>;
+          if (Object.prototype.hasOwnProperty.call(rec, field)) return from(rec[field]);
+        }
+      }
+    } catch {
+      /* keep current */
+    }
+    return undefined;
+  };
+
+  const out: { scanWarnings?: string[]; todoReadBack?: unknown } = {};
+  const scanWarnings = pick('scanWarnings', asWarnings);
+  if (scanWarnings !== undefined) out.scanWarnings = scanWarnings;
+  const todoReadBack = pick('todoReadBack', asReadBack);
+  if (todoReadBack !== undefined) out.todoReadBack = todoReadBack;
+  return out;
+}
+
 /** Keep the highest models.peak seen in any snapshot — be5 closed with registry 104 but the leak is the peak. */
 export function foldModelsPeak(
   existingRaw: string | null,

@@ -250,7 +250,7 @@ export type {
   CbBffCallInput, CbBffCallOutputField, CbBffCallOutput, CbBffCallUse, CbBffCall, CbWorkspace, CbActor,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
 
-import { CB_PHASES, reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners, type CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { CB_PHASES, reconcileBackendTodo, resolveModuleName, scopeBackendScan, upsertEntity, backfillEntityFieldsFromOwners, lookupTodoOwner, indexTodoOwner, flattenTodoOwners, type CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 export { CB_PHASES } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 export type { CbPhaseKey } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
 import { promptSizeError } from '/_102021_/l2/agentChangeBackend/helpers/cbPromptBudget.js';
@@ -400,7 +400,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
     throw new Error('l5/{module}/todoBackend.defs.ts not found; backend generation status must come from todoBackend, not inline l4 statusBackend.');
   }
   for (const owner of allOwners) {
-    const todoOwner = todoState.ownersByKey.get(ownerKey(owner));
+    const todoOwner = lookupTodoOwner(todoState.ownersByModule, owner, todoState.ownersByKey);
     if (!todoOwner) continue;
     owner.todoStatus = todoOwner.status;
     owner.statusBackend = todoOwner.status;
@@ -414,7 +414,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   }
   const reconciliation = reconcileBackendTodo({
     l4Owners: allOwners.map(owner => ({ key: ownerKey(owner), moduleName: owner.moduleName })),
-    todoOwners: [...todoState.ownersByKey.entries()].map(([key, owner]) => ({ key, moduleName: owner.moduleName })),
+    todoOwners: flattenTodoOwners(todoState.ownersByModule).map(({ key, moduleName }) => ({ key, moduleName })),
     todoErrors: todoState.errors,
     targetModule,
   });
@@ -487,6 +487,9 @@ interface CbTodoState {
   /** The l5 folder of each todo file, so an unreadable one can be attributed to its module. */
   filesByModule: Set<string>;
   moduleNames: string[];
+  /** Per-module index. Homonyms across modules are distinct. */
+  ownersByModule: Map<string, Map<string, CbTodoOwner>>;
+  /** Module-blind first-seen map — v1 flat layout only (owner.moduleName empty/`unknown`). */
   ownersByKey: Map<string, CbTodoOwner>;
   warnings: string[];
   errors: Array<{ moduleName: string; message: string }>;
@@ -501,6 +504,7 @@ function todoOwnerKey(ownerType: string, ownerId: string): string {
 }
 
 async function readBackendTodoState(project: number): Promise<CbTodoState> {
+  const ownersByModule = new Map<string, Map<string, CbTodoOwner>>();
   const ownersByKey = new Map<string, CbTodoOwner>();
   const moduleNames = new Set<string>();
   const warnings: string[] = [];
@@ -535,11 +539,15 @@ async function readBackendTodoState(project: number): Promise<CbTodoState> {
         continue;
       }
       const key = todoOwnerKey(ownerType, ownerId);
-      if (ownersByKey.has(key)) warnings.push(`duplicate todoBackend owner ${key}; first entry kept`);
-      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName });
+      const value: CbTodoOwner = { ownerType, ownerId, status, moduleName };
+      if (indexTodoOwner(ownersByModule, moduleName, key, value) === 'duplicate') {
+        warnings.push(`duplicate todoBackend owner ${key}; first entry kept`);
+        continue;
+      }
+      if (!ownersByKey.has(key)) ownersByKey.set(key, value);
     }
   }
-  return { files, filesByModule, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+  return { files, filesByModule, moduleNames: Array.from(moduleNames).sort(), ownersByModule, ownersByKey, warnings, errors };
 }
 
 // Derived from ALL_STATUSES so the list lives in exactly ONE place (it used to be spelled out here too).

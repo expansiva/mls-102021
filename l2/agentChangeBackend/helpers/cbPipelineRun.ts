@@ -22,6 +22,8 @@ export interface PipelineRunSummary {
   reason: string;
   counts: Record<string, unknown>;
   degradations: PipelineRunDegradation[];
+  scanWarnings?: string[];
+  todoReadBack?: unknown;
 }
 
 export function nextPipelineRunNn(existingShortNames: readonly string[], agentSlug: string): string {
@@ -118,6 +120,8 @@ export function buildCbRunSummary(input: {
       noWork: input.noWork,
     },
     degradations,
+    scanWarnings: Array.isArray(health?.scanWarnings) ? health!.scanWarnings.map(String) : [],
+    todoReadBack: health?.todoReadBack && typeof health.todoReadBack === 'object' ? health.todoReadBack : null,
   };
 }
 

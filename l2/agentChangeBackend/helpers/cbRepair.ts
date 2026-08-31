@@ -18,7 +18,7 @@ import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterial
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
 import { cbTraceFolder, cbTraceReadFolders } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceScope.js';
-import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
+import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage, foldPipelineNotices } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 import { parseStepCost, accumulatePhaseCost, summarizeCost, type CbCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import {
   COMPONENT_REPAIR_BUDGET, MAX_LAST_CODE, mergeComponentRepair, buildRepairPromptSection,
@@ -209,6 +209,7 @@ export async function saveHealthReport(report: Record<string, unknown>): Promise
     const models = foldModelsPeak(existingRaw, withCost);
     const seedsFold = foldSeedsDegraded(existingRaw, withCost);
     const operationsFold = foldOperationsCoverage(existingRaw, withCost);
+    const notices = foldPipelineNotices(existingRaw, withCost);
     const enriched = {
       ...withCost,
       repairHistory: folded.repairHistory,
@@ -216,6 +217,7 @@ export async function saveHealthReport(report: Record<string, unknown>): Promise
       ...(models ? { models } : {}),
       ...seedsFold,
       ...operationsFold,
+      ...notices,
     };
     const source = buildHealthReportContent(existingRaw, enriched, new Date().toISOString());
     if (!file) file = await createStorFile({ ...info, source }, false, false, false);

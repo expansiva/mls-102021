@@ -46,6 +46,64 @@ export interface CbReconcileInput {
 
 export interface CbReconcileResult { errors: string[]; warnings: string[]; }
 
+/** Owner identity inside one module. Homonyms across modules are distinct owners. */
+export function ownerStatusKey(kind: string, id: string): string {
+  return `${kind}:${id}`;
+}
+
+export function ownerHasKnownModule(moduleName: string | undefined | null): boolean {
+  return Boolean(moduleName) && moduleName !== 'unknown';
+}
+
+/**
+ * Status lookup: a v2 owner (module known) never inherits another module's todo entry.
+ * Layout v1 (flat, module unknown) still falls back to the module-blind first-seen map.
+ */
+export function lookupTodoOwner<T>(
+  ownersByModule: ReadonlyMap<string, ReadonlyMap<string, T>>,
+  owner: { kind: string; id: string; moduleName: string },
+  moduleBlind?: ReadonlyMap<string, T>,
+): T | undefined {
+  const key = ownerStatusKey(owner.kind, owner.id);
+  if (ownerHasKnownModule(owner.moduleName)) return ownersByModule.get(owner.moduleName)?.get(key);
+  return moduleBlind?.get(key);
+}
+
+export function indexTodoOwner<T>(
+  ownersByModule: Map<string, Map<string, T>>,
+  moduleName: string,
+  key: string,
+  value: T,
+): 'added' | 'duplicate' {
+  let bucket = ownersByModule.get(moduleName);
+  if (!bucket) {
+    bucket = new Map<string, T>();
+    ownersByModule.set(moduleName, bucket);
+  }
+  if (bucket.has(key)) return 'duplicate';
+  bucket.set(key, value);
+  return 'added';
+}
+
+export function flattenTodoOwners<T extends { moduleName: string }>(
+  ownersByModule: ReadonlyMap<string, ReadonlyMap<string, T>>,
+): Array<{ key: string; moduleName: string; owner: T }> {
+  const out: Array<{ key: string; moduleName: string; owner: T }> = [];
+  for (const [moduleName, byKey] of ownersByModule) {
+    for (const [key, owner] of byKey) out.push({ key, moduleName: owner.moduleName || moduleName, owner });
+  }
+  return out;
+}
+
+/** Read-back retry may rewrite `done` only when the artifacts exist — same principle as `recovered`. */
+export function retryMayWriteTodoStatus(want: string, artifactsExist: boolean): boolean {
+  return want !== 'done' || artifactsExist;
+}
+
+function reconcileIdentity(entry: CbReconcileEntry): string {
+  return `${entry.moduleName}\0${entry.key}`;
+}
+
 export interface CbScopeResult {
   moduleName: string;
   owners: CbOwner[];
@@ -153,10 +211,10 @@ export function reconcileBackendTodo(input: CbReconcileInput): CbReconcileResult
   const isTarget = (moduleName: string): boolean =>
     input.targetModule ? moduleName === input.targetModule : todoModules.has(moduleName);
 
-  const todoKeys = new Set(input.todoOwners.map(entry => entry.key));
-  const l4Keys = new Set(input.l4Owners.map(entry => entry.key));
-  const missing = input.l4Owners.filter(entry => !todoKeys.has(entry.key));
-  const extra = input.todoOwners.filter(entry => !l4Keys.has(entry.key));
+  const todoKeys = new Set(input.todoOwners.map(reconcileIdentity));
+  const l4Keys = new Set(input.l4Owners.map(reconcileIdentity));
+  const missing = input.l4Owners.filter(entry => !todoKeys.has(reconcileIdentity(entry)));
+  const extra = input.todoOwners.filter(entry => !l4Keys.has(reconcileIdentity(entry)));
 
   const errors: string[] = [];
   const warnings: string[] = [];

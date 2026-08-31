@@ -16,6 +16,8 @@ import {
   type CbOwner, type CbTodoReadBack, type OwnerStatus,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
+import { retryMayWriteTodoStatus } from '/_102021_/l2/agentChangeBackend/helpers/cbScope.js';
+import { saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { todoOwnerKey, type CbTodoDivergence } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { fileIsPresent, modelCounts, sweepModuleModels } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 
@@ -116,6 +118,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const owner = ownerByKey.get(divergence.key);
         const want = expected.get(divergence.key);
         if (!owner || !want) continue;
+        if (!retryMayWriteTodoStatus(want, await ownerArtifactsExist(owner, moduleName))) continue;
         if (await setTodoBackendStatus(owner, want as OwnerStatus)) retried++;
       }
       readBack = await readBackTodoBackend(expected, moduleName);
@@ -131,6 +134,17 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       : !readBack ? ' ⚠ read-back skipped: no todoBackend file found.'
       : readBack.model.unreadable ? ` ⚠ HIGH: ${readBackSummary(readBack)} — the model is what an export writes; check for an open tab with broken syntax.`
       : '';
+    const todoReadBackNotice = {
+      summary: readBackSummary(firstReadBack),
+      retried,
+      lostUpdate: retried > 0,
+      stor: surfaceState(firstReadBack, 'stor'),
+      model: surfaceState(firstReadBack, 'model'),
+      divergences: todoReadBackDivergences(firstReadBack).slice(0, 8),
+      afterRetry: retried ? { stor: surfaceState(readBack, 'stor'), model: surfaceState(readBack, 'model') } : null,
+      message: readBackMsg.trim(),
+    };
+    await saveHealthReport({ todoReadBack: todoReadBackNotice });
     // The models this agent loaded are released here: the run is over, and what is left resident is
     // either the platform's or an open Studio tab. Counts before/after are the permanent leak detector.
     const before = modelCounts();

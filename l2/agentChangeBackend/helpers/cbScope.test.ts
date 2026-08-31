@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scopeBackendScan, backfillEntityFieldsFromOwners, reconcileBackendTodo, resolveModuleName, upsertEntity, type CbScopeInput } from './cbScope.js';
+import { scopeBackendScan, backfillEntityFieldsFromOwners, reconcileBackendTodo, resolveModuleName, upsertEntity, lookupTodoOwner, indexTodoOwner, retryMayWriteTodoStatus, type CbScopeInput } from './cbScope.js';
 
 // Minimal fixtures — scopeBackendScan only reads moduleName / entityId / fromEntity / toEntity.
 const owner = (id: string, moduleName: string) => ({ kind: 'operation', id, moduleName }) as unknown as CbScopeInput['owners'][number];
@@ -224,4 +224,61 @@ test('upsertEntity: the same entity id in two modules is two entities, not one',
   upsertEntity(entities, { entityId: 'Project', moduleName: 'buildFlowFsm47', fields: [{ fieldId: 'name' }] } as any);
   assert.equal(entities.length, 2);
   assert.deepEqual(entities.find(e => e.moduleName === 'buildFlowFsm47').fields, [{ fieldId: 'name' }]);
+});
+
+// ── owner status is per module (homonyms must not mask each other) ────────────
+const SHARED = ['createSignature', 'deleteSignature', 'getSignature', 'inspectPetition', 'listSignature', 'locatePetition', 'updateSignature'];
+const B_ONLY = ['inspectPetitionSupport', 'recordSignature', 'viewPetitionSupportSummary'];
+const A_ONLY = ['createPetition', 'deletePetition', 'getPetition', 'listPetition', 'updatePetition', 'listSignatory', 'createSignatory', 'updateSignatory', 'deleteSignatory', 'inspectSignatory', 'locateSignatory'];
+
+function op(id: string, moduleName: string) {
+  return { key: `operation:${id}`, moduleName };
+}
+
+test('lookupTodoOwner: a v2 owner never inherits another module\'s status', () => {
+  const ownersByModule = new Map<string, Map<string, { status: string; moduleName: string }>>();
+  assert.equal(indexTodoOwner(ownersByModule, 'listaAssinatura', 'operation:createSignature', { status: 'done', moduleName: 'listaAssinatura' }), 'added');
+  assert.equal(indexTodoOwner(ownersByModule, 'listaAssinatura2', 'operation:createSignature', { status: 'toCreate', moduleName: 'listaAssinatura2' }), 'added');
+  assert.equal(indexTodoOwner(ownersByModule, 'listaAssinatura', 'operation:createSignature', { status: 'toCreate', moduleName: 'listaAssinatura' }), 'duplicate');
+  const blind = new Map([['operation:createSignature', { status: 'done', moduleName: 'listaAssinatura' }]]);
+  const fromB = lookupTodoOwner(ownersByModule, { kind: 'operation', id: 'createSignature', moduleName: 'listaAssinatura2' }, blind);
+  assert.equal(fromB?.status, 'toCreate');
+  const fromA = lookupTodoOwner(ownersByModule, { kind: 'operation', id: 'createSignature', moduleName: 'listaAssinatura' }, blind);
+  assert.equal(fromA?.status, 'done');
+  const missingInB = lookupTodoOwner(ownersByModule, { kind: 'operation', id: 'createPetition', moduleName: 'listaAssinatura2' }, blind);
+  assert.equal(missingInB, undefined);
+  const v1 = lookupTodoOwner(ownersByModule, { kind: 'operation', id: 'createSignature', moduleName: 'unknown' }, blind);
+  assert.equal(v1?.status, 'done');
+});
+
+test('reconcileBackendTodo: listaAssinatura stays intact when listaAssinatura2 repeats owner ids', () => {
+  const a = [...SHARED, ...A_ONLY].map(id => op(id, 'listaAssinatura'));
+  const b = [...SHARED, ...B_ONLY].map(id => op(id, 'listaAssinatura2'));
+  const intact = reconcileBackendTodo({
+    l4Owners: [...a, ...b],
+    todoOwners: [...a, ...b],
+    todoErrors: [],
+    targetModule: 'listaAssinatura',
+  });
+  assert.deepEqual(intact.errors, []);
+  const bMissingHomonyms = reconcileBackendTodo({
+    l4Owners: [...a, ...b],
+    todoOwners: [...a, ...B_ONLY.map(id => op(id, 'listaAssinatura2'))],
+    todoErrors: [],
+    targetModule: 'listaAssinatura',
+  });
+  assert.deepEqual(bMissingHomonyms.errors, [], 'module 1 must not fail because module 2 is incomplete');
+  const bTarget = reconcileBackendTodo({
+    l4Owners: [...a, ...b],
+    todoOwners: [...a, ...B_ONLY.map(id => op(id, 'listaAssinatura2'))],
+    todoErrors: [],
+    targetModule: 'listaAssinatura2',
+  });
+  assert.match(bTarget.errors.join('; '), /missing l4 owner\(s\): operation:createSignature/);
+});
+
+test('retryMayWriteTodoStatus: never write done when artifacts are missing', () => {
+  assert.equal(retryMayWriteTodoStatus('done', false), false);
+  assert.equal(retryMayWriteTodoStatus('done', true), true);
+  assert.equal(retryMayWriteTodoStatus('toCreate', false), true);
 });
