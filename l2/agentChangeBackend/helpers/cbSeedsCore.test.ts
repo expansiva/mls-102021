@@ -11,7 +11,7 @@ import {
   collectRequiredMdmTags, repairSeedPlanDeterministically, coverMissingOperatedStates, fieldAllowsSeedRef,
   skippedMdmEntityIds, mdmIndexName,
   recoverSeedPlanFromPrior, selectSeedPlanAfterAttempts, formatSeedGiveUpReason,
-  seedAnchorName, seedStringPassing, seedSourcePurityErrors, findSeedFieldValidatorExport, seedFieldIsBareString, buildSeedDefsData,
+  seedAnchorName, seedStringPassing, seedSparesPassing, seedSourcePurityErrors, findSeedFieldValidatorExport, seedFieldIsBareString, buildSeedDefsData,
   type SeedBuildInput, type SeedTableDefinition,
 } from './cbSeedsCore.js';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -1089,6 +1089,30 @@ test('a field with a domain validator is emitted as seedStringPassing(thatExport
   const passing = seedStringPassing(value => value.endsWith('12'), 'ABC10');
   assert.equal(passing, 'ABC12');
   assert.equal(seedStringPassing(value => value === 'ABC10', 'ABC10'), 'ABC10');
+});
+
+test('seedSparesPassing walks the same search and never reuses a seeded value', () => {
+  // Synthetic field (not a national document): three-digit internal code judged by a domain function.
+  const isValidCodigoInterno = (value: string) => /^INT\d{3}$/u.test(value);
+  const used = ['INT001'];
+  const spares = seedSparesPassing(isValidCodigoInterno, 'INT001', used, 2);
+  assert.deepEqual(spares, ['INT002', 'INT003']);
+  assert.equal(used.includes(spares[0]), false);
+  assert.equal(seedSparesPassing(isValidCodigoInterno, 'INT001', ['INT001', 'INT002', 'INT003'], 1)[0], 'INT004');
+});
+
+test('a validated seeded field exports leftover seedSpares from the same search', () => {
+  const input = validInput();
+  const codigo = { fieldId: 'codigoInterno', type: 'string', required: true, enumValues: [] as string[], validatorExport: 'isValidCodigoInterno' };
+  input.entities.find(entity => entity.entityId === 'Shift')!.fields.push(codigo);
+  input.plan.localTables[0].rows[0].details.push({ name: 'codigoInterno', value: 'INT001' });
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  const src = built.content ?? '';
+  assert.match(src, /export const seedSpares = \{/);
+  assert.match(src, /seedSparesPassing\(isValidCodigoInterno, "INT001", \[shiftMorning\.codigoInterno\], 3\)/);
+  assert.doesNotMatch(src, /cpf/i);
+  assert.doesNotMatch(src, /\bMath\.random\s*\(/);
 });
 
 test('findSeedFieldValidatorExport matches the field id, not a neighbouring export', () => {

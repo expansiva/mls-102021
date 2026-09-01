@@ -21,6 +21,10 @@ export const seedIds = {
   petitionPublished: petitionPublished.petitionId,
 } as const;
 
+export const seedSpares = {
+  Petition: { /* leftover valid values per seeded bare-string field */ },
+} as const;
+
 export const petitionSeeds: TableSeedRows = {
   seedFor: '{module}Petition',
   rows: [ /* snake_case table row; details keys are entity fieldIds */ ],
@@ -42,4 +46,8 @@ export const petitionSeeds: TableSeedRows = {
   not interpret the rule; the app's function does. The decision is the declared field type and the
   function signature, never the function name.
 - Export `seedIds` with one named anchor per seeded row (`entityId` camel + row key).
+- Export `seedSpares` with leftover valid values per seeded bare-string field (same search as
+  `seedStringPassing` when a validator exists; otherwise the next unused planned variant). Create
+  tests consume these so they do not reuse a unique seeded value. Small and deterministic — no
+  `Math.random`.
 - Never invent a country-, document-, or domain-specific check in this file.

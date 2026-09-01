@@ -15,7 +15,7 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 export const orderTableDef: TableDefinition = {
   moduleId: '{module}',
   repositoryName: '{module}Order',
-  tableName: 'orders',
+  tableName: '{module}_orders',
   purpose: 'transacao',
   description: 'Pedidos. Itens e campos não indexados em details (JSONB).',
   backupHot: false,
@@ -47,7 +47,10 @@ export const orderTableDef: TableDefinition = {
 - Column `postgresType` follows the l4 field type, never the field name: `string`/`text`/enum →
   `TEXT` (a field named `priority`/`rank`/`order` with a string enum is TEXT, never INTEGER);
   `uuid` → `UUID`; `date`/`datetime` → `TIMESTAMPTZ`; `integer` → `INTEGER`; `number` → `NUMERIC`.
-- `tableName` and column `name` are snake_case; export const is `{tableId}TableDef`.
+- `tableName` and column `name` are snake_case; export const is `{tableId}TableDef`. `tableName`
+  starts with the lowercased module id (`{module}_orders`) so two modules in one project never share
+  a physical table. Do not prefix twice if the name already starts with the module. The final
+  Postgres identifier (`mls{projectId}_{tableName}`) must be ≤ 63 characters.
 - `purpose`: `transacao` (aggregate) | `controle` (metric) | `cadastro`. `storageProfile: 'postgres'`,
   `writeMode: 'sync'`, `backupHot: false` unless the defs says otherwise.
 - ALWAYS include a `details` column `{ name: 'details', postgresType: 'JSONB', nullable: true }` when

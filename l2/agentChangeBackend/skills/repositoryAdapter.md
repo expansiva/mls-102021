@@ -72,7 +72,7 @@ function toDomain(row: OrderRow): Order {
 }
 
 export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderRepository {
-  const getTable = () => ctx.data.moduleData.getTable<OrderRow>('order'); // = TableDefinition.tableName, verbatim
+  const getTable = () => ctx.data.moduleData.getTable<OrderRow>('{module}_order'); // = TableDefinition.tableName, verbatim
   return {
     async getById(orderId) {
       const row = await (await getTable()).findOne({ where: { order_id: orderId } });

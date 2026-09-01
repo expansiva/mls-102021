@@ -320,10 +320,13 @@ test('writing an owner in module A does not mutate the same owner id in module B
 // e nunca criar um (modelo não-emprestado é leak).
 test('writeDefsSource mantém o modelo existente em sincronia com o que persistiu', () => {
   const shared = readFileSync(new URL('cbShared.ts', import.meta.url), 'utf8');
+  const io = readFileSync(new URL('cbMaterializeIo.ts', import.meta.url), 'utf8');
   assert.match(shared, /await mls\.stor\.localStor\.setContent\(file, \{ contentType: 'string', content: src \}\);\s*\n\s*refreshExistingModel\(file, src\);/);
-  // Atualiza só o que JÁ existe: nada de getOrCreateModel aqui.
-  assert.match(shared, /const model = mls\.editor\.getModel\(file\) as mls\.editor\.IModelBase \| undefined;\s*\n\s*if \(model\?\.model && model\.model\.getValue\(\) !== src\) model\.model\.setValue\(src\);/);
-  assert.doesNotMatch(shared, /refreshExistingModel[\s\S]{0,400}getOrCreateModel/);
+  // Atualiza só o que JÁ existe: nada de getOrCreateModel. Editor access lives in cbMaterializeIo.
+  assert.match(io, /export function refreshExistingModel\(/);
+  assert.match(io, /const model = mls\.editor\.getModel\(file\) as mls\.editor\.IModelBase \| undefined;\s*\n\s*if \(model\?\.model && model\.model\.getValue\(\) !== src\) model\.model\.setValue\(src\);/);
+  assert.doesNotMatch(io, /refreshExistingModel[\s\S]{0,400}getOrCreateModel/);
+  assert.doesNotMatch(shared, /\bmls\.editor\b/);
   // be4: createStorFile(..., true, true, true) created a Monaco model for every defs write.
   assert.doesNotMatch(shared, /createStorFile\(param, true, true, true\)/);
   assert.match(shared, /createStorFile\(param, false, false, false\)/);
@@ -331,7 +334,8 @@ test('writeDefsSource mantém o modelo existente em sincronia com o que persisti
   assert.match(shared, /export async function readBackTodoBackend\(expected: ReadonlyMap<string, string>, moduleName = ''\)/);
   assert.match(shared, /pickTodoBackendReadBack\(matches\.map\(m => m\.folder\), moduleName\)/);
   assert.match(shared, /selectTodoBackendFileForStatusWrite\(candidates, owner\)/);
-  assert.match(shared, /modelDivergent = todoStatusDivergences\(model\.model\.getValue\(\), expected\);/);
+  assert.match(shared, /readExistingModelValue\(file\)/);
+  assert.match(io, /export function readExistingModelValue\(/);
   // Divergência em qualquer superfície mata o run; stor ilegível também. Modelo ilegível é aba do
   // usuário com sintaxe quebrada no meio da edição — warning alto, não morte do run.
   assert.match(shared, /export function todoReadBackIsFatal[\s\S]{0,240}return readBack\.stor\.unreadable \|\| todoReadBackDivergences\(readBack\)\.length > 0;/);

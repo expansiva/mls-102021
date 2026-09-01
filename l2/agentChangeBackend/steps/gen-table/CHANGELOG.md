@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-08-31 — tableName físico leva o módulo
+
+Dois módulos do mesmo projeto com a mesma entidade emitiam o mesmo `tableName`
+(`petition_signature`); o prefixo de projeto do runtime (`mls{projectId}_`) não separa módulos, e o
+publish abortava em `PERSISTENCE_MANIFEST_DUPLICATE`. O writer agora prefixa o `tableName` com o
+módulo em minúsculas (`listaassinatura3_petition_signature`), idempotente. `repositoryName` não
+muda. O identificador final (`mls{projectId}_{tableName}`) acima de 63 caracteres falha na geração
+com a entidade/módulo a encurtar. `logicalTableName` (lookup / `seedFor`) continua sem o módulo.
+
 ## 2026-08-28 — string/enum do l4 nunca vira INTEGER
 
 O planner recebia só `fieldId`+`reason` e escolhia INTEGER para um campo chamado `priority` cujo

@@ -20,6 +20,7 @@ import {
   type PlannerOutput,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { createStorFile, IReqCreateStorFile } from '/_102027_/l2/libStor.js';
+import { refreshExistingModel, readExistingModelValue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
@@ -1037,26 +1038,6 @@ export async function writeDefsSource(fileInfo: CbFileInfo, src: string): Promis
   return ref;
 }
 
-/**
- * Keep an ALREADY EXISTING Monaco model in sync with the content just persisted. Not cosmetic: the
- * Studio<->disk sync reads a file from its model first and only falls back to the stor content when
- * there is no model, and libModel.createModel hands back an existing model untouched (no setValue).
- * So without this, the SECOND write onwards updates the stor while the model stays frozen at the
- * first one, and the next export writes that first snapshot over the good content — the petShop lost
- * update of 2026-08-21 (65 todoBackend writes, disk got the state after write #1).
- *
- * Never CREATES a model: an unowned model is a leak (see releaseBorrowedModels/sweepModuleModels), and
- * with no model the export already reads the stor, which is correct.
- */
-function refreshExistingModel(file: mls.stor.IFileInfo, src: string): void {
-  try {
-    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
-    if (model?.model && model.model.getValue() !== src) model.model.setValue(src);
-  } catch (error) {
-    console.warn('[cb writeDefsSource] model refresh failed', error);
-  }
-}
-
 export async function saveBackendWorkspaceConfig(): Promise<string> {
   const project = mls.actualProject || 0;
   if (!project) return 'l5/config.json backend skipped: project unavailable';
@@ -1297,23 +1278,17 @@ export async function readBackTodoBackend(expected: ReadonlyMap<string, string>,
   const file = matches.find(m => m.folder === pick.folder)!.file;
   const storContent = String(await file.getContent());
   const storDivergent = todoStatusDivergences(storContent, expected);
-  let modelPresent = false;
-  let modelDivergent: CbTodoDivergence[] | null = [];
-  try {
-    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
-    if (model?.model) {
-      modelPresent = true;
-      modelDivergent = todoStatusDivergences(model.model.getValue(), expected);
-    }
-  } catch (error) {
-    console.warn('[cb readBackTodoBackend] model read failed', error);
-    modelDivergent = null;
-  }
+  const modelRead = readExistingModelValue(file);
+  const modelDivergent = modelRead.failed
+    ? null
+    : modelRead.present
+      ? todoStatusDivergences(modelRead.value ?? '', expected)
+      : [];
   return {
     ref: pick.ref,
     checked: expected.size,
     stor: { unreadable: storDivergent === null, divergent: storDivergent || [] },
-    model: { present: modelPresent, unreadable: modelPresent && modelDivergent === null, divergent: modelDivergent || [] },
+    model: { present: modelRead.present, unreadable: modelRead.present && modelDivergent === null, divergent: modelDivergent || [] },
   };
 }
 

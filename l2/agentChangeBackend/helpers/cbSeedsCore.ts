@@ -19,6 +19,8 @@ export const SEED_PLAN_END = '</agentCbSeedsPlan> */';
 export const SEED_ASSET_URLS_START = '// <agentCbSeedAssetUrls>';
 export const SEED_ASSET_URLS_END = '// </agentCbSeedAssetUrls>';
 export const SEED_VALIDATOR_ATTEMPTS = 100;
+/** Leftover valid values per seeded field, for create-command tests that must not reuse a row. */
+export const SEED_SPARES_PER_FIELD = 3;
 
 export interface SeedFieldDefinition {
   fieldId: string;
@@ -1105,6 +1107,35 @@ export function seedStringPassing(check: (value: string) => boolean, planned: st
   return planned;
 }
 
+/**
+ * Leftover values that pass the same search as `seedStringPassing` and are not in `used` (the seeded
+ * rows). Create-command tests consume these so they do not collide with a unique seeded value.
+ * `check` is the domain validator when there is one; otherwise every unused candidate is accepted.
+ */
+export function seedSparesPassing(
+  check: (value: string) => boolean,
+  planned: string,
+  used: readonly string[],
+  count = SEED_SPARES_PER_FIELD,
+  attempts = SEED_VALIDATOR_ATTEMPTS,
+): string[] {
+  const spares: string[] = [];
+  const taken = new Set(used);
+  const match = planned.match(/^(.*?)(\d+)$/u);
+  const prefix = match ? match[1] : planned;
+  const width = match ? match[2].length : 0;
+  const start = match ? Number.parseInt(match[2], 10) : 0;
+  if (match && !Number.isFinite(start)) return spares;
+  const budget = Math.max(attempts, count * SEED_VALIDATOR_ATTEMPTS);
+  for (let i = 1; i <= budget && spares.length < count; i += 1) {
+    const candidate = match ? prefix + String(start + i).padStart(width, '0') : planned + String(i);
+    if (taken.has(candidate) || !check(candidate)) continue;
+    taken.add(candidate);
+    spares.push(candidate);
+  }
+  return spares;
+}
+
 const SEED_STRING_PASSING_HELPER = `function seedStringPassing(check: (value: string) => boolean, planned: string, attempts = ${SEED_VALIDATOR_ATTEMPTS}): string {
   if (check(planned)) return planned;
   const match = planned.match(/^(.*?)(\\d+)$/u);
@@ -1118,6 +1149,24 @@ const SEED_STRING_PASSING_HELPER = `function seedStringPassing(check: (value: st
   }
   seedValidatorWarnings.push('kept planned value after ' + String(attempts) + ' attempts');
   return planned;
+}`;
+
+const SEED_SPARES_PASSING_HELPER = `function seedSparesPassing(check: (value: string) => boolean, planned: string, used: readonly string[], count = ${SEED_SPARES_PER_FIELD}, attempts = ${SEED_VALIDATOR_ATTEMPTS}): string[] {
+  const spares: string[] = [];
+  const taken = new Set(used);
+  const match = planned.match(/^(.*?)(\\d+)$/u);
+  const prefix = match ? match[1] : planned;
+  const width = match ? match[2].length : 0;
+  const start = match ? Number.parseInt(match[2], 10) : 0;
+  if (match && !Number.isFinite(start)) return spares;
+  const budget = Math.max(attempts, count * ${SEED_VALIDATOR_ATTEMPTS});
+  for (let i = 1; i <= budget && spares.length < count; i += 1) {
+    const candidate = match ? prefix + String(start + i).padStart(width, '0') : planned + String(i);
+    if (taken.has(candidate) || !check(candidate)) continue;
+    taken.add(candidate);
+    spares.push(candidate);
+  }
+  return spares;
 }`;
 
 export function seedSourcePurityErrors(source: string): string[] {
@@ -2031,14 +2080,38 @@ function entityModuleRef(project: number, moduleName: string, entityId: string):
   return `/_${project}_/l1/${moduleName}/layer_3_domain/entities/${short}.js`;
 }
 
+interface SeedSpareSpec {
+  entityId: string;
+  fieldId: string;
+  validator?: string;
+  planned: string;
+  usedExprs: string[];
+}
+
+function plannedStringForSpare(value: unknown): string | undefined {
+  if (typeof value === 'string' && value) return value;
+  if (isRecord(value) && isRecord(value.__agentCbSeedValidator) && typeof value.__agentCbSeedValidator.planned === 'string') {
+    const planned = value.__agentCbSeedValidator.planned;
+    return planned || undefined;
+  }
+  return undefined;
+}
+
+function isSpareSeedField(field: SeedFieldDefinition, idField: string): boolean {
+  if (field.fieldId === idField || field.fieldId === 'id') return false;
+  if (/Id$/u.test(field.fieldId)) return false;
+  return seedFieldIsBareString(field);
+}
+
 function buildLocalEntityConsts(
   input: SeedBuildInput,
   ids: Map<string, string>,
-): { lines: string[]; imports: Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>; anchors: Array<{ name: string; idField: string }> } {
+): { lines: string[]; imports: Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>; anchors: Array<{ name: string; idField: string }>; spares: SeedSpareSpec[] } {
   const entityById = new Map(input.entities.map(entity => [entity.entityId, entity]));
   const imports = new Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>();
   const lines: string[] = [];
   const anchors: Array<{ name: string; idField: string }> = [];
+  const spareMap = new Map<string, SeedSpareSpec>();
   const used = new Set<string>();
   for (const table of input.plan.localTables) {
     const entity = entityById.get(table.tableId);
@@ -2068,6 +2141,19 @@ function buildLocalEntityConsts(
           else if (!field.required) obj[field.fieldId] = null;
         }
         if (seedStringPassingApplies(field)) entry.validators.add(field.validatorExport);
+        if (!isSpareSeedField(field, idField)) continue;
+        const planned = plannedStringForSpare(obj[field.fieldId]);
+        if (!planned) continue;
+        const spareKey = `${entity.entityId}.${field.fieldId}`;
+        const spec = spareMap.get(spareKey) ?? {
+          entityId: entity.entityId,
+          fieldId: field.fieldId,
+          ...(seedStringPassingApplies(field) ? { validator: field.validatorExport } : {}),
+          planned,
+          usedExprs: [],
+        };
+        spec.usedExprs.push(`${name}.${field.fieldId}`);
+        spareMap.set(spareKey, spec);
       }
       for (const child of row.children) {
         if (!Object.prototype.hasOwnProperty.call(obj, child.name)) {
@@ -2082,7 +2168,36 @@ function buildLocalEntityConsts(
     lines.push(`const ${rowsName}: ${typeName}[] = [${rowConsts.join(', ')}];`, '');
     imports.set(moduleRef, entry);
   }
-  return { lines, imports, anchors };
+  const spares = [...spareMap.values()].sort((left, right) => {
+    const byEntity = left.entityId.localeCompare(right.entityId);
+    return byEntity !== 0 ? byEntity : left.fieldId.localeCompare(right.fieldId);
+  });
+  return { lines, imports, anchors, spares };
+}
+
+function tsIdentOrQuote(value: string): string {
+  return seedTsIdent(value) ? value : JSON.stringify(value);
+}
+
+function renderSeedSpares(spares: SeedSpareSpec[]): string[] {
+  if (!spares.length) return [];
+  const byEntity = new Map<string, SeedSpareSpec[]>();
+  for (const spec of spares) {
+    const list = byEntity.get(spec.entityId) ?? [];
+    list.push(spec);
+    byEntity.set(spec.entityId, list);
+  }
+  const lines = ['export const seedSpares = {'];
+  for (const entityId of [...byEntity.keys()].sort()) {
+    lines.push(`  ${tsIdentOrQuote(entityId)}: {`);
+    for (const spec of byEntity.get(entityId)!) {
+      const check = spec.validator ?? '(_value: string) => true';
+      lines.push(`    ${tsIdentOrQuote(spec.fieldId)}: seedSparesPassing(${check}, ${JSON.stringify(spec.planned)}, [${spec.usedExprs.join(', ')}], ${SEED_SPARES_PER_FIELD}),`);
+    }
+    lines.push('  },');
+  }
+  lines.push('} as const;', '');
+  return lines;
 }
 
 function seedImportLines(imports: Map<string, { typeName: string; validators: Set<string>; typeUsed: boolean }>): string[] {
@@ -2118,6 +2233,7 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     typed.imports.set(moduleRef, entry);
   }
   const usesValidator = [...typed.imports.values()].some(entry => entry.validators.size > 0);
+  const usesSpares = typed.spares.length > 0;
   const seedIdsEntries = [
     ...typed.anchors.map(anchor => `  ${anchor.name}: ${anchor.name}.${anchor.idField},`),
     ...input.plan.mdmEntities.flatMap(entity => entity.rows.map(row => {
@@ -2149,6 +2265,7 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
     'function seedAssetUrl(assetId: string): string | null { return seedAssetUrls[assetId] ?? null; }',
     '',
     ...(usesValidator ? [SEED_STRING_PASSING_HELPER, ''] : []),
+    ...(usesSpares ? [SEED_SPARES_PASSING_HELPER, ''] : []),
     // The contracts import and the seed exports only exist when there ARE rows. An all-skipped module
     // (every wave gave up) must still emit a VALID module: no unused import, and `export {}` so the file
     // is unambiguously a module rather than a script whose top-level consts leak into the global scope.
@@ -2161,6 +2278,7 @@ export function buildSeedSource(input: SeedBuildInput): SeedBuildResult {
       : ['export {};', '']),
     ...typed.lines,
     ...(seedIdsEntries.length ? [`export const seedIds = {`, ...seedIdsEntries, `} as const;`, ''] : []),
+    ...renderSeedSpares(typed.spares),
     ...blocks.flatMap(block => [
       `export const ${block.exportName}: TableSeedRows = ${seedSourceLiteral({ seedFor: block.seedFor, rows: block.rows })};`,
       '',

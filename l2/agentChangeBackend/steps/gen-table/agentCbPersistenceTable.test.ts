@@ -24,12 +24,14 @@ void test('agentCbPersistenceTable declares the LLM step agent contract', () => 
   assert.match(src, /afterPromptStep/);
   assert.match(src, /sanitizePlannerTableItem/);
   assert.match(src, /sanitizePlannerTableColumnTypes/);
+  assert.match(src, /sanitizePlannerTableName/);
   assert.match(flow, /"agentName": "agentCbPersistenceTable"/);
   assert.match(skill, /appointment_availability_pkey/);
   assert.match(skill, /_idx/);
   assert.match(skill, /title/);
   assert.match(skill, /never INTEGER/);
   assert.match(skill, /priority/);
+  assert.match(skill, /lowercased module id/);
   const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cbShared.ts'), 'utf8');
   assert.match(shared, /fieldId === 'title' \|\| fieldId === 'name'/);
   assert.match(shared, /type === 'date' \|\| type === 'datetime'/);

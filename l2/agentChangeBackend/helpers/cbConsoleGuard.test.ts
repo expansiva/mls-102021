@@ -14,9 +14,9 @@ const CALL = /(?<![\w.])console\.(info|log|warn)\s*\(/g;
 
 /** Remaining non-error prints on the CB run path. A NEW print outside this list fails. */
 const ALLOWED: Record<string, { info?: number; log?: number; warn?: number; why: string }> = {
-  'helpers/cbShared.ts': { warn: 3, why: 'model refresh / trace / todo read-back failed — last-chance' },
+  'helpers/cbShared.ts': { warn: 1, why: 'saveAgentTrace failed — last-chance' },
   'helpers/cbRepair.ts': { warn: 4, why: 'best-effort persist of repair/health/cost/run report failed' },
-  'helpers/cbMaterializeIo.ts': { warn: 8, info: 1, why: 'compile/import/save fallbacks; info is registry-key mismatch' },
+  'helpers/cbMaterializeIo.ts': { warn: 10, info: 1, why: 'compile/import/save fallbacks + existing-model refresh/read; info is registry-key mismatch' },
   'steps/materialize/agentCbMaterialize.ts': { warn: 1, why: 'unreadable context ref omitted from the prompt' },
   'steps/judge/agentCbJudge.ts': { warn: 1, why: 'project file index refresh failed before judging' },
   'steps/gen-http/agentCbHttpController.ts': { warn: 1, why: 'project file index refresh failed before generating controllers' },

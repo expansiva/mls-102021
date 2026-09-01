@@ -496,6 +496,9 @@ async function compileGeneratedTs(project: number, level: number, folder: string
     if (!modelBase) modelBase = await mls.editor.addModels(project, shortName, folder, level) as mls.editor.IModels;
     const modelTs = modelBase?.ts as mls.editor.IModelTS;
     if (!modelTs) return { errors: [], infraErrors: [], available: false };
+    // Resident model (open tab / leftover): Monaco compiles against MEMORY. Hooks write stor only,
+    // so sync from the saved content here — same idea as addModels for imports.
+    if (modelTs.model && modelTs.model.getValue() !== content) modelTs.model.setValue(content);
     if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
     await mls.l2.typescript.compileAndPostProcess(modelTs, true, true);
     mls.editor.forceModelUpdate(modelTs.model);
@@ -550,10 +553,45 @@ export interface SaveGeneratedTsResult {
   compilerAvailable: boolean;
 }
 
+/**
+ * Keep an ALREADY EXISTING Monaco model in sync with the content just persisted. Not cosmetic: the
+ * Studio<->disk sync reads a file from its model first and only falls back to the stor content when
+ * there is no model, and libModel.createModel hands back an existing model untouched (no setValue).
+ * So without this, the SECOND write onwards updates the stor while the model stays frozen at the
+ * first one, and the next export writes that first snapshot over the good content — the petShop lost
+ * update of 2026-08-21 (65 todoBackend writes, disk got the state after write #1).
+ *
+ * Never CREATES a model: an unowned model is a leak (see releaseBorrowedModels/sweepModuleModels), and
+ * with no model the export already reads the stor, which is correct. Hook writers call this; they must
+ * not mention `mls.editor` themselves.
+ */
+export function refreshExistingModel(file: mls.stor.IFileInfo, src: string): void {
+  try {
+    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    if (model?.model && model.model.getValue() !== src) model.model.setValue(src);
+  } catch (error) {
+    console.warn('[cbMaterializeIo] model refresh failed', error);
+  }
+}
+
+/** Read an already-existing Monaco model. Never creates one. `failed` is a throw from getModel/getValue. */
+export function readExistingModelValue(file: mls.stor.IFileInfo): { present: boolean; value: string | null; failed: boolean } {
+  let present = false;
+  try {
+    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    if (!model?.model) return { present: false, value: null, failed: false };
+    present = true;
+    return { present: true, value: model.model.getValue(), failed: false };
+  } catch (error) {
+    console.warn('[cbMaterializeIo] model read failed', error);
+    return { present, value: null, failed: true };
+  }
+}
+
 /** Save (create or overwrite) a generated file with an ARBITRARY extension, WITHOUT compiling. Used for
  * byte-mirror artifacts (l1 contract copies `.ts`/`.d.ts` — B5) where the whole-project compile in
- * validate-all owns correctness; a per-file compile of a `.d.ts` twin would be meaningless. Mirrors the
- * write path of saveGeneratedTs (createStorFile with the Monaco model registered so later files import it). */
+ * validate-all owns correctness; a per-file compile of a `.d.ts` twin would be meaningless. Later
+ * compile loads the model on demand via addModels; an open tab is synced, never created. */
 export async function saveGeneratedFile(
   project: number,
   level: number,
@@ -567,13 +605,11 @@ export async function saveGeneratedFile(
     const key = mls.stor.getKeyToFile(fileInfo);
     let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
     if (!file) {
-      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
-    } else {
-      const model = await file.getOrCreateModel();
-      if (model) model.model.setValue(content);
+      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
     }
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    refreshExistingModel(file, content);
     return true;
   } catch (err) {
     console.warn('[cbMaterializeIo] saveGeneratedFile failed', err);
@@ -592,26 +628,22 @@ export async function saveGeneratedTs(
   try {
     const fileInfo = { project, level, folder, shortName, extension: '.ts' };
     const key = mls.stor.getKeyToFile(fileInfo);
-    // OWNERSHIP, decided BEFORE anything below can create a model: if the registry has no model for this
-    // file yet, whatever the save creates (createStorFile with needCreateModel, or getOrCreateModel) is
-    // OURS and is released after the compile. If a model already exists the file is open in the Studio —
-    // not ours, never disposed.
+    // OWNERSHIP, decided BEFORE compile can create a model: if the registry has no model for this
+    // file yet, the model compileGeneratedTs addModels creates is OURS and is released after the
+    // compile. If a model already exists the file is open in the Studio — not ours, never disposed.
     const ownsModel = !mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, level)];
     let file = (mls.stor.files as Record<string, any>)[key] as mls.stor.IFileInfo;
     if (!file) {
-      // needCreateModel=true (parity with cfeMaterializeStudio) so the compile below has a model to work
-      // on. needCompile=false — the explicit compile owns that. NB: the model is NOT kept for later
-      // importers; ensureImportModels reloads any import on demand, which is what makes releasing it
-      // afterwards safe (materialization is an independent process and never assumes a warm registry).
-      file = await createStorFile({ ...fileInfo, source: content }, true, false, false);
-    } else {
-      const model = await file.getOrCreateModel();
-      if (model) model.model.setValue(content);
+      // needCreateModel=false: compileGeneratedTs loads this file (and its imports) on demand via
+      // addModels from stor. Creating a model here was redundant; later importers already reload
+      // from stor (ensureImportModels), which is what makes releasing the working copy safe.
+      file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
     }
     // Bump updatedAt so the freshly materialized .ts is newer than its .defs.ts (keeps isStale correct
     // across runs); libStor.createStorFile / setContent do not set it.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
+    refreshExistingModel(file, content);
     const compiled = shortName.endsWith('.defs') ? { errors: [], infraErrors: [], available: true } : await compileGeneratedTs(project, level, folder, shortName, content);
     // The content is already durable in stor; the monaco model was a working copy for the compile. Queue
     // it (released at the next quiescent point, so a peer compile in the pool can still import it).
