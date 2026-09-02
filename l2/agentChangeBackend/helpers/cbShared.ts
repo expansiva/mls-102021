@@ -40,6 +40,7 @@ import {
   liveBackendModulesFromL5,
   reconcileClientBackendRegistration,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbReconcileBackendConfig.js';
+import { isDeleteOperation } from '/_102021_/l2/agentChangeBackend/helpers/cbPortMethods.js';
 
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
@@ -282,6 +283,12 @@ export interface CbScan {
   siteMaps: Record<string, Record<string, unknown>>; // moduleName -> siteMap/navigation raw (best-effort view)
   /** ns4 entity lifecycles (`l4/<module>/workflows`). Not owners; the declared from→to matrix. */
   lifecycles: CbEntityLifecycle[];
+  /**
+   * Aggregate roots whose l4 declares a delete* operation. Derived from ALL operations of the
+   * target module (not the pending-status filter): a port must declare delete even when that
+   * operation is already `done`. Event entity ids never belong here.
+   */
+  deleteTargetEntityIds: string[];
   warnings: string[];
 }
 
@@ -441,13 +448,17 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   // Roots that operations own (entity + writes) across ALL operations regardless of status — the
   // aggregate boundaries must be stable even when only some owners are pending (toCreate).
   const operatedRootIds = new Set<string>();
-  for (const { obj, moduleName } of rawOwners) {
+  const deleteTargetEntityIds = new Set<string>();
+  for (const { obj, moduleName, kind } of rawOwners) {
     // Owners of another module never shape THIS module's aggregates: an entity only some previous
     // generation operates would otherwise get an entity, a port, a table and seeds it has no use for.
     if (moduleName && !ownersOfTarget(moduleName)) continue;
     const e = readString(obj.entity);
     if (e) operatedRootIds.add(e);
     for (const w of readStringArray(obj.writes)) operatedRootIds.add(w);
+    if (kind === 'operation' && isDeleteOperation({ id: readString(obj.operationId), opKind: readString(obj.kind) }) && e) {
+      deleteTargetEntityIds.add(e);
+    }
   }
 
   // ── single-module scope ────────────────────────────────────────────────────────
@@ -486,7 +497,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
     project, moduleNames: scoped.moduleName ? [scoped.moduleName] : allModuleNames,
     owners: scoped.owners, entities: backfilled, relationships: scoped.relationships,
     aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps,
-    lifecycles: scopedLifecycles, warnings,
+    lifecycles: scopedLifecycles, deleteTargetEntityIds: [...deleteTargetEntityIds].sort(), warnings,
   };
 }
 
@@ -1030,8 +1041,8 @@ export async function writeDefsSource(fileInfo: CbFileInfo, src: string): Promis
     file = await createStorFile(param, false, false, false);
   }
   if (file.status !== 'renamed' && file.status !== 'new') file.status = 'changed';
-  // Bump updatedAt so staleness (isStale: defs newer than .ts) re-materializes after a regen — the
-  // shared libStor.createStorFile does not set it (unlike core agentDefs.createStorFile).
+  // Bump updatedAt for the [cb-stale] diagnostic log. Existence of the .ts decides generation;
+  // the stamp is not a regenerate trigger (forceRegenerate deletes the .ts instead).
   file.updatedAt = new Date().toISOString();
   await mls.stor.localStor.setContent(file, { contentType: 'string', content: src });
   refreshExistingModel(file, src);
@@ -1515,10 +1526,29 @@ export function readTargetModule(context: mls.msg.ExecutionContext): string {
   return typeof lm?.targetModule === 'string' ? lm.targetModule.trim() : '';
 }
 
+function longMemoryString(context: mls.msg.ExecutionContext, key: string): string {
+  const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
+  return typeof lm?.[key] === 'string' ? (lm[key] as string).trim() : '';
+}
+
 /** Count of l1 files `/rebuild all` archived at bootstrap — empty when this run did not archive. */
 export function readRebuildArchived(context: mls.msg.ExecutionContext): string {
-  const lm = (context.task?.iaCompressed as { longMemory?: Record<string, unknown> } | undefined)?.longMemory;
-  return typeof lm?.rebuildArchived === 'string' ? lm.rebuildArchived.trim() : '';
+  return longMemoryString(context, 'rebuildArchived');
+}
+
+/** `rebuild-all wiped <n> file(s) of l1/<mod>` — empty when this run did not archive. */
+export function readRebuildWipeMsg(context: mls.msg.ExecutionContext): string {
+  return longMemoryString(context, 'rebuildWipeMsg');
+}
+
+/** Finding when wipe was 0 on a populated module, or live files remained. */
+export function readRebuildWipeFinding(context: mls.msg.ExecutionContext): string {
+  return longMemoryString(context, 'rebuildWipeFinding');
+}
+
+/** `/rebuild all` left live l1 files after archiving — the run must abort, not degrade to `/run`. */
+export function readRebuildWipeAbort(context: mls.msg.ExecutionContext): boolean {
+  return longMemoryString(context, 'rebuildWipeAbort') === 'true';
 }
 
 /** Enqueue the next sequential step under the same parent, depending on the current step. v1 uses a

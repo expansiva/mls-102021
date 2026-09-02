@@ -15,14 +15,14 @@ const CALL = /(?<![\w.])console\.(info|log|warn)\s*\(/g;
 /** Remaining non-error prints on the CB run path. A NEW print outside this list fails. */
 const ALLOWED: Record<string, { info?: number; log?: number; warn?: number; why: string }> = {
   'helpers/cbShared.ts': { warn: 1, why: 'saveAgentTrace failed — last-chance' },
-  'helpers/cbRepair.ts': { warn: 4, why: 'best-effort persist of repair/health/cost/run report failed' },
+  'helpers/cbRepair.ts': { warn: 4, info: 2, why: 'best-effort persist of repair/health/cost/run report failed; info is [cb-repair] diagnostic + forceRegenerate re-spawn ceiling' },
   'helpers/cbMaterializeIo.ts': { warn: 10, info: 1, why: 'compile/import/save fallbacks + existing-model refresh/read; info is registry-key mismatch' },
-  'steps/materialize/agentCbMaterialize.ts': { warn: 1, why: 'unreadable context ref omitted from the prompt' },
+  'steps/materialize/agentCbMaterialize.ts': { warn: 1, info: 2, why: 'unreadable context ref omitted from the prompt; info is [cb-stale] diagnostic + re-spawn/hard dispatch ceiling' },
   'steps/judge/agentCbJudge.ts': { warn: 1, why: 'project file index refresh failed before judging' },
   'steps/gen-http/agentCbHttpController.ts': { warn: 1, why: 'project file index refresh failed before generating controllers' },
   'steps/gen-seed-assets/agentCbSeedAssets.ts': { warn: 3, why: 'optional image step degrades to warning and continues' },
   'steps/register/agentCbRegister.ts': { warn: 2, why: 'composition/config merge warning, run continues' },
-  'steps/validate-all/agentCbValidateAll.ts': { warn: 2, why: 'scan warning + forceDefsStale failed' },
+  'steps/validate-all/agentCbValidateAll.ts': { warn: 2, why: 'scan warning + forceRegenerate failed' },
 };
 
 function collect(): Map<string, Record<Kind, number>> {

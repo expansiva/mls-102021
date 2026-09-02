@@ -4,7 +4,7 @@
 // No work -> finish (no file/status writes). Work -> continue to validate.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived, readRebuildWipeMsg, readRebuildWipeFinding, readRebuildWipeAbort } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { clearRepairState, saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
@@ -32,7 +32,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const buildTrace = await buildStampTrace(agent);
     const archived = readRebuildArchived(context);
-    const archiveTrace = archived ? ` rebuild-all archived ${archived} l1 files.` : '';
+    const wipeMsg = readRebuildWipeMsg(context);
+    const wipeFinding = readRebuildWipeFinding(context);
+    const archiveTrace = wipeMsg
+      ? ` ${wipeMsg}.${wipeFinding ? ` ${wipeFinding}.` : ''}`
+      : (archived ? ` rebuild-all archived ${archived} l1 files.` : '');
+    if (readRebuildWipeAbort(context)) {
+      const reason = wipeFinding || wipeMsg || 'rebuild-all wipe left live files';
+      await saveHealthReport({
+        rebuildWiped: Number(archived),
+        rebuildWipedMessage: wipeMsg,
+        rebuildWipedFinding: reason,
+      });
+      await recordFailedCbRun({
+        longMemory: context.task?.iaCompressed?.longMemory,
+        reason,
+        health: { rebuildWiped: Number(archived), rebuildWipedMessage: wipeMsg, rebuildWipedFinding: reason },
+      });
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', reason)];
+    }
     // toCreate is the trigger; inProgress is treated as resumable (a previous run locked but did not
     // finish) so the reconciler is idempotent and never gets stuck after a partial run.
     // /rebuild seeds: the backend is already built — skip the whole generation chain (validate/lock/
@@ -51,7 +69,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // with the repair budget already burned. A new run regenerates the artifacts anyway — old
     // findings reference code that is about to be replaced; reset everything at run start.
     await clearRepairState();
-    await saveHealthReport({ scanWarnings: scan.warnings });
+    await saveHealthReport({
+      scanWarnings: scan.warnings,
+      ...(wipeMsg ? {
+        rebuildWiped: Number(archived),
+        rebuildWipedMessage: wipeMsg,
+        ...(wipeFinding ? { rebuildWipedFinding: wipeFinding } : {}),
+      } : {}),
+    });
     const warningTrace = scan.warnings.length ? ` Warnings: ${scan.warnings.slice(0, 8).join('; ')}` : '';
     if (scan.owners.length === 0) {
       // A4 (T10): with NO pending owner AND no explicit module there is nothing to scope to — the
@@ -69,8 +94,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `No pending owner and no explicit module; nothing to scope.${warningTrace}${archiveTrace}${buildTrace}`),
         ];
       }
-      // Explicit module: don't stop: still MATERIALIZE any stale
-      // .ts (a .ts older than its .defs.ts — e.g. a previous run that failed after defs) and generate
+      // Explicit module: don't stop: still MATERIALIZE any missing
+      // .ts (output absent — e.g. a previous run that failed after defs) and generate
       // seeds if the seeds file is missing. cb-materialize skips up-to-date .ts, and cb-gen-seeds keeps
       // an existing seeds.ts (regenerates only on /rebuild all|seeds), so this is a fast no-op when the
       // module is fully current. This is the cheap recovery path the `done` flip exists for.

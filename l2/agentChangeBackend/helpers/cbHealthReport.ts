@@ -289,7 +289,7 @@ export function operationsCoverageLogLine(verdict: OperationsCoverageVerdict): s
 export function foldPipelineNotices(
   existingRaw: string | null,
   current: Record<string, unknown>,
-): { scanWarnings?: string[]; todoReadBack?: unknown } {
+): { scanWarnings?: string[]; todoReadBack?: unknown; rebuildWiped?: number; rebuildWipedMessage?: string; rebuildWipedFinding?: string } {
   const asWarnings = (value: unknown): string[] | undefined =>
     Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
   const asReadBack = (value: unknown): unknown =>
@@ -315,11 +315,22 @@ export function foldPipelineNotices(
     return undefined;
   };
 
-  const out: { scanWarnings?: string[]; todoReadBack?: unknown } = {};
+  const asNumber = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : (typeof value === 'string' && value.trim() && Number.isFinite(Number(value)) ? Number(value) : undefined);
+  const asString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value : undefined;
+
+  const out: { scanWarnings?: string[]; todoReadBack?: unknown; rebuildWiped?: number; rebuildWipedMessage?: string; rebuildWipedFinding?: string } = {};
   const scanWarnings = pick('scanWarnings', asWarnings);
   if (scanWarnings !== undefined) out.scanWarnings = scanWarnings;
   const todoReadBack = pick('todoReadBack', asReadBack);
   if (todoReadBack !== undefined) out.todoReadBack = todoReadBack;
+  const rebuildWiped = pick('rebuildWiped', asNumber);
+  if (rebuildWiped !== undefined) out.rebuildWiped = rebuildWiped;
+  const rebuildWipedMessage = pick('rebuildWipedMessage', asString);
+  if (rebuildWipedMessage !== undefined) out.rebuildWipedMessage = rebuildWipedMessage;
+  const rebuildWipedFinding = pick('rebuildWipedFinding', asString);
+  if (rebuildWipedFinding !== undefined) out.rebuildWipedFinding = rebuildWipedFinding;
   return out;
 }
 

@@ -130,6 +130,11 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
   2. `let parsed: Partial<{Entity}Details> = {}` filled inside `try`, reset in `catch`;
   3. `return { ...detailsDefaults(row), ...parsed }`.
   Applies to every adapter with a `details` column, including append-only event adapters.
+- Implement **every method declared on the port** (`data.portMethods` when present, otherwise the
+  imported `I{Entity}Repository`). A missing method is TS2741 and a runtime hole. If the port
+  declares `delete`, the factory return object includes:
+  `async delete(id) { await (await getTable()).delete({ where: { <pk_column>: id } }); }`
+  (pk_column = the table primary key, snake_case). Event adapters never implement `delete`.
 - The factory closes over `ctx`; methods take NO `ctx`. `getTable<{Entity}Row>('{table_name}')` where
   `{table_name}` is EXACTLY the `tableName` declared in the entity's TableDefinition (see the
   `<entity>.d.ts` in dependsFiles). NEVER pluralize, translate or invent it — an unknown name fails

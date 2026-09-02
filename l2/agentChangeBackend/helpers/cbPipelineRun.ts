@@ -24,6 +24,8 @@ export interface PipelineRunSummary {
   degradations: PipelineRunDegradation[];
   scanWarnings?: string[];
   todoReadBack?: unknown;
+  /** Compile gate of this host: ran (Monaco or project tsc) or unavailable. State, not an error. */
+  tscGate?: 'ran' | 'unavailable';
 }
 
 export function nextPipelineRunNn(existingShortNames: readonly string[], agentSlug: string): string {
@@ -71,6 +73,27 @@ export function listCbPipelineShortNames(moduleName: string): string[] {
   return names;
 }
 
+/** `seedSkipped` is an object `{ tables, mdmEntities, reason }`. `String(object)` is "[object Object]". */
+export function formatDegradationReason(reason: unknown): string {
+  if (typeof reason === 'string') return reason;
+  if (reason && typeof reason === 'object' && !Array.isArray(reason)) {
+    const rec = reason as { tables?: unknown; mdmEntities?: unknown; reason?: unknown };
+    const tables = Array.isArray(rec.tables) ? rec.tables.filter((id): id is string => typeof id === 'string') : [];
+    const mdm = Array.isArray(rec.mdmEntities) ? rec.mdmEntities.filter((id): id is string => typeof id === 'string') : [];
+    if (tables.length || mdm.length) {
+      return `skipped tables [${tables.join(', ') || 'none'}] MDM [${mdm.join(', ') || 'none'}]`;
+    }
+    if (typeof rec.reason === 'string' && rec.reason.trim()) return rec.reason;
+  }
+  if (reason == null) return 'seeds degraded';
+  try {
+    const json = JSON.stringify(reason);
+    return json && json !== '{}' ? json : 'seeds degraded';
+  } catch {
+    return 'seeds degraded';
+  }
+}
+
 export function buildCbRunSummary(input: {
   moduleName: string;
   command: string;
@@ -89,10 +112,10 @@ export function buildCbRunSummary(input: {
   const degradations: PipelineRunDegradation[] = degraded.map(reason => ({
     at: new Date().toISOString(),
     kind: 'health-degraded',
-    reason,
+    reason: formatDegradationReason(reason),
   }));
   if (health?.seeds === 'degraded') {
-    degradations.push({ at: new Date().toISOString(), kind: 'seeds-degraded', reason: String(health.seedSkipped ?? 'seeds degraded') });
+    degradations.push({ at: new Date().toISOString(), kind: 'seeds-degraded', reason: formatDegradationReason(health.seedSkipped ?? 'seeds degraded') });
   }
   if (input.extraDegradations?.length) degradations.push(...input.extraDegradations);
   const healthFailed = health?.outcome === 'failed';
@@ -101,6 +124,9 @@ export function buildCbRunSummary(input: {
     : input.noWork
       ? 'completed'
       : (degradations.length ? 'degraded' : 'completed');
+  const tscGate = health?.tscGate === 'ran' || health?.tscGate === 'unavailable'
+    ? health.tscGate as 'ran' | 'unavailable'
+    : undefined;
   return {
     moduleName: input.moduleName,
     agent: 'agentChangeBackend',
@@ -109,6 +135,7 @@ export function buildCbRunSummary(input: {
     finishedAt: new Date().toISOString(),
     verdict,
     reason: input.summary,
+    tscGate,
     counts: {
       ownersDone: input.ownersDone,
       ownersFlipped: input.ownersFlipped,
@@ -118,6 +145,9 @@ export function buildCbRunSummary(input: {
       repairs: Array.isArray(health?.repairHistory) ? health!.repairHistory.length : 0,
       globalAttempts: typeof health?.globalAttempts === 'number' ? health.globalAttempts : 0,
       noWork: input.noWork,
+      ...(typeof health?.rebuildWiped === 'number' ? { rebuildWiped: health.rebuildWiped } : {}),
+      ...(typeof health?.rebuildWipedMessage === 'string' ? { rebuildWipedMessage: health.rebuildWipedMessage } : {}),
+      ...(tscGate ? { tscGate } : {}),
     },
     degradations,
     scanWarnings: Array.isArray(health?.scanWarnings) ? health!.scanWarnings.map(String) : [],

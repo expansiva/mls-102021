@@ -23,6 +23,8 @@ import {
   ALL_STATUSES,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { parseCli, normalizePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbCli.js';
+import { resetRespawnCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+import { countBackendL1IndexedFiles, countBackendL1LiveFiles, describeRebuildWipe } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -37,9 +39,15 @@ export function createAgent(): IAgentAsync {
 }
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
+  // Repair + hard-dispatch ceilings are RUN state in this process (not stor). One Studio/CLI
+  // process can serve two runs; without a reset the previous run's counts would skip materialize.
+  resetRespawnCounts();
   const raw = userPrompt || context.message.content || '';
   const { kind: cmd, module: requestedModule, noAssets, fast } = parseCli(raw);
   let rebuildArchived = '';
+  let rebuildWipeMsg = '';
+  let rebuildWipeFinding = '';
+  let rebuildWipeAbort = '';
 
   // Resolve the ONE module this run targets, and (for rebuild) reset only that module's owners so the
   // task stays small. No explicit module -> the first (sorted) module with owners; readBackendScan
@@ -60,9 +68,17 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       // and only strips derived .ts at the end (cb-rebuild-defs-cleanup).
       if (cmd === 'rebuild-all' && targetModule) {
         const { archiveGeneratedBackendModule, clearCbLayerTrace } = await import('/_102021_/l2/agentChangeBackend/steps/rebuild-defs-cleanup/agentCbRebuildDefsCleanup.js');
-        const archived = await archiveGeneratedBackendModule(mls.actualProject || 0, targetModule);
-        await clearCbLayerTrace(mls.actualProject || 0, targetModule);
+        const project = mls.actualProject || 0;
+        const files = mls.stor.files as Record<string, { project?: number; level?: number; status?: string; folder?: string } | null | undefined>;
+        const indexed = countBackendL1IndexedFiles(files, project, targetModule);
+        const archived = await archiveGeneratedBackendModule(project, targetModule);
+        const leftover = countBackendL1LiveFiles(files, project, targetModule);
+        await clearCbLayerTrace(project, targetModule);
         rebuildArchived = String(archived.length);
+        const wipe = describeRebuildWipe(targetModule, archived.length, indexed, leftover);
+        rebuildWipeMsg = wipe.message;
+        rebuildWipeFinding = wipe.finding ?? '';
+        if (wipe.abort) rebuildWipeAbort = 'true';
       }
     } catch (e) {
       console.error(`${logPrefix(agent)} ${cmd} reset failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -100,7 +116,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}) },
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}), ...(rebuildWipeMsg ? { rebuildWipeMsg } : {}), ...(rebuildWipeFinding ? { rebuildWipeFinding } : {}), ...(rebuildWipeAbort ? { rebuildWipeAbort } : {}) },
     },
   };
 

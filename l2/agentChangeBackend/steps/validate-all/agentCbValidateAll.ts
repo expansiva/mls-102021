@@ -12,7 +12,7 @@
 // tables are a valid published app. Repair still tries mapped degradable findings inside the budget;
 // degrade is the fallback when the budget ends, not the first move. Gates are not relaxed.
 // Findings that map to a MATERIALIZATION-level component (bad/missing .ts) trigger up to
-// GLOBAL_REPAIR_BUDGET global repair rounds: the component defs are forced stale, the findings are
+// GLOBAL_REPAIR_BUDGET global repair rounds: the output .ts is deleted (forceRegenerate), the findings are
 // recorded (cbRepair) and cb-materialize is re-enqueued in repair mode — the flow reconverges back
 // here (unique planId). Unmapped BLOCKING findings (defs-level) fail CLEAN. Unmapped degradable
 // findings do not prevent repair of mapped ones, and do not fail the run.
@@ -24,15 +24,16 @@ import { cbTraceFolder } from '/_102021_/l2/agentChangeBackend/helpers/cbTraceSc
 import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, isRecord, readStringArray, lowerFirst, logPrefix, ALL_STATUSES, MDM_WRITE_PATH_ENABLED } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { collectPersistencePolicyIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmPolicy.js';
 import {
-  readRepairState, saveRepairState, forceDefsStale, clearRepairState, saveHealthReport, pushHistory,
+  readRepairState, saveRepairState, forceRegenerate, clearRepairState, saveHealthReport, pushHistory,
   mergeComponentRepair, GLOBAL_REPAIR_BUDGET,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import {
-  fileIsPresent, getFileModified, compileSavedTsAndGetErrors, getContentByMlsPath,
+  fileIsPresent, compileSavedTsAndGetErrors, getContentByMlsPath,
   flushBorrowedModels, modelCounts, compileModuleAndGetErrors,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { localStepTitle, startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
-import { isStale, shouldTargetedRescue } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { isStale, shouldTargetedRescue, compilerFindingsDegradeAfterBudget } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
+import { formatCompileModuleTrace, mergeCompileTargets, type CompileModuleTrace } from '/_102021_/l2/agentChangeBackend/helpers/cbProjectTsc.js';
 
 // T6: one targeted rescue round (outside the global budget) fires only for a SMALL, compiler-only
 // residual — a larger or non-compiler residual is a genuine failure, not a last-mile fix.
@@ -47,7 +48,8 @@ import {
   collectNonEnglishAppErrorMessages,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
-  extractInterfaceMethods, collectDeleteOperationPortGaps,
+  extractInterfaceMethods, collectDeleteOperationPortGaps, extractRepositoryInterfaceName,
+  collectAdapterMissingPortMethods,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import { collectLifecycleContradictionFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
 import { collectRedundantPkIndexFindings } from '/_102021_/l2/agentChangeBackend/helpers/cbTableIndexes.js';
@@ -358,7 +360,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? { operations: 'ok' as const }
       : { operations: 'degraded' as const, operationsMissing: operationsCoverage.operationsMissing };
     const operationsNote = ` ${operationsCoverageLogLine(operationsCoverage)}.`;
-    const persistHealth = (report: Record<string, unknown>) => saveHealthReport({ ...report, ...operationsHealth });
+    let tscGate: 'ran' | 'unavailable' | undefined;
+    let compileTrace: CompileModuleTrace | undefined;
+    const persistHealth = (report: Record<string, unknown>) => saveHealthReport({
+      ...report,
+      ...operationsHealth,
+      ...(tscGate ? { tscGate } : {}),
+      ...(compileTrace ? { compileTrace } : {}),
+    });
     for (const artifact of mdmDomainArtifacts) {
       missing.push(`mdm local domain artifact forbidden -> ${artifact}`);
     }
@@ -456,6 +465,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
 
+    // Adapter missing a method the port declares (TS2741, typically delete). Skip when the adapter
+    // factory cannot be parsed — same no-FP rule as the port-gap gate.
+    for (const [sn, source] of persistenceSources) {
+      if (!sn.endsWith('repositoryadapter')) continue;
+      const portSn = sn.replace(/adapter$/, '');
+      const portSrc = portSources.get(portSn);
+      if (!portSrc) continue;
+      const iface = extractRepositoryInterfaceName(portSrc);
+      if (!iface) continue;
+      const methods = extractInterfaceMethods(portSrc, iface);
+      if (!methods.size) continue;
+      const defs = defsFiles.find(d => d.folder.endsWith('/adapters/persistence') && d.shortName === sn);
+      const label = defs ? `${defs.folder}/${defs.real}.ts` : sn;
+      for (const msg of collectAdapterMissingPortMethods(source, methods, label, iface)) {
+        missing.push(msg);
+        if (defs) addRepair(defRefOf(defs.folder, defs.real), msg);
+      }
+    }
+
     // COHERENCE (item 3): every controller handler must reference a function the usecase actually
     // exports. Catches the "controller imports an export the usecase never produced" break (orderFlow).
     // V1: controller id == usecase id (per operation). V2: controller id == workspaceId and each handler
@@ -525,14 +553,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         addRepair(defRefOf(d.folder, d.real), msg); // missing .ts -> re-materializable
         continue;
       }
-      // STALENESS (lesson task2/102049): a worker that failed validation saves NO .ts, but an OLD .ts
-      // from a previous run may still exist and silently mask the failure ("passed" with outdated
-      // code). A .defs.ts newer than its materialized .ts means the current defs were never
-      // materialized -> blocking finding, re-materializable.
-      const defsMs = getFileModified(project, 1, d.folder, d.real, '.defs.ts');
-      const tsMs = getFileModified(project, 1, d.folder, d.real, '.ts');
-      if (isStale(defsMs, tsMs, fileIsPresent(project, 1, d.folder, d.real, '.ts'))) {
-        const msg = `materialization stale -> ${d.folder}/${d.real}.ts is older than its .defs.ts (failed worker masked by a previous run's output)`;
+      // Existence-only: tsSet can still list a file whose stor status is `deleted`. Treat that as
+      // missing so validate-all routes a rematerialize instead of passing a ghost.
+      if (isStale(fileIsPresent(project, 1, d.folder, d.real, '.ts'))) {
+        const msg = `materialization incomplete -> ${d.folder}/${d.real}.ts not generated from its .defs.ts`;
         missing.push(msg);
         addRepair(defRefOf(d.folder, d.real), msg);
       }
@@ -597,17 +621,22 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const stopCompileTick = startLocalStepTick(context, step, (sec) =>
       `${step.stepTitle || 'Validate l1 artifacts'} — compiling ${inScope.length} files (${sec}s)`);
     try {
-      const single = await compileModuleAndGetErrors(project, inScope.map(d => ({ folder: d.folder, shortName: d.real })));
+      const firstPass = await compileModuleAndGetErrors(project, inScope.map(d => ({ folder: d.folder, shortName: d.real })));
+      compileTrace = firstPass.trace;
+      tscGate = firstPass.trace.path === 'unavailable' ? 'unavailable' : 'ran';
+      const single = firstPass.errors;
       await flushBorrowedModels();
       if (single) {
-        const flaggedFirst = inScope.filter(d => (single.get(`${d.folder}::${d.real}`) || []).length);
+        const compileTargets = mergeCompileTargets(inScope, single);
+        const flaggedFirst = compileTargets.filter(d => (single.get(`${d.folder}::${d.real}`) || []).length);
         // After a repair round, re-ask EVERY file — g2 used to re-ask only the files still flagged
         // on the first pass and missed the leftover family in createServiceAppointment (be5).
-        const secondTargets = afterRepair ? inScope : flaggedFirst;
-        const second = secondTargets.length
+        const secondTargets = afterRepair ? compileTargets : flaggedFirst;
+        const secondPass = secondTargets.length
           ? await compileModuleAndGetErrors(project, secondTargets.map(d => ({ folder: d.folder, shortName: d.real })))
-          : new Map<string, string[]>();
-        const consider = afterRepair ? inScope : flaggedFirst;
+          : { errors: new Map<string, string[]>(), trace: firstPass.trace };
+        const second = secondPass.errors;
+        const consider = afterRepair ? compileTargets : flaggedFirst;
         for (const d of consider) {
           const key = `${d.folder}::${d.real}`;
           const first = single.get(key) || [];
@@ -892,7 +921,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           // defRefs a given g{n} round re-materialized.
           pushHistory(state, `${defRef} :: validate-all g${state.globalAttempts} :: ${findings[0] ?? 'finding'}`);
           roundTargets.push({ defRef, findings: findings.length, first: findings[0] ?? 'finding' });
-          if (!forceDefsStale(defRef)) console.warn(`${logPrefix(agent)} forceDefsStale failed for ${defRef}`);
+          if (!await forceRegenerate(defRef)) console.warn(`${logPrefix(agent)} forceRegenerate failed for ${defRef}`);
         }
         await saveRepairState(state);
         const suppressedNote = (flakyCompilerSuppressed || cascadeCompilerSuppressed)
@@ -944,6 +973,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
         ];
       }
+      if (compilerFindingsDegradeAfterBudget({ blocking, globalAttempts: state.globalAttempts, budget: GLOBAL_REPAIR_BUDGET })) {
+        const degradedAll = [...degradable, ...blocking];
+        const overflowReason = `repair budget exhausted (${state.globalAttempts}/${GLOBAL_REPAIR_BUDGET}); compiler findings degraded`;
+        const trace = `INTEGRITY PASSED-DEGRADED (${overflowReason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
+        await persistHealth({
+          outcome: 'passed-degraded', reason: overflowReason, l1Defs, findings: unique, degraded: degradedAll, unmapped, warnings,
+          repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth(),
+        });
+        await clearRepairState();
+        return [
+          enqueueNextInPhase(context, step, 'finalization', 'cb-finalize', 'agentCbFinalizeStatus', 'Finalizar todoBackend', {}),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
+        ];
+      }
       const trace = `INTEGRITY FAILED (${reason}): ${unique.length} finding(s): ${unique.slice(0, 30).join('; ')}${historyNote}${modelsTrace()}${operationsNote}`;
       const healthFailed = { outcome: 'failed' as const, reason, l1Defs, findings: unique, unmapped, degraded: degradable, warnings, repairHistory: state.history, globalAttempts: state.globalAttempts, models: modelsForHealth() };
       await persistHealth(healthFailed);
@@ -969,9 +1012,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // what left be4's dossier with repairHistory: [] after three real repair rounds.
     if (!preSeeds) await clearRepairState();
     // Record the warning details on the step log too (not just the count), so they are visible in the trace.
+    const compileNote = compileTrace ? ` ${formatCompileModuleTrace(compileTrace)}` : (tscGate ? ` tscGate=${tscGate}` : '');
     const okTrace = (warnings.length
       ? `l1 defs=${l1Defs}; ${warnings.length} warning(s): ${warnings.slice(0, 12).join('; ')}`
-      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote + modelsNote + operationsNote;
+      : `l1 defs=${l1Defs}; 0 warnings.`) + repairNote + modelsNote + operationsNote + compileNote;
     return [
       enqueueNextInPhase(context, step, preSeeds ? 'seeds' : 'finalization', preSeeds ? 'cb-gen-seeds' : 'cb-finalize', preSeeds ? 'agentCbSeeds' : 'agentCbFinalizeStatus', preSeeds ? 'Gerar seeds' : 'Finalizar todoBackend', {}),
       createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', okTrace),

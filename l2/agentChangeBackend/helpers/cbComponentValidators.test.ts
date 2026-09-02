@@ -11,7 +11,8 @@ import {
   ownershipCheckIsInconclusive, ownershipInconclusiveWarning,
   collectOrphanDefsFindings, collectMissingCanonicalRouteIssues,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues,
-  collectDeleteOperationPortGaps,
+  collectDeleteOperationPortGaps, extractAdapterFactoryMethods, collectAdapterMissingPortMethods,
+  extractRepositoryInterfaceName,
   stableCompilerErrors, selectCompilerRepairRoots,
   compilerErrorFamily, compilerErrorsAfterRepair, compilerFindingsBlockingPassed, annotateCompilerError,
   collectNonEnglishAppErrorMessages,
@@ -19,6 +20,8 @@ import {
   collectDetailsDefaultingIssues, extractFunctionBlocks, extractCollectionFieldNames,
   jsonbColumnsFromTableSource, collectJsonbRowParseFindings, collectDetailsKeyIssues, fieldIdsFromL4Fields,
   alignOutputShapeToOntology, bffCallsWithMaterializedUsecase,
+  applyInventedImportFixes, collectCallbackNullAssignmentIssues, closestExportedName,
+  collectExportedNames, collectNamedL1Imports, significantCamelWords,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 import {
   TASK_FIELD_IDS, TASK_L4_FIELDS, TASK_SEED_ROW, toDomain, toRow,
@@ -720,9 +723,7 @@ test('a repository cast that invents a method is rejected, with the readable alt
   ].join('\n');
   const issues = collectRepositoryCastIssues(code);
   assert.equal(issues.length, 1, issues.join(' | '));
-  assert.match(issues[0], /repository cast forbidden/u);
-  assert.match(issues[0], /undefined is not a function/u);
-  assert.match(issues[0], /CONFLICT/u);
+  assert.match(issues[0], /invents clients\.delete\(\.\.\.\) by cast/u);
 
   // `as any` is the same escape by another spelling.
   assert.equal(collectRepositoryCastIssues([
@@ -739,3 +740,162 @@ test('a repository cast that invents a method is rejected, with the readable alt
   // A cast of something that is NOT a resolved repository is none of this gate's business.
   assert.deepEqual(collectRepositoryCastIssues('const row = payload as unknown as { delete(): void };'), []);
 });
+
+test('T3 positive: 102046 deleteClient inline object cast is a finding (copied, not read from the app)', () => {
+  // Byte-for-byte the production shape (multiline object type). Fixture inline — never read mls-102046.
+  const code = [
+    "const clients = resolveRepository<IClientRepository>(ctx, 'Client');",
+    'const deletedClient = clients as unknown as {',
+    '  delete(id: string): Promise<void>;',
+    '};',
+    'await deletedClient.delete(client.clientId);',
+  ].join('\n');
+  const issues = collectRepositoryCastIssues(code);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /invents clients\.delete\(\.\.\.\) by cast/u);
+  assert.match(issues[0], /Declare it on the port or do not emit the operation/u);
+});
+
+test('T3 negative: named-type as unknown as is not a finding', () => {
+  const named = [
+    "const clients = resolveRepository<IClientRepository>(ctx, 'Client');",
+    "const details = clients as unknown as Parameters<typeof ctx.mdm.entity.create>[0]['details'];",
+  ].join('\n');
+  assert.deepEqual(collectRepositoryCastIssues(named), []);
+
+  const alias = [
+    "const invoices = resolveRepository<IInvoiceRepository>(ctx, 'Invoice');",
+    'const deletable = invoices as unknown as DeletableInvoiceRepository;',
+  ].join('\n');
+  assert.deepEqual(collectRepositoryCastIssues(alias), []);
+});
+
+test('adapter missing a port method is a finding; implementing all is silence', () => {
+  const port = `
+export interface ITicketRepository {
+  getById(id: string): Promise<Ticket | null>;
+  list(filter: TicketFilter): Promise<Ticket[]>;
+  save(aggregate: Ticket): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+`;
+  assert.equal(extractRepositoryInterfaceName(port), 'ITicketRepository');
+  const methods = extractInterfaceMethods(port, 'ITicketRepository');
+  const missingDelete = `
+export function createTicketRepositoryAdapter(ctx: RequestContext): ITicketRepository {
+  const getTable = () => ctx.data.moduleData.getTable<TicketRow>('ticket');
+  return {
+    async getById(id) { return null; },
+    async list(filter) { return []; },
+    async save(aggregate) { return; },
+  };
+}
+`;
+  const issues = collectAdapterMissingPortMethods(missingDelete, methods, 'ticketRepositoryAdapter.ts', 'ITicketRepository');
+  assert.equal(issues.length, 1, issues.join('\n'));
+  assert.match(issues[0], /missing ITicketRepository\.delete/);
+  assert.match(issues[0], /the port declares delete, getById, list, save/);
+
+  const complete = `
+export function createTicketRepositoryAdapter(ctx: RequestContext): ITicketRepository {
+  const getTable = () => ctx.data.moduleData.getTable<TicketRow>('ticket');
+  return {
+    async getById(id) { return null; },
+    async list(filter) { return []; },
+    async save(aggregate) { return; },
+    async delete(id) { await (await getTable()).delete({ where: { ticket_id: id } }); },
+  };
+}
+`;
+  assert.deepEqual(collectAdapterMissingPortMethods(complete, methods, 'ticketRepositoryAdapter.ts', 'ITicketRepository'), []);
+  const extracted = extractAdapterFactoryMethods(complete);
+  assert.ok(extracted.has('delete') && extracted.has('save') && extracted.has('getById'));
+});
+
+const TICKET_COMMENT_EXPORTS = `
+export interface TicketComment { ticketCommentId: string; ticketId: string; commentText: string; }
+export function hasValidTicketCommentText(text: string): boolean { return text.trim().length > 0; }
+export function canAddTicketComment(ticket: { status: string }): boolean { return ticket.status === 'open'; }
+`;
+
+test('closestExportedName matches the same camelCase words in another order (canAddCommentToTicket)', () => {
+  assert.equal(significantCamelWords('canAddCommentToTicket'), significantCamelWords('canAddTicketComment'));
+  assert.equal(
+    closestExportedName('canAddCommentToTicket', ['TicketComment', 'hasValidTicketCommentText', 'canAddTicketComment']),
+    'canAddTicketComment',
+  );
+});
+
+test('invented import with a close export is renamed and records the pair; existing names stay', () => {
+  const code = `import { canAddCommentToTicket, hasValidTicketCommentText } from '/_102047_/l1/controleChamados/layer_3_domain/entities/ticketComment.js';
+if (!canAddCommentToTicket(ticket)) throw new Error('closed');
+if (!hasValidTicketCommentText(input.commentText)) throw new Error('empty');
+`;
+  const targets = new Map([['controleChamados/layer_3_domain/entities::ticketComment', TICKET_COMMENT_EXPORTS]]);
+  const fix = applyInventedImportFixes(code, 102047, targets, 'controleChamados');
+  assert.equal(fix.findings.length, 0, fix.findings.join('\n'));
+  assert.equal(fix.renamed.length, 1);
+  assert.equal(fix.renamed[0].imported, 'canAddCommentToTicket');
+  assert.equal(fix.renamed[0].exported, 'canAddTicketComment');
+  assert.match(fix.code, /canAddTicketComment/);
+  assert.doesNotMatch(fix.code, /canAddCommentToTicket/);
+  assert.match(fix.code, /hasValidTicketCommentText/);
+});
+
+test('invented import with no close export is a finding; a name that exists is left alone', () => {
+  const code = `import { totallyInventedPredicate, canAddTicketComment } from '/_102047_/l1/controleChamados/layer_3_domain/entities/ticketComment.js';
+`;
+  const targets = new Map([['controleChamados/layer_3_domain/entities::ticketComment', TICKET_COMMENT_EXPORTS]]);
+  const fix = applyInventedImportFixes(code, 102047, targets, 'controleChamados');
+  assert.equal(fix.renamed.length, 0);
+  assert.equal(fix.findings.length, 1, fix.findings.join('\n'));
+  assert.match(fix.findings[0], /totallyInventedPredicate/);
+  assert.match(fix.code, /canAddTicketComment/);
+});
+
+test('invented import of /_102034_/ runtime is ignored even when the name does not exist', () => {
+  const code = `import { notARealRuntimeExport } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+`;
+  const targets = new Map([['server/layer_2_controllers::contracts', 'export function AppError() {}']]);
+  const fix = applyInventedImportFixes(code, 102047, targets, 'controleChamados');
+  assert.deepEqual(collectNamedL1Imports(code, 102047, 'controleChamados'), []);
+  assert.deepEqual(fix.findings, []);
+  assert.deepEqual(fix.renamed, []);
+  assert.equal(fix.code, code);
+});
+
+test('collectExportedNames reads function/interface/type and export lists', () => {
+  const names = collectExportedNames(TICKET_COMMENT_EXPORTS);
+  assert.ok(names.has('TicketComment'));
+  assert.ok(names.has('hasValidTicketCommentText'));
+  assert.ok(names.has('canAddTicketComment'));
+});
+
+test('let x: T | null = null assigned only inside a callback then if (!x) is a finding', () => {
+  const bad = `
+let updatedComment: TicketComment | null = null;
+await ctx.data.runInTransaction(async () => {
+  updatedComment = { ...comment, commentText: input.commentText };
+});
+if (!updatedComment) throw new AppError('CONFLICT', 'Ticket comment was not updated.', 409);
+return { ticketCommentId: updatedComment.ticketCommentId };
+`;
+  const issues = collectCallbackNullAssignmentIssues(bad);
+  assert.equal(issues.length, 1, issues.join('\n'));
+  assert.match(issues[0], /updatedComment/);
+  assert.match(issues[0], /callback-assigned null/);
+});
+
+test('the same let-null pattern with an assignment outside a callback is not a finding', () => {
+  const good = `
+let updatedComment: TicketComment | null = null;
+updatedComment = { ...comment, commentText: input.commentText };
+await ctx.data.runInTransaction(async () => {
+  await comments.save(updatedComment);
+});
+if (!updatedComment) throw new AppError('CONFLICT', 'Ticket comment was not updated.', 409);
+return { ticketCommentId: updatedComment.ticketCommentId };
+`;
+  assert.deepEqual(collectCallbackNullAssignmentIssues(good), []);
+});
+

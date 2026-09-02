@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bestEffortRecord, buildCbRunSummary, nextPipelineRunNn } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
+import { bestEffortRecord, buildCbRunSummary, formatDegradationReason, nextPipelineRunNn } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 void test('nextPipelineRunNn is deterministic', () => {
   assert.equal(nextPipelineRunNn(['run01_changebackend', 'cb-cost'], 'changebackend'), '02');
@@ -21,10 +21,32 @@ void test('CB run summary copies health degradations off the console path', () =
   });
   assert.equal(summary.verdict, 'degraded');
   assert.equal(summary.degradations.some(item => item.kind === 'health-degraded'), true);
-  assert.equal(summary.degradations.some(item => item.kind === 'seeds-degraded'), true);
+  const seeds = summary.degradations.find(item => item.kind === 'seeds-degraded');
+  assert.equal(seeds?.reason, 'skipped tables [X] MDM [none]');
+  assert.notEqual(seeds?.reason, '[object Object]');
   assert.equal(summary.counts.ownersDone, 8);
   assert.deepEqual(summary.scanWarnings, []);
   assert.equal(summary.todoReadBack, null);
+});
+
+void test('CB run summary carries rebuild-all wiped N in counts', () => {
+  const summary = buildCbRunSummary({
+    moduleName: 'petShop',
+    command: '/rebuild all',
+    noWork: false,
+    ownersDone: 8,
+    ownersFlipped: 0,
+    compilerLeft: false,
+    health: {
+      findings: [],
+      degraded: [],
+      rebuildWiped: 12,
+      rebuildWipedMessage: 'rebuild-all wiped 12 file(s) of l1/petShop',
+    },
+    summary: 'run complete',
+  });
+  assert.equal(summary.counts.rebuildWiped, 12);
+  assert.equal(summary.counts.rebuildWipedMessage, 'rebuild-all wiped 12 file(s) of l1/petShop');
 });
 
 void test('CB run summary copies scan warnings and todo read-back off the step-status path', () => {
@@ -45,6 +67,22 @@ void test('CB run summary copies scan warnings and todo read-back off the step-s
   });
   assert.deepEqual(summary.scanWarnings, ['duplicate todoBackend owner useCase:createSignature; first entry kept']);
   assert.equal((summary.todoReadBack as { retried: number }).retried, 7);
+});
+
+void test('tscGate unavailable is recorded on the summary and does not change the verdict', () => {
+  const summary = buildCbRunSummary({
+    moduleName: 'controleChamados',
+    command: '/rebuild all',
+    noWork: false,
+    ownersDone: 13,
+    ownersFlipped: 0,
+    compilerLeft: false,
+    health: { findings: [], degraded: [], tscGate: 'unavailable', compileTrace: { path: 'unavailable', reason: 'spawn-null', rawDiagnostics: 0, afterFilter: 0, files: 13 } },
+    summary: 'run complete',
+  });
+  assert.equal(summary.verdict, 'completed');
+  assert.equal(summary.tscGate, 'unavailable');
+  assert.equal(summary.counts.tscGate, 'unavailable');
 });
 
 void test('a failed changeFrontend handoff degrades without failing the run', () => {
@@ -100,6 +138,16 @@ void test('health outcome failed produces a failed run summary with INTEGRITY fi
   assert.equal(summary.counts.repairs, 13);
   assert.equal(summary.counts.globalAttempts, 3);
   assert.equal(summary.counts.degraded, 1);
+});
+
+void test('formatDegradationReason never stringifies an object as [object Object]', () => {
+  assert.equal(formatDegradationReason({
+    tables: ['ServiceExecutionImage'],
+    mdmEntities: [],
+    reason: 'seed wave 6 did not converge',
+  }), 'skipped tables [ServiceExecutionImage] MDM [none]');
+  assert.equal(formatDegradationReason('already a string'), 'already a string');
+  assert.equal(formatDegradationReason({ reason: 'wave skipped' }), 'wave skipped');
 });
 
 void test('a throwing saveCbRunSummary does not change the failed outcome', async () => {

@@ -195,6 +195,30 @@ it does not exist.
 - **A port method typed `Promise<T | null>` really can return null** — assign it to a `T | null` variable
   and null-check (or throw `NOT_FOUND`) before use. Never assign a nullable result to a non-null variable
   or pass it where a non-null `T` is required (TS2322/TS2345).
+- **Never assign through a callback into `let x: T | null = null`.** TypeScript cannot see assignments
+  inside a function passed as an argument (`runInTransaction(async () => { x = … })`). After `if (!x)`
+  the type is `never` and property access fails to compile (TS2339). Return the value from the callback.
+
+  Wrong:
+  ```ts
+  let updatedComment: TicketComment | null = null;
+  await ctx.data.runInTransaction(async () => {
+    updatedComment = { ...comment, commentText: input.commentText };
+    await comments.save(updatedComment);
+  });
+  if (!updatedComment) throw new AppError('CONFLICT', 'Ticket comment was not updated.', 409);
+  return { ticketCommentId: updatedComment.ticketCommentId, ticketId: updatedComment.ticketId, commentText: updatedComment.commentText };
+  ```
+
+  Right — the callback returns the value:
+  ```ts
+  const updatedComment = await ctx.data.runInTransaction(async () => {
+    const next = { ...comment, commentText: input.commentText };
+    await comments.save(next);
+    return next;
+  });
+  return { ticketCommentId: updatedComment.ticketCommentId, ticketId: updatedComment.ticketId, commentText: updatedComment.commentText };
+  ```
 
 Plural-first rule: never call `ctx.mdm.entity.get` inside a `for`/`while`/`map`/`forEach` loop. Collect
 the ids first, call `ctx.mdm.collection.getMany({ mdmIds })` or `hydrateMany`, then join the results in

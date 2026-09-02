@@ -5,18 +5,91 @@ export function isGeneratedBackendFolder(folder: string, modules: string[]): boo
   return modules.some(module => !!module && (folder === module || folder.startsWith(`${module}/`)));
 }
 
-/** Keys of l1 files that `/rebuild all` must archive before regenerating. */
+type StorFileLite = {
+  project?: number | string;
+  level?: number | string;
+  status?: string;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+} | null | undefined;
+
+function isModuleL1File(file: StorFileLite, project: number, moduleName: string): boolean {
+  if (!file) return false;
+  if (Number(file.project) !== project || Number(file.level) !== 1) return false;
+  return isGeneratedBackendFolder(String(file.folder || ''), [moduleName]);
+}
+
+/** Keys of l1 files that `/rebuild all` must archive before regenerating.
+ *  Everything under `l1/<mod>/`: `.ts` and `.defs.ts`, every layer, `seeds.ts`,
+ *  `registerRepositories.ts`, including leftovers whose stor status is already `deleted`. */
 export function listBackendL1ArchiveKeys(
-  files: Record<string, { project?: number; level?: number; status?: string; folder?: string } | null | undefined>,
+  files: Record<string, StorFileLite>,
   project: number,
   moduleName: string,
 ): string[] {
   if (!moduleName) return [];
   const keys: string[] = [];
   for (const [key, file] of Object.entries(files)) {
-    if (!file || file.project !== project || file.level !== 1 || file.status === 'deleted') continue;
-    if (!isGeneratedBackendFolder(String(file.folder || ''), [moduleName])) continue;
+    if (!isModuleL1File(file, project, moduleName)) continue;
     keys.push(key);
   }
   return keys;
+}
+
+/** Live (not `deleted`) l1 files still in the index after a wipe. */
+export function countBackendL1LiveFiles(
+  files: Record<string, StorFileLite>,
+  project: number,
+  moduleName: string,
+): number {
+  if (!moduleName) return 0;
+  let n = 0;
+  for (const file of Object.values(files)) {
+    if (!isModuleL1File(file, project, moduleName)) continue;
+    if (file?.status === 'deleted') continue;
+    n++;
+  }
+  return n;
+}
+
+/** Count of l1 files of the module still in the index, including `status=deleted`. */
+export function countBackendL1IndexedFiles(
+  files: Record<string, StorFileLite>,
+  project: number,
+  moduleName: string,
+): number {
+  if (!moduleName) return 0;
+  let n = 0;
+  for (const file of Object.values(files)) {
+    if (isModuleL1File(file, project, moduleName)) n++;
+  }
+  return n;
+}
+
+export function rebuildAllWipedMessage(moduleName: string, wiped: number): string {
+  return `rebuild-all wiped ${wiped} file(s) of l1/${moduleName}`;
+}
+
+/** A wipe that counted files and still left live ones is not a rebuild-all — abort the run. */
+export function rebuildWipeShouldAbort(wiped: number, leftover: number): boolean {
+  return wiped > 0 && leftover > 0;
+}
+
+/** Trace line plus optional finding when a populated module wipes 0, or live files remain. */
+export function describeRebuildWipe(
+  moduleName: string,
+  wiped: number,
+  indexed: number,
+  leftover: number,
+): { message: string; finding: string | null; abort: boolean } {
+  const message = rebuildAllWipedMessage(moduleName, wiped);
+  const abort = rebuildWipeShouldAbort(wiped, leftover);
+  if (wiped === 0 && indexed > 0) {
+    return { message, finding: `${message} but the index still has ${indexed} file(s)`, abort };
+  }
+  if (leftover > 0) {
+    return { message, finding: `${message}; ${leftover} live file(s) remain`, abort };
+  }
+  return { message, finding: null, abort };
 }

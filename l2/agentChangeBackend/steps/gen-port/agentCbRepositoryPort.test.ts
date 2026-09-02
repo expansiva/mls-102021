@@ -21,6 +21,11 @@ void test('agentCbRepositoryPort declares the LLM step agent contract', () => {
   assert.match(src, /agentCbRepositoryPort/);
   assert.match(src, /createPromptReadyIntent/);
   assert.match(src, /afterPromptStep/);
+  assert.match(src, /buildPortPlanItems/);
+  assert.match(src, /requiredMethods/);
+  assert.match(src, /ensureRequiredPortMethods/);
+  assert.match(src, /stripEventPortDelete/);
+  assert.doesNotMatch(src, /scan\.aggregates\.map\(a => \(\{ entityId: a\.rootEntity, embeddedMembers: a\.embeddedMembers \}\)\)/);
   assert.match(flow, /"agentName": "agentCbRepositoryPort"/);
 });
 

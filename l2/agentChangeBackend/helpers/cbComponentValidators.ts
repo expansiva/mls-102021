@@ -357,6 +357,11 @@ export function collectDeleteOperationPortGaps(
   return issues;
 }
 
+function methodNameInInlineType(inner: string): string {
+  const m = /(?:^|[;{,])\s*(?:readonly\s+)?([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*(?:\(|:\s*(?:<[^>]*>)?\s*\()/m.exec(`;${inner}`);
+  return m?.[1] ?? '';
+}
+
 export function collectRepositoryCastIssues(code: string): string[] {
   const issues: string[] = [];
   const seen = new Set<string>();
@@ -365,14 +370,107 @@ export function collectRepositoryCastIssues(code: string): string[] {
     repositories.add(match[1]);
   }
   if (!repositories.size) return issues;
-  // `<name> as unknown as { … }` / `as any` / `as { … }` over a resolved repository.
-  for (const match of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s+as\s+(?:unknown\s+as\s+)?([^;\n]+)/gu)) {
-    const [, alias, source, casted] = match;
-    if (!repositories.has(source)) continue;
-    const method = /\{\s*([A-Za-z_$][\w$]*)\s*[(<]/u.exec(casted)?.[1] || 'a method';
-    if (seen.has(alias)) continue;
+  // `as any` is the same escape as inventing a method, by another spelling.
+  for (const match of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s+as\s+any\b/gu)) {
+    const [, alias, source] = match;
+    if (!repositories.has(source) || seen.has(alias)) continue;
     seen.add(alias);
-    issues.push(`repository cast forbidden -> \`${alias} = ${source} as ${casted.trim().slice(0, 60)}\`; casting a repository to give it \`${method}\` produces \`undefined is not a function\` at runtime (the client sees INTERNAL_ERROR: Unexpected error). If the port does not declare it, the entity does not support that operation — throw a readable AppError('CONFLICT', '<Entity> repository does not support <operation>') instead`);
+    issues.push(`repository cast forbidden -> \`${alias} = ${source} as any\`; casting a repository to give it a method produces \`undefined is not a function\` at runtime (the client sees INTERNAL_ERROR: Unexpected error). If the port does not declare it, the entity does not support that operation — throw a readable AppError('CONFLICT', '<Entity> repository does not support <operation>') instead`);
+  }
+  // Narrow: only `as unknown as { … method(...) … }` — an inline object type that ADDS a method.
+  // Named types (`as unknown as Parameters<…>`, `as unknown as DeletableX`) are legitimate or a
+  // different shape; flagging every `as unknown as` kills runs (false positive).
+  const startRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s+as\s+unknown\s+as\s+\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = startRe.exec(code)) !== null) {
+    const [, alias, source] = match;
+    if (!repositories.has(source) || seen.has(alias)) continue;
+    const open = match.index + match[0].length - 1;
+    const inner = sliceBraceInner(code, open);
+    if (inner == null) continue;
+    const method = methodNameInInlineType(inner);
+    if (!method) continue;
+    seen.add(alias);
+    issues.push(
+      `usecase invents ${source}.${method}(...) by cast; the port does not declare it. Declare it on the port or do not emit the operation`,
+    );
+  }
+  return issues;
+}
+
+export function extractRepositoryInterfaceName(portSource: string): string {
+  const m = /\binterface\s+(I[A-Za-z0-9_$]*Repository)\b/.exec(portSource);
+  return m?.[1] ?? '';
+}
+
+/** Method names on the object returned by `create{Entity}RepositoryAdapter`. Empty when unparseable. */
+export function extractAdapterFactoryMethods(adapterSource: string): Set<string> {
+  const methods = new Set<string>();
+  const header = /export\s+function\s+create\w*RepositoryAdapter\s*\(/.exec(adapterSource);
+  if (!header || header.index === undefined) return methods;
+  const factoryOpen = adapterSource.indexOf('{', header.index);
+  const factoryBody = sliceBraceInner(adapterSource, factoryOpen);
+  if (factoryBody == null) return methods;
+  const ret = /\breturn\s*\{/.exec(factoryBody);
+  if (!ret) return methods;
+  const open = factoryBody.indexOf('{', ret.index);
+  const inner = sliceBraceInner(factoryBody, open);
+  if (inner == null) return methods;
+  let depth = 0;
+  let i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (ch === '{') { depth++; i++; continue; }
+    if (ch === '}') { depth = Math.max(0, depth - 1); i++; continue; }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      i++;
+      while (i < inner.length && inner[i] !== quote) {
+        if (inner[i] === '\\') i++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '/' && inner[i + 1] === '/') {
+      i = inner.indexOf('\n', i);
+      if (i < 0) break;
+      continue;
+    }
+    if (depth !== 0) { i++; continue; }
+    const rest = inner.slice(i);
+    const m = /^(?:async\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:\(|:)/.exec(rest);
+    if (m) {
+      methods.add(m[1]);
+      i += m[0].length;
+      continue;
+    }
+    i++;
+  }
+  return methods;
+}
+
+/**
+ * Every method declared on the port interface must exist on the adapter factory return object.
+ * Unparseable adapter (no factory/return) is skipped so this never false-positives.
+ */
+export function collectAdapterMissingPortMethods(
+  adapterSource: string,
+  portMethods: ReadonlySet<string>,
+  label: string,
+  iface = '',
+): string[] {
+  if (!portMethods.size) return [];
+  const implemented = extractAdapterFactoryMethods(adapterSource);
+  if (!implemented.size) return [];
+  const declared = [...portMethods].sort().join(', ');
+  const prefix = iface ? `${iface}.` : '';
+  const issues: string[] = [];
+  for (const method of [...portMethods].sort()) {
+    if (implemented.has(method)) continue;
+    issues.push(
+      `adapter '${label}' is missing ${prefix}${method}(...); the port declares ${declared} — add ${method} to the adapter or do not declare it on the port`,
+    );
   }
   return issues;
 }
@@ -933,6 +1031,271 @@ export function collectV2ControllerCoherenceIssues(
       else if (!new RegExp(`handler:\\s*${escapeRegExp(handlerName)}\\b`).test(src)) issues.push(`v2 controller ${ws.workspaceId} -> bffCall ${bff.bffId} handler not registered in routes`);
       if (!new RegExp(`\\b${escapeRegExp(bff.bffId)}Route\\b`).test(src)) issues.push(`v2 controller ${ws.workspaceId} -> bffCall ${bff.bffId} route const ${bff.bffId}Route missing (rota órfã)`);
     }
+  }
+  return issues;
+}
+
+// ── invented named imports (same-module l1) ─────────────────────────────────────
+// Two independent LLM calls can baptise the same L4 rule as two identifiers
+// (`canAddCommentToTicket` × `canAddTicketComment`). Context is not a guarantee: the
+// materialize prompt may already contain the entity source and still emit the wrong name.
+// Deterministic, no compiler: read the target file's exports and either rename a close
+// match or emit a finding. Runtime `/_102034_/` and other projects are out of scope.
+
+export interface NamedL1Import {
+  imported: string;
+  local: string;
+  project: number;
+  folder: string;
+  shortName: string;
+  specifier: string;
+}
+
+const IMPORT_STOP_WORDS = new Set(['to', 'of', 'for', 'the', 'a', 'an', 'by', 'in', 'on', 'at', 'from', 'with']);
+
+export function significantCamelWords(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(word => word && !IMPORT_STOP_WORDS.has(word))
+    .sort()
+    .join('|');
+}
+
+export function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  const cur = new Array<number>(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+export function closestExportedName(imported: string, exported: Iterable<string>): string | null {
+  const list = [...exported];
+  if (list.includes(imported)) return imported;
+  const bag = significantCamelWords(imported);
+  const wordHits = bag ? list.filter(name => significantCamelWords(name) === bag) : [];
+  if (wordHits.length === 1) return wordHits[0];
+  if (wordHits.length > 1) return null;
+  const close = list
+    .map(name => ({ name, d: editDistance(imported, name) }))
+    .filter(item => item.d >= 1 && item.d <= 2)
+    .sort((a, b) => a.d - b.d || a.name.localeCompare(b.name));
+  if (!close.length) return null;
+  if (close.length > 1 && close[0].d === close[1].d) return null;
+  return close[0].name;
+}
+
+export function collectExportedNames(source: string): Set<string> {
+  const names = new Set<string>();
+  const decl = /\bexport\s+(?:async\s+)?(?:abstract\s+)?(?:function|class|const|let|var|enum|type|interface)\s+([A-Za-z_$][\w$]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = decl.exec(source)) !== null) names.add(match[1]);
+  const listed = /\bexport\s+(?:type\s+)?\{([^}]+)\}/g;
+  while ((match = listed.exec(source)) !== null) {
+    for (const part of match[1].split(',')) {
+      const token = part.replace(/\/\/.*$/u, '').trim();
+      if (!token) continue;
+      const as = /^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/u.exec(token);
+      if (as) { names.add(as[2]); continue; }
+      const ident = /^([A-Za-z_$][\w$]*)$/u.exec(token);
+      if (ident) names.add(ident[1]);
+    }
+  }
+  return names;
+}
+
+function parseNamedImportClause(inner: string): Array<{ imported: string; local: string }> {
+  const names: Array<{ imported: string; local: string }> = [];
+  for (const raw of inner.split(',')) {
+    const token = raw.replace(/\/\/.*$/u, '').trim().replace(/^type\s+/u, '');
+    if (!token) continue;
+    const as = /^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/u.exec(token);
+    if (as) { names.push({ imported: as[1], local: as[2] }); continue; }
+    const ident = /^([A-Za-z_$][\w$]*)$/u.exec(token);
+    if (ident) names.push({ imported: ident[1], local: ident[1] });
+  }
+  return names;
+}
+
+/** Named `import { a, b } from '/_<project>_/l1/<module>/…'`. Cross-project and runtime paths omitted. */
+export function collectNamedL1Imports(code: string, project: number, moduleName?: string): NamedL1Import[] {
+  const out: NamedL1Import[] = [];
+  const re = /\bimport\s+(?:type\s+)?\{([^}]+)\}\s+from\s+['"]\/_(\d+)_\/l1\/([^'"]+)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    if (Number(match[2]) !== project) continue;
+    const path = match[3].replace(/\.(?:d\.ts|ts|js)$/u, '');
+    const lastSlash = path.lastIndexOf('/');
+    const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : '';
+    const shortName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    if (moduleName && folder !== moduleName && !folder.startsWith(`${moduleName}/`)) continue;
+    for (const name of parseNamedImportClause(match[1])) {
+      out.push({
+        ...name,
+        project,
+        folder,
+        shortName,
+        specifier: `/_${project}_/l1/${path}`,
+      });
+    }
+  }
+  return out;
+}
+
+export interface InventedImportRename {
+  imported: string;
+  exported: string;
+  specifier: string;
+}
+
+export interface InventedImportFix {
+  code: string;
+  findings: string[];
+  renamed: InventedImportRename[];
+}
+
+function replaceIdentifier(code: string, from: string, to: string): string {
+  return code.replace(new RegExp(`\\b${escapeRegExp(from)}\\b`, 'g'), to);
+}
+
+/**
+ * For each named import of a same-module generated file: if the name is not exported, rename to a
+ * close export (same camelCase words or edit distance 1–2) or emit a finding. `targets` is
+ * `${folder}::${shortName}` → source of the imported .ts; missing targets are skipped (the unresolved
+ * file is a different finding).
+ */
+export function applyInventedImportFixes(
+  code: string,
+  project: number,
+  targets: ReadonlyMap<string, string>,
+  moduleName?: string,
+): InventedImportFix {
+  const findings: string[] = [];
+  const renamed: InventedImportRename[] = [];
+  let next = code;
+  const seen = new Set<string>();
+  for (const item of collectNamedL1Imports(next, project, moduleName)) {
+    const dedupe = `${item.specifier}::${item.imported}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    const source = targets.get(`${item.folder}::${item.shortName}`);
+    if (source == null) continue;
+    const exported = collectExportedNames(source);
+    if (exported.has(item.imported)) continue;
+    const close = closestExportedName(item.imported, exported);
+    if (close) {
+      next = replaceIdentifier(next, item.imported, close);
+      renamed.push({ imported: item.imported, exported: close, specifier: item.specifier });
+      continue;
+    }
+    findings.push(
+      `import unresolved symbol -> '${item.imported}' is not exported by ${item.specifier}`,
+    );
+  }
+  return { code: next, findings, renamed };
+}
+
+// ── `let x: T | null = null` assigned only inside a callback ────────────────────
+// TypeScript does not see assignments inside a function passed as an argument, so after
+// `if (!x)` the type is `never`. Finding, not a rewrite — the right shape returns the value.
+
+function skipStringOrComment(code: string, i: number): number {
+  const ch = code[i];
+  if (ch === '/' && code[i + 1] === '/') {
+    const end = code.indexOf('\n', i + 2);
+    return end < 0 ? code.length : end + 1;
+  }
+  if (ch === '/' && code[i + 1] === '*') {
+    const end = code.indexOf('*/', i + 2);
+    return end < 0 ? code.length : end + 2;
+  }
+  if (ch === "'" || ch === '"' || ch === '`') {
+    for (let j = i + 1; j < code.length; j++) {
+      if (code[j] === '\\') { j++; continue; }
+      if (code[j] === ch) return j + 1;
+    }
+    return code.length;
+  }
+  return i;
+}
+
+function classifyOpeningBrace(code: string, open: number): 'fn' | 'block' {
+  let i = open - 1;
+  while (i >= 0 && /\s/.test(code[i])) i--;
+  const before = code.slice(Math.max(0, i - 96), i + 1);
+  if (/=>\s*$/.test(before)) return 'fn';
+  if (!/\)\s*$/.test(before)) return 'block';
+  const head = before.replace(/\)\s*$/u, '').replace(/\([^()]*$/u, '');
+  if (/\bfunction\b[\w$\s]*(?:<[^>]*>)?\s*$/u.test(head)) return 'fn';
+  if (/\b(?:if|for|while|switch|catch|with)\s*$/u.test(head)) return 'block';
+  return 'block';
+}
+
+interface BraceFrame { kind: 'fn' | 'block'; callback: boolean }
+
+function framesThrough(code: string): BraceFrame[][] {
+  const stack: BraceFrame[] = [];
+  const at: BraceFrame[][] = new Array(code.length);
+  let paren = 0;
+  let i = 0;
+  while (i < code.length) {
+    const skipped = skipStringOrComment(code, i);
+    if (skipped !== i) {
+      for (let k = i; k < skipped && k < code.length; k++) at[k] = stack.slice();
+      i = skipped;
+      continue;
+    }
+    const ch = code[i];
+    if (ch === '(') paren++;
+    else if (ch === ')' && paren > 0) paren--;
+    else if (ch === '{') {
+      const kind = classifyOpeningBrace(code, i);
+      stack.push({ kind, callback: kind === 'fn' && paren > 0 });
+    } else if (ch === '}') {
+      stack.pop();
+    }
+    at[i] = stack.slice();
+    i++;
+  }
+  return at;
+}
+
+function isInsideCallback(frames: BraceFrame[] | undefined): boolean {
+  return !!frames?.some(frame => frame.kind === 'fn' && frame.callback);
+}
+
+export function collectCallbackNullAssignmentIssues(code: string): string[] {
+  const issues: string[] = [];
+  const frames = framesThrough(code);
+  const declRe = /\blet\s+([A-Za-z_$][\w$]*)\s*:\s*[^=;]*\bnull\s*=\s*null\s*;/g;
+  let decl: RegExpExecArray | null;
+  while ((decl = declRe.exec(code)) !== null) {
+    const ident = decl[1];
+    const declEnd = decl.index + decl[0].length;
+    const assignRe = new RegExp(`\\b${escapeRegExp(ident)}\\s*=(?![=])`, 'g');
+    assignRe.lastIndex = declEnd;
+    const assignments: number[] = [];
+    let assign: RegExpExecArray | null;
+    while ((assign = assignRe.exec(code)) !== null) assignments.push(assign.index);
+    if (!assignments.length) continue;
+    if (assignments.some(index => !isInsideCallback(frames[index]))) continue;
+    const guard = new RegExp(`\\bif\\s*\\(\\s*!\\s*${escapeRegExp(ident)}\\s*\\)`);
+    if (!guard.test(code.slice(declEnd))) continue;
+    issues.push(
+      `callback-assigned null -> let ${ident}: T | null = null is assigned only inside a callback and then narrowed with if (!${ident}); TypeScript sees the initializer only and narrows to never — return the value from the callback instead`,
+    );
   }
   return issues;
 }

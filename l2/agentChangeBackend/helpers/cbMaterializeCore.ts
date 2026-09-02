@@ -79,18 +79,10 @@ export function orderItems(items: PipelineItem[]): PipelineItem[] {
 
 // ─── Staleness ───────────────────────────────────────────────────────────────
 
-// Regenerate when the output is MISSING, or the .defs.ts is newer than the generated .ts. Pure: the
-// caller supplies the timestamps (fs mtime in Node, file.updatedAt in the studio).
-//
-// `tsExists` separates "never generated" from "generated, but this session has no timestamp for it".
-// The Studio index does not always carry `updatedAt` across sessions, and reading a missing timestamp
-// as a missing FILE is what made a resumed run re-materialize controllers that were already current —
-// LLM calls spent to rewrite correct files, which is also how a past run regressed them. Unknown
-// freshness keeps the artifact; `/rebuild` is the explicit way to force regeneration.
-export function isStale(defsMs: number | null, tsMs: number | null, tsExists = tsMs != null): boolean {
-  if (tsMs == null) return !tsExists;     // absent -> generate; present without a stamp -> keep
-  if (defsMs == null) return false;       // no defs timestamp -> assume up to date
-  return defsMs > tsMs;                   // defs changed after the last generation
+// Generate when the output .ts is absent. Timestamps do not decide: they are logged by the caller
+// as diagnostics. To regenerate (repair, defs change, `/rebuild`), delete the .ts.
+export function isStale(tsExists: boolean): boolean {
+  return !tsExists;
 }
 
 // ─── .defs.ts parsing (no eval; balanced-bracket slice + JSON.parse) ──────────
@@ -240,6 +232,18 @@ export function shouldTargetedRescue(input: {
     && input.targetCount <= input.maxTargets
     && input.findings.length > 0
     && input.findings.every(isCompilerFinding);
+}
+
+/** After the repair budget (and the one-shot rescue) are spent, leftover compiler findings
+ * degrade — they must not stall the run. Structural blocking findings still fail. */
+export function compilerFindingsDegradeAfterBudget(input: {
+  blocking: string[];
+  globalAttempts: number;
+  budget: number;
+}): boolean {
+  if (input.globalAttempts < input.budget) return false;
+  if (!input.blocking.length) return false;
+  return input.blocking.every(isCompilerFinding);
 }
 
 // T4: SURGICAL prompt for a repair whose findings are ALL compiler errors on an already-generated .ts.

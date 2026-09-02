@@ -13,7 +13,7 @@
 // The taxonomy (estrutural | decisao | fora_de_escopo) mirrors improveAddNewSolution2_1.md §2 so the
 // same routing vocabulary can be reused by the ns2 repair loop later.
 
-import { createStorFile } from '/_102027_/l2/libStor.js';
+import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import { parseMlsPath } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
 import { isRecord, parseMaybeJson } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
 import { serializeRepairMutation } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairLock.js';
@@ -21,13 +21,13 @@ import { cbTraceFolder, cbTraceReadFolders } from '/_102021_/l2/agentChangeBacke
 import { buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage, foldPipelineNotices } from '/_102021_/l2/agentChangeBackend/helpers/cbHealthReport.js';
 import { parseStepCost, accumulatePhaseCost, summarizeCost, type CbCostReport } from '/_102021_/l2/agentChangeBackend/helpers/cbCostReport.js';
 import {
-  COMPONENT_REPAIR_BUDGET, MAX_LAST_CODE, mergeComponentRepair, buildRepairPromptSection,
+  COMPONENT_REPAIR_BUDGET, MAX_LAST_CODE, mergeComponentRepair, buildRepairPromptSection, noteRepairAttempt,
   type CbComponentRepair, type CbRepairSource,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
 
 // Re-exported so existing importers keep importing the repair contract from cbRepair.js.
-export { COMPONENT_REPAIR_BUDGET, mergeComponentRepair, buildRepairPromptSection } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
-export type { CbComponentRepair, CbRepairSource } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+export { COMPONENT_REPAIR_BUDGET, mergeComponentRepair, buildRepairPromptSection, resetRespawnCounts, noteStaleSpawn, noteRepairAttempt, staleSpawnCeiling, CB_DISPATCH_HARD_CEILING, dispatchHardCeiling } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+export type { CbComponentRepair, CbRepairSource, CbRespawnCount, CbCeilingKind, CbSpawnDecision } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
 
 // ── budgets (anti-loop) ─────────────────────────────────────────────────────────
 
@@ -152,7 +152,10 @@ export async function recordComponentFailure(target: string, findings: string[],
     const entry = mergeComponentRepair(prev, target, findings, { attempts: (prev?.attempts ?? 0) + 1, source, lastCode });
     state.componentRepairs[target] = entry;
     pushHistory(state, `${target} :: attempt ${entry.attempts} :: ${entry.findings[0] ?? 'failure'}`);
-    if (!await saveRepairState(state)) throw new Error(`repair state persistence failed while recording ${target}`);
+    const saved = await saveRepairState(state);
+    const prevAttempts = prev ? String(prev.attempts) : 'absent';
+    console.info(`[cb-repair] ${target} read(prev.attempts=${prevAttempts}) write(attempts=${entry.attempts}) saved=${saved}`);
+    if (!saved) throw new Error(`repair state persistence failed while recording ${target}`);
     return entry;
   });
 }
@@ -285,17 +288,31 @@ export async function readHealthReport(): Promise<Record<string, unknown> | null
   }
 }
 
-// ── staleness forcing (validate-all -> re-materialize routing) ─────────────────
+// ── regenerate by deleting the output .ts (validate-all / worker repair routing) ─
 
-/** Bump the .defs.ts updatedAt so the materialize dispatcher sees the component as stale again. */
-export function forceDefsStale(defRef: string): boolean {
+/** Delete the output `.ts` so the next dispatch generates it. The repair ceiling lives here:
+ *  the 4th call on the same defRef returns false, records a finding, and leaves the `.ts`. */
+export async function forceRegenerate(defRef: string): Promise<boolean> {
+  const spawn = noteRepairAttempt(defRef);
+  if (!spawn.scheduled) {
+    const msg = `re-spawn ceiling reached (${spawn.repairSpawns}/${spawn.repairCeiling}) — not regenerating`;
+    console.info(`[cb-stale] ${defRef} ${msg}`);
+    try {
+      await setComponentFindings(defRef, [msg], 'component-validate');
+    } catch { /* refuse even if the finding persist fails */ }
+    return false;
+  }
   try {
     const p = parseMlsPath(defRef);
     if (!p) return false;
-    const key = mls.stor.getKeyToFile({ project: p.project, level: p.level, folder: p.folder, shortName: p.shortName, extension: '.defs.ts' });
+    const key = mls.stor.getKeyToFile({ project: p.project, level: p.level, folder: p.folder, shortName: p.shortName, extension: '.ts' });
     const file = mls.stor.files[key];
-    if (!file || file.status === 'deleted') return false;
-    file.updatedAt = new Date().toISOString();
+    if (!file || file.status === 'deleted') return true;
+    try {
+      await deleteFile(file);
+    } catch {
+      file.status = 'deleted';
+    }
     return true;
   } catch {
     return false;

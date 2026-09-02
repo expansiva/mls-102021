@@ -48,6 +48,20 @@ test('owner with useRules produces prompt with title and description; owner with
   assert.equal(appliedRulesPromptSection(catalog, []), '');
 });
 
+test('materialize reuses the same section: item with rulesApplied gets title+description, empty does not', () => {
+  const catalogForMaterialize: L4RuleDefinition[] = [{
+    ruleId: 'onlyOpenTicketCanReceiveComment',
+    title: 'Only an open ticket can receive a comment',
+    description: 'A comment may be recorded only while the ticket status is open.',
+    appliesTo: ['TicketComment'],
+  }];
+  const section = appliedRulesPromptSection(catalogForMaterialize, ['onlyOpenTicketCanReceiveComment']);
+  assert.match(section, new RegExp(L4_RULES_PROMPT_HEADING.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(section, /Only an open ticket can receive a comment/);
+  assert.match(section, /ticket status is open/);
+  assert.equal(appliedRulesPromptSection(catalogForMaterialize, []), '');
+});
+
 test('ruleIdsOfEntities walks root + embedded members, unique, first-seen', () => {
   const entities = [
     { entityId: 'Petition', useRules: ['publicPetitionContentOnly', 'aggregateSignatureCounterOnly'] },

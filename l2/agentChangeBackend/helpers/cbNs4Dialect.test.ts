@@ -324,7 +324,8 @@ test('writeDefsSource mantém o modelo existente em sincronia com o que persisti
   assert.match(shared, /await mls\.stor\.localStor\.setContent\(file, \{ contentType: 'string', content: src \}\);\s*\n\s*refreshExistingModel\(file, src\);/);
   // Atualiza só o que JÁ existe: nada de getOrCreateModel. Editor access lives in cbMaterializeIo.
   assert.match(io, /export function refreshExistingModel\(/);
-  assert.match(io, /const model = mls\.editor\.getModel\(file\) as mls\.editor\.IModelBase \| undefined;\s*\n\s*if \(model\?\.model && model\.model\.getValue\(\) !== src\) model\.model\.setValue\(src\);/);
+  assert.match(io, /typeof mls\.editor\?\.getModel !== 'function'/);
+  assert.match(io, /if \(model\?\.model && model\.model\.getValue\(\) !== src\) model\.model\.setValue\(src\);/);
   assert.doesNotMatch(io, /refreshExistingModel[\s\S]{0,400}getOrCreateModel/);
   assert.doesNotMatch(shared, /\bmls\.editor\b/);
   // be4: createStorFile(..., true, true, true) created a Monaco model for every defs write.

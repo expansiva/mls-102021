@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-02 — requiredMethods no plano do port (delete)
+
+O item do gen-port carrega `requiredMethods` derivado das operações `delete*` do l4
+(não do nome de arquivo). Se a LLM omitir `delete`, o afterPrompt completa a
+assinatura e registra `systemDecision`. Event ports continuam append-only.
+
 ## 2026-08-25 — ListFilter inclui search/sortBy/sortOrder
 
 Quando o l4 da lista declara esses inputs, o filtro da porta os carrega (search string, sortBy

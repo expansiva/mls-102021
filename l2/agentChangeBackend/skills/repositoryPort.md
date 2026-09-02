@@ -41,6 +41,10 @@ export interface IOrderRepository {
   filtering by fields that live in `details` JSONB — those fields are columns when they are
   searchable or sortable.
 - No platform imports, no `ctx`, no SQL types.
+- When `data.requiredMethods` (or the plan item) lists `delete`, declare
+  `delete(id: string): Promise<void>` on the interface. A delete* operation in the l4 is the
+  contract; omitting `delete` makes the generated usecase 409 or invent the method by cast.
 - Append-only EVENT ports (`data.appendOnly === true`): expose `append(record): Promise<{Event}>` plus
   read finders (e.g. `listByOwnerId(ownerId)`, `listByPeriod(from, to)`). NO `save`/`update`/`delete` and
-  no mutation methods — an event, once recorded, is immutable.
+  no mutation methods — an event, once recorded, is immutable. Event ports never receive `delete`
+  even if a sibling aggregate does.

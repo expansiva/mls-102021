@@ -1369,7 +1369,7 @@ function windowOf(input: SeedBuildInput): SeedTimeWindow {
 // instants: any ISO 8601 UTC value inside the window is accepted, so a plan can model a coherent
 // multi-step timeline. Domain rule conformance (status flows, etc.) is NOT enforced here — it is
 // guided by the L4 rule text in the planner prompt, keeping this compiler domain-agnostic.
-function validateTimestamp(window: SeedTimeWindow, fieldName: string, value: SeedValue | undefined, path: string, errors: string[]) {
+function validateTimestamp(timeWindow: SeedTimeWindow, fieldName: string, value: SeedValue | undefined, path: string, errors: string[]) {
   if (value === undefined || value === null || !/(At|Date)$/u.test(fieldName)) return;
   const dateOnlyAllowed = isDateOnlyField(fieldName);
   if (typeof value !== 'string' || !(ISO_TIMESTAMP.test(value) || (dateOnlyAllowed && ISO_DATE_ONLY.test(value)))) {
@@ -1382,16 +1382,16 @@ function validateTimestamp(window: SeedTimeWindow, fieldName: string, value: See
   // must stay valid by rule, not by the accident of parsing to midnight.
   if (ISO_DATE_ONLY.test(value)) {
     const day = value;
-    const startDay = window.start.slice(0, 10);
-    const endDay = window.end.slice(0, 10);
+    const startDay = timeWindow.start.slice(0, 10);
+    const endDay = timeWindow.end.slice(0, 10);
     if (day < startDay || day > endDay) errors.push(`${path}: date must fall within ${startDay}..${endDay}`);
     return;
   }
   const instant = Date.parse(value);
-  const start = Date.parse(window.start);
-  const end = Date.parse(window.end);
+  const start = Date.parse(timeWindow.start);
+  const end = Date.parse(timeWindow.end);
   if (Number.isNaN(instant) || instant < start || instant > end) {
-    errors.push(`${path}: timestamp must fall within ${window.start}..${window.end}`);
+    errors.push(`${path}: timestamp must fall within ${timeWindow.start}..${timeWindow.end}`);
   }
 }
 
@@ -1471,7 +1471,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
   const knownEntityIds = input.entities.map(entity => entity.entityId);
   for (const ref of knownReferences) references.add(ref);
   for (const identity of actorIdentities(input)) references.add(identity.ref);
-  const window = windowOf(input);
+  const timeWindow = windowOf(input);
   const seenLocalTables = new Set<string>();
   const seenMdmEntities = new Set<string>();
 
@@ -1531,7 +1531,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         if (!column.nullable && (value === undefined || value === null)) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
         validateSeedRefPlacement(value as SeedValue, `${rowPath}.columns.${column.name}`, column.name, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
-        validateTimestamp(window, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
+        validateTimestamp(timeWindow, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
         const field = entityFields.get(toCamel(column.name));
         validateEnum(field, value, `${rowPath}.columns.${column.name}`, errors);
         validateAssetReference(value, field, `${rowPath}.columns.${column.name}`, errors);
@@ -1551,7 +1551,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         if (field.required && !generatedPrimaryKey && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
         validateSeedRefPlacement(value as SeedValue, `${rowPath}.${field.fieldId}`, field.fieldId, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
-        validateTimestamp(window, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
+        validateTimestamp(timeWindow, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
         validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
         // Optional entity references may be null (a not-yet-linked relation on an in-progress row);
@@ -1577,7 +1577,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
           const fields = mapFields(childRow.fields, `${rowPath}.children.${child.name}.${childRow.key}`, errors);
           for (const [name, value] of fields) {
             validateReference(value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, references, errors);
-            validateTimestamp(window, name, value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, errors);
+            validateTimestamp(timeWindow, name, value, `${rowPath}.children.${child.name}.${childRow.key}.${name}`, errors);
             if (isSeedAssetRef(value)) errors.push(`${rowPath}.children.${child.name}.${childRow.key}.${name}: seed asset references require a declared image or URL field`);
           }
         }
@@ -1613,7 +1613,7 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         if (!field && name !== 'name') errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
         validateSeedRefPlacement(value, `${rowPath}.fields.${name}`, name, `mdm:${mdmEntity.entityId}.${row.key}`, knownEntityIds, errors);
-        validateTimestamp(window, name, value, `${rowPath}.fields.${name}`, errors);
+        validateTimestamp(timeWindow, name, value, `${rowPath}.fields.${name}`, errors);
         if (field) {
           validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
           validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
@@ -2048,7 +2048,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
   // Platform-user identities: emitted as MDM Person records so actor references (assignees,
   // actorSession-resolved worker fields) resolve to a real MDM identity at runtime. The module never
   // owns a user/rate table (see rule workerRateFromProfile) — these are the referenceable people.
-  const window = windowOf(input);
+  const timeWindow = windowOf(input);
   for (const identity of actorIdentities(input)) {
     // Same canonical-tag contract as above: person identities must be listable by '<module>.Person'.
     const actorTags = [`${input.moduleName}.Person`, input.moduleName, 'actor', identity.actorId];
@@ -2056,7 +2056,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
       countryCode: countryCodeForLanguage(input.language), tags: actorTags,
       searchVector: `${identity.name} ${identity.actorId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
-      dynamoPk: identity.mdmId, createdAt: window.start, updatedAt: window.start,
+      dynamoPk: identity.mdmId, createdAt: timeWindow.start, updatedAt: timeWindow.start,
     });
     documentRows.push({
       mdmId: identity.mdmId, version: 1,
@@ -2064,7 +2064,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
         mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
         countryCode: countryCodeForLanguage(input.language), tags: actorTags,
         aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
-        createdAt: window.start, updatedAt: window.start, actorId: identity.actorId,
+        createdAt: timeWindow.start, updatedAt: timeWindow.start, actorId: identity.actorId,
       },
     });
   }

@@ -16,6 +16,9 @@ import {
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { repositoryAdapterResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
 import { rewriteAdapterDefsNotes, sanitizeAdapterNotes } from '/_102021_/l2/agentChangeBackend/helpers/cbAdapterNotes.js';
+import {
+  methodNamesFromPortDefsSource, requiredMethodsForEntity, unionMethodNames,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbPortMethods.js';
 
 const AGENT_NAME = 'agentCbRepositoryAdapter';
 const TOOL_NAME = 'submitRepositoryAdapters';
@@ -41,22 +44,29 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
   const entityIds = new Set(scan.entities.map(e => e.entityId));
   const byId = new Map(scan.entities.map(e => [e.entityId, e]));
-  const items = scan.aggregates.map(a => {
+  const deleteTargets = new Set(scan.deleteTargetEntityIds);
+  const module = scan.moduleNames[0] || 'unknown';
+  const items: Array<Record<string, unknown>> = [];
+  for (const a of scan.aggregates) {
     const plan = planTableColumns(byId.get(a.rootEntity)?.fields || [], entityIds);
-    return {
+    const portMethods = await portMethodsForEntity(module, a.rootEntity, requiredMethodsForEntity(a.rootEntity, deleteTargets), false);
+    items.push({
       entityId: a.rootEntity,
       embeddedMembers: a.embeddedMembers, // -> inside details JSONB
       mdmRefs: a.mdmRefs,
       columns: plan.indexed.map(c => c.fieldId), // real columns (snake_case at the table)
       detailsFields: plan.details,               // -> inside details JSONB
-    };
-  });
+      portMethods,
+    });
+  }
   // Append-only event adapters: implement the event port (append + read finders) over the event table.
-  const eventItems = scan.events.filter(ev => ev.persisted).map(ev => {
+  const eventItems: Array<Record<string, unknown>> = [];
+  for (const ev of scan.events.filter(e => e.persisted)) {
     const plan = planTableColumns(ev.fields || [], entityIds);
-    return { entityId: ev.entityId, embeddedMembers: [] as string[], mdmRefs: [] as string[], columns: plan.indexed.map(c => c.fieldId), detailsFields: plan.details, appendOnlyEvent: true };
-  });
-  const human = `## Aggregates (column vs details split + embedded + mdm refs)\n${JSON.stringify(items, null, 2)}\n\n## Append-only event adapters\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one adapter per aggregate AND per event implementing I{Entity}Repository: map domain <-> row - only "columns" are real columns (snake_case at the table). "detailsFields" + "embeddedMembers" go inside the details JSONB under the fieldId verbatim (camelCase — never snake_case a JSONB key; seeds write fieldId). list() honours optional filter.search via findMany ilike on the title/name column, and filter.sortBy/sortOrder via orderBy (enum fields: sort in memory by the declared enum order, never SQL text). Every adapter reads and writes its local module table through ctx.data.moduleData.getTable<Row>('<table>') — this is REQUIRED and it is the only persistence API. Never keep state in a module-level Map/WeakMap/array: the runtime already provides an in-memory store for tests and Postgres in production behind the same call. resolve mdmRefs via ctx.mdm. For permanent MDM, list by canonical module type with ctx.mdm.collection.listByType, bulk load with ctx.mdm.collection.getMany/hydrateMany, and read relationships with ctx.mdm.collection.relatedOfMany. For prospect/pre-qualified lead flows use ctx.mdm.prospect.create/get/listByType/update/promoteToEntity. Module-specific fields live in entity.details.<module>. Never call ctx.mdm.entity.get inside a loop. Never use ctx.data.mdmDocument, ctx.data.mdmEntityIndex, ctx.data.mdmRelationship, tx.mdmDocument, tx.mdmEntityIndex or tx.mdmRelationship. Event adapters implement append (insert one row, no update/delete) + the read finders. ctx.data.moduleData is scoped to local module tables (never MDM).`;
+    const portMethods = await portMethodsForEntity(module, ev.entityId, [], true);
+    eventItems.push({ entityId: ev.entityId, embeddedMembers: [] as string[], mdmRefs: [] as string[], columns: plan.indexed.map(c => c.fieldId), detailsFields: plan.details, appendOnlyEvent: true, portMethods });
+  }
+  const human = `## Aggregates (column vs details split + embedded + mdm refs)\n${JSON.stringify(items, null, 2)}\n\n## Append-only event adapters\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one adapter per aggregate AND per event implementing I{Entity}Repository: map domain <-> row - only "columns" are real columns (snake_case at the table). "detailsFields" + "embeddedMembers" go inside the details JSONB under the fieldId verbatim (camelCase — never snake_case a JSONB key; seeds write fieldId). Implement EVERY name in portMethods (the port interface) — if delete is listed, the factory return object MUST include async delete(id). list() honours optional filter.search via findMany ilike on the title/name column, and filter.sortBy/sortOrder via orderBy (enum fields: sort in memory by the declared enum order, never SQL text). Every adapter reads and writes its local module table through ctx.data.moduleData.getTable<Row>('<table>') — this is REQUIRED and it is the only persistence API. Never keep state in a module-level Map/WeakMap/array: the runtime already provides an in-memory store for tests and Postgres in production behind the same call. resolve mdmRefs via ctx.mdm. For permanent MDM, list by canonical module type with ctx.mdm.collection.listByType, bulk load with ctx.mdm.collection.getMany/hydrateMany, and read relationships with ctx.mdm.collection.relatedOfMany. For prospect/pre-qualified lead flows use ctx.mdm.prospect.create/get/listByType/update/promoteToEntity. Module-specific fields live in entity.details.<module>. Never call ctx.mdm.entity.get inside a loop. Never use ctx.data.mdmDocument, ctx.data.mdmEntityIndex, ctx.data.mdmRelationship, tx.mdmDocument, tx.mdmEntityIndex or tx.mdmRelationship. Event adapters implement append (insert one row, no update/delete) + the read finders. ctx.data.moduleData is scoped to local module tables (never MDM).`;
   const systemPrompt = await readCbPrompt('steps/gen-adapter');
   return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ""), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
@@ -71,10 +81,16 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
+    const deleteTargets = new Set(scan.deleteTargetEntityIds);
+    const eventIds = new Set(scan.events.filter(ev => ev.persisted).map(ev => ev.entityId));
     let saved = 0;
     for (const item of asArray((out.result as any).items)) {
       const entityId = readString(item.entityId);
       if (!entityId) continue;
+      const isEvent = eventIds.has(entityId);
+      const required = isEvent ? [] : requiredMethodsForEntity(entityId, deleteTargets);
+      const portMethods = await portMethodsForEntity(module, entityId, required, isEvent);
+      item.portMethods = portMethods;
       const fi = repositoryAdapterFileInfo(module, entityId);
       const dependsFiles = [
         dtsRef(repositoryPortFileInfo(module, entityId)),
@@ -83,6 +99,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       ];
       const pipeline = [buildPipelineItem(`${lowerFirst(entityId)}RepositoryAdapter`, 'repositoryAdapter', fi, dependsFiles, layerSkills('repositoryAdapter.md'))];
       const notes = Array.isArray(item.notes) ? item.notes.filter((n): n is string => typeof n === 'string') : [];
+      if (portMethods.length) notes.push(`Implement every port method: ${portMethods.join(', ')}.`);
       item.notes = sanitizeAdapterNotes(notes);
       await saveDefs(fi, `${lowerFirst(entityId)}RepositoryAdapter`, buildArtifact('repositoryAdapter', `${entityId}RepositoryAdapter`, module, AGENT_NAME, item), pipeline);
       saved++;
@@ -101,6 +118,20 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   if (status === 'completed') intents.push(enqueueNext(context, parentStep, step, 'cb-gen-usecase', 'agentCbUsecase', 'Gerar usecases', {}));
   intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, status, trace, status === 'completed' ? 'input_output' : undefined));
   return intents;
+}
+
+async function portMethodsForEntity(module: string, entityId: string, required: readonly string[], isEvent: boolean): Promise<string[]> {
+  const fi = repositoryPortFileInfo(module, entityId);
+  const file = (mls.stor.files as Record<string, { status?: string; getContent(): Promise<unknown> } | undefined>)[
+    mls.stor.getKeyToFile(fi as unknown as mls.stor.IFileInfo)
+  ];
+  let declared: string[] = [];
+  if (file && file.status !== 'deleted') {
+    const raw = await file.getContent();
+    if (typeof raw === 'string') declared = methodNamesFromPortDefsSource(raw);
+  }
+  if (isEvent) return declared.filter(name => name !== 'delete');
+  return unionMethodNames(required, declared);
 }
 
 async function sanitizeReusedAdapterDefs(module: string, entityIds: string[]): Promise<void> {

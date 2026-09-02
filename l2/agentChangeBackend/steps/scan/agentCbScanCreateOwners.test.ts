@@ -26,14 +26,25 @@ void test('the provenance stamp is not printed to the console (dossiê/summary a
 
 void test('scan warnings are persisted on the health report, not only the truncated step status', () => {
   const src = readFileSync(path.join(HERE, 'agentCbScanCreateOwners.ts'), 'utf8');
-  assert.match(src, /saveHealthReport\(\{ scanWarnings: scan\.warnings \}\)/);
+  assert.match(src, /saveHealthReport\(\{/);
+  assert.match(src, /scanWarnings: scan\.warnings/);
 });
 
 void test('rebuild-all archive count lands on the scan step status, not the console', () => {
   const src = readFileSync(path.join(HERE, 'agentCbScanCreateOwners.ts'), 'utf8');
   const root = readFileSync(path.join(HERE, '..', '..', 'agentChangeBackend.ts'), 'utf8');
   assert.match(root, /rebuildArchived/);
+  assert.match(root, /rebuildWipeMsg/);
+  assert.match(root, /describeRebuildWipe/);
   assert.doesNotMatch(root, /console\.info/);
-  assert.match(src, /readRebuildArchived/);
-  assert.match(src, /rebuild-all archived/);
+  assert.match(src, /readRebuildWipeMsg/);
+  assert.match(src, /rebuildWipedMessage/);
+});
+
+void test('rebuild-all wipe that left live files fails the scan with the finding, no next generation step', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbScanCreateOwners.ts'), 'utf8');
+  const abortBlock = src.slice(src.indexOf('readRebuildWipeAbort'), src.indexOf("readCliCommand(context) === 'rebuild-seeds'"));
+  assert.match(abortBlock, /createUpdateStatusIntent\([\s\S]*'failed', reason\)/);
+  assert.match(abortBlock, /recordFailedCbRun/);
+  assert.doesNotMatch(abortBlock, /enqueueNext/);
 });

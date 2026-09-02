@@ -84,3 +84,99 @@ export function buildRepairPromptSection(entry: CbComponentRepair): string {
   }
   return lines.join('\n');
 }
+
+// ── in-memory re-spawn ceilings (RUN state, not domain data) ───────────────────
+//
+// A module-level Map is banned in generated adapters because it would store business rows.
+// These counters are the opposite case: they MUST survive when mls.stor does not round-trip
+// (CLI host: readRepairState returns empty after saveRepairState). Without them the stale
+// dispatcher re-spawns forever because componentRepairs.attempts resets to 1 every cycle.
+//
+// Two counters, one Map, reset per run:
+//   repairSpawns — incremented inside forceRegenerate (the explicit "delete .ts to regenerate"
+//                  decision). Ceiling = COMPONENT_REPAIR_BUDGET + 1.
+//   dispatches   — every schedule attempt in the materialize dispatcher. Backstop
+//                  (CB_DISPATCH_HARD_CEILING) so a host pathology that reports .ts as absent
+//                  forever still terminates.
+
+export type CbCeilingKind = 'repair' | 'hard';
+
+export interface CbRespawnCount {
+  defRef: string;
+  repairSpawns: number;
+  dispatches: number;
+}
+
+export interface CbSpawnDecision {
+  scheduled: boolean;
+  repairSpawns: number;
+  repairCeiling: number;
+  dispatches: number;
+  dispatchCeiling: number;
+  blockedBy?: CbCeilingKind;
+}
+
+/** Hard backstop on total dispatches per component this run. Folgado vs ~4 layers of
+ *  legitimate transitive staleness; tight enough to contain a host-absent loop. */
+export const CB_DISPATCH_HARD_CEILING = 10;
+
+const respawnByDefRef = new Map<string, CbRespawnCount>();
+
+export function resetRespawnCounts(): void {
+  respawnByDefRef.clear();
+}
+
+export function staleSpawnCeiling(): number {
+  return COMPONENT_REPAIR_BUDGET + 1;
+}
+
+export function dispatchHardCeiling(): number {
+  return CB_DISPATCH_HARD_CEILING;
+}
+
+function emptyCount(defRef: string): CbRespawnCount {
+  return { defRef, repairSpawns: 0, dispatches: 0 };
+}
+
+/** Count a dispatcher schedule attempt. Only the hard dispatch ceiling applies here;
+ *  the repair ceiling lives in `noteRepairAttempt` / `forceRegenerate`. Refusing leaves
+ *  the counts unchanged and sets `blockedBy`. */
+export function noteStaleSpawn(defRef: string): CbSpawnDecision {
+  const repairCeiling = staleSpawnCeiling();
+  const dispatchCeiling = CB_DISPATCH_HARD_CEILING;
+  const current = respawnByDefRef.get(defRef) ?? emptyCount(defRef);
+  if (current.dispatches >= dispatchCeiling) {
+    return {
+      scheduled: false,
+      repairSpawns: current.repairSpawns,
+      repairCeiling,
+      dispatches: current.dispatches,
+      dispatchCeiling,
+      blockedBy: 'hard',
+    };
+  }
+  const dispatches = current.dispatches + 1;
+  respawnByDefRef.set(defRef, { defRef, repairSpawns: current.repairSpawns, dispatches });
+  return { scheduled: true, repairSpawns: current.repairSpawns, repairCeiling, dispatches, dispatchCeiling };
+}
+
+/** Count an explicit regenerate (delete the output .ts). Ceiling is COMPONENT_REPAIR_BUDGET + 1;
+ *  refusing leaves the counts unchanged and sets `blockedBy: 'repair'`. */
+export function noteRepairAttempt(defRef: string): CbSpawnDecision {
+  const repairCeiling = staleSpawnCeiling();
+  const dispatchCeiling = CB_DISPATCH_HARD_CEILING;
+  const current = respawnByDefRef.get(defRef) ?? emptyCount(defRef);
+  if (current.repairSpawns >= repairCeiling) {
+    return {
+      scheduled: false,
+      repairSpawns: current.repairSpawns,
+      repairCeiling,
+      dispatches: current.dispatches,
+      dispatchCeiling,
+      blockedBy: 'repair',
+    };
+  }
+  const repairSpawns = current.repairSpawns + 1;
+  respawnByDefRef.set(defRef, { defRef, repairSpawns, dispatches: current.dispatches });
+  return { scheduled: true, repairSpawns, repairCeiling, dispatches: current.dispatches, dispatchCeiling };
+}

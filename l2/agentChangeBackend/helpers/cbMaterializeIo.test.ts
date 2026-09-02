@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { syntaxDiagnostics } from './cbSyntaxValidation.js';
-import { compileSavedTsAndGetErrors } from './cbMaterializeIo.js';
+import { compileSavedTsAndGetErrors, readExistingModelValue, refreshExistingModel } from './cbMaterializeIo.js';
 
 test('syntaxDiagnostics rejects TS5076 even when Monaco is unavailable', () => {
   assert.match(syntaxDiagnostics('const page = input.cursor ?? fallback || "start";')[0] || '', /TS5076/);
@@ -48,10 +48,11 @@ test('compile syncs a resident model from stor (hooks no longer mirror mls.edito
     editor: {
       models: { [editorKey]: { ts: { model, compilerResults: { errors: [] } } } },
       getKeyModel: keyModel,
+      addModels: async () => undefined,
       deleteModels: () => undefined,
       forceModelUpdate: () => undefined,
     },
-    l2: { typescript: { compileAndPostProcess: async () => true } },
+    l2: { typescript: { compileAndPostProcess: async () => true, getTypeScriptWorker: async () => ({}) } },
   };
   try {
     await compileSavedTsAndGetErrors(PROJECT, FOLDER, shortName);
@@ -59,5 +60,59 @@ test('compile syncs a resident model from stor (hooks no longer mirror mls.edito
   } finally {
     g.mls = prev;
   }
+});
+
+function withMls<T>(mls: unknown, fn: () => T): T {
+  const g = globalThis as { mls?: unknown };
+  const prev = g.mls;
+  g.mls = mls;
+  try { return fn(); } finally { g.mls = prev; }
+}
+
+const STUB_FILE = { project: 1, level: 1, folder: 'mod', shortName: 'x', extension: '.ts' } as mls.stor.IFileInfo;
+
+void test('refreshExistingModel / readExistingModelValue no-op when getModel is not a function', () => {
+  withMls({
+    editor: { models: {}, getKeyModel: () => 'k' },
+    stor: { files: {}, getKeyToFile: () => 'k' },
+  }, () => {
+    refreshExistingModel(STUB_FILE, 'src');
+    assert.deepEqual(readExistingModelValue(STUB_FILE), { present: false, value: null, failed: false });
+  });
+});
+
+void test('refreshExistingModel / readExistingModelValue use getModel when it exists', () => {
+  let value = 'old';
+  const model = { model: { getValue: () => value, setValue: (next: string) => { value = next; } } };
+  withMls({
+    editor: {
+      models: {},
+      getKeyModel: () => 'k',
+      getModel: () => model,
+    },
+    stor: { files: {}, getKeyToFile: () => 'k' },
+  }, () => {
+    refreshExistingModel(STUB_FILE, 'new');
+    assert.equal(value, 'new');
+    assert.deepEqual(readExistingModelValue(STUB_FILE), { present: true, value: 'new', failed: false });
+  });
+});
+
+void test('compileModuleAndGetErrors prefers Monaco when the worker exists and falls back to project tsc without host sniffing', () => {
+  const io = readFileSync(new URL('cbMaterializeIo.ts', import.meta.url), 'utf8');
+  assert.match(io, /function monacoCompileAvailable\(/);
+  assert.match(io, /if \(!monacoCompileAvailable\(\)\) return \{ errors: \[\], infraErrors: \[\], available: false \}/);
+  assert.match(io, /typeof ts\?\.getTypeScriptWorker === 'function'/);
+  assert.match(io, /typeof mls\.editor\?\.getModel !== 'function'/);
+  assert.match(io, /compileModuleViaProjectTsc/);
+  assert.match(io, /const childProcessSpec = 'node:child_process'/);
+  assert.match(io, /await import\(childProcessSpec\)/);
+  assert.match(io, /tsconfig\.backend\.json/);
+  assert.match(io, /traceProjectTscResult/);
+  assert.match(io, /path: 'monaco'/);
+  assert.match(io, /'spawn-null'/);
+  assert.doesNotMatch(io, /typeof Deno/);
+  assert.doesNotMatch(io, /"Deno" in globalThis/);
+  assert.doesNotMatch(io, /user-agent/i);
 });
 

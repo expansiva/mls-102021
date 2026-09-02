@@ -32,6 +32,9 @@ void test('agentCbRepositoryAdapter declares the LLM step agent contract', () =>
   assert.match(src, /sanitizeAdapterNotes/);
   assert.match(src, /rewriteAdapterDefsNotes/);
   assert.match(src, /sanitizeReusedAdapterDefs/);
+  assert.match(src, /portMethods/);
+  assert.match(src, /portMethodsForEntity/);
+  assert.match(src, /Implement EVERY name in portMethods/);
   assert.match(flow, /"agentName": "agentCbRepositoryAdapter"/);
   const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'repositoryAdapter.md'), 'utf8');
   assert.match(skill, /ilike/);

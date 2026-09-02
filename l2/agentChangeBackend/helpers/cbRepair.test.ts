@@ -2,12 +2,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { serializeRepairMutation } from './cbRepairLock.js';
 import {
   buildHealthReportContent, foldRepairAudit, foldModelsPeak, foldSeedsDegraded, foldOperationsCoverage, foldPipelineNotices,
   compareOperationsCoverage, expectedRoutesByOperation, operationsCoverageLogLine, MAX_HEALTH_ROUNDS,
 } from './cbHealthReport.js';
-import { mergeComponentRepair, buildRepairPromptSection, type CbComponentRepair } from './cbRepairCore.js';
+import {
+  mergeComponentRepair, buildRepairPromptSection, COMPONENT_REPAIR_BUDGET,
+  resetRespawnCounts, noteStaleSpawn, noteRepairAttempt, staleSpawnCeiling, CB_DISPATCH_HARD_CEILING, dispatchHardCeiling, type CbComponentRepair,
+} from './cbRepairCore.js';
+import { recordComponentFailure, forceRegenerate } from './cbRepair.js';
+import { setCbTraceModule } from './cbTraceScope.js';
 
 test('mergeComponentRepair (T3): a global round preserves priorFindings + lastCode and resets attempts to 0', () => {
   // g1 left the component with a resolved finding carried as priorFindings and its rejected code.
@@ -79,6 +85,17 @@ test('buildHealthReportContent: rounds array is bounded and tolerates corrupt ex
   const parsed = JSON.parse(content);
   assert.equal(parsed.rounds.length, MAX_HEALTH_ROUNDS, 'rounds capped');
   assert.equal(parsed.rounds[parsed.rounds.length - 1].n, MAX_HEALTH_ROUNDS + 5, 'newest kept');
+});
+
+test('foldPipelineNotices keeps the rebuild-all wipe count across mute snapshots', () => {
+  const first = buildHealthReportContent(null, {
+    outcome: 'scan',
+    rebuildWiped: 12,
+    rebuildWipedMessage: 'rebuild-all wiped 12 file(s) of l1/petShop',
+  }, '2026-09-02T10:00:00.000Z');
+  const folded = foldPipelineNotices(first, { outcome: 'passed', findings: [] });
+  assert.equal(folded.rebuildWiped, 12);
+  assert.equal(folded.rebuildWipedMessage, 'rebuild-all wiped 12 file(s) of l1/petShop');
 });
 
 test('foldPipelineNotices keeps scan warnings and read-back across mute snapshots', () => {
@@ -251,6 +268,240 @@ test('buildHealthReportContent: operations ok stays in rounds and is omitted fro
   assert.equal(parsed.rounds[0].operations, 'ok');
   const muted = foldOperationsCoverage(content, { outcome: 'passed' } as { operations?: unknown });
   assert.equal(muted.operations, undefined);
+});
+
+test('noteStaleSpawn: first pass of 102 components never hits the hard ceiling', () => {
+  resetRespawnCounts();
+  assert.equal(dispatchHardCeiling(), CB_DISPATCH_HARD_CEILING);
+  const blocked: string[] = [];
+  for (let i = 0; i < 102; i++) {
+    const spawn = noteStaleSpawn(`_102099_/l1/mod/layer_3_domain/entities/c${i}.defs.ts`);
+    if (!spawn.scheduled) blocked.push(String(i));
+    else {
+      assert.equal(spawn.repairSpawns, 0);
+      assert.equal(spawn.dispatches, 1);
+    }
+  }
+  assert.deepEqual(blocked, []);
+});
+
+test('noteRepairAttempt: 3 succeed then the 4th is the re-spawn ceiling', () => {
+  resetRespawnCounts();
+  const defRef = '_102099_/l1/mod/layer_3_domain/entities/pet.defs.ts';
+  const ceiling = staleSpawnCeiling();
+  assert.equal(ceiling, COMPONENT_REPAIR_BUDGET + 1);
+  const scheduled: number[] = [];
+  let blocked: ReturnType<typeof noteRepairAttempt> | undefined;
+  for (let i = 0; i < 10; i++) {
+    const spawn = noteRepairAttempt(defRef);
+    if (!spawn.scheduled) {
+      blocked = spawn;
+      break;
+    }
+    scheduled.push(spawn.repairSpawns);
+  }
+  assert.deepEqual(scheduled, [1, 2, 3]);
+  assert.equal(scheduled.length, ceiling);
+  assert.equal(blocked?.blockedBy, 'repair');
+  assert.equal(blocked?.repairSpawns, ceiling);
+  assert.equal(blocked?.repairCeiling, ceiling);
+});
+
+test('noteStaleSpawn: 10 dispatches of the same defRef hit the hard dispatch ceiling, not the repair ceiling', () => {
+  resetRespawnCounts();
+  const defRef = '_102099_/l1/mod/layer_3_domain/entities/hostLoop.defs.ts';
+  const scheduled: number[] = [];
+  let blocked: ReturnType<typeof noteStaleSpawn> | undefined;
+  for (let i = 0; i < 20; i++) {
+    const spawn = noteStaleSpawn(defRef);
+    if (!spawn.scheduled) {
+      blocked = spawn;
+      break;
+    }
+    scheduled.push(spawn.dispatches);
+    assert.equal(spawn.repairSpawns, 0);
+  }
+  assert.equal(scheduled.length, CB_DISPATCH_HARD_CEILING);
+  assert.equal(scheduled[scheduled.length - 1], CB_DISPATCH_HARD_CEILING);
+  assert.equal(blocked?.blockedBy, 'hard');
+  assert.equal(blocked?.dispatches, CB_DISPATCH_HARD_CEILING);
+  assert.equal(blocked?.dispatchCeiling, CB_DISPATCH_HARD_CEILING);
+  assert.notEqual(blocked?.blockedBy, 'repair');
+});
+
+test('resetRespawnCounts starts a new run at dispatch 1 / repair 0', () => {
+  const defRef = '_102099_/l1/mod/layer_3_domain/entities/reset.defs.ts';
+  resetRespawnCounts();
+  const first = noteStaleSpawn(defRef);
+  assert.equal(first.dispatches, 1);
+  assert.equal(first.repairSpawns, 0);
+  const repaired = noteRepairAttempt(defRef);
+  assert.equal(repaired.repairSpawns, 1);
+  resetRespawnCounts();
+  const after = noteStaleSpawn(defRef);
+  assert.equal(after.dispatches, 1);
+  assert.equal(after.repairSpawns, 0);
+});
+
+test('root bootstrap clears the in-memory spawn ceiling at the start of a run', () => {
+  const src = readFileSync(new URL('../agentChangeBackend.ts', import.meta.url), 'utf8');
+  assert.match(src, /resetRespawnCounts\(\)/);
+});
+
+test('forceRegenerate deletes the output .ts so the next dispatch generates', async () => {
+  resetRespawnCounts();
+  const project = 102099;
+  const folder = 'mod/layer_3_domain/entities';
+  const tsKey = storKey({ project, level: 1, folder, shortName: 'pet', extension: '.ts' });
+  const repairKey = storKey({ project, level: 4, folder: 'mod/pipeline/trace/l1', shortName: 'cb-repair-state', extension: '.json' });
+  const tsFile = { status: 'active' };
+  const repairFile = { status: 'active', getContent: async () => '' };
+  setCbTraceModule('mod');
+  try {
+    const ok = await withMlsAsync({
+      actualProject: project,
+      stor: {
+        files: { [tsKey]: tsFile, [repairKey]: repairFile },
+        getKeyToFile: storKey,
+        localStor: { setContent: async () => undefined },
+      },
+    }, () => forceRegenerate('_102099_/l1/mod/layer_3_domain/entities/pet.defs.ts'));
+    assert.equal(ok, true);
+    assert.equal(tsFile.status, 'deleted');
+  } finally {
+    setCbTraceModule('');
+  }
+});
+
+test('forceRegenerate: 3 deletes then the 4th returns false without deleting', async () => {
+  resetRespawnCounts();
+  const project = 102099;
+  const folder = 'mod/layer_3_domain/entities';
+  const tsKey = storKey({ project, level: 1, folder, shortName: 'order', extension: '.ts' });
+  const repairKey = storKey({ project, level: 4, folder: 'mod/pipeline/trace/l1', shortName: 'cb-repair-state', extension: '.json' });
+  let persisted = '';
+  const tsFile = { status: 'active' };
+  const repairFile = {
+    status: 'active',
+    getContent: async () => persisted,
+  };
+  const mlsPatch = {
+    actualProject: project,
+    stor: {
+      files: { [tsKey]: tsFile, [repairKey]: repairFile },
+      getKeyToFile: storKey,
+      localStor: {
+        setContent: async (_f: unknown, payload: { content: string }) => { persisted = payload.content; },
+      },
+    },
+  };
+  setCbTraceModule('mod');
+  try {
+    const results: boolean[] = [];
+    for (let i = 0; i < 3; i++) {
+      tsFile.status = 'active';
+      const ok = await withMlsAsync(mlsPatch, () => forceRegenerate('_102099_/l1/mod/layer_3_domain/entities/order.defs.ts'));
+      results.push(ok);
+      assert.equal(tsFile.status, 'deleted');
+    }
+    tsFile.status = 'active';
+    const fourth = await withMlsAsync(mlsPatch, () => captureInfoAsync(() => forceRegenerate('_102099_/l1/mod/layer_3_domain/entities/order.defs.ts')));
+    assert.deepEqual(results, [true, true, true]);
+    assert.equal(fourth.result, false);
+    assert.equal(tsFile.status, 'active');
+    assert.match(fourth.lines[0] ?? '', /re-spawn ceiling reached \(3\/3\) — not regenerating/);
+  } finally {
+    setCbTraceModule('');
+  }
+});
+
+async function captureInfoAsync<T>(fn: () => Promise<T>): Promise<{ result: T; lines: string[] }> {
+  const lines: string[] = [];
+  const orig = console.info;
+  console.info = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  try {
+    return { result: await fn(), lines };
+  } finally {
+    console.info = orig;
+  }
+}
+
+async function withMlsAsync<T>(patch: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
+  const g = globalThis as { mls?: Record<string, unknown> };
+  const prev = g.mls;
+  g.mls = { ...(prev ?? {}), ...patch };
+  try { return await fn(); } finally { g.mls = prev; }
+}
+
+function storKey(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string {
+  return `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`;
+}
+
+test('recordComponentFailure emits read/write/saved with prev.attempts from what was actually read', async () => {
+  const project = 102099;
+  const folder = 'mod/pipeline/trace/l1';
+  const key = storKey({ project, level: 4, folder, shortName: 'cb-repair-state', extension: '.json' });
+  let persisted = '';
+  const file = {
+    status: 'active',
+    getContent: async () => persisted,
+  };
+  const mlsPatch = {
+    actualProject: project,
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: storKey,
+      localStor: {
+        setContent: async (_f: unknown, payload: { content: string }) => { persisted = payload.content; },
+      },
+    },
+  };
+  setCbTraceModule('mod');
+  try {
+    const first = await withMlsAsync(mlsPatch, () => captureInfoAsync(() => recordComponentFailure(
+      '_102099_/l1/mod/layer_3_domain/entities/pet.defs.ts',
+      ['output .ts absent or stale after its layer already advanced'],
+    )));
+    assert.match(first.lines[0] ?? '', /\[cb-repair\] _102099_\/l1\/mod\/layer_3_domain\/entities\/pet\.defs\.ts read\(prev\.attempts=absent\) write\(attempts=1\) saved=true/);
+    assert.equal(first.result.attempts, 1);
+    const second = await withMlsAsync(mlsPatch, () => captureInfoAsync(() => recordComponentFailure(
+      '_102099_/l1/mod/layer_3_domain/entities/pet.defs.ts',
+      ['output .ts absent or stale after its layer already advanced'],
+    )));
+    assert.match(second.lines[0] ?? '', /read\(prev\.attempts=1\) write\(attempts=2\) saved=true/);
+    assert.equal(second.result.attempts, 2);
+  } finally {
+    setCbTraceModule('');
+  }
+});
+
+test('recordComponentFailure: a stor that never round-trips always reads prev.attempts=absent', async () => {
+  const project = 102099;
+  const folder = 'mod/pipeline/trace/l1';
+  const key = storKey({ project, level: 4, folder, shortName: 'cb-repair-state', extension: '.json' });
+  const file = {
+    status: 'active',
+    getContent: async () => '',
+  };
+  const mlsPatch = {
+    actualProject: project,
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: storKey,
+      localStor: {
+        setContent: async () => undefined,
+      },
+    },
+  };
+  setCbTraceModule('mod');
+  try {
+    const first = await withMlsAsync(mlsPatch, () => captureInfoAsync(() => recordComponentFailure('entity.defs.ts', ['stale'])));
+    const second = await withMlsAsync(mlsPatch, () => captureInfoAsync(() => recordComponentFailure('entity.defs.ts', ['stale'])));
+    assert.match(first.lines[0] ?? '', /read\(prev\.attempts=absent\) write\(attempts=1\) saved=true/);
+    assert.match(second.lines[0] ?? '', /read\(prev\.attempts=absent\) write\(attempts=1\) saved=true/);
+  } finally {
+    setCbTraceModule('');
+  }
 });
 
 test('serializeRepairMutation preserves every concurrent read-modify-write', async () => {

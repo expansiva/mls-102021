@@ -28,7 +28,8 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
-  buildRepairPromptSection, forceDefsStale, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET, type CbRepairState,
+  buildRepairPromptSection, forceRegenerate, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET,
+  setComponentFindings, noteStaleSpawn, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRawMdmAccessIssues, collectMdmLifecycleIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import { startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
@@ -36,8 +37,12 @@ import {
   collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues, collectRepositoryCastIssues,
+  extractRepositoryInterfaceName, collectAdapterMissingPortMethods,
   portsMissingFromDependsFiles, collectDetailsDefaultingIssues, collectJsonbRowParseFindings,
+  collectNamedL1Imports, applyInventedImportFixes, collectCallbackNullAssignmentIssues,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
+import { ensureRequiredPortMethodsInSource } from '/_102021_/l2/agentChangeBackend/helpers/cbPortMethods.js';
+import { appliedRulesPromptSection, readRuleDefinitions } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
 
 const AGENT_NAME = 'agentCbMaterialize';
 
@@ -55,6 +60,9 @@ function workerDefRef(args: string | undefined, step: mls.msg.AIAgentStep): stri
 }
 
 interface DefsEntry { defRef: string; item: PipelineItem; }
+type StaleEntry = DefsEntry;
+
+export type CbStaleVerdict = { stale: boolean; decision: 'generate' | 'skip' };
 
 // Scan every l1 .defs.ts of the (single) module and pair it with its pipeline item + defs mls path.
 async function scanEntries(context: mls.msg.ExecutionContext): Promise<DefsEntry[]> {
@@ -70,19 +78,35 @@ async function scanEntries(context: mls.msg.ExecutionContext): Promise<DefsEntry
   return entries;
 }
 
-// Output is stale when missing, older than its defs, OR older than any generated internal dependency.
-// This makes staleness transitive: a regenerated entity invalidates importing usecases/controllers.
-function entryIsStale(project: number, defRef: string, item: PipelineItem): boolean {
+function rawStorFields(project: number, level: number, folder: string, shortName: string, extension: string): { updatedAt: unknown; status: unknown } {
+  try {
+    const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
+    const file = (mls.stor.files as Record<string, { updatedAt?: unknown; status?: unknown } | undefined>)[key];
+    if (!file) return { updatedAt: undefined, status: undefined };
+    return { updatedAt: file.updatedAt, status: file.status };
+  } catch {
+    return { updatedAt: undefined, status: undefined };
+  }
+}
+
+// Output is stale iff the .ts is absent. Timestamps stay in the log (diagnostics); they do not decide.
+// To regenerate, delete the .ts (forceRegenerate / rebuild all).
+export function entryIsStale(project: number, defRef: string, item: PipelineItem): CbStaleVerdict {
   const d = parseMlsPath(defRef);
   const o = parseMlsPath(item.outputPath);
   const defsMs = d ? getFileModified(d.project, d.level, d.folder, d.shortName, '.defs.ts') : null;
   const tsMs = o ? getFileModified(o.project, o.level, o.folder, o.shortName, '.ts') : null;
+  const defsRaw = d ? rawStorFields(d.project, d.level, d.folder, d.shortName, '.defs.ts') : { updatedAt: undefined, status: undefined };
+  const tsRaw = o ? rawStorFields(o.project, o.level, o.folder, o.shortName, '.ts') : { updatedAt: undefined, status: undefined };
   const dependencyTimes = (item.dependsFiles ?? []).map(ref => parseMlsPath(ref.replace(/\.d\.ts$/u, '.ts')))
     .map(path => path ? getFileModified(path.project, path.level, path.folder, path.shortName, '.ts') : null)
     .filter((value): value is number => value !== null);
-  const inputMs = Math.max(defsMs ?? -1, ...dependencyTimes);
   const tsExists = !!o && fileIsPresent(o.project, o.level, o.folder, o.shortName, '.ts');
-  return isStale(inputMs < 0 ? null : inputMs, tsMs, tsExists);
+  const stale = isStale(tsExists);
+  const decision: CbStaleVerdict['decision'] = stale ? 'generate' : 'skip';
+  const depMax = dependencyTimes.length ? Math.max(...dependencyTimes) : '';
+  console.info(`[cb-stale] ${defRef} defs(ms=${defsMs} updatedAt=${defsRaw.updatedAt} status=${defsRaw.status}) ts(ms=${tsMs} exists=${tsExists} updatedAt=${tsRaw.updatedAt} status=${tsRaw.status}) deps(max=${depMax}) => stale=${stale} decision=${decision}`);
+  return { stale, decision };
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -100,7 +124,12 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
   try {
     const project = mls.actualProject || 0;
     const entries = await scanEntries(context);
-    const allStale = entries.filter(e => !isDeterministicMaterializeType(e.item.type) && entryIsStale(project, e.defRef, e.item));
+    const allStale: StaleEntry[] = [];
+    for (const e of entries) {
+      if (isDeterministicMaterializeType(e.item.type)) continue;
+      const verdict = entryIsStale(project, e.defRef, e.item);
+      if (verdict.stale) allStale.push(e);
+    }
     // Materialize ONE layer per dispatch. The runtime's addParallelArgs forces a parallel parent to
     // in_progress and enqueues its children the moment the add-step is applied, so a `dependsOn`
     // between two parallel steps created together is NOT a real barrier — every layer would start at
@@ -144,6 +173,13 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
         repairState.componentRepairs[e.defRef] = entry;
       }
       if (r < minRank && !repairable(e.defRef)) continue;
+      const spawn = noteStaleSpawn(e.defRef);
+      if (!spawn.scheduled) {
+        const msg = `hard dispatch ceiling reached (${spawn.dispatches}/${spawn.dispatchCeiling}) — not rescheduling`;
+        await setComponentFindings(e.defRef, [msg], 'component-validate');
+        console.info(`[cb-stale] ${e.defRef} ${msg}`);
+        continue;
+      }
       let bucket = byRank.get(r);
       if (!bucket) { bucket = []; byRank.set(r, bucket); }
       bucket.push(e);
@@ -263,6 +299,16 @@ async function repositoryMethodIssues(code: string, module: string): Promise<str
   return collectRepositoryMethodMisuse(code, methodsByInterface);
 }
 
+/** Adapter vs port methods: every name on the interface must exist on the factory return object. */
+async function adapterPortMethodIssues(code: string, module: string, entityId: string): Promise<string[]> {
+  const src = await readContextRef(dtsRef(repositoryPortFileInfo(module, entityId)));
+  if (src == null) return [];
+  const iface = extractRepositoryInterfaceName(src) || `I${entityId}Repository`;
+  const methods = extractInterfaceMethods(src, iface);
+  if (!methods.size) return [];
+  return collectAdapterMissingPortMethods(code, methods, `${lowerFirstLocal(entityId)}RepositoryAdapter`, iface);
+}
+
 /** A parallel child must complete for the layer barrier, but every pre-prompt failure still needs a
  * repair record. A storage failure is made explicit in the child trace instead of being silent. */
 async function completeWorkerFailure(
@@ -334,6 +380,14 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
           if (c != null) contextSections.push(`### ${ref}\n\`\`\`ts\n${c}\n\`\`\``);
         }
       }
+    }
+    const ruleIds = [...new Set([
+      ...(parsed.item.rulesApplied ?? []),
+      ...collectUsecaseRules(parsed.data),
+    ])].filter(Boolean);
+    if (ruleIds.length) {
+      const rulesSection = appliedRulesPromptSection(await readRuleDefinitions(mls.actualProject || 0), ruleIds);
+      if (rulesSection) contextSections.push(rulesSection);
     }
     // REPAIR: when a previous attempt was rejected (component validation / validate-all round), feed the
     // exact findings + the rejected code back so the model fixes them instead of re-rolling the dice.
@@ -452,6 +506,7 @@ function validateGeneratedComponent(project: number, item: PipelineItem, data: u
   // Every component type: alias imports only. Rejecting here (repair finding) stops the model from
   // "fixing" an unresolved alias import by switching to a relative path (run task2/102049).
   issues.push(...collectRelativeImportIssues(code));
+  issues.push(...collectCallbackNullAssignmentIssues(code));
   if (item.type === 'applicationUsecase') issues.push(...validateUsecaseComponent(project, data, code, tsKeys));
   if (item.type === 'httpController') issues.push(...validateControllerComponent(data, code));
   // Adapters own the `details` JSONB envelope: reject parse-without-merge (the 500-on-read class).
@@ -497,14 +552,39 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw new Error(`${infra ? 'LLM infra failure' : 'missing generated code'} (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
     }
 
-    const code = applyHeader(item.outputPath, out.code);
+    let code = applyHeader(item.outputPath, out.code);
     const p = parseMlsPath(item.outputPath);
     if (!p) throw new Error(`invalid outputPath: ${item.outputPath}`);
+    // Port plan post-check (gen-port) guarantees requiredMethods on the .defs.ts. The .ts is born
+    // here: if the interface omitted a required method, complete it deterministically (delete(id: XId)
+    // when XId is in the file) and record a systemDecision. Not mechanically derivable → finding.
+    let portEnsure: ReturnType<typeof ensureRequiredPortMethodsInSource> | null = null;
+    if (item.type === 'repositoryPort') {
+      portEnsure = ensureRequiredPortMethodsInSource(code, parsed?.data);
+      code = portEnsure.source;
+    }
+    const moduleName = p.folder.split('/')[0] || '';
+    const importTargets = new Map<string, string>();
+    for (const imp of collectNamedL1Imports(code, p.project, moduleName)) {
+      const key = `${imp.folder}::${imp.shortName}`;
+      if (importTargets.has(key)) continue;
+      const src = await getContentByMlsPath(`_${p.project}_/l1/${imp.folder}/${imp.shortName}.ts`);
+      if (src != null) importTargets.set(key, src);
+    }
+    const importFix = applyInventedImportFixes(code, p.project, importTargets, moduleName);
+    code = importFix.code;
     const componentIssues = validateGeneratedComponent(p.project, item, parsed?.data, code, `${p.folder}::${p.shortName.toLowerCase()}`);
+    if (importFix.findings.length) componentIssues.push(...importFix.findings);
+    if (portEnsure?.findings.length) componentIssues.push(...portEnsure.findings);
     if (item.type === 'applicationUsecase') {
       // Deterministic port-method gate (append-only vs CRUD). Async (loads the port source), so it runs
       // here rather than inside the sync validateGeneratedComponent.
       componentIssues.push(...await repositoryMethodIssues(code, p.folder.split('/')[0]));
+    }
+    if (item.type === 'repositoryAdapter') {
+      const entityId = p.shortName.replace(/RepositoryAdapter$/u, '');
+      const entity = entityId ? entityId.charAt(0).toUpperCase() + entityId.slice(1) : '';
+      if (entity) componentIssues.push(...await adapterPortMethodIssues(code, p.folder.split('/')[0], entity));
     }
     if (componentIssues.length) {
       // REPAIR LOOP: keep the findings + the rejected code; the dispatcher re-spawns this worker with
@@ -533,7 +613,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
         // so the dispatcher re-spawns this worker with the errors in the prompt; budget exhausted ->
         // the pair STAYS stale and cb-validate-all's staleness finding blocks the run.
         const entry = await recordComponentFailure(defRef, saved.compileErrors.map(e => `compiler: ${e}`), code);
-        forceDefsStale(defRef);
+        await forceRegenerate(defRef);
         throw new Error(`compile failed (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1}): ${saved.compileErrors.slice(0, 4).join('; ')}`);
       }
       // FIRST PASS (layer sweep) — user decision 2026-07-17 (run 102049-e): compile findings here can
@@ -549,6 +629,36 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       await saveHealthReport({ outcome: 'materialize-infra-warning', defRef, compilerAvailable: false, message: trace });
     }
     await clearComponentRepair(defRef); // converged: drop the repair record
+    if (portEnsure?.completed.length) {
+      await saveHealthReport({
+        outcome: 'materialize-port-methods',
+        defRef,
+        completed: portEnsure.completed,
+        systemDecisions: portEnsure.decisions,
+      });
+      const note = `[systemDecision] added ${portEnsure.completed.join(', ')} to materialized port`;
+      trace = trace ? `${note}; ${trace}` : note;
+    }
+    if (importFix.renamed.length) {
+      const decisions = importFix.renamed.map(item => ({
+        decisionId: `cbInventedImport_${item.imported}_${item.exported}`,
+        stage: 'cb-materialize',
+        question: `generated .ts imported '${item.imported}' from ${item.specifier} which does not export it`,
+        chosen: 'renameToClosestExport',
+        alternatives: ['failRun', 'leaveToRepair'],
+        decidedBy: 'system' as const,
+        findingRef: `CB_INVENTED_IMPORT:${item.imported}`,
+        changeHint: `Renamed '${item.imported}' to exported '${item.exported}'.`,
+      }));
+      await saveHealthReport({
+        outcome: 'materialize-invented-import',
+        defRef,
+        renamed: importFix.renamed,
+        systemDecisions: decisions,
+      });
+      const note = `[systemDecision] renamed ${importFix.renamed.map(item => `${item.imported}→${item.exported}`).join(', ')}`;
+      trace = trace ? `${note}; ${trace}` : note;
+    }
     await flushBorrowedModels();
   } catch (error) {
     // No console output: repair is an expected, handled path. The trace below lands on the step, the

@@ -14,6 +14,9 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { repositoryPortResultSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbSchemas.js';
+import {
+  buildPortPlanItems, ensureRequiredPortMethods, requiredMethodsForEntity, stripEventPortDelete,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbPortMethods.js';
 
 const AGENT_NAME = 'agentCbRepositoryPort';
 const TOOL_NAME = 'submitRepositoryPorts';
@@ -36,10 +39,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ];
     }
   }
-  const items = scan.aggregates.map(a => ({ entityId: a.rootEntity, embeddedMembers: a.embeddedMembers }));
+  const deleteTargets = new Set(scan.deleteTargetEntityIds);
+  const items = buildPortPlanItems(scan.aggregates, deleteTargets);
   // Append-only event ports: append(record) + read finders (listByOwnerId, listByPeriod). NO update/delete.
   const eventItems = scan.events.filter(ev => ev.persisted).map(ev => ({ entityId: ev.entityId, appendOnlyEvent: true, owner: ev.ownerEntity }));
-  const human = `## Aggregates\n${JSON.stringify(items, null, 2)}\n\n## Append-only event ports\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one repository port (I{Entity}Repository) per aggregate AND per event. Aggregate ports use getById/list/save/domain finders. {Entity}ListFilter includes equality fields (PK/FKs/status) plus optional search/sortBy/sortOrder when those list controls exist. When the module deletes an aggregate, that port MUST declare delete — otherwise the generated delete usecase 409s with "repository does not support deletion". Event ports are append-only: an append(record) method plus read finders (e.g. listByOwnerId, listByPeriod) — never update or delete. Typed in domain terms.`;
+  const human = `## Aggregates\n${JSON.stringify(items, null, 2)}\n\n## Append-only event ports\n${JSON.stringify(eventItems, null, 2)}\n\nReturn one repository port (I{Entity}Repository) per aggregate AND per event. Aggregate ports use getById/list/save/domain finders. {Entity}ListFilter includes equality fields (PK/FKs/status) plus optional search/sortBy/sortOrder when those list controls exist. requiredMethods on an aggregate item is the l4 contract — declare every one of them. When the module deletes an aggregate, that port MUST declare delete — otherwise the generated delete usecase 409s with "repository does not support deletion". Event ports are append-only: an append(record) method plus read finders (e.g. listByOwnerId, listByPeriod) — never update or delete. Typed in domain terms.`;
   const systemPrompt = await readCbPrompt('steps/gen-port');
   return [createPromptReadyIntent(context, parentStep, hookSequential, (step.prompt || ""), systemPrompt.split('{{toolName}}').join(TOOL_NAME), human, toolSchema, TOOL_NAME)];
 }
@@ -54,10 +58,21 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const out = extractPlannerOutput(payload, plannerConfig(TOOL_NAME));
     const scan = await readBackendScan(['toCreate', 'inProgress'], context);
     const module = scan.moduleNames[0] || 'unknown';
+    const deleteTargets = new Set(scan.deleteTargetEntityIds);
+    const eventIds = new Set(scan.events.filter(ev => ev.persisted).map(ev => ev.entityId));
     let saved = 0;
-    for (const item of asArray((out.result as any).items)) {
+    for (const raw of asArray((out.result as any).items)) {
+      const item = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+      if (!item) continue;
       const entityId = readString(item.entityId);
       if (!entityId) continue;
+      if (eventIds.has(entityId)) {
+        stripEventPortDelete(item);
+      } else {
+        const required = requiredMethodsForEntity(entityId, deleteTargets);
+        item.requiredMethods = required;
+        ensureRequiredPortMethods(item, required);
+      }
       const fi = repositoryPortFileInfo(module, entityId);
       const dependsFiles = [dtsRef(domainEntityFileInfo(module, entityId))];
       const pipeline = [buildPipelineItem(`${lowerFirst(entityId)}Repository`, 'repositoryPort', fi, dependsFiles, layerSkills('repositoryPort.md'))];

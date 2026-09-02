@@ -8,6 +8,10 @@ import { isModelAlreadyExistsError, mlsImportPathParts, phantomModulePathOf } fr
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import type { PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
+import {
+  countGroupedDiagnostics, mlsBaseFromDiskPath, traceProjectTscResult,
+  type CompileModuleTrace,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbProjectTsc.js';
 
 // L1 layer folders that may hold a .defs.ts with a pipeline (hexagonal: only layer_1_external in v1,
 // but keep the full set so the scan is robust if defs land in other layers).
@@ -402,14 +406,107 @@ export function modelCounts(): { registry: number; pendingRelease: number; peak:
  * The stable model set also removes the source of the flakiness the double compile existed for (a
  * model appearing halfway through the sweep), so callers ask once and re-ask only the flagged ones.
  *
- * Returns null when the worker is unavailable — the caller then keeps the per-file path, because a
- * missing optimization must never cost the gate.
+ * Returns `{ errors, trace }`. `errors` is null when no compile capability exists — the caller then
+ * keeps the per-file path, because a missing optimization must never cost the gate. `trace` always
+ * names the path (`monaco` | `project-tsc` | `unavailable`), the raw diagnostic count, and how many
+ * remained after the in-module filter. Monaco first (browser unchanged); project `tsc` only when the
+ * worker is absent (`diskPath` + `node:child_process`).
  */
+function monacoCompileAvailable(): boolean {
+  const ts = (mls as { l2?: { typescript?: { getTypeScriptWorker?: unknown; compileAndPostProcess?: unknown } } }).l2?.typescript;
+  return typeof ts?.getTypeScriptWorker === 'function' && typeof mls.editor?.addModels === 'function';
+}
+
+function editorGetModel(): ((file: mls.stor.IFileInfo) => mls.editor.IModelBase | undefined) | undefined {
+  if (typeof mls.editor?.getModel !== 'function') return undefined;
+  return mls.editor.getModel.bind(mls.editor);
+}
+
+function storDiskPath(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
+  const fn = (mls.stor as { diskPath?: (file: typeof info) => string }).diskPath;
+  if (typeof fn !== 'function') return null;
+  try { return fn(info); } catch { return null; }
+}
+
+async function runProjectBackendTsc(cwd: string): Promise<string | null> {
+  try {
+    const childProcessSpec = 'node:child_process';
+    const loaded = await import(childProcessSpec) as {
+      spawn?: (cmd: string, args: string[], opts: Record<string, unknown>) => {
+        stdout?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
+        stderr?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
+        on: (ev: string, fn: (arg?: unknown) => void) => void;
+      };
+    };
+    if (typeof loaded.spawn !== 'function') return null;
+    const spawn = loaded.spawn;
+    return await new Promise(resolve => {
+      const child = spawn('npx', ['tsc', '-p', 'tsconfig.backend.json', '--noEmit', '--pretty', 'false'], { cwd });
+      let out = '';
+      child.stdout?.on('data', chunk => { out += String(chunk); });
+      child.stderr?.on('data', chunk => { out += String(chunk); });
+      child.on('error', () => resolve(null));
+      child.on('close', () => resolve(out));
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function compileModuleViaProjectTsc(
+  project: number,
+  files: Array<{ folder: string; shortName: string }>,
+): Promise<{ grouped: Map<string, string[]> | null; trace: CompileModuleTrace }> {
+  const sample = files[0];
+  if (!sample) {
+    return {
+      grouped: new Map(),
+      trace: { path: 'project-tsc', rawDiagnostics: 0, afterFilter: 0, files: 0 },
+    };
+  }
+  const abs = storDiskPath({ project, level: 1, folder: sample.folder, shortName: sample.shortName, extension: '.ts' });
+  if (!abs) return { grouped: null, trace: { path: 'unavailable', reason: 'no-diskPath', rawDiagnostics: 0, afterFilter: 0, files: files.length } };
+  const cwd = mlsBaseFromDiskPath(abs);
+  if (!cwd) return { grouped: null, trace: { path: 'unavailable', reason: 'no-mlsBase', rawDiagnostics: 0, afterFilter: 0, files: files.length } };
+  const output = await runProjectBackendTsc(cwd);
+  return traceProjectTscResult(output, files, project, 'spawn-null');
+}
+
+export interface CompileModuleOutcome {
+  errors: Map<string, string[]> | null;
+  trace: CompileModuleTrace;
+}
+
 export async function compileModuleAndGetErrors(
   project: number,
   files: Array<{ folder: string; shortName: string }>,
+): Promise<CompileModuleOutcome> {
+  if (!files.length) {
+    const trace: CompileModuleTrace = {
+      path: monacoCompileAvailable() ? 'monaco' : 'unavailable',
+      reason: 'no-files',
+      rawDiagnostics: 0,
+      afterFilter: 0,
+      files: 0,
+    };
+    return { errors: new Map(), trace };
+  }
+  if (monacoCompileAvailable()) {
+    const monaco = await compileModuleViaMonaco(project, files);
+    if (monaco) {
+      const n = countGroupedDiagnostics(monaco);
+      const trace: CompileModuleTrace = { path: 'monaco', rawDiagnostics: n, afterFilter: n, files: files.length };
+      return { errors: monaco, trace };
+    }
+  }
+  const tsc = await compileModuleViaProjectTsc(project, files);
+  return { errors: tsc.grouped, trace: tsc.trace };
+}
+
+async function compileModuleViaMonaco(
+  project: number,
+  files: Array<{ folder: string; shortName: string }>,
 ): Promise<Map<string, string[]> | null> {
-  if (!files.length) return new Map();
   const borrowed: BorrowedModel[] = [];
   activeCompiles++;
   try {
@@ -486,6 +583,7 @@ async function loadTsModel(project: number, level: number, folder: string, short
 
 /** Compile the saved .ts and distinguish a clean compile from unavailable Monaco infrastructure. */
 async function compileGeneratedTs(project: number, level: number, folder: string, shortName: string, content: string): Promise<{ errors: string[]; infraErrors: string[]; available: boolean }> {
+  if (!monacoCompileAvailable()) return { errors: [], infraErrors: [], available: false };
   // Borrowed OUTSIDE the try so the finally can always release them, even on a compile exception.
   let borrowed: BorrowedModel[] = [];
   activeCompiles++;
@@ -566,8 +664,10 @@ export interface SaveGeneratedTsResult {
  * not mention `mls.editor` themselves.
  */
 export function refreshExistingModel(file: mls.stor.IFileInfo, src: string): void {
+  const getModel = editorGetModel();
+  if (!getModel) return;
   try {
-    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    const model = getModel(file) as mls.editor.IModelBase | undefined;
     if (model?.model && model.model.getValue() !== src) model.model.setValue(src);
   } catch (error) {
     console.warn('[cbMaterializeIo] model refresh failed', error);
@@ -576,9 +676,11 @@ export function refreshExistingModel(file: mls.stor.IFileInfo, src: string): voi
 
 /** Read an already-existing Monaco model. Never creates one. `failed` is a throw from getModel/getValue. */
 export function readExistingModelValue(file: mls.stor.IFileInfo): { present: boolean; value: string | null; failed: boolean } {
+  const getModel = editorGetModel();
+  if (!getModel) return { present: false, value: null, failed: false };
   let present = false;
   try {
-    const model = mls.editor.getModel(file) as mls.editor.IModelBase | undefined;
+    const model = getModel(file) as mls.editor.IModelBase | undefined;
     if (!model?.model) return { present: false, value: null, failed: false };
     present = true;
     return { present: true, value: model.model.getValue(), failed: false };
@@ -639,8 +741,8 @@ export async function saveGeneratedTs(
       // from stor (ensureImportModels), which is what makes releasing the working copy safe.
       file = await createStorFile({ ...fileInfo, source: content }, false, false, false);
     }
-    // Bump updatedAt so the freshly materialized .ts is newer than its .defs.ts (keeps isStale correct
-    // across runs); libStor.createStorFile / setContent do not set it.
+    // Bump updatedAt for the [cb-stale] diagnostic log; libStor.createStorFile / setContent do not
+    // set it. Generation is decided by existence of this file, not by comparing stamps.
     file.updatedAt = new Date().toISOString();
     await mls.stor.localStor.setContent(file, { contentType: 'string', content });
     refreshExistingModel(file, content);

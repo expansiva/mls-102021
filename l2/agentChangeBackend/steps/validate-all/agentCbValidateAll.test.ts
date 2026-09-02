@@ -18,6 +18,23 @@ void test('agentCbValidateAll declares the validate-all step agent contract', ()
   assert.match(flow, /"agentName": "agentCbValidateAll"/);
 });
 
+void test('validate-all routes rematerialize by deleting the output .ts, not bumping defs', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /forceRegenerate\(defRef\)/);
+  assert.doesNotMatch(src, /forceDefsStale/);
+  assert.match(src, /isStale\(fileIsPresent\(/);
+});
+
+void test('validate-all records tscGate and the compile-path trace on the health report', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /tscGate = firstPass\.trace\.path === 'unavailable' \? 'unavailable' : 'ran'/);
+  assert.match(src, /compileTrace = firstPass\.trace/);
+  assert.match(src, /\.\.\.\(tscGate \? \{ tscGate \} : \{\}\)/);
+  assert.match(src, /formatCompileModuleTrace\(compileTrace\)/);
+  const summary = readFileSync(path.join(HERE, '../finalize/agentCbFinalSummary.ts'), 'utf8');
+  assert.match(summary, /tscGate=\$\{health\.tscGate\}/);
+});
+
 void test('validate-all flags a redundant PK index next to the empty-primaryKey guard', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /table without primary key ->/);
@@ -38,6 +55,19 @@ void test('a delete-without-port-method gap is repaired on the PORT, not the use
   assert.match(src, /defRefByLc\.set\(`ports::\$\{shortName\}`/);
   // The usecase worker must NOT burn its repair budget on a finding it cannot satisfy.
   assert.doesNotMatch(materialize, /collectDeleteOperationPortGaps/);
+});
+
+void test('validate-all flags an adapter that omits a method the port declares', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  const materialize = readFileSync(path.join(HERE, '..', 'materialize', 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /collectAdapterMissingPortMethods/);
+  assert.match(src, /extractRepositoryInterfaceName/);
+  assert.match(src, /generated port \.ts/);
+  assert.match(src, /portSources\.set\(shortName0\.toLowerCase\(\), content\)/);
+  assert.doesNotMatch(src, /methodNamesFromPortDefsSource/);
+  assert.match(materialize, /adapterPortMethodIssues/);
+  assert.match(materialize, /collectAdapterMissingPortMethods/);
+  assert.match(materialize, /extractInterfaceMethods\(src, iface\)/);
 });
 
 void test('validate-all flags a persistence adapter that skips ctx.data.moduleData or keeps a module-level Map', () => {
@@ -130,7 +160,8 @@ void test('validate-all annotates TS2339-on-never via annotateCompilerError at t
 void test('after a repair round the whole-project compile re-asks every file and keeps remaining families', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /const afterRepair = repairStateForCompile\.globalAttempts > 0/);
-  assert.match(src, /const secondTargets = afterRepair \? inScope : flaggedFirst/);
+  assert.match(src, /const compileTargets = mergeCompileTargets\(inScope, single\)/);
+  assert.match(src, /const secondTargets = afterRepair \? compileTargets : flaggedFirst/);
   assert.match(src, /compilerErrorsAfterRepair\(first,/);
   assert.match(src, /selectCompilerRepairRoots\([\s\S]{0,200}compilerErrorFamily/);
   assert.match(src, /collectNonEnglishAppErrorMessages/);
@@ -162,6 +193,8 @@ void test('validate-all partitions blocking vs degradable and finalizes when onl
   // Blocking still fails the run; degradable does not skip repair when mapped.
   assert.match(src, /INTEGRITY FAILED/);
   assert.match(src, /canRepair && \(state\.globalAttempts < GLOBAL_REPAIR_BUDGET \|\| isRescue\)/);
+  assert.match(src, /compilerFindingsDegradeAfterBudget/);
+  assert.match(src, /mergeCompileTargets\(inScope, single\)/);
   // Failure path writes runNN_changebackend.json after health, and a recorder throw cannot replace the failed intent.
   assert.match(src, /await persistHealth\(healthFailed\);\s*await recordFailedCbRun\(/);
   assert.match(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'failed', trace\)/);

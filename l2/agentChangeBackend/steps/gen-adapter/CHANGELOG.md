@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-02 — portMethods no item (todo método do port)
+
+O item do gen-adapter carrega `portMethods` (requiredMethods ∪ métodos do port
+já salvo). Guard `collectAdapterMissingPortMethods` no materialize e no
+validate-all: adapter sem um método do port vira finding com repair.
+
 ## 2026-08-28 — persistência = `ctx.data.moduleData.getTable` (obrigação, não permissão)
 
 O planner colapsava a lista de proibições `ctx.data.mdm*` numa nota que também

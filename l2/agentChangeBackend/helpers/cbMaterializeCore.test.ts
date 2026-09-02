@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, isStale, applyHeader, isDeterministicMaterializeType } from './cbMaterializeCore.js';
+import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, compilerFindingsDegradeAfterBudget, isStale, applyHeader, isDeterministicMaterializeType } from './cbMaterializeCore.js';
 
 test('shouldTargetedRescue (T6): fires once for a small compiler-only residual at exactly the spent budget', () => {
   const base = { budget: 2, maxTargets: 4 };
@@ -26,6 +26,22 @@ test('isCompilerFinding (T4): matches both per-file (compiler:) and whole-projec
   assert.equal(isCompilerFinding('compiler -> mod/x.ts: TS2367 ...'), true);
   assert.equal(isCompilerFinding("usecase Order: unknown port 'X'"), false); // structural finding
   assert.equal(isCompilerFinding('rulesApplied \'r\' not present in generated .ts'), false);
+});
+
+test('compilerFindingsDegradeAfterBudget: leftover compiler findings degrade; mixed/structural still fail', () => {
+  const compiler = [
+    'compiler -> a.ts: TS2741 Property delete is missing',
+    'compiler -> b.ts: TS2339 Property x does not exist on type never',
+  ];
+  assert.equal(compilerFindingsDegradeAfterBudget({ blocking: compiler, globalAttempts: 2, budget: 2 }), true);
+  assert.equal(compilerFindingsDegradeAfterBudget({ blocking: compiler, globalAttempts: 3, budget: 2 }), true);
+  assert.equal(compilerFindingsDegradeAfterBudget({ blocking: compiler, globalAttempts: 1, budget: 2 }), false);
+  assert.equal(compilerFindingsDegradeAfterBudget({
+    blocking: [...compiler, 'table without primary key -> x.defs.ts'],
+    globalAttempts: 2,
+    budget: 2,
+  }), false);
+  assert.equal(compilerFindingsDegradeAfterBudget({ blocking: [], globalAttempts: 2, budget: 2 }), false);
 });
 
 test('buildMicroRepairPrompt (T4): surgical prompt carries code+errors+pitfalls, NOT the full skills/contracts', () => {
@@ -95,23 +111,12 @@ test('expandContextRef (T5): an UNKNOWN artifact type falls back to the full bun
   assert.deepEqual(expandContextRef('_102034_.d.ts'), [...CONTRACTS_102034]); // no type given -> full bundle
 });
 
-// ── freshness must survive the session ───────────────────────────────────────
-// The Studio index does not always carry `updatedAt` across sessions, and the old rule read a missing
-// timestamp as a missing FILE: a resumed run re-materialized 14 of 34 controllers that were already
-// current — LLM calls spent rewriting correct files, which is also how a past run regressed them.
-test('isStale: an output that EXISTS without a timestamp is kept, not regenerated', () => {
-  // Never generated -> generate.
-  assert.equal(isStale(100, null, false), true);
-  // Generated, but this session has no timestamp for it -> unknown freshness keeps the artifact.
-  assert.equal(isStale(100, null, true), false);
-  // The real comparisons are untouched.
-  assert.equal(isStale(200, 100), true);          // defs newer than the .ts
-  assert.equal(isStale(100, 200), false);         // .ts newer than the defs
-  assert.equal(isStale(null, 100), false);        // no defs timestamp -> assume current
-  // Both sides unstamped-but-present (the classic tie) is NOT stale.
-  assert.equal(isStale(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER), false);
-  // Default keeps the old signature honest: no third argument means "exists iff it has a timestamp".
-  assert.equal(isStale(100, null), true);
+// ── freshness is existence, not a timestamp ──────────────────────────────────
+// A present `.ts` is kept even if a caller still has defs/ts mtimes in hand (those stamps are
+// diagnostic only). An absent `.ts` is generated. No comparison of carimbos in either case.
+test('isStale: .ts absent generates; .ts present is skipped — timestamps are not consulted', () => {
+  assert.equal(isStale(false), true);
+  assert.equal(isStale(true), false);
 });
 
 // T12: two files of the buildFlowFsm run were saved with `enhancement="blank"` — the model retyped the

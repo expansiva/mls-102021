@@ -12,7 +12,6 @@ import {
   sendCbFastHandoff,
   type CbFastHandoffDegradation,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbFastHandoff.js';
-import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import { readHealthReport, readCostReport, saveRunReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { collectRunStepRecords } from '/_102021_/l2/agentChangeBackend/helpers/cbRunDossier.js';
 import { modelCounts } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
@@ -108,9 +107,18 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     success: !noWork && ownersDone > 0 && !compilerLeft,
     moduleName,
   });
+  const wipeNote = typeof health?.rebuildWipedMessage === 'string' && health.rebuildWipedMessage
+    ? ` ${health.rebuildWipedMessage}.`
+    : '';
+  const wipeFindingNote = typeof health?.rebuildWipedFinding === 'string' && health.rebuildWipedFinding
+    ? ` ⚠ ${health.rebuildWipedFinding}`
+    : '';
+  const tscGateNote = health?.tscGate === 'unavailable' || health?.tscGate === 'ran'
+    ? ` tscGate=${health.tscGate}`
+    : '';
   const summary = (noWork
     ? noWorkReason
-    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + cost + residual + stamp + handoff.note;
+    : `agentChangeBackend: run complete. ${ownersSentence(args)} ${configMsg}`) + wipeNote + wipeFindingNote + tscGateNote + cost + residual + stamp + handoff.note;
   // The dossier of the run, next to the module's trace: phases with cost/calls, the repair history, the
   // residual findings and the model counts — what used to be assembled by hand after every run.
   const reportRef = await saveRunReport({
@@ -177,7 +185,10 @@ async function dispatchChangeFrontendHandoff(
     return sendCbFastHandoff({
       threadId: context.message?.threadId,
       message: decision.message,
-      send: async (threadId, message) => { await sendThreadMessage(threadId, message); },
+      send: async (threadId, message) => {
+        const { addMessage } = await import('/_102025_/l2/collabMessagesHelper.js');
+        await addMessage(threadId, message);
+      },
       persist: () => writeCbFastHandoffMark(input.moduleName, decision.message),
     });
   } catch (error) {
