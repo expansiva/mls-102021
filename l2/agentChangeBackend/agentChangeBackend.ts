@@ -48,6 +48,8 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   let rebuildWipeMsg = '';
   let rebuildWipeFinding = '';
   let rebuildWipeAbort = '';
+  let wipeRunId = '';
+  let rebuildWipedKeys = '';
 
   // Resolve the ONE module this run targets, and (for rebuild) reset only that module's owners so the
   // task stays small. No explicit module -> the first (sorted) module with owners; readBackendScan
@@ -75,6 +77,10 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
         const leftover = countBackendL1LiveFiles(files, project, targetModule);
         await clearCbLayerTrace(project, targetModule);
         rebuildArchived = String(archived.length);
+        if (archived.length) {
+          wipeRunId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+          rebuildWipedKeys = JSON.stringify(archived);
+        }
         const wipe = describeRebuildWipe(targetModule, archived.length, indexed, leftover);
         rebuildWipeMsg = wipe.message;
         rebuildWipeFinding = wipe.finding ?? '';
@@ -116,7 +122,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}), ...(rebuildWipeMsg ? { rebuildWipeMsg } : {}), ...(rebuildWipeFinding ? { rebuildWipeFinding } : {}), ...(rebuildWipeAbort ? { rebuildWipeAbort } : {}) },
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}), ...(rebuildWipeMsg ? { rebuildWipeMsg } : {}), ...(rebuildWipeFinding ? { rebuildWipeFinding } : {}), ...(rebuildWipeAbort ? { rebuildWipeAbort } : {}), ...(wipeRunId ? { wipeRunId } : {}), ...(rebuildWipedKeys ? { rebuildWipedKeys } : {}) },
     },
   };
 

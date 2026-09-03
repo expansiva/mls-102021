@@ -422,10 +422,16 @@ function editorGetModel(): ((file: mls.stor.IFileInfo) => mls.editor.IModelBase 
   return mls.editor.getModel.bind(mls.editor);
 }
 
-function storDiskPath(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
-  const fn = (mls.stor as { diskPath?: (file: typeof info) => string }).diskPath;
-  if (typeof fn !== 'function') return null;
-  try { return fn(info); } catch { return null; }
+// Call it as a METHOD, never detached. `diskPath` is host-only (it does not exist
+// in mls.d.ts nor in the cfe) and on the CLI host it is a CLASS method that reads a
+// private field. `const fn = mls.stor.diskPath; fn(info)` throws
+// `Cannot read properties of undefined (reading '#mlsBase')`, the catch swallows it,
+// and the project-tsc gate reports `no-diskPath` — i.e. the CB ran with NO compiler
+// on the only host that could give it one. Measured on the lima host 02/09.
+export function storDiskPath(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
+  const stor = mls.stor as unknown as { diskPath?: (file: typeof info) => string };
+  if (typeof stor.diskPath !== 'function') return null;
+  try { return stor.diskPath(info); } catch { return null; }
 }
 
 async function runProjectBackendTsc(cwd: string): Promise<string | null> {

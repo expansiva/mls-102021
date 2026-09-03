@@ -7,7 +7,9 @@ import {
   ensureRequiredPortMethods,
   ensureRequiredPortMethodsInSource,
   isDeleteOperation,
+  methodNamesFromPortData,
   methodNamesFromPortDefsSource,
+  promisedPortReturnType,
   requiredMethodsForEntity,
   requiredMethodsFromPortData,
   stripEventPortDelete,
@@ -233,4 +235,134 @@ test('adapter guard is against the materialized port .ts, not the defs plan', ()
   const issues = collectAdapterMissingPortMethods(adapter, after, 'ticketRepositoryAdapter.ts', 'ITicketRepository');
   assert.equal(issues.length, 1);
   assert.match(issues[0], /missing ITicketRepository\.delete/);
+});
+
+const PLAN_FOUR = {
+  entityId: 'Ticket',
+  methods: [
+    { name: 'getById', params: ['id: TicketId'], returns: 'Ticket | null' },
+    { name: 'list', params: ['filter: TicketListFilter'], returns: 'Ticket[]' },
+    { name: 'save', params: ['aggregate: Ticket'], returns: 'void' },
+    { name: 'archive', params: ['id: TicketId', 'reason: string'], returns: 'void' },
+  ],
+};
+
+test('plan with 4 methods and .ts with 3 adds the fourth from the plan params', () => {
+  assert.deepEqual(methodNamesFromPortData(PLAN_FOUR), ['getById', 'list', 'save', 'archive']);
+  const result = ensureRequiredPortMethodsInSource(PORT_TS_WITHOUT_DELETE, PLAN_FOUR);
+  assert.deepEqual(result.completed, ['archive']);
+  assert.equal(result.findings.length, 0);
+  assert.match(result.source, /archive\(id: TicketId, reason: string\): Promise<void>;/);
+  assert.ok(extractInterfaceMethods(result.source, 'ITicketRepository').has('archive'));
+  assert.equal(result.decisions.length, 1);
+  assert.equal(result.decisions[0].decidedBy, 'system');
+  assert.equal(result.decisions[0].stage, 'cb-materialize');
+  assert.equal(result.decisions[0].chosen, 'addPlanMethodToPortTs');
+});
+
+test('plan returns void becomes Promise<void>; already-Promise is not wrapped twice', () => {
+  assert.equal(promisedPortReturnType('void'), 'Promise<void>');
+  assert.equal(promisedPortReturnType('Promise<void>'), 'Promise<void>');
+  const fromVoid = ensureRequiredPortMethodsInSource(PORT_TS_WITHOUT_DELETE, {
+    entityId: 'Ticket',
+    methods: [
+      { name: 'getById', params: ['id: TicketId'], returns: 'Ticket | null' },
+      { name: 'list', params: ['filter: TicketListFilter'], returns: 'Ticket[]' },
+      { name: 'save', params: ['aggregate: Ticket'], returns: 'void' },
+      { name: 'archive', params: ['id: TicketId'], returns: 'void' },
+    ],
+  });
+  assert.match(fromVoid.source, /archive\(id: TicketId\): Promise<void>;/);
+  assert.doesNotMatch(fromVoid.source, /Promise<Promise</);
+
+  const fromPromise = ensureRequiredPortMethodsInSource(PORT_TS_WITHOUT_DELETE, {
+    entityId: 'Ticket',
+    methods: [
+      { name: 'getById', params: ['id: TicketId'], returns: 'Promise<Ticket | null>' },
+      { name: 'list', params: ['filter: TicketListFilter'], returns: 'Promise<Ticket[]>' },
+      { name: 'save', params: ['aggregate: Ticket'], returns: 'Promise<void>' },
+      { name: 'archive', params: ['id: TicketId'], returns: 'Promise<void>' },
+    ],
+  });
+  assert.match(fromPromise.source, /archive\(id: TicketId\): Promise<void>;/);
+  assert.doesNotMatch(fromPromise.source, /Promise<Promise</);
+});
+
+test('plan returns Ticket | null becomes Promise<Ticket | null>', () => {
+  assert.equal(promisedPortReturnType('Ticket | null'), 'Promise<Ticket | null>');
+  assert.equal(promisedPortReturnType('Promise<Ticket | null>'), 'Promise<Ticket | null>');
+  const withoutGetById = [
+    'export type TicketId = string;',
+    'export interface ITicketRepository {',
+    '  list(filter: TicketListFilter): Promise<Ticket[]>;',
+    '  save(aggregate: Ticket): Promise<Ticket>;',
+    '}',
+  ].join('\n');
+  const result = ensureRequiredPortMethodsInSource(withoutGetById, {
+    entityId: 'Ticket',
+    methods: [
+      { name: 'getById', params: ['id: TicketId'], returns: 'Ticket | null' },
+      { name: 'list', params: ['filter: TicketListFilter'], returns: 'Ticket[]' },
+      { name: 'save', params: ['aggregate: Ticket'], returns: 'void' },
+    ],
+  });
+  assert.deepEqual(result.completed, ['getById']);
+  assert.match(result.source, /getById\(id: TicketId\): Promise<Ticket \| null>;/);
+});
+
+test('plan and materialized .ts with the same methods are left alone (idempotent)', () => {
+  const data = {
+    entityId: 'Ticket',
+    methods: [
+      { name: 'getById', params: ['id: TicketId'], returns: 'Ticket | null' },
+      { name: 'list', params: ['filter: TicketListFilter'], returns: 'Ticket[]' },
+      { name: 'save', params: ['aggregate: Ticket'], returns: 'void' },
+    ],
+  };
+  const result = ensureRequiredPortMethodsInSource(PORT_TS_WITHOUT_DELETE, data);
+  assert.deepEqual(result.completed, []);
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.decisions.length, 0);
+  assert.equal(result.source, PORT_TS_WITHOUT_DELETE);
+});
+
+test('plan method without usable params or returns is a finding and the interface stays intact', () => {
+  const result = ensureRequiredPortMethodsInSource(PORT_TS_WITHOUT_DELETE, {
+    entityId: 'Ticket',
+    methods: [
+      { name: 'getById', params: ['id: TicketId'], returns: 'Ticket | null' },
+      { name: 'list', params: ['filter: TicketListFilter'], returns: 'Ticket[]' },
+      { name: 'save', params: ['aggregate: Ticket'], returns: 'void' },
+      { name: 'archive' },
+    ],
+  });
+  assert.deepEqual(result.completed, []);
+  assert.equal(result.source, PORT_TS_WITHOUT_DELETE);
+  assert.equal(extractInterfaceMethods(result.source, 'ITicketRepository').has('archive'), false);
+  assert.equal(result.findings.length, 1);
+  assert.match(result.findings[0], /archive/);
+  assert.match(result.findings[0], /cannot complete mechanically/);
+});
+
+test('append-only event port whose plan lists delete does not gain delete', () => {
+  const eventTs = [
+    'export interface ITicketOpenedRepository {',
+    '  append(record: TicketOpened): Promise<TicketOpened>;',
+    '}',
+  ].join('\n');
+  const result = ensureRequiredPortMethodsInSource(eventTs, {
+    entityId: 'TicketOpened',
+    appendOnlyEvent: true,
+    methods: [
+      { name: 'append', params: ['record: TicketOpened'], returns: 'TicketOpened' },
+      { name: 'listByOwnerId', params: ['ownerId: string'], returns: 'TicketOpened[]' },
+      { name: 'delete', params: ['id: string'], returns: 'void' },
+    ],
+    requiredMethods: ['delete'],
+  });
+  assert.equal(extractInterfaceMethods(result.source, 'ITicketOpenedRepository').has('delete'), false);
+  assert.doesNotMatch(result.source, /\bdelete\s*\(/);
+  assert.ok(result.completed.includes('listByOwnerId'));
+  assert.match(result.source, /listByOwnerId\(ownerId: string\): Promise<TicketOpened\[\]>;/);
+  assert.equal(result.findings.length, 0);
 });

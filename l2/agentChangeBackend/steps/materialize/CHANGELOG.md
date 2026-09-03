@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-09-02 — todo método de `data.methods` no `.ts` do port
+
+O invariante passou de "os `requiredMethods` estão na interface" para "todo método
+do plano (`data.methods`) está declarado no `.ts`". Completa a partir de `name` /
+`params` / `returns` do próprio plano (`void` → `Promise<void>`; já-`Promise<…>`
+não duplica). O que o plano não especifica o suficiente vira finding em
+`componentIssues`. `requiredMethods` permanece (é o que o l4 exige). Event port
+append-only não ganha `delete`.
+
 ## 2026-09-02 — requiredMethods no `.ts` materializado do port
 
 A pós-checagem do plano (gen-port `ensureRequiredPortMethods`) permanece. O

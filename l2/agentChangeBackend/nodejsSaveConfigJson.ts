@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { L5ProjectJson, MasterRuntimeManifest, ProjectsConfig } from '/_102029_/l2/runtimeConfigTypes.js';
 // Relative import: this file runs via tsx at publish; path-mapped /_102021_/… is type-only there.
 import {
@@ -18,6 +19,7 @@ import {
   liveBackendModulesFromL5,
   reconcileClientBackendRegistration,
 } from './helpers/cbReconcileBackendConfig.js';
+import { emitMlsDepJson } from '../../../mls-102029/l2/mlsDepManifest.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -39,18 +41,17 @@ function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
   };
 }
 
-function main(): void {
-  const clientId = (process.argv[2] || '').replace(/^mls-/, '');
-  if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
+export function composeBackendRuntimeConfig(root: string, clientId: string): { configPath: string; moduleCount: number } {
+  if (!/^\d+$/.test(clientId)) throw new Error('usage: tsx nodejsSaveConfigJson.ts <clientId>');
 
-  const clientRoot = path.join(ROOT, `mls-${clientId}`);
+  const clientRoot = path.join(root, `mls-${clientId}`);
   const runtimeL5Path = path.join(clientRoot, 'l5', 'runtime.project.json');
   const l5Path = fs.existsSync(runtimeL5Path) ? runtimeL5Path : path.join(clientRoot, 'l5', 'project.json');
   const l5 = readJson<L5ProjectJson>(l5Path);
-  if (!l5) fail(`cannot read ${l5Path}`);
+  if (!l5) throw new Error(`cannot read ${l5Path}`);
 
   const signature = l5.masters?.backend;
-  if (!signature) fail(`l5/project.json has no masters.backend signature (run agentChangeBackend or add it)`);
+  if (!signature) throw new Error('l5/project.json has no masters.backend signature (run agentChangeBackend or add it)');
   const runtimeId = String(signature.runtimeProject);
 
   // Single source of truth: l5/config.json (read by the Studio apps, the publish and the runtime).
@@ -68,19 +69,19 @@ function main(): void {
   // System modules the master ships with (mdm, monitor, audit, ...): the master is
   // self-describing via its own masterModules.json — routes and menu for these modules
   // disappear from the runtime if this merge is skipped.
-  const manifest = readJson<MasterRuntimeManifest>(path.join(ROOT, `mls-${runtimeId}`, 'masterModules.json'));
+  const manifest = readJson<MasterRuntimeManifest>(path.join(root, `mls-${runtimeId}`, 'masterModules.json'));
   if (manifest?.modules?.length) config.projects[runtimeId].modules = manifest.modules;
   if (manifest?.persistenceModules?.length) config.projects[runtimeId].persistenceModules = manifest.persistenceModules;
 
   const client = config.projects[clientId];
   const live = liveBackendModulesFromL5(l5.modules);
   for (const item of live) {
-    const controllersDir = path.join(ROOT, item.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
-    const tableDefsDir = path.join(ROOT, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
-    if (!fs.existsSync(controllersDir)) fail(`backendControllers dir not found on disk: ${controllersDir}`);
-    if (!fs.existsSync(tableDefsDir)) fail(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
+    const controllersDir = path.join(root, item.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+    const tableDefsDir = path.join(root, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+    if (!fs.existsSync(controllersDir)) throw new Error(`backendControllers dir not found on disk: ${controllersDir}`);
+    if (!fs.existsSync(tableDefsDir)) throw new Error(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
   }
-  if (live.length === 0) fail('l5/project.json declares no modules with a backend block; nothing to compose');
+  if (live.length === 0) throw new Error('l5/project.json declares no modules with a backend block; nothing to compose');
 
   const reconciled = reconcileClientBackendRegistration(
     client.modules as Record<string, unknown>[] | undefined,
@@ -95,7 +96,22 @@ function main(): void {
   }
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  emitMlsDepJson(path.join(clientRoot, 'mlsDep.json'), config, l5, {
+    read: (file) => fs.readFileSync(file, 'utf8'),
+    write: (file, source) => fs.writeFileSync(file, source),
+  });
   console.log(`[nodejsSaveRuntimeConfig:backend] composed ${live.length} module(s)${orphanNote} → ${configPath}`);
+  return { configPath, moduleCount: live.length };
 }
 
-main();
+function main(): void {
+  const clientId = (process.argv[2] || '').replace(/^mls-/, '');
+  try {
+    composeBackendRuntimeConfig(ROOT, clientId);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
+if (entry && entry === path.resolve(fileURLToPath(import.meta.url))) main();

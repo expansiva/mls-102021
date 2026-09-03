@@ -4,9 +4,9 @@
 // No work -> finish (no file/status writes). Work -> continue to validate.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived, readRebuildWipeMsg, readRebuildWipeFinding, readRebuildWipeAbort } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { readBackendScan, enqueueNext, enqueueNextInPhase, createUpdateStatusIntent, logPrefix, readCliCommand, readTargetModule, readRebuildArchived, readRebuildWipeMsg, readRebuildWipeFinding, readRebuildWipeAbort, readWipeRunId, readRebuildWipedKeys } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
-import { clearRepairState, saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { clearRepairState, recordWipeMemory, saveHealthReport } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
 import { readAgentProvenance, describeProvenance } from '/_102021_/l2/agentChangeBackend/helpers/cbBuildStamp.js';
 
 export function createAgent(): IAgentAsync {
@@ -58,6 +58,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // flows through register/finalize. Owners are NOT reset and their status is irrelevant here.
     if (readCliCommand(context) === 'rebuild-seeds') {
       await clearRepairState();
+      await recordWipeMemory(readWipeRunId(context), readRebuildWipedKeys(context));
       return [
         enqueueNextInPhase(context, step, 'seeds', 'cb-gen-seeds', 'agentCbSeeds', 'Regenerar seeds (rebuild-seeds)', {}),
         createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `rebuild seeds: regenerando somente seeds.ts (+ assets).${archiveTrace}${buildTrace}`),
@@ -69,6 +70,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // with the repair budget already burned. A new run regenerates the artifacts anyway — old
     // findings reference code that is about to be replaced; reset everything at run start.
     await clearRepairState();
+    await recordWipeMemory(readWipeRunId(context), readRebuildWipedKeys(context));
     await saveHealthReport({
       scanWarnings: scan.warnings,
       ...(wipeMsg ? {

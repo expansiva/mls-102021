@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { syntaxDiagnostics } from './cbSyntaxValidation.js';
-import { compileSavedTsAndGetErrors, readExistingModelValue, refreshExistingModel } from './cbMaterializeIo.js';
+import { compileSavedTsAndGetErrors, readExistingModelValue, refreshExistingModel, storDiskPath } from './cbMaterializeIo.js';
 
 test('syntaxDiagnostics rejects TS5076 even when Monaco is unavailable', () => {
   assert.match(syntaxDiagnostics('const page = input.cursor ?? fallback || "start";')[0] || '', /TS5076/);
@@ -116,3 +116,22 @@ void test('compileModuleAndGetErrors prefers Monaco when the worker exists and f
   assert.doesNotMatch(io, /user-agent/i);
 });
 
+
+// The host's diskPath is a class method over a private field: detaching it throws and
+// the catch turns the project-tsc gate off in silence (`no-diskPath`). This test fails
+// if the call is ever detached again.
+void test('storDiskPath calls diskPath as a method (host class, private field)', () => {
+  class HostStor {
+    readonly #base = '/data/mls-base';
+    diskPath(info: { project: number; shortName: string }): string {
+      return `${this.#base}/mls-${info.project}/${info.shortName}.ts`;
+    }
+  }
+  const info = { project: 102043, level: 1, folder: 'mod', shortName: 'chamado', extension: '.ts' };
+  withMls({ stor: new HostStor() }, () => {
+    assert.equal(storDiskPath(info), '/data/mls-base/mls-102043/chamado.ts');
+  });
+  withMls({ stor: {} }, () => {
+    assert.equal(storDiskPath(info), null);
+  });
+});

@@ -117,4 +117,6 @@ test('backend config writers call reconcile instead of appending', () => {
   assert.match(composer, /reconcileClientBackendRegistration/);
   assert.match(shared, /reconcileClientBackendRegistration/);
   assert.match(register, /pruneOrphanL5BackendModules/);
+  assert.match(composer, /emitMlsDepJson/);
+  assert.match(shared, /emitMlsDepJsonIfHostDisk/);
 });

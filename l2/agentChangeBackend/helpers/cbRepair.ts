@@ -24,6 +24,7 @@ import {
   COMPONENT_REPAIR_BUDGET, MAX_LAST_CODE, mergeComponentRepair, buildRepairPromptSection, noteRepairAttempt,
   type CbComponentRepair, type CbRepairSource,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
+import { removeWipedKey } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 
 // Re-exported so existing importers keep importing the repair contract from cbRepair.js.
 export { COMPONENT_REPAIR_BUDGET, mergeComponentRepair, buildRepairPromptSection, resetRespawnCounts, noteStaleSpawn, noteRepairAttempt, staleSpawnCeiling, CB_DISPATCH_HARD_CEILING, dispatchHardCeiling } from '/_102021_/l2/agentChangeBackend/helpers/cbRepairCore.js';
@@ -62,6 +63,10 @@ export interface CbRepairState {
    * cb-validate-all embeds it in the task trace before clearing the state. */
   history: string[];
   updatedAt: string;
+  /** Run that archived `wipedKeys`. A later run with a different id ignores the set. */
+  wipeRunId: string;
+  /** Stor keys `/rebuild all` archived in `wipeRunId`. Dropped one by one as materialize succeeds. */
+  wipedKeys: string[];
 }
 
 const SCHEMA_VERSION = '2026-07-03-cb-repair';
@@ -76,7 +81,7 @@ function stateFileInfo(folder = cbTraceFolder()): Pick<mls.stor.IFileInfo, 'proj
 }
 
 function emptyState(): CbRepairState {
-  return { schemaVersion: SCHEMA_VERSION, componentRepairs: {}, globalAttempts: 0, judgeRuns: 0, history: [], updatedAt: new Date().toISOString() };
+  return { schemaVersion: SCHEMA_VERSION, componentRepairs: {}, globalAttempts: 0, judgeRuns: 0, history: [], updatedAt: new Date().toISOString(), wipeRunId: '', wipedKeys: [] };
 }
 
 const MAX_HISTORY = 100;
@@ -104,6 +109,8 @@ export async function readRepairState(): Promise<CbRepairState> {
       judgeRuns: typeof parsed.judgeRuns === 'number' ? parsed.judgeRuns : 0,
       history: Array.isArray(parsed.history) ? (parsed.history as unknown[]).filter((h): h is string => typeof h === 'string') : [],
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+      wipeRunId: typeof parsed.wipeRunId === 'string' ? parsed.wipeRunId : '',
+      wipedKeys: Array.isArray(parsed.wipedKeys) ? parsed.wipedKeys.filter((key): key is string => typeof key === 'string') : [],
     };
   } catch {
     return emptyState();
@@ -129,6 +136,38 @@ export async function saveRepairState(state: CbRepairState): Promise<boolean> {
 /** Wipe the whole repair state (validate-all passed: the run converged). */
 export async function clearRepairState(): Promise<void> {
   if (!await saveRepairState(emptyState())) throw new Error('repair state persistence failed while clearing a converged run');
+}
+
+/** Persist the `/rebuild all` archive set for this run. Scan calls this AFTER `clearRepairState`. */
+export async function recordWipeMemory(runId: string, keys: string[]): Promise<void> {
+  if (!runId || keys.length === 0) return;
+  try {
+    await serializeRepairMutation(async () => {
+      const state = await readRepairState();
+      state.wipeRunId = runId;
+      state.wipedKeys = keys.slice();
+      await saveRepairState(state);
+    });
+  } catch {
+    /* T2 still fails the run if materialize then generates none. */
+  }
+}
+
+/** Drop a stor key after this run rematerialized it. Best-effort: a leftover key re-generates, never skips. */
+export async function markWipedKeyGenerated(key: string): Promise<void> {
+  if (!key) return;
+  try {
+    await serializeRepairMutation(async () => {
+      const state = await readRepairState();
+      if (!state.wipedKeys.length) return;
+      const next = removeWipedKey(state.wipedKeys, key);
+      if (next.length === state.wipedKeys.length) return;
+      state.wipedKeys = next;
+      await saveRepairState(state);
+    });
+  } catch {
+    /* same as recordWipeMemory: existence + T2 remain the backstop */
+  }
 }
 
 // ── component records ───────────────────────────────────────────────────────────

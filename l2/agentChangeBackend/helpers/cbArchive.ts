@@ -71,6 +71,43 @@ export function rebuildAllWipedMessage(moduleName: string, wiped: number): strin
   return `rebuild-all wiped ${wiped} file(s) of l1/${moduleName}`;
 }
 
+/** Parse the archived-key list stored on the run (`rebuildWipedKeys` in longMemory). */
+export function parseWipedKeysJson(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((key): key is string => typeof key === 'string' && key.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** Keys archived by THIS run. A previous run's set is ignored when `runId` does not match. */
+export function wipedKeysForRun(
+  state: { wipeRunId?: string; wipedKeys?: string[] },
+  runId: string,
+): string[] {
+  if (!runId || !state.wipeRunId || state.wipeRunId !== runId) return [];
+  return Array.isArray(state.wipedKeys)
+    ? state.wipedKeys.filter((key): key is string => typeof key === 'string' && key.length > 0)
+    : [];
+}
+
+/** Drop a key that this run already rematerialized. */
+export function removeWipedKey(keys: readonly string[], regenerated: string): string[] {
+  if (!regenerated) return keys.slice();
+  return keys.filter(key => key !== regenerated);
+}
+
+/** `/rebuild all` that wiped files and then materialize generated none is a failed run, not `completed`. */
+export function materializeNoneAfterWipeFinding(rebuildWiped: number, materializeCalls: number): string | null {
+  if (rebuildWiped > 0 && materializeCalls === 0) {
+    return `rebuild-all wiped ${rebuildWiped} file(s) and materialize generated none`;
+  }
+  return null;
+}
+
 /** A wipe that counted files and still left live ones is not a rebuild-all — abort the run. */
 export function rebuildWipeShouldAbort(wiped: number, leftover: number): boolean {
   return wiped > 0 && leftover > 0;

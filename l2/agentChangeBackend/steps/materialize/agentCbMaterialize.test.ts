@@ -9,6 +9,7 @@ import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { callToolProvider, liveTestsEnabled, parseEnvFile } from '/_102025_/l2/testLlmClient.js';
 import { GEN_TOOL, buildSystemPrompt, type PipelineItem } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
 import { entryIsStale } from '/_102021_/l2/agentChangeBackend/steps/materialize/agentCbMaterialize.js';
+import { removeWipedKey } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..');
@@ -160,7 +161,8 @@ void test('entryIsStale emits raw updatedAt/status from mls.stor.files without n
   assert.match(lines[0], /\[cb-stale\] _102099_\/l1\/mod\/layer_3_domain\/entities\/pet\.defs\.ts /);
   assert.match(lines[0], new RegExp(`defs\\(ms=${Date.parse(defsAt)} updatedAt=${defsAt} status=changed\\)`));
   assert.match(lines[0], new RegExp(`ts\\(ms=${Date.parse(tsAt)} exists=true updatedAt=${tsAt} status=active\\)`));
-  assert.match(lines[0], /deps\(max=\) => stale=false decision=skip/);
+  assert.equal(result.wipedThisRun, false);
+  assert.match(lines[0], /deps\(max=\) wipedThisRun=false => stale=false decision=skip/);
 });
 
 void test('entryIsStale logs raw status=new with no updatedAt (MAX_SAFE_INTEGER path) and missing .ts', () => {
@@ -181,6 +183,7 @@ void test('entryIsStale logs raw status=new with no updatedAt (MAX_SAFE_INTEGER 
   }, () => captureInfo(() => entryIsStale(PROJECT, defRef, item)));
   assert.equal(result.stale, true);
   assert.equal(result.decision, 'generate');
+  assert.equal(result.wipedThisRun, false);
   assert.match(lines[0], new RegExp(`defs\\(ms=${Number.MAX_SAFE_INTEGER} updatedAt=undefined status=new\\)`));
   assert.match(lines[0], /ts\(ms=null exists=false updatedAt=undefined status=undefined\)/);
   assert.match(lines[0], /=> stale=true decision=generate/);
@@ -215,7 +218,8 @@ void test('entryIsStale skips when the .ts exists even if a dependency is newer'
   }, () => captureInfo(() => entryIsStale(PROJECT, defRef, item)));
   assert.equal(result.stale, false);
   assert.equal(result.decision, 'skip');
-  assert.match(lines[0], new RegExp(`deps\\(max=${Date.parse(depAt)}\\) => stale=false decision=skip`));
+  assert.equal(result.wipedThisRun, false);
+  assert.match(lines[0], new RegExp(`deps\\(max=${Date.parse(depAt)}\\) wipedThisRun=false => stale=false decision=skip`));
 });
 
 void test('entryIsStale skips a present .ts even when defs and a dependency are newer', () => {
@@ -246,6 +250,7 @@ void test('entryIsStale skips a present .ts even when defs and a dependency are 
   }, () => captureInfo(() => entryIsStale(PROJECT, defRef, item)));
   assert.equal(result.stale, false);
   assert.equal(result.decision, 'skip');
+  assert.equal(result.wipedThisRun, false);
 });
 
 void test('materialize completes requiredMethods on the port .ts; the plan post-check stays on gen-port', () => {
@@ -255,7 +260,8 @@ void test('materialize completes requiredMethods on the port .ts; the plan post-
   assert.match(src, /item\.type === 'repositoryPort'/);
   // The completed source has to REPLACE the code that gets validated and saved, and the findings have
   // to reach the component gate. Dropping either line leaves the call in place and the check inert —
-  // a mutation the identifier assertions above do not catch (proved by mutation, 02/09).
+  // a mutation the identifier assertions above do not catch (proved by mutation, 02/09). The same
+  // assignment is the wiring for data.methods completion (same helper, same portEnsure.source).
   assert.match(src, /code = portEnsure\.source;/);
   assert.match(src, /componentIssues\.push\(\.\.\.portEnsure\.findings\)/);
   assert.match(src, /systemDecisions: portEnsure\.decisions/);
@@ -269,4 +275,87 @@ void test('adapter port-method guard reads the materialized port .ts, not the de
   assert.match(src, /extractInterfaceMethods\(src, iface\)/);
   assert.match(src, /dtsRef\(repositoryPortFileInfo/);
   assert.doesNotMatch(src, /methodNamesFromPortDefsSource/);
+});
+
+function storFiles(entries: Array<{ shortName: string; status: string; updatedAt?: string }>): Record<string, { updatedAt?: unknown; status?: unknown }> {
+  const FOLDER = 'mod/layer_3_domain/entities';
+  const files: Record<string, { updatedAt?: unknown; status?: unknown }> = {};
+  const at = '2026-09-02T18:02:00.000Z';
+  for (const entry of entries) {
+    files[`102099:1:${FOLDER}:${entry.shortName}:.defs.ts`] = { updatedAt: entry.updatedAt ?? at, status: entry.status };
+    files[`102099:1:${FOLDER}:${entry.shortName}:.ts`] = { updatedAt: entry.updatedAt ?? at, status: entry.status };
+  }
+  return files;
+}
+
+function entityItem(shortName: string): { defRef: string; item: PipelineItem; tsKey: string } {
+  const FOLDER = 'mod/layer_3_domain/entities';
+  return {
+    defRef: `_102099_/l1/${FOLDER}/${shortName}.defs.ts`,
+    item: { id: shortName, type: 'domainEntity', outputPath: `_102099_/l1/${FOLDER}/${shortName}.ts` },
+    tsKey: `102099:1:${FOLDER}:${shortName}:.ts`,
+  };
+}
+
+function evaluateStale(shortName: string, files: Record<string, { updatedAt?: unknown; status?: unknown }>, wiped: ReadonlySet<string>) {
+  const { defRef, item } = entityItem(shortName);
+  return withMls({
+    actualProject: 102099,
+    stor: {
+      files,
+      getKeyToFile: (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+        `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
+    },
+  }, () => captureInfo(() => entryIsStale(102099, defRef, item, wiped)));
+}
+
+void test('entryIsStale treats a present .ts as stale when this run archived it, even if the index says nochange', () => {
+  const names = ['pet', 'order', 'ticket'] as const;
+  const files = storFiles(names.map(shortName => ({ shortName, status: 'nochange' })));
+  const wiped = new Set(names.map(name => entityItem(name).tsKey));
+  for (const name of names) {
+    const { result, lines } = evaluateStale(name, files, wiped);
+    assert.equal(result.stale, true, name);
+    assert.equal(result.decision, 'generate', name);
+    assert.equal(result.wipedThisRun, true, name);
+    assert.match(lines[0], /status=nochange/);
+    assert.match(lines[0], /exists=true/);
+    assert.match(lines[0], /wipedThisRun=true => stale=true decision=generate/);
+  }
+});
+
+void test('entryIsStale drops a rematerialized key from the wiped set; the other two stay stale', () => {
+  const names = ['pet', 'order', 'ticket'] as const;
+  const files = storFiles(names.map(shortName => ({ shortName, status: 'nochange' })));
+  const remaining = new Set(removeWipedKey(names.map(name => entityItem(name).tsKey), entityItem('order').tsKey));
+  const pet = evaluateStale('pet', files, remaining);
+  const order = evaluateStale('order', files, remaining);
+  const ticket = evaluateStale('ticket', files, remaining);
+  assert.equal(pet.result.stale, true);
+  assert.equal(pet.result.wipedThisRun, true);
+  assert.equal(order.result.stale, false);
+  assert.equal(order.result.decision, 'skip');
+  assert.equal(order.result.wipedThisRun, false);
+  assert.match(order.lines[0], /wipedThisRun=false => stale=false decision=skip/);
+  assert.equal(ticket.result.stale, true);
+  assert.equal(ticket.result.wipedThisRun, true);
+});
+
+void test('entryIsStale without a wipe set skips a present .ts (same as /run)', () => {
+  const files = storFiles([{ shortName: 'pet', status: 'nochange' }]);
+  const { result, lines } = evaluateStale('pet', files, new Set());
+  assert.equal(result.stale, false);
+  assert.equal(result.decision, 'skip');
+  assert.equal(result.wipedThisRun, false);
+  assert.match(lines[0], /wipedThisRun=false => stale=false decision=skip/);
+});
+
+void test('materialize dispatcher fails the run when a wipe generated nothing; repair rounds do not', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /wipedKeysForRun\(repairState, readWipeRunId\(context\)\)/);
+  assert.match(src, /materializeNoneAfterWipeFinding\(Number\(readRebuildArchived\(context\) \|\| 0\), allStale\.length\)/);
+  assert.match(src, /minRank === 0 && !repairMode/);
+  assert.match(src, /'failed', noneFinding/);
+  assert.match(src, /markWipedKeyGenerated/);
+  assert.match(src, /wipedThisRun=\$\{wipedThisRun\}/);
 });

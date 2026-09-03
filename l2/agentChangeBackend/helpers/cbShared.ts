@@ -40,7 +40,9 @@ import {
   liveBackendModulesFromL5,
   reconcileClientBackendRegistration,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbReconcileBackendConfig.js';
+import { emitMlsDepJsonIfHostDisk } from '/_102029_/l2/mlsDepManifest.js';
 import { isDeleteOperation } from '/_102021_/l2/agentChangeBackend/helpers/cbPortMethods.js';
+import { parseWipedKeysJson } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 
 export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
@@ -1068,6 +1070,7 @@ export async function saveBackendWorkspaceConfig(): Promise<string> {
   projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
 
   const live = liveBackendModulesFromL5(l5.modules);
+  emitMlsDepJsonIfHostDisk(project, workspace, l5);
   if (live.length === 0) return 'l5/config.json backend merged (0 module(s))';
 
   const reconciled = reconcileClientBackendRegistration(
@@ -1079,6 +1082,7 @@ export async function saveBackendWorkspaceConfig(): Promise<string> {
   client.persistenceModules = reconciled.persistenceModules;
 
   await saveJsonStor({ project, level: 5, folder: '', shortName: 'config', extension: '.json' }, workspace);
+  emitMlsDepJsonIfHostDisk(project, workspace, l5);
   return `l5/config.json backend merged (${live.length} module(s))${formatDiscardedOrphans(reconciled.discarded)}`;
 }
 
@@ -1549,6 +1553,16 @@ export function readRebuildWipeFinding(context: mls.msg.ExecutionContext): strin
 /** `/rebuild all` left live l1 files after archiving — the run must abort, not degrade to `/run`. */
 export function readRebuildWipeAbort(context: mls.msg.ExecutionContext): boolean {
   return longMemoryString(context, 'rebuildWipeAbort') === 'true';
+}
+
+/** Id of the `/rebuild all` that archived `rebuildWipedKeys`. Empty on `/run`. */
+export function readWipeRunId(context: mls.msg.ExecutionContext): string {
+  return longMemoryString(context, 'wipeRunId');
+}
+
+/** Stor keys `/rebuild all` archived at bootstrap. Empty when this run did not archive. */
+export function readRebuildWipedKeys(context: mls.msg.ExecutionContext): string[] {
+  return parseWipedKeysJson(longMemoryString(context, 'rebuildWipedKeys'));
 }
 
 /** Enqueue the next sequential step under the same parent, depending on the current step. v1 uses a

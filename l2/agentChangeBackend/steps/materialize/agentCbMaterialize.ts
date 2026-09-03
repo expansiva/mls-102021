@@ -18,7 +18,7 @@ import {
 import {
   readBackendScan, createPromptReadyIntent, createUpdateStatusIntent, createAgentStepPayload,
   createAddStepIntent, createParallelStepIntent, CB_MAX_PARALLEL, isRecord, readStringArray, logPrefix,
-  repositoryPortFileInfo, domainEntityFileInfo, dtsRef,
+  repositoryPortFileInfo, domainEntityFileInfo, dtsRef, readRebuildArchived, readWipeRunId,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import {
@@ -29,8 +29,9 @@ import {
 import {
   readRepairState, getComponentRepair, recordComponentFailure, clearComponentRepair,
   buildRepairPromptSection, forceRegenerate, saveHealthReport, recordLlmCost, COMPONENT_REPAIR_BUDGET,
-  setComponentFindings, noteStaleSpawn, type CbRepairState,
+  setComponentFindings, noteStaleSpawn, markWipedKeyGenerated, type CbRepairState,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbRepair.js';
+import { materializeNoneAfterWipeFinding, wipedKeysForRun } from '/_102021_/l2/agentChangeBackend/helpers/cbArchive.js';
 import { collectRawMdmAccessIssues, collectMdmLifecycleIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import { startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
 import {
@@ -62,7 +63,7 @@ function workerDefRef(args: string | undefined, step: mls.msg.AIAgentStep): stri
 interface DefsEntry { defRef: string; item: PipelineItem; }
 type StaleEntry = DefsEntry;
 
-export type CbStaleVerdict = { stale: boolean; decision: 'generate' | 'skip' };
+export type CbStaleVerdict = { stale: boolean; decision: 'generate' | 'skip'; wipedThisRun: boolean };
 
 // Scan every l1 .defs.ts of the (single) module and pair it with its pipeline item + defs mls path.
 async function scanEntries(context: mls.msg.ExecutionContext): Promise<DefsEntry[]> {
@@ -89,9 +90,15 @@ function rawStorFields(project: number, level: number, folder: string, shortName
   }
 }
 
-// Output is stale iff the .ts is absent. Timestamps stay in the log (diagnostics); they do not decide.
-// To regenerate, delete the .ts (forceRegenerate / rebuild all).
-export function entryIsStale(project: number, defRef: string, item: PipelineItem): CbStaleVerdict {
+// Output is stale iff the .ts is absent, OR this run archived it and has not rematerialized it yet.
+// A host rescan may rewrite status to `nochange` while the file is still the pre-wipe bytes; the
+// wiped set is the CB's own memory of that archive, independent of the index.
+export function entryIsStale(
+  project: number,
+  defRef: string,
+  item: PipelineItem,
+  wipedThisRunKeys: ReadonlySet<string> = new Set(),
+): CbStaleVerdict {
   const d = parseMlsPath(defRef);
   const o = parseMlsPath(item.outputPath);
   const defsMs = d ? getFileModified(d.project, d.level, d.folder, d.shortName, '.defs.ts') : null;
@@ -102,11 +109,18 @@ export function entryIsStale(project: number, defRef: string, item: PipelineItem
     .map(path => path ? getFileModified(path.project, path.level, path.folder, path.shortName, '.ts') : null)
     .filter((value): value is number => value !== null);
   const tsExists = !!o && fileIsPresent(o.project, o.level, o.folder, o.shortName, '.ts');
-  const stale = isStale(tsExists);
+  let tsKey = '';
+  try {
+    tsKey = o ? mls.stor.getKeyToFile({ project: o.project, level: o.level, folder: o.folder, shortName: o.shortName, extension: '.ts' }) : '';
+  } catch {
+    tsKey = '';
+  }
+  const wipedThisRun = !!tsKey && wipedThisRunKeys.has(tsKey);
+  const stale = isStale(tsExists) || wipedThisRun;
   const decision: CbStaleVerdict['decision'] = stale ? 'generate' : 'skip';
   const depMax = dependencyTimes.length ? Math.max(...dependencyTimes) : '';
-  console.info(`[cb-stale] ${defRef} defs(ms=${defsMs} updatedAt=${defsRaw.updatedAt} status=${defsRaw.status}) ts(ms=${tsMs} exists=${tsExists} updatedAt=${tsRaw.updatedAt} status=${tsRaw.status}) deps(max=${depMax}) => stale=${stale} decision=${decision}`);
-  return { stale, decision };
+  console.info(`[cb-stale] ${defRef} defs(ms=${defsMs} updatedAt=${defsRaw.updatedAt} status=${defsRaw.status}) ts(ms=${tsMs} exists=${tsExists} updatedAt=${tsRaw.updatedAt} status=${tsRaw.status}) deps(max=${depMax}) wipedThisRun=${wipedThisRun} => stale=${stale} decision=${decision}`);
+  return { stale, decision, wipedThisRun };
 }
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -123,11 +137,13 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     `${step.stepTitle || 'Materialize'} — scanning (${sec}s)`);
   try {
     const project = mls.actualProject || 0;
+    const repairState: CbRepairState = await readRepairState();
+    const wipedThisRunKeys = new Set(wipedKeysForRun(repairState, readWipeRunId(context)));
     const entries = await scanEntries(context);
     const allStale: StaleEntry[] = [];
     for (const e of entries) {
       if (isDeterministicMaterializeType(e.item.type)) continue;
-      const verdict = entryIsStale(project, e.defRef, e.item);
+      const verdict = entryIsStale(project, e.defRef, e.item, wipedThisRunKeys);
       if (verdict.stale) allStale.push(e);
     }
     // Materialize ONE layer per dispatch. The runtime's addParallelArgs forces a parallel parent to
@@ -153,7 +169,18 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
       if (p && p.repair === true) repairMode = true;
       if (p && p.preSeeds === true) preSeeds = true;
     } catch { /* defaults */ }
-    const repairState: CbRepairState = await readRepairState();
+    if (minRank === 0 && !repairMode) {
+      const noneFinding = materializeNoneAfterWipeFinding(Number(readRebuildArchived(context) || 0), allStale.length);
+      if (noneFinding) {
+        await saveHealthReport({ outcome: 'failed', findings: [noneFinding], rebuildWipedFinding: noneFinding });
+        await recordFailedCbRun({
+          longMemory: context.task?.iaCompressed?.longMemory,
+          reason: noneFinding,
+          health: { rebuildWiped: Number(readRebuildArchived(context) || 0), rebuildWipedFinding: noneFinding },
+        });
+        return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', noneFinding)];
+      }
+    }
     await saveHealthReport({
       outcome: 'materialize-dispatch',
       stale: allStale.map(entry => entry.defRef),
@@ -556,8 +583,9 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     const p = parseMlsPath(item.outputPath);
     if (!p) throw new Error(`invalid outputPath: ${item.outputPath}`);
     // Port plan post-check (gen-port) guarantees requiredMethods on the .defs.ts. The .ts is born
-    // here: if the interface omitted a required method, complete it deterministically (delete(id: XId)
-    // when XId is in the file) and record a systemDecision. Not mechanically derivable → finding.
+    // here: every data.methods entry is declared on the interface (params/returns from the plan,
+    // wrapped in Promise when the plan omitted it); requiredMethods still fills delete when the l4
+    // required it. Event ports stay append-only. Not mechanically derivable → finding.
     let portEnsure: ReturnType<typeof ensureRequiredPortMethodsInSource> | null = null;
     if (item.type === 'repositoryPort') {
       portEnsure = ensureRequiredPortMethodsInSource(code, parsed?.data);
@@ -629,6 +657,11 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       await saveHealthReport({ outcome: 'materialize-infra-warning', defRef, compilerAvailable: false, message: trace });
     }
     await clearComponentRepair(defRef); // converged: drop the repair record
+    try {
+      await markWipedKeyGenerated(mls.stor.getKeyToFile({
+        project: p.project, level: p.level, folder: p.folder, shortName: p.shortName, extension: '.ts',
+      }));
+    } catch { /* leftover wipe key re-generates; it never skips */ }
     if (portEnsure?.completed.length) {
       await saveHealthReport({
         outcome: 'materialize-port-methods',

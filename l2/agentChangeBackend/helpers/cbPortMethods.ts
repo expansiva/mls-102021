@@ -6,8 +6,9 @@ import { parseDefsSource } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsS
  * Port-plan vocabulary for gen-port / gen-adapter, and the matching guarantee on the materialized
  * port `.ts`. A delete* operation in the l4 is a fact about the aggregate, not a filename guess:
  * the port item carries `requiredMethods` so the model can declare `delete`; afterPrompt completes
- * the plan when the model omits it; materialize completes the `.ts` the same way. Event ports stay
- * append-only and never receive `delete`.
+ * the plan when the model omits it. Materialize then declares every method of `data.methods` on the
+ * `.ts` (params/returns from the plan; `void` becomes `Promise<void>`). `requiredMethods` stays as
+ * the stronger l4 requirement. Event ports stay append-only and never receive `delete`.
  */
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,9 +98,58 @@ export function unionMethodNames(...lists: readonly (readonly string[])[]): stri
   return out;
 }
 
+export interface PortMethodPlanEntry {
+  name: string;
+  params: string[] | null;
+  returns: string;
+}
+
+function paramsFromPlanMethod(entry: Record<string, unknown>): string[] | null {
+  if (!Array.isArray(entry.params)) return null;
+  const params: string[] = [];
+  for (const p of entry.params) {
+    if (typeof p !== 'string') return null;
+    const t = p.trim();
+    if (t) params.push(t);
+  }
+  return params;
+}
+
+/** Full `data.methods` entries (name + params + returns). `params: null` / empty `returns` = unusable. */
+export function portMethodSigsFromPortData(data: unknown): PortMethodPlanEntry[] {
+  if (!isRecord(data) || !Array.isArray(data.methods)) return [];
+  const out: PortMethodPlanEntry[] = [];
+  for (const m of data.methods) {
+    if (!isRecord(m)) continue;
+    const name = readString(m.name);
+    if (!name) continue;
+    out.push({
+      name,
+      params: paramsFromPlanMethod(m),
+      returns: typeof m.returns === 'string' ? m.returns.trim() : '',
+    });
+  }
+  return out;
+}
+
 export function methodNamesFromPortData(data: unknown): string[] {
   if (!isRecord(data) || !Array.isArray(data.methods)) return [];
   return data.methods.map(m => (isRecord(m) ? readString(m.name) : '')).filter(Boolean);
+}
+
+/** Plan `returns` is often a bare type (`void`, `Ticket | null`); the interface is always async. */
+export function promisedPortReturnType(returns: string): string {
+  const t = returns.trim();
+  if (!t) return t;
+  if (/^Promise\s*</.test(t)) return t;
+  return `Promise<${t}>`;
+}
+
+function usablePlanSignature(entry: PortMethodPlanEntry): string | null {
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(entry.name)) return null;
+  if (!entry.params) return null;
+  if (!entry.returns) return null;
+  return `${entry.name}(${entry.params.join(', ')}): ${promisedPortReturnType(entry.returns)};`;
 }
 
 export function methodNamesFromPortDefsSource(source: string): string[] {
@@ -187,53 +237,94 @@ function insertInterfaceMethod(source: string, end: number, signature: string, i
   return `${head}${prefix}${indent}${signature}\n${source.slice(end)}`;
 }
 
+function noInterfaceFinding(kind: 'plan' | 'required', name: string): string {
+  return `port ${kind} method '${name}' but no I*Repository interface is in the generated .ts — cannot complete mechanically`;
+}
+
 /**
- * If the port plan declared `requiredMethods` and the materialized `.ts` omitted one, complete it
- * on the interface (delete(id: XId): Promise<void> when XId is in the file) and record a
- * systemDecision. Event ports are left alone. A method that cannot be derived is a finding, never
- * silence. Does not invent methods the plan did not require.
+ * Materialize-time guarantee on the port `.ts`:
+ * 1. Every method in `data.methods` is declared on the interface. Params/returns come from the
+ *    plan; a bare return type is wrapped in `Promise<…>` (already-`Promise<…>` is left alone).
+ * 2. `requiredMethods` still fills `delete(id: XId): Promise<void>` when the l4 required it and
+ *    the plan did not list a usable signature. The two stay complementary.
+ * 3. After completion, a plan method still missing is a finding (never silence).
+ * Event ports stay append-only: a plan that lists `delete` does not get it (`stripEventPortDelete`).
  */
 export function ensureRequiredPortMethodsInSource(source: string, data: unknown): EnsurePortSourceResult {
   const empty: EnsurePortSourceResult = { source, completed: [], findings: [], decisions: [] };
-  if (isAppendOnlyPortData(data)) return empty;
-  const required = requiredMethodsFromPortData(data);
-  if (!required.length) return empty;
+  const appendOnly = isAppendOnlyPortData(data);
+  const planEntries = portMethodSigsFromPortData(data);
+  const planNames = methodNamesFromPortData(data).filter(n => !(appendOnly && n === 'delete'));
+  const required = appendOnly ? [] : requiredMethodsFromPortData(data);
+  if (!planNames.length && !required.length) return empty;
+
   const entityId = isRecord(data) ? readString(data.entityId) : '';
-  const located = locateRepositoryInterface(source);
-  if (!located) {
+  const located0 = locateRepositoryInterface(source);
+  if (!located0) {
+    const names = unionMethodNames(planNames, required);
     return {
       source,
       completed: [],
-      findings: required.map(name =>
-        `port required method '${name}' but no I*Repository interface is in the generated .ts — cannot complete mechanically`),
+      findings: names.map(name => noInterfaceFinding(planNames.includes(name) ? 'plan' : 'required', name)),
       decisions: [],
     };
   }
-  const missing = required.filter(name => !interfaceMethodNames(source, located.open, located.end).has(name));
-  if (!missing.length) return empty;
 
   let next = source;
-  let open = located.open;
-  let end = located.end;
+  let located = located0;
   const completed: string[] = [];
   const findings: string[] = [];
   const decisions: CbSystemDecision[] = [];
+  const foundNames = new Set<string>();
 
-  for (const name of missing) {
+  const presentNow = (): Set<string> => interfaceMethodNames(next, located.open, located.end);
+
+  for (const entry of planEntries) {
+    if (appendOnly && entry.name === 'delete') continue;
+    if (presentNow().has(entry.name)) continue;
+    const signature = usablePlanSignature(entry);
+    if (!signature) {
+      foundNames.add(entry.name);
+      findings.push(
+        `port plan method '${entry.name}' is missing from ${located.name} and cannot complete mechanically`,
+      );
+      continue;
+    }
+    const indent = interfaceIndent(next, located.open, located.end);
+    next = insertInterfaceMethod(next, located.end, signature, indent);
+    const relocated = locateRepositoryInterface(next);
+    if (relocated) located = relocated;
+    completed.push(entry.name);
+    decisions.push({
+      decisionId: `cbPortTsPlan_${entityId || 'entity'}_${entry.name}`,
+      stage: 'cb-materialize',
+      question: `port .ts for ${entityId || 'entity'} declared ${entry.name} in defs.data.methods but the materialized interface omitted it`,
+      chosen: 'addPlanMethodToPortTs',
+      alternatives: ['failRun', 'leaveToRepair'],
+      decidedBy: 'system',
+      findingRef: `CB_PORT_TS_PLAN_METHOD:${entityId || 'entity'}.${entry.name}`,
+      changeHint: `Added ${signature} to ${located.name}.`,
+    });
+  }
+
+  const missingRequired = required.filter(name => !presentNow().has(name));
+  for (const name of missingRequired) {
     if (name !== 'delete') {
+      foundNames.add(name);
       findings.push(`port required method '${name}' is missing from ${located.name} and cannot complete mechanically`);
       continue;
     }
     const idType = idTypeFromPortSource(next, entityId);
     if (!idType) {
+      foundNames.add(name);
       findings.push(`port required method 'delete' is missing from ${located.name} and no Id type is declared in the generated .ts — cannot complete mechanically`);
       continue;
     }
-    const indent = interfaceIndent(next, open, end);
+    const indent = interfaceIndent(next, located.open, located.end);
     const signature = `delete(id: ${idType}): Promise<void>;`;
-    next = insertInterfaceMethod(next, end, signature, indent);
+    next = insertInterfaceMethod(next, located.end, signature, indent);
     const relocated = locateRepositoryInterface(next);
-    if (relocated) { open = relocated.open; end = relocated.end; }
+    if (relocated) located = relocated;
     completed.push(name);
     decisions.push({
       decisionId: `cbPortTsEnsure_${entityId || 'entity'}_${name}`,
@@ -246,6 +337,15 @@ export function ensureRequiredPortMethodsInSource(source: string, data: unknown)
       changeHint: `Added delete(id: ${idType}): Promise<void> to ${located.name}.`,
     });
   }
+
+  for (const name of planNames) {
+    if (presentNow().has(name) || foundNames.has(name)) continue;
+    findings.push(
+      `port plan method '${name}' is missing from ${located.name} and cannot complete mechanically`,
+    );
+  }
+
+  if (!completed.length && !findings.length) return empty;
   return { source: next, completed, findings, decisions };
 }
 
