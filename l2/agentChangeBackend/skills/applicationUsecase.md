@@ -70,9 +70,15 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   `actorSession`, `businessContext` or `activeLifecycleInstance` are resolved server-side — they are NOT
   part of the public Input interface and are NOT required as user-entered params.
   - List controls the l4 declared as optional inputs — `search`, `sortBy` (closed enum of field ids),
-    `sortOrder` (`'asc' | 'desc'`) — are public Input fields (`required: false`) and MUST be forwarded
-    to `port.list({ search, sortBy, sortOrder, …equality filters })`. Do not drop them. `sortBy` is
-    never a free string: type it as the union from `inputs[].enumValues`.
+    `sortOrder` (`'asc' | 'desc'`), `page`, `pageSize` — are public Input fields (`required: false`)
+    and MUST be forwarded to `port.list({ search, sortBy, sortOrder, page, pageSize, …equality filters })`.
+    Do not drop them. `sortBy` is never a free string: type it as the union from `inputs[].enumValues`.
+    `page`/`pageSize` are numbers (they carry an explicit `type`). For a `paginated` outputShape,
+    also call `port.count` with the same filter (no page) and return the CANONICAL envelope:
+    `{ <arrayFieldName>: rows, total, page, pageSize }` using `resolveListPage` so `pageSize` is the
+    **effective** size (default 20, cap 200, declared — never silent). The array field is the name
+    declared on outputShape (e.g. `reservations`), NEVER `items`. A list whose l4 still says
+    `pagination: 'none'` keeps returning the collection as today.
   - `businessContext.activeCompanyId` -> `ctx.sessionContext.activeCompanyId`
   - `businessContext.activeUnitId` -> `ctx.sessionContext.activeUnitId`
   - `activeLifecycleInstance` -> load the single OPEN/active instance of the lifecycle aggregate via its

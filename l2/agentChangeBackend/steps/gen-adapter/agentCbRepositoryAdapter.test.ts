@@ -39,6 +39,8 @@ void test('agentCbRepositoryAdapter declares the LLM step agent contract', () =>
   const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'repositoryAdapter.md'), 'utf8');
   assert.match(skill, /ilike/);
   assert.match(skill, /sortBy/);
+  assert.match(skill, /resolveListPage/);
+  assert.match(skill, /offset/);
 });
 
 void test('agentCbRepositoryAdapter tool schema is provider-clean', () => {

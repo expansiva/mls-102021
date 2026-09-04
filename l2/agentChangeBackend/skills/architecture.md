@@ -29,8 +29,10 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 // ctx.sessionContext.activeCompanyId / activeUnitId: businessContext scope resolved by runtime/session
 // ctx.sessionContext.workspaceId: UI workspace id, not a business company filter
 // ctx.data.moduleData.getTable<TRow>(name): Promise<ITableRepository<TRow>>
-//   ITableRepository: findOne({where}), findMany({where?, orderBy?:{field,direction}, limit?}),
+//   ITableRepository: findOne({where}), findMany({where?, ilike?, orderBy?:{field,direction}, limit?, offset?}),
+//                     count({where?, ilike?}) — same filter as findMany, ignores limit/offset,
 //                     findManyByValues({field,values,limit?}), insert({record}), update({where,patch}), delete({where})
+//   resolveListPage({page?, pageSize?}) from the same module: default pageSize 20, cap 200 (declares the cut)
 // ctx.data.runInTransaction(async (tx) => { ... })  // tx is an IDataRuntime
 // MDM facade: ctx.mdm.entity.get/create/update/inactivate/delete/link/unlink
 //             ctx.mdm.collection.getMany/listByType/relatedOfMany/hydrateMany

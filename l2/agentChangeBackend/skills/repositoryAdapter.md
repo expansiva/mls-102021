@@ -11,6 +11,7 @@ go through `ctx.mdm` (never `ctx.data.mdm*` and never a local table).
 ```ts
 /// <mls fileReference="_{project}_/l1/{module}/layer_1_external/adapters/persistence/orderRepositoryAdapter.ts" enhancement="_blank"/>
 import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { resolveListPage } from '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 import type { IOrderRepository, OrderListFilter } from '/_{project}_/l1/{module}/layer_2_application/ports/orderRepository.js';
 import type { Order, OrderItem } from '/_{project}_/l1/{module}/layer_3_domain/entities/order.js';
 
@@ -88,11 +89,21 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
       if (filter?.dailyShiftId) where.daily_shift_id = filter.dailyShiftId;
       if (filter?.status) where.status = filter.status;
       if (filter?.tableId) where.table_id = filter.tableId;
+      const page = resolveListPage({ page: filter?.page, pageSize: filter?.pageSize });
       const rows = await (await getTable()).findMany({
         where,
         orderBy: { field: 'created_at', direction: filter?.sortOrder === 'asc' ? 'asc' : 'desc' },
+        limit: page.limit,
+        offset: page.offset,
       });
       return rows.map(toDomain);
+    },
+    async count(filter?: OrderListFilter) {
+      const where: Partial<OrderRow> = {};
+      if (filter?.dailyShiftId) where.daily_shift_id = filter.dailyShiftId;
+      if (filter?.status) where.status = filter.status;
+      if (filter?.tableId) where.table_id = filter.tableId;
+      return (await getTable()).count({ where });
     },
     async save(order) {
       const repo = await getTable();
@@ -149,6 +160,12 @@ export function createOrderRepositoryAdapter(ctx: RequestContext): IOrderReposit
   `'asc'` otherwise. **Enum sort is not SQL text order** (`high` < `low` < `medium` lexicographically):
   after `toDomain`, stable-sort by the index in the domain union (the same order as `fields[].enum`
   / the TypeScript union). Dates and timestamps use the SQL `orderBy`.
+- **List pagination (when the l4 list is `paginated` / declares `page`/`pageSize`).** Import
+  `resolveListPage` from `/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js`. Pass
+  `{ limit: page.limit, offset: page.offset }` to `findMany`. `count(filter)` uses the same `where`
+  / `ilike` and MUST NOT pass limit/offset — `total` is the matching rows, not the page length.
+  A list whose l4 still says `pagination: 'none'` (older modules) calls `findMany` without
+  limit/offset, exactly as today.
 - **Never let a persistence-driver error escape untranslated.** A lookup by an id the driver rejects
   (e.g. a value that is not a valid key for the column type) throws from the driver, and an untranslated
   throw becomes `INTERNAL_ERROR` (500) exposing the driver message to the client. In a lookup by id,

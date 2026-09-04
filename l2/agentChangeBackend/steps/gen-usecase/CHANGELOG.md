@@ -35,6 +35,12 @@ app publicado respondeu `ROUTINE_NOT_FOUND` em 11 dos 15 testes. O enqueue passa
 `FANOUT_PLAN_ID` explicitamente (é o que o `cb-gen-domain` sempre fez e o que o flow.json já
 documentava).
 
+## 2026-09-04 — list paginada devolve o envelope declarado
+
+`page`/`pageSize` opcionais vão para `port.list`; `port.count` produz `total` (linhas do filtro).
+O retorno é `{ <arrayFieldName>, total, page, pageSize }` — nome declarado, nunca `items`.
+`resolveListPage` declara o `pageSize` efetivo (default 20, teto 200).
+
 ## 2026-08-25 — list encaminha search/sortBy/sortOrder ao port.list
 
 Inputs opcionais da lista de catálogo são públicos (`required: false`) e vão para

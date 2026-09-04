@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 2026-09-04 — ListFilter page/pageSize + count
+
+Lista paginada: o filtro carrega `page`/`pageSize` opcionais e a porta declara `count(filter)`
+(linhas do filtro, não o tamanho da página). Sem esses inputs no l4, o filtro permanece como estava.
+
 ## 2026-09-02 — requiredMethods no plano do port (delete)
 
 O item do gen-port carrega `requiredMethods` derivado das operações `delete*` do l4

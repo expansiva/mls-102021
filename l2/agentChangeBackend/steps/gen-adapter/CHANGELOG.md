@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-04 — list paginada: resolveListPage + offset + count
+
+Quando o l4 é `paginated`, `list()` chama `resolveListPage` (default 20, teto 200, corte declarado)
+e passa `limit`/`offset` a `findMany`. `count()` usa o mesmo `where`/`ilike` sem janela. Lista
+antiga (`pagination: 'none'`) continua `findMany` sem limit/offset.
+
 ## 2026-09-02 — portMethods no item (todo método do port)
 
 O item do gen-adapter carrega `portMethods` (requiredMethods ∪ métodos do port
