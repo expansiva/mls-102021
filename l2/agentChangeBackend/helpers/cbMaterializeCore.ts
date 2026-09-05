@@ -210,6 +210,25 @@ export function applyHeader(outputPath: string, code: string): string {
   return `${header}\n\n${trimmed}`;
 }
 
+const KNOWN_IMPORT_EXT = /\.(?:d\.ts|defs\.ts|ts|js|mjs|cjs|json|css|less|html)$/u;
+
+/**
+ * Hygiene of the same seam as `applyHeader`: derive `.js` on path specifiers instead of trusting
+ * the LLM. The Node ESM contract is guaranteed at rewrite time in `scripts/build.mjs` (complete
+ * `.js` when the target exists in dist). This pass keeps generated source consistent with the skill;
+ * it is not the defense that keeps the BFF alive.
+ */
+export function ensureJsImportExtensions(code: string): string {
+  return code.replace(
+    /((?:from|import)\s*\(\s*|\bfrom\s+|import\s+)(['"])(\/|\.)([^'"]*)\2/g,
+    (full, prefix: string, quote: string, start: string, rest: string) => {
+      const spec = `${start}${rest}`;
+      if (KNOWN_IMPORT_EXT.test(spec)) return full;
+      return `${prefix}${quote}${spec}.js${quote}`;
+    },
+  );
+}
+
 /** True when a repair finding is a pure COMPILER error (from the per-file compile `compiler: ...` or the
  *  whole-project compile `compiler -> ...`). Micro-repair only applies when ALL findings are compiler. */
 export function isCompilerFinding(finding: string): boolean {

@@ -41,7 +41,7 @@ const RESCUE_MAX_TARGETS = 4;
 import { syntaxDiagnostics } from '/_102021_/l2/agentChangeBackend/helpers/cbSyntaxValidation.js';
 import { collectRawMdmAccessIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import {
-  collectL1Imports, collectRelativeImportIssues, collectL4ContractDependsRefs, collectDottedShortNameFindings, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, collectExtensionlessImportIssues, collectL4ContractDependsRefs, collectDottedShortNameFindings, collectIoShapeSymmetryIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   stableCompilerErrors, selectCompilerRepairRoots, compilerErrorFamily, compilerErrorsAfterRepair,
   annotateCompilerError,
@@ -221,6 +221,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         // collectL1Imports entirely, so without this check it would pass the gate unseen.
         for (const issue of collectRelativeImportIssues(content)) {
           importReqs.push({ from: `${folder0}/${shortName0}`, key: '__relative_import__', target: issue });
+        }
+        for (const issue of collectExtensionlessImportIssues(content)) {
+          importReqs.push({ from: `${folder0}/${shortName0}`, key: '__extensionless_import__', target: issue });
         }
         const compact = content.replace(/\s+/g, ' ');
         if (/mdmEntityIndex\.findMany\(\s*\{[^}]*where\s*:\s*\{[^}]*\b(entityType|entityId|productId|warehouseId)\s*:/.test(compact)) {
@@ -576,6 +579,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     for (const req of importReqs) {
       if (req.key === '__relative_import__') {
         const msg = `relative import -> ${req.from}.ts: ${req.target}`;
+        missing.push(msg);
+        addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
+        continue;
+      }
+      if (req.key === '__extensionless_import__') {
+        const msg = `extensionless import -> ${req.from}.ts: ${req.target}`;
         missing.push(msg);
         addRepair(`_${project}_/l1/${req.from}.defs.ts`, msg); // bad .ts -> re-materializable
         continue;

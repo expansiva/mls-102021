@@ -180,6 +180,20 @@ export function collectRelativeImportIssues(code: string): string[] {
   return issues;
 }
 
+const KNOWN_IMPORT_EXT = /\.(?:d\.ts|defs\.ts|ts|js|mjs|cjs|json|css|less|html)$/u;
+
+/** Node ESM does not complete `/_<id>_/l1/.../name` without `.js`. tsc accepts it; the runtime does not. */
+export function collectExtensionlessImportIssues(code: string): string[] {
+  const issues: string[] = [];
+  const re = /(?:from|import)\s*\(?\s*['"]((?:\/|\.)[^'"]+)['"]/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code)) !== null) {
+    if (KNOWN_IMPORT_EXT.test(match[1])) continue;
+    issues.push(`extensionless import -> '${match[1]}'; Node ESM requires the .js extension`);
+  }
+  return issues;
+}
+
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

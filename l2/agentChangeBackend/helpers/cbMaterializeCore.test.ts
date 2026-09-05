@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, compilerFindingsDegradeAfterBudget, isStale, applyHeader, isDeterministicMaterializeType } from './cbMaterializeCore.js';
+import { expandContextRef, CONTRACTS_102034, buildMicroRepairPrompt, isCompilerFinding, shouldTargetedRescue, compilerFindingsDegradeAfterBudget, isStale, applyHeader, ensureJsImportExtensions, isDeterministicMaterializeType } from './cbMaterializeCore.js';
 
 test('shouldTargetedRescue (T6): fires once for a small compiler-only residual at exactly the spent budget', () => {
   const base = { budget: 2, maxTargets: 4 };
@@ -142,4 +142,23 @@ test('applyHeader rebuilds the platform header instead of trusting the model out
     applyHeader(outputPath, '/// reference to something else\nexport const x = 1;\n'),
     `${expected}\n\n/// reference to something else\nexport const x = 1;\n`,
   );
+});
+
+test('ensureJsImportExtensions adds .js to path specifiers and leaves the rest', () => {
+  const src = [
+    "import { ok } from '/_102034_/l1/server/layer_2_controllers/contracts.js';",
+    "import { listAtendente, type ListAtendenteInput } from '/_102039_/l1/controleChamados/layer_2_application/usecases/listAtendente';",
+    "import type { Comentario } from '/_102039_/l1/controleChamados/layer_3_domain/entities/comentario';",
+    "export { routes } from '/_102039_/l1/controleChamados/layer_1_external/adapters/http/controllers/chamadoHub.js';",
+    "const lazy = await import('/_102039_/l1/controleChamados/layer_2_application/usecases/getAtendente');",
+    "import { readFile } from 'node:fs';",
+  ].join('\n');
+  const out = ensureJsImportExtensions(src);
+  assert.match(out, /usecases\/listAtendente\.js'/);
+  assert.match(out, /entities\/comentario\.js'/);
+  assert.match(out, /usecases\/getAtendente\.js'/);
+  assert.match(out, /contracts\.js'/);
+  assert.match(out, /chamadoHub\.js'/);
+  assert.doesNotMatch(out, /contracts\.js\.js/);
+  assert.match(out, /from 'node:fs'/);
 });

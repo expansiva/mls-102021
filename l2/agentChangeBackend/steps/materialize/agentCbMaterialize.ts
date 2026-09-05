@@ -22,7 +22,7 @@ import {
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import {
-  parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader,
+  parseDefs, layerRank, isStale, buildSystemPrompt, buildHumanPrompt, applyHeader, ensureJsImportExtensions,
   expandContextRef, buildMicroRepairPrompt, isCompilerFinding, isDeterministicMaterializeType,
   GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
@@ -35,7 +35,7 @@ import { materializeNoneAfterWipeFinding, wipedKeysForRun } from '/_102021_/l2/a
 import { collectRawMdmAccessIssues, collectMdmLifecycleIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbMdmGuards.js';
 import { startLocalStepTick } from '/_102021_/l2/agentChangeBackend/helpers/cbLocalStepTitle.js';
 import {
-  collectL1Imports, collectRelativeImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectRelativeImportIssues, collectExtensionlessImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId,
   extractInterfaceMethods, collectRepositoryMethodMisuse, collectInventedRelationshipKeyIssues, collectRepositoryCastIssues,
   extractRepositoryInterfaceName, collectAdapterMissingPortMethods,
@@ -533,6 +533,7 @@ function validateGeneratedComponent(project: number, item: PipelineItem, data: u
   // Every component type: alias imports only. Rejecting here (repair finding) stops the model from
   // "fixing" an unresolved alias import by switching to a relative path (run task2/102049).
   issues.push(...collectRelativeImportIssues(code));
+  issues.push(...collectExtensionlessImportIssues(code));
   issues.push(...collectCallbackNullAssignmentIssues(code));
   if (item.type === 'applicationUsecase') issues.push(...validateUsecaseComponent(project, data, code, tsKeys));
   if (item.type === 'httpController') issues.push(...validateControllerComponent(data, code));
@@ -579,7 +580,7 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
       throw new Error(`${infra ? 'LLM infra failure' : 'missing generated code'} (attempt ${entry.attempts}/${COMPONENT_REPAIR_BUDGET + 1})`);
     }
 
-    let code = applyHeader(item.outputPath, out.code);
+    let code = ensureJsImportExtensions(applyHeader(item.outputPath, out.code));
     const p = parseMlsPath(item.outputPath);
     if (!p) throw new Error(`invalid outputPath: ${item.outputPath}`);
     // Port plan post-check (gen-port) guarantees requiredMethods on the .defs.ts. The .ts is born

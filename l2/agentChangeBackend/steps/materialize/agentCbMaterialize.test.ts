@@ -74,6 +74,12 @@ void test('materialize applies invented-import rename and callback-null finding 
   assert.match(src, /materialize-invented-import/);
 });
 
+void test('materialize rewrites extensionless path imports before save and still flags any leftover', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
+  assert.match(src, /ensureJsImportExtensions\(applyHeader\(/);
+  assert.match(src, /collectExtensionlessImportIssues/);
+});
+
 void test('the materialize dispatcher paints an ephemeral title during the stale-file scan', () => {
   const src = readFileSync(path.join(HERE, 'agentCbMaterialize.ts'), 'utf8');
   assert.match(src, /startLocalStepTick\(context, step,/);

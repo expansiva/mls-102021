@@ -151,6 +151,13 @@ void test('validate-all flags dotted shortName on l1 (repairable) and l4 (defs-l
   assert.match(src, /addRepair\(defRefOf\(def\.folder, def\.real\), msg\)/);
 });
 
+void test('validate-all flags an extensionless l1 import the same way it flags a relative one', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
+  assert.match(src, /collectExtensionlessImportIssues/);
+  assert.match(src, /__extensionless_import__/);
+  assert.match(src, /req\.key === '__extensionless_import__'/);
+});
+
 void test('validate-all annotates TS2339-on-never via annotateCompilerError at the compiler finding site', () => {
   const src = readFileSync(path.join(HERE, 'agentCbValidateAll.ts'), 'utf8');
   assert.match(src, /annotateCompilerError/);

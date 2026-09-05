@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  collectL1Imports, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
+  collectL1Imports, collectExtensionlessImportIssues, escapeRegExp, fieldNameFromRef, requiredBoundaryFields, collectRequiredChecksByHandler,
   collectExportedHandlers, collectRouteHandlers, collectUsecaseRules, normalizeRuleId, collectV2ControllerCoherenceIssues,
   eventPortBelongsToOwner, missingPrincipalPortIssues, portsMissingFromDependsFiles, collectRepositoryCastIssues,
   ownershipCheckIsInconclusive, ownershipInconclusiveWarning,
@@ -817,6 +817,16 @@ export interface TicketComment { ticketCommentId: string; ticketId: string; comm
 export function hasValidTicketCommentText(text: string): boolean { return text.trim().length > 0; }
 export function canAddTicketComment(ticket: { status: string }): boolean { return ticket.status === 'open'; }
 `;
+
+test('extensionless /_<id>_/ path is a finding; .js and bare packages are not', () => {
+  const issues = collectExtensionlessImportIssues([
+    "import { listAtendente } from '/_102039_/l1/controleChamados/layer_2_application/usecases/listAtendente';",
+    "import { ok } from '/_102034_/l1/server/layer_2_controllers/contracts.js';",
+    "import { readFile } from 'node:fs';",
+  ].join('\n'));
+  assert.equal(issues.length, 1, issues.join('\n'));
+  assert.match(issues[0], /extensionless import -> '\/_102039_\/l1\/controleChamados\/layer_2_application\/usecases\/listAtendente'/);
+});
 
 test('closestExportedName matches the same camelCase words in another order (canAddCommentToTicket)', () => {
   assert.equal(significantCamelWords('canAddCommentToTicket'), significantCamelWords('canAddTicketComment'));
