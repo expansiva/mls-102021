@@ -43,6 +43,64 @@ void test('agentCbRepositoryAdapter declares the LLM step agent contract', () =>
   assert.match(skill, /offset/);
 });
 
+void test('agentCbRepositoryAdapter dispatcher does not call the LLM and fans out one worker per aggregate/event', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbRepositoryAdapter.ts'), 'utf8');
+  const flow = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8'));
+  const dispatchStart = src.indexOf('async function dispatch');
+  const workerStart = src.indexOf('async function worker');
+  assert.ok(dispatchStart >= 0 && workerStart > dispatchStart, 'dispatch must precede worker');
+  const dispatchSrc = src.slice(dispatchStart, workerStart);
+  assert.doesNotMatch(dispatchSrc, /createPromptReadyIntent/, 'dispatcher must not call the LLM');
+  assert.match(src, /createParallelStepIntent\([^)]*CB_MAX_PARALLEL\)/s, 'must fan out with the shared slot count');
+  assert.match(src, /const FANOUT_PLAN_ID = 'cb-adapter-fanout';/);
+  assert.match(src, /JSON\.stringify\(item, null, 2\)/);
+  assert.doesNotMatch(src, /JSON\.stringify\(items, null, 2\)/);
+  assert.doesNotMatch(src, /JSON\.stringify\(eventItems, null, 2\)/);
+  const steps = flow.steps as Array<{ planId: string; executionMode?: string; dependsOn?: string[] }>;
+  const fanout = steps.find((s) => s.planId === 'cb-adapter-fanout');
+  assert.ok(fanout && fanout.executionMode === 'parallel_dynamic', 'cb-adapter-fanout must be parallel_dynamic');
+});
+
+// ── cb-gen-usecase espera o FAN-OUT, não o dispatcher ─────────────────────────
+// Same class as 28/ago (102047/todo): a join on the dispatcher starts while workers are still
+// writing. Here the victim would be cb-gen-usecase (and everything behind it).
+void test('cb-gen-usecase joins on the adapter fan-out, never on the dispatcher', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbRepositoryAdapter.ts'), 'utf8');
+  const flow = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'flow.json'), 'utf8'));
+  assert.match(src, /const FANOUT_PLAN_ID = 'cb-adapter-fanout';/);
+  assert.match(src, /const NEXT_PLAN_ID = 'cb-gen-usecase';/);
+  assert.match(
+    src,
+    /createAgentStepPayload\(NEXT_PLAN_ID, 'agentCbUsecase', 'Gerar usecases', \{ planId: NEXT_PLAN_ID \}, \[FANOUT_PLAN_ID\]/,
+  );
+  const afterStart = src.indexOf('async function afterPromptStep');
+  assert.doesNotMatch(src.slice(afterStart), /enqueueNext\(|createAddStepIntent\(|createParallelStepIntent\(/);
+  const steps = flow.steps as Array<{ planId: string; dependsOn?: string[] }>;
+  const usecase = steps.find((s) => s.planId === 'cb-gen-usecase');
+  assert.ok(usecase?.dependsOn?.includes('cb-adapter-fanout'), 'cb-gen-usecase must join on cb-adapter-fanout');
+  assert.equal(usecase?.dependsOn?.includes('cb-gen-adapter'), false, 'cb-gen-usecase must not wait on the dispatcher');
+});
+
+void test('reuse branch still enqueues cb-gen-usecase and sanitizes notes', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbRepositoryAdapter.ts'), 'utf8');
+  const dispatchStart = src.indexOf('async function dispatch');
+  const workerStart = src.indexOf('async function worker');
+  const dispatchSrc = src.slice(dispatchStart, workerStart);
+  assert.match(dispatchSrc, /sanitizeReusedAdapterDefs\(module, targets\)/);
+  assert.match(dispatchSrc, /enqueueUsecase\(context, parentStep, step\)/);
+  assert.match(src, /function enqueueUsecase[\s\S]*enqueueNext\(context, parentStep, step, NEXT_PLAN_ID, 'agentCbUsecase'/);
+  const workerSrc = src.slice(workerStart, src.indexOf('async function afterPromptStep'));
+  assert.match(workerSrc, /sanitizeReusedAdapterDefs\(module, \[entityId\]\)/);
+});
+
+void test('every adapter .defs.ts write path runs sanitizeAdapterNotes', () => {
+  const src = readFileSync(path.join(HERE, 'agentCbRepositoryAdapter.ts'), 'utf8');
+  assert.match(src, /item\.notes = sanitizeAdapterNotes\(notes\);\s*await saveDefs/s);
+  assert.match(src, /const next = rewriteAdapterDefsNotes\(raw\);/);
+  assert.equal((src.match(/await saveDefs\(/g) || []).length, 1, 'single saveDefs path, after sanitizeAdapterNotes');
+  assert.equal((src.match(/await writeDefsSource\(/g) || []).length, 1, 'reuse writes only via rewriteAdapterDefsNotes');
+});
+
 void test('agentCbRepositoryAdapter tool schema is provider-clean', () => {
   const errs = lintToolSchema(JSON.stringify(tool().function.parameters));
   assert.equal(errs, null, errs?.join(' | '));

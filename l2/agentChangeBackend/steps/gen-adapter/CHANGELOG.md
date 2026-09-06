@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-09-06 — dispatcher + fan-out (1 agregado/evento por worker)
+
+O lote whole-layer (todos os agregados + eventos numa tool call) truncava em módulo grande
+(102046, 22 agregados) e diluía o contexto. Espelha o `gen-domain`: dispatcher despacha
+`cb-adapter-fanout` (`parallel_dynamic`, `CB_MAX_PARALLEL` slots); cada worker recebe um item,
+saneia notas e grava o próprio `.defs.ts`. `cb-gen-usecase` junta no planId do fan-out, nunca
+no dispatcher (a mesma classe que no `gen-usecase` fez o juiz começar com workers ainda
+escrevendo). Reúso (l4 inalterado) continua no dispatcher, com `sanitizeReusedAdapterDefs`.
+
 ## 2026-09-04 — list paginada: resolveListPage + offset + count
 
 Quando o l4 é `paginated`, `list()` chama `resolveListPage` (default 20, teto 200, corte declarado)
