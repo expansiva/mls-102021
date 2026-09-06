@@ -8,9 +8,15 @@ function expectCli(
   raw: string,
   kind: ReturnType<typeof parseCli>['kind'],
   module: string,
-  extra: { noAssets?: boolean; fast?: boolean } = {},
+  extra: { noAssets?: boolean; fast?: boolean; nochain?: boolean } = {},
 ) {
-  assert.deepEqual(parseCli(raw), { kind, module, noAssets: extra.noAssets ?? false, fast: extra.fast ?? false });
+  assert.deepEqual(parseCli(raw), {
+    kind,
+    module,
+    noAssets: extra.noAssets ?? false,
+    fast: extra.fast ?? false,
+    nochain: extra.nochain ?? false,
+  });
 }
 
 test('parseCli: command detection with the optional [module] argument', () => {
@@ -66,4 +72,13 @@ test('parseCli: /fast is a flag, never a module, and combines with /rebuild all'
   expectCli('@@agentChangeBackend /fast /rebuild all petShop', 'rebuild-all', 'petShop', { fast: true });
   expectCli('@@changeBackend /rebuild all petShop /fast', 'rebuild-all', 'petShop', { fast: true });
   assert.equal(parseCli('@@changeBackend cafeFlow').fast, false);
+});
+
+test('parseCli: /nochain is a flag, never a module, and does not match /nochainlane', () => {
+  expectCli('@@changeBackend', 'run', '');
+  expectCli('@@changeBackend /fast', 'run', '', { fast: true });
+  expectCli('@@changeBackend /fast /nochain /rebuild all petShop', 'rebuild-all', 'petShop', { fast: true, nochain: true });
+  expectCli('@@changeBackend /nochain', 'run', '', { nochain: true });
+  expectCli('@@changeBackend /nochainlane petShop', 'run', 'petShop');
+  assert.equal(parseCli('@@changeBackend cafeFlow').nochain, false);
 });

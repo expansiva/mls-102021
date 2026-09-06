@@ -55,6 +55,7 @@ export function describeCbCommand(longMemory: Record<string, unknown> | null | u
   if (!longMemory) return '';
   const parts: string[] = [];
   if (longMemory.fastMode === 'true') parts.push('/fast');
+  if (longMemory.nochainMode === 'true') parts.push('/nochain');
   const cli = typeof longMemory.cliCommand === 'string' ? longMemory.cliCommand : '';
   if (cli === 'rebuild-all' || cli === 'rebuild') parts.push('/rebuild all');
   else if (cli) parts.push(cli);

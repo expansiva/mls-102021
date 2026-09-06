@@ -43,7 +43,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   // process can serve two runs; without a reset the previous run's counts would skip materialize.
   resetRespawnCounts();
   const raw = userPrompt || context.message.content || '';
-  const { kind: cmd, module: requestedModule, noAssets, fast } = parseCli(raw);
+  const { kind: cmd, module: requestedModule, noAssets, fast, nochain } = parseCli(raw);
   let rebuildArchived = '';
   let rebuildWipeMsg = '';
   let rebuildWipeFinding = '';
@@ -122,7 +122,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // longMemory is Record<string, string> — the flag travels as 'true'/absent (see readNoAssets).
-      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}), ...(rebuildWipeMsg ? { rebuildWipeMsg } : {}), ...(rebuildWipeFinding ? { rebuildWipeFinding } : {}), ...(rebuildWipeAbort ? { rebuildWipeAbort } : {}), ...(wipeRunId ? { wipeRunId } : {}), ...(rebuildWipedKeys ? { rebuildWipedKeys } : {}) },
+      longTermMemory: { taskName: 'agentChangeBackend', flowName: 'agentChangeBackend', version: '1', cliCommand: cmd, targetModule, ...(noAssets ? { noAssets: 'true' } : {}), ...(fast ? { fastMode: 'true' } : {}), ...(nochain ? { nochainMode: 'true' } : {}), ...(rebuildArchived ? { rebuildArchived } : {}), ...(rebuildWipeMsg ? { rebuildWipeMsg } : {}), ...(rebuildWipeFinding ? { rebuildWipeFinding } : {}), ...(rebuildWipeAbort ? { rebuildWipeAbort } : {}), ...(wipeRunId ? { wipeRunId } : {}), ...(rebuildWipedKeys ? { rebuildWipedKeys } : {}) },
     },
   };
 
@@ -188,6 +188,9 @@ Comandos:
 - /help                  : mostra esta ajuda.
 
 Flags (combinam com qualquer comando):
+- /fast                  : após um run bem-sucedido, dispara @@agentChangeFrontend /fast /rebuild all <módulo>.
+- /nochain               : mantém o run e suprime só o encadeamento. O resumo registra o comando seguinte.
+                           Combina com /fast. Sozinha não dispara o frontend (não é /fast).
 - --no-assets            : pula a geração de imagens de seed (assets cosméticos, custo real). O step
                            completa com aviso e os seeds ficam intactos. Ex: @@changeBackend cafeFlow --no-assets
 

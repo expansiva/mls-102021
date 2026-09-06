@@ -2,10 +2,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bestEffortRecord, buildCbRunSummary, formatDegradationReason, nextPipelineRunNn } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
+import { bestEffortRecord, buildCbRunSummary, describeCbCommand, formatDegradationReason, nextPipelineRunNn } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 void test('nextPipelineRunNn is deterministic', () => {
   assert.equal(nextPipelineRunNn(['run01_changebackend', 'cb-cost'], 'changebackend'), '02');
+});
+
+void test('describeCbCommand records /fast /nochain from longMemory', () => {
+  assert.equal(describeCbCommand({ fastMode: 'true', cliCommand: 'rebuild-all' }), '/fast /rebuild all');
+  assert.equal(describeCbCommand({ fastMode: 'true', nochainMode: 'true', cliCommand: 'rebuild-all' }), '/fast /nochain /rebuild all');
+  assert.equal(describeCbCommand({ nochainMode: 'true', cliCommand: 'run' }), '/nochain run');
 });
 
 void test('CB run summary copies health degradations off the console path', () => {

@@ -36,5 +36,7 @@ void test('/fast success dispatches changeFrontend once without an add-step on t
   assert.match(src, /dispatchChangeFrontendHandoff/);
   assert.match(src, /writeCbFastHandoffMark/);
   assert.match(src, /already dispatched/);
+  assert.match(src, /isCbNochainMode/);
+  assert.match(src, /cbNochainSuppressedNote/);
   assert.doesNotMatch(src, /createAddStepIntent/);
 });

@@ -11,6 +11,15 @@ export function isCbFastMode(longMemory?: Record<string, unknown> | null): boole
   return longMemory?.fastMode === 'true';
 }
 
+export function isCbNochainMode(longMemory?: Record<string, unknown> | null): boolean {
+  return longMemory?.nochainMode === 'true';
+}
+
+export function cbNochainSuppressedNote(moduleName: string): string {
+  const module = String(moduleName || '').trim();
+  return module ? `handoff: suppressed by /nochain — next: @@agentChangeFrontend /rebuild all ${module}` : '';
+}
+
 export function buildCbChangeFrontendHandoffMessage(moduleName: string): string {
   const module = String(moduleName || '').trim();
   return module ? `@@agentChangeFrontend /fast /rebuild all ${module}` : '';
@@ -30,15 +39,20 @@ export function hasCbFastHandoff(roots: unknown): boolean {
 
 export function decideCbFastHandoff(input: {
   fast: boolean;
+  nochain: boolean;
   success: boolean;
   alreadyDispatched: boolean;
   moduleName: string;
-}): { dispatch: boolean; message: string } {
+}): { dispatch: boolean; message: string; suppressed: boolean } {
   const message = buildCbChangeFrontendHandoffMessage(input.moduleName);
   if (!input.fast || !input.success || input.alreadyDispatched || !message) {
-    return { dispatch: false, message: '' };
+    return { dispatch: false, message: '', suppressed: false };
   }
-  return { dispatch: true, message };
+  if (input.nochain) {
+    const module = String(input.moduleName || '').trim();
+    return { dispatch: false, message: `@@agentChangeFrontend /rebuild all ${module}`, suppressed: true };
+  }
+  return { dispatch: true, message, suppressed: false };
 }
 
 export const CB_FAST_HANDOFF_MARK_SHORT = 'fast-handoff';

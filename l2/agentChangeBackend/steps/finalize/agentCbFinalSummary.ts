@@ -6,9 +6,11 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, isRecord, parseMaybeJson, saveBackendWorkspaceConfig } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import {
+  cbNochainSuppressedNote,
   decideCbFastHandoff,
   hasCbFastHandoff,
   isCbFastMode,
+  isCbNochainMode,
   sendCbFastHandoff,
   type CbFastHandoffDegradation,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbFastHandoff.js';
@@ -104,6 +106,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     .some(isCompilerFinding);
   const handoff = await dispatchChangeFrontendHandoff(context, {
     fast: isCbFastMode(context.task?.iaCompressed?.longMemory),
+    nochain: isCbNochainMode(context.task?.iaCompressed?.longMemory),
     success: !noWork && ownersDone > 0 && !compilerLeft,
     moduleName,
   });
@@ -173,13 +176,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
 async function dispatchChangeFrontendHandoff(
   context: mls.msg.ExecutionContext,
-  input: { fast: boolean; success: boolean; moduleName: string },
+  input: { fast: boolean; nochain: boolean; success: boolean; moduleName: string },
 ): Promise<{ note: string; degradation: CbFastHandoffDegradation | null }> {
   try {
     const marked = Boolean(await readCbFastHandoffMark(input.moduleName));
     const already = marked || hasCbFastHandoff(context.task?.iaCompressed?.nextSteps);
     const decision = decideCbFastHandoff({ ...input, alreadyDispatched: already });
     if (!decision.dispatch) {
+      if (decision.suppressed) {
+        return { note: `; ${cbNochainSuppressedNote(input.moduleName)}`, degradation: null };
+      }
       return { note: already && input.fast ? '; changeFrontend: already dispatched' : '', degradation: null };
     }
     return sendCbFastHandoff({
