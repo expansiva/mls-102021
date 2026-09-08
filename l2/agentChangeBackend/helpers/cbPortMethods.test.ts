@@ -52,7 +52,7 @@ test('aggregate without a delete* operation does not get delete in requiredMetho
 });
 
 test('LLM port without delete is completed and records systemDecision; with delete is left alone', () => {
-  const missing = {
+  const missing: Record<string, unknown> = {
     entityId: 'Ticket',
     interfaceName: 'ITicketRepository',
     methods: [
