@@ -25,3 +25,9 @@ Temporary Items
 /dist/
 /obj/
 .collab-fs.json
+
+# --- collab-vm (gitReposSetup) ---
+/.env
+.collab-fs-trash/
+!*.js
+!*.mjs
