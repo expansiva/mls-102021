@@ -240,41 +240,57 @@ canonical module type in `moduleTypes`. If a field is module-specific but belong
 record, store it under `details.<moduleId>`; if it is a relation to another MDM record, use
 `ctx.mdm.entity.link/unlink` instead of storing a raw related id in JSON.
 
+When `data.mdmWrites` names the entity, transcribe it — do not infer subtype or id from a name:
+`mdmType` is the role tag `<moduleId>.<Entity>` (goes in `moduleTypes` and `tags`, or
+`listByType` will never see the record), `subtype` is the 102034 closed union from the l4,
+`idField` is the module-side field that CARRIES the returned `mdmId`, `baseFields` are level-1
+identification/base inputs, `namespaceFields` are the module namespace under `ctx.moduleId`.
+Store `created.mdmId` in `idField`; never mint a separate local id for a master-data record.
+`countryCode` is required on the engine index: use `ctx.organization?.countryCode` when that field
+exists; otherwise the level-1 identification default `'US'`. Never derive it from language.
+
+A create of a role on Person/Company is **create-or-attach**, not a second person. The facade
+`ctx.mdm.entity.create` already returns `alreadyExists` when a document matches; it does not add
+the new role. Always add the role tag and write the namespace:
+
 ```ts
-const person = await ctx.mdm.entity.create({
+const write = data.mdmWrites[0];
+const created = await ctx.mdm.entity.create({
   details: {
-    subtype: 'Person',
+    subtype: write.subtype,
     name: input.name,
     status: 'Active',
-    moduleTypes: ['people.Profile'],
-    tags: ['people'],
-    people: {
-      birthDate: input.birthDate,
-      preferredName: input.preferredName ?? null,
+    countryCode: 'US',
+    moduleTypes: [write.mdmType],
+    tags: [write.mdmType],
+    [ctx.moduleId]: Object.fromEntries(write.namespaceFields.map((fieldId: string) => [fieldId, (input as Record<string, unknown>)[fieldId]])),
+  },
+});
+if (created.alreadyExists) {
+  const tags = [...new Set([...(created.details.tags ?? []), write.mdmType])];
+  const moduleTypes = [...new Set([...(created.details.moduleTypes ?? []), write.mdmType])];
+  await ctx.mdm.entity.update({
+    mdmId: created.mdmId,
+    expectedVersion: created.version,
+    details: {
+      ...created.details,
+      tags,
+      moduleTypes,
+      [ctx.moduleId]: {
+        ...((created.details as Record<string, unknown>)[ctx.moduleId] as object),
+        ...Object.fromEntries(write.namespaceFields.map((fieldId: string) => [fieldId, (input as Record<string, unknown>)[fieldId]])),
+      },
     },
-  },
-});
-
-await ctx.mdm.entity.link({
-  fromId: person.mdmId,
-  toId: input.managerMdmId,
-  type: 'ReportsTo',
-  metadata: {
-    sourceModule: 'people',
-    note: input.relationshipNote ?? null,
-  },
-});
+  });
+}
 ```
 
-When `data.mdmWrites` names the entity, it carries the three things the code cannot guess: `mdmType`
-(the canonical `<moduleId>.<Entity>` that must go in `moduleTypes`, or `ctx.mdm.collection.listByType`
-will never see the record), `subtype` (the 102034 closed union) and `idField` — the module-side field
-that CARRIES the returned `mdmId`. Store `created.mdmId` in that field; never mint a separate local id
-for a master-data record.
+`findByDocument` / `findByContact` / `attachRole` are not on `ctx.mdm` yet — use `create` +
+`alreadyExists` + `update` as above. Do not invent a second lookup API.
 
 For update, load the entity, preserve fields you do not change, and pass the optimistic version.
-For create use `ctx.mdm.entity.create`. For update use `ctx.mdm.entity.update`. For cadastral
-deactivation prefer `ctx.mdm.entity.inactivate`; use physical `ctx.mdm.entity.delete` only when the
+For create-or-attach use `ctx.mdm.entity.create` (then `update` when `alreadyExists`). For
+cadastral deactivation prefer `ctx.mdm.entity.inactivate`; use physical `ctx.mdm.entity.delete` only when the
 operation truly removes a standalone record. For MDM links use
 `ctx.mdm.entity.link({ fromId, toId, type })` and `ctx.mdm.entity.unlink({ relationshipId })`.
 If no existing `RelationshipType` expresses the domain relation, record a modeling gap instead of

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-09-08 — `mdmWrites` transcribes l4 v7 (no name inference)
+
+`mdmWrites` carries `mdmType` (role), `subtype` (`mdmSubtype`), `idField`, `baseFields` (level-1
+inputs) and `namespaceFields` (module fields). `mdmSubtypeFor` is gone. Skill and `prompt.md` describe
+create-or-attach: `ctx.mdm.entity.create`, then `update` when `alreadyExists` to add the role tag
+and write `details[ctx.moduleId]`.
+
 ## 2026-08-31 — `derivedRefs` leva `derivation` quando o l4 a declara
 
 A conta da projeção (fonte, filtro, agregação) agora viaja no item do owner junto de

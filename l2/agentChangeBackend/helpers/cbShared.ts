@@ -27,6 +27,7 @@ import {
   todoOwnerType, todoStatusField, todoStatusDivergences,
   pickTodoBackendReadBack, selectTodoBackendFileForStatusWrite,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
+  readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity,
   type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
@@ -48,6 +49,7 @@ export {
   parseDefsSource, replaceDefsValue, handlerKindOf, entityKindOf, isEntityLifecycle,
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
+  readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity,
 };
 export type { CbEntityKind };
 export type { CbEntityLifecycle, CbLifecyclePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
@@ -212,6 +214,14 @@ export interface CbEntity {
   storageTarget?: string;
   mdmType?: string;
   idField?: string;
+  /** Platform MDM subtype from l4 v7 (`Person` / `Company` / …). Empty on v6 until regeneration. */
+  mdmSubtype?: string;
+  /** Module role tag `<module>.<Entity>` from l4 v7 `role` (falls back to `storage.mdmType`). */
+  role?: string;
+  /** Field a person reads to recognise the record (`displayField` on l4 v7). */
+  displayField?: string;
+  /** 7 when the ontology file is v7; 6 for older modules kept until regeneration (2026-09-08). */
+  defsVersion?: number;
   /** Verbatim l4 `description` — used by gen-usecase so a derived projection can name its sources. */
   description?: string;
   /** Verbatim l4 `storage.notes` — where the l4 writes how a derived projection is composed. */
@@ -236,6 +246,10 @@ export interface CbRelationship {
   // ns4 marks a reference that crosses a store boundary (`crossStoreReference`): the FK holds an id
   // resolved elsewhere (102034 / the platform directory), never a local foreign key.
   persistenceMode?: string;
+  /** Field ids on the `from` side (`realization.from.fieldIds`). Empty on v6 until regeneration. */
+  fromFieldIds?: string[];
+  /** Field ids on the `to` side (`realization.to.fieldIds`). Empty on v6 until regeneration. */
+  toFieldIds?: string[];
 }
 
 export interface CbAggregate {
@@ -371,10 +385,12 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
         entityToModule.set(entityId, moduleName);
         const declaredKind = readString(parsed.kind);
         const ownership = readString(parsed.ownership) || 'moduleOwned';
-        const storage = readEntityStorage(parsed);
+        const ontology = readOntologyEntity(parsed);
+        const storage = ontology.storage;
         const kind = classifyEntityKind({ kind: declaredKind, ownership, storage });
         const contradiction = MDM_WRITE_PATH_ENABLED ? contradictoryStorageDeclaration({ kind: declaredKind, ownership, storage }) : '';
         if (contradiction) warnings.push(`entity ${entityId}: ${contradiction}`);
+        if (ontology.scanError) warnings.push(ontology.scanError.message);
         // The mapping is a DECISION about a foreign vocabulary, so it is visible in the scan trace
         // instead of only in the code (same treatment as the projection mapping).
         if (declaredKind && declaredKind !== kind) {
@@ -391,9 +407,13 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           moduleName,
           fields: Array.isArray(parsed.fields) ? parsed.fields.filter(isRecord) : undefined,
           eventPolicy: readEventPolicy(parsed.eventPolicy),
+          defsVersion: ontology.defsVersion,
           ...(storage.target ? { storageTarget: storage.target } : {}),
           ...(storage.mdmType ? { mdmType: storage.mdmType } : {}),
           ...(storage.idField ? { idField: storage.idField } : {}),
+          ...(ontology.mdmSubtype ? { mdmSubtype: ontology.mdmSubtype } : {}),
+          ...(ontology.role ? { role: ontology.role } : {}),
+          ...(ontology.displayField ? { displayField: ontology.displayField } : {}),
           ...(readString(parsed.description) ? { description: readString(parsed.description) } : {}),
           ...(storageNotes ? { storageNotes } : {}),
           ...(readStringArray(parsed.useRules).length ? { useRules: readStringArray(parsed.useRules) } : {}),
@@ -632,18 +652,15 @@ export function deriveEventTargets(entities: CbEntity[], relationships: CbRelati
 
 /** ns4 relationships live in `<module>/ontology/index.defs.ts` instead of in module.defs.ts. */
 function collectOntologyRelationships(index: Record<string, unknown>, relationships: CbRelationship[]): void {
-  const rels = Array.isArray(index.relationships) ? index.relationships : [];
-  for (const rel of rels) {
-    if (!isRecord(rel)) continue;
-    const fromEntity = readString(rel.fromEntity);
-    const toEntity = readString(rel.toEntity);
-    const persistenceMode = isRecord(rel.persistence) ? readString(rel.persistence.mode) : '';
-    if (fromEntity && toEntity) {
-      relationships.push({
-        fromEntity, toEntity, type: readString(rel.type) || 'manyToOne',
-        ...(persistenceMode ? { persistenceMode } : {}),
-      });
-    }
+  for (const rel of readOntologyRelationships(index)) {
+    relationships.push({
+      fromEntity: rel.fromEntity,
+      toEntity: rel.toEntity,
+      type: rel.type,
+      ...(rel.persistenceMode ? { persistenceMode: rel.persistenceMode } : {}),
+      ...(rel.fromFieldIds.length ? { fromFieldIds: rel.fromFieldIds } : {}),
+      ...(rel.toFieldIds.length ? { toFieldIds: rel.toFieldIds } : {}),
+    });
   }
 }
 
@@ -839,18 +856,36 @@ export interface CbTablePlan {
   childCollections: string[];     // embedded supporting entities -> details JSONB
 }
 
-/** Heuristic: a field needs a real column when it is the id (PK), a reference/FK (type is an entity
- * id or ends with "Id"), a status/lifecycle field, or an ordering timestamp (createdAt). Everything
- * else goes into details JSONB. Deterministic column plan consumed by the table/adapter generators. */
-export function planTableColumns(fields: Record<string, unknown>[], knownEntityIds: Set<string>): { indexed: CbColumnPlan[]; details: string[] } {
+export interface CbColumnPlanOptions {
+  entityId?: string;
+  idField?: string;
+  defsVersion?: number;
+  relationships?: readonly CbRelationship[];
+}
+
+/** A field needs a real column when it is the id (PK), a reference/FK, a status/lifecycle field, or
+ * an ordering timestamp (createdAt). Everything else goes into details JSONB.
+ * v7: PK = `storage.idField`, FK = `relationships[].realization.*.fieldIds`.
+ * v6 (until regeneration, 2026-09-08): suffix `Id` still names a key. */
+export function planTableColumns(
+  fields: Record<string, unknown>[],
+  knownEntityIds: Set<string>,
+  options?: CbColumnPlanOptions,
+): { indexed: CbColumnPlan[]; details: string[] } {
   const indexed: CbColumnPlan[] = [];
   const details: string[] = [];
+  const defsVersion = options?.defsVersion ?? 6;
+  const fkFieldIds = options?.entityId
+    ? fkFieldIdsForEntity(options.entityId, options.relationships ?? [])
+    : new Set<string>();
   for (const f of fields) {
     const fieldId = readString(f.fieldId);
     if (!fieldId) continue;
     const type = readString(f.type);
-    const isId = fieldId === 'id' || /Id$/.test(fieldId);
-    const isRef = knownEntityIds.has(type);
+    const isId = defsVersion >= 7
+      ? fieldId === (options?.idField || '') || fieldId === 'id'
+      : fieldId === 'id' || /Id$/.test(fieldId); // v6 until regeneration (2026-09-08)
+    const isRef = knownEntityIds.has(type) || (defsVersion >= 7 && fkFieldIds.has(fieldId));
     const isStatus = fieldId === 'status' || Array.isArray((f as any).enum);
     const isSearch = fieldId === 'title' || fieldId === 'name';
     const isOrderTs = fieldId === 'createdAt' || /At$/.test(fieldId) || type === 'date' || type === 'datetime';

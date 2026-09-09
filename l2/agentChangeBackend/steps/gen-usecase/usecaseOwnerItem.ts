@@ -6,7 +6,6 @@
 import type { CbScan, CbOwner, CbEntity } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { MDM_WRITE_PATH_ENABLED } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { lifecycleForEntity, type CbEntityLifecycle } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
-import { mdmSubtypeFor } from '/_102021_/l2/agentChangeBackend/helpers/cbSeedsCore.js';
 import { collectIoShapeSymmetryIssues } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
 
 function readString(value: unknown): string {
@@ -31,6 +30,43 @@ export function deriveMaps(scan: CbScan) {
     eventsByOwner.set(ev.ownerEntity, list);
   }
   return { roots, mdmIds, derivedIds, childToRoot, byId, eventsByOwner };
+}
+
+export interface CbMdmWrite {
+  entityId: string;
+  mdmType: string;
+  subtype: string;
+  idField: string;
+  baseFields: string[];
+  namespaceFields: string[];
+}
+
+function inputFieldId(input: { inputId?: string; fieldRef?: string }): string {
+  const ref = input.fieldRef || '';
+  if (ref.includes('.')) return ref.split('.').pop() || '';
+  return input.inputId || ref;
+}
+
+/** Transcribe l4 v7 onto `mdmWrites`: role, subtype, idField, base vs namespace partition. */
+export function mdmWriteFromL4(entity: CbEntity, owner: Pick<CbOwner, 'inputs'>): CbMdmWrite {
+  const idField = entity.idField || '';
+  const namespaceFields = [...new Set(
+    (entity.fields || [])
+      .map(field => typeof field.fieldId === 'string' ? field.fieldId : '')
+      .filter(fieldId => fieldId && fieldId !== idField),
+  )];
+  const namespaceSet = new Set(namespaceFields);
+  const baseFields = [...new Set(
+    owner.inputs.map(inputFieldId).filter(fieldId => fieldId && fieldId !== idField && !namespaceSet.has(fieldId)),
+  )];
+  return {
+    entityId: entity.entityId,
+    mdmType: entity.role || entity.mdmType || '',
+    subtype: entity.mdmSubtype || '',
+    idField,
+    baseFields,
+    namespaceFields,
+  };
 }
 
 function unknownPortIssue(ownerId: string, fnName: string, port: string, entities: Map<string, CbEntity>): string {
@@ -113,12 +149,7 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     .filter(id => mdmIds.has(id))
     .map(id => {
       const entity = byId.get(id);
-      return {
-        entityId: id,
-        mdmType: entity?.mdmType || '',
-        subtype: mdmSubtypeFor(id),
-        idField: entity?.idField || '',
-      };
+      return entity ? mdmWriteFromL4(entity, o) : { entityId: id, mdmType: '', subtype: '', idField: '', baseFields: [] as string[], namespaceFields: [] as string[] };
     })
     .filter(write => !!write.mdmType);
   const derivedRefs = rawRefs.filter(id => derivedIds.has(id)).map(id => {
@@ -155,10 +186,9 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     acceptanceAssertions: o.acceptanceAssertions,
     ports: portSeed.filter(id => roots.has(id) && !mdmIds.has(id) && !derivedIds.has(id)),
     mdmRefs: fieldRefs.filter(id => mdmIds.has(id)),
-    // Master data this operation WRITES. The skill documents the ctx.mdm write surface; what it cannot
-    // know is the canonical type 102034 indexes by, the subtype its closed union requires, and which
-    // module field carries the mdmId — those come from the l4 `storage` block. Absent (not empty) when
-    // the operation writes no master data, so a module without MDM writes sees the same prompt as before.
+    // Master data this operation WRITES. Transcribed from the l4 (role, mdmSubtype, idField, the
+    // base/namespace partition). Absent (not empty) when the operation writes no master data, so a
+    // module without MDM writes sees the same prompt as before.
     ...(mdmWrites.length ? { mdmWrites } : {}),
     // MDM semantics of the operation, verbatim from the l4 (`Ns4E8MdmSemantics`): the cadastral
     // lifecycle pair, the name of the active-only opt-out input, the derived situation output. Absent

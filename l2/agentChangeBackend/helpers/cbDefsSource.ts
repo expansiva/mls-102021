@@ -63,6 +63,114 @@ export function readEntityStorage(parsed: Record<string, unknown>): CbEntityStor
   };
 }
 
+/** Schema string the NS E4 emits for ontology v7 (`n04`, 2026-09-08). */
+export const CB_ONTOLOGY_SCHEMA_V7 = '2026-09-08-ns4-ontology-v7';
+/** Named scan error when a v7 entity omits `storage.idField`. Never fall back to a name suffix. */
+export const CB_SCAN_ID_FIELD_REQUIRED = 'CB_SCAN_ID_FIELD_REQUIRED';
+
+function readTrimmed(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * l4 ontology schema generation. v7 carries `mdmSubtype` / `role` / `displayField` / required
+ * `storage.idField`. Anything older is v6 and is read until the module is regenerated (2026-09-08).
+ */
+export function ontologyDefsVersion(parsed: Record<string, unknown>): number {
+  const version = readTrimmed(parsed.schemaVersion);
+  if (version.includes('ontology-v7') || version === CB_ONTOLOGY_SCHEMA_V7) return 7;
+  if (readTrimmed(parsed.mdmSubtype) || readTrimmed(parsed.displayField)) return 7;
+  return 6;
+}
+
+export interface CbOntologyEntityRead {
+  storage: CbEntityStorage;
+  mdmSubtype: string;
+  role: string;
+  displayField: string;
+  defsVersion: number;
+  scanError?: { code: string; message: string };
+}
+
+/**
+ * v7 fields on an ontology entity. v6 modules keep compiling: missing `mdmSubtype`/`role`/
+ * `displayField` are empty strings, and a missing `idField` is not a scan error until v7.
+ */
+export function readOntologyEntity(parsed: Record<string, unknown>): CbOntologyEntityRead {
+  const storage = readEntityStorage(parsed);
+  const defsVersion = ontologyDefsVersion(parsed);
+  const mdmSubtype = readTrimmed(parsed.mdmSubtype);
+  const role = readTrimmed(parsed.role) || storage.mdmType;
+  const displayField = readTrimmed(parsed.displayField);
+  const entityId = readTrimmed(parsed.entityId) || '<entity>';
+  if (defsVersion >= 7 && !storage.idField) {
+    return {
+      storage, mdmSubtype, role, displayField, defsVersion,
+      scanError: {
+        code: CB_SCAN_ID_FIELD_REQUIRED,
+        message: `${CB_SCAN_ID_FIELD_REQUIRED}: entity '${entityId}' has no storage.idField`,
+      },
+    };
+  }
+  return { storage, mdmSubtype, role, displayField, defsVersion };
+}
+
+export interface CbOntologyRelationshipRead {
+  fromEntity: string;
+  toEntity: string;
+  type: string;
+  persistenceMode: string;
+  fromFieldIds: string[];
+  toFieldIds: string[];
+}
+
+function readFieldIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(readTrimmed).filter(Boolean);
+}
+
+/** `ontology/index.defs.ts` `relationships[]` — the only FK source on v7. */
+export function readOntologyRelationships(index: Record<string, unknown>): CbOntologyRelationshipRead[] {
+  const rels = Array.isArray(index.relationships) ? index.relationships : [];
+  const out: CbOntologyRelationshipRead[] = [];
+  for (const rel of rels) {
+    if (!isPlainRecord(rel)) continue;
+    const fromEntity = readTrimmed(rel.fromEntity);
+    const toEntity = readTrimmed(rel.toEntity);
+    if (!fromEntity || !toEntity) continue;
+    const persistence = isPlainRecord(rel.persistence) ? rel.persistence : {};
+    const realization = isPlainRecord(rel.realization) ? rel.realization : {};
+    const from = isPlainRecord(realization.from) ? realization.from : {};
+    const to = isPlainRecord(realization.to) ? realization.to : {};
+    out.push({
+      fromEntity,
+      toEntity,
+      type: readTrimmed(rel.type) || 'manyToOne',
+      persistenceMode: readTrimmed(persistence.mode),
+      fromFieldIds: readFieldIds(from.fieldIds),
+      toFieldIds: readFieldIds(to.fieldIds),
+    });
+  }
+  return out;
+}
+
+/** Foreign-key field ids declared for `entityId` on either end of a relationship. */
+export function fkFieldIdsForEntity(
+  entityId: string,
+  relationships: ReadonlyArray<{ fromEntity: string; toEntity: string; fromFieldIds?: readonly string[]; toFieldIds?: readonly string[] }>,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const rel of relationships) {
+    if (rel.fromEntity === entityId) for (const fieldId of rel.fromFieldIds ?? []) if (fieldId) ids.add(fieldId);
+    if (rel.toEntity === entityId) for (const fieldId of rel.toFieldIds ?? []) if (fieldId) ids.add(fieldId);
+  }
+  return ids;
+}
+
 /**
  * The kind this agent generates from, deciding between the two vocabularies AND the two policies.
  *

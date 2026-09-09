@@ -59,10 +59,15 @@ Entities in "mdmRefs" are master data in the shared 102034 store: there is NO po
 them BY ID (the id is an input field) and read by id via ctx.mdm.entity.get({ mdmId }) or bulk read via
 ctx.mdm.collection.getMany({ mdmIds }). For MDM-owned create/update/delete/link/list operations use
 ctx.mdm.entity.create/update/inactivate/delete/link/unlink and ctx.mdm.collection.listByType/
-relatedOfMany/hydrateMany. For prospect/pre-qualified lead workflows use the explicit prospect facade:
+relatedOfMany/hydrateMany. A create of a role (mdmWrites) is create-or-attach: call
+ctx.mdm.entity.create with subtype/mdmType/idField/baseFields/namespaceFields from mdmWrites (never
+infer them by name); if the result has alreadyExists, update to add the role tag and write
+details[ctx.moduleId]. countryCode is ctx.organization?.countryCode when present, else 'US' (level-1
+default) — never from language. For prospect/pre-qualified lead workflows use the explicit prospect facade:
 ctx.mdm.prospect.create/get/listByType/update/promoteToEntity. Never use ctx.mdm.entity for prospects.
-Module-specific MDM fields live under details.<moduleId>; relationships to other MDM records use
-ctx.mdm.entity.link/unlink, not raw related ids embedded in JSON.
+Module-specific MDM fields live under details.<moduleId> (namespaceFields); baseFields stay on the
+level-1 payload. Relationships to other MDM records use ctx.mdm.entity.link/unlink, not raw related
+ids embedded in JSON.
 Never put an mdmRef in ports, never resolveRepository it, and never use raw
 runtime primitives such as ctx.data.mdmDocument, ctx.data.mdmEntityIndex, ctx.data.mdmRelationship,
 tx.mdmDocument, tx.mdmEntityIndex or tx.mdmRelationship.

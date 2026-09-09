@@ -479,10 +479,20 @@ async function readSeedBuildInput(scan: CbScan, context: mls.msg.ExecutionContex
       enumValues: readStringArray(field.enum),
     })).filter(field => !!field.fieldId),
     ...(operatedStates.get(entity.entityId)?.length ? { operatedStates: operatedStates.get(entity.entityId) } : {}),
+    ...(entity.idField ? { idField: entity.idField } : {}),
+    ...(entity.mdmSubtype ? { mdmSubtype: entity.mdmSubtype } : {}),
+    ...(entity.defsVersion ? { defsVersion: entity.defsVersion } : {}),
   }));
   const ruleIds = [...new Set(scan.owners.flatMap(owner => owner.rulesApplied))].sort();
   const rules = resolveAppliedRules(await readRuleDefinitions(project), ruleIds);
-  const relationships = scan.relationships.map(rel => ({ fromEntity: rel.fromEntity, toEntity: rel.toEntity, type: rel.type }));
+  const relationships = scan.relationships.map(rel => ({
+    fromEntity: rel.fromEntity,
+    toEntity: rel.toEntity,
+    type: rel.type,
+    ...(rel.fromFieldIds?.length ? { fromFieldIds: rel.fromFieldIds } : {}),
+    ...(rel.toFieldIds?.length ? { toFieldIds: rel.toFieldIds } : {}),
+  }));
+  const defsVersion = Math.max(6, ...scan.entities.map(entity => entity.defsVersion ?? 6));
   const actors = await readActorDefinitions(project);
   const usecaseSources = await readGeneratedUsecaseSources(project, moduleName);
   // PROPERTY question ("which operations pin an mdm block?") — not "what is still pending".
@@ -500,6 +510,7 @@ async function readSeedBuildInput(scan: CbScan, context: mls.msg.ExecutionContex
     project, moduleName, language, entities,
     tablePlans,
     ruleIds, rules, relationships, actors,
+    defsVersion,
     timeWindow: { start: SEED_WINDOW_START, end: SEED_WINDOW_END },
     ...(mdmRequiredTags.length ? { mdmRequiredTags } : {}),
   };

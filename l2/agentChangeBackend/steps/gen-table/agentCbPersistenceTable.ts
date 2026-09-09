@@ -44,13 +44,25 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   const entityIds = new Set(scan.entities.map(e => e.entityId));
   const byId = new Map(scan.entities.map(e => [e.entityId, e]));
   const tables = scan.aggregates.map(agg => {
-    const plan = planTableColumns(byId.get(agg.rootEntity)?.fields || [], entityIds);
+    const root = byId.get(agg.rootEntity);
+    const plan = planTableColumns(root?.fields || [], entityIds, {
+      entityId: agg.rootEntity,
+      idField: root?.idField,
+      defsVersion: root?.defsVersion,
+      relationships: scan.relationships,
+    });
     return { tableId: agg.rootEntity, indexed: plan.indexed, detailsFields: plan.details, childCollections: agg.embeddedMembers };
   });
   // Append-only event tables (telemetry/audit): same JSONB model, plus appendOnly + retentionDays so
   // the TableDefinition gets purpose 'controle' and a TTL (omit retentionDays = permanent, for audit).
   const eventTables = scan.events.filter(ev => ev.persisted).map(ev => {
-    const plan = planTableColumns(ev.fields || [], entityIds);
+    const eventEntity = byId.get(ev.entityId);
+    const plan = planTableColumns(ev.fields || [], entityIds, {
+      entityId: ev.entityId,
+      idField: eventEntity?.idField,
+      defsVersion: eventEntity?.defsVersion,
+      relationships: scan.relationships,
+    });
     return { tableId: ev.entityId, indexed: plan.indexed, detailsFields: plan.details, childCollections: [] as string[], appendOnly: true, purpose: 'controle', retentionDays: ev.retentionDays };
   });
   const human = `## Module\n${module}\n\n## Tables to derive (indexed columns vs details JSONB)\n${JSON.stringify(tables, null, 2)}\n\n## Append-only event tables\n${JSON.stringify(eventTables, null, 2)}\n\nReturn one TableDefinition per table: snake_case tableName/columns; tableName starts with the lowercased module id (${module.toLowerCase()}_) so two modules never share a physical table (do not prefix twice). Only indexed columns are real, the rest live in a details JSONB column (detailsColumn.enabled=true, childCollections listed). Column type follows indexed[].type from the l4: string/text/enum → text (never integer, even when the field is named priority/rank/order); uuid → uuid; date/datetime → timestamptz; integer → integer; number → numeric. For event tables echo appendOnly=true, purpose="controle" and retentionDays (omit it for permanent audit); index the owner FK and the ordering timestamp.`;

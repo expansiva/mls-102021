@@ -68,7 +68,13 @@ async function buildAdapterItem(entityId: string, scan: CbScan, module: string):
   const deleteTargets = new Set(scan.deleteTargetEntityIds);
   const aggregate = scan.aggregates.find(a => a.rootEntity === entityId);
   if (aggregate) {
-    const plan = planTableColumns(byId.get(aggregate.rootEntity)?.fields || [], entityIds);
+    const root = byId.get(aggregate.rootEntity);
+    const plan = planTableColumns(root?.fields || [], entityIds, {
+      entityId: aggregate.rootEntity,
+      idField: root?.idField,
+      defsVersion: root?.defsVersion,
+      relationships: scan.relationships,
+    });
     const portMethods = await portMethodsForEntity(module, aggregate.rootEntity, requiredMethodsForEntity(aggregate.rootEntity, deleteTargets), false);
     return {
       entityId: aggregate.rootEntity,
@@ -81,7 +87,13 @@ async function buildAdapterItem(entityId: string, scan: CbScan, module: string):
   }
   const event = scan.events.find(ev => ev.persisted && ev.entityId === entityId);
   if (event) {
-    const plan = planTableColumns(event.fields || [], entityIds);
+    const eventEntity = byId.get(event.entityId);
+    const plan = planTableColumns(event.fields || [], entityIds, {
+      entityId: event.entityId,
+      idField: eventEntity?.idField,
+      defsVersion: eventEntity?.defsVersion,
+      relationships: scan.relationships,
+    });
     const portMethods = await portMethodsForEntity(module, event.entityId, [], true);
     return { entityId: event.entityId, embeddedMembers: [] as string[], mdmRefs: [] as string[], columns: plan.indexed.map(c => c.fieldId), detailsFields: plan.details, appendOnlyEvent: true, portMethods };
   }

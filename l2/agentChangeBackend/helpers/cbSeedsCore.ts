@@ -5,7 +5,12 @@
 // and emits the runtime-discoverable TableSeedRows source.
 
 import type { L4RuleDefinition } from '/_102021_/l2/agentChangeBackend/helpers/cbRules.js';
+import { fkFieldIdsForEntity } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 export type SeedRuleDefinition = L4RuleDefinition;
+
+/** Engine identification default (`defs/ontology.ts` "Default: US"). Used until n06 exposes `ctx.organization.countryCode`. */
+export const MDM_SEED_COUNTRY_CODE = 'US';
+export const MDM_SEED_COUNTRY_CODE_ORIGIN = 'level1-subtype-default' as const;
 
 export const SEED_T0 = '2026-07-01T08:00:00.000Z';
 export const SEED_T1 = '2026-07-01T09:00:00.000Z';
@@ -42,6 +47,12 @@ export interface SeedEntityDefinition {
    * that is the set a seed has to cover. Absent for an entity with no workflow (nothing to cover).
    */
   operatedStates?: string[];
+  /** `storage.idField` from the l4. Required on v7; v6 may omit it (name fallback until regeneration). */
+  idField?: string;
+  /** Platform MDM subtype from l4 v7. Empty on v6 until the module is regenerated. */
+  mdmSubtype?: string;
+  /** 7 when the ontology file is v7; 6 for older modules kept until regeneration (2026-09-08). */
+  defsVersion?: number;
 }
 
 export interface SeedTableColumn {
@@ -142,6 +153,8 @@ export interface SeedRelationshipDefinition {
   fromEntity: string;
   toEntity: string;
   type: string;
+  fromFieldIds?: string[];
+  toFieldIds?: string[];
 }
 
 /** A deterministic batch of seed-plan targets. All references emitted by a target in a wave resolve
@@ -200,6 +213,8 @@ export interface SeedBuildInput {
   /** L4 relationship graph, so the planner models MDM relationships generically (no invented,
    * per-domain type names baked into this generator). */
   relationships?: SeedRelationshipDefinition[];
+  /** 7 when the module ontology is v7; 6 for older modules kept until regeneration (2026-09-08). */
+  defsVersion?: number;
   /** L4 actors. The generator exposes a resolvable platform-user identity pool per actor so FKs that
    * reference a platform user (assignees, actorSession-resolved fields) never fabricate a table. */
   actors?: SeedActorDefinition[];
@@ -1017,8 +1032,46 @@ function stableUuid(input: string): string {
   return `${parts.slice(0, 8)}-${parts.slice(8, 12)}-4${parts.slice(13, 16)}-8${parts.slice(17, 20)}-${parts.slice(20, 32)}`;
 }
 
-function entityIdField(entity: SeedEntityDefinition): string {
-  return entity.fields.find(field => field.fieldId.toLowerCase() === `${entity.entityId.toLowerCase()}id`)?.fieldId || `${entity.entityId.charAt(0).toLowerCase()}${entity.entityId.slice(1)}Id`;
+function seedDefsVersion(input: Pick<SeedBuildInput, 'defsVersion'> | undefined, entity?: Pick<SeedEntityDefinition, 'defsVersion'>): number {
+  return entity?.defsVersion ?? input?.defsVersion ?? 6;
+}
+
+function seedFkFieldIds(input: Pick<SeedBuildInput, 'relationships'>, entityId: string): Set<string> {
+  return fkFieldIdsForEntity(entityId, input.relationships ?? []);
+}
+
+function fieldIsForeignKey(input: SeedBuildInput, entityId: string, fieldName: string): boolean {
+  const camel = toCamel(fieldName);
+  if (seedDefsVersion(input) >= 7) {
+    const ids = seedFkFieldIds(input, entityId);
+    if (ids.has(fieldName) || ids.has(camel)) return true;
+    for (const id of ids) if (toCamel(id) === camel) return true;
+    return false;
+  }
+  // v6 modules until regeneration (2026-09-08): suffix *Id / *_id names a key.
+  return fieldAllowsSeedRef(fieldName, input.entities.map(entity => entity.entityId));
+}
+
+function valueMustBeSymbolicRef(
+  input: SeedBuildInput,
+  entityId: string,
+  fieldName: string,
+  value: unknown,
+  isPrimaryKey: boolean,
+  knownEntityIds: Iterable<string>,
+): boolean {
+  if (isPrimaryKey || value === undefined || value === null || isSeedReference(value as SeedValue)) return false;
+  if (seedDefsVersion(input) >= 7) return fieldIsForeignKey(input, entityId, fieldName);
+  // v6 modules until regeneration (2026-09-08).
+  return (fieldName.endsWith('_id') || fieldName.endsWith('Id')) && idFieldHasResolvableTarget(fieldName, knownEntityIds);
+}
+
+function entityIdField(entity: SeedEntityDefinition, input?: Pick<SeedBuildInput, 'defsVersion'>): string {
+  if (entity.idField) return entity.idField;
+  if (seedDefsVersion(input, entity) >= 7) return '';
+  // v6 modules until regeneration (2026-09-08): infer `<entity>Id` by name.
+  return entity.fields.find(field => field.fieldId.toLowerCase() === `${entity.entityId.toLowerCase()}id`)?.fieldId
+    || `${entity.entityId.charAt(0).toLowerCase()}${entity.entityId.slice(1)}Id`;
 }
 
 /** Named anchor for a seeded row (`petitionPublished`). Stable across runs for a given entity+key. */
@@ -1192,26 +1245,8 @@ export function buildSeedDefsData(
   };
 }
 
-/**
- * The 102034 `MdmSubtype` union is CLOSED (Person | Company | Product | Service | Location | Asset* |
- * Animal | BankAccount | Document | ContactChannel), so every module entity that lands in MDM has to be
- * mapped onto one of them. The heuristic is shared with the usecase generator (the write path passes the
- * same subtype `ctx.mdm.entity.create` expects) so a seeded row and a runtime-created row of the same
- * entity never disagree. Its limit is real and recorded in ajustes_ns4.md: an entity with no natural
- * subtype (a construction project) falls back to 'Product'.
- */
-export function mdmSubtypeFor(entityId: string): string {
-  const lower = entityId.toLowerCase();
-  if (lower.includes('table') || lower.includes('location') || lower.includes('room')) return 'Location';
-  if (lower.includes('customer') || lower.includes('person') || lower.includes('user')) return 'Person';
-  if (lower.includes('company') || lower.includes('supplier') || lower.includes('vendor')) return 'Company';
-  if (lower.includes('service')) return 'Service';
-  if (lower.includes('asset') || lower.includes('equipment')) return 'AssetEquipment';
-  return 'Product';
-}
-
-function countryCodeForLanguage(language: string): string {
-  return language.toLowerCase().startsWith('pt') ? 'BR' : 'US';
+function mdmSeedCountryCode(): { countryCode: string; origin: typeof MDM_SEED_COUNTRY_CODE_ORIGIN } {
+  return { countryCode: MDM_SEED_COUNTRY_CODE, origin: MDM_SEED_COUNTRY_CODE_ORIGIN };
 }
 
 function mapFields(fields: SeedFieldValue[], path: string, errors: string[]): Map<string, SeedValue> {
@@ -1294,8 +1329,9 @@ function validateReference(value: SeedValue, path: string, references: Set<strin
  */
 export function fieldAllowsSeedRef(fieldName: string, knownEntityIds: Iterable<string>): boolean {
   const camel = toCamel(fieldName);
-  // Suffix *Id / *_id names a key. Whether it MUST be a ref is idFieldHasResolvableTarget;
-  // whether it MAY be a ref is the suffix (weeklySchedule is neither).
+  // v6 modules until regeneration (2026-09-08): suffix *Id / *_id names a key.
+  // Whether it MUST be a ref is idFieldHasResolvableTarget; whether it MAY be a ref is the suffix
+  // (weeklySchedule is neither). v7 callers use fieldIsForeignKey (relationships[]).
   if (fieldName.endsWith('_id') || /Id$/u.test(camel)) return true;
   return idFieldHasResolvableTarget(fieldName, knownEntityIds);
 }
@@ -1307,12 +1343,17 @@ function validateSeedRefPlacement(
   rowRef: string,
   knownEntityIds: Iterable<string>,
   errors: string[],
+  input?: SeedBuildInput,
+  entityId?: string,
 ): void {
   if (!isSeedReference(value)) return;
   if (value.ref === rowRef) {
     errors.push(`${path}: self-reference '${value.ref}' is forbidden — a field cannot point at its own row`);
   }
-  if (!fieldAllowsSeedRef(fieldName, knownEntityIds)) {
+  const allowed = input && entityId
+    ? fieldIsForeignKey(input, entityId, fieldName)
+    : fieldAllowsSeedRef(fieldName, knownEntityIds);
+  if (!allowed) {
     errors.push(`${path}: { ref } is only valid on a foreign-key field (*Id / *_id); '${fieldName}' is not a key`);
   }
 }
@@ -1329,18 +1370,26 @@ function validateEnum(field: SeedFieldDefinition | undefined, value: SeedValue |
   }
 }
 
-function isImageOrUrlField(field: SeedFieldDefinition | undefined): boolean {
-  if (!field || /Id$/u.test(field.fieldId)) return false;
+function isImageOrUrlField(field: SeedFieldDefinition | undefined, input?: SeedBuildInput, entityId?: string): boolean {
+  if (!field) return false;
+  if (input && entityId ? fieldIsForeignKey(input, entityId, field.fieldId) : /Id$/u.test(field.fieldId)) return false;
   return /(?:image|photo|avatar|thumbnail|cover).*(?:url|uri)?$/iu.test(field.fieldId)
     || /(?:image|url|uri)/iu.test(field.type);
 }
 
-function validateAssetReference(value: SeedValue | undefined, field: SeedFieldDefinition | undefined, path: string, errors: string[]) {
+function validateAssetReference(
+  value: SeedValue | undefined,
+  field: SeedFieldDefinition | undefined,
+  path: string,
+  errors: string[],
+  input?: SeedBuildInput,
+  entityId?: string,
+) {
   if (!isSeedAssetRef(value)) return;
   if (!/^[A-Za-z][A-Za-z0-9_-]*\/[A-Za-z][A-Za-z0-9_-]*$/u.test(value.asset)) {
     errors.push(`${path}: asset must use EntityId/seedKey`);
   }
-  if (!isImageOrUrlField(field)) {
+  if (!isImageOrUrlField(field, input, entityId)) {
     errors.push(`${path}: seed asset references are allowed only in declared image or URL fields`);
   }
 }
@@ -1530,16 +1579,15 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         // A NOT NULL column must have a concrete value: neither missing (undefined) nor null.
         if (!column.nullable && (value === undefined || value === null)) errors.push(`${rowPath}.columns.${column.name}: required column missing`);
         validateReference(value as SeedValue, `${rowPath}.columns.${column.name}`, references, errors);
-        validateSeedRefPlacement(value as SeedValue, `${rowPath}.columns.${column.name}`, column.name, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
+        validateSeedRefPlacement(value as SeedValue, `${rowPath}.columns.${column.name}`, column.name, `local:${table.tableId}.${row.key}`, knownEntityIds, errors, input, table.tableId);
         validateTimestamp(timeWindow, toCamel(column.name), value, `${rowPath}.columns.${column.name}`, errors);
         const field = entityFields.get(toCamel(column.name));
         validateEnum(field, value, `${rowPath}.columns.${column.name}`, errors);
-        validateAssetReference(value, field, `${rowPath}.columns.${column.name}`, errors);
+        validateAssetReference(value, field, `${rowPath}.columns.${column.name}`, errors, input, table.tableId);
         // A nullable FK is legitimately null for an in-progress row (an open shift has no closer yet);
         // only a NON-null FK value must be a symbolic { ref }. null on a NOT NULL column is already
         // caught by the required check above.
-        if (column.name.endsWith('_id') && !definition.primaryKey.includes(column.name) && value !== undefined && value !== null
-            && !isSeedReference(value) && idFieldHasResolvableTarget(column.name, knownEntityIds)) {
+        if (valueMustBeSymbolicRef(input, table.tableId, column.name, value, definition.primaryKey.includes(column.name), knownEntityIds)) {
           errors.push(`${rowPath}.columns.${column.name}: foreign keys must use a symbolic { ref }`);
         }
       }
@@ -1550,14 +1598,13 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         const value = storedAsColumn ? columns.get(mappedColumn) : details.get(field.fieldId);
         if (field.required && !generatedPrimaryKey && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         validateReference(value as SeedValue, `${rowPath}.${field.fieldId}`, references, errors);
-        validateSeedRefPlacement(value as SeedValue, `${rowPath}.${field.fieldId}`, field.fieldId, `local:${table.tableId}.${row.key}`, knownEntityIds, errors);
+        validateSeedRefPlacement(value as SeedValue, `${rowPath}.${field.fieldId}`, field.fieldId, `local:${table.tableId}.${row.key}`, knownEntityIds, errors, input, table.tableId);
         validateTimestamp(timeWindow, field.fieldId, value, `${rowPath}.${field.fieldId}`, errors);
         validateEnum(field, value, `${rowPath}.${field.fieldId}`, errors);
-        validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors);
+        validateAssetReference(value, field, `${rowPath}.${field.fieldId}`, errors, input, table.tableId);
         // Optional entity references may be null (a not-yet-linked relation on an in-progress row);
         // only a NON-null reference must be symbolic. A required field that is null is already caught above.
-        if (field.fieldId.endsWith('Id') && !generatedPrimaryKey && value !== undefined && value !== null
-            && !isSeedReference(value) && idFieldHasResolvableTarget(field.fieldId, knownEntityIds)) {
+        if (valueMustBeSymbolicRef(input, table.tableId, field.fieldId, value, generatedPrimaryKey, knownEntityIds)) {
           errors.push(`${rowPath}.${field.fieldId}: entity references must use a symbolic { ref }`);
         }
       }
@@ -1612,20 +1659,19 @@ export function validateSeedPlan(input: SeedBuildInput, knownReferences: Iterabl
         // `name` is the MDM index label, not necessarily an entity field (Customer has fullName).
         if (!field && name !== 'name') errors.push(`${rowPath}.fields.${name}: unknown MDM entity field`);
         validateReference(value, `${rowPath}.fields.${name}`, references, errors);
-        validateSeedRefPlacement(value, `${rowPath}.fields.${name}`, name, `mdm:${mdmEntity.entityId}.${row.key}`, knownEntityIds, errors);
+        validateSeedRefPlacement(value, `${rowPath}.fields.${name}`, name, `mdm:${mdmEntity.entityId}.${row.key}`, knownEntityIds, errors, input, mdmEntity.entityId);
         validateTimestamp(timeWindow, name, value, `${rowPath}.fields.${name}`, errors);
         if (field) {
           validateEnum(field, value, `${rowPath}.fields.${name}`, errors);
-          validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors);
+          validateAssetReference(value, field, `${rowPath}.fields.${name}`, errors, input, mdmEntity.entityId);
         }
       }
       for (const field of definition.fields) {
-        const automaticId = field.fieldId === entityIdField(definition);
+        const automaticId = field.fieldId === entityIdField(definition, input);
         const value = fields.get(field.fieldId);
         if (field.required && !automaticId && (value === undefined || value === null)) errors.push(`${rowPath}: required field '${field.fieldId}' missing`);
         // Optional MDM references may be null; only a NON-null reference must be symbolic.
-        if (field.fieldId.endsWith('Id') && !automaticId && value !== undefined && value !== null
-            && !isSeedReference(value) && idFieldHasResolvableTarget(field.fieldId, knownEntityIds)) {
+        if (valueMustBeSymbolicRef(input, mdmEntity.entityId, field.fieldId, value, automaticId, knownEntityIds)) {
           errors.push(`${rowPath}.${field.fieldId}: MDM references must use a symbolic { ref }`);
         }
       }
@@ -1998,26 +2044,27 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
   for (const entity of input.entities.filter(entity => isMdmSeedTarget(entity, input))) {
     const planned = plannedEntities.get(entity.entityId);
     if (!planned) continue;
-    const idField = entityIdField(entity);
+    const idField = entityIdField(entity, input);
     for (const row of planned.rows) {
       const mdmId = ids.get(`mdm:${entity.entityId}.${row.key}`)!;
       const fields = resolveFieldsForEntity(row.fields, ids, entity);
       fields[idField] = mdmId;
       const name = mdmIndexName(fields, row.key);
       fields.name = name;
-      const subtype = mdmSubtypeFor(entity.entityId);
+      const subtype = entity.mdmSubtype || '';
+      const { countryCode } = mdmSeedCountryCode();
       // mdmFacade.listByType matches record.tags.includes('<moduleId>.<Type>') — the canonical tag
       // MUST be present as a single string or every seeded entity is invisible to the module reads.
       const tags = [`${input.moduleName}.${entity.entityId}`, input.moduleName, entity.entityId];
       indexRows.push({
         mdmId, subtype, name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags,
+        countryCode, tags,
         searchVector: `${name} ${entity.entityId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
         dynamoPk: mdmId, createdAt: fields.createdAt, updatedAt: fields.updatedAt,
       });
       const details: Record<string, unknown> = {
         mdmId, subtype, name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags,
+        countryCode, tags,
         aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
         createdAt: fields.createdAt, updatedAt: fields.updatedAt, [input.moduleName]: fields,
       };
@@ -2054,7 +2101,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
     const actorTags = [`${input.moduleName}.Person`, input.moduleName, 'actor', identity.actorId];
     indexRows.push({
       mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
-      countryCode: countryCodeForLanguage(input.language), tags: actorTags,
+      countryCode: mdmSeedCountryCode().countryCode, tags: actorTags,
       searchVector: `${identity.name} ${identity.actorId} ${input.moduleName}`.toLowerCase(), mergedInto: null,
       dynamoPk: identity.mdmId, createdAt: timeWindow.start, updatedAt: timeWindow.start,
     });
@@ -2062,7 +2109,7 @@ function buildMdmRows(input: SeedBuildInput, ids: Map<string, string>): Array<{ 
       mdmId: identity.mdmId, version: 1,
       details: {
         mdmId: identity.mdmId, subtype: 'Person', name: identity.name, status: 'Active', docType: null, docId: null,
-        countryCode: countryCodeForLanguage(input.language), tags: actorTags,
+        countryCode: mdmSeedCountryCode().countryCode, tags: actorTags,
         aliases: [], contacts: [], relationshipRefs: {}, addresses: [], mergedInto: null,
         createdAt: timeWindow.start, updatedAt: timeWindow.start, actorId: identity.actorId,
       },
@@ -2097,9 +2144,9 @@ function plannedStringForSpare(value: unknown): string | undefined {
   return undefined;
 }
 
-function isSpareSeedField(field: SeedFieldDefinition, idField: string): boolean {
+function isSpareSeedField(field: SeedFieldDefinition, idField: string, input: SeedBuildInput, entityId: string): boolean {
   if (field.fieldId === idField || field.fieldId === 'id') return false;
-  if (/Id$/u.test(field.fieldId)) return false;
+  if (fieldIsForeignKey(input, entityId, field.fieldId)) return false;
   return seedFieldIsBareString(field);
 }
 
@@ -2121,7 +2168,7 @@ function buildLocalEntityConsts(
     const entry = imports.get(moduleRef) ?? { typeName, validators: new Set<string>(), typeUsed: false };
     entry.typeName = typeName;
     entry.typeUsed = true;
-    const idField = entityIdField(entity);
+    const idField = entityIdField(entity, input);
     const rowConsts: string[] = [];
     for (const row of table.rows) {
       let name = seedAnchorName(entity.entityId, row.key);
@@ -2141,7 +2188,7 @@ function buildLocalEntityConsts(
           else if (!field.required) obj[field.fieldId] = null;
         }
         if (seedStringPassingApplies(field)) entry.validators.add(field.validatorExport);
-        if (!isSpareSeedField(field, idField)) continue;
+        if (!isSpareSeedField(field, idField, input, entity.entityId)) continue;
         const planned = plannedStringForSpare(obj[field.fieldId]);
         if (!planned) continue;
         const spareKey = `${entity.entityId}.${field.fieldId}`;

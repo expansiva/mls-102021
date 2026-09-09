@@ -609,6 +609,32 @@ test('be5: plan without MDM rows for a ctx.mdm tag is rejected; mirrored plan em
   assert.match(built.content ?? '', /export const serviceSeeds/);
 });
 
+test('MDM seed countryCode is the level-1 default, never derived from language', () => {
+  const input = validInput();
+  input.language = 'pt-BR';
+  const built = buildSeedSource(input);
+  assert.deepEqual(built.errors, [], built.errors.join('\n'));
+  assert.match(built.content ?? '', /"countryCode": "US"/);
+  assert.doesNotMatch(built.content ?? '', /"countryCode": "BR"/);
+});
+
+test('v7: a {ref} is valid only on a field declared in relationships[], not on a name suffix', () => {
+  const input = validInput();
+  input.defsVersion = 7;
+  input.entities = input.entities.map(entity => ({ ...entity, defsVersion: 7, idField: `${entity.entityId.charAt(0).toLowerCase()}${entity.entityId.slice(1)}Id` }));
+  input.relationships = [
+    { fromEntity: 'Order', toEntity: 'Shift', type: 'manyToOne', fromFieldIds: ['shiftId'] },
+    { fromEntity: 'MenuItem', toEntity: 'MenuCategory', type: 'manyToOne', fromFieldIds: ['menuCategoryId'] },
+  ];
+  assert.deepEqual(validateSeedPlan(input), [], validateSeedPlan(input).join('\n'));
+
+  const item = input.plan.mdmEntities.find(entity => entity.entityId === 'MenuItem')!;
+  item.rows[0].fields.push({ name: 'skuCode', value: { ref: 'mdm:StockItem.beans' } });
+  input.entities.find(entity => entity.entityId === 'MenuItem')!.fields.push({ fieldId: 'skuCode', type: 'string', required: false, enumValues: [] });
+  const errors = validateSeedPlan(input);
+  assert.ok(errors.some(error => /skuCode/.test(error) && /foreign-key field/.test(error)), errors.join('\n'));
+});
+
 test('R5-2: prefixed mdm entityId (trace 150) strips to the bare name and validates', () => {
   const raw = {
     summary: 'MDM hours',

@@ -340,6 +340,46 @@ void test('unknown port that is a derived projection teaches how to compose it',
   assert.ok(!generic.some((issue: string) => /derived projection/.test(issue)), generic.join('\n'));
 });
 
+void test('mdmWrites transcribes l4 v7 role, subtype, idField and base/namespace fields', () => {
+  const cliente = {
+    entityId: 'Cliente',
+    title: 'Client',
+    kind: 'mdm' as const,
+    ownership: 'moduleOwned',
+    moduleName: 'ordenServicio',
+    mdmType: 'ordenServicio.Cliente',
+    role: 'ordenServicio.Cliente',
+    mdmSubtype: 'Person',
+    idField: 'clienteId',
+    defsVersion: 7,
+    fields: [
+      { fieldId: 'clienteId', type: 'uuid', required: true },
+      { fieldId: 'loyaltyTier', type: 'string', required: false },
+    ],
+  };
+  const o = owner({
+    id: 'createCliente',
+    entity: 'Cliente',
+    reads: ['Cliente'],
+    writes: ['Cliente'],
+  });
+  o.inputs = [
+    { inputId: 'name', fieldRef: 'Person.name', type: 'string', required: true, source: 'userInput', description: '' },
+    { inputId: 'loyaltyTier', fieldRef: 'Cliente.loyaltyTier', type: 'string', required: false, source: 'userInput', description: '' },
+  ];
+  const scan = scanOf([cliente], [o], []);
+  const item = buildOwnerItem(o as any, deriveMaps(scan), scan.lifecycles);
+  assert.ok(Array.isArray((item as { mdmWrites?: unknown[] }).mdmWrites));
+  assert.deepEqual((item as { mdmWrites: object[] }).mdmWrites[0], {
+    entityId: 'Cliente',
+    mdmType: 'ordenServicio.Cliente',
+    subtype: 'Person',
+    idField: 'clienteId',
+    baseFields: ['name'],
+    namespaceFields: ['loyaltyTier'],
+  });
+});
+
 void test('unknown port that is master data teaches ctx.mdm', () => {
   const person = mdmEntity('Person');
   const petition = coreEntity('Petition');
