@@ -129,6 +129,10 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   When `data.lifecycle` is present, that matrix is the cycle — do not add a local allow-list that
   rejects a declared from→to pair, and do not treat a state as terminal if `allowed` still lists
   outgoing edges. The domain `*_STATUS_TRANSITIONS` map is attached from the same matrix.
+  When `data.timeStates` is present, compute those states on the read path (get/list/projection)
+  from the rule description named by `ruleRef`. Do not write them. Comment
+  `// time status computed on read (2026-09-09): <state> via <ruleRef>`. List/panel evaluate the
+  rule; never trust a stored field for a time state.
 - Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. When
   `data.writes` lists N entities, that single transaction covers all N local tables **and** every
   `mdmWrites` entry — never one transaction per entity. Do not use

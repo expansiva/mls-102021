@@ -27,9 +27,9 @@ import {
   todoOwnerType, todoStatusField, todoStatusDivergences,
   pickTodoBackendReadBack, selectTodoBackendFileForStatusWrite,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
-  readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity,
+  readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity, readLifecycleStates,
   pinUsecaseScope,
-  type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
+  type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm, type CbLifecycleStateDecl,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import {
   accessScanWarnings, customScopeRecords, mergeModuleAccess, readAccessBindings, readAccessMatrixV4,
@@ -250,6 +250,8 @@ export interface CbEntity {
     filter: string;
     aggregate: Array<{ fieldId: string; op: string; sourceField?: string }>;
   };
+  /** Ontology lifecycleStates. Absent on v6 files and entities without a cycle. */
+  lifecycleStates?: CbLifecycleStateDecl[];
 }
 
 export interface CbRelationship {
@@ -427,6 +429,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
         }
         const storageNotes = isRecord(parsed.storage) ? readString(parsed.storage.notes) : '';
         const derivation = readDerivation(parsed.derivation);
+        const lifecycleStates = readLifecycleStates(parsed.lifecycleStates);
         upsertEntity(entities, {
           entityId,
           title: readString(parsed.title) || entityId,
@@ -446,6 +449,7 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
           ...(storageNotes ? { storageNotes } : {}),
           ...(readStringArray(parsed.useRules).length ? { useRules: readStringArray(parsed.useRules) } : {}),
           ...(derivation ? { derivation } : {}),
+          ...(lifecycleStates.length ? { lifecycleStates } : {}),
         });
       }
     }

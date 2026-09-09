@@ -168,6 +168,14 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
   const fieldRefs = [...new Set([...rawRefs, ...derivationSources])];
   const portSeed = [...new Set([...portRefs, ...derivationSources])];
   const lifecycle = lifecycleForEntity(lifecycles, o.entity) || lifecycleForEntity(lifecycles, childToRoot.get(o.entity) || '');
+  const readKinds = new Set(['query', 'view', 'list', 'get', 'getById', 'lookup']);
+  const isRead = readKinds.has(o.opKind) || o.accessPattern?.kind === 'list' || o.accessPattern?.kind === 'getById';
+  const timeEntities = isRead
+    ? [...new Set([o.entity, ...o.reads].filter(Boolean))].map(id => byId.get(id)).filter(Boolean)
+    : [];
+  const timeStates = timeEntities.flatMap(entity => (entity?.lifecycleStates || [])
+    .filter(state => state.reachedBy === 'time')
+    .map(state => ({ entityId: entity!.entityId, state: state.state, ruleRef: state.ruleRef || '' })));
   return {
     usecaseId: o.id,
     ownerKind: o.kind,
@@ -206,6 +214,8 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     // workflow sees the same prompt as before. Confirmed needed: this worker does not receive domain
     // invariants, and it is the code that throws "cannot transition from pending to completed".
     ...(lifecycle ? { lifecycle } : {}),
+    // Time states are computed on every get/list/projection from the named rule. Absent when none.
+    ...(timeStates.length ? { timeStates } : {}),
     // Person-scope predicate from access-bindings. Absent when the operation is organization/public
     // or the module has no V4. The helper is template-emitted; the model must not re-derive it.
     ...(o.scope && (o.scope.helperName || o.scope.mode === 'custom') ? {

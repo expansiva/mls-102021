@@ -46,6 +46,61 @@ void test('gen-usecase owner item carries the given scope predicate when the l4 
   assert.match(prompt, /scope: custom \(prose\)/);
 });
 
+void test('gen-usecase owner item carries timeStates on a read path and omits them on a write', () => {
+  const tuition = {
+    ...coreEntity('Tuition'),
+    lifecycleStates: [
+      { state: 'open', reachedBy: 'actor' as const },
+      { state: 'overdue', reachedBy: 'time' as const, ruleRef: 'overdueWhenPastDue' },
+    ],
+  };
+  const list = owner({ id: 'listTuition', entity: 'Tuition', reads: ['Tuition'] });
+  const listed = buildOwnerItem(list as any, deriveMaps(scanOf([tuition], [list], [aggregate('Tuition')])), []);
+  assert.ok(Array.isArray((listed as any).timeStates));
+  assert.deepEqual((listed as any).timeStates, [
+    { entityId: 'Tuition', state: 'overdue', ruleRef: 'overdueWhenPastDue' },
+  ]);
+  const create = { ...owner({ id: 'createTuition', entity: 'Tuition', reads: ['Tuition'] }), opKind: 'create' };
+  const created = buildOwnerItem(create as any, deriveMaps(scanOf([tuition], [create], [aggregate('Tuition')])), []);
+  assert.equal(Object.prototype.hasOwnProperty.call(created, 'timeStates'), false);
+});
+
+void test('gen-usecase prompt and skill instruct time status computed on read', () => {
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'applicationUsecase.md'), 'utf8');
+  const worker = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
+  assert.match(prompt, /timeStates/);
+  assert.match(prompt, /time status computed on read \(2026-09-09\)/);
+  assert.match(skill, /data\.timeStates/);
+  assert.match(worker, /timeRuleIds/);
+});
+
+void test('n13 list-overdue fixture computes status on read without persisting it', () => {
+  const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'fixtures', 'n13', 'listOverdue.ts'), 'utf8');
+  assert.match(src, /time status computed on read \(2026-09-09\)/);
+  assert.doesNotMatch(src, /\.save\(/);
+});
+
+void test('n13 touched gen-usecase files stay English in comments and identifiers', () => {
+  const files = [
+    path.join(HERE, 'usecaseOwnerItem.ts'),
+    path.join(HERE, 'prompt.md'),
+    path.join(HERE, 'agentCbUsecase.ts'),
+    path.join(HERE, '..', '..', 'helpers', 'cbDefsSource.ts'),
+    path.join(HERE, '..', '..', 'helpers', 'fixtures', 'n13', 'listOverdue.ts'),
+  ];
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    assert.doesNotMatch(source, /portuguese\s*\?/, file);
+    for (const line of source.split('\n')) {
+      const trimmed = line.trim();
+      const isComment = trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('<!--');
+      if (!isComment) continue;
+      assert.doesNotMatch(line, /[À-ÿ]/, `${file}: ${trimmed}`);
+    }
+  }
+});
+
 void test('gen-usecase owner item carries the declared lifecycle when the module has one', () => {
   const src = readFileSync(path.join(HERE, 'usecaseOwnerItem.ts'), 'utf8');
   assert.match(src, /lifecycleForEntity\(lifecycles, o\.entity\)/);

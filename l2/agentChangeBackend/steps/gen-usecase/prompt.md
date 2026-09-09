@@ -23,6 +23,11 @@ Do NOT add a guard that rejects a from→to pair `allowed` lists. Call the domai
 (the map is attached from this matrix); do not invent a stricter local allow-list or treat a state as
 terminal when it still has outgoing edges. Without `lifecycle`, behaviour is unchanged.
 
+When the item includes `timeStates`, those lifecycle states are computed on every read (get/list/projection)
+from the named rule's description. Do not persist them by default. Put a dated comment
+`// time status computed on read (2026-09-09): <state> via <ruleRef>` on the assignment. List and panel
+evaluate the rule; never trust a stored status field for a time state.
+
 Use the L4 v2 contract directly:
 - `outputShape` (when present in the item) is the CANONICAL output structure declared by l4. The
   function's `output[]` MUST list its TOP-LEVEL fields with the same names and types — an array field is

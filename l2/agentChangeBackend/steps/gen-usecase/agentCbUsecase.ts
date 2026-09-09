@@ -158,7 +158,10 @@ async function worker(agent: IAgentMeta, context: mls.msg.ExecutionContext, pare
   }
   const item = buildOwnerItem(owner, deriveMaps(scan), scan.lifecycles);
   let human = `## Owner -> usecase (entity fields included so you can declare explicit input/output)\n${JSON.stringify(item, null, 2)}\n\nReturn ONE usecase with functions[] — each function has explicit input[] and output[] FIELDS. accessPattern decides list/get/lookup/commandInput. inputs declares the public/request inputs. contextResolution declares values resolved from runtime context/defaults/previous navigation; do not turn systemDefault/currentWorkspace/actorSession/businessContext resolutions into required user input. A usecase MAY expose several functions with different IO.`;
-  human += appliedRulesPromptSection(await readRuleDefinitions(scan.project), owner.rulesApplied);
+  const timeRuleIds = Array.isArray((item as { timeStates?: Array<{ ruleRef?: string }> }).timeStates)
+    ? (item as { timeStates: Array<{ ruleRef?: string }> }).timeStates.map(state => state.ruleRef || '').filter(Boolean)
+    : [];
+  human += appliedRulesPromptSection(await readRuleDefinitions(scan.project), [...owner.rulesApplied, ...timeRuleIds]);
   // REPAIR: when the judge (or a previous failure) left findings for this owner, feed them back so the
   // model FIXES the exact defects instead of regenerating blindly (repair loop, cbRepair.ts).
   const repair = await getComponentRepair(`usecase-defs:${ownerId}`);

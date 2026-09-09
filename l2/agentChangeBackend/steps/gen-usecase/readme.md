@@ -19,6 +19,9 @@ Worker NUNCA retorna 'failed' (falha completa-com-trace + repair). Dispatcher ad
 When `writes` lists N entities, the generated usecase uses one `ctx.data.runInTransaction` for
 all N local tables and every `mdmWrites` entry.
 
+When the entity declares `reachedBy: time` states, get/list/projection compute that status from
+the named rule on every read and do not persist it.
+
 ## Prompt
 
 `prompt.md` (marcador `<!-- modelType -->`; placeholder `{{toolName}}` resolvido em runtime via `cbShared.readCbPrompt`).

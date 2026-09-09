@@ -99,6 +99,35 @@ export function ontologyDefsVersion(parsed: Record<string, unknown>): number {
   return 6;
 }
 
+export type CbLifecycleReachedBy = 'actor' | 'command' | 'time';
+export interface CbLifecycleStateDecl {
+  state: string;
+  reachedBy: CbLifecycleReachedBy;
+  ruleRef?: string;
+}
+
+/** Bare string = actor. Time states are computed on read and never persisted by default. */
+export function readLifecycleStates(value: unknown): CbLifecycleStateDecl[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: CbLifecycleStateDecl[] = [];
+  for (const item of value) {
+    let state = '';
+    let reachedBy: CbLifecycleReachedBy = 'actor';
+    let ruleRef = '';
+    if (typeof item === 'string') state = item.trim();
+    else if (isPlainRecord(item)) {
+      state = readTrimmed(item.state);
+      if (item.reachedBy === 'command' || item.reachedBy === 'time') reachedBy = item.reachedBy;
+      ruleRef = readTrimmed(item.ruleRef);
+    }
+    if (!state || seen.has(state)) continue;
+    seen.add(state);
+    out.push({ state, reachedBy, ...(ruleRef ? { ruleRef } : {}) });
+  }
+  return out;
+}
+
 export interface CbOntologyEntityRead {
   storage: CbEntityStorage;
   mdmSubtype: string;

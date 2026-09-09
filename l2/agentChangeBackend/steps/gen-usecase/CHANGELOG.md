@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-09 — time states computed on read
+
+Owner item carries `timeStates` on get/list/projection. The skill and `prompt.md` instruct the
+model to evaluate the named rule on every read, not persist the status, and leave a dated comment
+`// time status computed on read (2026-09-09): <state> via <ruleRef>`.
+
 ## 2026-09-09 — one transaction for N writes
 
 When the owner `writes` lists N entities, the skill and `prompt.md` instruct a single
