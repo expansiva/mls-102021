@@ -441,3 +441,29 @@ void test('prompt.md teaches derivedRefs next to mdmRefs and keeps ports non-emp
   assert.match(skill, /When `derivation` is absent/);
 });
 
+void test('writes with N entities stay on the owner item and the skill asks for one transaction', () => {
+  const tab = coreEntity('Tab');
+  const tabClose = coreEntity('TabClose');
+  const table = coreEntity('Table');
+  const o = owner({
+    id: 'closeTab',
+    entity: 'Tab',
+    reads: ['Tab', 'TabClose', 'Table'],
+    writes: ['Tab', 'TabClose', 'Table'],
+  });
+  const scan = scanOf([tab, tabClose, table], [o], [aggregate('Tab'), aggregate('TabClose'), aggregate('Table')]);
+  const item = buildOwnerItem(o as any, deriveMaps(scan), scan.lifecycles);
+  assert.deepEqual(item.writes, ['Tab', 'TabClose', 'Table']);
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /writes` lists N entities/);
+  assert.match(prompt, /never one transaction per entity/);
+  const skill = readFileSync(path.join(HERE, '..', '..', 'skills', 'applicationUsecase.md'), 'utf8');
+  assert.match(skill, /data\.writes` lists N entities/);
+  const fixture = readFileSync(path.join(HERE, '..', '..', 'helpers', 'fixtures', 'n10', 'closeTab.ts'), 'utf8');
+  assert.match(fixture, /await ctx\.data\.runInTransaction/);
+  assert.match(fixture, /tabs\.save/);
+  assert.match(fixture, /tabCloses\.save/);
+  assert.match(fixture, /tables\.save/);
+  assert.equal((fixture.match(/await ctx\.data\.runInTransaction/g) || []).length, 1);
+});
+

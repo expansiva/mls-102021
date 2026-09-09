@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-09 — one transaction for N writes
+
+When the owner `writes` lists N entities, the skill and `prompt.md` instruct a single
+`ctx.data.runInTransaction` covering every local table and every `mdmWrites` entry.
+Fixture: `helpers/fixtures/n10/closeTab.ts`.
+
 ## 2026-09-09 — person-scope predicate is given, not derived
 
 Owner item carries `scopeFilter` from V4 + access-bindings. `own`/`assigned`/`related` point at a

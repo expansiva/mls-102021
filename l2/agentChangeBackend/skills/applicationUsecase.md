@@ -129,7 +129,9 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   When `data.lifecycle` is present, that matrix is the cycle — do not add a local allow-list that
   rejects a declared from→to pair, and do not treat a state as terminal if `allowed` still lists
   outgoing edges. The domain `*_STATUS_TRANSITIONS` map is attached from the same matrix.
-- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. Do not use
+- Multi-aggregate writes go inside one `ctx.data.runInTransaction(async (tx) => { ... })`. When
+  `data.writes` lists N entities, that single transaction covers all N local tables **and** every
+  `mdmWrites` entry — never one transaction per entity. Do not use
   raw MDM primitives from `ctx.data` or `tx`; use `ctx.mdm` for MDM so document, index and
   `relationshipRefs` stay consistent.
 - Ids via `ctx.idGenerator.newId()`, timestamps via `ctx.clock.nowIso()`.

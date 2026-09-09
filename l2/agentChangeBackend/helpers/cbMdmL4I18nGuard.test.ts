@@ -16,6 +16,8 @@ const files = [
   fileURLToPath(new URL('./fixtures/n09/ce01SessionScope.ts', import.meta.url)),
   fileURLToPath(new URL('./fixtures/n09/ce05SessionScope.ts', import.meta.url)),
   fileURLToPath(new URL('./fixtures/n09/ce09SessionScope.ts', import.meta.url)),
+  fileURLToPath(new URL('./fixtures/n10/closeTab.ts', import.meta.url)),
+  fileURLToPath(new URL('../skills/applicationUsecase.md', import.meta.url)),
 ];
 
 test('n05 touched files stay English in comments and identifiers', () => {

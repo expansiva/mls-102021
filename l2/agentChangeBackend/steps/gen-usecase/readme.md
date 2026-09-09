@@ -16,6 +16,9 @@ l1/{module}/layer_2_application/usecases/{usecase}.defs.ts. Junta em cb-judge.
 
 Worker NUNCA retorna 'failed' (falha completa-com-trace + repair). Dispatcher adiciona o join antes de completar.
 
+When `writes` lists N entities, the generated usecase uses one `ctx.data.runInTransaction` for
+all N local tables and every `mdmWrites` entry.
+
 ## Prompt
 
 `prompt.md` (marcador `<!-- modelType -->`; placeholder `{{toolName}}` resolvido em runtime via `cbShared.readCbPrompt`).
