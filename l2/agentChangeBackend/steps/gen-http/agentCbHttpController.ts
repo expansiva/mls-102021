@@ -15,6 +15,7 @@ import {
   ALL_STATUSES, type CbScan,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
 import { saveGeneratedTs } from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeIo.js';
+import { emitProfileAuthoritiesTs, emitSessionScopeTs, type CbEntityAccessCatalog } from '/_102021_/l2/agentChangeBackend/helpers/cbAccess.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cbContracts.js';
 import { bffCallsWithMaterializedUsecase } from '/_102021_/l2/agentChangeBackend/helpers/cbComponentValidators.js';
@@ -157,6 +158,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       if (!v2Modules.has(module)) continue;
       savedV2 += await emitWorkspaceControllerDefs(scan, module, usecaseFns, droppedRoutes);   // .defs.ts (always)
     }
+    if (!defsOnly) {
+      for (const module of scan.moduleNames) {
+        await emitAccessHelpers(scan, module);
+      }
+    }
 
     // ── l4 v1 fallback: one controller .defs.ts per pending OPERATION (materialized by cb-materialize). ──
     const pendingOwners = scan.owners.filter(o => o.todoStatus === 'toCreate' || o.todoStatus === 'inProgress');
@@ -188,6 +194,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         inputContract?: unknown[];
         contextResolution?: unknown[];
         accessPattern?: unknown;
+        authorityRefs?: string[];
+        public?: boolean;
       }[] = [];
       const routes: { key: string; handlerName: string }[] = [];
       if (fns.length > 1) {
@@ -203,6 +211,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             inputContract: owner.inputs,
             contextResolution: owner.contextResolution,
             accessPattern: owner.accessPattern,
+            authorityRefs: owner.authorityRefs ?? [],
+            public: owner.publicRoute === true,
           });
           routes.push({ key: `${module}.${routePageId}.${fn.functionName}`, handlerName });
         }
@@ -220,6 +230,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
             inputContract: owner.inputs,
             contextResolution: owner.contextResolution,
             accessPattern: owner.accessPattern,
+            authorityRefs: owner.authorityRefs ?? [],
+            public: owner.publicRoute === true,
           });
           routes.push({ key: canonicalKey, handlerName: dispatcherName });
         }
@@ -236,6 +248,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
           inputContract: owner.inputs,
           contextResolution: owner.contextResolution,
           accessPattern: owner.accessPattern,
+          authorityRefs: owner.authorityRefs ?? [],
+          public: owner.publicRoute === true,
         });
         routes.push({ key: routeKey, handlerName });
       }
@@ -349,6 +363,10 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
       // even in defs-only). Context only — the controller does NOT import it (there is no l1 contract; it
       // uses the usecase types + projects structurally). The wire type of record stays in l4.
       dependsFiles.add(`_${project}_/l4/${module}/contracts/${ws.workspaceId}--${bff.bffId}.defs.ts`);
+      if (scan.access) dependsFiles.add(`_${project}_/l1/${module}/layer_1_external/auth/profileAuthorities.ts`);
+      const opAccess = bff.uses.map(u => opById.get(u.operationId)).filter(Boolean);
+      const authorityRefs = [...new Set(opAccess.flatMap(op => op?.authorityRefs ?? []))];
+      const publicRoute = opAccess.length > 0 && opAccess.every(op => op?.publicRoute === true);
       handlers.push({
         handlerName,
         command: bff.bffId,
@@ -361,6 +379,8 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
         inputContract,
         projection: { kind: proj.kind, arrayFieldName: proj.arrayFieldName, itemFields: proj.itemFields, topFields: proj.topFields },
         optionalUses: bff.uses.filter(u => u.optional).map(u => u.operationId),
+        authorityRefs,
+        public: publicRoute,
       });
       routes.push({ key: bff.route, handlerName });
     }
@@ -380,4 +400,26 @@ async function emitWorkspaceControllerDefs(scan: CbScan, module: string, usecase
     n++;
   }
   return n;
+}
+
+async function emitAccessHelpers(scan: CbScan, module: string): Promise<void> {
+  if (!scan.access) return;
+  const project = mls.actualProject || 0;
+  const owners = scan.owners.filter(owner => owner.kind === 'operation' && owner.moduleName === module).map(owner => ({ id: owner.id, entity: owner.entity }));
+  const entities: CbEntityAccessCatalog[] = scan.entities.filter(entity => entity.moduleName === module).map(entity => ({
+    entityId: entity.entityId,
+    kind: entity.kind,
+    storageTarget: entity.storageTarget || '',
+    mdmType: entity.mdmType || '',
+    role: entity.role || '',
+    idField: entity.idField || '',
+  }));
+  await saveGeneratedTs(
+    project, 1, `${module}/layer_1_external/auth`, 'profileAuthorities',
+    emitProfileAuthoritiesTs(module, scan.access, owners),
+  );
+  await saveGeneratedTs(
+    project, 1, `${module}/layer_2_application/scope`, 'sessionScope',
+    emitSessionScopeTs(module, project, scan.access, owners, entities),
+  );
 }

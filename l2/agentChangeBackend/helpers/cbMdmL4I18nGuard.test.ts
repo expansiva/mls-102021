@@ -7,11 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 const files = [
   fileURLToPath(new URL('./cbDefsSource.ts', import.meta.url)),
+  fileURLToPath(new URL('./cbAccess.ts', import.meta.url)),
   fileURLToPath(new URL('./cbMdmL4.test.ts', import.meta.url)),
   fileURLToPath(new URL('./cbInferenceRatchet.test.ts', import.meta.url)),
   fileURLToPath(new URL('../steps/gen-usecase/usecaseOwnerItem.ts', import.meta.url)),
   fileURLToPath(new URL('../steps/gen-usecase/prompt.md', import.meta.url)),
   fileURLToPath(new URL('../steps/scan/agentCbValidateL4Readiness.ts', import.meta.url)),
+  fileURLToPath(new URL('./fixtures/n09/ce01SessionScope.ts', import.meta.url)),
+  fileURLToPath(new URL('./fixtures/n09/ce05SessionScope.ts', import.meta.url)),
+  fileURLToPath(new URL('./fixtures/n09/ce09SessionScope.ts', import.meta.url)),
 ];
 
 test('n05 touched files stay English in comments and identifiers', () => {

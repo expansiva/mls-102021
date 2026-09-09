@@ -112,6 +112,15 @@ differences:
      with the workspace scopes `data.allowedScopes`. It is permissive (the actor→login-role map is
      pending): absent session scope → allow + `ctx.log.info('bff.actor.no-scope', …)`; a declared
      `ctx.sessionContext.actorScope` with zero intersection → `return fail(new AppError('FORBIDDEN_ACTOR', …, 403))`.
+     Then, unless `handler.public === true` (anonymous / grant `public`), also call
+     `enforceAuthorities(ctx, handler.authorityRefs, '<route>')` (define it ONCE per file). Import
+     `authorityRefsForSession` from `layer_1_external/auth/profileAuthorities.ts`. Map
+     `ctx.sessionContext.actorScope` (`<moduleId>:<actorId>` claims) through that table onto
+     `authorityRef`s; require a non-empty intersection with `handler.authorityRefs`. Empty session scope
+     stays permissive (platform pending — same as `enforceActors`); a session that has claims but none
+     of the required authorityRefs → `return fail(new AppError('FORBIDDEN_AUTHORITY', …, 403))`. A
+     handler with `public: true` skips both checks (anonymous authority). Do not treat missing
+     `authorityRefs` as allow-all when the defs listed them.
   2. **Input** — validate the required boundary fields from `handler.inputContract` (same source rule:
      only `userInput`/`selectedEntity`/`routeParam`), then build the usecase input(s) from the client
      fields. Type it as the contract `handler.contract.inputTypeName` (imported from `handler.contract.modulePath`).
@@ -146,6 +155,7 @@ differences:
 import { ok, fail, AppError, type BffHandler, type BffResponse, type ControllerRoute, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { browseReservations, type BrowseReservationsInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/browseReservations.js';
 import { updateReservationStatus, type UpdateReservationStatusInput } from '/_{project}_/l1/{module}/layer_2_application/usecases/updateReservationStatus.js';
+import { authorityRefsForSession } from '/_{project}_/l1/{module}/layer_1_external/auth/profileAuthorities.js';
 // NO l1/contracts import — the wire input is validated from handler.inputContract (typed via the usecase
 // Input) and the wire output is the projected object built inline from handler.projection.
 
@@ -157,9 +167,19 @@ function enforceActors(ctx: RequestContext, allowed: readonly string[], route: s
   if (scope.some((s) => allowed.includes(s))) return null;
   return fail(new AppError('FORBIDDEN_ACTOR', 'actor scope not permitted for ' + route, 403, { route }));
 }
+function enforceAuthorities(ctx: RequestContext, required: readonly string[], route: string): BffResponse | null {
+  if (!required.length) return null;
+  const scope = ctx.sessionContext?.actorScope ?? [];
+  if (scope.length === 0) { ctx.log.info('bff.authority.no-scope', { route, required }); return null; }
+  const sessionRefs = authorityRefsForSession(scope);
+  if (required.some((ref) => sessionRefs.indexOf(ref) >= 0)) return null;
+  return fail(new AppError('FORBIDDEN_AUTHORITY', 'authority not permitted for ' + route, 403, { route }));
+}
 
+const REQUIRED_AUTHORITIES: readonly string[] = ['{module}:equipeLoja-authority'];
 export const acompanharReservasListReservationsHandler: BffHandler = async ({ request, ctx }) => {
-  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.listReservations');
+  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.listReservations')
+    ?? enforceAuthorities(ctx, REQUIRED_AUTHORITIES, '{module}.acompanharReservas.listReservations');
   if (denial) return denial;
   const params = (request.params ?? {}) as { statusFilter?: string; page?: number; pageSize?: number };
   const input: BrowseReservationsInput = { statusFilter: params.statusFilter, page: params.page, pageSize: params.pageSize };
@@ -171,7 +191,8 @@ export const acompanharReservasListReservationsHandler: BffHandler = async ({ re
 };
 
 export const acompanharReservasUpdateStatusHandler: BffHandler = async ({ request, ctx }) => {
-  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.updateStatus');
+  const denial = enforceActors(ctx, ALLOWED, '{module}.acompanharReservas.updateStatus')
+    ?? enforceAuthorities(ctx, REQUIRED_AUTHORITIES, '{module}.acompanharReservas.updateStatus');
   if (denial) return denial;
   const params = (request.params ?? {}) as { reservationId?: string; newStatus?: string };
   if (!params.reservationId) throw new AppError('VALIDATION_ERROR', 'reservationId is required', 400, { field: 'reservationId' });

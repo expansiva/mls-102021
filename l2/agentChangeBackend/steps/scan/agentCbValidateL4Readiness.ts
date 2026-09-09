@@ -5,7 +5,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readBackendScan, enqueueNext, createUpdateStatusIntent, logPrefix } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
-import { CB_SCAN_ID_FIELD_REQUIRED } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
+import { CB_SCAN_AUTHORITY_REQUIRED, CB_SCAN_ID_FIELD_REQUIRED } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { recordFailedCbRun } from '/_102021_/l2/agentChangeBackend/helpers/cbPipelineRun.js';
 
 export function createAgent(): IAgentAsync {
@@ -43,7 +43,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       }
     }
     for (const warning of scan.warnings) {
-      if (warning.includes(CB_SCAN_ID_FIELD_REQUIRED)) errors.push(warning);
+      if (warning.includes(CB_SCAN_ID_FIELD_REQUIRED) || warning.includes(CB_SCAN_AUTHORITY_REQUIRED)) errors.push(warning);
     }
     if (errors.length) {
       const trace = `Preflight failed: ${errors.slice(0, 20).join('; ')}`;

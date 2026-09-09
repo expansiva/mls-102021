@@ -206,5 +206,20 @@ export function buildOwnerItem(o: CbOwner, maps: ReturnType<typeof deriveMaps>, 
     // workflow sees the same prompt as before. Confirmed needed: this worker does not receive domain
     // invariants, and it is the code that throws "cannot transition from pending to completed".
     ...(lifecycle ? { lifecycle } : {}),
+    // Person-scope predicate from access-bindings. Absent when the operation is organization/public
+    // or the module has no V4. The helper is template-emitted; the model must not re-derive it.
+    ...(o.scope && (o.scope.helperName || o.scope.mode === 'custom') ? {
+      scopeFilter: {
+        mode: o.scope.mode,
+        alreadyApplied: o.scope.alreadyApplied,
+        helperName: o.scope.helperName,
+        description: o.scope.description,
+        projectionRef: o.scope.projectionRef,
+        instruction: o.scope.mode === 'custom'
+          ? `Write // scope: custom (prose) — ${o.scope.description || 'state predicate'} and honour that description; do not invent a person join.`
+          : `The predicate is already applied by ${o.scope.helperName} in layer_2_application/scope/sessionScope.ts; import it, filter list/get/write results, do not re-derive.`,
+      },
+    } : {}),
+    ...(o.authorityRefs?.length ? { authorityRefs: o.authorityRefs } : {}),
   };
 }

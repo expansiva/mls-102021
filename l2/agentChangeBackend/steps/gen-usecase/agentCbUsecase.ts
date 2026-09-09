@@ -16,6 +16,7 @@ import {
   extractPlannerOutput, plannerConfig, createPlannerToolSchema, saveAgentTrace,
   saveDefs, buildArtifact, buildPipelineItem, usecaseFileInfo, repositoryPortFileInfo, domainEntityFileInfo,
   pinUsecaseL4Mdm,
+  pinUsecaseScope,
   dtsRef, layerSkills, readString, readStringArray, lowerFirst, logPrefix,
   newestL4DefsMs, defsCurrent, isRebuildCommand,
   type CbScan, type CbOutputShape,
@@ -124,7 +125,10 @@ async function dispatch(agent: IAgentMeta, context: mls.msg.ExecutionContext, pa
     // defs and cb-gen-http, right behind it, read 4/9, silently dropping 5 bffCalls and the whole
     // taskHub controller. cb-gen-domain already joins its fan-out this way (dependsOn FANOUT_PLAN_ID).
     intents.push(enqueueNextInPhase(context, step, 'judge', 'cb-judge', 'agentCbJudge', 'Juiz LLM (usecases vs L4)', { judgeRun: 1 }, 'continue', FANOUT_PLAN_ID));
-    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)`));
+    const customNote = scan.customScopes?.length
+      ? `; custom scope (prose): ${scan.customScopes.map(row => row.operationId).join(', ')}`
+      : '';
+    intents.push(createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `fan-out ${ownerIds.length} usecase(s) (parallel_dynamic)${customNote}`));
     return intents;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -245,12 +249,14 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
     }
     // The l4 `mdm` block is data, not invention: pin it the same way as ports/mdmRefs/outputShape.
     pinUsecaseL4Mdm(result, owner?.mdm);
+    pinUsecaseScope(result, owner?.scope);
     const shapeIssues = resultFns.flatMap((fn: { functionName?: string; input?: unknown; output?: unknown }) => collectIoShapeSymmetryIssues(fn));
     if (shapeIssues.length) throw new Error(`usecase defs validation failed: ${shapeIssues.slice(0, 12).join('; ')}`);
     const fi = usecaseFileInfo(module, usecaseId);
     const dependsFiles = [
       ...ports.map(p => dtsRef(repositoryPortFileInfo(module, p))),
       ...ports.map(p => dtsRef(domainEntityFileInfo(module, p))),
+      ...(owner?.scope?.helperName ? [`_${mls.actualProject || 0}_/l1/${module}/layer_2_application/scope/sessionScope.ts`] : []),
     ];
     const pipeline = [buildPipelineItem(lowerFirst(usecaseId), 'applicationUsecase', fi, dependsFiles, layerSkills('applicationUsecase.md'), { rulesApplied: readStringArray(result?.rulesApplied) })];
     await saveDefs(fi, `${lowerFirst(usecaseId)}Usecase`, buildArtifact('usecase', usecaseId, module, AGENT_NAME, result), pipeline);

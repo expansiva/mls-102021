@@ -36,6 +36,16 @@ void test('gen-usecase worker prompt receives referenced rule text, not the whol
   assert.match(skill, /useRules/);
 });
 
+void test('gen-usecase owner item carries the given scope predicate when the l4 declared one', () => {
+  const src = readFileSync(path.join(HERE, 'usecaseOwnerItem.ts'), 'utf8');
+  assert.match(src, /scopeFilter/);
+  assert.match(src, /alreadyApplied/);
+  assert.match(src, /do not re-derive/);
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /person-scope predicate is already implemented/);
+  assert.match(prompt, /scope: custom \(prose\)/);
+});
+
 void test('gen-usecase owner item carries the declared lifecycle when the module has one', () => {
   const src = readFileSync(path.join(HERE, 'usecaseOwnerItem.ts'), 'utf8');
   assert.match(src, /lifecycleForEntity\(lifecycles, o\.entity\)/);
@@ -49,6 +59,7 @@ void test('usecase defs pin and validate io shape symmetry after outputShape is 
   const src = readFileSync(path.join(HERE, 'agentCbUsecase.ts'), 'utf8');
   assert.match(src, /collectIoShapeSymmetryIssues/);
   assert.match(src, /pinUsecaseL4Mdm\(result, owner\?\.mdm\)/);
+  assert.match(src, /pinUsecaseScope\(result, owner\?\.scope\)/);
   assert.match(src, /alignOutputShapeToOntology/);
   assert.match(src, /systemDecisions/);
 });

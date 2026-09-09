@@ -87,6 +87,14 @@ export async function createOrder(ctx: RequestContext, input: CreateOrderInput):
   These context ids are resolved, not plain form fields. Apply a business-scope filter only on a field
   that exists in the model; never invent one (e.g. a `companyId` the entity does not declare) — record a
   modeling gap and skip the filter instead.
+- **Person-scope is given, never derived.** When `data.scopeFilter` is present with `alreadyApplied` and
+  `helperName`, import `{ helperName, rowInScope }` from
+  `layer_2_application/scope/sessionScope.ts` and apply it: list results keep rows where
+  `rowInScope(row, filter)` (a missing/empty `allowed` yields no rows — fail closed); get/update/delete
+  throw `AppError('FORBIDDEN', …, 403)` when the loaded row is out of scope. Do NOT re-derive the
+  predicate from grant prose or field names. `mode: custom` is the exception: emit
+  `// scope: custom (prose) — <description>` and honour the description as a rule, with no person join.
+  organization/public (no `scopeFilter`) means no person-scope filter.
 - Resolve every repository with `resolveRepository<I{Entity}Repository>(ctx, '{Entity}')`. NEVER import
   an adapter. Import record/union types and invariants from the domain entity.
 - Apply `rulesApplied` inline in this usecase file. L4 rules are authoritative prose/ids, not generated

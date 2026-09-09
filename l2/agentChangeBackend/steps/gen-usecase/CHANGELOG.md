@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-09 — person-scope predicate is given, not derived
+
+Owner item carries `scopeFilter` from V4 + access-bindings. `own`/`assigned`/`related` point at a
+template-emitted helper (`sessionScope.ts`); the model must not re-derive. `custom` is prose plus
+`// scope: custom (prose) — <description>`. Dispatcher records custom-scope operations on the step.
+
 ## 2026-09-08 — `mdmWrites` transcribes l4 v7 (no name inference)
 
 `mdmWrites` carries `mdmType` (role), `subtype` (`mdmSubtype`), `idField`, `baseFields` (level-1

@@ -18,6 +18,9 @@ void test('agentCbHttpController declares the deterministic http controller step
   assert.match(flow, /"agentName": "agentCbHttpController"/);
   assert.match(src, /bffCallsWithMaterializedUsecase/);
   assert.match(src, /if \(!fns\.length\) continue/);
+  assert.match(src, /emitAccessHelpers/);
+  assert.match(src, /authorityRefs/);
+  assert.match(src, /public: publicRoute/);
 });
 
 // 2026-08-28 (102047/todo): this step ran while the usecase fan-out was still writing, saw 4 of 9 defs,

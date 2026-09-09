@@ -55,6 +55,11 @@ Use the L4 v2 contract directly:
   modeling gap and skip the filter instead of matching against a non-existent field.
 - Never require an id manually when the L4 contract says it is resolved by context.
 
+When the owner item includes `scopeFilter`:
+- `alreadyApplied: true` — the person-scope predicate is already implemented by `scopeFilter.helperName` in `layer_2_application/scope/sessionScope.ts`. Import that helper, apply it to list/get/write results (`rowInScope` / empty `allowed` means no rows), and DO NOT re-derive who can see what from prose, field names or suffixes.
+- `mode: custom` — write `// scope: custom (prose) — <scopeFilter.description>` and honour that description as a rule. Do not invent a person join.
+- organization/public (no scopeFilter) — no person-scope filter.
+
 Entities in "mdmRefs" are master data in the shared 102034 store: there is NO port for them - reference
 them BY ID (the id is an input field) and read by id via ctx.mdm.entity.get({ mdmId }) or bulk read via
 ctx.mdm.collection.getMany({ mdmIds }). For MDM-owned create/update/delete/link/list operations use

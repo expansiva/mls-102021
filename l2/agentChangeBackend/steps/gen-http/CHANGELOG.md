@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-09 — authorityRefs on handlers + profile table + sessionScope
+
+Each handler carries `authorityRefs` from V4 and `public: true` when the covering grant is public.
+Emits `layer_1_external/auth/profileAuthorities.ts` (profile → actors → authorityRefs) and
+`layer_2_application/scope/sessionScope.ts` (person-scope predicate from the declared anchor).
+
 ## 2026-08-28 — barreira de visibilidade + rota descartada tem nome
 
 Este passo LÊ o que o fan-out de usecases escreveu: ganha o mesmo `refreshProjectIndex()` do

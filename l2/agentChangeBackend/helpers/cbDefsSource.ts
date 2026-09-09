@@ -67,6 +67,18 @@ export function readEntityStorage(parsed: Record<string, unknown>): CbEntityStor
 export const CB_ONTOLOGY_SCHEMA_V7 = '2026-09-08-ns4-ontology-v7';
 /** Named scan error when a v7 entity omits `storage.idField`. Never fall back to a name suffix. */
 export const CB_SCAN_ID_FIELD_REQUIRED = 'CB_SCAN_ID_FIELD_REQUIRED';
+/** Named scan error when a V4 module has an operation with no authorityRefs. Never a permissive fallback. */
+export {
+  CB_SCAN_AUTHORITY_REQUIRED,
+  CB_SCAN_ACCESS_BINDINGS_WITHOUT_V4,
+  CB_SCAN_AUTHORITY_WITHOUT_BINDINGS,
+  CB_ACCESS_BINDINGS_SCHEMA_V1,
+  CB_ACCESS_MATRIX_SCHEMA_V4,
+  readAccessBindings,
+  readAccessMatrixV4,
+  mergeModuleAccess,
+  pinUsecaseScope,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbAccess.js';
 
 function readTrimmed(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';

@@ -28,8 +28,14 @@ import {
   pickTodoBackendReadBack, selectTodoBackendFileForStatusWrite,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
   readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity,
+  pinUsecaseScope,
   type CbEntityKind, type CbTodoDivergence, type CbOwnerMdm,
 } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
+import {
+  accessScanWarnings, customScopeRecords, mergeModuleAccess, readAccessBindings, readAccessMatrixV4,
+  resolveOwnerAccess,
+  type CbModuleAccess, type CbOwnerScope,
+} from '/_102021_/l2/agentChangeBackend/helpers/cbAccess.js';
 import {
   parseWorkspaceDefs, readAccessMatrixActors, readModuleActors, readActorsField,
   type CbWorkspace, type CbActor,
@@ -50,6 +56,7 @@ export {
   classifyEntityKind, readEntityStorage, contradictoryStorageDeclaration, MDM_WRITE_PATH_ENABLED,
   readOwnerMdm, pinUsecaseL4Mdm, synthesizeMdmInputs,
   readOntologyEntity, readOntologyRelationships, fkFieldIdsForEntity,
+  pinUsecaseScope,
 };
 export type { CbEntityKind };
 export type { CbEntityLifecycle, CbLifecyclePrompt } from '/_102021_/l2/agentChangeBackend/helpers/cbLifecycle.js';
@@ -199,6 +206,12 @@ export interface CbOwner {
   /** Legacy inline status read from l4 only to warn about divergence; never used for decisions. */
   inlineStatusBackend: string;
   moduleName: string;
+  /** V4 `operationAuthorityRefs` for this operation. Absent on pre-n07 l4 (no V4). */
+  authorityRefs?: string[];
+  /** True when every authority of the operation is a public grant (anonymous). */
+  publicRoute?: boolean;
+  /** Person-scope / custom / organization transcription of the covering authorities. */
+  scope?: CbOwnerScope;
 }
 
 export interface CbEntity {
@@ -306,6 +319,10 @@ export interface CbScan {
    */
   deleteTargetEntityIds: string[];
   warnings: string[];
+  /** V4 + access-bindings of the target module. Absent on pre-n07 l4. */
+  access?: CbModuleAccess;
+  /** Operations whose covering grant is `custom` — recorder for the run summary. */
+  customScopes?: Array<{ operationId: string; description: string }>;
 }
 
 // ── deterministic l4 scan ──────────────────────────────────────────────────────
@@ -324,6 +341,8 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   const siteMapSource: Record<string, 'siteMap' | 'navigation'> = {};
   const warnings: string[] = [];
   const lifecycles: CbEntityLifecycle[] = [];
+  const accessMatrixByModule = new Map<string, Record<string, unknown>>();
+  const accessBindingsByModule = new Map<string, Record<string, unknown>>();
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
@@ -352,10 +371,19 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
       // l4 v2 only: the workspace declares the page's bffCalls (controller source — see B4).
       const ws = parseWorkspaceDefs(parsed, nestedModule);
       if (ws) { workspaces.push(ws); if (ws.moduleName) moduleNames.add(ws.moduleName); }
-    } else if (shortName === 'access-matrix' || folder.endsWith('/access')) {
+    } else if (shortName === 'access-bindings' && folder.endsWith('/access')) {
+      const moduleName = readString(parsed.moduleName) || folder.split('/')[0];
+      if (moduleName) {
+        moduleNames.add(moduleName);
+        accessBindingsByModule.set(moduleName, parsed);
+      }
+    } else if (shortName === 'access-matrix' || (folder.endsWith('/access') && shortName !== 'access-bindings')) {
       // ns4: the module audience lives in the access matrix instead of a dedicated actors file.
       const moduleName = readString(parsed.moduleName) || folder.split('/')[0];
-      for (const a of readAccessMatrixActors(parsed, moduleName)) actorsList.push(a);
+      if (moduleName) {
+        accessMatrixByModule.set(moduleName, parsed);
+        for (const a of readAccessMatrixActors(parsed, moduleName)) actorsList.push(a);
+      }
     } else if (shortName === 'actors' && folder && !folder.includes('/')) {
       // l4 v2 module actors file: `l4/<module>/actors.defs.ts` (folder === moduleName; actors are objects).
       const moduleName = readString(parsed.moduleName) || folder;
@@ -515,11 +543,33 @@ export async function readBackendScan(statuses: readonly string[] = ['toCreate']
   const inScopeIds = new Set(backfilled.map(e => e.entityId));
   const scopedLifecycles = lifecycles.filter(lc =>
     (!lc.moduleName || lc.moduleName === scoped.moduleName) && (!inScopeIds.size || inScopeIds.has(lc.entityRef)));
+  const access = mergeModuleAccess(
+    scoped.moduleName && accessMatrixByModule.has(scoped.moduleName)
+      ? readAccessMatrixV4(accessMatrixByModule.get(scoped.moduleName)!)
+      : undefined,
+    scoped.moduleName && accessBindingsByModule.has(scoped.moduleName)
+      ? readAccessBindings(accessBindingsByModule.get(scoped.moduleName)!)
+      : undefined,
+  );
+  const operationOwners = scoped.owners.filter(owner => owner.kind === 'operation');
+  warnings.push(...accessScanWarnings(access, operationOwners.map(owner => owner.id)));
+  if (access) {
+    for (const owner of operationOwners) {
+      const resolved = resolveOwnerAccess(access, owner);
+      if (!resolved) continue;
+      owner.authorityRefs = resolved.authorityRefs;
+      owner.publicRoute = resolved.publicRoute;
+      owner.scope = resolved.scope;
+    }
+  }
+  const customScopes = customScopeRecords(access, operationOwners);
   return {
     project, moduleNames: scoped.moduleName ? [scoped.moduleName] : allModuleNames,
     owners: scoped.owners, entities: backfilled, relationships: scoped.relationships,
     aggregates, events, workspaces: scoped.workspaces, actors: scoped.actors, siteMaps,
     lifecycles: scopedLifecycles, deleteTargetEntityIds: [...deleteTargetEntityIds].sort(), warnings,
+    ...(access ? { access } : {}),
+    ...(customScopes.length ? { customScopes } : {}),
   };
 }
 

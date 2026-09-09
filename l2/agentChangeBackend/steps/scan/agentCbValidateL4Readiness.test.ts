@@ -15,4 +15,5 @@ void test('agentCbValidateL4Readiness declares the readiness step agent contract
   assert.match(src, /export function createAgent/);
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCbValidateL4Readiness"/);
+  assert.match(src, /CB_SCAN_AUTHORITY_REQUIRED/);
 });

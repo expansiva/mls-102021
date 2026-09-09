@@ -24,6 +24,7 @@ const LEGACY: Record<string, InferenceLegacy> = {
   'cbSeedsCore.ts': { idDollar: 3, endsWithId: 3, includesWord: 0, since: '2026-09-08' },
   'cbShared.ts': { idDollar: 1, endsWithId: 0, includesWord: 0, since: '2026-09-08' },
   'cbDefsSource.ts': { idDollar: 0, endsWithId: 0, includesWord: 0, since: '2026-09-08' },
+  'cbAccess.ts': { idDollar: 0, endsWithId: 0, includesWord: 0, since: '2026-09-09' },
   '../steps/gen-usecase/usecaseOwnerItem.ts': { idDollar: 0, endsWithId: 0, includesWord: 0, since: '2026-09-08' },
 };
 
