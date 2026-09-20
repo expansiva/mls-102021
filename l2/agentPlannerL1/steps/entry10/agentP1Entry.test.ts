@@ -187,7 +187,7 @@ void test('hand invocation and pool step write the same pipeline.json with inven
   assert.equal(writtenPool.inventory.present, false);
 });
 
-void test('unimplemented plan20 marks the pipeline awaitingStep and does not fail', async () => {
+void test('entry10 leaves the pipeline inProgress for plan20', async () => {
   const host = installHost();
   seedReady(host);
   const agent = createAgent();
@@ -198,20 +198,11 @@ void test('unimplemented plan20 marks the pipeline awaitingStep and does not fai
   entryStep.stepId = 10;
   const root = ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep;
   await beforeP1EntryPromptStep(agentMeta(), ctx, root, entryStep, 1);
-
-  const planStep = added[1].step as mls.msg.AIAgentStep;
-  planStep.stepId = 20;
-  root.nextSteps = [entryStep, planStep];
-  ctx.task!.iaCompressed!.longMemory = { moduleName: MODULE };
-  const afterPlan = await agent.beforePromptStep!(agentMeta(), ctx, root, planStep, 2);
-  const status = afterPlan.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
-  assert.equal(status?.status, 'completed');
-  assert.match(String(status?.traceMsg), /plan20 not implemented yet/);
   const pipeline = JSON.parse(host.files[keyOf(p1PipelineFile(MODULE))].content) as {
     status: string; awaitingStep?: string; steps: { entry10: { status: string } }; inventory: { present: boolean };
   };
-  assert.equal(pipeline.status, 'awaitingStep');
-  assert.equal(pipeline.awaitingStep, 'plan20');
+  assert.equal(pipeline.status, 'inProgress');
   assert.equal(pipeline.steps.entry10.status, 'approved');
   assert.equal(pipeline.inventory.present, false);
+  assert.ok(P1_STEP_HOOKS.plan20?.beforePromptStep);
 });

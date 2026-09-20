@@ -39,9 +39,10 @@ interface FlowDoc {
 const EXPECTED_ARTIFACTS: Record<string, string> = {
   pipeline: 'l1/{module}/pipeline/pipeline.json',
   needs: 'l4/{module}/pool/l1/web/needs.json',
+  backend: 'l4/{module}/pool/l2/web/backend.json',
 };
 
-const WAITING_STEPS: readonly string[] = ['plan20'];
+const WAITING_STEPS: readonly string[] = [];
 
 function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
@@ -68,7 +69,7 @@ void test('flow has exactly two steps in declared order with declared dependenci
   const plan = flow.steps.find(step => step.id === 'plan20');
   assert.equal(plan?.kind, 'agent-checkpoint');
   assert.equal(plan?.modelAlias, 'reasoning');
-  assert.equal(plan?.status, 'waiting');
+  assert.equal(plan?.status, undefined);
   assert.equal(plan?.artifact, 'l4/{module}/pool/l2/web/backend.json');
 
   for (const id of WAITING_STEPS) {
@@ -109,11 +110,12 @@ function agentSourceOf(stepId: string): string {
   return readFileSync(path.join(folder, agentFiles[0]), 'utf8');
 }
 
-void test('entry10 does not close the pipeline; plan20 is waiting for p1_02', () => {
+void test('entry10 does not close the pipeline; plan20 does', () => {
   const flow = loadFlow();
   const last = flow.steps[flow.steps.length - 1];
   assert.ok(last, 'flow.json has no steps');
   assert.equal(last.id, P1_FLOW_LAST_STEP_ID);
-  assert.equal(last.status, 'waiting');
+  assert.equal(last.status, undefined);
   assert.doesNotMatch(agentSourceOf('entry10'), /markP1Complete/, 'entry10 must not close the pipeline');
+  assert.match(agentSourceOf('plan20'), /markP1Complete/, 'plan20 closes the pipeline');
 });

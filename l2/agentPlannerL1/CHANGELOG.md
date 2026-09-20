@@ -1,5 +1,12 @@
 # agentPlannerL1
 
+## 2026-09-20 (p1_02)
+
+- `plan20`: candidates from `needs.json`, match against the l1 inventory,
+  one reasoning call only for aliases/merges the name match cannot resolve.
+  Writes `pool/l2/web/backend.json` + `l1→l2` message. Closes the pipeline.
+  No inventory (102047) ⇒ everything `toCreate`, `llmCalled: false`.
+
 ## 2026-09-20 (p1_01)
 
 - Skeleton in the NS5/L2 pattern: `createAgent` (`agentProject: 102021`,

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "controleChamados",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "chamadoCatalogue",
+      "actors": ["atendente"],
+      "reads": [
+        {
+          "entity": "Chamado",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": ["journey:acompanharChamados/locate"]
+        },
+        {
+          "entity": "Chamado",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": ["prioridade"],
+          "from": ["organism:detail"]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Chamado",
+          "operation": "create",
+          "transitionRef": "",
+          "from": ["journey:abrirChamado/act"]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-20T10:30:00.000Z"
+  }
+}

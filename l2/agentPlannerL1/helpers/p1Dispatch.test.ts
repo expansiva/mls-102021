@@ -21,10 +21,10 @@ function numberedStep(stepId: number, planId: P1StepId, status: mls.msg.AIStepSt
   return step;
 }
 
-void test('entry10 is hooked and plan20 waits for p1_02', () => {
+void test('entry10 and plan20 are hooked', () => {
   createAgent();
   assert.ok(P1_STEP_HOOKS.entry10?.beforePromptStep, 'entry10 hook must be registered');
-  assert.equal(P1_STEP_HOOKS.plan20, undefined, 'plan20 must stay unhooked until p1_02');
+  assert.ok(P1_STEP_HOOKS.plan20?.beforePromptStep, 'plan20 hook must be registered');
 });
 
 void test('hooksFor routes a pool prompt with no planId to entry10', () => {

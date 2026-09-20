@@ -20,8 +20,10 @@ export const P1_FLOW_VERSION = '2026-09-20-p1-flow-v1' as const;
 export const P1_AGENT_NAME = 'agentPlannerL1' as const;
 export const P1_PIPELINE_SCHEMA_VERSION = '2026-09-20-p1-pipeline-v1' as const;
 export const P1_NEEDS_SCHEMA = '2026-09-21-p2-needs-v1' as const;
+export const P1_DEVICE = 'web' as const;
+export type P1Device = typeof P1_DEVICE;
 
-/** Steps the current flow.json actually runs. plan20 is declared and waiting (p1_02). */
+/** Steps the current flow.json actually runs. */
 export const P1_FLOW_STEP_IDS = ['entry10', 'plan20'] as const;
 
 export const P1_STEP_IDS = P1_FLOW_STEP_IDS;
@@ -29,7 +31,7 @@ export const P1_STEP_IDS = P1_FLOW_STEP_IDS;
 export type P1FlowStepId = typeof P1_FLOW_STEP_IDS[number];
 export type P1StepId = typeof P1_STEP_IDS[number];
 
-/** Last step of `docs/flow.json` — that step's afterPrompt closes the pipeline (p1_02). */
+/** Last step of `docs/flow.json` — plan20 closes the pipeline. */
 export const P1_FLOW_LAST_STEP_ID: P1FlowStepId = P1_FLOW_STEP_IDS[P1_FLOW_STEP_IDS.length - 1];
 
 export const P1_STEP_TITLES: Record<P1StepId, string> = {
@@ -173,13 +175,25 @@ export function p1PipelineFile(moduleName: string): Ns5FileInfo {
 }
 
 /** `l4/<module>/pool/l1/web/needs.json` — written by L2, read here. */
-export function p1NeedsFile(moduleName: string): Ns5FileInfo {
+export function p1NeedsFile(moduleName: string, device: P1Device = P1_DEVICE): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
     level: 4,
-    folder: `${base.folder}/pool/l1/web`,
+    folder: `${base.folder}/pool/l1/${device}`,
     shortName: 'needs',
+    extension: '.json',
+  };
+}
+
+/** `l4/<module>/pool/l2/web/backend.json` — written by plan20. Not a pool message. */
+export function p1BackendFile(moduleName: string, device: P1Device = P1_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l2/${device}`,
+    shortName: 'backend',
     extension: '.json',
   };
 }

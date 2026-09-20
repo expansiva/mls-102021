@@ -1,0 +1,132 @@
+{
+  "$id": "https://collab.codes/schemas/agentPlannerL1/backend/2026-09-21-p1-backend-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "moduleName",
+    "device",
+    "sourceNeeds",
+    "inventoryPresent",
+    "endpoints",
+    "usecases",
+    "ports",
+    "tables",
+    "removed",
+    "meta"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-21-p1-backend-v1" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "device": { "type": "string", "const": "web" },
+    "sourceNeeds": { "type": "string", "minLength": 1 },
+    "inventoryPresent": { "type": "boolean" },
+    "endpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/endpoint" }
+    },
+    "usecases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/usecase" }
+    },
+    "ports": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/port" }
+    },
+    "tables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/table" }
+    },
+    "removed": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/removed" }
+    },
+    "meta": { "$ref": "#/$defs/meta" }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["toCreate", "toUpdate", "toRemove", "done"]
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "page", "kind", "usecaseRef", "status"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "page": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["qry", "cmd"] },
+        "usecaseRef": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "usecase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usecaseId", "entity", "operation", "ports", "status", "existing", "reason"],
+      "properties": {
+        "usecaseId": { "type": "string", "minLength": 1 },
+        "entity": { "type": "string", "minLength": 1 },
+        "operation": {
+          "type": "string",
+          "enum": ["list", "get", "create", "update", "transition", "delete", "custom"]
+        },
+        "ports": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "existing": { "type": "string" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portId", "entity", "status"],
+      "properties": {
+        "portId": { "type": "string", "minLength": 1 },
+        "entity": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tableId", "entity", "status"],
+      "properties": {
+        "tableId": { "type": "string", "minLength": 1 },
+        "entity": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "removed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "status", "reason"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["usecase", "port", "table"] },
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "const": "toRemove" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pages", "generatedAt", "llmCalled"],
+      "properties": {
+        "pages": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "generatedAt": { "type": "string", "minLength": 1 },
+        "llmCalled": { "type": "boolean" }
+      }
+    }
+  }
+}

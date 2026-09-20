@@ -21,13 +21,14 @@ import {
   updateStatus,
 } from '/_102021_/l2/agentPlannerL1/helpers/p1Dispatch.js';
 import '/_102021_/l2/agentPlannerL1/steps/entry10/agentP1Entry.js';
+import '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
 
 export function createAgent(): IAgentAsync {
   return {
     agentName: P1_AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentPlannerL1',
-    agentDescription: 'L1 planner — backend plan from pool/l1 needs.json and the existing l1 inventory',
+    agentDescription: 'L1 planner — backend.json from pool/l1 needs.json and the existing l1 inventory',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,

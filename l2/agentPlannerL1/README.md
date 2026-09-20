@@ -2,12 +2,11 @@
 
 L1 planner. Reads a finished l4 module and the oldest `l2→l1` message in
 `pool/l1` whose artifact is `needs.json`, inventories the existing l1 (if any),
-and writes `l1/<mod>/pipeline/pipeline.json`. `plan20` (next spec) will write
-`pool/l2/web/backend.json`. Unique name `agentPlannerL1`. Lives in `mls-102021`
-next to `agentChangeBackend`.
+and writes `pool/l2/web/backend.json` (endpoints, usecases, ports, tables with
+`OwnerStatus`). Unique name `agentPlannerL1`. Lives in `mls-102021` next to
+`agentChangeBackend`.
 
-This phase is entry + inventory. `plan20` is declared `waiting`. The pool is
-not deleted. Nothing is written to l1 `.defs.ts` / `.ts`.
+The pool is not deleted. Nothing is written to l1 `.defs.ts` / `.ts`.
 
 ## Invocation
 
@@ -33,8 +32,9 @@ the same `pool/l1` messages and write the same
 `docs/flow.json` is the contract: `entry10 → plan20`. `entry10` is deterministic
 and records `inventory` (from `routeKeys`, controllers, usecases, ports, tables,
 `todoBackend.defs.ts owners[].statusBackend`). Without l1 (102047 today)
-`inventory.present` is `false`. `plan20` is not implemented yet: the run stops
-with `pipeline.status = awaitingStep` naming that step.
+`inventory.present` is `false`. `plan20` matches candidates against that
+inventory; one reasoning call only for the unmatched remainder. It writes
+`pool/l2/web/backend.json` and an `l1→l2` message, then closes the pipeline.
 
 Re-execution always starts from zero (wipes `l1/<mod>/pipeline/`), leaves the
 pool intact, and never touches generated l1 source.
