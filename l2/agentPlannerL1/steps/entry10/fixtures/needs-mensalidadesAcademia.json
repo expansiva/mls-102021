@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "mensalidadesAcademia",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "mensalidades_pagamentos",
+      "actors": ["recepcao"],
+      "reads": [
+        {
+          "entity": "Mensalidade",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": ["vencida", "saldoEmAberto"],
+          "from": ["journey:registrarPagamentoMensalidade/locate"]
+        },
+        {
+          "entity": "Pagamento",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": ["organism:detail"]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Pagamento",
+          "operation": "create",
+          "transitionRef": "",
+          "from": ["journey:registrarPagamentoMensalidade/act"]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-20T10:30:00.000Z"
+  }
+}

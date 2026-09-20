@@ -1,0 +1,56 @@
+{
+  "flowId": "agentPlannerL1",
+  "schemaVersion": "2026-09-20-p1-flow-v1",
+  "status": "entry10",
+  "description": "L1 planner: read pool/l1 of a finished l4 module, inventory the existing l1, then plan backend.json (plan20, next spec). Does not delete the pool, does not write .defs.ts/.ts of l1.",
+  "canonicalReferences": [
+    "mls-base/skills/00_index.md",
+    "mls-base/skills/agentsBestPractices.md",
+    "mls-base/skills/agentChangeBackend.md",
+    "mls-base/mls-102035/l2/solution/pool.ts",
+    "mls-base/mls-102035/l2/solution/types.ts"
+  ],
+  "principles": [
+    "Sequence is declared in this file via dependsOn and done-anchors. Steps do not enqueue their successor by name.",
+    "Pipeline state lives on disk at l1/{module}/pipeline/pipeline.json. The task record is orchestration, not truth.",
+    "A step declared here and not implemented stops the run with pipeline.status awaitingStep naming that step. The task completes without failed.",
+    "Two entries, one path: a step created with prompt { moduleName, thread, file }, or @@agentPlannerL1 <lowerCamel> which reads every pool/l1 message from l2 whose artifact is needs.json. Both write the same pipeline.json.",
+    "Reads only the module l4, pool/l1, and the l1/l5 of the module. Writes l1/{module}/pipeline/. Never writes l1 .defs.ts/.ts. Never deletes pool messages in this phase.",
+    "Deterministic first. entry10 has no LLM. plan20 (next spec) spends one reasoning call on the unmatched remainder.",
+    "User-facing refusals are English.",
+    "listPoolBox may list needs.json; entry10 keeps only files named <stamp>_<thread>_<round> whose from is l2."
+  ],
+  "invocation": {
+    "hand": "@@agentPlannerL1 <lowerCamel>",
+    "fromPool": "step prompt JSON { moduleName, thread, file }",
+    "moduleRule": "The module token is required and must be lowerCamel. The name is never inferred from prose.",
+    "l4Rule": "The module l4 pipeline.json must be status complete. Otherwise the run is refused.",
+    "poolRule": "No pool message in pool/l1 refuses with 'nothing pending for <mod> in pool/l1'. needs.json is not a message.",
+    "needsRule": "The oldest l2→l1 message must list pool/l1/web/needs.json. Missing file or unknown schemaVersion refuses.",
+    "dedupeRule": "Messages with the same moduleName, mode and artifacts are one request. Two different requests refuse: 'pool/l1 has N different requests; resolve with the l2 planner'."
+  },
+  "artifacts": {
+    "pipeline": "l1/{module}/pipeline/pipeline.json",
+    "needs": "l4/{module}/pool/l1/web/needs.json"
+  },
+  "steps": [
+    {
+      "id": "entry10",
+      "kind": "deterministic",
+      "dependsOn": [],
+      "doneAnchor": "entry10-done",
+      "artifact": "l1/{module}/pipeline/pipeline.json",
+      "goal": "Read every pool/l1 message from l2 (oldest first), group identical requests, refuse if they differ, read needs.json, inventory the existing l1, wipe l1/{module}/pipeline, write pipeline.json with sourceMessages and inventory. Never delete the pool. Never write l1 .defs.ts/.ts."
+    },
+    {
+      "id": "plan20",
+      "kind": "agent-checkpoint",
+      "status": "waiting",
+      "dependsOn": ["entry10-done"],
+      "doneAnchor": "plan20-done",
+      "modelAlias": "reasoning",
+      "artifact": "l4/{module}/pool/l2/web/backend.json",
+      "goal": "p1_02. Endpoints, usecases, ports and tables with OwnerStatus against the l1 inventory. One reasoning call only for what deterministic matching cannot resolve."
+    }
+  ]
+}

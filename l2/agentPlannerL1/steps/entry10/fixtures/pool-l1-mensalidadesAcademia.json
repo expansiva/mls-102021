@@ -1,0 +1,12 @@
+{
+  "from": "l2",
+  "to": "l1",
+  "thread": "mensalidadesAcademia-20260920103000",
+  "round": 1,
+  "mode": "implement",
+  "subject": "needs of mensalidadesAcademia (web)",
+  "artifacts": [
+    "pool/l1/web/needs.json"
+  ],
+  "body": "mensalidades_pagamentos: 2 reads / 1 writes"
+}

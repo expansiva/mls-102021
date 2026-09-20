@@ -1,0 +1,33 @@
+{
+  "backendControllers": "./_102039_/l1/controleChamados/layer_1_external/adapters/http/controllers",
+  "persistence": {
+    "tableDefsDir": "./_102039_/l1/controleChamados/layer_1_external/adapters/persistence"
+  },
+  "routeKeys": [
+    "controleChamados.atendenteCatalogue.cmdCreateAtendente",
+    "controleChamados.atendenteCatalogue.cmdInactivateAtendente",
+    "controleChamados.atendenteCatalogue.cmdReactivateAtendente",
+    "controleChamados.atendenteCatalogue.cmdUpdateAtendente",
+    "controleChamados.atendenteCatalogue.qryGetAtendente",
+    "controleChamados.atendenteCatalogue.qryListAtendente",
+    "controleChamados.chamadoCatalogue.cmdCloseChamado",
+    "controleChamados.chamadoCatalogue.cmdCreateChamado",
+    "controleChamados.chamadoCatalogue.cmdDeleteChamado",
+    "controleChamados.chamadoCatalogue.cmdUpdateChamado",
+    "controleChamados.chamadoCatalogue.qryGetChamado",
+    "controleChamados.chamadoCatalogue.qryListChamado",
+    "controleChamados.chamadoCatalogue.qryLocateChamado",
+    "controleChamados.chamadoHub.qryListChamado",
+    "controleChamados.chamadoHub.qryListComentario",
+    "controleChamados.comentarioCatalogue.cmdCreateComentario",
+    "controleChamados.comentarioCatalogue.cmdDeleteComentario",
+    "controleChamados.comentarioCatalogue.cmdUpdateComentario",
+    "controleChamados.comentarioCatalogue.qryAtendentePicker",
+    "controleChamados.comentarioCatalogue.qryChamadoPicker",
+    "controleChamados.comentarioCatalogue.qryGetComentario",
+    "controleChamados.comentarioCatalogue.qryListComentario",
+    "controleChamados.registrarComentarioChamado.cmdRegisterComentario",
+    "controleChamados.registrarComentarioChamado.qryAtendentePicker",
+    "controleChamados.registrarComentarioChamado.qryLocateChamado"
+  ]
+}
