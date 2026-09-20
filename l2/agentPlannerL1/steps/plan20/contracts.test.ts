@@ -16,6 +16,8 @@ import {
   parseP1Needs,
   planP1Backend,
   p1BackendSubject,
+  p1Route,
+  p1UsecaseId,
   type P1EntityView,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 
@@ -224,14 +226,14 @@ void test('alias resolution reuses an l1 usecase of another name', async () => {
     }],
   });
   const before = planP1Backend({ needs, inventory, ontology: CHAMADOS_ONTOLOGY, now: AT });
-  assert.ok(before.unresolved.some(item => item.candidateUsecaseId === 'resolveChamado'));
+  assert.ok(before.unresolved.some(item => item.candidateUsecaseId === 'resolve'));
   const after = planP1Backend({
     needs,
     inventory,
     ontology: CHAMADOS_ONTOLOGY,
     now: AT,
     resolution: {
-      aliases: [{ candidateUsecaseId: 'resolveChamado', existingUsecaseId: 'closeChamado', reason: 'closeChamado already settles the chamado' }],
+      aliases: [{ candidateUsecaseId: 'resolve', existingUsecaseId: 'closeChamado', reason: 'closeChamado already settles the chamado' }],
       merges: [],
     },
   });
@@ -240,7 +242,7 @@ void test('alias resolution reuses an l1 usecase of another name', async () => {
   const close = after.file.usecases.find(item => item.usecaseId === 'closeChamado');
   assert.ok(close);
   assert.equal(close?.status, 'done');
-  assert.equal(after.file.usecases.some(item => item.usecaseId === 'resolveChamado'), false);
+  assert.equal(after.file.usecases.some(item => item.usecaseId === 'resolve'), false);
   assert.ok(after.file.endpoints.some(item => item.usecaseRef === 'closeChamado' && item.kind === 'cmd'));
 });
 
@@ -279,6 +281,77 @@ void test('pool message is l1→l2 with backend.json and the thread round', () =
   assert.equal(message.round, 1);
   assert.equal(message.subject, p1BackendSubject('mensalidadesAcademia'));
   assert.deepEqual(message.artifacts, ['pool/l2/web/backend.json']);
+});
+
+void test('transition usecaseId is the transitionRef without concatenating the entity', () => {
+  assert.equal(p1UsecaseId('transition', 'Matricula', 'cancelarMatricula'), 'cancelarMatricula');
+  assert.equal(p1UsecaseId('transition', 'Mensalidade', 'settleMensalidade'), 'settleMensalidade');
+  assert.equal(p1UsecaseId('custom', 'Matricula', 'registrarPagamento'), 'registrarPagamento');
+  assert.equal(
+    p1Route('mensalidadesAcademia', 'minha_matricula', 'cmd', 'cancelarMatricula'),
+    'mensalidadesAcademia.minha_matricula.cmdCancelarMatricula',
+  );
+  const needs = parseP1Needs({
+    schemaVersion: '2026-09-21-p2-needs-v1',
+    moduleName: 'mensalidadesAcademia',
+    device: 'web',
+    pages: [{
+      pageId: 'minha_matricula',
+      actors: ['aluno'],
+      reads: [],
+      writes: [{ entity: 'Matricula', operation: 'transition', transitionRef: 'cancelarMatricula', from: ['journey:cancelar/act'] }],
+    }, {
+      pageId: 'mensalidades_pagamentos',
+      actors: ['recepcao'],
+      reads: [],
+      writes: [{ entity: 'Mensalidade', operation: 'transition', transitionRef: 'settleMensalidade', from: ['journey:quitar/act'] }],
+    }],
+  });
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      ...ACADEMIA_ONTOLOGY,
+      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+    ],
+    now: AT,
+  });
+  assert.deepEqual(planned.file.usecases.map(item => item.usecaseId), ['cancelarMatricula', 'settleMensalidade']);
+  assert.ok(planned.file.endpoints.some(item => item.route === 'mensalidadesAcademia.minha_matricula.cmdCancelarMatricula' && item.usecaseRef === 'cancelarMatricula'));
+  assert.ok(planned.file.endpoints.some(item => item.route === 'mensalidadesAcademia.mensalidades_pagamentos.cmdSettleMensalidade' && item.usecaseRef === 'settleMensalidade'));
+});
+
+void test('same transitionRef on two entities suffixes the entity on every colliding side', () => {
+  const needs = parseP1Needs({
+    schemaVersion: '2026-09-21-p2-needs-v1',
+    moduleName: 'mensalidadesAcademia',
+    device: 'web',
+    pages: [{
+      pageId: 'minha_matricula',
+      actors: ['aluno'],
+      reads: [],
+      writes: [{ entity: 'Matricula', operation: 'transition', transitionRef: 'cancelar', from: ['journey:cancelarMatricula/act'] }],
+    }, {
+      pageId: 'meu_plano',
+      actors: ['aluno'],
+      reads: [],
+      writes: [{ entity: 'Plano', operation: 'transition', transitionRef: 'cancelar', from: ['journey:cancelarPlano/act'] }],
+    }],
+  });
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+      { entityId: 'Plano', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+    ],
+    now: AT,
+  });
+  assert.deepEqual(planned.file.usecases.map(item => item.usecaseId), ['cancelarMatricula', 'cancelarPlano']);
+  assert.equal(planned.file.usecases.find(item => item.usecaseId === 'cancelarMatricula')?.entity, 'Matricula');
+  assert.equal(planned.file.usecases.find(item => item.usecaseId === 'cancelarPlano')?.entity, 'Plano');
+  assert.ok(planned.file.endpoints.some(item => item.route === 'mensalidadesAcademia.minha_matricula.cmdCancelarMatricula' && item.usecaseRef === 'cancelarMatricula'));
+  assert.ok(planned.file.endpoints.some(item => item.route === 'mensalidadesAcademia.meu_plano.cmdCancelarPlano' && item.usecaseRef === 'cancelarPlano'));
 });
 
 void test('resolution tool schema is provider-clean and has no optional single-value fields', () => {

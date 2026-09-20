@@ -209,7 +209,7 @@ export function buildP1BackendMessage(input: {
 }
 
 export function p1UsecaseId(operation: P1Operation, entity: string, transitionRef = ''): string {
-  if (operation === 'transition') return `${lowerFirst(transitionRef || 'transition')}${entity}`;
+  if (operation === 'transition') return lowerFirst(transitionRef || 'transition');
   if (operation === 'custom') return lowerFirst(transitionRef || `custom${entity}`);
   return `${operation}${entity}`;
 }
@@ -449,6 +449,7 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     endpoints.push({ page, kind, usecaseId });
   };
 
+  const collidingTransitions = collidingTransitionIds(needs);
   for (const page of needs.pages) {
     for (const read of page.reads) {
       const family = familyFor(read.entity, ontology, read.family);
@@ -472,7 +473,8 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     for (const write of page.writes) {
       const family = familyFor(write.entity, ontology);
       const operation: P1Operation = write.operation;
-      const usecaseId = p1UsecaseId(operation, write.entity, write.transitionRef);
+      let usecaseId = p1UsecaseId(operation, write.entity, write.transitionRef);
+      if (operation === 'transition' && collidingTransitions.has(usecaseId)) usecaseId = `${usecaseId}${write.entity}`;
       addUsecase({
         usecaseId,
         entity: write.entity,
@@ -489,6 +491,24 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     }
   }
   return { usecases: [...usecases.values()], endpoints };
+}
+
+function collidingTransitionIds(needs: P1NeedsFile): Set<string> {
+  const entitiesById = new Map<string, Set<string>>();
+  for (const page of needs.pages) {
+    for (const write of page.writes) {
+      if (write.operation !== 'transition') continue;
+      const id = p1UsecaseId('transition', write.entity, write.transitionRef);
+      const entities = entitiesById.get(id) ?? new Set<string>();
+      entities.add(write.entity);
+      entitiesById.set(id, entities);
+    }
+  }
+  const colliding = new Set<string>();
+  for (const [id, entities] of entitiesById) {
+    if (entities.size > 1) colliding.add(id);
+  }
+  return colliding;
 }
 
 function matchCandidates(candidates: Matched, inventory: L1Inventory, ontology: Map<string, P1EntityView>): Matched {

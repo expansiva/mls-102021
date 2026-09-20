@@ -1,5 +1,11 @@
 # agentPlannerL1
 
+## 2026-09-20 (p1_04)
+
+- Transition usecase id is the l4 `transitionId` (`cancelarMatricula`), not
+  concatenated with the entity. Same `transitionId` on two entities in the
+  module suffixes the entity on every colliding side. Route follows the name.
+
 ## 2026-09-20 (p1_02)
 
 - `plan20`: candidates from `needs.json`, match against the l1 inventory,

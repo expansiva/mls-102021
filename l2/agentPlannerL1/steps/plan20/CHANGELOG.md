@@ -1,5 +1,11 @@
 # plan20
 
+## 2026-09-20 (p1_04)
+
+- Transition usecase id is the l4 `transitionId`, without concatenating the
+  entity. Collision across entities suffixes the entity on every side.
+  `p1UsecaseId` stays per-item; disambiguation is in `collectCandidates`.
+
 ## 2026-09-20 (p1_02)
 
 - Candidates from `needs.json` reads/writes. Match against the l1 inventory
