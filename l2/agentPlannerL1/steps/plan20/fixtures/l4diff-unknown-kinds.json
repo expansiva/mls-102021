@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "2026-09-21-p4-l4diff-v1",
+  "moduleName": "mensalidadesAcademia",
+  "base": "",
+  "candidate": "mensalidadesAcademia/tobe/plan",
+  "items": [
+    {
+      "changeId": "entity:Aluno",
+      "kind": "entity",
+      "op": "added",
+      "entity": "Aluno",
+      "source": "ontology/Aluno.defs.ts",
+      "after": {
+        "entityId": "Aluno"
+      }
+    },
+    {
+      "changeId": "outbound:cancelarMatricula",
+      "kind": "outbound",
+      "op": "added",
+      "entity": "",
+      "source": "integration.defs.ts",
+      "after": {
+        "id": "cancelarMatricula",
+        "kind": "event",
+        "from": "",
+        "to": "any",
+        "event": "cancelarMatricula",
+        "writes": [],
+        "effect": "",
+        "transitionRef": "",
+        "on": "Matricula.cancelarMatricula",
+        "description": "Publica o cancelamento da matrícula para que outros módulos deixem de considerar o aluno ativo.",
+        "entityRefs": [
+          "Matricula"
+        ]
+      }
+    },
+    {
+      "changeId": "task:lembrarGeracaoMensalidades.alertarGerenciaGeracao",
+      "kind": "task",
+      "op": "added",
+      "entity": "",
+      "source": "workflows.defs.ts",
+      "after": {
+        "taskId": "alertarGerenciaGeracao",
+        "kind": "alert",
+        "actorRef": "gerencia",
+        "journeyRef": "",
+        "entityRef": "",
+        "effect": "",
+        "transitionRef": "",
+        "next": [],
+        "description": "Gere as mensalidades do mês executando a jornada Gerar mensalidades do mês para todos os alunos com matrícula ativa.",
+        "processId": "lembrarGeracaoMensalidades"
+      }
+    }
+  ]
+}

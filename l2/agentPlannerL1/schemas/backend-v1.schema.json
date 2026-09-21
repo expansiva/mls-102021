@@ -160,7 +160,7 @@
     "meta": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pages", "generatedAt", "llmCalled"],
+      "required": ["pages", "generatedAt", "llmCalled", "unmappedChanges"],
       "properties": {
         "pages": {
           "type": "object",
@@ -170,7 +170,21 @@
           }
         },
         "generatedAt": { "type": "string", "minLength": 1 },
-        "llmCalled": { "type": "boolean" }
+        "llmCalled": { "type": "boolean" },
+        "unmappedChanges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/unmappedChange" }
+        }
+      }
+    },
+    "unmappedChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changeId", "kind", "source"],
+      "properties": {
+        "changeId": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "source": { "type": "string" }
       }
     }
   }

@@ -177,6 +177,7 @@ void test('102047 mensalidadesAcademia with no l1: every candidate is toCreate a
   assert.deepEqual(planned.file.tables.map(item => item.tableId), ['mensalidade', 'pagamento']);
   assert.deepEqual(planned.file.removed, []);
   assert.deepEqual(planned.file.changes, []);
+  assert.deepEqual(planned.file.meta.unmappedChanges, []);
   const list = planned.file.usecases.find(item => item.usecaseId === 'listMensalidade');
   assert.equal(list?.reason, 'no l1 usecase for Mensalidade.list');
   assert.deepEqual(list?.tableRefs, ['mensalidade']);
@@ -312,6 +313,7 @@ void test('102047 Aluno is mdm with noTable mdm and tables are ok', () => {
   assert.equal(planned.file.endpoints.find(item => item.usecaseRef === 'listAluno')?.noTable, 'mdm');
   assert.ok(planned.file.tables.every(item => item.noTable === 'ok'));
   assert.deepEqual(planned.file.changes, []);
+  assert.deepEqual(planned.file.meta.unmappedChanges, []);
 });
 
 void test('changes[] from l4diff: field, rule without entity, shared grant', () => {
@@ -354,6 +356,33 @@ void test('changes[] from l4diff: field, rule without entity, shared grant', () 
   assert.ok(grant?.usecaseRefs.includes('listMensalidade'));
   assert.ok(grant?.usecaseRefs.includes('createPagamento'));
   assert.ok(grant?.usecaseRefs.includes('getPagamento'));
+  assert.deepEqual(planned.file.meta.unmappedChanges, []);
+});
+
+void test('unknown l4diff kinds stay out of changes[] and land in meta.unmappedChanges', () => {
+  const l4diff = parseP1L4Diff(JSON.parse(readFileSync(
+    path.join(HERE, 'fixtures/l4diff-unknown-kinds.json'),
+    'utf8',
+  )) as unknown);
+  assert.ok(l4diff);
+  const needs = parseP1Needs(NEEDS_ACADEMIA);
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      ...ACADEMIA_ONTOLOGY,
+      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+    ],
+    now: AT,
+    l4diff,
+  });
+  assert.equal(planned.file.changes.some(item => item.changeId === 'outbound:cancelarMatricula'), false);
+  assert.equal(planned.file.changes.some(item => item.changeId === 'task:lembrarGeracaoMensalidades.alertarGerenciaGeracao'), false);
+  assert.ok(planned.file.changes.some(item => item.changeId === 'entity:Aluno' && item.kind === 'entity'));
+  assert.deepEqual(planned.file.meta.unmappedChanges, [
+    { changeId: 'outbound:cancelarMatricula', kind: 'outbound', source: 'integration.defs.ts' },
+    { changeId: 'task:lembrarGeracaoMensalidades.alertarGerenciaGeracao', kind: 'task', source: 'workflows.defs.ts' },
+  ]);
 });
 
 void test('pool message is l1→l2 with backend.json and the thread round', () => {

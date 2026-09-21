@@ -1,5 +1,11 @@
 # agentPlannerL1
 
+## 2026-09-20 (p1_07)
+
+- `l4diff` items whose `kind` is not in `P1_CHANGE_KINDS` are kept in
+  `backend.json` `meta.unmappedChanges` (always present, empty when
+  none) instead of vanishing. No semantic mapping. Gate does not fail.
+
 ## 2026-09-20 (p1_06)
 
 - `entry10` honors `/candidate`. The step prompt reads `candidate` (L4 already

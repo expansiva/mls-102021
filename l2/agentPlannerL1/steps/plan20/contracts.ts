@@ -127,6 +127,12 @@ export interface P1Change {
   source: string;
 }
 
+export interface P1UnmappedChange {
+  changeId: string;
+  kind: string;
+  source: string;
+}
+
 export interface P1L4DiffItem {
   changeId: string;
   kind: P1ChangeKind;
@@ -143,6 +149,7 @@ export interface P1L4DiffFile {
   base: string;
   candidate: string;
   items: P1L4DiffItem[];
+  unmapped: P1UnmappedChange[];
 }
 
 export interface P1BackendFile {
@@ -161,6 +168,7 @@ export interface P1BackendFile {
     pages: Record<string, string[]>;
     generatedAt: string;
     llmCalled: boolean;
+    unmappedChanges: P1UnmappedChange[];
   };
 }
 
@@ -332,13 +340,28 @@ export function parseP1OntologyIndex(value: unknown): string[] {
 export function parseP1L4Diff(value: unknown): P1L4DiffFile | null {
   const raw = record(value);
   if (text(raw.schemaVersion) !== P1_L4DIFF_SCHEMA) return null;
-  const items = list(raw.items).map(item => parseL4DiffItem(item)).filter((item): item is P1L4DiffItem => !!item);
+  const items: P1L4DiffItem[] = [];
+  const unmapped: P1UnmappedChange[] = [];
+  for (const item of list(raw.items)) {
+    const row = record(item);
+    const changeId = text(row.changeId);
+    const kind = text(row.kind);
+    if (!changeId || !kind) continue;
+    if (!isP1ChangeKind(kind)) {
+      console.warn(`Unknown l4diff kind skipped: changeId=${changeId} kind=${kind}`);
+      unmapped.push({ changeId, kind, source: text(row.source) });
+      continue;
+    }
+    const parsed = parseL4DiffItem(item);
+    if (parsed) items.push(parsed);
+  }
   return {
     schemaVersion: P1_L4DIFF_SCHEMA,
     moduleName: text(raw.moduleName),
     base: text(raw.base),
     candidate: text(raw.candidate),
     items,
+    unmapped: sortBy(unmapped, item => item.changeId),
   };
 }
 
@@ -425,6 +448,7 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
       pages,
       generatedAt: text(meta.generatedAt) || fallback.now.toISOString(),
       llmCalled: meta.llmCalled === false ? false : true,
+      unmappedChanges: [],
     },
   };
   return stampP1Backend(built, {
@@ -810,6 +834,7 @@ function assembleFile(input: {
       pages,
       generatedAt: now.toISOString(),
       llmCalled,
+      unmappedChanges: [],
     },
   }, {
     ontology,
@@ -1162,6 +1187,10 @@ export function stampP1Backend(file: P1BackendFile, ctx: {
       ontology: ctx.ontology,
       byEntity,
     }),
+    meta: {
+      ...file.meta,
+      unmappedChanges: ctx.l4diff ? [...ctx.l4diff.unmapped] : [],
+    },
   };
 }
 

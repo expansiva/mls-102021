@@ -1,5 +1,12 @@
 # plan20
 
+## 2026-09-20 (p1_07)
+
+- Unknown `l4diff` kinds (`outbound`, `task`, …) are recorded in
+  `meta.unmappedChanges` (`changeId`, `kind`, `source`) instead of
+  disappearing. `changes[]` still only holds `P1_CHANGE_KINDS`. The
+  gate does not fail. Schema stays v1.1 (new field in `meta` only).
+
 ## 2026-09-20 (p1_05)
 
 - Schema `2026-09-21-p1-backend-v1.1`: every endpoint, usecase, port, table and

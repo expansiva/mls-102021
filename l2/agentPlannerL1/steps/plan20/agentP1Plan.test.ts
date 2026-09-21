@@ -204,6 +204,7 @@ void test('execute writes backend.json, one l1→l2 message, delivered trace, an
   assert.equal(written.meta.llmCalled, false);
   assert.ok(written.usecases.every(item => item.status === 'toCreate'));
   assert.deepEqual(written.changes, []);
+  assert.deepEqual(written.meta.unmappedChanges, []);
   assert.ok(written.usecases.every(item => item.noTable === 'ok' || item.noTable === 'mdm' || item.noTable === 'none'));
   assert.ok(written.tables.every(item => item.noTable === 'ok' && item.tableRefs[0] === item.tableId));
   assert.equal(result.backendPath, `l4/${MODULE}/pool/l2/web/backend.json`);
@@ -261,6 +262,7 @@ void test('execute under /candidate writes pool/l2 in the override, reads candid
   assert.equal(result.backendPath, `l4/${candidate}/pool/l2/web/backend.json`);
   const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
   assert.equal(written.changes.length, 3);
+  assert.deepEqual(written.meta.unmappedChanges, []);
   assert.equal(
     host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content,
     marker,
@@ -292,6 +294,7 @@ void test('execute with pool/l1/web/l4diff.json fills changes[]', async () => {
   assert.ok(written.changes.some(item => item.changeId === 'rule:globalLateFee' && item.noTable === 'none'));
   const grant = written.changes.find(item => item.changeId === 'grant:recepcao-financeiro');
   assert.deepEqual(grant?.tableRefs, ['mensalidade', 'pagamento']);
+  assert.deepEqual(written.meta.unmappedChanges, []);
 });
 
 void test('beforePromptStep approves plan20 without LLM when nothing is unresolved and closes the pipeline', async () => {
