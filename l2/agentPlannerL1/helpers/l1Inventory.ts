@@ -24,6 +24,7 @@ export interface L1InventoryUsecase {
   file: string;
   functions: L1InventoryFunction[];
   ports: string[];
+  rulesApplied: string[];
   statusBackend: OwnerStatus | '';
 }
 
@@ -185,6 +186,10 @@ function stringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === 'string' && !!item.trim());
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function fieldsOf(value: unknown): L1InventoryField[] {
   if (!Array.isArray(value)) return [];
   const fields: L1InventoryField[] = [];
@@ -234,6 +239,7 @@ async function readUsecases(
       : (typeof parsed.artifactId === 'string' ? parsed.artifactId : file.shortName);
     const rawFunctions = Array.isArray(data.functions) ? data.functions : [];
     const functions: L1InventoryFunction[] = [];
+    const functionRules: string[] = [];
     for (const raw of rawFunctions) {
       if (!isRecord(raw)) continue;
       const name = typeof raw.functionName === 'string' ? raw.functionName : '';
@@ -243,12 +249,14 @@ async function readUsecases(
         input: fieldsOf(raw.input),
         output: fieldsOf(raw.output),
       });
+      functionRules.push(...stringList(raw.rulesApplied));
     }
     usecases.push({
       usecaseId,
       file: displayL1(file),
       functions,
       ports: stringList(data.ports),
+      rulesApplied: uniqueStrings([...stringList(data.rulesApplied), ...functionRules]),
       statusBackend: statuses.get(usecaseId) || '',
     });
   }

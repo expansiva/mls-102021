@@ -186,6 +186,18 @@ export function p1NeedsFile(moduleName: string, device: P1Device = P1_DEVICE): N
   };
 }
 
+/** `l4/<module>/pool/l1/web/l4diff.json` — written by L4 (p4_09). Absent is valid. */
+export function p1L4DiffFile(moduleName: string, device: P1Device = P1_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l1/${device}`,
+    shortName: 'l4diff',
+    extension: '.json',
+  };
+}
+
 /** `l4/<module>/pool/l2/web/backend.json` — written by plan20. Not a pool message. */
 export function p1BackendFile(moduleName: string, device: P1Device = P1_DEVICE): Ns5FileInfo {
   const base = moduleFile(moduleName);

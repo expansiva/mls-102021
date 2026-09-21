@@ -199,9 +199,12 @@ void test('execute writes backend.json, one l1→l2 message, delivered trace, an
   await seedPipeline(host);
   const result = await executeP1Plan(MODULE, AT);
   const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
-  assert.equal(written.schemaVersion, '2026-09-21-p1-backend-v1');
+  assert.equal(written.schemaVersion, '2026-09-21-p1-backend-v1.1');
   assert.equal(written.meta.llmCalled, false);
   assert.ok(written.usecases.every(item => item.status === 'toCreate'));
+  assert.deepEqual(written.changes, []);
+  assert.ok(written.usecases.every(item => item.noTable === 'ok' || item.noTable === 'mdm' || item.noTable === 'none'));
+  assert.ok(written.tables.every(item => item.noTable === 'ok' && item.tableRefs[0] === item.tableId));
   assert.equal(result.backendPath, `l4/${MODULE}/pool/l2/web/backend.json`);
 
   const message = JSON.parse(host.files[keyOf({
@@ -225,6 +228,23 @@ void test('execute writes backend.json, one l1→l2 message, delivered trace, an
   assert.ok(incoming);
   assert.notEqual(incoming.status, 'deleted');
   assert.ok(incoming.content.includes('"to": "l1"'));
+});
+
+void test('execute with pool/l1/web/l4diff.json fills changes[]', async () => {
+  const host = installHost();
+  await seedPipeline(host);
+  seed(host, {
+    folder: `${MODULE}/pool/l1/web`,
+    shortName: 'l4diff',
+    content: readFileSync(path.join(HERE, 'fixtures/l4diff-mensalidadesAcademia.json'), 'utf8'),
+  });
+  await executeP1Plan(MODULE, AT);
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  assert.equal(written.changes.length, 3);
+  assert.ok(written.changes.some(item => item.changeId === 'field:Mensalidade.desconto' && item.tableRefs.includes('mensalidade')));
+  assert.ok(written.changes.some(item => item.changeId === 'rule:globalLateFee' && item.noTable === 'none'));
+  const grant = written.changes.find(item => item.changeId === 'grant:recepcao-financeiro');
+  assert.deepEqual(grant?.tableRefs, ['mensalidade', 'pagamento']);
 });
 
 void test('beforePromptStep approves plan20 without LLM when nothing is unresolved and closes the pipeline', async () => {

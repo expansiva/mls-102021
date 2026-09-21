@@ -24,6 +24,7 @@ import {
   markP1Step,
   p1BackendFile,
   p1DraftFile,
+  p1L4DiffFile,
   p1NeedsFile,
   p1PipelineFile,
   readP1AgentText,
@@ -42,6 +43,7 @@ import {
   buildP1ResolutionSchema,
   normalizeP1Backend,
   parseP1Entity,
+  parseP1L4Diff,
   parseP1Needs,
   parseP1OntologyIndex,
   parseP1Resolution,
@@ -50,6 +52,7 @@ import {
   type P1BackendFile,
   type P1BackendResolution,
   type P1EntityView,
+  type P1L4DiffFile,
   type P1NeedsFile,
   type P1PlanBackendResult,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
@@ -75,6 +78,7 @@ export interface P1PlanSources {
   inventory: L1Inventory;
   ontology: P1EntityView[];
   pipeline: P1PipelineState;
+  l4diff: P1L4DiffFile | null;
 }
 
 export interface P1DeliverPlanResult {
@@ -153,11 +157,13 @@ export async function loadP1PlanSources(moduleName: string): Promise<P1PlanSourc
   if (rawNeeds === null) throw new Error('needs.json is missing; entry10 must run first.');
   const needs = parseP1Needs(rawNeeds);
   const ontology = await loadP1Ontology(moduleName);
+  const rawDiff = await readJson<unknown>(p1L4DiffFile(moduleName, pipelineDevice(pipeline)));
   return {
     needs,
     inventory: pipeline.inventory,
     ontology,
     pipeline,
+    l4diff: rawDiff === null ? null : parseP1L4Diff(rawDiff),
   };
 }
 
@@ -173,8 +179,9 @@ export async function executeP1Plan(
     ontology: sources.ontology,
     now,
     resolution,
+    l4diff: sources.l4diff,
   });
-  const repaired = repairP1Backend(planned.file, sources.needs, sources.ontology);
+  const repaired = repairP1Backend(planned.file, sources.needs, sources.ontology, sources.inventory, sources.l4diff);
   const gate = validateP1Backend(repaired, sources.needs, sources.ontology);
   if (!gate.ok) throw new Error(formatP1BackendGate(gate.issues));
   return commitP1Plan(sources, repaired, now);
@@ -199,6 +206,7 @@ export async function beforeP1PlanPromptStep(
       inventory: sources.inventory,
       ontology: sources.ontology,
       now: new Date(),
+      l4diff: sources.l4diff,
     });
     if (!planned.unresolved.length && !parsed.gateFeedback) {
       const mutationParent = findMutableParent(context, parentStep);
@@ -282,6 +290,7 @@ export async function afterP1PlanPromptStep(
       ontology: sources.ontology,
       now,
       resolution,
+      l4diff: sources.l4diff,
     });
     let draft = normalizeP1Backend(payload, {
       needs: sources.needs,
@@ -289,9 +298,10 @@ export async function afterP1PlanPromptStep(
       ontology: sources.ontology,
       now,
       resolution,
+      l4diff: sources.l4diff,
     });
     if (!draft.endpoints.length) draft = planned.file;
-    draft = repairP1Backend(draft, sources.needs, sources.ontology);
+    draft = repairP1Backend(draft, sources.needs, sources.ontology, sources.inventory, sources.l4diff);
     let pipeline = await requirePipeline(moduleName);
     pipeline = await writeStepState(pipeline, {
       status: 'running',

@@ -4,8 +4,9 @@ import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 
-export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1' as const;
+export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.1' as const;
 export const P1_BACKEND_ARTIFACT = 'pool/l2/web/backend.json' as const;
+export const P1_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
 export const P1_KINDS = ['qry', 'cmd'] as const;
 export type P1Kind = typeof P1_KINDS[number];
 export const P1_OPERATIONS = ['list', 'get', 'create', 'update', 'transition', 'delete', 'custom'] as const;
@@ -18,6 +19,12 @@ export const P1_WRITE_OPERATIONS = ['create', 'update', 'transition', 'delete'] 
 export type P1WriteOperation = typeof P1_WRITE_OPERATIONS[number];
 export const P1_REMOVED_KINDS = ['usecase', 'port', 'table'] as const;
 export type P1RemovedKind = typeof P1_REMOVED_KINDS[number];
+export const P1_NO_TABLE = ['ok', 'mdm', 'none'] as const;
+export type P1NoTable = typeof P1_NO_TABLE[number];
+export const P1_CHANGE_KINDS = ['field', 'rule', 'grant', 'transition', 'process', 'integration', 'entity'] as const;
+export type P1ChangeKind = typeof P1_CHANGE_KINDS[number];
+export const P1_CHANGE_OPS = ['added', 'changed', 'removed'] as const;
+export type P1ChangeOp = typeof P1_CHANGE_OPS[number];
 
 const NAMED_OPS = ['list', 'get', 'create', 'update', 'delete'] as const;
 const LIST_FROM = /\b(list|summary|highlights|locate)\b/;
@@ -67,6 +74,8 @@ export interface P1Endpoint {
   kind: P1Kind;
   usecaseRef: string;
   status: P1PlanStatus;
+  tableRefs: string[];
+  noTable: P1NoTable;
 }
 
 export interface P1Usecase {
@@ -77,18 +86,24 @@ export interface P1Usecase {
   status: P1PlanStatus;
   existing: string;
   reason: string;
+  tableRefs: string[];
+  noTable: P1NoTable;
 }
 
 export interface P1Port {
   portId: string;
   entity: string;
   status: P1PlanStatus;
+  tableRefs: string[];
+  noTable: P1NoTable;
 }
 
 export interface P1Table {
   tableId: string;
   entity: string;
   status: P1PlanStatus;
+  tableRefs: string[];
+  noTable: P1NoTable;
 }
 
 export interface P1Removed {
@@ -96,6 +111,38 @@ export interface P1Removed {
   id: string;
   status: 'toRemove';
   reason: string;
+  tableRefs: string[];
+  noTable: P1NoTable;
+}
+
+export interface P1Change {
+  changeId: string;
+  kind: P1ChangeKind;
+  op: P1ChangeOp;
+  entity: string;
+  tableRefs: string[];
+  noTable: P1NoTable;
+  usecaseRefs: string[];
+  reason: string;
+  source: string;
+}
+
+export interface P1L4DiffItem {
+  changeId: string;
+  kind: P1ChangeKind;
+  op: P1ChangeOp;
+  entity: string;
+  source: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
+
+export interface P1L4DiffFile {
+  schemaVersion: typeof P1_L4DIFF_SCHEMA;
+  moduleName: string;
+  base: string;
+  candidate: string;
+  items: P1L4DiffItem[];
 }
 
 export interface P1BackendFile {
@@ -109,6 +156,7 @@ export interface P1BackendFile {
   ports: P1Port[];
   tables: P1Table[];
   removed: P1Removed[];
+  changes: P1Change[];
   meta: {
     pages: Record<string, string[]>;
     generatedAt: string;
@@ -150,6 +198,7 @@ export interface P1PlanBackendInput {
   ontology: P1EntityView[];
   now: Date;
   resolution?: P1BackendResolution | null;
+  l4diff?: P1L4DiffFile | null;
 }
 
 export interface P1PlanBackendResult {
@@ -177,6 +226,18 @@ export function isP1WriteOperation(value: string): value is P1WriteOperation {
   return (P1_WRITE_OPERATIONS as readonly string[]).includes(value);
 }
 
+export function isP1NoTable(value: string): value is P1NoTable {
+  return (P1_NO_TABLE as readonly string[]).includes(value);
+}
+
+export function isP1ChangeKind(value: string): value is P1ChangeKind {
+  return (P1_CHANGE_KINDS as readonly string[]).includes(value);
+}
+
+export function isP1ChangeOp(value: string): value is P1ChangeOp {
+  return (P1_CHANGE_OPS as readonly string[]).includes(value);
+}
+
 export function p1BackendSubject(moduleName: string, device: P1Device = P1_DEVICE): string {
   return `backend plan of ${moduleName} (${device})`;
 }
@@ -188,6 +249,7 @@ export function p1BackendBody(file: P1BackendFile): string {
     `${file.ports.length} ports`,
     `${file.tables.length} tables`,
     `${file.removed.length} removed`,
+    `${file.changes.length} changes`,
     `llmCalled=${file.meta.llmCalled}`,
   ].join('\n');
 }
@@ -267,6 +329,19 @@ export function parseP1OntologyIndex(value: unknown): string[] {
   return list(raw.entities).map(item => text(record(item).entityId)).filter(Boolean);
 }
 
+export function parseP1L4Diff(value: unknown): P1L4DiffFile | null {
+  const raw = record(value);
+  if (text(raw.schemaVersion) !== P1_L4DIFF_SCHEMA) return null;
+  const items = list(raw.items).map(item => parseL4DiffItem(item)).filter((item): item is P1L4DiffItem => !!item);
+  return {
+    schemaVersion: P1_L4DIFF_SCHEMA,
+    moduleName: text(raw.moduleName),
+    base: text(raw.base),
+    candidate: text(raw.candidate),
+    items,
+  };
+}
+
 export function parseP1Resolution(value: unknown): P1BackendResolution {
   const raw = record(value);
   return {
@@ -312,6 +387,7 @@ export function planP1Backend(input: P1PlanBackendInput): P1PlanBackendResult {
     endpoints,
     now: input.now,
     llmCalled: !!input.resolution,
+    l4diff: input.l4diff ?? null,
   });
   return { file, unresolved };
 }
@@ -333,7 +409,7 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
   const removed = list(raw.removed).map(item => normalizeRemoved(item)).filter(Boolean) as P1Removed[];
   const meta = record(raw.meta);
   const pages = pagesFromMeta(meta.pages, endpoints, needs);
-  return {
+  const built = {
     schemaVersion: P1_BACKEND_SCHEMA_VERSION,
     moduleName: text(raw.moduleName) || needs.moduleName,
     device: P1_DEVICE,
@@ -344,12 +420,19 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
     ports: sortBy(ports.filter(port => !isMdmEntity(ontology.get(port.entity))), item => item.portId),
     tables: sortBy(tables.filter(table => !isMdmEntity(ontology.get(table.entity))), item => item.tableId),
     removed: sortBy(removed, item => `${item.kind}:${item.id}`),
+    changes: [],
     meta: {
       pages,
       generatedAt: text(meta.generatedAt) || fallback.now.toISOString(),
       llmCalled: meta.llmCalled === false ? false : true,
     },
   };
+  return stampP1Backend(built, {
+    ontology,
+    inventory,
+    needs,
+    l4diff: fallback.l4diff ?? null,
+  });
 }
 
 export function buildP1BackendTool(schema: Record<string, unknown>): mls.msg.LLMTool {
@@ -416,7 +499,7 @@ export function unwrapP1ArtifactPayload(value: unknown): unknown {
     : argumentsPayload;
 }
 
-interface UsecaseDraft extends P1Usecase {
+interface UsecaseDraft extends Omit<P1Usecase, 'tableRefs' | 'noTable'> {
   nameMatched: boolean;
   family: P1NeedsFamily;
   derived: string[];
@@ -623,6 +706,7 @@ function assembleFile(input: {
   endpoints: EndpointDraft[];
   now: Date;
   llmCalled: boolean;
+  l4diff: P1L4DiffFile | null;
 }): P1BackendFile {
   const { needs, inventory, ontology, now, llmCalled } = input;
   const usecases = sortBy(input.usecases.map(item => stripDraft(item)), item => item.usecaseId);
@@ -634,7 +718,7 @@ function assembleFile(input: {
     const status: P1PlanStatus = routeDone
       ? (usecase?.status === 'toUpdate' ? 'toUpdate' : 'done')
       : 'toCreate';
-    return { route, page: item.page, kind: item.kind, usecaseRef: item.usecaseId, status };
+    return { route, page: item.page, kind: item.kind, usecaseRef: item.usecaseId, status, tableRefs: [] as string[], noTable: 'none' as const };
   }), item => item.route);
 
   const neededEntities = unique(usecases.flatMap(item => item.ports.length ? item.ports : (isMdmEntity(ontology.get(item.entity)) ? [] : [item.entity])));
@@ -645,6 +729,8 @@ function assembleFile(input: {
         portId: existing?.portId || p1PortId(entity),
         entity,
         status: (existing ? 'done' : 'toCreate') as P1PlanStatus,
+        tableRefs: [],
+        noTable: 'none' as const,
       };
     }),
     item => item.portId,
@@ -656,6 +742,8 @@ function assembleFile(input: {
         tableId: existing?.tableId || p1TableId(entity),
         entity,
         status: (existing ? 'done' : 'toCreate') as P1PlanStatus,
+        tableRefs: [],
+        noTable: 'none' as const,
       };
     }),
     item => item.tableId,
@@ -673,6 +761,8 @@ function assembleFile(input: {
         id: usecase.usecaseId,
         status: 'toRemove',
         reason: 'exists in l1, no page needs it',
+        tableRefs: [] as string[],
+        noTable: 'none' as const,
       });
     }
     for (const port of inventory.ports) {
@@ -682,6 +772,8 @@ function assembleFile(input: {
         id: port.portId,
         status: 'toRemove',
         reason: 'exists in l1, no page needs it',
+        tableRefs: [] as string[],
+        noTable: 'none' as const,
       });
     }
     for (const table of inventory.tables) {
@@ -691,6 +783,8 @@ function assembleFile(input: {
         id: table.tableId,
         status: 'toRemove',
         reason: 'exists in l1, no page needs it',
+        tableRefs: [] as string[],
+        noTable: 'none' as const,
       });
     }
   }
@@ -700,7 +794,7 @@ function assembleFile(input: {
     pages[page.pageId] = endpoints.filter(item => item.page === page.pageId).map(item => item.route);
   }
 
-  return {
+  return stampP1Backend({
     schemaVersion: P1_BACKEND_SCHEMA_VERSION,
     moduleName: needs.moduleName,
     device: needs.device || P1_DEVICE,
@@ -711,12 +805,18 @@ function assembleFile(input: {
     ports,
     tables,
     removed: sortBy(removed, item => `${item.kind}:${item.id}`),
+    changes: [],
     meta: {
       pages,
       generatedAt: now.toISOString(),
       llmCalled,
     },
-  };
+  }, {
+    ontology,
+    inventory,
+    needs,
+    l4diff: input.l4diff,
+  });
 }
 
 function stripDraft(draft: UsecaseDraft): P1Usecase {
@@ -728,6 +828,8 @@ function stripDraft(draft: UsecaseDraft): P1Usecase {
     status: draft.status,
     existing: draft.status === 'toCreate' ? '' : draft.existing,
     reason: draft.reason,
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -871,6 +973,8 @@ function normalizeEndpoint(value: unknown, moduleName: string): P1Endpoint {
     kind,
     usecaseRef,
     status: planStatus(statusRaw, 'toCreate'),
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -888,6 +992,8 @@ function normalizeUsecase(value: unknown, ontology: Map<string, P1EntityView>): 
     status,
     existing: status === 'toCreate' ? '' : text(raw.existing),
     reason: text(raw.reason) || `no l1 usecase for ${entity}.${operationRaw || 'custom'}`,
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -898,6 +1004,8 @@ function normalizePort(value: unknown): P1Port {
     portId: text(raw.portId) || p1PortId(entity),
     entity,
     status: planStatus(text(raw.status), 'toCreate'),
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -908,6 +1016,8 @@ function normalizeTable(value: unknown): P1Table {
     tableId: text(raw.tableId) || p1TableId(entity),
     entity,
     status: planStatus(text(raw.status), 'toCreate'),
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -921,6 +1031,8 @@ function normalizeRemoved(value: unknown): P1Removed | null {
     id,
     status: 'toRemove',
     reason: text(raw.reason) || 'exists in l1, no page needs it',
+    tableRefs: [],
+    noTable: 'none',
   };
 }
 
@@ -984,6 +1096,213 @@ function parseMaybeJson(value: unknown): unknown {
   } catch {
     return value;
   }
+}
+
+function parseL4DiffItem(value: unknown): P1L4DiffItem | null {
+  const raw = record(value);
+  const changeId = text(raw.changeId);
+  const kind = text(raw.kind);
+  const op = text(raw.op);
+  if (!changeId || !isP1ChangeKind(kind) || !isP1ChangeOp(op)) return null;
+  return {
+    changeId,
+    kind,
+    op,
+    entity: text(raw.entity),
+    source: text(raw.source),
+    before: record(raw.before),
+    after: record(raw.after),
+  };
+}
+
+export function stampP1Backend(file: P1BackendFile, ctx: {
+  ontology: Map<string, P1EntityView>;
+  inventory: L1Inventory;
+  needs: P1NeedsFile;
+  l4diff: P1L4DiffFile | null;
+}): P1BackendFile {
+  const tables = file.tables.map(table => ({
+    ...table,
+    tableRefs: [table.tableId],
+    noTable: 'ok' as const,
+  }));
+  const byEntity = new Map(tables.map(table => [table.entity, table.tableId]));
+  const ports = file.ports.map(port => withTableRefs(port, [port.entity], byEntity, ctx.ontology));
+  const usecases = file.usecases.map(usecase => {
+    const entities = usecase.ports.length ? usecase.ports : [usecase.entity];
+    return withTableRefs(usecase, entities, byEntity, ctx.ontology);
+  });
+  const usecaseById = new Map(usecases.map(item => [item.usecaseId, item]));
+  const endpoints = file.endpoints.map(endpoint => {
+    const usecase = usecaseById.get(endpoint.usecaseRef);
+    return {
+      ...endpoint,
+      tableRefs: usecase ? [...usecase.tableRefs] : [],
+      noTable: usecase?.noTable ?? 'none',
+    };
+  });
+  const removed = file.removed.map(item => {
+    const found = tableRefsForRemoved(item, tables, ctx.inventory);
+    return { ...item, tableRefs: found.tableRefs, noTable: classifyNoTable(found.tableRefs, found.entities, ctx.ontology) };
+  });
+  return {
+    ...file,
+    schemaVersion: P1_BACKEND_SCHEMA_VERSION,
+    endpoints,
+    usecases,
+    ports,
+    tables,
+    removed,
+    changes: mapP1Changes(ctx.l4diff, {
+      usecases,
+      endpoints,
+      tables,
+      needs: ctx.needs,
+      inventory: ctx.inventory,
+      ontology: ctx.ontology,
+      byEntity,
+    }),
+  };
+}
+
+function withTableRefs<T extends { entity: string }>(
+  item: T,
+  entities: readonly string[],
+  byEntity: Map<string, string>,
+  ontology: Map<string, P1EntityView>,
+): T & { tableRefs: string[]; noTable: P1NoTable } {
+  const tableRefs = unique(entities.map(entity => byEntity.get(entity) || ''));
+  return { ...item, tableRefs, noTable: classifyNoTable(tableRefs, entities, ontology) };
+}
+
+function classifyNoTable(
+  tableRefs: readonly string[],
+  entities: readonly string[],
+  ontology: Map<string, P1EntityView>,
+): P1NoTable {
+  if (tableRefs.length) return 'ok';
+  if (entities.some(entity => isMdmEntity(ontology.get(entity)))) return 'mdm';
+  return 'none';
+}
+
+function tableRefsForRemoved(
+  item: P1Removed,
+  tables: readonly P1Table[],
+  inventory: L1Inventory,
+): { tableRefs: string[]; entities: string[] } {
+  if (item.kind === 'table') {
+    const leftover = tables.find(table => table.tableId === item.id);
+    return leftover
+      ? { tableRefs: [leftover.tableId], entities: [leftover.entity] }
+      : { tableRefs: [], entities: [] };
+  }
+  if (item.kind === 'port') {
+    const port = inventory.ports.find(candidate => candidate.portId === item.id);
+    const entity = port?.entity || item.id.replace(/Repository$/, '');
+    const table = tables.find(candidate => candidate.entity === entity || candidate.tableId === p1TableId(entity));
+    return { tableRefs: table ? [table.tableId] : [], entities: entity ? [entity] : [] };
+  }
+  const usecase = inventory.usecases.find(candidate => candidate.usecaseId === item.id);
+  const parsed = parseUsecaseName(item.id);
+  const entities = unique([
+    ...(usecase?.ports ?? []),
+    parsed?.entity || '',
+  ]);
+  const tableRefs = unique(entities.map(entity => tables.find(table => table.entity === entity)?.tableId || ''));
+  const known = entities.length ? entities : (parsed?.entity ? [parsed.entity] : []);
+  return { tableRefs, entities: known };
+}
+
+function mapP1Changes(l4diff: P1L4DiffFile | null, ctx: {
+  usecases: readonly P1Usecase[];
+  endpoints: readonly P1Endpoint[];
+  tables: readonly P1Table[];
+  needs: P1NeedsFile;
+  inventory: L1Inventory;
+  ontology: Map<string, P1EntityView>;
+  byEntity: Map<string, string>;
+}): P1Change[] {
+  if (!l4diff) return [];
+  return sortBy(l4diff.items.map(item => {
+    const entities = changeEntities(item);
+    const tableRefs = unique(entities.map(entity => ctx.byEntity.get(entity) || ''));
+    const noTable = classifyNoTable(tableRefs, entities, ctx.ontology);
+    return {
+      changeId: item.changeId,
+      kind: item.kind,
+      op: item.op,
+      entity: item.entity,
+      tableRefs,
+      noTable,
+      usecaseRefs: changeUsecaseRefs(item, entities, ctx),
+      reason: changeReason(item),
+      source: item.source,
+    };
+  }), item => item.changeId);
+}
+
+function changeEntities(item: P1L4DiffItem): string[] {
+  const fromFrag = (frag: Record<string, unknown>): string[] => {
+    const refs = list(frag.entityRefs).map(value => {
+      if (typeof value === 'string') return text(value);
+      const row = record(value);
+      return text(row.entityId) || text(row.entity);
+    });
+    const named = list(frag.entities).map(value => {
+      if (typeof value === 'string') return text(value);
+      const row = record(value);
+      return text(row.entityId) || text(row.entity);
+    });
+    return [...refs, ...named, text(frag.entity)];
+  };
+  return unique([item.entity, ...fromFrag(item.before), ...fromFrag(item.after)]);
+}
+
+function changeUsecaseRefs(
+  item: P1L4DiffItem,
+  entities: readonly string[],
+  ctx: {
+    usecases: readonly P1Usecase[];
+    endpoints: readonly P1Endpoint[];
+    needs: P1NeedsFile;
+    inventory: L1Inventory;
+  },
+): string[] {
+  const byEntity = ctx.usecases.filter(usecase =>
+    entities.includes(usecase.entity) || usecase.ports.some(port => entities.includes(port)),
+  ).map(usecase => usecase.usecaseId);
+  if (item.kind === 'rule') {
+    const ruleId = text(item.after.ruleId) || text(item.before.ruleId) || item.changeId.slice(item.changeId.indexOf(':') + 1);
+    const cited = ctx.inventory.usecases
+      .filter(usecase => (usecase.rulesApplied ?? []).includes(ruleId))
+      .map(usecase => usecase.usecaseId)
+      .filter(id => ctx.usecases.some(usecase => usecase.usecaseId === id));
+    return unique([...cited, ...byEntity]);
+  }
+  if (item.kind === 'grant') {
+    const actor = text(item.after.actor) || text(item.after.actorId) || text(item.after.authority)
+      || text(item.before.actor) || text(item.before.actorId) || text(item.before.authority);
+    if (!actor) return unique(byEntity);
+    const pages = new Set(ctx.needs.pages.filter(page => page.actors.includes(actor)).map(page => page.pageId));
+    const fromActor = ctx.endpoints
+      .filter(endpoint => pages.has(endpoint.page))
+      .map(endpoint => endpoint.usecaseRef);
+    const matched = ctx.usecases.filter(usecase => {
+      if (!fromActor.includes(usecase.usecaseId)) return false;
+      if (!entities.length) return true;
+      return entities.includes(usecase.entity) || usecase.ports.some(port => entities.includes(port));
+    }).map(usecase => usecase.usecaseId);
+    return unique(matched.length ? matched : byEntity);
+  }
+  return unique(byEntity);
+}
+
+function changeReason(item: P1L4DiffItem): string {
+  const fromId = item.changeId.includes(':') ? item.changeId.slice(item.changeId.indexOf(':') + 1) : item.changeId;
+  const field = text(item.after.fieldId) || text(item.before.fieldId) || text(item.after.name);
+  const label = item.kind === 'field' && field ? field : fromId;
+  if (item.entity) return `${item.op} ${item.kind} ${label} on ${item.entity}`;
+  return `${item.op} ${item.kind} ${label}`;
 }
 
 function unique(values: readonly string[]): string[] {

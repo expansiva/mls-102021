@@ -48,7 +48,7 @@ void test('duplicate route, unknown entity, MDM table and missing page fail the 
   assert.ok(validateP1Backend(unknown, NEEDS, ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_ENTITY_UNKNOWN'));
 
   const mdm = planned();
-  mdm.tables.push({ tableId: 'aluno', entity: 'Aluno', status: 'toCreate' });
+  mdm.tables.push({ tableId: 'aluno', entity: 'Aluno', status: 'toCreate', tableRefs: ['aluno'], noTable: 'ok' });
   assert.ok(validateP1Backend(mdm, NEEDS, ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_MDM_TABLE'));
 
   const missing = planned();
@@ -58,14 +58,32 @@ void test('duplicate route, unknown entity, MDM table and missing page fail the 
 
 void test('repair strips MDM tables/ports and duplicate routes', () => {
   const file = planned();
-  file.tables.push({ tableId: 'aluno', entity: 'Aluno', status: 'toCreate' });
-  file.ports.push({ portId: 'AlunoRepository', entity: 'Aluno', status: 'toCreate' });
+  file.tables.push({ tableId: 'aluno', entity: 'Aluno', status: 'toCreate', tableRefs: ['aluno'], noTable: 'ok' });
+  file.ports.push({ portId: 'AlunoRepository', entity: 'Aluno', status: 'toCreate', tableRefs: [], noTable: 'mdm' });
   file.endpoints.push({ ...file.endpoints[0] });
   const repaired = repairP1Backend(file, NEEDS, ONTOLOGY);
   assert.equal(repaired.tables.some(item => item.entity === 'Aluno'), false);
   assert.equal(repaired.ports.some(item => item.entity === 'Aluno'), false);
   const routes = repaired.endpoints.map(item => item.route);
   assert.equal(routes.length, new Set(routes).size);
+  const gate = validateP1Backend(repaired, NEEDS, ONTOLOGY);
+  assert.equal(gate.ok, true, gate.issues.map(item => item.message).join('\n'));
+});
+
+void test('v1.1 grouping: unknown tableRef and noTable mismatch fail; repair restamps', () => {
+  const bad = planned();
+  bad.usecases[0].tableRefs = ['fantasma'];
+  bad.usecases[0].noTable = 'ok';
+  assert.ok(validateP1Backend(bad, NEEDS, ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_TABLE_REF'));
+
+  const mismatch = planned();
+  mismatch.usecases[0].tableRefs = [];
+  mismatch.usecases[0].noTable = 'ok';
+  assert.ok(validateP1Backend(mismatch, NEEDS, ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_NO_TABLE'));
+
+  const repaired = repairP1Backend(mismatch, NEEDS, ONTOLOGY);
+  assert.equal(repaired.schemaVersion, '2026-09-21-p1-backend-v1.1');
+  assert.ok(repaired.usecases.every(item => (item.tableRefs.length === 0) === (item.noTable !== 'ok')));
   const gate = validateP1Backend(repaired, NEEDS, ONTOLOGY);
   assert.equal(gate.ok, true, gate.issues.map(item => item.message).join('\n'));
 });

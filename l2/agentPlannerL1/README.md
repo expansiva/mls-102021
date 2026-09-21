@@ -2,8 +2,9 @@
 
 L1 planner. Reads a finished l4 module and the oldest `l2→l1` message in
 `pool/l1` whose artifact is `needs.json`, inventories the existing l1 (if any),
-and writes `pool/l2/web/backend.json` (endpoints, usecases, ports, tables with
-`OwnerStatus`). Unique name `agentPlannerL1`. Lives in `mls-102021` next to
+and writes `pool/l2/web/backend.json` v1.1 (endpoints, usecases, ports, tables with
+`OwnerStatus`, `tableRefs`/`noTable` on every item, and `changes[]` from optional
+`l4diff.json`). Unique name `agentPlannerL1`. Lives in `mls-102021` next to
 `agentChangeBackend`.
 
 The pool is not deleted. Nothing is written to l1 `.defs.ts` / `.ts`.
@@ -34,7 +35,10 @@ and records `inventory` (from `routeKeys`, controllers, usecases, ports, tables,
 `todoBackend.defs.ts owners[].statusBackend`). Without l1 (102047 today)
 `inventory.present` is `false`. `plan20` matches candidates against that
 inventory; one reasoning call only for the unmatched remainder. It writes
-`pool/l2/web/backend.json` and an `l1→l2` message, then closes the pipeline.
+`pool/l2/web/backend.json` (schema `2026-09-21-p1-backend-v1.1`) and an `l1→l2`
+message, then closes the pipeline. When `pool/l1/web/l4diff.json` is present it
+fills `changes[]`; otherwise `changes` is empty and the rest of the plan is
+unchanged.
 
 Re-execution always starts from zero (wipes `l1/<mod>/pipeline/`), leaves the
 pool intact, and never touches generated l1 source.

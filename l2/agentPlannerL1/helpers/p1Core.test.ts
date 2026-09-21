@@ -22,6 +22,7 @@ import {
   parseP1StepPrompt,
   p1DifferentRequestsRefusal,
   p1InvocationRefusal,
+  p1L4DiffFile,
   p1NeedsFile,
   p1PipelineFile,
   type P1PipelineState,
@@ -289,6 +290,17 @@ void test('p1NeedsFile is pool/l1/web/needs.json', () => {
     level: 4,
     folder: `${MODULE}/pool/l1/web`,
     shortName: 'needs',
+    extension: '.json',
+  });
+});
+
+void test('p1L4DiffFile is pool/l1/web/l4diff.json', () => {
+  installHost();
+  assert.deepEqual(p1L4DiffFile(MODULE), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l1/web`,
+    shortName: 'l4diff',
     extension: '.json',
   });
 });

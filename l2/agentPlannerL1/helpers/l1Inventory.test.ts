@@ -130,6 +130,7 @@ void test('fixture 102039 controleChamados: 19 usecases, 25 routes, 2 tables, st
   const create = inventory.usecases.find(item => item.usecaseId === 'createChamado');
   assert.ok(create);
   assert.equal(create?.statusBackend, 'done');
+  assert.ok(Array.isArray(create?.rulesApplied));
   assert.ok(create?.functions.some(fn => fn.name === 'createChamado'));
   assert.ok(create?.file.endsWith('/createChamado.defs.ts'));
   for (const usecase of inventory.usecases) {

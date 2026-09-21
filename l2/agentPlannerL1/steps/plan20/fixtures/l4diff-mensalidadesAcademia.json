@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "2026-09-21-p4-l4diff-v1",
+  "moduleName": "mensalidadesAcademia",
+  "base": "pipeline/releases/rel-1/l4",
+  "candidate": "pipeline/changes/chg-1/revisions/rev-1/l4",
+  "items": [
+    {
+      "changeId": "field:Mensalidade.desconto",
+      "kind": "field",
+      "op": "added",
+      "entity": "Mensalidade",
+      "source": "ontology/Mensalidade.defs.ts",
+      "before": {},
+      "after": { "fieldId": "desconto", "type": "number" }
+    },
+    {
+      "changeId": "rule:globalLateFee",
+      "kind": "rule",
+      "op": "changed",
+      "entity": "",
+      "source": "rules/index.defs.ts",
+      "before": { "text": "late fee is 2 percent" },
+      "after": { "text": "late fee is 3 percent" }
+    },
+    {
+      "changeId": "grant:recepcao-financeiro",
+      "kind": "grant",
+      "op": "changed",
+      "entity": "",
+      "source": "access.defs.ts",
+      "before": {},
+      "after": {
+        "actor": "recepcao",
+        "entityRefs": ["Mensalidade", "Pagamento"]
+      }
+    }
+  ]
+}

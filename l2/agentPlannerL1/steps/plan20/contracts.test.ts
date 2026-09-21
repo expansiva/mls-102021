@@ -13,6 +13,7 @@ import {
   buildP1BackendMessage,
   buildP1BackendTool,
   buildP1ResolutionSchema,
+  parseP1L4Diff,
   parseP1Needs,
   planP1Backend,
   p1BackendSubject,
@@ -175,8 +176,13 @@ void test('102047 mensalidadesAcademia with no l1: every candidate is toCreate a
   assert.deepEqual(planned.file.ports.map(item => item.portId), ['MensalidadeRepository', 'PagamentoRepository']);
   assert.deepEqual(planned.file.tables.map(item => item.tableId), ['mensalidade', 'pagamento']);
   assert.deepEqual(planned.file.removed, []);
+  assert.deepEqual(planned.file.changes, []);
   const list = planned.file.usecases.find(item => item.usecaseId === 'listMensalidade');
   assert.equal(list?.reason, 'no l1 usecase for Mensalidade.list');
+  assert.deepEqual(list?.tableRefs, ['mensalidade']);
+  assert.equal(list?.noTable, 'ok');
+  assert.ok(planned.file.tables.every(item => item.noTable === 'ok' && item.tableRefs.length === 1 && item.tableRefs[0] === item.tableId));
+  assert.ok(planned.file.endpoints.every(item => item.noTable === 'ok' && item.tableRefs.length > 0));
 });
 
 void test('fixture 102039 with invented needs: done, toUpdate and toRemove each appear', async () => {
@@ -264,9 +270,90 @@ void test('MDM entities get a usecase and never a port or table', () => {
     ontology: CHAMADOS_ONTOLOGY,
     now: AT,
   });
-  assert.ok(planned.file.usecases.some(item => item.usecaseId === 'listAtendente' && item.ports.length === 0));
+  const list = planned.file.usecases.find(item => item.usecaseId === 'listAtendente');
+  assert.ok(list && list.ports.length === 0);
+  assert.deepEqual(list?.tableRefs, []);
+  assert.equal(list?.noTable, 'mdm');
+  assert.equal(planned.file.endpoints.find(item => item.usecaseRef === 'listAtendente')?.noTable, 'mdm');
   assert.equal(planned.file.ports.length, 0);
   assert.equal(planned.file.tables.length, 0);
+});
+
+void test('102047 Aluno is mdm with noTable mdm and tables are ok', () => {
+  const needs = parseP1Needs({
+    schemaVersion: '2026-09-21-p2-needs-v1',
+    moduleName: 'mensalidadesAcademia',
+    device: 'web',
+    pages: [{
+      pageId: 'atendimento_recepcao',
+      actors: ['recepcao'],
+      reads: [
+        { entity: 'Aluno', family: 'mdm', scope: 'organization', derived: [], from: ['organism:list'] },
+        { entity: 'Mensalidade', family: 'tdm', scope: 'organization', derived: [], from: ['organism:list'] },
+      ],
+      writes: [],
+    }],
+  });
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      ...ACADEMIA_ONTOLOGY,
+      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+    ],
+    now: AT,
+  });
+  const aluno = planned.file.usecases.find(item => item.usecaseId === 'listAluno');
+  assert.deepEqual(aluno?.tableRefs, []);
+  assert.equal(aluno?.noTable, 'mdm');
+  const mensalidade = planned.file.usecases.find(item => item.usecaseId === 'listMensalidade');
+  assert.deepEqual(mensalidade?.tableRefs, ['mensalidade']);
+  assert.equal(mensalidade?.noTable, 'ok');
+  assert.equal(planned.file.endpoints.find(item => item.usecaseRef === 'listAluno')?.noTable, 'mdm');
+  assert.ok(planned.file.tables.every(item => item.noTable === 'ok'));
+  assert.deepEqual(planned.file.changes, []);
+});
+
+void test('changes[] from l4diff: field, rule without entity, shared grant', () => {
+  const l4diff = parseP1L4Diff(JSON.parse(readFileSync(
+    path.join(HERE, 'fixtures/l4diff-mensalidadesAcademia.json'),
+    'utf8',
+  )) as unknown);
+  assert.ok(l4diff);
+  const needs = parseP1Needs(NEEDS_ACADEMIA);
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: ACADEMIA_ONTOLOGY,
+    now: AT,
+    l4diff,
+  });
+  assert.equal(planned.file.changes.length, 3);
+
+  const field = planned.file.changes.find(item => item.changeId === 'field:Mensalidade.desconto');
+  assert.ok(field);
+  assert.equal(field?.kind, 'field');
+  assert.equal(field?.op, 'added');
+  assert.deepEqual(field?.tableRefs, ['mensalidade']);
+  assert.equal(field?.noTable, 'ok');
+  assert.ok(field?.usecaseRefs.includes('listMensalidade'));
+  assert.match(field?.reason || '', /desconto/);
+  assert.equal(field?.source, 'ontology/Mensalidade.defs.ts');
+
+  const rule = planned.file.changes.find(item => item.changeId === 'rule:globalLateFee');
+  assert.ok(rule);
+  assert.deepEqual(rule?.tableRefs, []);
+  assert.equal(rule?.noTable, 'none');
+  assert.deepEqual(rule?.usecaseRefs, []);
+
+  const grant = planned.file.changes.find(item => item.changeId === 'grant:recepcao-financeiro');
+  assert.ok(grant);
+  assert.equal(planned.file.changes.filter(item => item.changeId === 'grant:recepcao-financeiro').length, 1);
+  assert.deepEqual(grant?.tableRefs, ['mensalidade', 'pagamento']);
+  assert.equal(grant?.noTable, 'ok');
+  assert.ok(grant?.usecaseRefs.includes('listMensalidade'));
+  assert.ok(grant?.usecaseRefs.includes('createPagamento'));
+  assert.ok(grant?.usecaseRefs.includes('getPagamento'));
 });
 
 void test('pool message is l1→l2 with backend.json and the thread round', () => {

@@ -1,5 +1,14 @@
 # plan20
 
+## 2026-09-20 (p1_05)
+
+- Schema `2026-09-21-p1-backend-v1.1`: every endpoint, usecase, port, table and
+  removed item has `tableRefs[]` (ids of `tables[]`) and `noTable: ok|mdm|none`.
+  MDM (`Aluno`) is `mdm` with empty refs; persisted tables are `ok`.
+- Module-level `changes[]` from optional `pool/l1/web/l4diff.json` (p4_09).
+  Absent file ⇒ `changes: []`. One `changeId` may list several `tableRefs`.
+  Compatible: new fields only.
+
 ## 2026-09-20 (p1_04)
 
 - Transition usecase id is the l4 `transitionId`, without concatenating the

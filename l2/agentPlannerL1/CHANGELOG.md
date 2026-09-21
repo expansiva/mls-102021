@@ -1,5 +1,12 @@
 # agentPlannerL1
 
+## 2026-09-20 (p1_05)
+
+- `backend.json` v1.1 groups every item by table (`tableRefs` / `noTable`) and
+  carries `changes[]` from `l4diff.json` when L4 has written one. No l4diff
+  (first generation) leaves `changes: []`. L2 effort40 keeps reading the same
+  fields; nothing was renamed or removed.
+
 ## 2026-09-20 (p1_04)
 
 - Transition usecase id is the l4 `transitionId` (`cancelarMatricula`), not
