@@ -1,10 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/steps/entry10/agentP1Entry.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import {
   P1_FLOW_STEP_IDS,
   buildP1PlannedSteps,
   executeP1Entry,
+  moduleTokenOk,
   parseP1StepPrompt,
   type P1ExecuteResult,
 } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
@@ -25,19 +27,21 @@ export async function beforeP1EntryPromptStep(
 ): Promise<mls.msg.AgentIntent[]> {
   const parsed = parseP1StepPrompt(args || step.prompt || '');
   if (parsed.kind === 'refusal') {
+    const moduleName = moduleNameFromPrompt(args || step.prompt || '');
+    if (moduleName && moduleTokenOk(moduleName)) setModuleRoot(moduleName, null);
     return refuse(context, parentStep, step, hookSequential, parsed.refusal);
   }
 
   const source = parsed.kind === 'step'
-    ? parsed
-    : { kind: 'hand' as const, moduleName: parsed.moduleName };
+    ? { kind: 'step' as const, moduleName: parsed.moduleName, thread: parsed.thread, file: parsed.file, candidate: parsed.candidate }
+    : { kind: 'hand' as const, moduleName: parsed.moduleName, candidate: parsed.candidate };
   const result = await executeP1Entry(source, new Date());
   if ('refusal' in result) {
     return refuse(context, parentStep, step, hookSequential, result.refusal);
   }
 
   const mutationParent = findOpenParent(context, parentStep);
-  const extras = missingPlannedSteps(context, result).map(item => addStep(context, mutationParent, item));
+  const extras = missingPlannedSteps(context, result, parsed.candidate).map(item => addStep(context, mutationParent, item));
   return [
     ...extras,
     doneAnchor(context, mutationParent, result),
@@ -78,6 +82,7 @@ function refuse(
 function missingPlannedSteps(
   context: mls.msg.ExecutionContext,
   result: Exclude<P1ExecuteResult, { refusal: string }>,
+  candidate: string,
 ): mls.msg.AIAgentStep[] {
   const present = new Set(
     allSteps(context).map(item => planIdOf(item as mls.msg.AIAgentStep)).filter(Boolean),
@@ -85,6 +90,7 @@ function missingPlannedSteps(
   return buildP1PlannedSteps(result.pipeline.moduleName, {
     thread: result.pipeline.thread,
     file: result.pipeline.messageFile,
+    candidate,
   }).filter(item => {
     const id = item.planning?.planId || '';
     return id !== 'entry10' && !present.has(id);
@@ -157,6 +163,15 @@ function allSteps(context: mls.msg.ExecutionContext): mls.msg.AIPayload[] {
   };
   walk(root);
   return out;
+}
+
+function moduleNameFromPrompt(prompt: string): string {
+  try {
+    const parsed = JSON.parse(String(prompt || '{}')) as { moduleName?: unknown };
+    return typeof parsed.moduleName === 'string' ? parsed.moduleName.trim() : '';
+  } catch {
+    return '';
+  }
 }
 
 P1_STEP_HOOKS.entry10 = {

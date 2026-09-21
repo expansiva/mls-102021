@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102021_/l2/agentPlannerL1/agentPlannerL1.js';
 import { executeP1Entry, p1BackendFile, p1PipelineFile } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
+import { moduleFolder } from '/_102035_/l2/solution/fs.js';
 import { P1_STEP_HOOKS } from '/_102021_/l2/agentPlannerL1/helpers/p1Dispatch.js';
 import {
   afterP1PlanPromptStep,
@@ -102,11 +103,11 @@ const L4_COMPLETE = JSON.stringify({
   updatedAt: AT.toISOString(),
 });
 
-function seedOntology(host: Host): void {
+function seedOntology(host: Host, moduleRoot = MODULE): void {
   const root = path.join(HERE, 'fixtures/ontology');
-  seed(host, { folder: `${MODULE}/ontology`, shortName: 'index', extension: '.defs.ts', content: readFileSync(path.join(root, 'index.defs.ts'), 'utf8') });
-  seed(host, { folder: `${MODULE}/ontology`, shortName: 'Mensalidade', extension: '.defs.ts', content: readFileSync(path.join(root, 'Mensalidade.defs.ts'), 'utf8') });
-  seed(host, { folder: `${MODULE}/ontology`, shortName: 'Pagamento', extension: '.defs.ts', content: readFileSync(path.join(root, 'Pagamento.defs.ts'), 'utf8') });
+  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'index', extension: '.defs.ts', content: readFileSync(path.join(root, 'index.defs.ts'), 'utf8') });
+  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Mensalidade', extension: '.defs.ts', content: readFileSync(path.join(root, 'Mensalidade.defs.ts'), 'utf8') });
+  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Pagamento', extension: '.defs.ts', content: readFileSync(path.join(root, 'Pagamento.defs.ts'), 'utf8') });
 }
 
 function seedAgentFiles(host: Host): void {
@@ -228,6 +229,52 @@ void test('execute writes backend.json, one l1→l2 message, delivered trace, an
   assert.ok(incoming);
   assert.notEqual(incoming.status, 'deleted');
   assert.ok(incoming.content.includes('"to": "l1"'));
+});
+
+void test('execute under /candidate writes pool/l2 in the override, reads candidate l4diff, leaves canonical l4 untouched', async () => {
+  const host = installHost();
+  const candidate = `${MODULE}/tobe/plan`;
+  const marker = 'CANONICAL-l4-must-not-move';
+  seed(host, { folder: `${MODULE}/pipeline`, shortName: 'pipeline', content: L4_COMPLETE });
+  seed(host, { folder: MODULE, shortName: 'module', extension: '.defs.ts', content: marker });
+  seed(host, { folder: `${MODULE}/pool/l1/web`, shortName: 'needs', content: '"canonical-needs"\n' });
+  seed(host, { folder: `${candidate}/pipeline`, shortName: 'pipeline', content: L4_COMPLETE });
+  seed(host, { folder: `${candidate}/pool/l1`, shortName: SHORT, content: `${JSON.stringify(FIXTURE, null, 2)}\n` });
+  seed(host, { folder: `${candidate}/pool/l1/web`, shortName: 'needs', content: NEEDS });
+  seed(host, { folder: `${candidate}/pool/l1/web`, shortName: 'l4diff', content: readFileSync(path.join(HERE, 'fixtures/l4diff-mensalidadesAcademia.json'), 'utf8') });
+  seed(host, { level: 1, folder: `${candidate}/pipeline`, shortName: 'pipeline', content: '{}\n' });
+  seed(host, { folder: `${candidate}/pool/l2/web`, shortName: 'backend', content: '' });
+  seedOntology(host, candidate);
+  seedAgentFiles(host);
+
+  const before = Object.values(host.files)
+    .filter(file => file.level === 4 && (file.folder === MODULE || (file.folder.startsWith(`${MODULE}/`) && !file.folder.startsWith(`${MODULE}/tobe/`))))
+    .map(file => `${file.folder}/${file.shortName}${file.extension}\0${file.status}\0${file.content}`)
+    .sort()
+    .join('\n');
+
+  const entry = await executeP1Entry({ kind: 'hand', moduleName: MODULE, candidate }, AT);
+  assert.equal('refusal' in entry, false);
+  const result = await executeP1Plan(MODULE, AT);
+  assert.equal(moduleFolder(MODULE), candidate);
+  assert.equal(p1BackendFile(MODULE).folder, `${candidate}/pool/l2/web`);
+  assert.equal(result.backendPath, `l4/${candidate}/pool/l2/web/backend.json`);
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  assert.equal(written.changes.length, 3);
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content,
+    marker,
+  );
+  const canonicalBackend = host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'backend', extension: '.json',
+  })];
+  assert.equal(canonicalBackend, undefined);
+  const after = Object.values(host.files)
+    .filter(file => file.level === 4 && (file.folder === MODULE || (file.folder.startsWith(`${MODULE}/`) && !file.folder.startsWith(`${MODULE}/tobe/`))))
+    .map(file => `${file.folder}/${file.shortName}${file.extension}\0${file.status}\0${file.content}`)
+    .sort()
+    .join('\n');
+  assert.equal(after, before);
 });
 
 void test('execute with pool/l1/web/l4diff.json fills changes[]', async () => {

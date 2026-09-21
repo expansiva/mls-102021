@@ -5,9 +5,11 @@ import {
   displayPath,
   hostListFolder,
   moduleFile,
+  moduleFolder,
   normalizeModuleName,
   readJson,
   readPipeline,
+  setModuleRoot,
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
@@ -47,13 +49,24 @@ export const P1_STEP_DEPENDS_ON: Record<P1StepId, readonly string[]> = {
 /** Pool message file: `<stamp>_<thread>_<round>`. `needs.json` does not match. */
 const POOL_MESSAGE_SHORT = /^\d{14}_[A-Za-z0-9]+-\d{14}_[123]$/;
 
+/** Copied from `plCore.ts:68,111` — L1 must not import the L4 planner. */
+const CANDIDATE_RE = /(^|\s)\/candidate(?:\s+(?!\/)(\S+))?(?=\s|$)/i;
+const CANDIDATE_DOTDOT = 'Candidate path must not contain \'..\'.';
+
+/** Same default as `PL_DEFAULT_CANDIDATE_REL` in `plCore.ts`. */
+export const P1_DEFAULT_CANDIDATE_REL = 'tobe/plan' as const;
+
 export interface P1ParsedInvocation {
   module: string;
+  /** Resolved `l4/` folder when `/candidate` is present; otherwise `''`. */
+  candidate: string;
+  /** True when the `/candidate` token was present, even if the path was refused. */
+  hasCandidate: boolean;
 }
 
 export type P1EntrySource =
-  | { kind: 'hand'; moduleName: string }
-  | { kind: 'step'; moduleName: string; thread: string; file: string };
+  | { kind: 'hand'; moduleName: string; candidate?: string }
+  | { kind: 'step'; moduleName: string; thread: string; file: string; candidate?: string };
 
 export interface P1Needs {
   schemaVersion: string;
@@ -105,6 +118,41 @@ export function moduleTokenOk(moduleName: string): boolean {
   return /^[a-z][A-Za-z0-9]*$/.test(moduleName);
 }
 
+/** Copied from `plCore.ts:111`. `..` in the relative path returns `''`. */
+export function resolveCandidateFolder(moduleName: string, relativePath = ''): string {
+  const mod = normalizeModuleName(moduleName);
+  const rel = String(relativePath || '').trim().replace(/^\/+|\/+$/g, '') || P1_DEFAULT_CANDIDATE_REL;
+  if (rel.includes('..')) return '';
+  if (rel === mod || rel.startsWith(`${mod}/`)) return rel;
+  return `${mod}/${rel}`;
+}
+
+/**
+ * Point `moduleFolder` at `candidate`, or restore the canonical root when it is
+ * empty. `..` is a refusal, not a silent "no candidate". Always call this before
+ * reading l4 / pool / pipeline so a previous task cannot leak its root.
+ */
+export function applyP1CandidateRoot(moduleName: string, candidate: string): string {
+  const name = normalizeModuleName(moduleName, '');
+  if (!name) return '';
+  const raw = String(candidate || '').trim();
+  if (!raw) {
+    setModuleRoot(name, null);
+    return '';
+  }
+  if (raw.includes('..')) {
+    setModuleRoot(name, null);
+    return CANDIDATE_DOTDOT;
+  }
+  const resolved = resolveCandidateFolder(name, raw);
+  if (!resolved) {
+    setModuleRoot(name, null);
+    return CANDIDATE_DOTDOT;
+  }
+  setModuleRoot(name, resolved);
+  return '';
+}
+
 /**
  * Maps child planIds back to the owning step. Done-anchors stay unmatched so they
  * are not dispatched. A step prompt `{ moduleName, thread, file }` (pool dispatch)
@@ -128,19 +176,30 @@ export function isPoolEntryPrompt(prompt?: string): boolean {
 export function parseP1Invocation(value: string): P1ParsedInvocation {
   let raw = String(value || '');
   for (const prefix of AGENT_PREFIXES) raw = raw.replace(prefix, ' ');
-  const tokens = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
-  return { module: tokens[0] || '' };
+  const candidateMatch = CANDIDATE_RE.exec(raw);
+  const hasCandidate = !!candidateMatch;
+  const candidateRel = candidateMatch?.[2] || '';
+  const tokens = raw
+    .replace(new RegExp(CANDIDATE_RE.source, 'gi'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+  const module = tokens[0] || '';
+  const candidate = hasCandidate && module ? resolveCandidateFolder(module, candidateRel) : '';
+  return { module, candidate, hasCandidate };
 }
 
 export function p1InvocationRefusal(invocation: P1ParsedInvocation): string {
   if (!invocation.module) return 'Pass @@agentPlannerL1 <lowerCamel>.';
   if (!moduleTokenOk(invocation.module)) return 'Module name must be lowerCamel (example: stockControl).';
+  if (invocation.hasCandidate && !invocation.candidate) return CANDIDATE_DOTDOT;
   return '';
 }
 
 export type P1StepPrompt =
-  | { kind: 'step'; moduleName: string; thread: string; file: string }
-  | { kind: 'entry'; moduleName: string }
+  | { kind: 'step'; moduleName: string; thread: string; file: string; candidate: string }
+  | { kind: 'entry'; moduleName: string; candidate: string }
   | { kind: 'refusal'; refusal: string };
 
 export function parseP1StepPrompt(prompt: string): P1StepPrompt {
@@ -157,8 +216,10 @@ export function parseP1StepPrompt(prompt: string): P1StepPrompt {
   const moduleName = typeof raw.moduleName === 'string' ? raw.moduleName.trim() : '';
   const thread = typeof raw.thread === 'string' ? raw.thread.trim() : '';
   const file = typeof raw.file === 'string' ? raw.file.trim() : '';
-  if (moduleName && thread && file) return { kind: 'step', moduleName, thread, file };
-  if (moduleName) return { kind: 'entry', moduleName };
+  const candidate = typeof raw.candidate === 'string' ? raw.candidate.trim() : '';
+  if (candidate.includes('..')) return { kind: 'refusal', refusal: CANDIDATE_DOTDOT };
+  if (moduleName && thread && file) return { kind: 'step', moduleName, thread, file, candidate };
+  if (moduleName) return { kind: 'entry', moduleName, candidate };
   return { kind: 'refusal', refusal: 'step prompt needs moduleName.' };
 }
 
@@ -229,7 +290,7 @@ export function createP1Pipeline(
       entry10: {
         status: 'approved',
         updatedAt,
-        artifactPaths: [`l1/${moduleName}/pipeline/pipeline.json`],
+        artifactPaths: [`l1/${moduleFolder(moduleName)}/pipeline/pipeline.json`],
       },
     },
     thread: message.thread,
@@ -245,9 +306,11 @@ export function createP1Pipeline(
 export function createP1AgentStep(
   stepId: P1StepId,
   moduleName: string,
-  entry: { thread: string; file: string },
+  entry: { thread: string; file: string; candidate?: string },
 ): mls.msg.AIAgentStep {
   const dependsOn = [...P1_STEP_DEPENDS_ON[stepId]];
+  const prompt: Record<string, string> = { planId: stepId, moduleName, thread: entry.thread, file: entry.file };
+  if (entry.candidate) prompt.candidate = entry.candidate;
   return {
     type: 'agent',
     stepId: 0,
@@ -256,7 +319,7 @@ export function createP1AgentStep(
     status: dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     nextSteps: [],
     agentName: P1_AGENT_NAME,
-    prompt: JSON.stringify({ planId: stepId, moduleName, thread: entry.thread, file: entry.file }),
+    prompt: JSON.stringify(prompt),
     rags: [],
     planning: {
       planId: stepId,
@@ -269,7 +332,7 @@ export function createP1AgentStep(
 
 export function buildP1PlannedSteps(
   moduleName: string,
-  entry: { thread: string; file: string },
+  entry: { thread: string; file: string; candidate?: string },
 ): mls.msg.AIAgentStep[] {
   return P1_FLOW_STEP_IDS.map(stepId => createP1AgentStep(stepId, moduleName, entry));
 }
@@ -333,6 +396,9 @@ export async function loadP1Entry(source: P1EntrySource): Promise<P1LoadResult> 
   if (!moduleName || !moduleTokenOk(moduleName)) {
     return { refusal: 'Module name must be lowerCamel (example: stockControl).' };
   }
+
+  const rootRefusal = applyP1CandidateRoot(moduleName, source.candidate || '');
+  if (rootRefusal) return { refusal: rootRefusal };
 
   const l4 = await readPipeline(moduleName);
   if (!l4 || l4.status !== 'complete') {
@@ -402,7 +468,8 @@ export async function writeP1Entry(loaded: P1LoadedEntry, now: Date): Promise<P1
 }
 
 function isP1ScratchFolder(folder: string, moduleName: string): boolean {
-  return folder === `${moduleName}/pipeline` || folder.startsWith(`${moduleName}/pipeline/`);
+  const root = moduleFolder(moduleName);
+  return folder === `${root}/pipeline` || folder.startsWith(`${root}/pipeline/`);
 }
 
 function listP1ScratchFiles(moduleName: string): Ns5FileInfo[] {
@@ -426,7 +493,7 @@ function listP1ScratchFiles(moduleName: string): Ns5FileInfo[] {
   }
   const listFolder = hostListFolder();
   if (listFolder) {
-    const folders = new Set<string>([`${moduleName}/pipeline`]);
+    const folders = new Set<string>([`${moduleFolder(moduleName)}/pipeline`]);
     for (const info of found.values()) folders.add(info.folder);
     for (const folder of folders) {
       for (const info of listFolder(base.project, 1, folder)) {

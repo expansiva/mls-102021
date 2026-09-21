@@ -13,15 +13,24 @@ The pool is not deleted. Nothing is written to l1 `.defs.ts` / `.ts`.
 
 ```
 @@agentPlannerL1 <lowerCamel>
+@@agentPlannerL1 <lowerCamel> /candidate
+@@agentPlannerL1 <lowerCamel> /candidate pipeline/changes/<id>/revisions/<rev>/l4
 ```
 
-Or a step whose prompt is JSON `{ moduleName, thread, file }`. Both paths read
-the same `pool/l1` messages and write the same
-`l1/<mod>/pipeline/pipeline.json`.
+Or a step whose prompt is JSON `{ moduleName, thread, file, candidate }`.
+`candidate` is optional; L4 writes the resolved folder when it dispatched with
+`/candidate`. Both paths read the same `pool/l1` messages and write the same
+pipeline (`l1/<mod>/pipeline/pipeline.json`, or under the `/candidate` root).
+
+- `/candidate` alone points `moduleFolder` at `<mod>/tobe/plan`. A relative path
+  is joined under the module. Without the flag the canonical l4 is byte-identical.
+- Writes (l1 pipeline, `pool/l2`) follow `moduleFolder`, so they land inside the
+  candidate when the flag is set.
 
 ## Refusals (English, no LLM)
 
 - missing / not lowerCamel module token
+- `/candidate` path containing `..`
 - module l4 `pipeline.json` missing or not `status: complete`
 - empty `pool/l1` (or only `needs.json`): `nothing pending for <mod> in pool/l1`
 - oldest l2→l1 message does not list `needs.json`, or the file is absent

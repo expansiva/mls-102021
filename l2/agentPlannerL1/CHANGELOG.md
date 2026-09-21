@@ -1,5 +1,14 @@
 # agentPlannerL1
 
+## 2026-09-20 (p1_06)
+
+- `entry10` honors `/candidate`. The step prompt reads `candidate` (L4 already
+  writes it) and the hand invocation accepts `@@agentPlannerL1 <mod> /candidate
+  [<rel>]`. Both call `setModuleRoot` before any l4/pool/pipeline read. Empty or
+  absent resets to the canonical folder so a later task does not inherit. `..`
+  in the path is refused in English. Without the flag the canonical l4 is
+  byte-identical; pipeline and `pool/l2` writes follow `moduleFolder`.
+
 ## 2026-09-20 (p1_05)
 
 - `backend.json` v1.1 groups every item by table (`tableRefs` / `noTable`) and
