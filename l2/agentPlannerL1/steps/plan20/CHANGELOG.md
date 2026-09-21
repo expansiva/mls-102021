@@ -1,5 +1,12 @@
 # plan20
 
+## 2026-09-21 (p1_09)
+
+- Rule changes without an inventory hit look up the entity `rules[]` on
+  the l4 ontology (exact id, no case folding). Found ⇒ `entity` /
+  `tableRefs` / `noTable` / usecases of that entity; two owners ⇒ one
+  change with both `tableRefs`. `rulesApplied` still comes first.
+
 ## 2026-09-20 (p1_07)
 
 - Unknown `l4diff` kinds (`outbound`, `task`, …) are recorded in

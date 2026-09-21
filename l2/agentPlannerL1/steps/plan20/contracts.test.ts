@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { parseDefsSource } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { readL1Inventory, type L1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import {
@@ -13,6 +14,7 @@ import {
   buildP1BackendMessage,
   buildP1BackendTool,
   buildP1ResolutionSchema,
+  parseP1Entity,
   parseP1L4Diff,
   parseP1Needs,
   planP1Backend,
@@ -43,15 +45,41 @@ const EMPTY_INVENTORY: L1Inventory = {
 };
 
 const ACADEMIA_ONTOLOGY: P1EntityView[] = [
-  { entityId: 'Mensalidade', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-  { entityId: 'Pagamento', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+  { entityId: 'Mensalidade', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+  { entityId: 'Pagamento', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
 ];
 
 const CHAMADOS_ONTOLOGY: P1EntityView[] = [
-  { entityId: 'Chamado', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-  { entityId: 'Comentario', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-  { entityId: 'Atendente', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+  { entityId: 'Chamado', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+  { entityId: 'Comentario', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+  { entityId: 'Atendente', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
 ];
+
+function ontologyFromRealL4Fixture(): P1EntityView[] {
+  return ['Mensalidade', 'Pagamento'].map(name => {
+    const parsed = parseDefsSource(readFileSync(path.join(HERE, 'fixtures/ontology', `${name}.defs.ts`), 'utf8'));
+    const view = parseP1Entity(parsed);
+    assert.ok(view, name);
+    return view;
+  });
+}
+
+function inventoryCiting(usecaseId: string, ruleId: string): L1Inventory {
+  return {
+    routes: [],
+    usecases: [{
+      usecaseId,
+      file: `l1/mensalidadesAcademia/layer_2_application/usecases/${usecaseId}.defs.ts`,
+      functions: [],
+      ports: [],
+      rulesApplied: [ruleId],
+      statusBackend: 'done',
+    }],
+    ports: [],
+    tables: [],
+    present: true,
+  };
+}
 
 type Stored = {
   project: number; level: number; folder: string; shortName: string; extension: string;
@@ -300,7 +328,7 @@ void test('102047 Aluno is mdm with noTable mdm and tables are ok', () => {
     inventory: EMPTY_INVENTORY,
     ontology: [
       ...ACADEMIA_ONTOLOGY,
-      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
     ],
     now: AT,
   });
@@ -359,6 +387,142 @@ void test('changes[] from l4diff: field, rule without entity, shared grant', () 
   assert.deepEqual(planned.file.meta.unmappedChanges, []);
 });
 
+void test('parseP1Entity keeps ontology rules[] verbatim from the real l4 fixture', () => {
+  const [mensalidade, pagamento] = ontologyFromRealL4Fixture();
+  assert.deepEqual(mensalidade.rules, [
+    'mensalidadeUnicaPorMatriculaECompetencia',
+    'mensalidadeGeradaParaMatriculaAtiva',
+    'situacaoMensalidadeDerivada',
+  ]);
+  assert.deepEqual(pagamento.rules, [
+    'paymentAmountPositive',
+    'paymentUpdatesMonthlyFee',
+    'paymentRegularizesStudentWhenApplicable',
+  ]);
+});
+
+void test('rule change falls back to ontology rules[] when inventory does not resolve', () => {
+  const l4diff = parseP1L4Diff(JSON.parse(readFileSync(
+    path.join(HERE, 'fixtures/l4diff-ontology-rules.json'),
+    'utf8',
+  )) as unknown);
+  assert.ok(l4diff);
+  const needs = parseP1Needs(NEEDS_ACADEMIA);
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: ontologyFromRealL4Fixture(),
+    now: AT,
+    l4diff,
+  });
+
+  const linked = planned.file.changes.find(item => item.changeId === 'rule:situacaoMensalidadeDerivada');
+  assert.ok(linked);
+  assert.equal(linked?.entity, 'Mensalidade');
+  assert.deepEqual(linked?.tableRefs, ['mensalidade']);
+  assert.equal(linked?.noTable, 'ok');
+  assert.ok(linked?.usecaseRefs.includes('listMensalidade'));
+  assert.equal(linked?.usecaseRefs.some(id => id.includes('Pagamento')), false);
+
+  const orphan = planned.file.changes.find(item => item.changeId === 'rule:alunoBloqueadoPorDuasMensalidadesVencidas');
+  assert.ok(orphan);
+  assert.equal(orphan?.entity, '');
+  assert.deepEqual(orphan?.tableRefs, []);
+  assert.equal(orphan?.noTable, 'none');
+  assert.deepEqual(orphan?.usecaseRefs, []);
+});
+
+void test('rule cited by two ontology entities is one change with both tableRefs', () => {
+  const l4diff = parseP1L4Diff({
+    schemaVersion: '2026-09-21-p4-l4diff-v1',
+    moduleName: 'mensalidadesAcademia',
+    base: 'base',
+    candidate: 'candidate',
+    items: [{
+      changeId: 'rule:sharedAcrossTables',
+      kind: 'rule',
+      op: 'changed',
+      entity: '',
+      source: 'rules.defs.ts',
+      before: {},
+      after: { ruleId: 'sharedAcrossTables' },
+    }],
+  });
+  assert.ok(l4diff);
+  const [mensalidade, pagamento] = ontologyFromRealL4Fixture();
+  const planned = planP1Backend({
+    needs: parseP1Needs(NEEDS_ACADEMIA),
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      { ...mensalidade, rules: [...mensalidade.rules, 'sharedAcrossTables'] },
+      { ...pagamento, rules: [...pagamento.rules, 'sharedAcrossTables'] },
+    ],
+    now: AT,
+    l4diff,
+  });
+  const shared = planned.file.changes.filter(item => item.changeId === 'rule:sharedAcrossTables');
+  assert.equal(shared.length, 1);
+  assert.deepEqual(shared[0]?.tableRefs, ['mensalidade', 'pagamento']);
+  assert.equal(shared[0]?.noTable, 'ok');
+  assert.equal(shared[0]?.entity, '');
+  assert.ok(shared[0]?.usecaseRefs.includes('listMensalidade'));
+  assert.ok(shared[0]?.usecaseRefs.includes('createPagamento'));
+  assert.ok(shared[0]?.usecaseRefs.includes('getPagamento'));
+});
+
+void test('inventory rulesApplied wins over ontology rules[] for a rule change', () => {
+  const l4diff = parseP1L4Diff(JSON.parse(readFileSync(
+    path.join(HERE, 'fixtures/l4diff-ontology-rules.json'),
+    'utf8',
+  )) as unknown);
+  assert.ok(l4diff);
+  const planned = planP1Backend({
+    needs: parseP1Needs(NEEDS_ACADEMIA),
+    inventory: inventoryCiting('createPagamento', 'situacaoMensalidadeDerivada'),
+    ontology: ontologyFromRealL4Fixture(),
+    now: AT,
+    l4diff,
+  });
+  const linked = planned.file.changes.find(item => item.changeId === 'rule:situacaoMensalidadeDerivada');
+  assert.ok(linked);
+  assert.deepEqual(linked?.usecaseRefs, ['createPagamento']);
+  assert.equal(linked?.entity, '');
+  assert.deepEqual(linked?.tableRefs, []);
+  assert.equal(linked?.noTable, 'none');
+});
+
+void test('rule ontology match is exact and does not fold case', () => {
+  const l4diff = parseP1L4Diff({
+    schemaVersion: '2026-09-21-p4-l4diff-v1',
+    moduleName: 'mensalidadesAcademia',
+    base: 'base',
+    candidate: 'candidate',
+    items: [{
+      changeId: 'rule:mensalidadeUnicaPorMatriculaEcompetencia',
+      kind: 'rule',
+      op: 'changed',
+      entity: '',
+      source: 'rules.defs.ts',
+      before: {},
+      after: { ruleId: 'mensalidadeUnicaPorMatriculaEcompetencia' },
+    }],
+  });
+  assert.ok(l4diff);
+  const planned = planP1Backend({
+    needs: parseP1Needs(NEEDS_ACADEMIA),
+    inventory: EMPTY_INVENTORY,
+    ontology: ontologyFromRealL4Fixture(),
+    now: AT,
+    l4diff,
+  });
+  const missed = planned.file.changes.find(item => item.changeId === 'rule:mensalidadeUnicaPorMatriculaEcompetencia');
+  assert.ok(missed);
+  assert.equal(missed?.entity, '');
+  assert.deepEqual(missed?.tableRefs, []);
+  assert.equal(missed?.noTable, 'none');
+  assert.deepEqual(missed?.usecaseRefs, []);
+});
+
 void test('unknown l4diff kinds stay out of changes[] and land in meta.unmappedChanges', () => {
   const l4diff = parseP1L4Diff(JSON.parse(readFileSync(
     path.join(HERE, 'fixtures/l4diff-unknown-kinds.json'),
@@ -371,7 +535,7 @@ void test('unknown l4diff kinds stay out of changes[] and land in meta.unmappedC
     inventory: EMPTY_INVENTORY,
     ontology: [
       ...ACADEMIA_ONTOLOGY,
-      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+      { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
     ],
     now: AT,
     l4diff,
@@ -428,7 +592,7 @@ void test('transition usecaseId is the transitionRef without concatenating the e
     inventory: EMPTY_INVENTORY,
     ontology: [
       ...ACADEMIA_ONTOLOGY,
-      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
     ],
     now: AT,
   });
@@ -458,8 +622,8 @@ void test('same transitionRef on two entities suffixes the entity on every colli
     needs,
     inventory: EMPTY_INVENTORY,
     ontology: [
-      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-      { entityId: 'Plano', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
+      { entityId: 'Matricula', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+      { entityId: 'Plano', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
     ],
     now: AT,
   });

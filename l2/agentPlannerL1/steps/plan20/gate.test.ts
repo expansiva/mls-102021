@@ -23,9 +23,9 @@ const NEEDS = parseP1Needs(JSON.parse(readFileSync(
 const AT = new Date(Date.UTC(2026, 8, 20, 10, 30, 0));
 const EMPTY: L1Inventory = { routes: [], usecases: [], ports: [], tables: [], present: false };
 const ONTOLOGY: P1EntityView[] = [
-  { entityId: 'Mensalidade', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-  { entityId: 'Pagamento', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [] },
-  { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [] },
+  { entityId: 'Mensalidade', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+  { entityId: 'Pagamento', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+  { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
 ];
 
 function planned(): P1BackendFile {

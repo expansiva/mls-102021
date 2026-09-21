@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "2026-09-21-p4-l4diff-v1",
+  "moduleName": "mensalidadesAcademia",
+  "base": "pipeline/releases/rel-1/l4",
+  "candidate": "pipeline/changes/chg-1/revisions/rev-1/l4",
+  "items": [
+    {
+      "changeId": "rule:alunoBloqueadoPorDuasMensalidadesVencidas",
+      "kind": "rule",
+      "op": "changed",
+      "entity": "",
+      "source": "rules.defs.ts",
+      "before": {},
+      "after": {
+        "ruleId": "alunoBloqueadoPorDuasMensalidadesVencidas",
+        "description": "O aluno com duas ou mais mensalidades vencidas fica bloqueado e não pode entrar na academia até deixar de possuir duas mensalidades vencidas."
+      }
+    },
+    {
+      "changeId": "rule:situacaoMensalidadeDerivada",
+      "kind": "rule",
+      "op": "changed",
+      "entity": "",
+      "source": "rules.defs.ts",
+      "before": {},
+      "after": {
+        "ruleId": "situacaoMensalidadeDerivada",
+        "description": "A mensalidade é paga quando o total de pagamentos alcança o valor da cobrança, vencida quando possui saldo devedor após o vencimento e em aberto nos demais casos."
+      }
+    }
+  ]
+}

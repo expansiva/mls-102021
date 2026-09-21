@@ -66,6 +66,7 @@ export interface P1EntityView {
   storageKind: string;
   storageTarget: string;
   transitions: string[];
+  rules: string[];
 }
 
 export interface P1Endpoint {
@@ -329,6 +330,7 @@ export function parseP1Entity(value: unknown, indexRow?: unknown): P1EntityView 
     storageKind,
     storageTarget,
     transitions: list(file.transitions).map(item => text(record(item).transitionId)).filter(Boolean),
+    rules: list(file.rules).filter((item): item is string => typeof item === 'string' && item.length > 0),
   };
 }
 
@@ -1253,14 +1255,14 @@ function mapP1Changes(l4diff: P1L4DiffFile | null, ctx: {
 }): P1Change[] {
   if (!l4diff) return [];
   return sortBy(l4diff.items.map(item => {
-    const entities = changeEntities(item);
+    const entities = changeEntitiesFor(item, ctx);
     const tableRefs = unique(entities.map(entity => ctx.byEntity.get(entity) || ''));
     const noTable = classifyNoTable(tableRefs, entities, ctx.ontology);
     return {
       changeId: item.changeId,
       kind: item.kind,
       op: item.op,
-      entity: item.entity,
+      entity: item.entity || (entities.length === 1 ? entities[0] : ''),
       tableRefs,
       noTable,
       usecaseRefs: changeUsecaseRefs(item, entities, ctx),
@@ -1287,6 +1289,46 @@ function changeEntities(item: P1L4DiffItem): string[] {
   return unique([item.entity, ...fromFrag(item.before), ...fromFrag(item.after)]);
 }
 
+function changeEntitiesFor(
+  item: P1L4DiffItem,
+  ctx: {
+    usecases: readonly P1Usecase[];
+    inventory: L1Inventory;
+    ontology: Map<string, P1EntityView>;
+  },
+): string[] {
+  const named = changeEntities(item);
+  if (item.kind !== 'rule') return named;
+  const ruleId = ruleIdOf(item);
+  if (citedUsecaseIds(ruleId, ctx).length) return named;
+  return unique([...named, ...entitiesGoverningRule(ruleId, ctx.ontology)]);
+}
+
+function ruleIdOf(item: P1L4DiffItem): string {
+  return item.changeId.startsWith('rule:') ? item.changeId.slice('rule:'.length) : item.changeId;
+}
+
+function citedUsecaseIds(
+  ruleId: string,
+  ctx: { inventory: L1Inventory; usecases: readonly P1Usecase[] },
+): string[] {
+  return unique(
+    ctx.inventory.usecases
+      .filter(usecase => (usecase.rulesApplied ?? []).includes(ruleId))
+      .map(usecase => usecase.usecaseId)
+      .filter(id => ctx.usecases.some(usecase => usecase.usecaseId === id)),
+  );
+}
+
+function entitiesGoverningRule(ruleId: string, ontology: Map<string, P1EntityView>): string[] {
+  // Exact match only — l4 spelling splits (Competencia vs competencia) must stay visible.
+  const out: string[] = [];
+  for (const entity of ontology.values()) {
+    if ((entity.rules ?? []).includes(ruleId)) out.push(entity.entityId);
+  }
+  return out;
+}
+
 function changeUsecaseRefs(
   item: P1L4DiffItem,
   entities: readonly string[],
@@ -1297,17 +1339,13 @@ function changeUsecaseRefs(
     inventory: L1Inventory;
   },
 ): string[] {
+  if (item.kind === 'rule') {
+    const cited = citedUsecaseIds(ruleIdOf(item), ctx);
+    if (cited.length) return cited;
+  }
   const byEntity = ctx.usecases.filter(usecase =>
     entities.includes(usecase.entity) || usecase.ports.some(port => entities.includes(port)),
   ).map(usecase => usecase.usecaseId);
-  if (item.kind === 'rule') {
-    const ruleId = text(item.after.ruleId) || text(item.before.ruleId) || item.changeId.slice(item.changeId.indexOf(':') + 1);
-    const cited = ctx.inventory.usecases
-      .filter(usecase => (usecase.rulesApplied ?? []).includes(ruleId))
-      .map(usecase => usecase.usecaseId)
-      .filter(id => ctx.usecases.some(usecase => usecase.usecaseId === id));
-    return unique([...cited, ...byEntity]);
-  }
   if (item.kind === 'grant') {
     const actor = text(item.after.actor) || text(item.after.actorId) || text(item.after.authority)
       || text(item.before.actor) || text(item.before.actorId) || text(item.before.authority);

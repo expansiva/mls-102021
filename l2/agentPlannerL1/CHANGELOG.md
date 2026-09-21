@@ -1,5 +1,11 @@
 # agentPlannerL1
 
+## 2026-09-21 (p1_09)
+
+- `kind: rule` in `changes[]` falls back to the ontology entity whose
+  `rules[]` contains the `ruleId` (exact match, inventory `rulesApplied`
+  still wins). A rule with no owner stays `noTable: none`.
+
 ## 2026-09-21 (p1_08)
 
 - `/candidate` tests fingerprint the whole host tree (`hostSnapshot`, same
