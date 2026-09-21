@@ -31,6 +31,11 @@ import {
   resolveCandidateFolder,
   type P1PipelineState,
 } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
+import {
+  changedOutside,
+  diffTrees,
+  snapshotEntries,
+} from '/_102020_/l2/agentPlannerL2/helpers/treeFingerprint.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(
@@ -411,21 +416,24 @@ void test('step entry refuses a thread that does not match the file', async () =
 });
 
 const CANDIDATE = `${MODULE}/tobe/plan`;
-const CANONICAL_MARKER = 'CANONICAL-l4-must-not-move';
+const CANONICAL_MARKER = 'CANONICAL-must-not-move';
+const CANDIDATE_ROOTS = [`l4/${CANDIDATE}`, `l2/${CANDIDATE}`, `l1/${CANDIDATE}`] as const;
 
-function fingerprintCanonicalL4(host: Host): string {
-  return Object.values(host.files)
-    .filter(file => {
-      if (file.level !== 4) return false;
-      const folder = file.folder;
-      if (folder === MODULE) return true;
-      if (!folder.startsWith(`${MODULE}/`)) return false;
-      const rest = folder.slice(MODULE.length + 1);
-      return rest !== 'tobe' && !rest.startsWith('tobe/');
-    })
-    .map(file => `${file.folder}/${file.shortName}${file.extension}\0${file.status}\0${file.content}`)
-    .sort()
-    .join('\n');
+function hostSnapshot(host: Host) {
+  return snapshotEntries(
+    Object.values(host.files)
+      .filter(file => file.status !== 'deleted')
+      .map(file => ({
+        rel: `l${file.level}/${file.folder}/${file.shortName}${file.extension}`,
+        fingerprint: `${file.status}\0${file.content}`,
+      })),
+  );
+}
+
+function seedCanonicalMarkers(host: Host): void {
+  seed(host, MODULE, 'module', CANONICAL_MARKER, 4, '.defs.ts');
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l2-pipeline"\n', 2);
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l1-pipeline"\n', 1);
 }
 
 function seedCandidate(host: Host): void {
@@ -438,8 +446,8 @@ function seedCandidate(host: Host): void {
 void test('without /candidate moduleFolder is the canonical name and the pipeline lands there', async () => {
   const host = installHost();
   seedReady(host);
-  seed(host, MODULE, 'module', CANONICAL_MARKER, 4, '.defs.ts');
-  const before = fingerprintCanonicalL4(host);
+  seedCanonicalMarkers(host);
+  const before = hostSnapshot(host);
   const result = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in result, false);
   if ('refusal' in result) return;
@@ -447,16 +455,25 @@ void test('without /candidate moduleFolder is the canonical name and the pipelin
   assert.deepEqual(p1PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
   assert.equal(p1PipelineFile(MODULE).level, 1);
   assert.ok(host.files[keyOf(p1PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL1"'));
-  assert.equal(fingerprintCanonicalL4(host), before);
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content,
+    CANONICAL_MARKER,
+  );
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content,
+    '"canonical-l2-pipeline"\n',
+  );
+  const after = hostSnapshot(host);
+  assert.deepEqual(changedOutside(diffTrees(before, after), [`l1/${MODULE}/pipeline`]), []);
 });
 
-void test('with /candidate pipeline and pool/l2 paths fall in the override and canonical l4 is unchanged', async () => {
+void test('with /candidate pipeline and pool/l2 paths fall in the override; canonical l1/l2/l4 are untouched', async () => {
   const host = installHost();
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
-  seed(host, MODULE, 'module', CANONICAL_MARKER, 4, '.defs.ts');
+  seedCanonicalMarkers(host);
   seed(host, `${MODULE}/pool/l1/web`, 'needs', '"canonical-needs-must-not-be-read"\n');
   seedCandidate(host);
-  const before = fingerprintCanonicalL4(host);
+  const before = hostSnapshot(host);
 
   const result = await executeP1Entry({ kind: 'hand', moduleName: MODULE, candidate: CANDIDATE }, AT);
   assert.equal('refusal' in result, false);
@@ -473,7 +490,39 @@ void test('with /candidate pipeline and pool/l2 paths fall in the override and c
     host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l1/web`, shortName: 'needs', extension: '.json' })].content,
     '"canonical-needs-must-not-be-read"\n',
   );
-  assert.equal(fingerprintCanonicalL4(host), before);
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content,
+    '"canonical-l2-pipeline"\n',
+  );
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content,
+    '"canonical-l1-pipeline"\n',
+  );
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].status,
+    'changed',
+  );
+  assert.equal(
+    host.files[keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].status,
+    'changed',
+  );
+  const after = hostSnapshot(host);
+  assert.deepEqual(changedOutside(diffTrees(before, after), [...CANDIDATE_ROOTS]), []);
+});
+
+void test('hostSnapshot reports a hand-deleted canonical file outside the candidate', () => {
+  const host = installHost();
+  seedCanonicalMarkers(host);
+  const before = hostSnapshot(host);
+  const canonicalL2 = host.files[keyOf({
+    project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json',
+  })];
+  canonicalL2.status = 'deleted';
+  const after = hostSnapshot(host);
+  const diff = diffTrees(before, after);
+  assert.deepEqual(diff.deleted, [`l2/${MODULE}/pipeline/pipeline.json`]);
+  assert.notDeepEqual(after, before);
+  assert.deepEqual(changedOutside(diff, [...CANDIDATE_ROOTS]), [`l2/${MODULE}/pipeline/pipeline.json`]);
 });
 
 void test('candidate path with .. refuses and does not set the module root', async () => {

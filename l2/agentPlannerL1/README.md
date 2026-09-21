@@ -23,7 +23,9 @@ Or a step whose prompt is JSON `{ moduleName, thread, file, candidate }`.
 pipeline (`l1/<mod>/pipeline/pipeline.json`, or under the `/candidate` root).
 
 - `/candidate` alone points `moduleFolder` at `<mod>/tobe/plan`. A relative path
-  is joined under the module. Without the flag the canonical l4 is byte-identical.
+  is joined under the module. With the flag the canonical tree (l1, l2 and l4)
+  is byte-identical; only the candidate root may change. Without the flag the
+  canonical l4 is byte-identical.
 - Writes (l1 pipeline, `pool/l2`) follow `moduleFolder`, so they land inside the
   candidate when the flag is set.
 

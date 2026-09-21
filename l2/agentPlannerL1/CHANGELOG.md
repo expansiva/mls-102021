@@ -1,5 +1,13 @@
 # agentPlannerL1
 
+## 2026-09-21 (p1_08)
+
+- `/candidate` tests fingerprint the whole host tree (`hostSnapshot`, same
+  `rel` / `status\0content` as L2), not only canonical l4. Markers in l1, l2
+  and l4; the after-run diff may only change under the candidate root. A
+  hand-delete of a canonical file is asserted to show up. Production code
+  unchanged.
+
 ## 2026-09-20 (p1_07)
 
 - `l4diff` items whose `kind` is not in `P1_CHANGE_KINDS` are kept in
