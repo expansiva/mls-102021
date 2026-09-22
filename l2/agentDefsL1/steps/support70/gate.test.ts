@@ -1,8 +1,11 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
+import { D1_MEASURED_PUBLISH } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
@@ -214,7 +217,7 @@ void test('the frozen fixture plans consulta seeds and does not write rows', () 
   assert.equal(build.seedPlan.phase, 'plan');
   assert.equal(build.seedPlan.materialized, false);
   assert.equal(build.seedPlan.rowCount, 0);
-  assert.equal(build.publication.later.map(item => item.artifactType).join(), 'integrationOutbound');
+  assert.equal(build.publication.later.map(item => item.artifactType).join(), '');
   const seeds = build.emit.find(item => item.definition.artifactType === 'persistenceSeeds');
   assert.ok(seeds);
   assert.equal(seeds.pipeline[0]?.defPath.endsWith('/seeds.defs.ts'), true);
@@ -326,4 +329,105 @@ void test('maintenance does not reseed and one removed owner keeps the shared da
   assert.equal(dataset.owners.includes('agendarConsulta'), true);
   assert.equal(dataset.owners.includes('registrarAtendimento'), false);
   assert.equal(kept.emit.some(item => item.definition.artifactType === 'persistenceSeeds'), true);
+});
+
+void test('the three clinic events stay linked and unbound, and the note payload is not invented', () => {
+  const request = agendaSeedRequest();
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(build.effectPlan.phase, 'plan');
+  assert.equal(build.effectPlan.executed, false);
+  assert.equal(build.effectPlan.capability.bound, false);
+  assert.equal(build.effectPlan.capability.requestContextPublish, false);
+  assert.equal(build.effectPlan.capability.symbol, D1_MEASURED_PUBLISH.symbol);
+  assert.equal(build.effectPlan.capability.path, D1_MEASURED_PUBLISH.path);
+  assert.equal(build.effectPlan.capability.owner, 'RequestContext.data.pgQueue');
+  const outbound = build.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  assert.ok(outbound);
+  const data = outbound.definition.data as {
+    events: Array<{ eventId: string; on: string; entityId: string; mechanism: string; consumer: string; payload?: string; mechanismRef?: string }>;
+  };
+  assert.deepEqual(data.events.map(item => item.eventId), ['atendimentoRegistrado', 'consultaConfirmada', 'faltaPacienteRegistrada']);
+  assert.deepEqual(data.events.map(item => item.consumer), ['registrarAtendimento', 'confirmarConsulta', 'registrarFalta']);
+  assert.deepEqual(data.events.map(item => item.on), ['Consulta.registrarAtendimento', 'Consulta.confirmarConsulta', 'Consulta.registrarFalta']);
+  assert.equal(data.events.every(item => item.entityId === 'Consulta' && item.mechanism === '' && item.mechanismRef === undefined && item.payload === undefined), true);
+  assert.equal(build.problems.filter(item => item.code === 'INTEGRATION_UNBOUND').length, 3);
+  assert.equal(build.problems.some(item => item.code === 'PAYLOAD_UNDECLARED' && item.path === 'registrarAtendimento'), true);
+  assert.equal(build.problems.some(item => item.code === 'PAYLOAD_UNDECLARED' && item.path !== 'registrarAtendimento'), false);
+  assert.equal(JSON.stringify(outbound).includes('publishEvent'), false);
+  assert.equal(JSON.stringify(outbound).includes('emitEvent'), false);
+  assert.equal(JSON.stringify(outbound).includes('scheduler'), false);
+  assert.equal(build.emit.some(item => item.definition.artifactType === 'httpController'), false);
+  const depends = outbound.pipeline[0]?.dependsOn || [];
+  assert.equal(depends.some(dep => dep.endsWith('/usecase/registrarAtendimento')), true);
+  assert.equal(depends.some(dep => dep.includes('/repositoryRegistration/') || dep.includes('/httpController/')), false);
+  assert.equal(existsSync(fileURLToPath(new URL('./prompt.md', import.meta.url))), false);
+});
+
+void test('an omitted event stops the step and a fictional publish name is refused', () => {
+  const omitted = agendaSeedRequest();
+  omitted.outbound = omitted.outbound.filter(event => event.eventId !== 'faltaPacienteRegistrada');
+  const missing = buildD1Support(omitted);
+  assert.equal(missing.ok, false);
+  assert.equal(missing.emit.length, 0);
+  assert.equal(missing.effectPlan.phase, 'absent');
+  assert.equal(missing.problems.some(item => item.code === 'INTEGRATION_OMITTED' && item.path === 'faltaPacienteRegistrada'), true);
+
+  const invented = agendaSeedRequest();
+  invented.outbound = invented.outbound.map(event => event.eventId === 'consultaConfirmada' ? { ...event, mechanism: 'ctx.publishEvent' } : event);
+  const refused = buildD1Support(invented);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.emit.length, 0);
+  assert.equal(refused.problems.some(item => item.code === 'FICTIONAL_API' && item.path === 'consultaConfirmada'), true);
+  assert.equal(JSON.stringify(refused.emit).includes('publishEvent'), false);
+});
+
+void test('a named measured publish symbol keeps the ref and does not execute it', () => {
+  const request = agendaSeedRequest();
+  request.outbound = request.outbound.map(event => event.eventId === 'consultaConfirmada'
+    ? { ...event, mechanism: D1_MEASURED_PUBLISH.symbol }
+    : event);
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(build.effectPlan.executed, false);
+  assert.equal(build.effectPlan.capability.bound, true);
+  const data = build.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
+    events: Array<{ eventId: string; mechanism: string; mechanismRef?: string; consumer: string }>;
+  };
+  const confirmed = data.events.find(item => item.eventId === 'consultaConfirmada');
+  assert.equal(confirmed?.mechanism, D1_MEASURED_PUBLISH.symbol);
+  assert.equal(confirmed?.mechanismRef, D1_MEASURED_PUBLISH.path);
+  assert.equal(confirmed?.consumer, 'confirmarConsulta');
+  const others = data.events.filter(item => item.eventId !== 'consultaConfirmada');
+  assert.equal(others.every(item => item.mechanism === '' && item.mechanismRef === undefined), true);
+  assert.equal(build.emit.some(item => item.definition.artifactType === 'table'), false);
+  assert.equal(JSON.stringify(build.emit).includes('publishEvent'), false);
+});
+
+void test('processes, inbound and plugins stay operations and a missing pool item stays a gap', () => {
+  const request = agendaSeedRequest();
+  request.operations = [
+    { id: 'confirmacao', kind: 'process', operations: ['confirmarConsulta'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
+    { id: 'lembrete', kind: 'plugin', operations: ['confirmarConsulta.ligar'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
+    { id: 'retorno', kind: 'inbound', operations: ['registrarFalta'], mechanism: '', consumer: 'registrarFalta', scheduled: false },
+    { id: 'cobranca', kind: 'process', operations: ['cobrar'], mechanism: '', consumer: 'cobranca', scheduled: true },
+  ];
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const data = build.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
+    processes: Array<{ processId: string; operations: string[] }>;
+    plugins: Array<{ pluginId: string; operations: string[] }>;
+    inbound: Array<{ inboundId: string; operations: string[] }>;
+    gaps: Array<{ itemId: string; kind: string; code: string }>;
+  };
+  assert.deepEqual(data.processes.map(item => item.processId), ['cobranca', 'confirmacao']);
+  assert.deepEqual(data.plugins.map(item => item.pluginId), ['lembrete']);
+  assert.deepEqual(data.inbound.map(item => item.inboundId), ['retorno']);
+  assert.deepEqual(data.gaps, [{ itemId: 'cobranca', kind: 'process', code: 'POOL_ABSENT' }]);
+  assert.equal(build.problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'cobranca'), true);
+  assert.equal(build.problems.some(item => item.code === 'SCHEDULER_NOT_WRITTEN' && item.path === 'cobranca'), true);
+  assert.equal(build.problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'confirmacao'), false);
+  assert.equal(build.emit.some(item => item.definition.artifactType === 'httpController'), false);
+  assert.equal(JSON.stringify(build.emit).includes('scheduler'), false);
+  assert.equal(build.effectPlan.executed, false);
 });

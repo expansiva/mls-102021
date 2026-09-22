@@ -12,6 +12,8 @@ import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contr
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import {
   D1_SUPPORT_VERSION,
+  type D1EffectEvent,
+  type D1EffectOperation,
   type D1SeedDataset,
   type D1SeedJourney,
   type D1SeedModel,
@@ -24,7 +26,7 @@ import {
 import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1ControllerGrant, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds']);
+const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound']);
 
 export async function assembleD1Support(
   project: number,
@@ -60,6 +62,8 @@ export async function assembleD1Support(
   const files = await receiptFiles(project, snapshot.files);
   const grants = grantsOf(access);
   const models = modelsOf(domain, index);
+  const usecaseIds = [...new Set(snapshot.selection.usecases.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
+  const linked = await effectsOf(project, moduleName, usecaseIds);
   const request: D1SupportRequest = {
     project,
     moduleName,
@@ -81,6 +85,10 @@ export async function assembleD1Support(
     seedRefs: [],
     existingDatasets: datasetsOf(previous),
     maintenance: null,
+    outbound: linked.outbound,
+    selectedEventIds: [...snapshot.selection.outbound].sort(),
+    usecaseIds,
+    operations: linked.operations,
   };
   return { build: buildD1Support(request), files };
 }
@@ -481,6 +489,107 @@ function datasetsOf(draft: Record<string, unknown> | null): D1SeedDataset[] {
     out.push({ datasetId: item.datasetId, tableId: item.tableId, owners: stringList(item.owners) });
   }
   return out;
+}
+
+async function effectsOf(
+  project: number,
+  moduleName: string,
+  usecaseIds: readonly string[],
+): Promise<{ outbound: D1EffectEvent[]; operations: D1EffectOperation[] }> {
+  const paths = inputPaths(moduleName);
+  const integrationText = await readLogical(project, paths.integration);
+  const workflowText = await readLogical(project, paths.workflows);
+  const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
+  const workflows = workflowText ? parseD1Source(workflowText, 'defs') : null;
+  const known = new Set(usecaseIds);
+  const payloadCache = new Map<string, unknown>();
+  const outbound: D1EffectEvent[] = [];
+  if (isRecord(integration)) {
+    for (const row of arrayOf(integration.outbound)) {
+      if (!isRecord(row) || typeof row.id !== 'string' || !row.id) continue;
+      const on = typeof row.on === 'string' ? row.on : '';
+      outbound.push({
+        eventId: row.id,
+        on,
+        mechanism: typeof row.mechanism === 'string' ? row.mechanism : '',
+        payloadDeclared: await payloadOf(project, moduleName, on, payloadCache),
+      });
+    }
+  }
+  const operations: D1EffectOperation[] = [];
+  if (isRecord(integration)) {
+    for (const row of arrayOf(integration.inbound)) {
+      if (!isRecord(row) || typeof row.id !== 'string' || !row.id) continue;
+      const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
+      operations.push({
+        id: row.id,
+        kind: 'inbound',
+        operations: transitionRef ? [transitionRef] : [],
+        mechanism: typeof row.mechanism === 'string' ? row.mechanism : '',
+        consumer: known.has(transitionRef) ? transitionRef : row.id,
+        scheduled: false,
+      });
+    }
+    for (const row of arrayOf(integration.plugins)) {
+      if (!isRecord(row) || typeof row.pluginId !== 'string' || !row.pluginId) continue;
+      const usedBy = stringList(row.usedBy);
+      const consumer = usedBy.find(item => inSelected(item, known)) || row.pluginId;
+      operations.push({
+        id: row.pluginId,
+        kind: 'plugin',
+        operations: usedBy,
+        mechanism: typeof row.mechanism === 'string' ? row.mechanism : '',
+        consumer,
+        scheduled: false,
+      });
+    }
+  }
+  if (isRecord(workflows)) {
+    for (const row of arrayOf(workflows.processes)) {
+      if (!isRecord(row) || typeof row.processId !== 'string' || !row.processId) continue;
+      const planned: string[] = [];
+      for (const task of arrayOf(row.tasks)) {
+        if (!isRecord(task)) continue;
+        if (typeof task.journeyRef === 'string' && task.journeyRef && !planned.includes(task.journeyRef)) planned.push(task.journeyRef);
+        if (typeof task.transitionRef === 'string' && task.transitionRef && !planned.includes(task.transitionRef)) planned.push(task.transitionRef);
+      }
+      const trigger = isRecord(row.trigger) ? row.trigger : {};
+      const consumer = planned.find(item => known.has(item)) || row.processId;
+      operations.push({
+        id: row.processId,
+        kind: 'process',
+        operations: planned,
+        mechanism: '',
+        consumer,
+        scheduled: trigger.kind === 'scheduled',
+      });
+    }
+  }
+  return { outbound, operations };
+}
+
+async function payloadOf(
+  project: number,
+  moduleName: string,
+  on: string,
+  cache: Map<string, unknown>,
+): Promise<boolean> {
+  const [entityId, transitionId] = on.split('.');
+  if (!entityId || !transitionId || on.split('.').length !== 2) return false;
+  if (!cache.has(entityId)) {
+    const text = await readLogical(project, entityPath(moduleName, entityId));
+    cache.set(entityId, text ? parseD1Source(text, 'defs') : null);
+  }
+  const doc = cache.get(entityId);
+  if (!isRecord(doc)) return false;
+  const transition = arrayOf(doc.transitions).find(item => isRecord(item) && item.transitionId === transitionId);
+  return isRecord(transition) && Object.hasOwn(transition, 'payload');
+}
+
+function inSelected(operation: string, usecaseIds: ReadonlySet<string>): boolean {
+  if (usecaseIds.has(operation)) return true;
+  const head = operation.split('.')[0] || '';
+  return head.length > 0 && usecaseIds.has(head);
 }
 
 function pairsOf(value: unknown): string[][] {

@@ -476,12 +476,18 @@ export function effectCoverageIssues(usecases: readonly { effects?: Array<{ even
   return issues;
 }
 
-export function integrationLinkIssues(events: readonly { eventId: string; on: string }[], usecaseIds: readonly string[]): string[] {
+export function integrationLinkIssues(
+  events: readonly { eventId: string; on: string; consumer?: string }[],
+  usecaseIds: readonly string[],
+): string[] {
   const issues: string[] = [];
   const known = new Set(usecaseIds);
   for (const event of events) {
     const transition = event.on.split('.')[1] || '';
     if (!transition || !known.has(transition)) issues.push(`Outbound ${event.eventId} does not name a usecase id.`);
+    if (event.consumer !== undefined && event.consumer !== transition) {
+      issues.push(`Outbound ${event.eventId} consumer does not match ${transition}.`);
+    }
   }
   return issues;
 }
@@ -619,6 +625,27 @@ export const D1_FIELD_READERS = {
   'integrationOutbound.events.on': 'integrationLinkIssues',
   'integrationOutbound.events.entityId': 'integrationMechanismIssues',
   'integrationOutbound.events.mechanism': 'integrationMechanismIssues',
+  'integrationOutbound.events.consumer': 'integrationLinkIssues',
+  'integrationOutbound.events.mechanismRef': 'integrationMechanismIssues',
+  'integrationOutbound.processes': 'integrationCoverageIssues',
+  'integrationOutbound.processes.processId': 'integrationCoverageIssues',
+  'integrationOutbound.processes.operations': 'integrationCoverageIssues',
+  'integrationOutbound.processes.mechanism': 'integrationCoverageIssues',
+  'integrationOutbound.processes.consumer': 'integrationCoverageIssues',
+  'integrationOutbound.inbound': 'integrationCoverageIssues',
+  'integrationOutbound.inbound.inboundId': 'integrationCoverageIssues',
+  'integrationOutbound.inbound.operations': 'integrationCoverageIssues',
+  'integrationOutbound.inbound.mechanism': 'integrationCoverageIssues',
+  'integrationOutbound.inbound.consumer': 'integrationCoverageIssues',
+  'integrationOutbound.plugins': 'integrationCoverageIssues',
+  'integrationOutbound.plugins.pluginId': 'integrationCoverageIssues',
+  'integrationOutbound.plugins.operations': 'integrationCoverageIssues',
+  'integrationOutbound.plugins.mechanism': 'integrationCoverageIssues',
+  'integrationOutbound.plugins.consumer': 'integrationCoverageIssues',
+  'integrationOutbound.gaps': 'integrationCoverageIssues',
+  'integrationOutbound.gaps.itemId': 'integrationCoverageIssues',
+  'integrationOutbound.gaps.kind': 'integrationCoverageIssues',
+  'integrationOutbound.gaps.code': 'integrationCoverageIssues',
   'pipelineItem.id': 'pipelineItemIssues',
   'pipelineItem.type': 'pipelineItemIssues',
   'pipelineItem.defPath': 'resolveCatalogRefs',

@@ -3,6 +3,25 @@
 import { moduleTokenOk } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 
 export const D1_DEFINITION_SCHEMA = '2026-09-21-d1-definition-v1' as const;
+
+/**
+ * Measured on RequestContext.data.pgQueue. RequestContext itself has no publishEvent or emitEvent.
+ * Postgres publish inserts into the MDM outbox. It is not a module bus.
+ * An event keeps this symbol only when the artifact already names it.
+ */
+export const D1_MEASURED_PUBLISH = {
+  symbol: 'IQueueRuntime.publish',
+  path: 'mls-102034/l1/server/layer_1_external/data/runtime.ts',
+  owner: 'RequestContext.data.pgQueue',
+  payload: '{ topic: string; payload: unknown }',
+  delivery: 'Postgres insert into mdm_outbox. Memory keeps an array. No module consumer is registered.',
+  transaction: 'Postgres publish uses the transaction executor. Memory runInTransaction does not roll back.',
+} as const;
+
+/** Names that are not methods of RequestContext. Writing them would invent an API. */
+export function fictionalMechanism(value: string): boolean {
+  return value.split(/[^A-Za-z0-9_]+/).some(token => token === 'publishEvent' || token === 'emitEvent');
+}
 export const D1_CATALOG_SCHEMA = '2026-09-21-d1-catalog-v1' as const;
 
 /** Closed set. Auxiliary names are not dispatched by agentChangeBackend. */
@@ -940,7 +959,7 @@ function seedDatasets(value: unknown, issues: string[]): void {
 function integrationShapeIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['integrationId', 'events'], 'data', issues);
+  unknownKeys(data, ['integrationId', 'events', 'processes', 'inbound', 'plugins', 'gaps'], 'data', issues);
   needString(data, 'integrationId', 'data', issues);
   if (!Array.isArray(data.events)) issues.push('Missing field data.events.');
   else data.events.forEach((event, index) => {
@@ -949,13 +968,65 @@ function integrationShapeIssues(data: unknown): string[] {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(event, ['eventId', 'on', 'entityId', 'mechanism'], path, issues);
+    unknownKeys(event, ['eventId', 'on', 'entityId', 'mechanism', 'consumer', 'mechanismRef'], path, issues);
     needString(event, 'eventId', path, issues);
     needString(event, 'on', path, issues);
     needString(event, 'entityId', path, issues);
+    needString(event, 'consumer', path, issues);
     if (typeof event.mechanism !== 'string') issues.push(`Missing field ${path}.mechanism.`);
+    if (event.mechanismRef !== undefined && (typeof event.mechanismRef !== 'string' || !event.mechanismRef.trim())) {
+      issues.push(`Missing field ${path}.mechanismRef.`);
+    }
   });
+  issues.push(...integrationCoverageIssues(data));
   return issues;
+}
+
+/** Processes, inbound and plugins stay operations. A gap is a declared item the pool did not select. */
+export function integrationCoverageIssues(data: unknown): string[] {
+  if (!isRecord(data)) return [];
+  const issues: string[] = [];
+  coverRows(data.processes, 'data.processes', 'processId', issues);
+  coverRows(data.inbound, 'data.inbound', 'inboundId', issues);
+  coverRows(data.plugins, 'data.plugins', 'pluginId', issues);
+  if (data.gaps !== undefined && !Array.isArray(data.gaps)) issues.push('Missing field data.gaps.');
+  else if (Array.isArray(data.gaps)) {
+    data.gaps.forEach((gap, index) => {
+      const path = `data.gaps.${index}`;
+      if (!isRecord(gap)) {
+        issues.push(`Missing field ${path}.`);
+        return;
+      }
+      unknownKeys(gap, ['itemId', 'kind', 'code'], path, issues);
+      needString(gap, 'itemId', path, issues);
+      if (gap.kind !== 'process' && gap.kind !== 'inbound' && gap.kind !== 'plugin') issues.push(`${path}.kind is invalid.`);
+      if (gap.code !== 'POOL_ABSENT') issues.push(`${path}.code is invalid.`);
+    });
+  }
+  return issues;
+}
+
+function coverRows(value: unknown, path: string, idKey: string, issues: string[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  value.forEach((row, index) => {
+    const rowPath = `${path}.${index}`;
+    if (!isRecord(row)) {
+      issues.push(`Missing field ${rowPath}.`);
+      return;
+    }
+    unknownKeys(row, [idKey, 'operations', 'mechanism', 'consumer'], rowPath, issues);
+    needString(row, idKey, rowPath, issues);
+    needString(row, 'consumer', rowPath, issues);
+    if (typeof row.mechanism !== 'string') issues.push(`Missing field ${rowPath}.mechanism.`);
+    if (!Array.isArray(row.operations)) issues.push(`Missing field ${rowPath}.operations.`);
+    else row.operations.forEach((operation, operationIndex) => {
+      if (typeof operation !== 'string' || !operation.trim()) issues.push(`Missing field ${rowPath}.operations.${operationIndex}.`);
+    });
+  });
 }
 
 /** Empty mechanism is reported and the event is left in place. */
@@ -964,10 +1035,23 @@ export function integrationMechanismIssues(data: unknown): string[] {
   if (!isRecord(data) || !Array.isArray(data.events)) return issues;
   data.events.forEach((event, index) => {
     if (!isRecord(event) || typeof event.mechanism !== 'string') return;
-    if (!event.mechanism.trim()) {
-      const eventId = typeof event.eventId === 'string' && event.eventId ? event.eventId : `data.events.${index}`;
+    const eventId = typeof event.eventId === 'string' && event.eventId ? event.eventId : `data.events.${index}`;
+    const mechanism = event.mechanism;
+    const ref = typeof event.mechanismRef === 'string' ? event.mechanismRef : '';
+    if (!mechanism.trim()) {
       issues.push(`INTEGRATION_UNBOUND: ${eventId} has no runtime mechanism.`);
+      if (ref) issues.push(`INTEGRATION_UNBOUND: ${eventId} names a ref and no mechanism.`);
+      return;
     }
+    if (fictionalMechanism(mechanism)) {
+      issues.push(`FICTIONAL_API: ${eventId} names ${mechanism}. RequestContext does not declare it.`);
+      return;
+    }
+    if (mechanism === D1_MEASURED_PUBLISH.symbol) {
+      if (ref !== D1_MEASURED_PUBLISH.path) issues.push(`MECHANISM_REF: ${eventId} must cite ${D1_MEASURED_PUBLISH.path}.`);
+      return;
+    }
+    if (ref) issues.push(`MECHANISM_REF: ${eventId} cites a ref for an unmeasured mechanism.`);
   });
   return issues;
 }

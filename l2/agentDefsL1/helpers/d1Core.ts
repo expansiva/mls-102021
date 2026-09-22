@@ -298,7 +298,7 @@ export function helpText(moduleName: string, project: number): string {
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
-    'domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript. controllers60 writes one controller def per page and does not call a model. support70 writes the access scope, the authority map, the repository registry and the seed plan, and does not call a model.',
+    'domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript. controllers60 writes one controller def per page and does not call a model. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan, and does not call a model.',
     `Steps not implemented yet: ${pending.join(', ')}.`,
   ].join('\n');
 }

@@ -2,7 +2,9 @@
 
 import {
   D1_DEFINITION_SCHEMA,
+  D1_MEASURED_PUBLISH,
   definitionIssues,
+  fictionalMechanism,
   type D1Definition,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
@@ -24,6 +26,7 @@ import {
   type D1PublicationLater,
   type D1RegistryAdapter,
   type D1ScopeResolution,
+  type D1EffectReport,
   type D1SeedDataset,
   type D1SeedDependency,
   type D1SeedJourney,
@@ -50,6 +53,7 @@ const SCOPE_PATH = (moduleName: string) => `l1/${moduleName}/layer_2_application
 const AUTH_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/auth/authorityMap.defs.ts`;
 const REGISTRY_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/persistence/registerRepositories.defs.ts`;
 const SEEDS_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/persistence/seeds.defs.ts`;
+const OUTBOUND_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`;
 const NOTE_RULE = 'attendanceNoteRequired';
 
 /**
@@ -57,6 +61,8 @@ const NOTE_RULE = 'attendanceNoteRequired';
  * A missing grant or an anchor with no explicit path is a diagnosis.
  * It is not rewritten as organization or public.
  * Seeds describe scenarios. They do not write rows.
+ * Effects name the consumer and keep an empty mechanism when none was declared.
+ * Nothing is published.
  */
 export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
   const problems: D1SupportProblem[] = [];
@@ -67,11 +73,12 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
   const scope = emitScope(request, problems);
   const registry = emitRegistry(request, problems, normalizations);
   const seeds = emitSeeds(request, problems, normalizations);
+  const effects = emitEffects(request, problems);
   noteInverted(request, scope.emit, registry.emit, problems);
-  noteDag(request, scope.emit, registry.emit, seeds.emit, registry.live, problems);
+  noteDag(request, scope.emit, registry.emit, seeds.emit, effects.emit, registry.live, problems);
 
   const errored = problems.some(problem => problem.severity === 'error');
-  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit];
+  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit];
   for (const part of emit) {
     const rendered = renderDefinition(part.definition, part.pipeline);
     if ('issues' in rendered) {
@@ -94,6 +101,7 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
     normalizations,
     stillOk ? emit : [],
     stillOk ? seeds.plan : absentPlan(),
+    stillOk ? effects.report : absentEffects(),
   );
 }
 
@@ -629,6 +637,7 @@ function noteDag(
   scope: readonly D1SupportEmit[],
   registry: readonly D1SupportEmit[],
   seeds: readonly D1SupportEmit[],
+  effects: readonly D1SupportEmit[],
   live: readonly D1SupportAdapter[],
   problems: D1SupportProblem[],
 ): void {
@@ -642,6 +651,7 @@ function noteDag(
     ...scope.map(part => edgeOf(part.pipeline[0])),
     ...registry.map(part => edgeOf(part.pipeline[0])),
     ...seeds.map(part => edgeOf(part.pipeline[0])),
+    ...effects.map(part => edgeOf(part.pipeline[0])),
     ...live.map(adapter => ({
       id: pipelineId(request.project, request.moduleName, 'repositoryAdapter', adapter.portId),
       type: 'repositoryAdapter',
@@ -775,7 +785,177 @@ function classifyEnumerations(request: D1SupportRequest, cited: ReadonlySet<stri
   });
 }
 
-function laterOf(moduleName: string, seedPlan: D1SeedReport): D1PublicationLater[] {
+/**
+ * One outbound def. Events keep the transition as consumer.
+ * An empty mechanism stays empty. publishEvent and emitEvent are refused.
+ * Processes, inbound and plugins stay operations. A scheduled trigger writes no scheduler.
+ */
+export function emitEffects(
+  request: D1SupportRequest,
+  problems: D1SupportProblem[],
+): { emit: D1SupportEmit[]; report: D1EffectReport } {
+  const empty = { emit: [] as D1SupportEmit[], report: absentEffects() };
+  const known = new Set(request.usecaseIds);
+  for (const eventId of [...request.selectedEventIds].sort()) {
+    if (request.outbound.some(event => event.eventId === eventId)) continue;
+    error(problems, 'INTEGRATION_OMITTED', eventId, `Outbound ${eventId} was selected and is missing. It was not dropped.`);
+  }
+  if (problems.some(problem => problem.severity === 'error' && problem.code === 'INTEGRATION_OMITTED')) return empty;
+
+  const events: Array<Record<string, unknown>> = [];
+  let bound = false;
+  for (const event of [...request.outbound].sort((left, right) => left.eventId.localeCompare(right.eventId))) {
+    const parts = event.on.split('.');
+    const entityId = parts[0] || '';
+    const transition = parts[1] || '';
+    if (!event.eventId || !entityId || !transition || parts.length !== 2 || !known.has(transition)) {
+      error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
+      continue;
+    }
+    const resolved = resolveMechanism(event.mechanism, event.eventId, problems);
+    if (!resolved) continue;
+    if (resolved.mechanism === D1_MEASURED_PUBLISH.symbol) bound = true;
+    const rules = uniqueRules(request, entityId, transition);
+    if (!event.payloadDeclared && rules.length) {
+      review(
+        problems,
+        'PAYLOAD_UNDECLARED',
+        transition,
+        `Transition ${transition} cites ${rules.join(', ')} and declares no payload. No payload was invented.`,
+      );
+    }
+    const row: Record<string, unknown> = {
+      eventId: event.eventId,
+      on: event.on,
+      entityId,
+      mechanism: resolved.mechanism,
+      consumer: transition,
+    };
+    if (resolved.mechanismRef) row.mechanismRef = resolved.mechanismRef;
+    events.push(row);
+  }
+
+  const processes: Array<Record<string, unknown>> = [];
+  const inbound: Array<Record<string, unknown>> = [];
+  const plugins: Array<Record<string, unknown>> = [];
+  const gaps: Array<Record<string, unknown>> = [];
+  for (const operation of [...request.operations].sort((left, right) => left.id.localeCompare(right.id))) {
+    const resolved = resolveMechanism(operation.mechanism, operation.id, problems);
+    if (!resolved) continue;
+    if (resolved.mechanism === D1_MEASURED_PUBLISH.symbol) bound = true;
+    const outside = operation.operations.filter(item => !inPool(item, known));
+    if (!operation.operations.length || outside.length) {
+      gaps.push({ itemId: operation.id, kind: operation.kind, code: 'POOL_ABSENT' });
+      review(
+        problems,
+        'POOL_ABSENT',
+        operation.id,
+        `${operation.kind} ${operation.id} is not in the selected pool. It was kept and no endpoint was added.`,
+      );
+    }
+    if (operation.scheduled) {
+      review(problems, 'SCHEDULER_NOT_WRITTEN', operation.id, `${operation.kind} ${operation.id} declares a scheduled trigger. No runtime scheduler was written.`);
+    }
+    const row = {
+      operations: [...operation.operations],
+      mechanism: resolved.mechanism,
+      consumer: operation.consumer || operation.id,
+    };
+    if (operation.kind === 'process') processes.push({ processId: operation.id, ...row });
+    else if (operation.kind === 'inbound') inbound.push({ inboundId: operation.id, ...row });
+    else plugins.push({ pluginId: operation.id, ...row });
+  }
+
+  if (problems.some(problem => problem.severity === 'error')) return empty;
+  if (!events.length && !processes.length && !inbound.length && !plugins.length) return empty;
+
+  const data: Record<string, unknown> = { integrationId: 'outbound', events };
+  if (processes.length) data.processes = processes;
+  if (inbound.length) data.inbound = inbound;
+  if (plugins.length) data.plugins = plugins;
+  if (gaps.length) data.gaps = gaps.sort((left, right) => String(left.itemId).localeCompare(String(right.itemId)));
+  if (!writable(request, 'integrationOutbound', problems, true)) {
+    return { emit: [], report: { phase: 'plan', executed: false, capability: capabilityOf(bound) } };
+  }
+  const defPath = filePath(request, 'integrationOutbound', OUTBOUND_PATH(request.moduleName));
+  const consumers = events.map(event => String(event.consumer));
+  const definition = definitionFor(request, 'integrationOutbound', 'outbound', data);
+  const emit: D1SupportEmit[] = [];
+  pushDefinition(emit, definition, effectsPipeline(request, defPath, consumers), defPath, problems);
+  if (problems.some(problem => problem.severity === 'error')) return empty;
+  return { emit, report: { phase: 'plan', executed: false, capability: capabilityOf(bound) } };
+}
+
+function resolveMechanism(
+  raw: string,
+  label: string,
+  problems: D1SupportProblem[],
+): { mechanism: string; mechanismRef: string } | null {
+  const mechanism = raw.trim();
+  if (fictionalMechanism(mechanism)) {
+    error(problems, 'FICTIONAL_API', label, `Mechanism ${mechanism} is not on RequestContext. publishEvent and emitEvent were not written.`);
+    return null;
+  }
+  if (!mechanism) {
+    review(problems, 'INTEGRATION_UNBOUND', label, `${label} is preserved. No runtime mechanism is named.`);
+    return { mechanism: '', mechanismRef: '' };
+  }
+  if (mechanism === D1_MEASURED_PUBLISH.symbol) return { mechanism, mechanismRef: D1_MEASURED_PUBLISH.path };
+  review(problems, 'MECHANISM_UNVERIFIED', label, `Mechanism ${mechanism} is not the measured publish symbol. It was kept and not executed.`);
+  return { mechanism, mechanismRef: '' };
+}
+
+function uniqueRules(request: D1SupportRequest, entityId: string, transitionId: string): string[] {
+  const model = request.models.find(item => item.entityId === entityId);
+  if (!model) return [];
+  const cited = new Map<string, number>();
+  for (const transition of model.transitions) {
+    for (const rule of transition.ruleRefs) cited.set(rule, (cited.get(rule) || 0) + 1);
+  }
+  const transition = model.transitions.find(item => item.transitionId === transitionId);
+  if (!transition) return [];
+  return transition.ruleRefs.filter(rule => cited.get(rule) === 1);
+}
+
+function inPool(operation: string, usecaseIds: ReadonlySet<string>): boolean {
+  if (usecaseIds.has(operation)) return true;
+  const head = operation.split('.')[0] || '';
+  return head.length > 0 && usecaseIds.has(head);
+}
+
+function effectsPipeline(request: D1SupportRequest, defPath: string, consumers: readonly string[]): D1PipelineItem {
+  const qualified = qualifyDefPath(request.project, defPath);
+  const usecases = [...new Set(consumers)].filter(Boolean).sort();
+  return {
+    id: pipelineId(request.project, request.moduleName, 'integrationOutbound', 'outbound'),
+    type: 'integrationOutbound',
+    defPath: qualified,
+    outputPath: futureOutputPath(qualified),
+    outputAvailability: 'future',
+    dependsFiles: usecases.map(id => qualifyDefPath(request.project, `l1/${request.moduleName}/layer_2_application/usecases/${id}.defs.ts`)),
+    dependsOn: usecases.map(id => pipelineId(request.project, request.moduleName, 'usecase', id)),
+    skills: skillPaths('integrationOutbound'),
+  };
+}
+
+function capabilityOf(bound: boolean): D1EffectReport['capability'] {
+  return {
+    symbol: D1_MEASURED_PUBLISH.symbol,
+    path: D1_MEASURED_PUBLISH.path,
+    owner: D1_MEASURED_PUBLISH.owner,
+    payload: D1_MEASURED_PUBLISH.payload,
+    delivery: D1_MEASURED_PUBLISH.delivery,
+    transaction: D1_MEASURED_PUBLISH.transaction,
+    requestContextPublish: false,
+    bound,
+  };
+}
+
+function absentEffects(): D1EffectReport {
+  return { phase: 'absent', executed: false, capability: capabilityOf(false) };
+}
+
+function laterOf(moduleName: string, seedPlan: D1SeedReport, effectPlan: D1EffectReport): D1PublicationLater[] {
   const later: D1PublicationLater[] = [];
   if (seedPlan.phase !== 'plan') {
     later.push({
@@ -784,11 +964,13 @@ function laterOf(moduleName: string, seedPlan: D1SeedReport): D1PublicationLater
       reason: 'No local table was planned. This step did not write a seed plan.',
     });
   }
-  later.push({
-    artifactType: 'integrationOutbound',
-    defPath: `l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`,
-    reason: 'Effects are a later emitter. This step did not write them.',
-  });
+  if (effectPlan.phase !== 'plan') {
+    later.push({
+      artifactType: 'integrationOutbound',
+      defPath: OUTBOUND_PATH(moduleName),
+      reason: 'No outbound event, process, inbound item or plugin was declared. This step did not write an integration def.',
+    });
+  }
   return later;
 }
 
@@ -796,6 +978,7 @@ function registersOf(artifactType: string): string {
   if (artifactType === 'repositoryRegistration') return 'adapter factories';
   if (artifactType === 'authorityMap') return 'authority entries';
   if (artifactType === 'persistenceSeeds') return 'seed plan';
+  if (artifactType === 'integrationOutbound') return 'outbound events';
   return 'scope grants';
 }
 
@@ -828,6 +1011,7 @@ function finish(
   normalizations: D1SupportNormalization[],
   emit: D1SupportEmit[],
   seedPlan: D1SeedReport,
+  effectPlan: D1EffectReport,
 ): D1SupportBuild {
   const consumed = enumerations.filter(item => item.consumed);
   const unconsumed = enumerations.filter(item => !item.consumed);
@@ -864,9 +1048,10 @@ function finish(
     registry,
     publication: {
       stillToRegister: ok ? publicationOf(emit) : [],
-      later: laterOf(request.moduleName, ok ? seedPlan : absentPlan()),
+      later: laterOf(request.moduleName, ok ? seedPlan : absentPlan(), ok ? effectPlan : absentEffects()),
     },
     seedPlan: ok ? seedPlan : absentPlan(),
+    effectPlan: ok ? effectPlan : absentEffects(),
     problems,
     normalizations,
     emit: ok ? emit : [],

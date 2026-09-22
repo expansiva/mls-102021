@@ -1,24 +1,25 @@
-# support70 — registry, access scope and seed plan
+# support70 — registry, access scope, seed plan and effects
 
-Deterministic. No LLM. No `prompt.md`. Three emitters: `emitRegistry` lists
+Deterministic. No LLM. No `prompt.md`. Four emitters: `emitRegistry` lists
 live adapters, `emitScope` transcribes the grants controllers60 already
-resolved, and `emitSeeds` writes the seed plan. All go through the d1_03
-writer.
+resolved, `emitSeeds` writes the seed plan, and `emitEffects` writes the
+outbound plan. All go through the d1_03 writer.
 
 ## Input
 
 The step prompt is the entry10 JSON with `planId: support70`. The checkpoint
 must already have `controllers60` approved, and `input.json` must have
 released consumer phases. The controllers draft, the persistence draft, the
-domain draft, the access artifact, the ontology index and the journeys are
-read again. A previous support draft, when it parses, supplies the helpers
-and the datasets already shared.
+domain draft, the access artifact, the ontology index, the journeys, the
+integration artifact and the workflows are read again. A previous support
+draft, when it parses, supplies the helpers and the datasets already shared.
 
 ## Output
 
 `drafts/support70.json` records the resolutions, the join helpers, the
-registry and the seed plan. The defs are the closed records: `accessScope`,
-`authorityMap`, `repositoryRegistration` and `persistenceSeeds`.
+registry, the seed plan and the effect plan. The defs are the closed
+records: `accessScope`, `authorityMap`, `repositoryRegistration`,
+`persistenceSeeds` and `integrationOutbound`.
 
 The registry names each live adapter's factory and depends on that adapter.
 A removed adapter is not listed. Application defs do not depend on the
@@ -40,7 +41,20 @@ remain.
 The publication list is the future `.ts` the materializer will still
 register. `seedPlan.phase` is `plan` and `materialized` is false: the def
 describes scenarios, and this step does not write `seeds.ts` or any row.
-Effects stay a later emitter. Nothing is written under l5 or to a database.
+`effectPlan.executed` is false. An outbound event keeps `on` and the usecase
+id as `consumer`. `mechanism` stays empty unless the artifact already names
+`IQueueRuntime.publish`; that ref is the measured symbol on
+`RequestContext.data.pgQueue`, and this step does not call it.
+`RequestContext` has no `publishEvent` or `emitEvent`. A transition that
+cites a unique rule and declares no payload stays `PAYLOAD_UNDECLARED`.
+No payload object is added.
+
+Processes, inbound items and plugins are copied as operations. A workflow
+does not become an endpoint. An operation outside the selected usecases is
+`POOL_ABSENT` and stays on the def. A scheduled trigger is
+`SCHEDULER_NOT_WRITTEN`. No scheduler file is written.
+
+Nothing is written under l5 or to a database. No external integration runs.
 
 A seed scenario comes from a journey that names the local entity, or from
 the model when no journey does. Constraints cite the model's unique keys,
@@ -58,8 +72,9 @@ An enum is `consumed: true` only when every one of its values is cited as a
 seed state (`ENUMERATIONS_CONSUMED`). Any other enum stays `consumed: false`
 with `ENUMERATIONS_NOT_CONSUMED`.
 
-A seed error sets `awaitingStep` to `support70` and `steps.support70.error`
-to `CODE:count`. The step is `failed`, not `approved`.
+A seed or effect error sets `awaitingStep` to `support70` and
+`steps.support70.error` to `CODE:count`. The step is `failed`, not `approved`.
+An unbound mechanism is a review. It does not stop the step.
 
 `support70-done` is minted only when the build has no error. A file whose
 receipt hash does not match the bytes on disk is not overwritten. The same
@@ -69,6 +84,8 @@ bytes are not rewritten.
 
 - Adapter identity is the port id persistence40 planned. The factory is that
   artifact id. The dependency is that adapter's pipeline id.
+- An outbound event depends on the usecase its `on` names. It does not depend
+  on the registry. A removed event that input20 still selected is an error.
 - Authority entries are the grants already on the scope. The map adds none.
 - `preserve` does not rewrite. `remove` of a file that still has a live
   consumer recomposes it. A seed file with a remaining owner is kept.

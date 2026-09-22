@@ -59,6 +59,10 @@ export function coreSupportRequest(): D1SupportRequest {
     seedRefs: [],
     existingDatasets: [],
     maintenance: null,
+    outbound: [],
+    selectedEventIds: [],
+    usecaseIds: [],
+    operations: [],
   };
 }
 
@@ -143,6 +147,13 @@ export function agendaSeedRequest(): D1SupportRequest {
     { tag: 'profissional', entityId: 'Profissional' },
     { tag: 'recepcionista', entityId: 'Recepcionista' },
     { tag: 'HasContact', entityId: 'ContatoPaciente' },
+  ];
+  request.usecaseIds = ['confirmarConsulta', 'registrarFalta', 'registrarAtendimento'];
+  request.selectedEventIds = ['atendimentoRegistrado', 'consultaConfirmada', 'faltaPacienteRegistrada'];
+  request.outbound = [
+    { eventId: 'consultaConfirmada', on: 'Consulta.confirmarConsulta', mechanism: '', payloadDeclared: false },
+    { eventId: 'faltaPacienteRegistrada', on: 'Consulta.registrarFalta', mechanism: '', payloadDeclared: false },
+    { eventId: 'atendimentoRegistrado', on: 'Consulta.registrarAtendimento', mechanism: '', payloadDeclared: false },
   ];
   return request;
 }

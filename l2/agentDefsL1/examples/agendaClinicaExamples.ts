@@ -248,9 +248,9 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
   const integration = envelope('integrationOutbound', 'outbound', {
     integrationId: 'outbound',
     events: [
-      { eventId: 'consultaConfirmada', on: 'Consulta.confirmarConsulta', entityId: 'Consulta', mechanism: '' },
-      { eventId: 'faltaPacienteRegistrada', on: 'Consulta.registrarFalta', entityId: 'Consulta', mechanism: '' },
-      { eventId: 'atendimentoRegistrado', on: 'Consulta.registrarAtendimento', entityId: 'Consulta', mechanism: '' },
+      { eventId: 'consultaConfirmada', on: 'Consulta.confirmarConsulta', entityId: 'Consulta', mechanism: '', consumer: 'confirmarConsulta' },
+      { eventId: 'faltaPacienteRegistrada', on: 'Consulta.registrarFalta', entityId: 'Consulta', mechanism: '', consumer: 'registrarFalta' },
+      { eventId: 'atendimentoRegistrado', on: 'Consulta.registrarAtendimento', entityId: 'Consulta', mechanism: '', consumer: 'registrarAtendimento' },
     ],
   });
 

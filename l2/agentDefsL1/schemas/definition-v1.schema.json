@@ -361,18 +361,67 @@
       "required": ["integrationId", "events"],
       "properties": {
         "integrationId": { "type": "string", "minLength": 1 },
-        "events": { "type": "array", "items": { "$ref": "#/$defs/outboundEvent" } }
+        "events": { "type": "array", "items": { "$ref": "#/$defs/outboundEvent" } },
+        "processes": { "type": "array", "items": { "$ref": "#/$defs/effectProcess" } },
+        "inbound": { "type": "array", "items": { "$ref": "#/$defs/effectInbound" } },
+        "plugins": { "type": "array", "items": { "$ref": "#/$defs/effectPlugin" } },
+        "gaps": { "type": "array", "items": { "$ref": "#/$defs/effectGap" } }
       }
     },
     "outboundEvent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "on", "entityId", "mechanism"],
+      "required": ["eventId", "on", "entityId", "mechanism", "consumer"],
       "properties": {
         "eventId": { "type": "string", "minLength": 1 },
         "on": { "type": "string", "minLength": 1 },
         "entityId": { "type": "string", "minLength": 1 },
-        "mechanism": { "type": "string" }
+        "mechanism": { "type": "string" },
+        "consumer": { "type": "string", "minLength": 1 },
+        "mechanismRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effectProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processId", "operations", "mechanism", "consumer"],
+      "properties": {
+        "processId": { "type": "string", "minLength": 1 },
+        "operations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "mechanism": { "type": "string" },
+        "consumer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effectInbound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inboundId", "operations", "mechanism", "consumer"],
+      "properties": {
+        "inboundId": { "type": "string", "minLength": 1 },
+        "operations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "mechanism": { "type": "string" },
+        "consumer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effectPlugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pluginId", "operations", "mechanism", "consumer"],
+      "properties": {
+        "pluginId": { "type": "string", "minLength": 1 },
+        "operations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "mechanism": { "type": "string" },
+        "consumer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effectGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemId", "kind", "code"],
+      "properties": {
+        "itemId": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["process", "inbound", "plugin"] },
+        "code": { "type": "string", "enum": ["POOL_ABSENT"] }
       }
     }
   }

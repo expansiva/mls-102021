@@ -1,5 +1,15 @@
 # support70
 
+## 2026-09-22 (d1_10)
+
+- Writes `outbound.defs.ts` for declared events, processes, inbound items and plugins.
+- Each event names the usecase on `on` as `consumer`. An empty mechanism stays empty (`INTEGRATION_UNBOUND`).
+- Does not call publish, and does not write `publishEvent`, `emitEvent`, a scheduler, a broker or an outbox.
+- The measured symbol `IQueueRuntime.publish` is copied only when the artifact already names it, with its path.
+- A selected event missing from the artifact stops the step (`INTEGRATION_OMITTED`).
+- `registrarAtendimento` keeps `PAYLOAD_UNDECLARED`. No payload is invented.
+- A process, inbound item or plugin outside the selected usecases stays on the def as `POOL_ABSENT`. It does not become an endpoint.
+
 ## 2026-09-22 (d1_09)
 
 - Writes `seeds.defs.ts` as a plan: scenarios, column refs, dependencies and shared datasets.

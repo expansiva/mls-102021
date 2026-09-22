@@ -1,6 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/contracts.ts" enhancement="_blank"/>
 
-import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import type { D1_MEASURED_PUBLISH, D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import type {
   D1ControllerGrant,
@@ -196,6 +196,42 @@ export interface D1SeedReport {
   dependencies: D1SeedDependency[];
 }
 
+/** One outbound event from the integration artifact. `mechanism` is empty when the artifact names none. */
+export interface D1EffectEvent {
+  eventId: string;
+  on: string;
+  mechanism: string;
+  /** True only when the transition object declares `payload`. */
+  payloadDeclared: boolean;
+}
+
+/** A process, inbound item or plugin. Operations are not routes. */
+export interface D1EffectOperation {
+  id: string;
+  kind: 'process' | 'inbound' | 'plugin';
+  operations: string[];
+  mechanism: string;
+  consumer: string;
+  /** A scheduled trigger is preserved as a review. This step does not write a scheduler. */
+  scheduled: boolean;
+}
+
+/** The measured publish API, and whether any artifact already named it. Nothing is executed. */
+export interface D1EffectReport {
+  phase: 'plan' | 'absent';
+  executed: false;
+  capability: {
+    symbol: typeof D1_MEASURED_PUBLISH.symbol;
+    path: typeof D1_MEASURED_PUBLISH.path;
+    owner: typeof D1_MEASURED_PUBLISH.owner;
+    payload: typeof D1_MEASURED_PUBLISH.payload;
+    delivery: typeof D1_MEASURED_PUBLISH.delivery;
+    transaction: typeof D1_MEASURED_PUBLISH.transaction;
+    requestContextPublish: false;
+    bound: boolean;
+  };
+}
+
 export interface D1SupportRequest {
   project: number;
   moduleName: string;
@@ -226,6 +262,14 @@ export interface D1SupportRequest {
   /** Datasets already shared. Dropping one owner does not drop the dataset. */
   existingDatasets: D1SeedDataset[];
   maintenance: D1SeedMaintenance | null;
+  /** Outbound rows of the integration artifact. */
+  outbound: D1EffectEvent[];
+  /** Event ids input20 selected. A selected id missing here is an omission. */
+  selectedEventIds: string[];
+  /** Usecase ids the plan selected. An event consumer must be one of these. */
+  usecaseIds: string[];
+  /** Processes, inbound and plugins. A workflow does not become an endpoint. */
+  operations: D1EffectOperation[];
 }
 
 export interface D1SupportEmit {
@@ -250,6 +294,8 @@ export interface D1SupportBuild {
   };
   /** Separates the seed plan from rows. Rows are not written here. */
   seedPlan: D1SeedReport;
+  /** Effect plan. `executed` stays false. An empty mechanism stays unbound. */
+  effectPlan: D1EffectReport;
   problems: D1SupportProblem[];
   normalizations: D1SupportNormalization[];
   emit: D1SupportEmit[];
