@@ -25,6 +25,7 @@ import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import {
+  barrierStep,
   decideRepairs,
   fanoutExecution,
   fanoutStep,
@@ -42,7 +43,7 @@ import {
   writeAttempt,
   writeD1UsecaseWork,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
-import { parseWorkerReply, usecaseHumanPrompt, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 export async function beforeD1UsecasesPromptStep(
   _agent: IAgentMeta,
@@ -56,6 +57,7 @@ export async function beforeD1UsecasesPromptStep(
   if (planId === 'usecases50-fanout') {
     return [updateStatus(context, parentStep, step, hookSequential, 'in_progress', 'usecases50 fan-out is waiting for workers.')];
   }
+  if (isBarrierPlan(planId)) return barrier(context, parentStep, step, hookSequential);
   if (planId.startsWith('usecases50-worker-') || planId.startsWith('usecases50-repair-')) {
     return prepareWorker(context, parentStep, step, hookSequential, args || step.prompt || '');
   }
@@ -96,6 +98,9 @@ export async function beforeD1UsecasesPromptStep(
   const ids = loaded.work.request.usecases.map(usecase => usecase.usecaseId);
   const workerArgs = ids.map(usecaseId => firstWorkerArg(parsed.prompt.project, parsed.prompt.moduleName, usecaseId));
   const fanout = fanoutStep(parsed.prompt.project, parsed.prompt.moduleName, workerArgs);
+  // The host completes a parallel parent without calling its afterPrompt.
+  // The barrier depends on the fan-out, so the host unlocks it afterwards.
+  const barrierDepends = [fanout.planning?.planId || 'usecases50-fanout'];
   return [
     {
       type: 'add-step',
@@ -106,6 +111,7 @@ export async function beforeD1UsecasesPromptStep(
       step: fanout,
       executionMode: fanoutExecution(workerArgs),
     },
+    addStep(context, parentStep, barrierStep(parsed.prompt.project, parsed.prompt.moduleName, barrierDepends, '')),
     updateStatus(context, parentStep, step, hookSequential, 'in_progress', `usecases50 dispatched ${ids.length} workers, at most 5 at once.`),
   ];
 }
@@ -119,7 +125,12 @@ export async function afterD1UsecasesPromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   const planId = planIdOf(step) || planIdFromText(args || step.prompt || '');
-  if (planId === 'usecases50-fanout') return barrier(context, parentStep, step, hookSequential);
+  if (planId === 'usecases50-fanout') {
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'usecases50 fan-out closed. The barrier step decides repair.')];
+  }
+  if (isBarrierPlan(planId)) {
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'usecases50 barrier already decided.')];
+  }
   if (planId.startsWith('usecases50-worker-') || planId.startsWith('usecases50-repair-')) {
     return finishWorker(context, parentStep, step, hookSequential, args || step.prompt || '');
   }
@@ -169,7 +180,7 @@ async function prepareWorker(
     hookSequential,
     parentStepId: parentStep.stepId,
     // Skill comment is removed. The step prompt is not: its modelType is what the host routes on.
-    systemPrompt: [stripComment(skill || ''), instructions.trim()].filter(Boolean).join('\n\n'),
+    systemPrompt: [stripComment(skill || ''), instructions.trim(), workerStepShape()].filter(Boolean).join('\n\n'),
     humanPrompt,
     tools: [usecaseTool()],
     toolChoice: { type: 'function', function: { name: 'planUsecaseSteps' } },
@@ -192,7 +203,8 @@ async function finishWorker(
       ? { steps: null, problems: [{ code: 'INVENTED_OPERATION', message: 'The model reply is not steps.' }] }
       : parseWorkerReply(payload.value);
   const operational = parsed.problems.some(problem => problem.code === 'OPERATIONAL');
-  const trace = parsed.problems.map(problem => problem.message).join(' ') || `usecases50 recorded steps for ${arg.usecaseId}.`;
+  const outcome = parsed.problems.map(problem => problem.message).join(' ') || `usecases50 recorded steps for ${arg.usecaseId}.`;
+  const trace = arg.feedback ? `Repair request: ${arg.feedback} ${outcome}` : outcome;
   const attempt: D1AttemptTrace = {
     usecaseId: arg.usecaseId,
     status: operational ? 'operational' : parsed.steps ? 'parsed' : 'repairable',
@@ -210,8 +222,8 @@ async function barrier(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const prompt = parseFanout(step.prompt || '');
-  if (!prompt) return completeOnly(context, parentStep, step, hookSequential, 'Fan-out prompt is not a usecase dispatch.');
+  const prompt = parseBarrier(step.prompt || '');
+  if (!prompt) return completeOnly(context, parentStep, step, hookSequential, 'Barrier prompt is not a usecase dispatch.');
   const work = await readD1UsecaseWork(prompt.project, prompt.moduleName);
   if (!work) return completeOnly(context, parentStep, step, hookSequential, 'usecases50 work file is missing.');
   const ids = work.request.usecases.map(usecase => usecase.usecaseId);
@@ -224,13 +236,19 @@ async function barrier(
     globalAttempts: work.repairs,
     feedbackFor: usecaseId => classified.find(item => item.usecaseId === usecaseId)?.trace || '',
   });
+  const fresh = decision.repairs.filter(order => !repairOpen(context, order.usecaseId));
   if (decision.repairs.length) {
-    work.repairs = decision.repairs[decision.repairs.length - 1].globalAttempts;
+    if (!fresh.length) {
+      return completeOnly(context, parentStep, step, hookSequential, 'barrier left repairs already open.');
+    }
+    work.repairs = fresh[fresh.length - 1].globalAttempts;
     await writeD1UsecaseWork(prompt.project, work);
-    const named = decision.repairs.map(item => `${item.usecaseId}: ${item.feedback || item.planId}`).join('; ');
+    const named = fresh.map(item => `${item.usecaseId}: ${item.feedback || item.planId}`).join('; ');
+    const follow = barrierStep(prompt.project, prompt.moduleName, fresh.map(item => item.planId), String(work.repairs));
     return [
-      ...decision.repairs.map(order => addStep(context, parentStep, repairStep(prompt.project, prompt.moduleName, order))),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier scheduled one repair. ${named}`),
+      ...fresh.map(order => addStep(context, parentStep, repairStep(prompt.project, prompt.moduleName, order))),
+      addStep(context, parentStep, follow),
+      updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier scheduled ${fresh.length} repair${fresh.length === 1 ? '' : 's'}. ${named}`),
     ];
   }
   if (decision.identified.length || decision.pause) {
@@ -264,9 +282,14 @@ async function barrier(
   }
   const mutationParent = findOpenParent(context, parentStep);
   const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, build.llmCalls)];
+  const message = `usecases50 wrote ${committed.written.length} usecase defs.`;
+  const usecases = usecasesStep(context);
   return [
     ...anchor,
-    updateStatus(context, mutationParent, step, hookSequential, 'completed', `usecases50 wrote ${committed.written.length} usecase defs.`),
+    updateStatus(context, mutationParent, step, hookSequential, 'completed', message),
+    ...(usecases && usecases.stepId !== step.stepId && usecases.status !== 'completed' && usecases.status !== 'failed'
+      ? [updateStatus(context, mutationParent, usecases, hookSequential, 'completed', message)]
+      : []),
   ];
 }
 
@@ -310,15 +333,33 @@ function unwrapValue(value: unknown): unknown {
   return undefined;
 }
 
-function parseFanout(prompt: string): { project: number; moduleName: string } | null {
+function parseBarrier(prompt: string): { project: number; moduleName: string } | null {
   try {
     const parsed = JSON.parse(prompt) as unknown;
-    if (!isRecord(parsed) || parsed.planId !== 'usecases50-fanout') return null;
+    if (!isRecord(parsed) || typeof parsed.planId !== 'string' || !isBarrierPlan(parsed.planId)) return null;
     if (typeof parsed.project !== 'number' || typeof parsed.moduleName !== 'string') return null;
     return { project: parsed.project, moduleName: parsed.moduleName };
   } catch {
     return null;
   }
+}
+
+function isBarrierPlan(planId: string): boolean {
+  return planId === 'usecases50-barrier' || /^usecases50-barrier-\d+$/.test(planId);
+}
+
+function repairOpen(context: mls.msg.ExecutionContext, usecaseId: string): boolean {
+  return allSteps(context).some(item => {
+    if (item.type !== 'agent') return false;
+    if (item.status === 'completed' || item.status === 'failed') return false;
+    const arg = parseWorkerArg(item.prompt || '');
+    return arg?.usecaseId === usecaseId && arg.planId.startsWith('usecases50-repair-');
+  });
+}
+
+function usecasesStep(context: mls.msg.ExecutionContext): mls.msg.AIAgentStep | null {
+  const found = allSteps(context).find(item => item.type === 'agent' && item.planning?.planId === 'usecases50');
+  return found?.type === 'agent' ? found : null;
 }
 
 function planIdFromText(prompt: string): string {

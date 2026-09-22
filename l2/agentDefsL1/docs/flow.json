@@ -39,7 +39,8 @@
     "fanout": "{stepId}-fanout",
     "worker": "{stepId}-worker-{itemId}",
     "repair": "{stepId}-repair-{n}",
-    "note": "entry10 mints only entry10-done. Fan-out, worker and repair ids are reserved so a later step can mint them without inventing a second spelling. A done-anchor is not dispatched as its step."
+    "barrier": "{stepId}-barrier",
+    "note": "entry10 mints only entry10-done. Fan-out, worker, repair and barrier ids are reserved so a later step can mint them without inventing a second spelling. A later barrier round is {stepId}-barrier-{n}. A done-anchor is not dispatched as its step. The host completes a parallel parent without calling its afterPrompt, so the barrier is its own step and depends on the fan-out."
   },
   "repair": {
     "perUnit": 1,

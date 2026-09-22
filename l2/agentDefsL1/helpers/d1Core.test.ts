@@ -70,6 +70,10 @@ void test('done-anchors are not dispatched and dynamic ids map to their step', (
   assert.equal(ownerStepId('entry10-done'), '');
   assert.equal(isDoneAnchor('entry10-done'), true);
   assert.equal(ownerStepId(dynamicPlanId('usecases50', 'fanout', '')), 'usecases50');
+  assert.equal(ownerStepId(dynamicPlanId('usecases50', 'barrier', '')), 'usecases50');
+  assert.equal(ownerStepId(dynamicPlanId('usecases50', 'barrier', '2')), 'usecases50');
+  assert.equal(dynamicPlanId('usecases50', 'barrier', ''), 'usecases50-barrier');
+  assert.equal(dynamicPlanId('usecases50', 'barrier', '2'), 'usecases50-barrier-2');
   assert.equal(ownerStepId(dynamicPlanId('usecases50', 'worker', 'createConsulta')), 'usecases50');
   assert.equal(ownerStepId(dynamicPlanId('usecases50', 'repair', '1')), 'usecases50');
   assert.equal(ownerStepId('usecases50-repair-2'), 'usecases50');

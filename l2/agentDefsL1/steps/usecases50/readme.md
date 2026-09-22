@@ -51,6 +51,11 @@ One usecase def is written per selected usecase when the build has no error.
 
 ## Repair
 
-One repair per usecase. The global ceiling is 8. The barrier adds the repair
-step. A worker does not add a step. An operational failure (no reply) pauses
-with a trace and does not take a repair. A missing trace is still named.
+One repair per usecase. The global ceiling is 8. The host completes the
+fan-out parent without calling its afterPrompt, so the barrier is its own
+step and depends on `usecases50-fanout`. The barrier adds the repair step.
+A worker does not add a step. The repair prompt repeats the refused trace.
+`unitAttempts` on that repair is 1, which is the per-unit ceiling. An
+operational failure (no reply) pauses with a trace and does not take a
+repair. A missing trace is still named. A later barrier depends on the
+repair plan ids and commits only when every unit parsed.

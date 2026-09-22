@@ -142,6 +142,33 @@ export function fanoutExecution(args: readonly string[]): mls.msg.ExecutionMode 
 }
 
 /**
+ * The host marks a parallel parent completed and does not call its afterPrompt.
+ * This step depends on the fan-out, so the host unlocks it and runs beforePrompt.
+ * A later round depends on the repair plan ids from the round it follows.
+ */
+export function barrierStep(project: number, moduleName: string, dependsOn: readonly string[], round: string): mls.msg.AIAgentStep {
+  const planId = dynamicPlanId('usecases50', 'barrier', round);
+  return {
+    type: 'agent',
+    stepId: 0,
+    interaction: null,
+    stepTitle: round ? `Usecases barrier ${round}` : 'Usecases barrier',
+    status: 'waiting_dependency',
+    nextSteps: [],
+    agentName: D1_AGENT_NAME,
+    prompt: JSON.stringify({ planId, moduleName, project, command: 'run' }),
+    rags: [],
+    onFailure: 'continue',
+    planning: {
+      planId,
+      dependsOn: [...dependsOn],
+      executionMode: 'sequential',
+      executionHost: 'client',
+    },
+  };
+}
+
+/**
  * One repair per usecase, and no more than the global ceiling.
  * An operational failure is identified and does not take a repair.
  * A missing trace is still identified.

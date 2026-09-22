@@ -43,7 +43,7 @@ interface FlowStep {
 interface FlowDoc {
   flowId: string;
   schemaVersion: string;
-  dynamicPlanIds: { doneAnchor: string; fanout: string; worker: string; repair: string };
+  dynamicPlanIds: { doneAnchor: string; fanout: string; worker: string; repair: string; barrier: string };
   repair: { perUnit: number; globalMax: number; finalizeRepair: boolean };
   interactionCleanup: string;
   parallelism: { maxParallel: number; childrenNeverAddSteps: boolean; childrenNeverCreateTask: boolean };
@@ -74,6 +74,7 @@ void test('flow steps, anchors, repair and cleanup match the code', () => {
   assert.equal(flow.dynamicPlanIds.fanout, '{stepId}-fanout');
   assert.equal(flow.dynamicPlanIds.worker, '{stepId}-worker-{itemId}');
   assert.equal(flow.dynamicPlanIds.repair, '{stepId}-repair-{n}');
+  assert.equal(flow.dynamicPlanIds.barrier, '{stepId}-barrier');
 
   for (const step of flow.steps) {
     assert.deepEqual(step.dependsOn, [...D1_STEP_DEPENDS_ON[step.id as keyof typeof D1_STEP_DEPENDS_ON]]);

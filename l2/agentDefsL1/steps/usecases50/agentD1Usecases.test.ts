@@ -20,8 +20,11 @@ import { commitD1Unit } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
-import { attemptFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { attemptFile, readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { parseWorkerReply, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -137,6 +140,9 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.ok(ready);
   assert.equal(ready.humanPrompt.includes('Do not write TypeScript') || ready.systemPrompt?.includes('Do not write TypeScript'), true);
   assert.match(ready.systemPrompt || '', /<!-- modelType: reasoning -->/);
+  assert.equal(ready.systemPrompt?.includes(workerStepShape()), true);
+  assert.equal(ready.humanPrompt.includes(workerStepShape()), true);
+  assert.equal(readFileSync(path.join(HERE, 'prompt.md'), 'utf8').includes('- port: kind, call, port'), false);
   assert.equal(ready.humanPrompt.includes(arg.usecaseId), true);
   const finished = await agent.afterPromptStep!(meta(), ctx, parent, worker, 6);
   assert.equal(finished.some(intent => intent.type === 'add-step'), false);
@@ -147,8 +153,15 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.match(attempt?.content || '', /operational/);
   assert.match(attempt?.content || '', /did not arrive/);
 
-  const barrier = await agent.afterPromptStep!(meta(), ctx, parent, fanout!.step as mls.msg.AIAgentStep, 7);
+  const fanoutAfter = await agent.afterPromptStep!(meta(), ctx, parent, fanout!.step as mls.msg.AIAgentStep, 7);
+  assert.equal(fanoutAfter.some(intent => intent.type === 'add-step'), false);
+  const barrierStep = addedStep(intents, 'usecases50-barrier');
+  assert.equal(barrierStep.status, 'waiting_dependency');
+  assert.deepEqual(barrierStep.planning?.dependsOn, ['usecases50-fanout']);
+  assert.equal(barrierStep.interaction, null);
+  const barrier = await agent.beforePromptStep!(meta(), ctx, parent, barrierStep, 8);
   assert.equal(barrier.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'usecases50-done'), false);
+  assert.equal(barrier.some(intent => intent.type === 'add-step' && String((intent as mls.msg.AgentIntentAddStep).step.planning?.planId || '').startsWith('usecases50-repair-')), false);
   const barrierTrace = barrier.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status').map(intent => intent.traceMsg).join(' ');
   assert.match(barrierTrace, new RegExp(arg.usecaseId));
   assert.match(barrierTrace, /missing trace|OPERATIONAL|operational/);
@@ -248,6 +261,152 @@ function keptFiles(host: { files: Record<string, { content?: string }> }): Recor
     out[key] = file.content || '';
   }
   return out;
+}
+
+function addedStep(intents: mls.msg.AgentIntent[], planId: string): mls.msg.AIAgentStep {
+  const found = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === planId);
+  assert.ok(found, planId);
+  return found.step as mls.msg.AIAgentStep;
+}
+
+function replied(prompt: string, body: unknown, stepId: number): mls.msg.AIAgentStep {
+  return {
+    type: 'agent',
+    stepId,
+    interaction: { input: [], cost: 0, trace: [], payload: [body] as unknown as mls.msg.AIPayload[] },
+    stepTitle: 'worker',
+    status: 'waiting_after_prompt',
+    nextSteps: [],
+    agentName: 'agentDefsL1',
+    prompt,
+    rags: [],
+    planning: { planId: '', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  };
+}
+
+async function openUsecases(): Promise<{
+  host: ReturnType<typeof installStudio>;
+  agent: ReturnType<typeof createAgent>;
+  ctx: mls.msg.ExecutionContext;
+  parent: mls.msg.AIAgentStep;
+  intents: mls.msg.AgentIntent[];
+}> {
+  const host = await readyHost();
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const usecases = createD1AgentStep('usecases50', MODULE, PROJECT, 'run');
+  usecases.stepId = 50;
+  parent.nextSteps = [usecases];
+  const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
+  input.stepId = 20;
+  await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
+  domain.stepId = 30;
+  await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
+  const persistence = createD1AgentStep('persistence40', MODULE, PROJECT, 'run');
+  persistence.stepId = 40;
+  await agent.beforePromptStep!(meta(), ctx, parent, persistence, 3);
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, usecases, 4);
+  return { host, agent, ctx, parent, intents };
+}
+
+void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', async () => {
+  const target = 'listConsulta';
+  const { host, agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  for (const usecase of work.request.usecases) {
+    if (usecase.usecaseId === target) continue;
+    await writeAttempt(PROJECT, MODULE, {
+      usecaseId: usecase.usecaseId,
+      status: 'parsed',
+      trace: `usecases50 recorded steps for ${usecase.usecaseId}.`,
+      unitAttempts: 0,
+      reply: fixturePlan(work.request, usecase).steps,
+    });
+  }
+  const workerPrompt = firstPrompt(intents, target);
+  const bad = { steps: [{ kind: 'rule', ruleId: 'keep', port: 'nope' }] };
+  const refused = parseWorkerReply(bad);
+  assert.equal(refused.problems[0]?.code, 'INVENTED_FIELD');
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(workerPrompt, bad, 51), 5);
+  const attempt = JSON.parse(host.files[fileKey(attemptFile(PROJECT, MODULE, target))]?.content || '{}') as { status?: string; unitAttempts?: number; trace?: string };
+  assert.equal(attempt.status, 'repairable');
+  assert.equal(attempt.unitAttempts, 0);
+  assert.match(attempt.trace || '', /names port/);
+
+  const barrier = addedStep(intents, 'usecases50-barrier');
+  const decided = await agent.beforePromptStep!(meta(), ctx, parent, barrier, 6);
+  const repair = decided.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && String(intent.step.planning?.planId || '').startsWith('usecases50-repair-'));
+  assert.ok(repair);
+  const repairArg = parseWorkerArg(repair.step.type === 'agent' ? repair.step.prompt || '' : '');
+  assert.equal(repairArg?.usecaseId, target);
+  assert.equal(repairArg?.unitAttempts, 1);
+  assert.match(repairArg?.feedback || '', /names port/);
+  const follow = decided.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && String(intent.step.planning?.planId || '').startsWith('usecases50-barrier-'));
+  assert.equal(follow?.step.status, 'waiting_dependency');
+  assert.deepEqual(follow?.step.planning?.dependsOn, [repair.step.planning?.planId]);
+  const prepared = await agent.beforePromptStep!(meta(), ctx, parent, repair.step as mls.msg.AIAgentStep, 7);
+  const ready = prepared.find((intent): intent is mls.msg.AgentIntentPromptReady => intent.type === 'prompt_ready');
+  assert.match(ready?.humanPrompt || '', /names port/);
+  assert.equal(ready?.humanPrompt.includes(workerStepShape()), true);
+  assert.equal(ready?.systemPrompt?.includes(workerStepShape()), true);
+
+  const corrected = fixturePlan(work.request, work.request.usecases.find(item => item.usecaseId === target)!).steps;
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(repair.step.type === 'agent' ? repair.step.prompt || '' : '', { steps: corrected }, 52), 8);
+  const repaired = JSON.parse(host.files[fileKey(attemptFile(PROJECT, MODULE, target))]?.content || '{}') as { status?: string; unitAttempts?: number; trace?: string };
+  assert.equal(repaired.status, 'parsed');
+  assert.equal(repaired.unitAttempts, 1);
+  assert.match(repaired.trace || '', /Repair request:/);
+  assert.match(repaired.trace || '', /names port/);
+
+  const closed = await agent.beforePromptStep!(meta(), ctx, parent, follow!.step as mls.msg.AIAgentStep, 9);
+  assert.equal(closed.some(intent => intent.type === 'add-step' && String((intent as mls.msg.AgentIntentAddStep).step.planning?.planId || '').startsWith('usecases50-repair-')), false);
+  const done = closed.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'usecases50-done');
+  assert.ok(done, closed.filter(intent => intent.type === 'update-status').map(intent => (intent as mls.msg.AgentIntentUpdateStatus).traceMsg).join(' | '));
+  const closedUsecase = closed.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === 50);
+  assert.equal(closedUsecase?.status, 'completed');
+});
+
+void test('a repair that still names a foreign key stays repairable at the ceiling', async () => {
+  const target = 'createPaciente';
+  const { host, agent, ctx, parent, intents } = await openUsecases();
+  const workerPrompt = firstPrompt(intents, target);
+  const bad = { steps: [{ kind: 'transition', transitionId: target, payload: ['id'], call: 'create' }] };
+  assert.equal(parseWorkerReply(bad).problems[0]?.code, 'INVENTED_FIELD');
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(workerPrompt, bad, 51), 5);
+  const barrier = addedStep(intents, 'usecases50-barrier');
+  const decided = await agent.beforePromptStep!(meta(), ctx, parent, barrier, 6);
+  const repair = decided.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && (intent.step.type === 'agent') && (intent.step.prompt || '').includes(target) && String(intent.step.planning?.planId || '').startsWith('usecases50-repair-'));
+  assert.ok(repair);
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(repair.step.type === 'agent' ? repair.step.prompt || '' : '', bad, 52), 7);
+  const saved = JSON.parse(host.files[fileKey(attemptFile(PROJECT, MODULE, target))]?.content || '{}') as { status?: string; unitAttempts?: number; trace?: string };
+  assert.equal(saved.status, 'repairable');
+  assert.equal(saved.unitAttempts, D1_REPAIR_PER_UNIT);
+  assert.notEqual(saved.unitAttempts, 0);
+  assert.match(saved.trace || '', /Repair request:/);
+  assert.match(saved.trace || '', /names call/);
+  const follow = decided.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && String(intent.step.planning?.planId || '').startsWith('usecases50-barrier-'));
+  assert.ok(follow);
+  const again = await agent.beforePromptStep!(meta(), ctx, parent, follow.step as mls.msg.AIAgentStep, 8);
+  assert.equal(again.some(intent => intent.type === 'add-step' && String((intent as mls.msg.AgentIntentAddStep).step.planning?.planId || '').startsWith('usecases50-repair-')), false);
+  const trace = again.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status').map(intent => intent.traceMsg).join(' ');
+  assert.match(trace, new RegExp(`${target} REPAIR_EXHAUSTED`));
+  assert.match(trace, /Repair request:/);
+});
+
+function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {
+  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && intent.executionMode?.type === 'parallel');
+  const prompt = fanout?.executionMode?.args.find(arg => arg.includes(`"usecaseId":"${usecaseId}"`));
+  assert.ok(prompt, usecaseId);
+  return prompt;
 }
 
 function assertFanoutParent(step: mls.msg.AIPayload | undefined, workers: number): void {

@@ -41,6 +41,8 @@ void test('implemented steps are hooked; anchors and later ids are not', () => {
   assert.equal(typeof hooksFor('persistence40')?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('usecases50')?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'repair', '1'))?.beforePromptStep, 'function');
+  assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'barrier', ''))?.beforePromptStep, 'function');
+  assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'barrier', '2'))?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'worker', 'createConsulta'))?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('controllers60')?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('support70')?.beforePromptStep, 'function');

@@ -10,7 +10,7 @@ import {
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
-const STEP_KEYS: Record<string, readonly string[]> = {
+const STEP_KEYS: { [K in (typeof D1_WORKER_KINDS)[number]]: readonly string[] } = {
   port: ['kind', 'call', 'port'],
   rule: ['kind', 'ruleId'],
   mdm: ['kind', 'namespace', 'call', 'entity'],
@@ -19,6 +19,16 @@ const STEP_KEYS: Record<string, readonly string[]> = {
   transaction: ['kind', 'boundary'],
   context: ['kind', 'source'],
 };
+
+/** The gate's key set, rendered. The markdown prompt does not copy this list. */
+export function workerStepShape(): string {
+  const lines = D1_WORKER_KINDS.map(kind => `- ${kind}: ${STEP_KEYS[kind].join(', ')}`);
+  return [
+    'Each step is one kind. A step may name only the keys of that kind:',
+    ...lines,
+    'A key from another kind is refused.',
+  ].join('\n');
+}
 
 export interface D1WorkerReply {
   steps: D1WorkerStep[] | null;
@@ -114,6 +124,8 @@ export function usecaseHumanPrompt(input: {
     'A transition payload may list only contract input names you were not given to invent.',
     'More than one write needs one local transaction boundary. An external effect is not atomic.',
     'Authority is ctx.',
+    '',
+    workerStepShape(),
   ];
   if (input.feedback) {
     lines.push('', 'The previous reply was refused:', input.feedback);
@@ -125,10 +137,11 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
   if (!isRecord(value)) {
     return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} is not an object.` } };
   }
-  const kind = typeof value.kind === 'string' ? value.kind : '';
-  if (!(D1_WORKER_KINDS as readonly string[]).includes(kind)) {
-    return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} kind ${kind || '(missing)'} is not an operation.` } };
+  const kindText = typeof value.kind === 'string' ? value.kind : '';
+  if (!isWorkerKind(kindText)) {
+    return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} kind ${kindText || '(missing)'} is not an operation.` } };
   }
+  const kind = kindText;
   const allowed = STEP_KEYS[kind];
   const extra = Object.keys(value).filter(key => !allowed.includes(key));
   if (extra.length) {
@@ -153,6 +166,10 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
     return { problem: { code: 'INVENTED_FIELD', message: `Step ${index} payload is not a list of field names.` } };
   }
   return { step: { kind: 'transition', transitionId, payload: value.payload as string[] } };
+}
+
+function isWorkerKind(value: string): value is (typeof D1_WORKER_KINDS)[number] {
+  return (D1_WORKER_KINDS as readonly string[]).includes(value);
 }
 
 function shaped<T extends D1WorkerStep>(

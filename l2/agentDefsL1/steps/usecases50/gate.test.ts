@@ -221,6 +221,10 @@ void test('worker args stay compact and a reply cannot invent a field or write t
   const invented = parseWorkerReply({ usecaseId: 'other', steps: [] });
   assert.equal(invented.steps, null);
   assert.equal(invented.problems[0]?.code, 'INVENTED_FIELD');
+  const foreign = parseWorkerReply({ steps: [{ kind: 'rule', ruleId: 'keep', port: 'nope' }] });
+  assert.equal(foreign.steps, null);
+  assert.equal(foreign.problems[0]?.code, 'INVENTED_FIELD');
+  assert.match(foreign.problems[0]?.message || '', /port/);
   const steps = parseWorkerReply({ steps: [{ kind: 'context', source: 'ctx' }, { kind: 'import', path: 'adapter' }] });
   assert.equal(steps.steps, null);
   assert.equal(steps.problems.some(item => item.code === 'INVENTED_OPERATION'), true);

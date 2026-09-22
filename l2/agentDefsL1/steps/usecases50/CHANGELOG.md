@@ -1,5 +1,12 @@
 # usecases50
 
+## 2026-09-22 (d1_13c)
+
+- The human prompt and the system prompt list each step kind's keys from `STEP_KEYS`. `prompt.md` does not copy that list.
+- The host completes a parallel parent without calling its afterPrompt. Repair is a barrier step that depends on `usecases50-fanout`. A worker still does not add a step.
+- One repair per usecase (`D1_REPAIR_PER_UNIT` is 1) and eight repairs globally (`D1_REPAIR_GLOBAL_MAX` is 8). The repair trace starts with `Repair request:` and the stored `unitAttempts` is the repair count, not 0.
+- A later barrier depends on the repair plan ids. It commits only when every unit parsed, and it closes the `usecases50` step.
+
 ## 2026-09-22 (d1_13b)
 
 - The fan-out parent carries the interaction `agentNewSolution5` `parallelEntityStep` gives its parent: system `<!-- modelType: reasoning -->`, cost 0, one queue trace, payload null, status `in_progress`. A parallel child `update-status` is refused when that parent has progress and no interaction.

@@ -168,8 +168,8 @@ plan and the outbound effect plan. An event with no named mechanism stays unboun
 ## Flow
 
 `docs/flow.json` is the contract. Done-anchors (`<step>-done`) unlock the next
-step. Fan-out, worker and repair ids are reserved (`<step>-fanout`,
-`<step>-worker-<itemId>`, `<step>-repair-<n>`). One repair per unit, eight
+step. Fan-out, worker, repair and barrier ids are reserved (`<step>-fanout`,
+`<step>-worker-<itemId>`, `<step>-repair-<n>`, `<step>-barrier`). One repair per unit, eight
 attempts globally, and finalize80 does not open another repair cycle. Child
 hooks do not create a task and do not add steps. `update-status` cleans with
 `input_output`.

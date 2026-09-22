@@ -9,6 +9,8 @@ Return only the `planUsecaseSteps` tool.
 
 Do not write TypeScript. Do not invent a field, a rule, an operation, a route, a type name or an event id.
 
+The only keys a kind may name are listed after this text. They come from the worker. Do not put a key on a kind that does not list it.
+
 A transition payload may name only input fields the contract already lists. Do not add a field because a rule sounds like it needs one.
 
 When the operation writes more than once, return one step with boundary `local`. Do not promise that an external effect is atomic.
