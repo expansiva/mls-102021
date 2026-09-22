@@ -4,6 +4,7 @@ import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
   D1_MDM_CALLS,
   D1_WORKER_KINDS,
+  type D1MdmCall,
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
@@ -24,7 +25,11 @@ type WorkerKind = (typeof D1_WORKER_KINDS)[number];
 type StepField = (typeof STEP_KEYS)[WorkerKind][number];
 type FieldKey = Exclude<StepField, 'kind'>;
 
-/** Value schema of a step key. The key list itself stays on `STEP_KEYS`. */
+/**
+ * Value schema of a step key. The key list itself stays on `STEP_KEYS`.
+ * `mdm.call` is always `D1_MDM_CALLS`. A per-unit catalog is an enum only when
+ * this call already has the list; an empty list stays a string.
+ */
 const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   call: { type: 'string' },
   port: { type: 'string' },
@@ -38,12 +43,23 @@ const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   source: { type: 'string', enum: ['ctx', 'input'] },
 };
 
+/** Catalogs known for the one usecase being called. Omitted or empty stays a free string. */
+export interface UsecaseClosedValues {
+  portCalls?: readonly string[];
+  portIds?: readonly string[];
+  ruleIds?: readonly string[];
+  namespaces?: readonly string[];
+  entityIds?: readonly string[];
+  transitionIds?: readonly string[];
+  eventIds?: readonly string[];
+}
+
 /** Closed branch. `anyOf`, not `oneOf`: provider strict mode rejects `oneOf`. */
-function stepBranch(kind: WorkerKind): Record<string, unknown> {
+function stepBranch(kind: WorkerKind, closed: UsecaseClosedValues): Record<string, unknown> {
   const keys = STEP_KEYS[kind];
   const properties: Record<string, unknown> = {};
   for (const key of keys) {
-    properties[key] = key === 'kind' ? { type: 'string', const: kind } : FIELD_SCHEMA[key];
+    properties[key] = key === 'kind' ? { type: 'string', const: kind } : fieldSchema(kind, key, closed);
   }
   return {
     type: 'object',
@@ -53,6 +69,29 @@ function stepBranch(kind: WorkerKind): Record<string, unknown> {
   };
 }
 
+function fieldSchema(kind: WorkerKind, key: FieldKey, closed: UsecaseClosedValues): Record<string, unknown> {
+  if (kind === 'mdm' && key === 'call') return { type: 'string', enum: [...D1_MDM_CALLS] };
+  if (kind === 'port' && key === 'call') return closedString(closed.portCalls);
+  if (kind === 'port' && key === 'port') return closedString(closed.portIds);
+  if (kind === 'rule' && key === 'ruleId') return closedString(closed.ruleIds);
+  if (kind === 'mdm' && key === 'namespace') return closedString(closed.namespaces);
+  if (kind === 'mdm' && key === 'entity') return closedString(closed.entityIds);
+  if (kind === 'transition' && key === 'transitionId') return closedString(closed.transitionIds);
+  if (kind === 'effect' && key === 'eventId') return closedString(closed.eventIds);
+  return FIELD_SCHEMA[key];
+}
+
+function closedString(values: readonly string[] | undefined): Record<string, unknown> {
+  if (!values) return { type: 'string' };
+  const unique: string[] = [];
+  for (const value of values) {
+    if (!value || unique.includes(value)) continue;
+    unique.push(value);
+  }
+  if (!unique.length) return { type: 'string' };
+  return { type: 'string', enum: unique };
+}
+
 /** The gate's key set, rendered. The markdown prompt does not copy this list. */
 export function workerStepShape(): string {
   const lines = D1_WORKER_KINDS.map(kind => `- ${kind}: ${STEP_KEYS[kind].join(', ')}`);
@@ -60,6 +99,7 @@ export function workerStepShape(): string {
     'Each step is one kind. A step may name only the keys of that kind:',
     ...lines,
     'A key from another kind is refused.',
+    `MDM call is one of: ${D1_MDM_CALLS.join(', ')}.`,
   ].join('\n');
 }
 
@@ -94,7 +134,7 @@ export function parseWorkerReply(payload: unknown): D1WorkerReply {
   return { steps, problems: [] };
 }
 
-export function usecaseTool(): mls.msg.LLMTool {
+export function usecaseTool(closed: UsecaseClosedValues = {}): mls.msg.LLMTool {
   return {
     type: 'function',
     function: {
@@ -107,7 +147,7 @@ export function usecaseTool(): mls.msg.LLMTool {
         properties: {
           steps: {
             type: 'array',
-            items: { anyOf: D1_WORKER_KINDS.map(kind => stepBranch(kind)) },
+            items: { anyOf: D1_WORKER_KINDS.map(kind => stepBranch(kind, closed)) },
           },
         },
       },
@@ -171,7 +211,7 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
   if (kind === 'mdm') {
     const parsed = textFields(value, index, ['namespace', 'call', 'entity']);
     if ('problem' in parsed) return parsed;
-    if (!(D1_MDM_CALLS as readonly string[]).includes(parsed.raw.call)) {
+    if (!isMdmCall(parsed.raw.call)) {
       return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} MDM call ${parsed.raw.call} is not a catalog call.` } };
     }
     return { step: { kind: 'mdm', namespace: parsed.raw.namespace, call: parsed.raw.call, entity: parsed.raw.entity } };
@@ -186,6 +226,10 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
 
 function isWorkerKind(value: string): value is (typeof D1_WORKER_KINDS)[number] {
   return (D1_WORKER_KINDS as readonly string[]).includes(value);
+}
+
+function isMdmCall(value: string): value is D1MdmCall {
+  return (D1_MDM_CALLS as readonly string[]).includes(value);
 }
 
 function shaped<T extends D1WorkerStep>(

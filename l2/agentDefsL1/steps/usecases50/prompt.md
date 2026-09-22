@@ -15,7 +15,7 @@ A transition payload may name only input fields the contract already lists. Do n
 
 When the operation writes more than once, return one step with boundary `local`. Do not promise that an external effect is atomic.
 
-Name MDM with the namespace you were given. Do not call a repository for an MDM role, and do not import an adapter.
+Name MDM with the namespace you were given. An MDM call is only a call the worker lists. Do not call a repository for an MDM role, and do not import an adapter.
 
 Authorization is `ctx`. Do not take an actor id from the input.
 

@@ -18,6 +18,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { commitD1Unit } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
@@ -399,6 +400,79 @@ void test('a repair that still names a foreign key stays repairable at the ceili
   const trace = again.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status').map(intent => intent.traceMsg).join(' ');
   assert.match(trace, new RegExp(`${target} REPAIR_EXHAUSTED`));
   assert.match(trace, /Repair request:/);
+});
+
+void test('one unresolved unit closes the step, counts the error, and keeps the other defs', async () => {
+  const target = 'listPaciente';
+  const { host, agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const usecases = parent.nextSteps?.find(item => item.type === 'agent' && item.planning?.planId === 'usecases50');
+  assert.equal(usecases?.type, 'agent');
+  if (usecases?.type === 'agent') usecases.status = 'in_progress';
+  const controllers = createD1AgentStep('controllers60', MODULE, PROJECT, 'run');
+  controllers.stepId = 60;
+  const finalize = createD1AgentStep('finalize80', MODULE, PROJECT, 'run');
+  finalize.stepId = 80;
+  parent.nextSteps = [...(parent.nextSteps || []), controllers, finalize];
+
+  for (const usecase of work.request.usecases) {
+    const unresolved = usecase.usecaseId === target;
+    await writeAttempt(PROJECT, MODULE, {
+      usecaseId: usecase.usecaseId,
+      status: unresolved ? 'repairable' : 'parsed',
+      trace: unresolved ? 'Step 0 MDM call list is not a catalog call.' : `usecases50 recorded steps for ${usecase.usecaseId}.`,
+      unitAttempts: unresolved ? 1 : 0,
+      reply: unresolved ? null : fixturePlan(work.request, usecase).steps,
+    });
+  }
+
+  const barrier = addedStep(intents, 'usecases50-barrier');
+  const closed = await agent.beforePromptStep!(meta(), ctx, parent, barrier, 5);
+  assert.equal(closed.some(intent => intent.type === 'pause-or-continue'), false);
+  assert.equal(closed.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'usecases50-done'), false);
+  assert.equal(closed.some(intent => intent.type === 'add-step' && String((intent as mls.msg.AgentIntentAddStep).step.planning?.planId || '').startsWith('usecases50-repair-')), false);
+
+  const updates = closed.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  const stepUpdate = updates.filter(intent => intent.stepId === 50);
+  assert.ok(stepUpdate.some(intent => intent.status === 'completed' && /not released/.test(intent.traceMsg || '')));
+  assert.equal(stepUpdate.some(intent => intent.status === 'failed'), false);
+  assert.equal(updates.filter(intent => intent.stepId === 60 || intent.stepId === 80).every(intent => intent.status === 'completed' && /stopped: usecases50 is held/.test(intent.traceMsg || '')), true);
+
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
+    status?: string;
+    awaitingStep?: string;
+    steps?: { usecases50?: { status?: string; error?: string; artifactPaths?: string[] } };
+  };
+  assert.equal(pipeline.status, 'awaitingStep');
+  assert.equal(pipeline.awaitingStep, 'usecases50');
+  assert.equal(pipeline.steps?.usecases50?.status, 'failed');
+  assert.notEqual(pipeline.steps?.usecases50?.status, 'approved');
+  assert.equal(pipeline.steps?.usecases50?.error, 'REPAIR_EXHAUSTED:1');
+  assert.equal(pipeline.steps?.usecases50?.artifactPaths?.[0]?.endsWith('/usecases50.json'), true);
+
+  const draft = JSON.parse(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))]?.content || '{}') as {
+    ok?: boolean;
+    emit?: Array<{ definition?: { artifactId?: string } }>;
+    problems?: Array<{ severity?: string; code?: string; path?: string; message?: string }>;
+    usecases?: Array<{ usecaseId?: string; definition?: unknown }>;
+  };
+  assert.equal(draft.ok, false);
+  const problem = draft.problems?.find(item => item.path === target);
+  assert.equal(problem?.severity, 'error');
+  assert.equal(problem?.code, 'REPAIR_EXHAUSTED');
+  assert.match(problem?.message || '', new RegExp(target));
+  assert.match(problem?.message || '', /unresolved/);
+  assert.equal(draft.usecases?.find(item => item.usecaseId === target)?.definition, null);
+  assert.equal(draft.emit?.some(item => item.definition?.artifactId === target), false);
+  assert.equal(draft.emit?.length, work.request.usecases.length - 1);
+
+  for (const usecase of work.request.usecases) {
+    const info = artifactFile(PROJECT, usecase.defPath);
+    assert.ok(info, usecase.usecaseId);
+    const written = Boolean(host.files[fileKey(info)]?.content);
+    assert.equal(written, usecase.usecaseId !== target, usecase.usecaseId);
+  }
 });
 
 function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {

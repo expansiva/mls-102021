@@ -7,7 +7,7 @@ import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/us
 import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
-import { D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { D1_MDM_CALLS, D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { parseWorkerReply, STEP_KEYS, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 import type { D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
@@ -260,6 +260,70 @@ void test('the tool schema offers each kind only the keys of that kind', () => {
     assert.deepEqual([...body.required].map(String).sort(), expected, kind);
   });
 });
+
+void test('the mdm branch call enum is exactly D1_MDM_CALLS', () => {
+  const open = branchOf(usecaseTool(), 'mdm');
+  const call = propertyOf(open, 'call');
+  assert.deepEqual(call.enum, [...D1_MDM_CALLS]);
+  assert.equal(call.type, 'string');
+  const portCall = propertyOf(branchOf(usecaseTool(), 'port'), 'call');
+  assert.equal(Object.hasOwn(portCall, 'enum'), false);
+
+  const closed = usecaseTool({
+    portCalls: ['create', 'list'],
+    portIds: ['ConsultaRepository'],
+    ruleIds: ['consultationTransitionFlow'],
+    namespaces: ['agendaClinica'],
+    entityIds: ['Paciente'],
+    transitionIds: ['confirmarConsulta'],
+    eventIds: ['consultaConfirmada'],
+  });
+  assert.deepEqual(propertyOf(branchOf(closed, 'mdm'), 'call').enum, [...D1_MDM_CALLS]);
+  assert.notDeepEqual(propertyOf(branchOf(closed, 'port'), 'call').enum, [...D1_MDM_CALLS]);
+  assert.deepEqual(propertyOf(branchOf(closed, 'port'), 'call').enum, ['create', 'list']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'port'), 'port').enum, ['ConsultaRepository']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'mdm'), 'namespace').enum, ['agendaClinica']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'mdm'), 'entity').enum, ['Paciente']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'rule'), 'ruleId').enum, ['consultationTransitionFlow']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'transition'), 'transitionId').enum, ['confirmarConsulta']);
+  assert.deepEqual(propertyOf(branchOf(closed, 'effect'), 'eventId').enum, ['consultaConfirmada']);
+
+  for (const catalogCall of D1_MDM_CALLS) {
+    const reply = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: catalogCall, entity: 'Paciente' }] });
+    assert.equal(reply.problems.length, 0, catalogCall);
+    assert.equal(reply.steps?.[0]?.kind === 'mdm' && reply.steps[0].call, catalogCall);
+  }
+  const outsider = `${D1_MDM_CALLS.join('-')}-extra`;
+  assert.equal((D1_MDM_CALLS as readonly string[]).includes(outsider), false);
+  const refused = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: outsider, entity: 'Paciente' }] });
+  assert.equal(refused.steps, null);
+  assert.equal(refused.problems[0]?.code, 'INVENTED_OPERATION');
+  assert.match(refused.problems[0]?.message || '', new RegExp(outsider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+function branchOf(tool: ReturnType<typeof usecaseTool>, kind: string): Record<string, unknown> {
+  const parameters = tool.function.parameters;
+  assert.ok(parameters);
+  const steps = (parameters.properties as { steps?: unknown } | undefined)?.steps;
+  assert.ok(steps && typeof steps === 'object');
+  const anyOf = (steps as { items?: { anyOf?: unknown } }).items?.anyOf;
+  assert.ok(Array.isArray(anyOf));
+  const found = anyOf.find(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const props = (item as { properties?: { kind?: { const?: unknown } } }).properties;
+    return props?.kind?.const === kind;
+  });
+  assert.ok(found && typeof found === 'object' && !Array.isArray(found), kind);
+  return found as Record<string, unknown>;
+}
+
+function propertyOf(branch: Record<string, unknown>, key: string): { type?: unknown; enum?: unknown } {
+  const props = branch.properties;
+  assert.ok(props && typeof props === 'object' && !Array.isArray(props));
+  const value = (props as Record<string, unknown>)[key];
+  assert.ok(value && typeof value === 'object' && !Array.isArray(value), key);
+  return value as { type?: unknown; enum?: unknown };
+}
 
 void test('parseStep still rejects a key from another kind', () => {
   for (const kind of D1_WORKER_KINDS) {

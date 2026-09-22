@@ -1,5 +1,11 @@
 # usecases50
 
+## 2026-09-22 (d1_13e)
+
+- `mdm.call` in the tool schema is an enum of `D1_MDM_CALLS`. `parseStep` still refuses any other call.
+- A catalog known for that one usecase is an enum too: port id and port methods, module and entity rule ids, the entity id, the namespace when the ontology named one, the usecase id when it is a transition of that entity, and the outbound event ids declared for it. An empty catalog stays a string. `payload` stays a list of strings: the allowed names are contract inputs, not a constant. `boundary` and `source` were already enums.
+- A unit still unresolved after the repair ceiling does not discard the units that parsed. Their defs are written. The draft keeps the unresolved usecase id with no definition. The checkpoint sets `awaitingStep` to `usecases50`, the step to `failed`, and `error` to `CODE:count`. `usecases50-done` is not minted. Waiting siblings close with `stopped:`. An operational failure still pauses and does not take a repair.
+
 ## 2026-09-22 (d1_13d)
 
 - `planUsecaseSteps` is an `anyOf` of one closed object per `kind`, built from `STEP_KEYS`. A branch requires only that kind's keys, and `kind` is `const`. `parseStep` is unchanged.

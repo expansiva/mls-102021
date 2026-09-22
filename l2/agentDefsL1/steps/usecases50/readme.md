@@ -20,8 +20,13 @@ A worker prompt is compact JSON: `planId`, `moduleName`, `project`,
 mechanical packet the workers read. Each attempt is
 `traces/usecases50-<usecaseId>.json`.
 
-One usecase def is written per selected usecase when the build has no error.
-`usecases50-done` is minted only then. The same bytes are not rewritten.
+One usecase def is written for each unit that parsed. A unit that is still
+unresolved after the repair ceiling is not given a def. The draft names that
+unit on its usecase id. The checkpoint then stops: `awaitingStep` is
+`usecases50`, the step is `failed`, and `error` is `CODE:count`.
+`usecases50-done` is not minted. Waiting siblings close with `stopped:` so
+the run ends. The task step is `completed`, not `failed`. The same bytes are
+not rewritten.
 
 ## Reading rules
 
@@ -58,4 +63,6 @@ A worker does not add a step. The repair prompt repeats the refused trace.
 `unitAttempts` on that repair is 1, which is the per-unit ceiling. An
 operational failure (no reply) pauses with a trace and does not take a
 repair. A missing trace is still named. A later barrier depends on the
-repair plan ids and commits only when every unit parsed.
+repair plan ids. It releases the next phase only when every unit parsed.
+When the ceiling leaves a unit unresolved, and nothing is operational, it
+writes the defs that parsed and stops the checkpoint.

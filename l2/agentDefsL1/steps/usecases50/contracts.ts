@@ -14,6 +14,8 @@ export const D1_WORKER_KINDS = ['port', 'rule', 'mdm', 'transition', 'effect', '
 
 export const D1_MDM_CALLS = ['read', 'attach', 'create'] as const;
 
+export type D1MdmCall = (typeof D1_MDM_CALLS)[number];
+
 export const D1_WRITE_CALLS = ['create', 'update', 'transition', 'delete'] as const;
 
 export interface D1UsecaseProblem {
@@ -112,7 +114,7 @@ export interface D1WorkerRule {
 export interface D1WorkerMdm {
   kind: 'mdm';
   namespace: string;
-  call: string;
+  call: D1MdmCall;
   entity: string;
 }
 

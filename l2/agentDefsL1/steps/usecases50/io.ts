@@ -16,7 +16,9 @@ import {
   D1_USECASE_VERSION,
   type D1UsecaseBuild,
   type D1UsecaseEntity,
+  type D1UsecaseItem,
   type D1UsecasePlanInput,
+  type D1UsecaseProblem,
   type D1UsecaseRequest,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
@@ -106,7 +108,10 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
   const draftText = `${JSON.stringify(build, null, 2)}\n`;
   const currentDraft = await readText(draftInfo);
   if (currentDraft !== draftText) await writeJson(draftInfo, build);
-  if (!build.ok) return { written: [], issues: build.problems.filter(problem => problem.severity === 'error').map(problem => problem.message) };
+  if (build.emit.length === 0) {
+    if (!build.ok) return { written: [], issues: build.problems.filter(problem => problem.severity === 'error').map(problem => problem.message) };
+    return { written: [], issues: [] };
+  }
   const rendered = renderParts(project, build.emit);
   if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
   const committed = await commitD1Unit({
@@ -153,6 +158,60 @@ export function plansFromAttempts(attempts: readonly D1AttemptTrace[]): D1Usecas
 
 export function buildFromWork(work: D1UsecaseWork, attempts: readonly D1AttemptTrace[], llmCalls: number): D1UsecaseBuild {
   return buildD1Usecases({ ...work.request, plans: plansFromAttempts(attempts), llmCalls });
+}
+
+/**
+ * Defs of units that parsed stay. Each identified unit is one error on its
+ * usecase id and has no definition. `ok` stays false.
+ */
+export function holdUnresolvedBuild(
+  work: D1UsecaseWork,
+  attempts: readonly D1AttemptTrace[],
+  identified: readonly { usecaseId: string; code: string; trace: string }[],
+  llmCalls: number,
+): D1UsecaseBuild {
+  const blocked = new Set(identified.map(item => item.usecaseId));
+  const good = buildD1Usecases({
+    ...work.request,
+    usecases: work.request.usecases.filter(usecase => !blocked.has(usecase.usecaseId)),
+    plans: plansFromAttempts(attempts.filter(item => item.status === 'parsed' && !blocked.has(item.usecaseId))),
+    llmCalls,
+  });
+  const unresolved: D1UsecaseItem[] = work.request.usecases.filter(usecase => blocked.has(usecase.usecaseId)).map(usecase => ({
+    usecaseId: usecase.usecaseId,
+    entityId: usecase.entity,
+    operation: usecase.operation,
+    defPath: usecase.defPath,
+    routes: [...usecase.routes],
+    trustedContext: 'ctx',
+    mdm: null,
+    transactionBoundary: null,
+    steps: [],
+    definition: null,
+  }));
+  const problems: D1UsecaseProblem[] = [
+    ...good.problems.filter(problem => !blocked.has(problem.path)),
+    ...identified.map(item => ({
+      severity: 'error' as const,
+      code: item.code,
+      path: item.usecaseId,
+      message: `Usecase ${item.usecaseId} is unresolved. ${item.trace}`.replace(/\s+/g, ' ').trim(),
+    })),
+  ];
+  problems.sort((left, right) => problemKey(left).localeCompare(problemKey(right)));
+  const usecases = [...good.usecases, ...unresolved].sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
+  return {
+    ...good,
+    llmCalls,
+    ok: false,
+    usecases,
+    problems,
+    emit: good.ok ? good.emit : [],
+  };
+}
+
+function problemKey(problem: D1UsecaseProblem): string {
+  return `${problem.path}\u0000${problem.code}\u0000${problem.message}`;
 }
 
 async function usecaseRequest(

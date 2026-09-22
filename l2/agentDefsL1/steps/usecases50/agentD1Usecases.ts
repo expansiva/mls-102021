@@ -20,7 +20,7 @@ import {
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
-import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
+import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -37,6 +37,7 @@ import {
 import {
   buildFromWork,
   commitD1Usecases,
+  holdUnresolvedBuild,
   loadD1UsecaseWork,
   readAttempts,
   readD1UsecaseWork,
@@ -159,6 +160,15 @@ async function prepareWorker(
     readText(agentFile('steps/usecases50', 'prompt')),
   ]);
   if (!instructions) return refuse(context, parentStep, step, hookSequential, 'usecases50 prompt is missing.');
+  const effects = work.request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId);
+  const ruleIds = [
+    ...work.request.moduleRules,
+    ...(entity?.rules.map(rule => rule.ruleId) || []),
+  ];
+  // Only the transition this usecase already is. Any other id is refused.
+  const transitionIds = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
+    ? [usecase.usecaseId]
+    : [];
   const humanPrompt = usecaseHumanPrompt({
     usecase,
     entityId: usecase.entity,
@@ -167,7 +177,7 @@ async function prepareWorker(
     portId: port?.portId || '',
     methods: port?.methods || [],
     rules: entity?.transitions.find(item => item.transitionId === usecase.usecaseId)?.ruleRefs || [],
-    effects: work.request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId),
+    effects,
     routes: usecase.routes,
     feedback: arg.feedback,
   });
@@ -182,7 +192,15 @@ async function prepareWorker(
     // Skill comment is removed. The step prompt is not: its modelType is what the host routes on.
     systemPrompt: [stripComment(skill || ''), instructions.trim(), workerStepShape()].filter(Boolean).join('\n\n'),
     humanPrompt,
-    tools: [usecaseTool()],
+    tools: [usecaseTool({
+      portCalls: port?.methods || [],
+      portIds: port?.portId ? [port.portId] : [],
+      ruleIds,
+      namespaces: entity?.namespace ? [entity.namespace] : [],
+      entityIds: usecase.entity ? [usecase.entity] : [],
+      transitionIds,
+      eventIds: effects,
+    })],
     toolChoice: { type: 'function', function: { name: 'planUsecaseSteps' } },
   }];
 }
@@ -253,18 +271,19 @@ async function barrier(
   }
   if (decision.identified.length || decision.pause) {
     const named = decision.identified.map(item => `${item.usecaseId} ${item.code}: ${item.trace}`).join('; ');
-    const intents: mls.msg.AgentIntent[] = [];
-    if (decision.pause) {
-      intents.push({
+    if (!decision.pause) {
+      return closeUnresolved(context, parentStep, step, hookSequential, prompt, work, classified, decision.identified);
+    }
+    return [
+      {
         type: 'pause-or-continue',
         messageId: context.message.orderAt,
         threadId: context.message.threadId,
         taskId: context.task?.PK || '',
         reason: `operational failure: ${named}`,
-      });
-    }
-    intents.push(updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier identified ${named}`));
-    return intents;
+      },
+      updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier identified ${named}`),
+    ];
   }
   const build = buildFromWork(work, classified, classified.length);
   const committed = await commitD1Usecases(prompt.project, build);
@@ -378,6 +397,89 @@ function agentFile(folder: string, shortName: string): D1FileInfo {
 
 function stripComment(value: string): string {
   return value.replace(/^(?:\s*<!--[\s\S]*?-->\s*)+/, '').trim();
+}
+
+async function closeUnresolved(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  prompt: { project: number; moduleName: string },
+  work: NonNullable<Awaited<ReturnType<typeof readD1UsecaseWork>>>,
+  classified: readonly D1AttemptTrace[],
+  identified: readonly { usecaseId: string; code: string; trace: string }[],
+): Promise<mls.msg.AgentIntent[]> {
+  const build = holdUnresolvedBuild(work, classified, identified, classified.length);
+  const committed = await commitD1Usecases(prompt.project, build);
+  const reason = blockingReason(build.problems);
+  const artifact = displayPath(draftFile(prompt.project, prompt.moduleName, 'usecases50'));
+  const checkpointFile = pipelineFile(prompt.project, prompt.moduleName);
+  const raw = await readText(checkpointFile);
+  const pipeline = raw ? parsePipelineDocument(raw) : null;
+  if (pipeline && pipeline.project === prompt.project && pipeline.moduleName === prompt.moduleName) {
+    const held = withUsecasesHeld(pipeline, artifact, reason, new Date().toISOString());
+    if (JSON.stringify(held) !== JSON.stringify(pipeline)) {
+      const issues = pipelineIssues(held);
+      if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
+      await writeJson(checkpointFile, held);
+    }
+  }
+  const named = identified.map(item => `${item.usecaseId} ${item.code}: ${item.trace}`).join('; ');
+  const writeNote = committed.issues[0]
+    ? `Defs were not all written: ${committed.issues[0]}`
+    : `Wrote ${committed.written.length} usecase defs.`;
+  const trace = `usecases50 closed. ${writeNote} Unresolved: ${named}. ${reason}. The next phase is not released.`;
+  const stopped = `stopped: usecases50 is held.${reason ? ` ${reason}` : ''}`;
+  const usecases = usecasesStep(context);
+  const intents: mls.msg.AgentIntent[] = [
+    ...drainWaitingSiblings(context, step, hookSequential, stopped),
+    updateStatus(context, parentStep, step, hookSequential, 'completed', trace),
+  ];
+  if (usecases && usecases.stepId !== step.stepId && usecases.status !== 'completed' && usecases.status !== 'failed') {
+    intents.push(updateStatus(context, findOpenParent(context, parentStep), usecases, hookSequential, 'completed', trace));
+  }
+  return intents;
+}
+
+/** Error-severity codes and counts, the same shape input20 writes. */
+function blockingReason(problems: readonly { severity: string; code: string }[]): string {
+  const counts = new Map<string, number>();
+  for (const problem of problems) {
+    if (problem.severity !== 'error' || problem.code.length === 0) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+}
+
+function withUsecasesHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
+  const current = pipeline.steps.usecases50;
+  if (current?.status === 'approved') return pipeline;
+  const paths = current?.artifactPaths || [];
+  if (
+    pipeline.status === 'awaitingStep'
+    && pipeline.awaitingStep === 'usecases50'
+    && current?.status === 'failed'
+    && (current.error || '') === reason
+    && paths.length === 1
+    && paths[0] === artifact
+  ) {
+    return pipeline;
+  }
+  return {
+    ...pipeline,
+    status: 'awaitingStep',
+    awaitingStep: 'usecases50',
+    steps: {
+      ...pipeline.steps,
+      usecases50: {
+        status: 'failed',
+        updatedAt: now,
+        artifactPaths: [artifact],
+        ...(reason ? { error: reason } : {}),
+      },
+    },
+    updatedAt: now,
+  };
 }
 
 function withUsecasesApproved(pipeline: D1PipelineState, artifact: string, now: string): D1PipelineState {
