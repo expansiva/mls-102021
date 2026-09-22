@@ -5,7 +5,6 @@ import test from 'node:test';
 
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import {
-  D1_INTERACTION_CLEANER,
   createD1AgentStep,
   createEntryPipeline,
   dynamicPlanId,
@@ -45,7 +44,7 @@ void test('implemented steps are hooked; anchors and later ids are not', () => {
   assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'worker', 'createConsulta'))?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('controllers60')?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('support70')?.beforePromptStep, 'function');
-  assert.equal(hooksFor('finalize80'), undefined);
+  assert.equal(typeof hooksFor('finalize80')?.beforePromptStep, 'function');
 });
 
 void test('drain leaves a hooked sibling running and names the stop', () => {
@@ -74,10 +73,10 @@ void test('drain leaves a hooked sibling running and names the stop', () => {
     task: { PK: 'task-1', iaCompressed: { nextSteps: [root], longMemory: {} } },
   } as mls.msg.ExecutionContext;
   createAgent();
-  const intents = drainWaitingSiblings(context, input, 4, 'stopped: step input20 is not implemented', { onlyUnimplemented: true });
-  assert.deepEqual(intents.map(intent => intent.stepId), [80]);
-  assert.equal(intents[0]?.traceMsg, 'stopped: step input20 is not implemented');
-  assert.equal(intents[0]?.cleaner, D1_INTERACTION_CLEANER);
+  const intents = drainWaitingSiblings(context, input, 4, 'stopped: consumer phases are not released.', { onlyUnimplemented: true });
+  assert.deepEqual(intents.map(intent => intent.stepId), []);
+  assert.equal(planIdOf(finalize), 'finalize80');
+  assert.equal(hooksFor('finalize80')?.beforePromptStep, D1_STEP_HOOKS.finalize80?.beforePromptStep);
   assert.equal(planIdOf(input), 'input20');
   const sample = updateStatus(context, root, input, 4, 'completed', 'step input20 not implemented yet');
   assert.equal(sample.cleaner, 'input_output');

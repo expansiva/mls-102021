@@ -46,7 +46,7 @@ English, no model, no writes:
 | `l1/<module>/pipeline/agentDefsL1/drafts/domain30.json` | written by domain30. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/drafts/persistence40.json` | written by persistence40. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/traces/<step><unit>.json` | progress of one unit: previous hash, draft hash, and each file. Not a transaction |
-| `l1/<module>/pipeline/agentDefsL1/report.json` | reserved for finalize80 |
+| `l1/<module>/pipeline/agentDefsL1/report.json` | written by finalize80. Same bytes are not rewritten |
 
 Checkpoint reads and writes use `pipelineFile(project, module)`. Domain defs use
 `artifactFile`, the same identity input20 uses. A remove of the planner file is
@@ -102,11 +102,15 @@ stay on the domain draft. `support70` writes the access scope, the authority
 map, the repository registry and the seed plan. Join helpers stay on its
 draft. A seed enum whose values are all cited is consumed. Other enum values
 stay on the domain draft. It writes the outbound effect plan and does not publish it. It does not write `seeds.ts`, rows, a scheduler or l5.
-`finalize80` is declared and not
-implemented. Reaching it sets `pipeline.status` to `awaitingStep` and the
-trace `step <id> not implemented yet`.
-That is not success. The task step is completed so the run does not fail; the
-trace and the checkpoint say the step does not exist yet.
+`finalize80` reads the checkpoint, the snapshot, the drafts and the defs on
+disk. It writes `report.json`. It does not run an earlier phase and it does
+not call a model. A future `.ts` that is absent is pending materialization,
+not a missing def. An absent L2 contract is a real gap. Inventory recognition
+is not an executable backend. A step that did not run is reported as not
+executed. The same report is not rewritten. finalize80 does not open a repair
+cycle. When the defs are intact it sets `pipeline.status` to `complete`. An
+error keeps `awaitingStep` on `finalize80` with `CODE:count` and the step is
+not `approved`. A run already held at an earlier step is left there.
 
 ## Defs contract
 

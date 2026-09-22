@@ -1,8 +1,8 @@
 {
   "flowId": "agentDefsL1",
   "schemaVersion": "2026-09-21-d1-flow-v1",
-  "status": "support70",
-  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 plans one operation per selected usecase. controllers60 writes one controller per page. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan. finalize80 is declared and not implemented: a missing step reports that it does not exist. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
+  "status": "finalize80",
+  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 plans one operation per selected usecase. controllers60 writes one controller per page. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -57,12 +57,12 @@
   },
   "writes": [
     "l1/{module}/pipeline/agentDefsL1/pipeline.json",
-    "l1/{module}/pipeline/agentDefsL1/input.json"
+    "l1/{module}/pipeline/agentDefsL1/input.json",
+    "l1/{module}/pipeline/agentDefsL1/report.json"
   ],
   "reservedWrites": [
     "l1/{module}/pipeline/agentDefsL1/drafts/{step}.json",
-    "l1/{module}/pipeline/agentDefsL1/traces/{step}.json",
-    "l1/{module}/pipeline/agentDefsL1/report.json"
+    "l1/{module}/pipeline/agentDefsL1/traces/{step}.json"
   ],
   "neverWrites": [
     "l1/{module}/pipeline/pipeline.json",
@@ -170,11 +170,11 @@
     {
       "id": "finalize80",
       "kind": "deterministic",
-      "implemented": false,
+      "implemented": true,
       "dependsOn": ["support70-done"],
       "doneAnchor": "finalize80-done",
       "artifact": "l1/{module}/pipeline/agentDefsL1/report.json",
-      "goal": "Integrity, coverage, stale, receipt. Not implemented in this delivery. Does not open a repair cycle."
+      "goal": "Integrity, coverage, stale and the receipt. Reads what was persisted. Does not call a model and does not open a repair cycle."
     }
   ]
 }
