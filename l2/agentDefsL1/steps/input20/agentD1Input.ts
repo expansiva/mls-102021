@@ -17,8 +17,9 @@ import {
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
-import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
+import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { assembleD1Input, persistD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 export async function beforeD1InputPromptStep(
@@ -51,13 +52,25 @@ export async function beforeD1InputPromptStep(
   const snapshot = await assembleD1Input(prompt.project, prompt.moduleName);
   await persistD1Input(prompt.project, prompt.moduleName, snapshot);
   const artifact = displayPath(inputFile(prompt.project, prompt.moduleName));
+  const reason = snapshot.consumersReleased ? '' : blockingReason(snapshot);
   const held = snapshot.consumersReleased
     ? ''
-    : ' Consumer phases are not released.';
+    : ` Consumer phases are not released.${reason ? ` ${reason}` : ''}`;
   const trace = `input20 recorded the inventory for ${prompt.moduleName} in project ${prompt.project}.${held}`;
 
   if (!snapshot.consumersReleased) {
-    return [updateStatus(context, parentStep, step, hookSequential, 'completed', trace)];
+    const heldPipeline = withConsumersHeld(pipeline, artifact, reason, new Date().toISOString());
+    if (JSON.stringify(heldPipeline) !== JSON.stringify(pipeline)) {
+      const issues = pipelineIssues(heldPipeline);
+      if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
+      await writeJson(checkpointFile, heldPipeline);
+    }
+    // Completed, not failed: a failed task step pauses the run, and paused is not an end.
+    // awaitingStep plus steps.input20 say the chain stopped.
+    return [
+      ...drainWaitingSiblings(context, step, hookSequential, `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`),
+      updateStatus(context, parentStep, step, hookSequential, 'completed', trace),
+    ];
   }
 
   const approved = withInputApproved(pipeline, artifact, new Date().toISOString());
@@ -78,6 +91,47 @@ export async function afterD1InputPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'input20 already recorded.')];
+}
+
+/** Error-severity codes and counts. The paths stay in input.json. */
+function blockingReason(snapshot: D1InputSnapshot): string {
+  const counts = new Map<string, number>();
+  for (const problem of snapshot.problems) {
+    if (problem.severity !== 'error' || problem.code.length === 0) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+}
+
+function withConsumersHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
+  const current = pipeline.steps.input20;
+  const paths = current?.artifactPaths || [];
+  if (current?.status === 'approved') return pipeline;
+  if (
+    pipeline.status === 'awaitingStep'
+    && pipeline.awaitingStep === 'input20'
+    && current?.status === 'failed'
+    && (current.error || '') === reason
+    && paths.length === 1
+    && paths[0] === artifact
+  ) {
+    return pipeline;
+  }
+  return {
+    ...pipeline,
+    status: 'awaitingStep',
+    awaitingStep: 'input20',
+    steps: {
+      ...pipeline.steps,
+      input20: {
+        status: 'failed',
+        updatedAt: now,
+        artifactPaths: [artifact],
+        ...(reason ? { error: reason } : {}),
+      },
+    },
+    updatedAt: now,
+  };
 }
 
 function withInputApproved(pipeline: D1PipelineState, artifact: string, now: string): D1PipelineState {

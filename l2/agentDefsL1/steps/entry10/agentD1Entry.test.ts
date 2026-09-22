@@ -144,14 +144,34 @@ void test('run bootstraps without a model, records identity, and tells the truth
   assert.match(inputTrace?.traceMsg || '', /Consumer phases are not released/);
   assert.equal(inputTrace?.status, 'completed');
   assert.doesNotMatch(inputTrace?.traceMsg || '', /not implemented|success|generated/i);
+  assert.equal(inputIntents.some(intent => intent.type === 'add-step'), false);
   const drained = inputIntents.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId !== steps[1].stepId);
-  assert.equal(drained.length, 0);
-  const after = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
-    status: string; awaitingStep?: string; steps: { input20?: { status: string }; domain30?: unknown };
+  for (const later of steps.slice(2)) {
+    const stop = drained.find(intent => intent.stepId === later.stepId);
+    assert.ok(stop, later.planning?.planId);
+    assert.match(stop.traceMsg || '', /stopped: consumer phases are not released/);
+    assert.doesNotMatch(stop.traceMsg || '', /success/i);
+  }
+  const parsedInventory = JSON.parse(host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input', extension: '.json' })]?.content || '{}') as {
+    problems?: Array<{ severity?: string; code?: string }>;
   };
-  assert.equal(after.status, 'inProgress');
-  assert.equal(after.awaitingStep, undefined);
-  assert.equal(after.steps.input20, undefined);
+  const counts = new Map<string, number>();
+  for (const problem of parsedInventory.problems || []) {
+    if (problem.severity !== 'error' || !problem.code) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  const reason = [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+  assert.match(reason, /SOURCE_MISSING:\d+/);
+  const after = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
+    status: string;
+    awaitingStep?: string;
+    steps: { input20?: { status: string; error?: string }; domain30?: unknown };
+  };
+  assert.equal(after.status, 'awaitingStep');
+  assert.equal(after.awaitingStep, 'input20');
+  assert.equal(after.steps.input20?.status, 'failed');
+  assert.notEqual(after.steps.input20?.status, 'approved');
+  assert.equal(after.steps.input20?.error, reason);
   assert.equal(after.steps.domain30, undefined);
   const inventory = host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input', extension: '.json' })];
   assert.ok(inventory);
@@ -173,6 +193,10 @@ void test('resume of an intact checkpoint and a duplicate or late hook do not re
   const file = host.files[fileKey(pipelineFile(PROJECT, MODULE))];
   const bytes = file.content;
   const mtime = file.updatedAt;
+  const stopped = JSON.parse(bytes) as { status: string; awaitingStep?: string; steps: { input20?: { status: string } } };
+  assert.equal(stopped.status, 'awaitingStep');
+  assert.equal(stopped.awaitingStep, 'input20');
+  assert.equal(stopped.steps.input20?.status, 'failed');
   const plannerMtime = host.files[fileKey(plannerPipelineFile(PROJECT, MODULE))]?.updatedAt;
 
   const resumeCtx = contextWith(`@@agentDefsL1 ${MODULE} /resume`);

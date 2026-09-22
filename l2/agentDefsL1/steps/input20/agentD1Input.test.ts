@@ -84,6 +84,15 @@ async function readyHost(withContracts: boolean) {
   return host;
 }
 
+function blockingCodes(problems: Array<{ severity?: string; code?: string }>): string {
+  const counts = new Map<string, number>();
+  for (const problem of problems) {
+    if (problem.severity !== 'error' || !problem.code) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+}
+
 void test('input20 without contracts records the inventory and does not unlock the next phase', async () => {
   const host = await readyHost(false);
   const planner = host.files[fileKey(plannerPipelineFile(PROJECT, MODULE))]!;
@@ -95,12 +104,40 @@ void test('input20 without contracts records the inventory and does not unlock t
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
   assert.match(trace?.traceMsg || '', /Consumer phases are not released/);
+  assert.doesNotMatch(trace?.traceMsg || '', /success|approved/i);
+  assert.equal(trace?.status, 'completed');
   assert.equal(intents.some(intent => intent.type === 'add-step'), false);
-  assert.equal(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content.includes('"input20"'), false);
-  assert.ok(host.files[fileKey(inputFile(PROJECT, MODULE))]);
+  const inventory = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as {
+    problems?: Array<{ severity?: string; code?: string; path?: string }>;
+  };
+  const reason = blockingCodes(inventory.problems || []);
+  assert.match(reason, /^CONTRACT_ABSENT:\d+$/);
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
+    status?: string;
+    awaitingStep?: string;
+    steps?: { input20?: { status?: string; error?: string; artifactPaths?: string[] }; domain30?: unknown };
+  };
+  assert.equal(pipeline.status, 'awaitingStep');
+  assert.equal(pipeline.awaitingStep, 'input20');
+  assert.equal(pipeline.steps?.input20?.status, 'failed');
+  assert.notEqual(pipeline.steps?.input20?.status, 'approved');
+  assert.equal(pipeline.steps?.input20?.error, reason);
+  assert.equal(pipeline.steps?.input20?.error?.includes('/'), false);
+  assert.equal(pipeline.steps?.input20?.artifactPaths?.[0]?.endsWith('/input.json'), true);
+  assert.equal(pipeline.steps?.domain30, undefined);
   assert.equal(planner.updatedAt, 'frozen');
-  assert.equal(host.writes.every(key => key === fileKey(inputFile(PROJECT, MODULE))), true);
+  const pipelineKey = fileKey(pipelineFile(PROJECT, MODULE));
+  assert.equal(host.writes.filter(key => key === pipelineKey).length, 1);
+  assert.equal(host.writes.every(key => key === fileKey(inputFile(PROJECT, MODULE)) || key === pipelineKey), true);
   assert.equal(Object.keys(host.files).some(key => key.includes('layer_')), false);
+
+  const bytes = host.files[pipelineKey]?.content;
+  const mtime = host.files[pipelineKey]?.updatedAt;
+  const again = await agent.beforePromptStep!(meta(), ctx, parent, step, 2);
+  assert.equal(again.some(intent => intent.type === 'add-step'), false);
+  assert.equal(host.files[pipelineKey]?.content, bytes);
+  assert.equal(host.files[pipelineKey]?.updatedAt, mtime);
+  assert.equal(host.writes.filter(key => key === pipelineKey).length, 1);
 });
 
 void test('input20 releases the next phase only when contracts parse, and still writes no defs', async () => {
@@ -119,9 +156,14 @@ void test('input20 releases the next phase only when contracts parse, and still 
   assert.equal(handoff.nextStep, 'domain30');
   assert.equal(handoff.artifact.includes('/input.json'), true);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
-    steps: { input20?: { status: string } };
+    status?: string;
+    awaitingStep?: string;
+    steps: { input20?: { status: string; error?: string } };
   };
   assert.equal(pipeline.steps.input20?.status, 'approved');
+  assert.equal(pipeline.steps.input20?.error, undefined);
+  assert.equal(pipeline.status, 'inProgress');
+  assert.equal(pipeline.awaitingStep, undefined);
   assert.equal(host.files[contractKey]?.updatedAt, contractMtime);
   assert.equal(Object.keys(host.files).some(key => key.includes('layer_')), false);
   assert.equal(host.writes.some(key => key.includes('_4_') || key.includes('_5_') || key.includes('_2_')), false);

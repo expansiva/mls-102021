@@ -24,8 +24,9 @@ input; the task memory is not.
 
 `input20-done` is minted only when `consumersReleased` is true. A missing L2
 contract, a missing required source, a divergent plan, a stale L4 or a done item
-without an inventoried file leaves the inventory on disk and does not unlock
-`domain30`.
+without an inventoried file leaves the inventory on disk, sets `awaitingStep`
+to `input20`, and records the blocking codes and counts on `steps.input20.error`.
+That step is `failed`, not `approved`. `domain30` stays locked.
 
 ## Selection
 

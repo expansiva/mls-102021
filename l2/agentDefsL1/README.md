@@ -68,8 +68,10 @@ cannot move `awaitingStep` forward.
 
 `input20` records the inventory and does not generate `.defs.ts`. It approves
 itself and mints `input20-done` only when consumer phases are released. A missing
-contract or a missing required source keeps the checkpoint where `entry10` left
-it and says the phases are not released.
+contract or a missing required source sets `awaitingStep` to `input20` and
+records the blocking codes and counts on `steps.input20` (`failed`, not
+`approved`). The problem list stays in `input.json`. The waiting task steps are
+stopped so the run ends. A later hook does not rewrite that checkpoint.
 
 `domain30` writes one domain def per selected entity that is not `preserve`, and
 a value object only when a record reference names it. It approves itself and
