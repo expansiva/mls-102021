@@ -23,7 +23,8 @@ snapshot hash does not rewrite the file. Reading that file back is the resume
 input; the task memory is not.
 
 `input20-done` is minted only when `consumersReleased` is true. A missing L2
-contract, a missing required source, a divergent plan, a stale L4 or a done item
+contract (`CONTRACT_ABSENT`), an unreadable L2 contract (`CONTRACT_UNPARSED`),
+a missing required source, a divergent plan, a stale L4 or a done item
 without an inventoried file leaves the inventory on disk, sets `awaitingStep`
 to `input20`, and records the blocking codes and counts on `steps.input20.error`.
 That step is `failed`, not `approved`. `domain30` stays locked.
@@ -38,4 +39,4 @@ receipt lists that path and hash. A prefix of `l1/<module>` is not ownership.
 
 Review problems (payload, access anchor, unbound outbound, unattributed changes,
 screens with no routes) stay on the inventory and do not by themselves release
-or block consumer phases. Contract absence does block them.
+or block consumer phases. A missing or unreadable contract does block them.

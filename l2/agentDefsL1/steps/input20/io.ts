@@ -19,6 +19,7 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot, contractPageIds } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { readContractAst, type D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 interface Loaded {
   path: string;
@@ -105,11 +106,13 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
   });
   const contracts = await Promise.all(pageIds.map(async pageId => {
     const path = contractPath(moduleName, pageId);
-    const loaded = await loadOne(project, path);
+    const loaded = await loadContract(project, path);
     return { pageId, loaded };
   }));
-  const contractMap: Record<string, unknown | null> = {};
-  for (const contract of contracts) contractMap[contract.pageId] = contract.loaded.parsed;
+  const contractMap: Record<string, D1ContractAst | null> = {};
+  for (const contract of contracts) {
+    contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
+  }
 
   const artifacts = artifactsFrom(moduleName, known, contracts.map(item => item.loaded), parsed, contractMap, []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
@@ -166,7 +169,7 @@ function artifactsFrom(
   known: Loaded[],
   contracts: Loaded[],
   parsed: Map<string, unknown>,
-  contractMap: Record<string, unknown | null>,
+  contractMap: Record<string, D1ContractAst | null>,
   presentDefs: D1PresentDef[],
 ): D1InputArtifacts {
   const sources = [...known, ...contracts].map(item => item.digest).sort((left, right) => left.path.localeCompare(right.path));
@@ -220,6 +223,23 @@ function fixedPaths(moduleName: string): string[] {
     paths.effort,
     paths.planner,
   ];
+}
+
+async function loadContract(project: number, path: string): Promise<Loaded> {
+  const info = fileInfoFromDisplay(project, path);
+  const text = info ? await readText(info) : null;
+  if (text == null) {
+    return { path, text: null, parsed: null, digest: { path, sha256: '', bytes: 0, schemaVersion: '', state: 'missing' } };
+  }
+  const ast = readContractAst(text, path);
+  const sha256 = await sha256Text(text);
+  const bytes = new TextEncoder().encode(text).length;
+  return {
+    path,
+    text,
+    parsed: ast,
+    digest: { path, sha256, bytes, schemaVersion: '', state: ast.unparsed.length ? 'invalid' : 'present' },
+  };
 }
 
 async function loadOne(project: number, path: string): Promise<Loaded> {

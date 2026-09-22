@@ -16,9 +16,11 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, 'fixtures', 'head');
+const CONTRACTS = path.join(HERE, 'fixtures', 'contracts');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
@@ -316,4 +318,33 @@ void test('toRemove on a live row is not treated as a removal', async () => {
   assert.ok(snapshot.problems.some(problem => problem.code === 'STATUS_NOT_IN_REMOVED' && problem.ownerRef === route));
   assert.equal(snapshot.selection.routes.some(item => item.route === route), false);
   assert.equal(snapshot.removed.some(item => item.id === route), false);
+});
+
+void test('the six agendaClinica L2 contracts parse and release consumers', async () => {
+  const artifacts = await loadHead();
+  const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
+  assert.equal(names.length, 6);
+  const asts = names.map(name => {
+    const source = readFileSync(path.join(CONTRACTS, name), 'utf8');
+    const fileName = `l2/${MODULE}/web/contracts/${name.replace(/\.txt$/, '.ts')}`;
+    const ast = readContractAst(source, fileName);
+    assert.deepEqual(ast.unparsed, [], name);
+    return ast;
+  });
+  for (const [index, pageId] of PAGES.entries()) artifacts.contracts[pageId] = asts[index];
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.consumersReleased, true);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' || problem.code === 'CONTRACT_UNPARSED'), false);
+});
+
+void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', async () => {
+  const artifacts = await loadHead();
+  const contract = `l2/${MODULE}/web/contracts/pacientes.defs.ts`;
+  artifacts.contracts.pacientes = readContractAst('export interface Broken { id: string', contract);
+  const snapshot = build(artifacts);
+  const unparsed = snapshot.problems.filter(problem => problem.code === 'CONTRACT_UNPARSED' && problem.path === contract);
+  assert.ok(unparsed.length >= 1);
+  assert.match(unparsed[0].message, /Broken/);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' && problem.path === contract), false);
+  assert.equal(snapshot.consumersReleased, false);
 });

@@ -1,5 +1,10 @@
 # input20
 
+## 2026-09-22 (d1_13a)
+
+- L2 contracts are read with `readContractAst`. `parseD1Source` stays for `.json` and object-literal `.defs.ts`.
+- `CONTRACT_ABSENT` is only a missing file. A file that exists and does not parse is `CONTRACT_UNPARSED`. Both name the path.
+
 ## 2026-09-22 (d1_07c)
 
 - When consumer phases are not released, the checkpoint sets `awaitingStep` to `input20` and `steps.input20` to `failed` with the blocking codes and counts (`CONTRACT_ABSENT:6`). The problem list stays in `input.json`.

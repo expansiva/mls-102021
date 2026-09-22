@@ -778,7 +778,7 @@ function noteContracts(
   problems: D1InputProblem[],
   moduleName: string,
   routes: D1SelectedRoute[],
-  contracts: Record<string, unknown | null>,
+  contracts: D1InputArtifacts['contracts'],
 ): void {
   const pages = unique(routes.map(route => route.page));
   for (const pageId of pages) {
@@ -788,9 +788,12 @@ function noteContracts(
       error(problems, 'CONTRACT_ABSENT', path, `L2 contract for ${pageId} is absent. The inventory stays readable and consumer phases are not released.`, pageId);
       continue;
     }
-    const doc = rec(value);
-    if (!Object.keys(doc).length || (text(doc.moduleName) && text(doc.moduleName) !== moduleName) || (text(doc.pageId) && text(doc.pageId) !== pageId)) {
-      error(problems, 'CONTRACT_INVALID', path, `L2 contract for ${pageId} does not match the module and page.`, pageId);
+    if (!Array.isArray(value.unparsed)) {
+      error(problems, 'CONTRACT_UNPARSED', path, `L2 contract for ${pageId} is unreadable.`, pageId);
+      continue;
+    }
+    for (const detail of value.unparsed) {
+      error(problems, 'CONTRACT_UNPARSED', path, detail, pageId);
     }
   }
 }

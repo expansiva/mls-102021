@@ -1,5 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/contracts.ts" enhancement="_blank"/>
 
+import type { D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+
 export const D1_INPUT_VERSION = '2026-09-21-d1-input-v1' as const;
 
 export const D1_SOURCE_SCHEMAS = {
@@ -63,8 +65,8 @@ export interface D1InputArtifacts {
   backend: unknown;
   effort: unknown;
   planner: unknown;
-  /** Page id → parsed contract. Null means the file was looked up and is absent or unreadable. */
-  contracts: Record<string, unknown | null>;
+  /** Page id → contract AST. Null means the file was looked up and is absent. */
+  contracts: Record<string, D1ContractAst | null>;
   presentDefs: D1PresentDef[];
 }
 

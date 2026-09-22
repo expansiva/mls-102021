@@ -9,11 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { inputFile, plannerPipelineFile, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { assembleD1Input, fileInfoFromDisplay, persistD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, 'fixtures', 'head');
+const CONTRACTS = path.join(HERE, 'fixtures', 'contracts');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
+const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
 
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
@@ -75,4 +78,61 @@ void test('input.json reopens the same snapshot and writes nothing outside the r
   }
   assert.equal(host.files[fileKey(neighbors[1])]?.content.includes('from'), true);
   assert.equal(Object.keys(host.files).some(key => key.includes('/layer_')), false);
+});
+
+function realContractFiles(): string[] {
+  return readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
+}
+
+void test('the six agendaClinica L2 contracts parse and release consumers', async () => {
+  const names = realContractFiles();
+  assert.equal(names.length, 6);
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  for (const [index, name] of names.entries()) {
+    const source = readFileSync(path.join(CONTRACTS, name), 'utf8');
+    const ast = readContractAst(source, name.replace(/\.txt$/, '.ts'));
+    assert.deepEqual(ast.unparsed, [], name);
+    if (index >= PAGES.length) continue;
+    const pageId = PAGES[index];
+    seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, source, `contract-${pageId}`);
+  }
+  const snapshot = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(snapshot.consumersReleased, true);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' || problem.code === 'CONTRACT_UNPARSED'), false);
+  const pacientes = snapshot.sources.find(source => source.path === `l2/${MODULE}/web/contracts/pacientes.defs.ts`);
+  assert.equal(pacientes?.state, 'present');
+});
+
+void test('a missing L2 contract is CONTRACT_ABSENT', async () => {
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  const snapshot = await assembleD1Input(PROJECT, MODULE);
+  const absent = snapshot.problems.filter(problem => problem.code === 'CONTRACT_ABSENT');
+  assert.ok(absent.length >= 1);
+  assert.ok(absent.every(problem => problem.path.startsWith(`l2/${MODULE}/web/contracts/`) && problem.path.endsWith('.defs.ts')));
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_UNPARSED'), false);
+  assert.equal(snapshot.consumersReleased, false);
+});
+
+void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', async () => {
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  const names = realContractFiles();
+  for (const [index, name] of names.entries()) {
+    if (index >= PAGES.length) break;
+    const pageId = PAGES[index];
+    const source = pageId === 'pacientes'
+      ? 'export interface Broken { id: string'
+      : readFileSync(path.join(CONTRACTS, name), 'utf8');
+    seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, source, `contract-${pageId}`);
+  }
+  const snapshot = await assembleD1Input(PROJECT, MODULE);
+  const contract = `l2/${MODULE}/web/contracts/pacientes.defs.ts`;
+  const unparsed = snapshot.problems.filter(problem => problem.code === 'CONTRACT_UNPARSED' && problem.path === contract);
+  assert.ok(unparsed.length >= 1);
+  assert.match(unparsed[0].message, /Broken/);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' && problem.path === contract), false);
+  assert.equal(snapshot.sources.find(source => source.path === contract)?.state, 'invalid');
+  assert.equal(snapshot.consumersReleased, false);
 });

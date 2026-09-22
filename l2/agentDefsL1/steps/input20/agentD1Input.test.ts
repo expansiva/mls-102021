@@ -21,6 +21,7 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, 'fixtures', 'head');
+const CONTRACTS = path.join(HERE, 'fixtures', 'contracts');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
@@ -74,8 +75,9 @@ async function readyHost(withContracts: boolean) {
     seed(host, info, readFileSync(path.join(FIXTURE, rel), 'utf8'), 'frozen');
   }
   if (withContracts) {
-    for (const pageId of PAGES) {
-      const body = `export const ${pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${pageId}" } as const;\n`;
+    const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
+    for (const [index, pageId] of PAGES.entries()) {
+      const body = readFileSync(path.join(CONTRACTS, names[index]), 'utf8');
       seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, body, 'contract');
     }
   }
