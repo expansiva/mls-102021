@@ -37,6 +37,7 @@ import '/_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.js';
 import '/_102021_/l2/agentDefsL1/steps/persistence40/agentD1Persistence.js';
 import '/_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.js';
 import '/_102021_/l2/agentDefsL1/steps/controllers60/agentD1Controllers.js';
+import '/_102021_/l2/agentDefsL1/steps/support70/agentD1Support.js';
 
 
 export function createAgent(): IAgentAsync {
@@ -44,7 +45,7 @@ export function createAgent(): IAgentAsync {
     agentName: D1_AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentDefsL1',
-    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs, persistence defs, usecase plans and page controllers. usecases50 calls a model for operation steps only.',
+    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs, persistence defs, usecase plans, page controllers, access scope and repository registry. usecases50 calls a model for operation steps only.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,

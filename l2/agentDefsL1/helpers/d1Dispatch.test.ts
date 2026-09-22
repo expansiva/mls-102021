@@ -44,7 +44,8 @@ void test('implemented steps are hooked; anchors and later ids are not', () => {
   assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'repair', '1'))?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor(dynamicPlanId('usecases50', 'worker', 'createConsulta'))?.beforePromptStep, 'function');
   assert.equal(typeof hooksFor('controllers60')?.beforePromptStep, 'function');
-  assert.equal(hooksFor('support70'), undefined);
+  assert.equal(typeof hooksFor('support70')?.beforePromptStep, 'function');
+  assert.equal(hooksFor('finalize80'), undefined);
 });
 
 void test('drain leaves a hooked sibling running and names the stop', () => {
@@ -55,13 +56,14 @@ void test('drain leaves a hooked sibling running and names the stop', () => {
   const usecases = numbered(50, 'usecases50', 'waiting_dependency');
   const controllers = numbered(60, 'controllers60', 'waiting_dependency');
   const support = numbered(70, 'support70', 'waiting_dependency');
+  const finalize = numbered(80, 'finalize80', 'waiting_dependency');
   const root: mls.msg.AIAgentStep = {
     type: 'agent',
     stepId: 1,
     interaction: null,
     stepTitle: 'defs agendaClinica',
     status: 'waiting_human_input',
-    nextSteps: [entry, input, domain, persistence, usecases, controllers, support],
+    nextSteps: [entry, input, domain, persistence, usecases, controllers, support, finalize],
     agentName: 'agentDefsL1',
     prompt: '',
     rags: [],
@@ -73,7 +75,7 @@ void test('drain leaves a hooked sibling running and names the stop', () => {
   } as mls.msg.ExecutionContext;
   createAgent();
   const intents = drainWaitingSiblings(context, input, 4, 'stopped: step input20 is not implemented', { onlyUnimplemented: true });
-  assert.deepEqual(intents.map(intent => intent.stepId), [70]);
+  assert.deepEqual(intents.map(intent => intent.stepId), [80]);
   assert.equal(intents[0]?.traceMsg, 'stopped: step input20 is not implemented');
   assert.equal(intents[0]?.cleaner, D1_INTERACTION_CLEANER);
   assert.equal(planIdOf(input), 'input20');
