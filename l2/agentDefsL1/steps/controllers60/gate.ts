@@ -32,6 +32,7 @@ import {
   type D1ControllerPage,
   type D1ControllerProblem,
   type D1ControllerRelationship,
+  type D1ControllerRemoval,
   type D1ControllerRequest,
   type D1ControllerRoute,
   type D1ExistingHandler,
@@ -301,7 +302,8 @@ function staleOf(request: D1ControllerRequest, pageId: string, problems: D1Contr
     return [];
   }
   const selected = new Set(request.routes.filter(route => route.page === pageId).map(route => route.route));
-  const extra = existing.routes.filter(route => !selected.has(route));
+  const removed = new Set((request.removedRoutes || []).map(route => route.route));
+  const extra = existing.routes.filter(route => !selected.has(route) && !removed.has(route));
   for (const route of extra) {
     error(problems, 'STALE_ARTIFACT', pageId, `Controller ${pageId} still has route ${route}, which is not selected.`);
   }
@@ -458,6 +460,7 @@ function finish(
   sortInPlace(normalizations, item => `${item.path}\u0000${item.code}`);
   controllers.sort((left, right) => left.pageId.localeCompare(right.pageId));
   emit.sort((left, right) => (left.pipeline[0]?.defPath || '').localeCompare(right.pipeline[0]?.defPath || ''));
+  const removals = controllerRemovals(request, controllers);
   return {
     schemaVersion: D1_CONTROLLER_VERSION,
     project: request.project,
@@ -471,7 +474,29 @@ function finish(
     problems,
     normalizations,
     emit,
+    removals,
   };
+}
+
+function controllerRemovals(request: D1ControllerRequest, controllers: readonly D1ControllerItem[]): D1ControllerRemoval[] {
+  const live = new Set(controllers.filter(item => item.handlers.length > 0).map(item => logicalController(item.defPath)));
+  const out: D1ControllerRemoval[] = [];
+  for (const route of request.removedRoutes || []) {
+    if (!route.defPath) continue;
+    const logical = logicalController(route.defPath);
+    if (live.has(logical) || out.some(item => logicalController(item.defPath) === logical)) continue;
+    const qualified = route.defPath.startsWith('_') ? route.defPath : qualifyDefPath(request.project, route.defPath);
+    out.push({
+      defPath: route.defPath,
+      contentHash: route.contentHash,
+      outputTs: [futureOutputPath(qualified)].filter(path => path.endsWith('.ts')),
+    });
+  }
+  return out;
+}
+
+function logicalController(defPath: string): string {
+  return defPath.replace(/^_\d+_\/l1\//, 'l1/');
 }
 
 function error(problems: D1ControllerProblem[], code: string, path: string, message: string): void {

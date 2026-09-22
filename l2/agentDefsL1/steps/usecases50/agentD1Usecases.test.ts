@@ -11,9 +11,12 @@ import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import {
   createD1AgentStep,
   createEntryPipeline,
+  displayPath,
   draftFile,
+  inputFile,
   pipelineFile,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { commitD1Unit } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -149,3 +152,71 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.match(barrierTrace, /missing trace|OPERATIONAL|operational/);
   assert.equal(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))], undefined);
 });
+
+void test('the same snapshot does not call the model again', async () => {
+  const host = installStudio(PROJECT);
+  const snapshot = 'sha256:same';
+  await writeJson(inputFile(PROJECT, MODULE), {
+    schemaVersion: '2026-09-21-d1-input-v1',
+    project: PROJECT,
+    moduleName: MODULE,
+    snapshotHash: snapshot,
+  });
+  const pipeline = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-22T00:00:00.000Z'));
+  const artifact = displayPath(draftFile(PROJECT, MODULE, 'usecases50'));
+  pipeline.steps.input20 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(inputFile(PROJECT, MODULE))] };
+  pipeline.steps.domain30 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'domain30'))] };
+  pipeline.steps.persistence40 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'persistence40'))] };
+  pipeline.steps.usecases50 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [artifact] };
+  await writeJson(pipelineFile(PROJECT, MODULE), pipeline);
+  const defPath = `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`;
+  await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'usecases50',
+    unitId: 'usecases50',
+    draftText: '{"llmCalls":0}',
+    snapshotHash: snapshot,
+    runId: snapshot,
+    parts: [{ defPath, source: 'export const definition = { "artifactId": "listConsulta" } as const;\n' }],
+  });
+  const stored = host.files[fileKey(fileInfo(defPath))]!;
+  const mtime = stored.updatedAt;
+  const bytes = stored.content;
+  host.writes.length = 0;
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const step = createD1AgentStep('usecases50', MODULE, PROJECT, 'run');
+  step.stepId = 50;
+  const first = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
+  assert.equal(first.some(intent => intent.type === 'prompt_ready'), false);
+  assert.equal(first.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'usecases50-fanout'), false);
+  const trace = first.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  assert.match(trace?.traceMsg || '', /No model was called/);
+  const anchor = first.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  assert.equal(anchor?.step.planning?.planId, 'usecases50-done');
+  assert.equal(JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)).llmCalls, 0);
+  assert.equal(stored.content, bytes);
+  assert.equal(stored.updatedAt, mtime);
+  host.writes.length = 0;
+  if (anchor) {
+    anchor.step.stepId = 80;
+    parent.nextSteps = [...(parent.nextSteps || []), anchor.step];
+  }
+  await agent.beforePromptStep!(meta(), ctx, parent, step, 2);
+  assert.deepEqual(host.writes, []);
+  assert.equal(stored.updatedAt, mtime);
+});
+
+function fileInfo(path: string) {
+  const file = {
+    project: PROJECT,
+    level: 1,
+    folder: `${MODULE}/layer_2_application/usecases`,
+    shortName: 'listConsulta',
+    extension: '.defs.ts',
+  };
+  assert.equal(`l1/${file.folder}/${file.shortName}${file.extension}`, path);
+  return file;
+}

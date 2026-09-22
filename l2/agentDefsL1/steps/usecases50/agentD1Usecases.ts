@@ -21,7 +21,9 @@ import {
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
+import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import {
   decideRepairs,
   fanoutExecution,
@@ -72,6 +74,21 @@ export async function beforeD1UsecasesPromptStep(
   const pipeline = raw ? parsePipelineDocument(raw) : null;
   if (!pipeline || pipeline.project !== parsed.prompt.project || pipeline.moduleName !== parsed.prompt.moduleName || pipeline.steps.persistence40?.status !== 'approved') {
     return refuse(context, parentStep, step, hookSequential, 'Checkpoint is not intact. usecases50 wrote nothing.');
+  }
+  const snapshot = await readD1Input(parsed.prompt.project, parsed.prompt.moduleName);
+  if (
+    snapshot?.snapshotHash
+    && await unitIsIntact(parsed.prompt.project, parsed.prompt.moduleName, 'usecases50', 'usecases50', snapshot.snapshotHash)
+  ) {
+    const artifact = displayPath(draftFile(parsed.prompt.project, parsed.prompt.moduleName, 'usecases50'));
+    const approved = withUsecasesApproved(pipeline, artifact, new Date().toISOString());
+    if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
+    const mutationParent = findOpenParent(context, parentStep);
+    const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, parsed.prompt.project, parsed.prompt.moduleName, artifact, 0)];
+    return [
+      ...anchor,
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', `usecases50 kept the defs for ${parsed.prompt.moduleName}. No model was called.`),
+    ];
   }
   const loaded = await loadD1UsecaseWork(parsed.prompt.project, parsed.prompt.moduleName);
   if ('refusal' in loaded) return refuse(context, parentStep, step, hookSequential, loaded.refusal);

@@ -1,9 +1,10 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/io.ts" enhancement="_blank"/>
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { displayPath, draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { readText, writeJson, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
+import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { entityPath, inputPaths, journeyPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -103,39 +104,71 @@ export async function commitD1Support(
   const currentDraft = await readText(draftInfo);
   if (currentDraft !== draftText) await writeJson(draftInfo, build);
   if (!build.ok) return { written: [], issues: build.problems.filter(problem => problem.severity === 'error').map(problem => problem.message) };
+  const rendered = renderParts(project, build.emit, files);
+  if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
+  const committed = await commitD1Unit({
+    project,
+    moduleName: build.moduleName,
+    step: 'support70',
+    unitId: 'support70',
+    draftText,
+    parts: [...rendered.parts, ...removalParts(project, build, files)],
+  });
+  return { written: committed.written, issues: committed.issues };
+}
 
+/** A support def is removed only when this build did not keep it for a live consumer. */
+export function supportFilesToRemove(build: D1SupportBuild, files: readonly D1SupportFile[]): D1SupportFile[] {
+  const emitted = new Set(build.emit.map(part => logicalDefPath(part.pipeline[0]?.defPath || '')));
+  return files.filter(file => {
+    if (file.action !== 'remove') return false;
+    const path = logicalDefPath(file.defPath);
+    if (emitted.has(path)) return false;
+    const kept = build.normalizations.some(item =>
+      (item.code === 'REGISTRY_KEPT' || item.code === 'DATASET_KEPT')
+      && logicalDefPath(item.path) === path);
+    return !kept;
+  });
+}
+
+function removalParts(project: number, build: D1SupportBuild, files: readonly D1SupportFile[]): D1UnitPart[] {
+  return supportFilesToRemove(build, files).map(file => ({
+    defPath: qualifyDefPath(project, logicalDefPath(file.defPath)),
+    source: '',
+    action: 'remove' as const,
+    receiptHash: file.contentHash,
+    outputTs: [futureOutputPath(logicalDefPath(file.defPath))].filter(Boolean),
+  }));
+}
+
+function renderParts(
+  project: number,
+  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: Parameters<typeof renderDefinition>[1] }[],
+  files: readonly D1SupportFile[],
+): { parts: D1UnitPart[]; issues: string[] } {
+  const parts: D1UnitPart[] = [];
   const issues: string[] = [];
-  const written: string[] = [];
-  for (const part of build.emit) {
+  for (const part of emit) {
     const rendered = renderDefinition(part.definition, part.pipeline);
     if ('issues' in rendered) {
       issues.push(...rendered.issues);
       continue;
     }
     const defPath = part.pipeline[0]?.defPath || '';
-    const file = artifactFile(project, defPath);
-    if (!file) {
+    if (!artifactFile(project, defPath)) {
       issues.push(`defPath is not a file this agent can write: ${defPath}.`);
       continue;
     }
-    const current = await readText(file);
-    if (current === rendered.source) continue;
-    const logical = defPath.replace(/^_\d+_\/l1\//, 'l1/');
+    const logical = logicalDefPath(defPath);
     const receipt = files.find(item => item.defPath === logical || qualifyDefPath(project, item.defPath) === defPath);
-    if (current && receipt?.contentHash) {
-      const hash = await sha256Text(current);
-      if (hash !== receipt.contentHash) {
-        issues.push(`Receipt hash for ${logical} does not match the bytes on disk. The file was not overwritten.`);
-        continue;
-      }
-    } else if (current && (!receipt || !receipt.contentHash)) {
-      issues.push(`File ${logical} exists without a receipt. The file was not overwritten.`);
-      continue;
-    }
-    await writeText(file, rendered.source);
-    written.push(displayPath(file));
+    parts.push({
+      defPath,
+      source: rendered.source,
+      receiptHash: receipt?.contentHash || '',
+      outputTs: [part.pipeline[0]?.outputPath || ''].filter(Boolean),
+    });
   }
-  return { written, issues };
+  return { parts, issues };
 }
 
 async function receiptFiles(

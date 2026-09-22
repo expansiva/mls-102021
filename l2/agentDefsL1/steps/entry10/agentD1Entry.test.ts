@@ -224,6 +224,56 @@ void test('resume of an intact checkpoint and a duplicate or late hook do not re
   assert.equal(host.files[fileKey(pipelineFile(OTHER, MODULE))], undefined);
 });
 
+void test('resume of a held input20 checkpoint does not rewrite it or approve the step', async () => {
+  const host = installStudio(PROJECT);
+  const planner = plannerOf(host, PROJECT);
+  const held = {
+    schemaVersion: '2026-09-21-d1-pipeline-v1',
+    flowId: 'agentDefsL1',
+    flowVersion: '2026-09-21-d1-flow-v1',
+    project: PROJECT,
+    moduleName: MODULE,
+    status: 'awaitingStep',
+    command: 'run',
+    steps: {
+      entry10: {
+        status: 'approved',
+        updatedAt: '2026-09-22T04:41:25.889Z',
+        artifactPaths: [`_${PROJECT}_/l1/${MODULE}/pipeline/agentDefsL1/pipeline.json`],
+      },
+      input20: {
+        status: 'failed',
+        updatedAt: '2026-09-22T04:41:26.070Z',
+        artifactPaths: [`_${PROJECT}_/l1/${MODULE}/pipeline/agentDefsL1/input.json`],
+        error: 'CONTRACT_ABSENT:6',
+      },
+    },
+    updatedAt: '2026-09-22T04:41:26.070Z',
+    awaitingStep: 'input20',
+  };
+  const bytes = `${JSON.stringify(held, null, 2)}\n`;
+  const file = seed(host, pipelineFile(PROJECT, MODULE), bytes, 'held-mtime');
+  const agent = createAgent();
+  const ctx = contextWith(`@@agentDefsL1 ${MODULE} /resume`);
+  const resume = await agent.beforePromptImplicit!(meta(), ctx, `@@agentDefsL1 ${MODULE} /resume`);
+  const steps = mount(ctx, resume);
+  await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[0], 1);
+  const input = await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[1], 2);
+  const trace = input.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === steps[1].stepId);
+  assert.match(trace?.traceMsg || '', /did not approve/);
+  assert.equal(input.some(intent => intent.type === 'add-step'), false);
+  const stopped = input.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId !== steps[1].stepId);
+  assert.ok(stopped.some(intent => /stopped: input20 is held/.test(intent.traceMsg || '')));
+  assert.equal(file.content, bytes);
+  assert.equal(file.updatedAt, 'held-mtime');
+  const parsed = JSON.parse(file.content) as { status: string; awaitingStep?: string; steps: { input20?: { status: string; error?: string } } };
+  assert.equal(parsed.status, 'awaitingStep');
+  assert.equal(parsed.awaitingStep, 'input20');
+  assert.equal(parsed.steps.input20?.status, 'failed');
+  assert.equal(parsed.steps.input20?.error, 'CONTRACT_ABSENT:6');
+  assert.equal(planner.updatedAt, `planner-${PROJECT}`);
+});
+
 void test('a duplicate entry hook does not write a second checkpoint', async () => {
   const host = installStudio(PROJECT);
   const agent = createAgent();

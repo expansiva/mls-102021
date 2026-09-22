@@ -116,6 +116,29 @@ export async function removeOwned(file: D1FileInfo): Promise<void> {
   if (!moduleName || file.folder !== ownedFolder(moduleName)) {
     throw new Error(`agentDefsL1 refuses to remove ${displayPath(file)}`);
   }
+  await deleteOne(file);
+}
+
+/**
+ * Removes one own product def. A directory is not a file, a `.ts` output is
+ * not a def, and this is not `/rebuild all`.
+ */
+export async function removeDefFile(file: D1FileInfo): Promise<void> {
+  const moduleName = file.folder.split('/')[0] || '';
+  const pipeline = `${moduleName}/pipeline`;
+  const ownProduct = !!moduleName
+    && file.extension === '.defs.ts'
+    && !!file.shortName
+    && !file.shortName.includes('.')
+    && !file.shortName.includes('/')
+    && (file.folder === moduleName || file.folder.startsWith(`${moduleName}/`))
+    && file.folder !== pipeline
+    && !file.folder.startsWith(`${pipeline}/`);
+  if (!ownProduct) throw new Error(`agentDefsL1 refuses to remove ${displayPath(file)}`);
+  await deleteOne(file);
+}
+
+async function deleteOne(file: D1FileInfo): Promise<void> {
   const stored = mls.stor.files[mls.stor.getKeyToFile(file)];
   if (!stored || stored.status === 'deleted') return;
   const local = mls.stor.localStor as unknown as ListHost;

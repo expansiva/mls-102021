@@ -210,6 +210,43 @@ void test('an update keeps the done handlers of the same page', () => {
   assert.deepEqual(data.handlers.find(item => item.route === done.route)?.grantIds, ['profissionalAgendaDiaria']);
 });
 
+void test('removing one route keeps the other routes and does not drop the controller', () => {
+  const request: D1ControllerRequest = coreControllerRequest();
+  const agenda = request.routes.filter(route => route.page === 'agenda');
+  assert.ok(agenda.length >= 2);
+  const dropped = agenda[0];
+  request.routes = request.routes.filter(route => route.route !== dropped.route);
+  request.removedRoutes = [{
+    route: dropped.route,
+    pageId: 'agenda',
+    defPath: `l1/${request.moduleName}/layer_1_external/adapters/http/controllers/agenda.defs.ts`,
+    contentHash: `sha256:${'ab'.repeat(32)}`,
+  }];
+  const build = buildD1Controllers(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const handlers = build.controllers.find(item => item.pageId === 'agenda')?.handlers || [];
+  assert.equal(handlers.some(handler => handler.route === dropped.route), false);
+  assert.ok(handlers.length >= 1);
+  assert.equal(build.removals.length, 0);
+  assert.equal(build.emit.some(item => item.definition.artifactId === 'agenda'), true);
+
+  const gone = coreControllerRequest();
+  const removed = gone.routes.filter(route => route.page === 'agenda');
+  gone.routes = gone.routes.filter(route => route.page !== 'agenda');
+  gone.removedRoutes = removed.map(route => ({
+    route: route.route,
+    pageId: 'agenda',
+    defPath: `l1/${gone.moduleName}/layer_1_external/adapters/http/controllers/agenda.defs.ts`,
+    contentHash: `sha256:${'cd'.repeat(32)}`,
+  }));
+  const empty = buildD1Controllers(gone);
+  assert.equal(empty.ok, true, empty.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(empty.emit.some(item => item.definition.artifactId === 'agenda'), false);
+  assert.equal(empty.removals.length, 1);
+  assert.match(empty.removals[0].outputTs[0] || '', /agenda\.ts$/);
+  assert.ok(empty.emit.some(item => item.definition.artifactId !== 'agenda'));
+});
+
 void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
   const request = coreControllerRequest();
   const agenda = request.contracts.find(item => item.pageId === 'agenda');

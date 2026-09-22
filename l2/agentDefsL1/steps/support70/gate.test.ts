@@ -9,6 +9,7 @@ import { D1_MEASURED_PUBLISH } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
+import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import type { D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 void test('the frozen fixture emits scope, authority and the live registry', () => {
@@ -207,6 +208,12 @@ void test('removing one adapter keeps the shared registry', () => {
   const one = buildD1Support(request);
   assert.deepEqual(one.registry.map(item => item.portId), ['ConsultaRepository']);
   assert.equal(one.emit.some(item => item.definition.artifactType === 'repositoryRegistration'), true);
+  assert.deepEqual(supportFilesToRemove(one, request.files), []);
+
+  request.adapters = [];
+  const none = buildD1Support(request);
+  assert.equal(none.emit.some(item => item.definition.artifactType === 'repositoryRegistration'), false);
+  assert.deepEqual(supportFilesToRemove(none, request.files).map(file => file.artifactType), ['repositoryRegistration']);
 });
 
 void test('the frozen fixture plans consulta seeds and does not write rows', () => {

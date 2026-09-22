@@ -115,6 +115,8 @@ export interface D1ControllerRequest {
   enumerations: D1EnumerationRef[];
   accessRead: boolean;
   actorsRead: boolean;
+  /** Routes selected for removal. Absent means none. */
+  removedRoutes?: readonly D1RemovedRoute[];
 }
 
 export interface D1ScopeRelationship {
@@ -174,6 +176,21 @@ export interface D1ControllerEmit {
   pipeline: D1PipelineItem[];
 }
 
+/** A selected route to drop. Other routes of the same controller stay. */
+export interface D1RemovedRoute {
+  route: string;
+  pageId: string;
+  defPath: string;
+  contentHash: string;
+}
+
+/** Own controller def removed only when the page has no live route left. */
+export interface D1ControllerRemoval {
+  defPath: string;
+  contentHash: string;
+  outputTs: string[];
+}
+
 export interface D1ControllerBuild {
   schemaVersion: typeof D1_CONTROLLER_VERSION;
   project: number;
@@ -187,4 +204,6 @@ export interface D1ControllerBuild {
   problems: D1ControllerProblem[];
   normalizations: D1ControllerNormalization[];
   emit: D1ControllerEmit[];
+  /** Controller defs with no live route. The `.ts` path is reported, not deleted. */
+  removals: D1ControllerRemoval[];
 }

@@ -49,6 +49,14 @@ export async function beforeD1InputPromptStep(
     return refuse(context, parentStep, step, hookSequential, 'Checkpoint is not intact. input20 wrote nothing.');
   }
 
+  // A resume of the held input20 does not recompute the reason and does not approve the step.
+  if (prompt.command === 'resume' && inputHeld(pipeline)) {
+    return [
+      ...drainWaitingSiblings(context, step, hookSequential, 'stopped: input20 is held.'),
+      updateStatus(context, parentStep, step, hookSequential, 'completed', `input20 is held for ${prompt.moduleName}. Resume did not approve it.`),
+    ];
+  }
+
   const snapshot = await assembleD1Input(prompt.project, prompt.moduleName);
   await persistD1Input(prompt.project, prompt.moduleName, snapshot);
   const artifact = displayPath(inputFile(prompt.project, prompt.moduleName));
@@ -91,6 +99,13 @@ export async function afterD1InputPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'input20 already recorded.')];
+}
+
+function inputHeld(pipeline: D1PipelineState): boolean {
+  const current = pipeline.steps.input20;
+  return pipeline.status === 'awaitingStep'
+    && pipeline.awaitingStep === 'input20'
+    && current?.status === 'failed';
 }
 
 /** Error-severity codes and counts. The paths stay in input.json. */

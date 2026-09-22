@@ -1,9 +1,10 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/io.ts" enhancement="_blank"/>
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { displayPath, draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { readText, writeJson, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -15,6 +16,7 @@ import {
   type D1ControllerRequest,
   type D1ExistingController,
   type D1ExistingHandler,
+  type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
@@ -49,26 +51,46 @@ export async function commitD1Controllers(
   const currentDraft = await readText(draftInfo);
   if (currentDraft !== draftText) await writeJson(draftInfo, build);
   if (!build.ok) return { written: [], issues: build.problems.filter(problem => problem.severity === 'error').map(problem => problem.message) };
+  const rendered = renderParts(project, build.emit);
+  if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
+  const removals: D1UnitPart[] = build.removals.map(item => ({
+    defPath: item.defPath,
+    source: '',
+    action: 'remove',
+    receiptHash: item.contentHash,
+    outputTs: item.outputTs,
+  }));
+  const committed = await commitD1Unit({
+    project,
+    moduleName: build.moduleName,
+    step: 'controllers60',
+    unitId: 'controllers60',
+    draftText,
+    parts: [...rendered.parts, ...removals],
+  });
+  return { written: committed.written, issues: committed.issues };
+}
+
+function renderParts(
+  project: number,
+  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: Parameters<typeof renderDefinition>[1] }[],
+): { parts: D1UnitPart[]; issues: string[] } {
+  const parts: D1UnitPart[] = [];
   const issues: string[] = [];
-  const written: string[] = [];
-  for (const part of build.emit) {
+  for (const part of emit) {
     const rendered = renderDefinition(part.definition, part.pipeline);
     if ('issues' in rendered) {
       issues.push(...rendered.issues);
       continue;
     }
     const defPath = part.pipeline[0]?.defPath || '';
-    const file = artifactFile(project, defPath);
-    if (!file) {
+    if (!artifactFile(project, defPath)) {
       issues.push(`defPath is not a file this agent can write: ${defPath}.`);
       continue;
     }
-    const current = await readText(file);
-    if (current === rendered.source) continue;
-    await writeText(file, rendered.source);
-    written.push(displayPath(file));
+    parts.push({ defPath, source: rendered.source, outputTs: [part.pipeline[0]?.outputPath || ''].filter(Boolean) });
   }
-  return { written, issues };
+  return { parts, issues };
 }
 
 async function controllerRequest(
@@ -81,6 +103,7 @@ async function controllerRequest(
       usecases: Array<{ usecaseId: string; entity: string; operation: string; identity: string }>;
     };
     files: Array<{ artifactType: string; identity: string; defPath: string }>;
+    removed: Array<{ kind: string; id: string; defPath: string | null; contentHash?: string }>;
   },
   usecases: Record<string, unknown>,
 ): Promise<D1ControllerRequest> {
@@ -139,7 +162,25 @@ async function controllerRequest(
     enumerations: enumerationsOf(usecases),
     accessRead: isRecord(access),
     actorsRead: isRecord(needs),
+    removedRoutes: removedRoutesOf(snapshot.removed),
   };
+}
+
+function removedRoutesOf(
+  removed: readonly { kind: string; id: string; defPath: string | null; contentHash?: string }[],
+): D1RemovedRoute[] {
+  const out: D1RemovedRoute[] = [];
+  for (const item of removed) {
+    if (item.kind !== 'endpoint' || !item.id) continue;
+    const match = item.defPath ? /\/controllers\/([^/]+)\.defs\.ts$/.exec(item.defPath) : null;
+    out.push({
+      route: item.id,
+      pageId: match ? match[1] : '',
+      defPath: item.defPath || '',
+      contentHash: item.contentHash || '',
+    });
+  }
+  return out;
 }
 
 function functionsOf(draft: Record<string, unknown>): Map<string, string> {

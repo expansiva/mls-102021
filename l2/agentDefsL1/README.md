@@ -45,7 +45,7 @@ English, no model, no writes:
 | `l1/<module>/pipeline/agentDefsL1/input.json` | written by input20. Same bytes are not rewritten |
 | `l1/<module>/pipeline/agentDefsL1/drafts/domain30.json` | written by domain30. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/drafts/persistence40.json` | written by persistence40. A draft does not approve a step |
-| `l1/<module>/pipeline/agentDefsL1/traces/<step>.json` | reserved |
+| `l1/<module>/pipeline/agentDefsL1/traces/<step><unit>.json` | progress of one unit: previous hash, draft hash, and each file. Not a transaction |
 | `l1/<module>/pipeline/agentDefsL1/report.json` | reserved for finalize80 |
 
 Checkpoint reads and writes use `pipelineFile(project, module)`. Domain defs use
@@ -72,6 +72,16 @@ contract or a missing required source sets `awaitingStep` to `input20` and
 records the blocking codes and counts on `steps.input20` (`failed`, not
 `approved`). The problem list stays in `input.json`. The waiting task steps are
 stopped so the run ends. A later hook does not rewrite that checkpoint.
+`/resume` on that held checkpoint does not recompute the reason, does not
+rewrite the file, and does not approve `input20`.
+
+A product write checks the receipt hash immediately before the mutation.
+Stor has no multi-file transaction. The progress file is how a stopped unit
+continues; a matching file is not rewritten, so its bytes and mtime stay.
+A changed hash is not overwritten. A future `.ts` path is reported and not
+deleted. mtime is not a version, and an approved checkpoint is not proof that
+the bytes are still there. The same snapshot with intact outputs does not call
+the model.
 
 `domain30` writes one domain def per selected entity that is not `preserve`, and
 a value object only when a record reference names it. It approves itself and
