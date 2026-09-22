@@ -2,7 +2,7 @@
   "flowId": "agentDefsL1",
   "schemaVersion": "2026-09-21-d1-flow-v1",
   "status": "entry10",
-  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. Later steps are declared and not implemented: a missing step reports that it does not exist. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
+  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. Later steps are declared and not implemented: a missing step reports that it does not exist. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -132,11 +132,11 @@
     {
       "id": "persistence40",
       "kind": "deterministic",
-      "implemented": false,
+      "implemented": true,
       "dependsOn": ["domain30-done"],
       "doneAnchor": "persistence40-done",
       "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/persistence40.json",
-      "goal": "Ports, tables and adapters. Not implemented in this delivery."
+      "goal": "Ports, tables and adapters with one physical name and the domain draft unique keys. Deterministic. No LLM."
     },
     {
       "id": "usecases50",

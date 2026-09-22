@@ -33,6 +33,7 @@ import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import '/_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.js';
+import '/_102021_/l2/agentDefsL1/steps/persistence40/agentD1Persistence.js';
 
 
 export function createAgent(): IAgentAsync {
@@ -40,7 +41,7 @@ export function createAgent(): IAgentAsync {
     agentName: D1_AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentDefsL1',
-    agentDescription: 'L1 defs agent — checkpoint, input inventory and domain defs. Does not call a model.',
+    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs and persistence defs. Does not call a model.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,

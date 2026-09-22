@@ -39,6 +39,7 @@ void test('implemented steps are hooked; anchors and later ids are not', () => {
   assert.equal(hooksFor('entry10-done'), undefined);
   assert.equal(hooksFor('input20-done'), undefined);
   assert.equal(typeof hooksFor('domain30')?.beforePromptStep, 'function');
+  assert.equal(typeof hooksFor('persistence40')?.beforePromptStep, 'function');
   assert.equal(hooksFor(dynamicPlanId('usecases50', 'repair', '1')), undefined);
   assert.equal(hooksFor(dynamicPlanId('usecases50', 'worker', 'createConsulta')), undefined);
 });
@@ -48,13 +49,14 @@ void test('drain leaves a hooked sibling running and names the stop', () => {
   const input = numbered(20, 'input20', 'waiting_dependency');
   const domain = numbered(30, 'domain30', 'waiting_dependency');
   const persistence = numbered(40, 'persistence40', 'waiting_dependency');
+  const usecases = numbered(50, 'usecases50', 'waiting_dependency');
   const root: mls.msg.AIAgentStep = {
     type: 'agent',
     stepId: 1,
     interaction: null,
     stepTitle: 'defs agendaClinica',
     status: 'waiting_human_input',
-    nextSteps: [entry, input, domain, persistence],
+    nextSteps: [entry, input, domain, persistence, usecases],
     agentName: 'agentDefsL1',
     prompt: '',
     rags: [],
@@ -66,7 +68,7 @@ void test('drain leaves a hooked sibling running and names the stop', () => {
   } as mls.msg.ExecutionContext;
   createAgent();
   const intents = drainWaitingSiblings(context, input, 4, 'stopped: step input20 is not implemented', { onlyUnimplemented: true });
-  assert.deepEqual(intents.map(intent => intent.stepId), [40]);
+  assert.deepEqual(intents.map(intent => intent.stepId), [50]);
   assert.equal(intents[0]?.traceMsg, 'stopped: step input20 is not implemented');
   assert.equal(intents[0]?.cleaner, D1_INTERACTION_CLEANER);
   assert.equal(planIdOf(input), 'input20');

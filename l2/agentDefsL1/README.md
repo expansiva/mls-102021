@@ -1,8 +1,8 @@
 # agentDefsL1
 
-L1 defs agent. CLI, project identity, resume, the input20 inventory and the
-domain30 defs. It does not call a model. A step that is only declared in
-`docs/flow.json` reports that it is not implemented.
+L1 defs agent. CLI, project identity, resume, the input20 inventory, the
+domain30 defs and the persistence40 defs. It does not call a model. A step
+that is only declared in `docs/flow.json` reports that it is not implemented.
 
 ## Invocation
 
@@ -43,12 +43,13 @@ English, no model, no writes:
 | `l1/<module>/pipeline/pipeline.json` | planner file. Never written or removed |
 | `l1/<module>/pipeline/agentDefsL1/input.json` | written by input20. Same bytes are not rewritten |
 | `l1/<module>/pipeline/agentDefsL1/drafts/domain30.json` | written by domain30. A draft does not approve a step |
+| `l1/<module>/pipeline/agentDefsL1/drafts/persistence40.json` | written by persistence40. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/traces/<step>.json` | reserved |
 | `l1/<module>/pipeline/agentDefsL1/report.json` | reserved for finalize80 |
 
 Checkpoint reads and writes use `pipelineFile(project, module)`. Domain defs use
 `artifactFile`, the same identity input20 uses. A remove of the planner file is
-refused. domain30 writes domain `.defs.ts` only. It does not write `.ts` outputs.
+refused. domain30 and persistence40 write `.defs.ts` only. They do not write `.ts` outputs.
 l4, l2, l5 and the pool are not written.
 
 The display path includes the project: `_102047_/l1/<module>/pipeline/agentDefsL1/pipeline.json`.
@@ -74,7 +75,13 @@ a value object only when a record reference names it. It approves itself and
 mints `domain30-done` only when the build has no error. The same bytes are not
 rewritten.
 
-`persistence40` through `finalize80` are declared and not implemented. Reaching
+`persistence40` writes one port, one table and one adapter per planned
+module-database item. `uniqueKeys` come from the domain draft. Enumerations
+stay on that draft. It approves itself and mints `persistence40-done` only
+when the build has no error. The same bytes are not rewritten. It does not
+write seeds or the repository registry.
+
+`usecases50` through `finalize80` are declared and not implemented. Reaching
 one sets `pipeline.status` to `awaitingStep` and the trace `step <id> not implemented yet`.
 That is not success. The task step is completed so the run does not fail; the
 trace and the checkpoint say the step does not exist yet.
