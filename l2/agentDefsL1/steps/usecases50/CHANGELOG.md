@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-09-22 (d1_13d)
+
+- `planUsecaseSteps` is an `anyOf` of one closed object per `kind`, built from `STEP_KEYS`. A branch requires only that kind's keys, and `kind` is `const`. `parseStep` is unchanged.
+
 ## 2026-09-22 (d1_13c)
 
 - The human prompt and the system prompt list each step kind's keys from `STEP_KEYS`. `prompt.md` does not copy that list.

@@ -10,7 +10,7 @@ import {
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
-const STEP_KEYS: { [K in (typeof D1_WORKER_KINDS)[number]]: readonly string[] } = {
+export const STEP_KEYS = {
   port: ['kind', 'call', 'port'],
   rule: ['kind', 'ruleId'],
   mdm: ['kind', 'namespace', 'call', 'entity'],
@@ -18,7 +18,40 @@ const STEP_KEYS: { [K in (typeof D1_WORKER_KINDS)[number]]: readonly string[] } 
   effect: ['kind', 'eventId'],
   transaction: ['kind', 'boundary'],
   context: ['kind', 'source'],
+} as const satisfies { [K in (typeof D1_WORKER_KINDS)[number]]: readonly string[] };
+
+type WorkerKind = (typeof D1_WORKER_KINDS)[number];
+type StepField = (typeof STEP_KEYS)[WorkerKind][number];
+type FieldKey = Exclude<StepField, 'kind'>;
+
+/** Value schema of a step key. The key list itself stays on `STEP_KEYS`. */
+const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
+  call: { type: 'string' },
+  port: { type: 'string' },
+  ruleId: { type: 'string' },
+  namespace: { type: 'string' },
+  entity: { type: 'string' },
+  transitionId: { type: 'string' },
+  payload: { type: 'array', items: { type: 'string' } },
+  eventId: { type: 'string' },
+  boundary: { type: 'string', enum: ['local', 'external'] },
+  source: { type: 'string', enum: ['ctx', 'input'] },
 };
+
+/** Closed branch. `anyOf`, not `oneOf`: provider strict mode rejects `oneOf`. */
+function stepBranch(kind: WorkerKind): Record<string, unknown> {
+  const keys = STEP_KEYS[kind];
+  const properties: Record<string, unknown> = {};
+  for (const key of keys) {
+    properties[key] = key === 'kind' ? { type: 'string', const: kind } : FIELD_SCHEMA[key];
+  }
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: [...keys],
+    properties,
+  };
+}
 
 /** The gate's key set, rendered. The markdown prompt does not copy this list. */
 export function workerStepShape(): string {
@@ -74,24 +107,7 @@ export function usecaseTool(): mls.msg.LLMTool {
         properties: {
           steps: {
             type: 'array',
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['kind'],
-              properties: {
-                kind: { type: 'string', enum: [...D1_WORKER_KINDS] },
-                call: { type: 'string' },
-                port: { type: 'string' },
-                ruleId: { type: 'string' },
-                namespace: { type: 'string' },
-                entity: { type: 'string' },
-                transitionId: { type: 'string' },
-                payload: { type: 'array', items: { type: 'string' } },
-                eventId: { type: 'string' },
-                boundary: { type: 'string', enum: ['local', 'external'] },
-                source: { type: 'string', enum: ['ctx', 'input'] },
-              },
-            },
+            items: { anyOf: D1_WORKER_KINDS.map(kind => stepBranch(kind)) },
           },
         },
       },
@@ -142,7 +158,7 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
     return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} kind ${kindText || '(missing)'} is not an operation.` } };
   }
   const kind = kindText;
-  const allowed = STEP_KEYS[kind];
+  const allowed: readonly string[] = STEP_KEYS[kind];
   const extra = Object.keys(value).filter(key => !allowed.includes(key));
   if (extra.length) {
     return { problem: { code: 'INVENTED_FIELD', message: `Step ${index} names ${extra[0]}.` } };

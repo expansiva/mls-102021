@@ -7,7 +7,8 @@ import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/us
 import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
-import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { parseWorkerReply, STEP_KEYS, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 import type { D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 void test('the frozen core is 13 usecases for 22 routes, and listConsulta and listProfissional are unique', () => {
@@ -228,6 +229,50 @@ void test('worker args stay compact and a reply cannot invent a field or write t
   const steps = parseWorkerReply({ steps: [{ kind: 'context', source: 'ctx' }, { kind: 'import', path: 'adapter' }] });
   assert.equal(steps.steps, null);
   assert.equal(steps.problems.some(item => item.code === 'INVENTED_OPERATION'), true);
+});
+
+void test('the tool schema offers each kind only the keys of that kind', () => {
+  const parameters = usecaseTool().function.parameters;
+  assert.ok(parameters);
+  const steps = (parameters.properties as { steps?: unknown } | undefined)?.steps;
+  assert.ok(steps && typeof steps === 'object');
+  const items = (steps as { items?: unknown }).items;
+  assert.ok(items && typeof items === 'object' && !Array.isArray(items));
+  const node = items as Record<string, unknown>;
+  assert.equal(Object.hasOwn(node, 'properties'), false);
+  assert.equal(Object.hasOwn(node, 'oneOf'), false);
+  const anyOf = node.anyOf;
+  assert.ok(Array.isArray(anyOf));
+  assert.equal(anyOf.length, D1_WORKER_KINDS.length);
+  D1_WORKER_KINDS.forEach((kind, index) => {
+    const branch = anyOf[index];
+    assert.ok(branch && typeof branch === 'object' && !Array.isArray(branch));
+    const body = branch as Record<string, unknown>;
+    assert.equal(body.additionalProperties, false, kind);
+    const props = body.properties;
+    assert.ok(props && typeof props === 'object' && !Array.isArray(props));
+    const kindSchema = (props as Record<string, unknown>).kind;
+    assert.ok(kindSchema && typeof kindSchema === 'object');
+    assert.equal((kindSchema as { const?: unknown }).const, kind);
+    const expected = [...STEP_KEYS[kind]].sort();
+    assert.deepEqual(Object.keys(props as object).sort(), expected, kind);
+    assert.ok(Array.isArray(body.required));
+    assert.deepEqual([...body.required].map(String).sort(), expected, kind);
+  });
+});
+
+void test('parseStep still rejects a key from another kind', () => {
+  for (const kind of D1_WORKER_KINDS) {
+    const own = STEP_KEYS[kind] as readonly string[];
+    const foreign = D1_WORKER_KINDS
+      .flatMap(other => STEP_KEYS[other] as readonly string[])
+      .find(key => key !== 'kind' && !own.includes(key));
+    assert.ok(foreign, kind);
+    const reply = parseWorkerReply({ steps: [{ kind, [foreign]: 'x' }] });
+    assert.equal(reply.steps, null, kind);
+    assert.equal(reply.problems[0]?.code, 'INVENTED_FIELD', kind);
+    assert.match(reply.problems[0]?.message || '', new RegExp(`Step 0 names ${foreign}\\.`));
+  }
 });
 
 void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
