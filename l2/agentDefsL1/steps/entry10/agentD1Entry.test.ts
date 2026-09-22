@@ -140,21 +140,25 @@ void test('run bootstraps without a model, records identity, and tells the truth
 
   const inputIntents = await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[1], 2);
   const inputTrace = inputIntents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === steps[1].stepId);
-  assert.equal(inputTrace?.traceMsg, 'step input20 not implemented yet');
+  assert.match(inputTrace?.traceMsg || '', /recorded the inventory/);
+  assert.match(inputTrace?.traceMsg || '', /Consumer phases are not released/);
   assert.equal(inputTrace?.status, 'completed');
-  assert.doesNotMatch(inputTrace?.traceMsg || '', /success|generated/i);
+  assert.doesNotMatch(inputTrace?.traceMsg || '', /not implemented|success|generated/i);
   const drained = inputIntents.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId !== steps[1].stepId);
-  assert.ok(drained.length >= 1);
-  assert.ok(drained.every(intent => intent.traceMsg === 'stopped: step input20 is not implemented'));
+  assert.equal(drained.length, 0);
   const after = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status: string; awaitingStep?: string; steps: { input20?: { status: string }; domain30?: unknown };
   };
-  assert.equal(after.status, 'awaitingStep');
-  assert.equal(after.awaitingStep, 'input20');
+  assert.equal(after.status, 'inProgress');
+  assert.equal(after.awaitingStep, undefined);
   assert.equal(after.steps.input20, undefined);
   assert.equal(after.steps.domain30, undefined);
+  const inventory = host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input', extension: '.json' })];
+  assert.ok(inventory);
+  assert.match(inventory.content, /SOURCE_MISSING/);
   assert.equal(draft.content, DRAFT);
   assert.equal(draft.updatedAt, 'draft-mtime');
+  assert.equal(Object.values(host.files).some(file => file.extension === '.defs.ts' || file.extension === '.ts'), false);
 });
 
 void test('resume of an intact checkpoint and a duplicate or late hook do not rewrite it', async () => {

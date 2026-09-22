@@ -56,10 +56,10 @@
     "childrenNeverCreateTask": true
   },
   "writes": [
-    "l1/{module}/pipeline/agentDefsL1/pipeline.json"
+    "l1/{module}/pipeline/agentDefsL1/pipeline.json",
+    "l1/{module}/pipeline/agentDefsL1/input.json"
   ],
   "reservedWrites": [
-    "l1/{module}/pipeline/agentDefsL1/input.json",
     "l1/{module}/pipeline/agentDefsL1/drafts/{step}.json",
     "l1/{module}/pipeline/agentDefsL1/traces/{step}.json",
     "l1/{module}/pipeline/agentDefsL1/report.json"
@@ -114,11 +114,11 @@
     {
       "id": "input20",
       "kind": "deterministic",
-      "implemented": false,
+      "implemented": true,
       "dependsOn": ["entry10-done"],
       "doneAnchor": "input20-done",
       "artifact": "l1/{module}/pipeline/agentDefsL1/input.json",
-      "goal": "Coherent snapshot, catalog, file selection. Not implemented in this delivery."
+      "goal": "Coherent snapshot, source hashes, and the file closure. No .defs.ts. Consumer phases stay locked when a contract or a required source is missing."
     },
     {
       "id": "domain30",

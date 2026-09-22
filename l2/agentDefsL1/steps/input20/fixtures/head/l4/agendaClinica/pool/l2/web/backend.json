@@ -1,0 +1,453 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.1",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+      "page": "agenda",
+      "kind": "cmd",
+      "usecaseRef": "registrarAtendimento",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.agenda.qryListConsulta",
+      "page": "agenda",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.cadastro_profissional.cmdCreateProfissional",
+      "page": "cadastro_profissional",
+      "kind": "cmd",
+      "usecaseRef": "createProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_profissional.cmdUpdateProfissional",
+      "page": "cadastro_profissional",
+      "kind": "cmd",
+      "usecaseRef": "updateProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_profissional.qryListProfissional",
+      "page": "cadastro_profissional",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.cmdCreateProfissional",
+      "page": "cadastro_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.cmdCreateRecepcionista",
+      "page": "cadastro_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.cmdUpdateProfissional",
+      "page": "cadastro_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "updateProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.cmdUpdateRecepcionista",
+      "page": "cadastro_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "updateRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.qryListProfissional",
+      "page": "cadastro_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.cadastro_recepcionista.qryListRecepcionista",
+      "page": "cadastro_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdConfirmarConsulta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "confirmarConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdCreateConsulta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdRegistrarFalta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "registrarFalta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListConsulta",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListPaciente",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListProfissional",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreateConsulta",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreatePaciente",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListConsulta",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListPaciente",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListProfissional",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "confirmarConsulta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createConsulta",
+      "entity": "Consulta",
+      "operation": "create",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.create",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createPaciente",
+      "entity": "Paciente",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "createProfissional",
+      "entity": "Profissional",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "createRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listConsulta",
+      "entity": "Consulta",
+      "operation": "list",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.list",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listPaciente",
+      "entity": "Paciente",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listProfissional",
+      "entity": "Profissional",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "registrarAtendimento",
+      "entity": "Consulta",
+      "operation": "transition",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "registrarFalta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateProfissional",
+      "entity": "Profissional",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.update",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "updateRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.update",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "ConsultaRepository",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "consulta",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "meta": {
+    "pages": {
+      "painel_clinica": [],
+      "pacientes": [
+        "agendaClinica.pacientes.cmdCreateConsulta",
+        "agendaClinica.pacientes.cmdCreatePaciente",
+        "agendaClinica.pacientes.qryListConsulta",
+        "agendaClinica.pacientes.qryListPaciente",
+        "agendaClinica.pacientes.qryListProfissional"
+      ],
+      "consultas": [
+        "agendaClinica.consultas.cmdConfirmarConsulta",
+        "agendaClinica.consultas.cmdCreateConsulta",
+        "agendaClinica.consultas.cmdRegistrarFalta",
+        "agendaClinica.consultas.qryListConsulta",
+        "agendaClinica.consultas.qryListPaciente",
+        "agendaClinica.consultas.qryListProfissional"
+      ],
+      "cadastro_recepcionista": [
+        "agendaClinica.cadastro_recepcionista.cmdCreateProfissional",
+        "agendaClinica.cadastro_recepcionista.cmdCreateRecepcionista",
+        "agendaClinica.cadastro_recepcionista.cmdUpdateProfissional",
+        "agendaClinica.cadastro_recepcionista.cmdUpdateRecepcionista",
+        "agendaClinica.cadastro_recepcionista.qryListProfissional",
+        "agendaClinica.cadastro_recepcionista.qryListRecepcionista"
+      ],
+      "painel": [],
+      "agenda": [
+        "agendaClinica.agenda.cmdRegistrarAtendimento",
+        "agendaClinica.agenda.qryListConsulta"
+      ],
+      "cadastro_profissional": [
+        "agendaClinica.cadastro_profissional.cmdCreateProfissional",
+        "agendaClinica.cadastro_profissional.cmdUpdateProfissional",
+        "agendaClinica.cadastro_profissional.qryListProfissional"
+      ]
+    },
+    "generatedAt": "2026-09-21T17:33:58.821Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

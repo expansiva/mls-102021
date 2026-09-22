@@ -30,12 +30,15 @@ function numbered(stepId: number, planId: D1StepId, status: mls.msg.AIStepStatus
   return step;
 }
 
-void test('only entry10 is hooked; anchors and unimplemented ids are not', () => {
+void test('implemented steps are hooked; anchors and later ids are not', () => {
   createAgent();
   assert.equal(typeof D1_STEP_HOOKS.entry10?.beforePromptStep, 'function');
+  assert.equal(typeof D1_STEP_HOOKS.input20?.beforePromptStep, 'function');
   assert.equal(hooksFor('entry10')?.beforePromptStep, D1_STEP_HOOKS.entry10?.beforePromptStep);
+  assert.equal(hooksFor('input20')?.beforePromptStep, D1_STEP_HOOKS.input20?.beforePromptStep);
   assert.equal(hooksFor('entry10-done'), undefined);
-  assert.equal(hooksFor('input20'), undefined);
+  assert.equal(hooksFor('input20-done'), undefined);
+  assert.equal(hooksFor('domain30'), undefined);
   assert.equal(hooksFor(dynamicPlanId('usecases50', 'repair', '1')), undefined);
   assert.equal(hooksFor(dynamicPlanId('usecases50', 'worker', 'createConsulta')), undefined);
 });

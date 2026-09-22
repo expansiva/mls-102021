@@ -1,0 +1,248 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "recepcionista",
+      "kind": "hub",
+      "label": "Recepção",
+      "context": "Recepcionista",
+      "text": "Abre já com o seu registro de recepcionista selecionado. Daqui você cadastra pacientes, marca consultas, confirma presença e registra faltas.",
+      "children": [
+        {
+          "id": "painel_clinica",
+          "kind": "page",
+          "label": "Início",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Vejo o movimento do dia: quantas consultas estão marcadas, quantas ainda precisam de confirmação e quantas faltas já registrei."
+            },
+            {
+              "kind": "highlights",
+              "text": "Vejo o que pede atenção agora, como as consultas de hoje ainda sem confirmação."
+            },
+            {
+              "kind": "alerts",
+              "text": "Vejo avisos e prazos da agenda da clínica."
+            },
+            {
+              "kind": "inbox",
+              "text": "Vejo o que espera por mim: consulta para confirmar ou falta para registrar."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "pacientes",
+          "kind": "page",
+          "label": "Pacientes",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Busco o paciente pelo nome para ver se já está na clínica."
+            },
+            {
+              "kind": "detail",
+              "text": "Vejo os dados e o contato do paciente."
+            },
+            {
+              "kind": "form",
+              "text": "Cadastro o paciente novo ou atualizo os dados e o contato."
+            },
+            {
+              "kind": "actions",
+              "text": "Registro o paciente na clínica."
+            },
+            {
+              "kind": "timeline",
+              "text": "Vejo o que o sistema já registrou neste paciente."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "consultas",
+          "kind": "page",
+          "label": "Agenda",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Vejo as consultas por dia, com paciente, profissional, horário e situação."
+            },
+            {
+              "kind": "detail",
+              "text": "Abro a consulta e vejo paciente, profissional, horário e se já foi confirmada."
+            },
+            {
+              "kind": "form",
+              "text": "Escolho paciente, profissional e um horário livre para marcar; registro a confirmação por telefone ou a falta."
+            },
+            {
+              "kind": "actions",
+              "text": "Marco a consulta, confirmo pelo telefone ou registro a falta do paciente."
+            },
+            {
+              "kind": "timeline",
+              "text": "Vejo o que o sistema já registrou nesta consulta."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "cadastro_recepcionista",
+          "kind": "page",
+          "label": "Meu cadastro",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo os dados do meu registro na clínica."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo meus dados de recepcionista."
+            },
+            {
+              "kind": "actions",
+              "text": "Salvo as alterações do meu cadastro."
+            },
+            {
+              "kind": "timeline",
+              "text": "Vejo o histórico de alterações do meu registro."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissional",
+      "kind": "hub",
+      "label": "Meu trabalho",
+      "context": "Profissional",
+      "text": "Abre já com o seu registro de profissional selecionado. Daqui você acompanha só as suas consultas do dia e registra os atendimentos.",
+      "children": [
+        {
+          "id": "painel",
+          "kind": "page",
+          "label": "Início",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Vejo quantas consultas tenho hoje, quantas já atendi e o que ainda falta registrar."
+            },
+            {
+              "kind": "highlights",
+              "text": "Vejo a próxima consulta e as que ainda estão sem atendimento registrado."
+            },
+            {
+              "kind": "alerts",
+              "text": "Vejo avisos da minha agenda do dia."
+            },
+            {
+              "kind": "inbox",
+              "text": "Vejo as consultas que esperam eu registrar o atendimento."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "agenda",
+          "kind": "page",
+          "label": "Agenda do dia",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Vejo só as minhas consultas do dia, com horário, paciente e situação."
+            },
+            {
+              "kind": "detail",
+              "text": "Abro a consulta e vejo o paciente, o horário e o que já foi anotado."
+            },
+            {
+              "kind": "form",
+              "text": "Registro que atendi e anoto o que aconteceu na consulta."
+            },
+            {
+              "kind": "actions",
+              "text": "Marco a consulta como atendida."
+            },
+            {
+              "kind": "timeline",
+              "text": "Vejo o que o sistema já registrou nesta consulta."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "cadastro_profissional",
+          "kind": "page",
+          "label": "Meu cadastro",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo os dados do meu registro na clínica."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo meus dados profissionais."
+            },
+            {
+              "kind": "actions",
+              "text": "Salvo as alterações do meu cadastro."
+            },
+            {
+              "kind": "timeline",
+              "text": "Vejo o histórico de alterações do meu registro."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcionista": [
+      "painel_clinica",
+      "pacientes",
+      "consultas",
+      "cadastro_recepcionista",
+      "recepcionista"
+    ],
+    "actor:profissional": [
+      "painel",
+      "agenda",
+      "cadastro_profissional",
+      "profissional"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "pacientes",
+        "consultas"
+      ],
+      "confirmarConsulta": [
+        "consultas"
+      ],
+      "registrarFalta": [
+        "consultas"
+      ],
+      "consultarAgendaDiaria": [
+        "agenda"
+      ],
+      "registrarAtendimento": [
+        "agenda"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

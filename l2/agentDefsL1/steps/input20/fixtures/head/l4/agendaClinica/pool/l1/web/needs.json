@@ -1,0 +1,277 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "painel_clinica",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [],
+      "writes": []
+    },
+    {
+      "pageId": "pacientes",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/consultarDisponibilidade",
+            "journey:agendarConsulta/criarConsulta"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/localizarPacienteParaAgendamento",
+            "journey:cadastrarPaciente/localizarPaciente",
+            "journey:cadastrarPaciente/registrarPaciente"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/localizarProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:agendarConsulta/criarConsulta"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:cadastrarPaciente/registrarPaciente"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "consultas",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/consultarDisponibilidade",
+            "journey:agendarConsulta/criarConsulta",
+            "journey:confirmarConsulta/inspecionarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "journey:registrarFalta/localizarConsultaParaFalta",
+            "journey:registrarFalta/registrarFaltaPaciente"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/localizarPacienteParaAgendamento"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "journey:agendarConsulta/localizarProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:agendarConsulta/criarConsulta"
+          ]
+        },
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "confirmarConsulta",
+          "from": [
+            "journey:confirmarConsulta/registrarConfirmacao"
+          ]
+        },
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "registrarFalta",
+          "from": [
+            "journey:registrarFalta/registrarFaltaPaciente"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "cadastro_recepcionista",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Recepcionista",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "organism:form"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Profissional",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Recepcionista",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Recepcionista",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "painel",
+      "actors": [
+        "profissional"
+      ],
+      "reads": [],
+      "writes": []
+    },
+    {
+      "pageId": "agenda",
+      "actors": [
+        "profissional"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "journey:consultarAgendaDiaria/inspecionarAgendaDiaria",
+            "journey:consultarAgendaDiaria/localizarMinhasConsultasDoDia",
+            "journey:registrarAtendimento/inspecionarMinhaConsulta",
+            "journey:registrarAtendimento/localizarMinhaConsulta",
+            "journey:registrarAtendimento/registrarAtendimentoRealizado"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "registrarAtendimento",
+          "from": [
+            "journey:registrarAtendimento/registrarAtendimentoRealizado"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "cadastro_profissional",
+      "actors": [
+        "profissional"
+      ],
+      "reads": [
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "organism:form"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Profissional",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-21T17:33:58.253Z"
+  }
+}

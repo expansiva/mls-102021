@@ -1,6 +1,6 @@
 # agentDefsL1
 
-L1 defs agent. This delivery is the skeleton: CLI, project identity, and resume.
+L1 defs agent. CLI, project identity, resume, and the input20 inventory.
 It does not generate `.defs.ts` and it does not call a model. A step that is
 only declared in `docs/flow.json` reports that it is not implemented.
 
@@ -41,7 +41,7 @@ English, no model, no writes:
 |---|---|
 | `l1/<module>/pipeline/agentDefsL1/pipeline.json` | written on the first `/run` |
 | `l1/<module>/pipeline/pipeline.json` | planner file. Never written or removed |
-| `l1/<module>/pipeline/agentDefsL1/input.json` | reserved for input20 |
+| `l1/<module>/pipeline/agentDefsL1/input.json` | written by input20. Same bytes are not rewritten |
 | `l1/<module>/pipeline/agentDefsL1/drafts/<step>.json` | reserved. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/traces/<step>.json` | reserved |
 | `l1/<module>/pipeline/agentDefsL1/report.json` | reserved for finalize80 |
@@ -63,7 +63,12 @@ Intact means the file parses, those identities match the invocation, and
 bytes. A duplicate or late hook cannot move `entry10` off `approved` and
 cannot move `awaitingStep` forward.
 
-`input20` through `finalize80` are declared and not implemented. Reaching one
+`input20` records the inventory and does not generate `.defs.ts`. It approves
+itself and mints `input20-done` only when consumer phases are released. A missing
+contract or a missing required source keeps the checkpoint where `entry10` left
+it and says the phases are not released.
+
+`domain30` through `finalize80` are declared and not implemented. Reaching one
 sets `pipeline.status` to `awaitingStep` and the trace `step <id> not implemented yet`.
 That is not success. The task step is completed so the run does not fail; the
 trace and the checkpoint say the step does not exist yet.

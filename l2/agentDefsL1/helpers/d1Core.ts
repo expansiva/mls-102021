@@ -19,7 +19,7 @@ export const D1_FLOW_STEP_IDS = [
 export type D1StepId = typeof D1_FLOW_STEP_IDS[number];
 
 /** Steps that have a hook in this delivery. The flow lists the rest as not implemented. */
-export const D1_IMPLEMENTED_STEP_IDS = ['entry10'] as const;
+export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20'] as const;
 
 export const D1_STEP_TITLES: Record<D1StepId, string> = {
   entry10: 'Entry',
@@ -178,6 +178,17 @@ export function assertShortName(shortName: string): void {
 export function displayPath(file: D1FileInfo): string {
   const folder = file.folder ? `${file.folder}/` : '';
   return `_${file.project}_/l${file.level}/${folder}${file.shortName}${file.extension}`;
+}
+
+/** `l1/<module>/pipeline/agentDefsL1/input.json` — the input20 receipt. */
+export function inputFile(project: number, moduleName: string): D1FileInfo {
+  return {
+    project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName: 'input',
+    extension: '.json',
+  };
 }
 
 /** `l1/<module>/pipeline/agentDefsL1/pipeline.json` in one project. */
