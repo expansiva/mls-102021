@@ -219,3 +219,17 @@ void test('worker args stay compact and a reply cannot invent a field or write t
   assert.equal(steps.steps, null);
   assert.equal(steps.problems.some(item => item.code === 'INVENTED_OPERATION'), true);
 });
+
+void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
+  const request = coreUsecaseRequest();
+  const usecase = request.usecases[0];
+  request.usecases = [usecase];
+  request.plans = [fixturePlan(request, usecase)];
+  const path = 'l2/agendaClinica/web/contracts/agenda.defs.ts';
+  request.contracts = [{ pageId: 'agenda', path, source: 'export interface Broken { id: string' }];
+  const build = buildD1Usecases(request);
+  const problem = build.problems.find(item => item.code === 'CONTRACT_UNPARSED');
+  assert.equal(problem?.path, path);
+  assert.match(problem?.message || '', /Broken/);
+  assert.equal(build.emit.length, 0);
+});

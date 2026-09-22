@@ -210,6 +210,19 @@ void test('an update keeps the done handlers of the same page', () => {
   assert.deepEqual(data.handlers.find(item => item.route === done.route)?.grantIds, ['profissionalAgendaDiaria']);
 });
 
+void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
+  const request = coreControllerRequest();
+  const agenda = request.contracts.find(item => item.pageId === 'agenda');
+  assert.ok(agenda);
+  agenda.source = 'export interface Broken { id: string';
+  const build = buildD1Controllers(request);
+  const problem = build.problems.find(item => item.code === 'CONTRACT_UNPARSED');
+  assert.equal(problem?.path, agenda.path);
+  assert.match(problem?.message || '', /Broken/);
+  assert.equal(build.ok, false);
+  assert.equal(build.emit.length, 0);
+});
+
 function handler(handlers: D1HandlerBinding[], route: string): D1HandlerBinding {
   const found = handlers.find(item => item.route === route);
   assert.ok(found, route);

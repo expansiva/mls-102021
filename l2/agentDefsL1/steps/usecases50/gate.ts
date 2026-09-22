@@ -58,6 +58,7 @@ interface RouteOutput {
 export function buildD1Usecases(request: D1UsecaseRequest): D1UsecaseBuild {
   const problems: D1UsecaseProblem[] = [];
   const normalizations: D1UsecaseNormalization[] = [];
+  noteUnparsedContracts(request, problems);
   const enumerations = unconsumedEnumerations(request);
   const seen = new Set<string>();
   const items: D1UsecaseItem[] = [];
@@ -168,6 +169,18 @@ function planUsecase(request: D1UsecaseRequest, usecase: D1UsecaseSelection, pro
     return { ...blank, mdm, transactionBoundary: boundary, steps };
   }
   return { ...blank, mdm, transactionBoundary: boundary, steps, definition };
+}
+
+function noteUnparsedContracts(request: D1UsecaseRequest, problems: D1UsecaseProblem[]): void {
+  const seen = new Set<string>();
+  for (const contract of request.contracts) {
+    const key = contract.path || contract.pageId;
+    if (!contract.source || seen.has(key)) continue;
+    seen.add(key);
+    const fileName = contract.path || `${contract.pageId}.defs.ts`;
+    const ast = readContractAst(contract.source, fileName);
+    for (const detail of ast.unparsed) error(problems, 'CONTRACT_UNPARSED', fileName, detail);
+  }
 }
 
 function resolveRoutes(

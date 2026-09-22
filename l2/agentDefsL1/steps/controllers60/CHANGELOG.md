@@ -1,5 +1,9 @@
 # controllers60
 
+## 2026-09-22 (d1_07b)
+
+- Reads the same contract slice. An unclosed declaration is `CONTRACT_UNPARSED`.
+
 ## 2026-09-22 (d1_07)
 
 - Writes one http controller def per page. The draft holds the binding and the projection.

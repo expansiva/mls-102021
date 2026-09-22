@@ -44,7 +44,13 @@ function staticImportSpecifiers(source: string): string[] {
   return specs;
 }
 
+function isTypescriptSpecifier(spec: string): boolean {
+  const bare = spec.startsWith('npm:') ? spec.slice(4) : spec;
+  return bare === 'typescript' || bare.startsWith('typescript/') || bare.startsWith('typescript@');
+}
+
 function forbiddenImportReason(spec: string): string | null {
+  if (isTypescriptSpecifier(spec)) return `typescript import (${spec})`;
   if (spec === 'node:fs' || spec === 'node:child_process' || spec === 'fs') return `filesystem import (${spec})`;
   if (/(?:^|\/)monaco(?:-editor)?(?:\/|$)/.test(spec)) return `static import of monaco (${spec})`;
   if (spec === 'lit' || spec.startsWith('lit/')) return `static import of lit (${spec})`;
@@ -130,6 +136,21 @@ void test('createAgent stays inside agentDefsL1 and does not touch the filesyste
   assert.ok(rels.includes('steps/entry10/agentD1Entry.ts'));
   assert.ok(!rels.includes('helpers/d1TestHost.ts'));
   assert.deepEqual(offences, [], offences.map(item => `${item.file}: ${item.reason}`).join('\n'));
+});
+
+void test('the agent graph does not import typescript', () => {
+  const { files } = walkCreateAgentGraph();
+  const specifier = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
+  const hits: string[] = [];
+  for (const file of files) {
+    const source = stripComments(readFileSync(file, 'utf8'));
+    specifier.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = specifier.exec(source))) {
+      if (isTypescriptSpecifier(match[1])) hits.push(`${relAgent(file)}: ${match[1]}`);
+    }
+  }
+  assert.deepEqual(hits, []);
 });
 
 void test('product sources have no filesystem, console log, todo path or Portuguese user text', () => {

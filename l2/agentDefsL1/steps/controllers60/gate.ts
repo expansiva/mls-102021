@@ -60,7 +60,7 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   const astByPage = new Map<string, D1ContractAst>();
   const byPage = new Map<string, D1HandlerBinding[]>();
   for (const route of request.routes) {
-    const binding = bindRoute(request, route, astFor(request, astByPage, route.page), problems);
+    const binding = bindRoute(request, route, astFor(request, astByPage, route.page, problems), problems);
     const list = byPage.get(route.page) || [];
     list.push(binding);
     byPage.set(route.page, list);
@@ -394,12 +394,19 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
   };
 }
 
-function astFor(request: D1ControllerRequest, cache: Map<string, D1ContractAst>, pageId: string): D1ContractAst {
+function astFor(
+  request: D1ControllerRequest,
+  cache: Map<string, D1ContractAst>,
+  pageId: string,
+  problems: D1ControllerProblem[],
+): D1ContractAst {
   const cached = cache.get(pageId);
   if (cached) return cached;
   const contract = request.contracts.find(item => item.pageId === pageId);
-  const ast = readContractAst(contract?.source || '', contract?.path || `${pageId}.defs.ts`);
+  const fileName = contract?.path || `${pageId}.defs.ts`;
+  const ast = readContractAst(contract?.source || '', fileName);
   cache.set(pageId, ast);
+  for (const detail of ast.unparsed) error(problems, 'CONTRACT_UNPARSED', fileName, detail);
   return ast;
 }
 
