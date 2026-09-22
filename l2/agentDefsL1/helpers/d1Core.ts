@@ -19,7 +19,7 @@ export const D1_FLOW_STEP_IDS = [
 export type D1StepId = typeof D1_FLOW_STEP_IDS[number];
 
 /** Steps that have a hook in this delivery. The flow lists the rest as not implemented. */
-export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20'] as const;
+export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20', 'domain30'] as const;
 
 export const D1_STEP_TITLES: Record<D1StepId, string> = {
   entry10: 'Entry',
@@ -191,6 +191,17 @@ export function inputFile(project: number, moduleName: string): D1FileInfo {
   };
 }
 
+/** `l1/<module>/pipeline/agentDefsL1/drafts/<step>.json`. A draft does not approve the step. */
+export function draftFile(project: number, moduleName: string, step: D1StepId): D1FileInfo {
+  return {
+    project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1/drafts`,
+    shortName: step,
+    extension: '.json',
+  };
+}
+
 /** `l1/<module>/pipeline/agentDefsL1/pipeline.json` in one project. */
 export function pipelineFile(project: number, moduleName: string): D1FileInfo {
   return {
@@ -274,7 +285,7 @@ export function helpText(moduleName: string, project: number): string {
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
-    'This agent does not write .defs.ts and does not call a model.',
+    'domain30 writes domain defs. This agent does not call a model.',
     `Steps not implemented yet: ${pending.join(', ')}.`,
   ].join('\n');
 }
