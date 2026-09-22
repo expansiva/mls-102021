@@ -1,0 +1,58 @@
+{
+  "$id": "https://collab.codes/schemas/agentDefsL1/pipeline/2026-09-21-d1-pipeline-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "flowId",
+    "flowVersion",
+    "project",
+    "moduleName",
+    "status",
+    "command",
+    "steps",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-21-d1-pipeline-v1" },
+    "flowId": { "type": "string", "const": "agentDefsL1" },
+    "flowVersion": { "type": "string", "const": "2026-09-21-d1-flow-v1" },
+    "project": { "type": "integer", "minimum": 1 },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "status": { "type": "string", "enum": ["inProgress", "awaitingStep", "complete", "failed"] },
+    "awaitingStep": {
+      "type": "string",
+      "enum": ["entry10", "input20", "domain30", "persistence40", "usecases50", "controllers60", "support70", "finalize80"]
+    },
+    "command": { "type": "string", "enum": ["run", "resume"] },
+    "steps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry10": { "$ref": "#/$defs/stepState" },
+        "input20": { "$ref": "#/$defs/stepState" },
+        "domain30": { "$ref": "#/$defs/stepState" },
+        "persistence40": { "$ref": "#/$defs/stepState" },
+        "usecases50": { "$ref": "#/$defs/stepState" },
+        "controllers60": { "$ref": "#/$defs/stepState" },
+        "support70": { "$ref": "#/$defs/stepState" },
+        "finalize80": { "$ref": "#/$defs/stepState" }
+      }
+    },
+    "updatedAt": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "stepState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "updatedAt"],
+      "properties": {
+        "status": { "type": "string", "enum": ["running", "approved", "failed"] },
+        "updatedAt": { "type": "string", "minLength": 1 },
+        "artifactPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "error": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "flowId": "agentDefsL1",
+  "schemaVersion": "2026-09-21-d1-flow-v1",
+  "status": "entry10",
+  "description": "L1 defs skeleton. entry10 records project and module identity and an intact checkpoint. Later steps are declared and not implemented: a missing step reports that it does not exist. This flow writes no .defs.ts and never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
+  "canonicalReferences": [
+    "mls-base/skills/00_index.md",
+    "mls-base/skills/agentsBestPractices.md",
+    "mls-base/skills/collab_messages.md",
+    "mls-base/skills/certificacao.md"
+  ],
+  "principles": [
+    "Sequence is declared in this file via dependsOn and done-anchors. Steps do not enqueue their successor by name.",
+    "A done-anchor unlocks the next step. A draft file never unlocks a phase and is never approval evidence.",
+    "Pipeline state for this agent lives at l1/{module}/pipeline/agentDefsL1/pipeline.json in the project captured at invocation. The task record is orchestration, not truth.",
+    "The planner file l1/{module}/pipeline/pipeline.json is never written or removed. Read and remove of this agent's files use the same file identity as the write.",
+    "A step declared here with implemented false stops the run. pipeline.status becomes awaitingStep naming that step. The task completes without failed. The trace says the step is not implemented.",
+    "Project and module identity are part of every file and of the checkpoint. The same module name in another project is a different module.",
+    "An intact checkpoint is not rewritten by /resume, by a second /run, or by a duplicate or late hook. Approved step state is monotonic.",
+    "Child hooks never create a task and never add steps. They complete with a trace.",
+    "One repair per unit. Global repair attempts stop at the declared ceiling. finalize80 does not open another repair cycle.",
+    "update-status cleans the interaction with input_output. A future clarification that is still pending must not be cleaned.",
+    "User-facing refusals are English. /candidate and /rebuild all are refused. Nothing is deleted and no candidate root is applied.",
+    "Deterministic first. entry10 has no LLM. No prompt.md until a step actually calls a model."
+  ],
+  "invocation": {
+    "run": "@@agentDefsL1 <lowerCamel> /run",
+    "resume": "@@agentDefsL1 <lowerCamel> /resume",
+    "help": "@@agentDefsL1 <lowerCamel> /help",
+    "moduleRule": "The module token is required and must be lowerCamel. The name is never inferred from prose.",
+    "projectRule": "mls.actualProject is captured once at invocation and stored on the task and on the checkpoint. Later hooks do not re-read the global.",
+    "candidateRule": "/candidate uses the same spelling as the L1 planner and is refused. A candidate path that contains '..' is refused. No tobe root is applied.",
+    "rebuildAllRule": "/rebuild all uses the same spelling as agentNewSolution5 and is refused. Nothing is deleted.",
+    "helpRule": "/help writes nothing.",
+    "noHandoff": "This flow never dispatches agentCbMaterialize, agentChangeBackend or agentChangeFrontend."
+  },
+  "dynamicPlanIds": {
+    "doneAnchor": "{stepId}-done",
+    "fanout": "{stepId}-fanout",
+    "worker": "{stepId}-worker-{itemId}",
+    "repair": "{stepId}-repair-{n}",
+    "note": "entry10 mints only entry10-done. Fan-out, worker and repair ids are reserved so a later step can mint them without inventing a second spelling. A done-anchor is not dispatched as its step."
+  },
+  "repair": {
+    "perUnit": 1,
+    "globalMax": 8,
+    "finalizeRepair": false
+  },
+  "interactionCleanup": "input_output",
+  "parallelism": {
+    "mode": "parallel_dynamic",
+    "maxParallel": 5,
+    "title": "Generating {{completed}}/{{total}} items, failed {{failed}}",
+    "childrenNeverFail": true,
+    "childrenNeverAddSteps": true,
+    "childrenNeverCreateTask": true
+  },
+  "writes": [
+    "l1/{module}/pipeline/agentDefsL1/pipeline.json"
+  ],
+  "reservedWrites": [
+    "l1/{module}/pipeline/agentDefsL1/input.json",
+    "l1/{module}/pipeline/agentDefsL1/drafts/{step}.json",
+    "l1/{module}/pipeline/agentDefsL1/traces/{step}.json",
+    "l1/{module}/pipeline/agentDefsL1/report.json"
+  ],
+  "neverWrites": [
+    "l1/{module}/pipeline/pipeline.json",
+    "l1/{module}/**/*.defs.ts",
+    "l1/{module}/**/*.ts",
+    "l4/**",
+    "l2/**",
+    "l5/**",
+    "pool/**"
+  ],
+  "neverDispatch": [
+    "agentCbMaterialize",
+    "agentChangeBackend",
+    "agentChangeFrontend"
+  ],
+  "resume": {
+    "metadata": [
+      "project",
+      "moduleName",
+      "flowId",
+      "flowVersion",
+      "schemaVersion",
+      "command",
+      "steps.entry10.status",
+      "steps.entry10.artifactPaths",
+      "updatedAt"
+    ],
+    "intactMeans": "The checkpoint parses, schema and flow identity match, project and module match the invocation, and entry10 is approved with its own artifact path. A draft file does not approve a later step.",
+    "noop": "An intact checkpoint is not rewritten. Bytes of that file and of the planner pipeline stay as they were."
+  },
+  "artifacts": {
+    "pipeline": "l1/{module}/pipeline/agentDefsL1/pipeline.json",
+    "plannerPipeline": "l1/{module}/pipeline/pipeline.json",
+    "input": "l1/{module}/pipeline/agentDefsL1/input.json",
+    "draft": "l1/{module}/pipeline/agentDefsL1/drafts/{step}.json",
+    "trace": "l1/{module}/pipeline/agentDefsL1/traces/{step}.json",
+    "report": "l1/{module}/pipeline/agentDefsL1/report.json"
+  },
+  "steps": [
+    {
+      "id": "entry10",
+      "kind": "deterministic",
+      "implemented": true,
+      "dependsOn": [],
+      "doneAnchor": "entry10-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/pipeline.json",
+      "goal": "CLI, project and module identity, resume of an intact checkpoint. No LLM. Refuses /candidate, /rebuild all, an insecure path, an unknown flag and a missing module."
+    },
+    {
+      "id": "input20",
+      "kind": "deterministic",
+      "implemented": false,
+      "dependsOn": ["entry10-done"],
+      "doneAnchor": "input20-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/input.json",
+      "goal": "Coherent snapshot, catalog, file selection. Not implemented in this delivery."
+    },
+    {
+      "id": "domain30",
+      "kind": "deterministic",
+      "implemented": false,
+      "dependsOn": ["input20-done"],
+      "doneAnchor": "domain30-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/domain30.json",
+      "goal": "Models, lifecycle, referenced invariants. Not implemented in this delivery."
+    },
+    {
+      "id": "persistence40",
+      "kind": "deterministic",
+      "implemented": false,
+      "dependsOn": ["domain30-done"],
+      "doneAnchor": "persistence40-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/persistence40.json",
+      "goal": "Ports, tables and adapters. Not implemented in this delivery."
+    },
+    {
+      "id": "usecases50",
+      "kind": "agent-checkpoint",
+      "implemented": false,
+      "dependsOn": ["persistence40-done"],
+      "doneAnchor": "usecases50-done",
+      "modelAlias": "reasoning",
+      "parallel": "parallel_dynamic",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/usecases50.json",
+      "goal": "One worker per selected usecase. Not implemented in this delivery. No worker is launched."
+    },
+    {
+      "id": "controllers60",
+      "kind": "deterministic",
+      "implemented": false,
+      "dependsOn": ["usecases50-done"],
+      "doneAnchor": "controllers60-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/controllers60.json",
+      "goal": "Handlers per page, typed binding, projection. Not implemented in this delivery."
+    },
+    {
+      "id": "support70",
+      "kind": "agent-checkpoint",
+      "implemented": false,
+      "dependsOn": ["controllers60-done"],
+      "doneAnchor": "support70-done",
+      "modelAlias": "reasoning",
+      "llm": "deterministic structure; one worker only for a unit that needs judgment",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/support70.json",
+      "goal": "Access, composition, seeds and effects. Not implemented in this delivery."
+    },
+    {
+      "id": "finalize80",
+      "kind": "deterministic",
+      "implemented": false,
+      "dependsOn": ["support70-done"],
+      "doneAnchor": "finalize80-done",
+      "artifact": "l1/{module}/pipeline/agentDefsL1/report.json",
+      "goal": "Integrity, coverage, stale, receipt. Not implemented in this delivery. Does not open a repair cycle."
+    }
+  ]
+}
