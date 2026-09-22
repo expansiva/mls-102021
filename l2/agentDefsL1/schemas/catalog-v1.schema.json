@@ -1,0 +1,40 @@
+{
+  "$id": "https://collab.codes/schemas/agentDefsL1/catalog/2026-09-21-d1-catalog-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "moduleName", "items", "presentPaths", "justifications", "absences"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-21-d1-catalog-v1" },
+    "project": { "type": "integer", "minimum": 1 },
+    "moduleName": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "https://collab.codes/schemas/agentDefsL1/pipeline-item/2026-09-21-d1-pipeline-item-v1" }
+    },
+    "presentPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "justifications": { "type": "array", "items": { "$ref": "#/$defs/justification" } },
+    "absences": { "type": "array", "items": { "$ref": "#/$defs/absence" } }
+  },
+  "$defs": {
+    "justification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "artifactType", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "artifactType": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "absence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactType", "reason"],
+      "properties": {
+        "artifactType": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

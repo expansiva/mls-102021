@@ -1,0 +1,34 @@
+{
+  "$id": "https://collab.codes/schemas/agentDefsL1/pipeline-item/2026-09-21-d1-pipeline-item-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "defPath", "outputPath", "outputAvailability", "dependsFiles", "dependsOn", "skills"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": [
+        "domainEntity",
+        "valueObject",
+        "repositoryPort",
+        "table",
+        "repositoryAdapter",
+        "usecase",
+        "httpController",
+        "accessScope",
+        "authorityMap",
+        "repositoryRegistration",
+        "persistenceSeeds",
+        "integrationOutbound"
+      ]
+    },
+    "defPath": { "type": "string", "minLength": 1 },
+    "outputPath": { "type": "string", "minLength": 1 },
+    "outputAvailability": { "type": "string", "enum": ["future", "present"] },
+    "dependsFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "dependsOn": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "skills": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "routes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

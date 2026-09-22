@@ -73,6 +73,57 @@ sets `pipeline.status` to `awaitingStep` and the trace `step <id> not implemente
 That is not success. The task step is completed so the run does not fail; the
 trace and the checkpoint say the step does not exist yet.
 
+## Defs contract
+
+Schema `2026-09-21-d1-definition-v1`. The first data export is `definition`
+(`schemaVersion`, `artifactType`, `artifactId`, `moduleName`, `data`). The
+second is `pipeline`. There is no `status` field and no `agent`. A collision
+of path, id, route or output is refused before `writeText`. The file identity
+is `artifactFile`, which uses the same `fileInfoFromDisplay` as input20.
+Nothing is stripped to make a document pass.
+
+`readL1Inventory` reads `usecase`, `repositoryPort`, `table` and
+`httpController`. For a table it uses `data.tableId` and `artifactId` as the
+entity, so `data.entityId` must equal `artifactId`. Function `input`/`output`
+are a projection (`name`, `type`, `fieldRef`), not a second DTO.
+`handlers.route` is the route string from the plan.
+
+| artifactType | file under `l1/<module>/` | export |
+|---|---|---|
+| domainEntity | `layer_3_domain/entities/<lowerFirst>.defs.ts` | `definition` |
+| valueObject | `layer_3_domain/value-objects/<id>.defs.ts` | `definition` |
+| repositoryPort | `layer_2_application/ports/<entity>Repository.defs.ts` | `definition` |
+| table | `layer_1_external/adapters/persistence/<tableId>.defs.ts` | `definition` |
+| repositoryAdapter | `layer_1_external/adapters/persistence/<entity>RepositoryAdapter.defs.ts` | `definition` |
+| usecase | `layer_2_application/usecases/<usecaseId>.defs.ts` | `definition` |
+| httpController | `layer_1_external/adapters/http/controllers/<pageId>.defs.ts` | `definition` |
+| accessScope | `layer_2_application/scope/accessScope.defs.ts` | `definition` |
+| authorityMap | `layer_1_external/auth/authorityMap.defs.ts` | `definition` |
+| repositoryRegistration | `layer_1_external/adapters/persistence/registerRepositories.defs.ts` | `definition` |
+| persistenceSeeds | `layer_1_external/adapters/persistence/seeds.defs.ts` | `definition` |
+| integrationOutbound | `layer_1_external/adapters/integration/outbound.defs.ts` | `definition` |
+
+`export default definition` points at that object. Pipeline item fields are
+`id`, `type`, `defPath`, `outputPath`, `outputAvailability`, `dependsFiles`,
+`dependsOn`, `skills`, and `routes` on a controller. `id` is
+`project/module/type/owner`. `outputAvailability: future` is the `.ts` the
+materializer does not write in this delivery. A `.d.ts` with no item
+`outputPath` is an uncontracted declaration. A path that is neither a planned
+def, a present file nor a declared output is a missing input.
+
+Every property in the three schemas has a reader in `D1_FIELD_READERS`.
+Auxiliary types (`valueObject`, `accessScope`, `authorityMap`,
+`repositoryRegistration`, `persistenceSeeds`, `integrationOutbound`) are not
+dispatched by agentChangeBackend. A value object with an empty `referencedBy`
+is not emitted. The agendaClinica example records that absence instead of a
+file.
+
+The design forecast of 26 is 5 models, 1 port, 1 table, 1 adapter, 13 usecases
+and 5 controllers. The measured plan fixture has 6 controllers, so the same
+core categories sum to 27, plus 5 justified auxiliaries (32 planned defs).
+That sum is not a count of files this agent generated. The flow steps still
+do not call the writer.
+
 ## Flow
 
 `docs/flow.json` is the contract. Done-anchors (`<step>-done`) unlock the next

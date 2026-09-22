@@ -1,0 +1,342 @@
+{
+  "$id": "https://collab.codes/schemas/agentDefsL1/definition/2026-09-21-d1-definition-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactType", "artifactId", "moduleName", "data"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-21-d1-definition-v1" },
+    "artifactType": {
+      "type": "string",
+      "enum": [
+        "domainEntity",
+        "valueObject",
+        "repositoryPort",
+        "table",
+        "repositoryAdapter",
+        "usecase",
+        "httpController",
+        "accessScope",
+        "authorityMap",
+        "repositoryRegistration",
+        "persistenceSeeds",
+        "integrationOutbound"
+      ]
+    },
+    "artifactId": { "type": "string", "minLength": 1 },
+    "moduleName": { "type": "string", "minLength": 1 },
+    "data": { "description": "Payload for artifactType. definitionIssues selects the matching $defs entry. This envelope has no status field." }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "derived": { "type": "boolean" },
+        "ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "domainEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "storageTarget", "fields", "lifecycle", "invariants", "imports"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "storageTarget": { "type": "string", "enum": ["moduleDatabase", "mdm", "external", "derived"] },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "lifecycle": { "$ref": "#/$defs/lifecycle" },
+        "invariants": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "imports": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["states", "transitions"],
+      "properties": {
+        "states": { "type": "array", "items": { "$ref": "#/$defs/lifecycleState" } },
+        "transitions": { "type": "array", "items": { "$ref": "#/$defs/transition" } }
+      }
+    },
+    "lifecycleState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reachedBy"],
+      "properties": {
+        "state": { "type": "string", "minLength": 1 },
+        "reachedBy": { "type": "string", "enum": ["actor", "command", "time"] }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transitionId", "from", "to", "by", "ruleRefs"],
+      "properties": {
+        "transitionId": { "type": "string", "minLength": 1 },
+        "from": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "to": { "type": "string", "minLength": 1 },
+        "by": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "ruleRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "valueObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valueObjectId", "fields", "referencedBy"],
+      "properties": {
+        "valueObjectId": { "type": "string", "minLength": 1 },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "referencedBy": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "repositoryPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "interfaceName", "methods"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "interfaceName": { "type": "string", "minLength": 1 },
+        "methods": { "type": "array", "items": { "$ref": "#/$defs/portMethod" } }
+      }
+    },
+    "portMethod": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "params", "returns"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "params": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "returns": { "type": "string", "minLength": 1 }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tableId", "entityId", "physicalName", "primaryKey", "uniqueKeys", "indexes"],
+      "properties": {
+        "tableId": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string", "minLength": 1 },
+        "physicalName": { "type": "string", "minLength": 1 },
+        "primaryKey": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "uniqueKeys": { "type": "array", "items": { "type": "array", "items": { "type": "string", "minLength": 1 } } },
+        "indexes": { "type": "array", "items": { "$ref": "#/$defs/tableIndex" } }
+      }
+    },
+    "tableIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "columns", "unique"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "columns": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "unique": { "type": "boolean" }
+      }
+    },
+    "repositoryAdapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "portId", "tableId", "columns"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "portId": { "type": "string", "minLength": 1 },
+        "tableId": { "type": "string", "minLength": 1 },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/columnMap" } }
+      }
+    },
+    "columnMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "column"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "column": { "type": "string", "minLength": 1 }
+      }
+    },
+    "usecase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usecaseId", "entityId", "operation", "ports", "rulesApplied", "functions", "routeProjections", "portCalls", "transactional", "effects"],
+      "properties": {
+        "usecaseId": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string", "minLength": 1 },
+        "operation": { "type": "string", "minLength": 1 },
+        "ports": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "functions": { "type": "array", "items": { "$ref": "#/$defs/usecaseFunction" } },
+        "routeProjections": { "type": "array", "items": { "$ref": "#/$defs/routeProjection" } },
+        "portCalls": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "transactional": { "type": "boolean" },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/effectRef" } }
+      }
+    },
+    "usecaseFunction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["functionName", "input", "output", "contractRefs"],
+      "properties": {
+        "functionName": { "type": "string", "minLength": 1 },
+        "input": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } },
+        "output": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } },
+        "contractRefs": { "type": "array", "items": { "$ref": "#/$defs/contractRef" } }
+      }
+    },
+    "projectionField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "fieldRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "contractRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "symbol"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "symbol": { "type": "string", "minLength": 1 }
+      }
+    },
+    "routeProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "contractPath", "projection", "outputFields"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "contractPath": { "type": "string", "minLength": 1 },
+        "projection": { "type": "string", "enum": ["declared", "unresolved"] },
+        "outputFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "effectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "httpController": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageId", "handlers"],
+      "properties": {
+        "pageId": { "type": "string", "minLength": 1 },
+        "handlers": { "type": "array", "items": { "$ref": "#/$defs/handler" } }
+      }
+    },
+    "handler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "kind", "usecaseId", "grantIds"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["query", "command"] },
+        "usecaseId": { "type": "string", "minLength": 1 },
+        "grantIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "accessScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scopeId", "grants"],
+      "properties": {
+        "scopeId": { "type": "string", "minLength": 1 },
+        "grants": { "type": "array", "items": { "$ref": "#/$defs/grant" } }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grantId", "actorRef", "entityRefs", "disclosure"],
+      "properties": {
+        "grantId": { "type": "string", "minLength": 1 },
+        "actorRef": { "type": "string", "minLength": 1 },
+        "anchorEntity": { "type": "string", "minLength": 1 },
+        "entityRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "disclosure": { "type": "string", "enum": ["fieldsOnly", "fullRecord"] },
+        "allowedFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "authorityMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapId", "entries"],
+      "properties": {
+        "mapId": { "type": "string", "minLength": 1 },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/authorityEntry" } }
+      }
+    },
+    "authorityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grantId", "actorRef"],
+      "properties": {
+        "grantId": { "type": "string", "minLength": 1 },
+        "actorRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "repositoryRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registrationId", "adapters"],
+      "properties": {
+        "registrationId": { "type": "string", "minLength": 1 },
+        "adapters": { "type": "array", "items": { "$ref": "#/$defs/registeredAdapter" } }
+      }
+    },
+    "registeredAdapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portId", "adapterArtifactId"],
+      "properties": {
+        "portId": { "type": "string", "minLength": 1 },
+        "adapterArtifactId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "persistenceSeeds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seedId", "scenarios"],
+      "properties": {
+        "seedId": { "type": "string", "minLength": 1 },
+        "scenarios": { "type": "array", "items": { "$ref": "#/$defs/seedScenario" } }
+      }
+    },
+    "seedScenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarioId", "tableId", "constraints"],
+      "properties": {
+        "scenarioId": { "type": "string", "minLength": 1 },
+        "tableId": { "type": "string", "minLength": 1 },
+        "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "integrationOutbound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["integrationId", "events"],
+      "properties": {
+        "integrationId": { "type": "string", "minLength": 1 },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/outboundEvent" } }
+      }
+    },
+    "outboundEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "on", "entityId", "mechanism"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "on": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string", "minLength": 1 },
+        "mechanism": { "type": "string" }
+      }
+    }
+  }
+}
