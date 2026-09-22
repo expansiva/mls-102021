@@ -1,5 +1,11 @@
 # usecases50
 
+## 2026-09-22 (d1_13f)
+
+- An exported `*Route` const whose value is the route string binds that route to `StemInput`/`StemOutput`. The `routes` map still binds by key. The first interface is not an identity.
+- `projectFields` follows an array alias to its element type so a list output keeps the declared item fields.
+- An unresolved projection records `PROJECTION_UNRESOLVED` with the route and the missing symbol. It is no longer silent.
+
 ## 2026-09-22 (d1_13e)
 
 - `mdm.call` in the tool schema is an enum of `D1_MDM_CALLS`. `parseStep` still refuses any other call.

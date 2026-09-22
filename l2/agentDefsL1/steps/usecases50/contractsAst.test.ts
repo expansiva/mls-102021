@@ -59,6 +59,11 @@ const SAMPLES = [
     export const routes = { [\`mod.page.qry\`]: { output: "Named" }, "mod.page.cmd": ({ output: "Indexed" }) } as const;
   `,
   'export interface Esc { id: string; }\nexport const routes = { "line\\n": { output: "Esc" }, "quote\\"": { output: "Esc" } } as const;\n',
+  `
+    export const createConsultaRoute = "agendaClinica.pacientes.cmdCreateConsulta" as const;
+    export interface CreateConsultaInput { "patientId": string; }
+    export interface CreateConsultaOutput { "id": string; "status": string; }
+  `,
 ];
 
 void test('the scanner matches the typescript reader on contract shapes', () => {
@@ -77,6 +82,21 @@ void test('the scanner matches the typescript reader on contract shapes', () => 
     }
   }
   assert.deepEqual(mismatches, []);
+});
+
+void test('a Route const binds the route string to StemInput and StemOutput', () => {
+  const source = `
+    export const createConsultaRoute = "agendaClinica.pacientes.cmdCreateConsulta" as const;
+    export interface CreateConsultaInput { "patientId": string; }
+    export interface CreateConsultaOutput { "id": string; "status": string; }
+  `;
+  const ast = readContractAst(source, 'pacientes.defs.ts');
+  assert.deepEqual(ast.bindings, [{
+    route: 'agendaClinica.pacientes.cmdCreateConsulta',
+    input: 'CreateConsultaInput',
+    output: 'CreateConsultaOutput',
+  }]);
+  assert.equal(symbolFields(ast, 'CreateConsultaOutput')?.some(field => field.name === 'id'), true);
 });
 
 void test('an unclosed export is declared and a closed file is not', () => {
@@ -109,23 +129,33 @@ function readWithTypescript(source: string, fileName: string): { bindings: D1Rou
 
 function readRoutes(node: ts.VariableStatement, sf: ts.SourceFile, bindings: D1RouteBinding[], assertions: string[]): void {
   for (const decl of node.declarationList.declarations) {
-    if (!ts.isIdentifier(decl.name) || decl.name.text !== 'routes' || !decl.initializer) continue;
-    const expr = unwrap(decl.initializer);
-    if (!ts.isObjectLiteralExpression(expr)) continue;
-    for (const property of expr.properties) {
-      if (!ts.isPropertyAssignment(property)) continue;
-      const route = propertyName(property.name, sf);
-      if (!route) continue;
-      const value = unwrap(property.initializer);
-      if (!ts.isObjectLiteralExpression(value)) {
-        if (expressionAsserts(property.initializer)) assertions.push(route);
-        continue;
+    if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+    if (decl.name.text === 'routes') {
+      const expr = unwrap(decl.initializer);
+      if (!ts.isObjectLiteralExpression(expr)) continue;
+      for (const property of expr.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const route = propertyName(property.name, sf);
+        if (!route) continue;
+        const value = unwrap(property.initializer);
+        if (!ts.isObjectLiteralExpression(value)) {
+          if (expressionAsserts(property.initializer)) assertions.push(route);
+          continue;
+        }
+        const input = stringProp(value, 'input', sf);
+        const output = stringProp(value, 'output', sf);
+        if (!output) continue;
+        bindings.push({ route, input, output });
       }
-      const input = stringProp(value, 'input', sf);
-      const output = stringProp(value, 'output', sf);
-      if (!output) continue;
-      bindings.push({ route, input, output });
+      continue;
     }
+    if (!decl.name.text.endsWith('Route')) continue;
+    const stem = decl.name.text.slice(0, -'Route'.length);
+    if (!stem) continue;
+    const value = unwrap(decl.initializer);
+    if (!ts.isStringLiteral(value) && !ts.isNoSubstitutionTemplateLiteral(value)) continue;
+    const pascal = `${stem[0].toUpperCase()}${stem.slice(1)}`;
+    bindings.push({ route: value.text, input: `${pascal}Input`, output: `${pascal}Output` });
   }
 }
 

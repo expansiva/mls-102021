@@ -1,7 +1,10 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
@@ -64,6 +67,12 @@ void test('a contract type is bound by the route map, not by the first or the sa
   assert.deepEqual(consultas?.outputFields, ['id', 'status']);
   assert.equal(agenda?.projection, 'unresolved');
   assert.deepEqual(agenda?.outputFields, []);
+  assert.equal(build.problems.some(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === agenda?.route), true);
+  assert.match(
+    build.problems.find(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === agenda?.route)?.message || '',
+    /agendaClinica\.agenda\.qryListConsulta/,
+  );
+  assert.equal(build.problems.some(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === consultas?.route), false);
   assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), false);
 });
 
@@ -352,3 +361,119 @@ void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
   assert.match(problem?.message || '', /Broken/);
   assert.equal(build.emit.length, 0);
 });
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REAL_CONTRACTS = path.join(HERE, '../input20/fixtures/contracts');
+const MISSING_ROUTE = 'agendaClinica.pacientes.cmdMissingShape';
+
+void test('the six L2 contracts declare route signatures, and a route without a form is unresolved with a problem', () => {
+  const contracts = realContractSources();
+  assert.equal(contracts.length, 6);
+  let declared = 0;
+  for (const contract of contracts) {
+    const matcher = /export const (\w+Route) = ["']([^"']+)["']/g;
+    let match: RegExpExecArray | null;
+    let found = 0;
+    while ((match = matcher.exec(contract.source))) {
+      found += 1;
+      const route = match[2];
+      const request = requestForRealRoute(contract, route);
+      const build = buildD1Usecases(request);
+      assert.equal(
+        build.ok,
+        true,
+        `${route}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`,
+      );
+      const data = build.emit[0]?.definition.data as {
+        functions: Array<{ input: Array<{ name: string }>; contractRefs: Array<{ route: string; symbol: string }> }>;
+        routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+      };
+      const row = data.routeProjections.find(item => item.route === route);
+      assert.equal(row?.projection, 'declared', route);
+      assert.ok((row?.outputFields.length || 0) > 0, route);
+      const stem = match[1].slice(0, -'Route'.length);
+      const output = `${stem.charAt(0).toUpperCase()}${stem.slice(1)}Output`;
+      assert.equal(data.functions[0].contractRefs.some(item => item.route === route && item.symbol === output), true, route);
+      declared += 1;
+    }
+    assert.ok(found > 0, contract.pageId);
+  }
+  assert.equal(declared, 26);
+
+  const pacientes = contracts.find(item => item.pageId === 'pacientes');
+  assert.ok(pacientes);
+  const create = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta'));
+  const createData = create.emit[0]?.definition.data as {
+    functions: Array<{ input: Array<{ name: string }>; contractRefs: Array<{ route: string; symbol: string }> }>;
+    routeProjections: Array<{ route: string; outputFields: string[] }>;
+  };
+  assert.deepEqual(createData.routeProjections[0]?.outputFields, ['id', 'version', 'patientId', 'professionalId', 'scheduledAt', 'status']);
+  assert.deepEqual(createData.functions[0].input.map(field => field.name), ['patientId', 'professionalId', 'scheduledAt', 'status']);
+  assert.equal(createData.functions[0].contractRefs[0]?.symbol, 'CreateConsultaOutput');
+
+  const list = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.qryListConsulta'));
+  const listData = list.emit[0]?.definition.data as { routeProjections: Array<{ outputFields: string[] }> };
+  assert.deepEqual(listData.routeProjections[0]?.outputFields, ['id', 'version', 'patientId', 'professionalId', 'scheduledAt', 'status']);
+
+  const missing = requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta');
+  missing.routes[0].route = MISSING_ROUTE;
+  missing.usecases[0].routes = [MISSING_ROUTE];
+  missing.plans = missing.usecases.map(item => fixturePlan(missing, item));
+  const unbound = buildD1Usecases(missing);
+  const unboundData = unbound.emit[0]?.definition.data as {
+    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+  };
+  assert.equal(unboundData.routeProjections[0]?.projection, 'unresolved');
+  assert.deepEqual(unboundData.routeProjections[0]?.outputFields, []);
+  const problem = unbound.problems.find(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === MISSING_ROUTE);
+  assert.equal(problem?.severity, 'review');
+  assert.match(problem?.message || '', /cmdMissingShape/);
+});
+
+function realContractSources(): D1UsecaseRequest['contracts'] {
+  const names = readdirSync(REAL_CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
+  return names.map(name => {
+    const pageId = name.replace(/\.defs\.txt$/, '');
+    return {
+      pageId,
+      path: `l2/agendaClinica/web/contracts/${pageId}.defs.ts`,
+      source: readFileSync(path.join(REAL_CONTRACTS, name), 'utf8'),
+    };
+  });
+}
+
+function requestForRealRoute(contract: D1UsecaseRequest['contracts'][number], route: string): D1UsecaseRequest {
+  const tail = route.split('.').pop() || '';
+  const kind = tail.startsWith('cmd') ? 'cmd' : 'qry';
+  const raw = tail.slice(3);
+  const usecaseId = `${raw.charAt(0).toLowerCase()}${raw.slice(1)}`;
+  const request = coreUsecaseRequest();
+  for (const entity of request.entities) {
+    for (const field of entity.fields) field.derived = false;
+  }
+  request.contracts = [contract];
+  request.routes = [{ route, page: contract.pageId, kind, usecaseRef: usecaseId }];
+  request.usecases = [{
+    usecaseId,
+    entity: entityOf(usecaseId),
+    operation: operationOf(usecaseId),
+    routes: [route],
+    defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
+  }];
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  return request;
+}
+
+function operationOf(usecaseId: string): string {
+  if (usecaseId.startsWith('list')) return 'list';
+  if (usecaseId.startsWith('create')) return 'create';
+  if (usecaseId.startsWith('update')) return 'update';
+  return 'transition';
+}
+
+function entityOf(usecaseId: string): string {
+  if (usecaseId.toLowerCase().includes('paciente')) return 'Paciente';
+  if (usecaseId.toLowerCase().includes('profissional')) return 'Profissional';
+  if (usecaseId.toLowerCase().includes('recepcionista')) return 'Recepcionista';
+  return 'Consulta';
+}

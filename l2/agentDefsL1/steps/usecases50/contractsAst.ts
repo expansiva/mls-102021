@@ -64,9 +64,9 @@ const TYPE_KEYWORDS = new Set([
 ]);
 
 /**
- * Reads exported `routes` bindings and exported type shapes.
- * A file with interfaces but no `routes` map yields no bindings: the first
- * type and a matching name are not an identity.
+ * Reads exported `routes` bindings, exported `*Route` consts, and type shapes.
+ * A `*Route` const whose value is the route string binds `StemInput`/`StemOutput`.
+ * The first interface, and a name that matches the usecase, are not an identity.
  * Deno loads this file with the agent. It must not import `typescript`.
  */
 export function readContractAst(source: string, fileName: string): D1ContractAst {
@@ -177,6 +177,7 @@ function readVariables(scan: Scan, bindings: D1RouteBinding[], assertions: strin
       scan.i += 1;
       const expr = parseExpr(scan);
       if (name === 'routes') recordRoutes(expr, bindings, assertions);
+      else recordRouteConst(name, expr, bindings);
     }
     skipTrivia(scan);
     if (scan.source[scan.i] === ',') {
@@ -203,6 +204,16 @@ function recordRoutes(expr: Expr, bindings: D1RouteBinding[], assertions: string
     if (!output) continue;
     bindings.push({ route: prop.name, input, output });
   }
+}
+
+function recordRouteConst(name: string, expr: Expr, bindings: D1RouteBinding[]): void {
+  if (!name.endsWith('Route')) return;
+  const stem = name.slice(0, -'Route'.length);
+  if (!stem) return;
+  const value = unwrapExpr(expr);
+  if (value.k !== 'string' || !value.text) return;
+  const pascal = `${stem[0].toUpperCase()}${stem.slice(1)}`;
+  bindings.push({ route: value.text, input: `${pascal}Input`, output: `${pascal}Output` });
 }
 
 function stringProp(object: Extract<Expr, { k: 'object' }>, key: string): string {

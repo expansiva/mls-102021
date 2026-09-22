@@ -14,7 +14,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { readContractAst, symbolFields, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import {
   D1_MDM_CALLS,
   D1_USECASE_VERSION,
@@ -216,6 +216,15 @@ function routeOutputs(
     const binding = bindingFor(request, route);
     const fields = binding ? projectFields(request, route.page, binding.output, entity) : null;
     if (!fields) {
+      const symbol = binding?.output || route.route;
+      review(
+        problems,
+        'PROJECTION_UNRESOLVED',
+        route.route,
+        binding
+          ? `Route ${route.route} output symbol ${symbol} has no declared form.`
+          : `Route ${route.route} has no contract binding for ${symbol}.`,
+      );
       return { route: route.route, contractPath, projection: 'unresolved' as const, outputFields: [], fields: [] };
     }
     return {
@@ -281,9 +290,22 @@ function projectFields(
   const ast = readContractAst(contract.source, contract.path || `${pageId}.defs.ts`);
   const binding = ast.bindings.find(item => item.input === symbol || item.output === symbol);
   if (!binding) return null;
-  const fields = symbolFields(ast, symbol);
+  const fields = declaredFields(ast, symbol);
   if (!fields) return null;
   return fields.map(field => toProjection(field, entity));
+}
+
+function declaredFields(ast: D1ContractAst, symbol: string): D1ContractField[] | null {
+  const found = ast.symbols.filter(item => item.name === symbol);
+  if (found.length !== 1) return null;
+  const item = found[0];
+  if (item.shape === 'array' && item.fields.length === 0 && item.element) {
+    const inner = ast.symbols.filter(entry => entry.name === item.element);
+    if (inner.length !== 1) return null;
+    return inner[0].fields;
+  }
+  if (item.shape === 'array' && item.fields.length === 0) return null;
+  return item.fields;
 }
 
 function bindingFor(request: D1UsecaseRequest, route: D1UsecaseRequest['routes'][number] | undefined) {
