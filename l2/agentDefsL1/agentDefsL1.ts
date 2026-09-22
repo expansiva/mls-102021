@@ -11,6 +11,7 @@ import {
   notImplementedTrace,
   parseD1Invocation,
   parseD1StepPrompt,
+  planIdFromPrompt,
   pipelineFile,
   requireProject,
   stoppedTrace,
@@ -34,6 +35,7 @@ import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import '/_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.js';
 import '/_102021_/l2/agentDefsL1/steps/persistence40/agentD1Persistence.js';
+import '/_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.js';
 
 
 export function createAgent(): IAgentAsync {
@@ -41,7 +43,7 @@ export function createAgent(): IAgentAsync {
     agentName: D1_AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentDefsL1',
-    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs and persistence defs. Does not call a model.',
+    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs, persistence defs and usecase plans. usecases50 calls a model for operation steps only.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -113,7 +115,7 @@ async function beforePromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const planId = planIdOf(step);
+  const planId = planIdOf(step) || planIdFromPrompt(args || step.prompt || '');
   const hooks = hooksFor(planId);
   if (hooks?.beforePromptStep) return hooks.beforePromptStep(agent, context, parentStep, step, hookSequential, args);
   if (isD1StepId(planId)) return notImplemented(context, parentStep, step, hookSequential, planId);
@@ -134,7 +136,7 @@ async function afterPromptStep(
   hookSequential: number,
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const planId = planIdOf(step);
+  const planId = planIdOf(step) || planIdFromPrompt(args || step.prompt || '');
   const hooks = hooksFor(planId);
   if (hooks?.afterPromptStep) return hooks.afterPromptStep(agent, context, parentStep, step, hookSequential, args);
   if (isD1StepId(planId)) return notImplemented(context, parentStep, step, hookSequential, planId);

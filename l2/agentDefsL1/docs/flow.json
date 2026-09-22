@@ -1,8 +1,8 @@
 {
   "flowId": "agentDefsL1",
   "schemaVersion": "2026-09-21-d1-flow-v1",
-  "status": "entry10",
-  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. Later steps are declared and not implemented: a missing step reports that it does not exist. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
+  "status": "usecases50",
+  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 plans one operation per selected usecase. Later steps are declared and not implemented: a missing step reports that it does not exist. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -21,7 +21,7 @@
     "One repair per unit. Global repair attempts stop at the declared ceiling. finalize80 does not open another repair cycle.",
     "update-status cleans the interaction with input_output. A future clarification that is still pending must not be cleaned.",
     "User-facing refusals are English. /candidate and /rebuild all are refused. Nothing is deleted and no candidate root is applied.",
-    "Deterministic first. entry10 has no LLM. No prompt.md until a step actually calls a model."
+    "Deterministic first. prompt.md exists only on usecases50, the step that calls a model for operation steps. The model does not write TypeScript."
   ],
   "invocation": {
     "run": "@@agentDefsL1 <lowerCamel> /run",
@@ -141,13 +141,13 @@
     {
       "id": "usecases50",
       "kind": "agent-checkpoint",
-      "implemented": false,
+      "implemented": true,
       "dependsOn": ["persistence40-done"],
       "doneAnchor": "usecases50-done",
       "modelAlias": "reasoning",
       "parallel": "parallel_dynamic",
       "artifact": "l1/{module}/pipeline/agentDefsL1/drafts/usecases50.json",
-      "goal": "One worker per selected usecase. Not implemented in this delivery. No worker is launched."
+      "goal": "One worker per selected usecase. The model plans operation steps. Ids, routes and type sources stay mechanical."
     },
     {
       "id": "controllers60",

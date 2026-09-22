@@ -19,7 +19,7 @@ export const D1_FLOW_STEP_IDS = [
 export type D1StepId = typeof D1_FLOW_STEP_IDS[number];
 
 /** Steps that have a hook in this delivery. The flow lists the rest as not implemented. */
-export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20', 'domain30', 'persistence40'] as const;
+export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20', 'domain30', 'persistence40', 'usecases50'] as const;
 
 export const D1_STEP_TITLES: Record<D1StepId, string> = {
   entry10: 'Entry',
@@ -147,6 +147,19 @@ export function dynamicPlanId(stepId: D1StepId, kind: 'fanout' | 'worker' | 'rep
   if (kind === 'fanout') return `${stepId}-fanout`;
   if (kind === 'worker') return `${stepId}-worker-${token}`;
   return `${stepId}-repair-${token}`;
+}
+
+/** A parallel child has no planning. Its prompt carries the planId. */
+export function planIdFromPrompt(prompt: string): string {
+  try {
+    const parsed = JSON.parse(String(prompt || '')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return '';
+    const planId = (parsed as { planId?: unknown }).planId;
+    if (typeof planId !== 'string') return '';
+    return ownerStepId(planId) ? planId : '';
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -285,7 +298,7 @@ export function helpText(moduleName: string, project: number): string {
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
-    'domain30 writes domain defs. persistence40 writes ports, tables and adapters. This agent does not call a model.',
+    'domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript.',
     `Steps not implemented yet: ${pending.join(', ')}.`,
   ].join('\n');
 }

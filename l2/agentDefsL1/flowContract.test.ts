@@ -112,7 +112,7 @@ void test('the pipeline schema is the document the writer enforces', () => {
   assert.deepEqual(Object.keys(schema.properties), [...PIPELINE_KEYS]);
 });
 
-void test('implemented steps are registered and do not call a model', () => {
+void test('implemented steps are registered, and only usecases50 calls a model', () => {
   createAgent();
   for (const id of D1_IMPLEMENTED_STEP_IDS) {
     assert.equal(typeof D1_STEP_HOOKS[id]?.beforePromptStep, 'function', id);
@@ -121,15 +121,17 @@ void test('implemented steps are registered and do not call a model', () => {
     if ((D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id)) continue;
     assert.equal(D1_STEP_HOOKS[id], undefined, id);
   }
+  const llmSteps = new Set(['usecases50']);
   for (const id of D1_IMPLEMENTED_STEP_IDS) {
     const folder = path.join(HERE, 'steps', id);
     const names = readdirSync(folder);
-    assert.equal(names.includes('prompt.md'), false, id);
+    assert.equal(names.includes('prompt.md'), llmSteps.has(id), id);
     assert.equal(names.includes('gate.ts'), true, id);
     const agentFile = names.find(name => name.startsWith('agent') && name.endsWith('.ts') && !name.endsWith('.test.ts'));
     assert.ok(agentFile, id);
     const source = readFileSync(path.join(folder, agentFile), 'utf8');
     assert.equal(source.includes('add-message-ai'), false, id);
+    assert.equal(source.includes('prompt_ready'), llmSteps.has(id), id);
     assert.equal(source.includes('agentChangeBackend'), false, id);
     assert.equal(source.includes('agentChangeFrontend'), false, id);
     assert.equal(source.includes('agentCbMaterialize'), false, id);

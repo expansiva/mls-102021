@@ -1,8 +1,9 @@
 # agentDefsL1
 
 L1 defs agent. CLI, project identity, resume, the input20 inventory, the
-domain30 defs and the persistence40 defs. It does not call a model. A step
-that is only declared in `docs/flow.json` reports that it is not implemented.
+domain30 defs, the persistence40 defs and the usecases50 plans. usecases50
+is the step that calls a model, and only for operation steps. A step that is
+only declared in `docs/flow.json` reports that it is not implemented.
 
 ## Invocation
 
@@ -81,8 +82,11 @@ stay on that draft. It approves itself and mints `persistence40-done` only
 when the build has no error. The same bytes are not rewritten. It does not
 write seeds or the repository registry.
 
-`usecases50` through `finalize80` are declared and not implemented. Reaching
-one sets `pipeline.status` to `awaitingStep` and the trace `step <id> not implemented yet`.
+`usecases50` writes one usecase def per selected usecase. A worker plans the
+operation steps. Ids, routes and contract symbols stay mechanical. Enum
+values stay on the domain draft. `controllers60` through `finalize80` are
+declared and not implemented. Reaching one sets `pipeline.status` to
+`awaitingStep` and the trace `step <id> not implemented yet`.
 That is not success. The task step is completed so the run does not fail; the
 trace and the checkpoint say the step does not exist yet.
 
@@ -134,8 +138,8 @@ file.
 The design forecast of 26 is 5 models, 1 port, 1 table, 1 adapter, 13 usecases
 and 5 controllers. The measured plan fixture has 6 controllers, so the same
 core categories sum to 27, plus 5 justified auxiliaries (32 planned defs).
-That sum is not a count of files this agent generated. The flow steps still
-do not call the writer.
+That sum is not a count of files this agent generated. usecases50 writes the
+usecase defs. Controllers, access, seeds and integration are still later steps.
 
 ## Flow
 
