@@ -11,6 +11,10 @@ export interface D1ContractField {
 export interface D1ContractSymbol {
   name: string;
   fields: D1ContractField[];
+  /** `array` when the exported type is an array. The element fields stay the contracted item. */
+  shape: 'object' | 'array';
+  /** Element symbol when an array alias points at another type. Empty when the fields are inline. */
+  element: string;
 }
 
 /** A route string bound to symbols in this file. The symbol name is not an identity. */
@@ -23,6 +27,8 @@ export interface D1RouteBinding {
 export interface D1ContractAst {
   bindings: D1RouteBinding[];
   symbols: D1ContractSymbol[];
+  /** Routes whose binding is a type assertion instead of an input/output symbol. */
+  assertions: string[];
 }
 
 /**
@@ -34,17 +40,16 @@ export function readContractAst(source: string, fileName: string): D1ContractAst
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const bindings: D1RouteBinding[] = [];
   const symbols: D1ContractSymbol[] = [];
+  const assertions: string[] = [];
   const visit = (node: ts.Node) => {
-    if (ts.isVariableStatement(node) && isExported(node)) readRoutes(node, sf, bindings);
+    if (ts.isVariableStatement(node) && isExported(node)) readRoutes(node, sf, bindings, assertions);
     if (ts.isInterfaceDeclaration(node) && isExported(node)) {
-      symbols.push({ name: node.name.text, fields: readMembers(node.members, sf) });
+      symbols.push({ name: node.name.text, fields: readMembers(node.members, sf), shape: 'object', element: '' });
     }
-    if (ts.isTypeAliasDeclaration(node) && isExported(node) && ts.isTypeLiteralNode(node.type)) {
-      symbols.push({ name: node.name.text, fields: readMembers(node.type.members, sf) });
-    }
+    if (ts.isTypeAliasDeclaration(node) && isExported(node)) readAlias(node, sf, symbols);
   };
   sf.forEachChild(visit);
-  return { bindings, symbols };
+  return { bindings, symbols, assertions };
 }
 
 /** The unique symbol of this name, or null when it is missing or duplicated. */
@@ -55,7 +60,12 @@ export function symbolFields(ast: D1ContractAst, name: string): D1ContractField[
   return found[0].fields;
 }
 
-function readRoutes(node: ts.VariableStatement, sf: ts.SourceFile, bindings: D1RouteBinding[]): void {
+function readRoutes(
+  node: ts.VariableStatement,
+  sf: ts.SourceFile,
+  bindings: D1RouteBinding[],
+  assertions: string[],
+): void {
   for (const decl of node.declarationList.declarations) {
     if (!ts.isIdentifier(decl.name) || decl.name.text !== 'routes' || !decl.initializer) continue;
     const expr = unwrap(decl.initializer);
@@ -63,14 +73,63 @@ function readRoutes(node: ts.VariableStatement, sf: ts.SourceFile, bindings: D1R
     for (const property of expr.properties) {
       if (!ts.isPropertyAssignment(property)) continue;
       const route = propertyName(property.name, sf);
+      if (!route) continue;
       const value = unwrap(property.initializer);
-      if (!route || !ts.isObjectLiteralExpression(value)) continue;
+      if (!ts.isObjectLiteralExpression(value)) {
+        if (expressionAsserts(property.initializer)) assertions.push(route);
+        continue;
+      }
       const input = stringProp(value, 'input', sf);
       const output = stringProp(value, 'output', sf);
       if (!output) continue;
       bindings.push({ route, input, output });
     }
   }
+}
+
+function readAlias(node: ts.TypeAliasDeclaration, sf: ts.SourceFile, symbols: D1ContractSymbol[]): void {
+  const element = arrayElement(node.type);
+  if (element) {
+    if (ts.isTypeLiteralNode(element)) {
+      symbols.push({ name: node.name.text, fields: readMembers(element.members, sf), shape: 'array', element: '' });
+      return;
+    }
+    if (ts.isTypeReferenceNode(element) && ts.isIdentifier(element.typeName)) {
+      symbols.push({ name: node.name.text, fields: [], shape: 'array', element: element.typeName.text });
+      return;
+    }
+    symbols.push({ name: node.name.text, fields: [], shape: 'array', element: '' });
+    return;
+  }
+  if (ts.isTypeLiteralNode(node.type)) {
+    symbols.push({ name: node.name.text, fields: readMembers(node.type.members, sf), shape: 'object', element: '' });
+  }
+}
+
+/** Array element, or null when the type is not an array. Parentheses are ignored. */
+function arrayElement(type: ts.TypeNode): ts.TypeNode | null {
+  let current = type;
+  while (ts.isParenthesizedTypeNode(current)) current = current.type;
+  if (ts.isArrayTypeNode(current)) return unwrapType(current.elementType);
+  if (ts.isTypeReferenceNode(current) && ts.isIdentifier(current.typeName)) {
+    const name = current.typeName.text;
+    const arg = current.typeArguments?.[0];
+    if ((name === 'Array' || name === 'ReadonlyArray') && arg) return unwrapType(arg);
+  }
+  return null;
+}
+
+function unwrapType(type: ts.TypeNode): ts.TypeNode {
+  let current = type;
+  while (ts.isParenthesizedTypeNode(current)) current = current.type;
+  return current;
+}
+
+/** True when the expression itself is asserted. `as const` around an object is unwrapped first. */
+function expressionAsserts(node: ts.Expression): boolean {
+  let current = node;
+  while (ts.isParenthesizedExpression(current)) current = current.expression;
+  return ts.isAsExpression(current) || ts.isSatisfiesExpression(current);
 }
 
 function readMembers(members: ts.NodeArray<ts.TypeElement>, sf: ts.SourceFile): D1ContractField[] {

@@ -84,9 +84,11 @@ write seeds or the repository registry.
 
 `usecases50` writes one usecase def per selected usecase. A worker plans the
 operation steps. Ids, routes and contract symbols stay mechanical. Enum
-values stay on the domain draft. `controllers60` through `finalize80` are
-declared and not implemented. Reaching one sets `pipeline.status` to
-`awaitingStep` and the trace `step <id> not implemented yet`.
+values stay on the domain draft. `controllers60` writes one http controller
+def per page. The binding and the projection stay on its draft. Enum values
+stay on the domain draft. `support70` and `finalize80` are declared and not
+implemented. Reaching one sets `pipeline.status` to `awaitingStep` and the
+trace `step <id> not implemented yet`.
 That is not success. The task step is completed so the run does not fail; the
 trace and the checkpoint say the step does not exist yet.
 
@@ -139,7 +141,8 @@ The design forecast of 26 is 5 models, 1 port, 1 table, 1 adapter, 13 usecases
 and 5 controllers. The measured plan fixture has 6 controllers, so the same
 core categories sum to 27, plus 5 justified auxiliaries (32 planned defs).
 That sum is not a count of files this agent generated. usecases50 writes the
-usecase defs. Controllers, access, seeds and integration are still later steps.
+usecase defs. controllers60 writes the controller defs. Access, seeds and
+integration are still later steps.
 
 ## Flow
 
