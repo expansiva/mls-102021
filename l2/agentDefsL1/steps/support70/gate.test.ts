@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { adapterPipelineId, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
+import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
@@ -204,4 +204,126 @@ void test('removing one adapter keeps the shared registry', () => {
   const one = buildD1Support(request);
   assert.deepEqual(one.registry.map(item => item.portId), ['ConsultaRepository']);
   assert.equal(one.emit.some(item => item.definition.artifactType === 'repositoryRegistration'), true);
+});
+
+void test('the frozen fixture plans consulta seeds and does not write rows', () => {
+  const request = agendaSeedRequest();
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(build.llmCalls, 0);
+  assert.equal(build.seedPlan.phase, 'plan');
+  assert.equal(build.seedPlan.materialized, false);
+  assert.equal(build.seedPlan.rowCount, 0);
+  assert.equal(build.publication.later.map(item => item.artifactType).join(), 'integrationOutbound');
+  const seeds = build.emit.find(item => item.definition.artifactType === 'persistenceSeeds');
+  assert.ok(seeds);
+  assert.equal(seeds.pipeline[0]?.defPath.endsWith('/seeds.defs.ts'), true);
+  assert.equal(seeds.pipeline[0]?.outputPath.endsWith('/seeds.ts'), true);
+  assert.equal((seeds.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/usecase/') || dep.includes('/repositoryRegistration/')), false);
+  assert.equal((seeds.pipeline[0]?.dependsOn || []).some(dep => dep.endsWith('/table/consulta')), true);
+  const data = seeds.definition.data as {
+    phase: string;
+    scenarios: Array<{ scenarioId: string; tableId: string; constraints: string[]; refs: Array<{ field: string; entityId: string }>; states: string[]; requires?: string[] }>;
+    dependencies: Array<{ entityId: string; kind: string; seeded: boolean }>;
+    datasets: Array<{ datasetId: string; owners: string[] }>;
+  };
+  assert.equal(data.phase, 'plan');
+  assert.equal(JSON.stringify(data).includes('"rows"'), false);
+  assert.deepEqual(data.scenarios.map(item => item.scenarioId), [
+    'agendarConsulta', 'confirmarConsulta', 'consultarAgendaDiaria', 'registrarAtendimento', 'registrarFalta',
+  ]);
+  assert.equal(data.scenarios.every(item => item.tableId === 'consulta'), true);
+  const schedule = data.scenarios.find(item => item.scenarioId === 'agendarConsulta');
+  assert.ok(schedule);
+  assert.equal(schedule.constraints.includes('uniqueKeys:professionalId+scheduledAt'), true);
+  assert.equal(schedule.constraints.includes('ref:patientId:Paciente'), true);
+  assert.equal(schedule.constraints.includes('ref:professionalId:Profissional'), true);
+  assert.deepEqual(schedule.states, ['scheduled']);
+  assert.deepEqual(schedule.refs.map(ref => ref.entityId), ['Paciente', 'Profissional']);
+  const attended = data.scenarios.find(item => item.scenarioId === 'registrarAtendimento');
+  assert.deepEqual(attended?.states, ['attended']);
+  assert.deepEqual(attended?.requires, ['details.attendanceNote']);
+  assert.equal(attended?.constraints.includes('noteRequired:details.attendanceNote:attended'), true);
+  assert.equal(data.scenarios.find(item => item.scenarioId === 'consultarAgendaDiaria')?.states.length, 0);
+  assert.deepEqual(data.datasets[0]?.owners, [
+    'agendarConsulta', 'confirmarConsulta', 'consultarAgendaDiaria', 'registrarAtendimento', 'registrarFalta',
+  ]);
+  const roles = data.dependencies.filter(item => item.kind === 'mdm');
+  assert.deepEqual(roles.map(item => item.entityId), ['ContatoPaciente', 'Paciente', 'Profissional', 'Recepcionista']);
+  assert.equal(roles.every(item => item.seeded === false), true);
+  assert.equal(data.dependencies.some(item => item.entityId === 'paciente' || item.entityId === 'recepcionista'), false);
+  const status = build.enumerations.find(item => item.entityId === 'Consulta' && item.path === 'status');
+  assert.equal(status?.consumed, true);
+  assert.equal(build.enumerations.find(item => item.path === 'details.identification.subtype')?.consumed, false);
+  assert.equal(build.normalizations.some(item => item.code === 'ENUMERATIONS_CONSUMED'), true);
+  assert.equal(build.normalizations.some(item => item.code === 'ENUMERATIONS_NOT_CONSUMED'), true);
+  assert.equal(JSON.stringify(build).includes('l5/'), false);
+});
+
+void test('a ref on a structured field without a column relationship is refused', () => {
+  const request = agendaSeedRequest();
+  request.seedRefs = [{ field: 'details.attendanceNote', relationshipId: 'appointmentPatient', entityId: 'Paciente' }];
+  const build = buildD1Support(request);
+  assert.equal(build.ok, false);
+  assert.equal(build.emit.length, 0);
+  assert.equal(build.seedPlan.phase, 'absent');
+  assert.equal(build.seedPlan.materialized, false);
+  assert.equal(build.problems.some(item => item.code === 'SEED_REF_UNRELATED' && item.path === 'details.attendanceNote'), true);
+  assert.equal(JSON.stringify(build.emit).includes('details.attendanceNote'), false);
+});
+
+void test('a role tag is not an MDM entity id and an MDM table is not seeded', () => {
+  const request = agendaSeedRequest();
+  request.seedRefs = [{ field: 'patientId', relationshipId: 'appointmentPatient', entityId: 'paciente' }];
+  const tagged = buildD1Support(request);
+  assert.equal(tagged.ok, false);
+  assert.equal(tagged.problems.some(item => item.code === 'SEED_ROLE_TAG' && item.path === 'paciente'), true);
+  assert.equal(JSON.stringify(tagged.seedPlan).includes('paciente'), false);
+
+  const mdm = agendaSeedRequest();
+  mdm.tables.push({
+    tableId: 'paciente',
+    entityId: 'Paciente',
+    action: 'create',
+    defPath: `l1/${mdm.moduleName}/layer_1_external/adapters/persistence/paciente.defs.ts`,
+    uniqueKeys: [],
+  });
+  const seeded = buildD1Support(mdm);
+  assert.equal(seeded.ok, false);
+  assert.equal(seeded.problems.some(item => item.code === 'SEED_MDM' && item.path === 'paciente'), true);
+  assert.equal(seeded.emit.some(item => JSON.stringify(item).includes('paciente')), false);
+
+  const foreign = agendaSeedRequest();
+  foreign.models = foreign.models.map(model => model.entityId === 'Consulta' ? { ...model, namespace: 'mdmSeed' } : model);
+  const namespaced = buildD1Support(foreign);
+  assert.equal(namespaced.ok, false);
+  assert.equal(namespaced.problems.some(item => item.code === 'SEED_NAMESPACE' && item.path === 'mdmSeed'), true);
+  assert.equal(JSON.stringify(namespaced.emit).includes('mdmSeed'), false);
+  assert.equal(JSON.stringify(namespaced.seedPlan).includes('mdmSeed'), false);
+});
+
+void test('maintenance does not reseed and one removed owner keeps the shared dataset', () => {
+  const reset = agendaSeedRequest();
+  reset.maintenance = { action: 'reseed', ownerId: '' };
+  const refused = buildD1Support(reset);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.emit.length, 0);
+  assert.equal(refused.seedPlan.rowCount, 0);
+  assert.equal(refused.problems.some(item => item.code === 'MAINTENANCE_RESEED'), true);
+
+  const shared = agendaSeedRequest();
+  shared.existingDatasets = [{
+    datasetId: 'consulta',
+    tableId: 'consulta',
+    owners: ['agendarConsulta', 'registrarAtendimento'],
+  }];
+  shared.maintenance = { action: 'removeOwner', ownerId: 'registrarAtendimento' };
+  const kept = buildD1Support(shared);
+  assert.equal(kept.ok, true, kept.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(kept.normalizations.some(item => item.code === 'DATASET_KEPT'), true);
+  const dataset = kept.seedPlan.datasets.find(item => item.datasetId === 'consulta');
+  assert.ok(dataset);
+  assert.equal(dataset.owners.includes('agendarConsulta'), true);
+  assert.equal(dataset.owners.includes('registrarAtendimento'), false);
+  assert.equal(kept.emit.some(item => item.definition.artifactType === 'persistenceSeeds'), true);
 });

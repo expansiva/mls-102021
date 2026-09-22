@@ -305,7 +305,10 @@
       "required": ["seedId", "scenarios"],
       "properties": {
         "seedId": { "type": "string", "minLength": 1 },
-        "scenarios": { "type": "array", "items": { "$ref": "#/$defs/seedScenario" } }
+        "phase": { "type": "string", "enum": ["plan"] },
+        "scenarios": { "type": "array", "items": { "$ref": "#/$defs/seedScenario" } },
+        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/seedDependency" } },
+        "datasets": { "type": "array", "items": { "$ref": "#/$defs/seedDataset" } }
       }
     },
     "seedScenario": {
@@ -315,7 +318,41 @@
       "properties": {
         "scenarioId": { "type": "string", "minLength": 1 },
         "tableId": { "type": "string", "minLength": 1 },
-        "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "source": { "type": "string", "minLength": 1 },
+        "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "refs": { "type": "array", "items": { "$ref": "#/$defs/seedRef" } },
+        "states": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "requires": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "seedRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "relationshipId", "entityId"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "relationshipId": { "type": "string", "minLength": 1 },
+        "entityId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "seedDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "kind", "seeded"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["mdm", "module"] },
+        "seeded": { "type": "boolean" }
+      }
+    },
+    "seedDataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datasetId", "tableId", "owners"],
+      "properties": {
+        "datasetId": { "type": "string", "minLength": 1 },
+        "tableId": { "type": "string", "minLength": 1 },
+        "owners": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
     "integrationOutbound": {

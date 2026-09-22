@@ -1,5 +1,14 @@
 # support70
 
+## 2026-09-22 (d1_09)
+
+- Writes `seeds.defs.ts` as a plan: scenarios, column refs, dependencies and shared datasets.
+- Does not write `seeds.ts`, rows, or a database load. MDM roles are not seeded.
+- A structured ref without a column relationship, a role tag used as an entity id, a reseed and a reset stop the step.
+- Removing one owner keeps a dataset that still has another owner.
+- The Consulta status enum is cited by seed states (`ENUMERATIONS_CONSUMED`). Other enums stay `ENUMERATIONS_NOT_CONSUMED`.
+- A seed error is `awaitingStep: support70` with `error` as `CODE:count`. The step is not approved.
+
 ## 2026-09-22 (d1_08)
 
 - Writes the access scope, the authority map and the repository registry.

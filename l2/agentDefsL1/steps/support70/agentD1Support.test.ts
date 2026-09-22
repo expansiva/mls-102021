@@ -86,7 +86,7 @@ async function readyHost() {
   return host;
 }
 
-void test('support70 writes scope, authority and the registry once', async () => {
+async function throughControllers() {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -112,6 +112,11 @@ void test('support70 writes scope, authority and the registry once', async () =>
   const controllers = createD1AgentStep('controllers60', MODULE, PROJECT, 'run');
   controllers.stepId = 60;
   await agent.beforePromptStep!(meta(), ctx, parent, controllers, 4);
+  return { host, agent, ctx, parent };
+}
+
+void test('support70 writes scope, authority, the registry and the seed plan once', async () => {
+  const { host, agent, ctx, parent } = await throughControllers();
 
   const neighbor = fileInfoFromDisplay(PROJECT, `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`)!;
   seed(host, neighbor, 'NEIGHBOR', 'frozen');
@@ -140,8 +145,17 @@ void test('support70 writes scope, authority and the registry once', async () =>
   assert.ok(authority?.content.includes('"mapId": "authorityMap"'));
   assert.ok(registry?.content.includes('"portId": "ConsultaRepository"'));
   assert.equal(registry?.content.includes('GhostRepository'), false);
-  assert.equal(Object.values(host.files).some(file => file.shortName === 'seeds' || file.shortName === 'sessionScope' || file.shortName === 'outbound'), false);
-  assert.equal(host.writes.some(key => key.includes('/l5/') || key.includes('sessionScope')), false);
+  const seeds = Object.values(host.files).find(file => file.shortName === 'seeds' && file.extension === '.defs.ts');
+  assert.ok(seeds?.content.includes('"phase": "plan"'));
+  assert.equal(seeds?.content.includes('import '), false);
+  assert.equal(seeds?.content.includes('"rows"'), false);
+  assert.equal(seeds?.content.includes('"seeded": false'), true);
+  assert.equal(seeds?.content.includes('uniqueKeys:professionalId+scheduledAt'), true);
+  assert.equal(seeds?.content.includes('ref:patientId:Paciente'), true);
+  assert.equal(seeds?.content.includes('noteRequired:details.attendanceNote:attended'), true);
+  assert.equal(Object.values(host.files).some(file => file.shortName === 'seeds' && file.extension === '.ts'), false);
+  assert.equal(Object.values(host.files).some(file => file.shortName === 'sessionScope' || file.shortName === 'outbound'), false);
+  assert.equal(host.writes.some(key => key.includes('/l5/') || key.includes('sessionScope') || key.endsWith('/seeds.ts')), false);
   assert.equal(host.files[fileKey(neighbor)]?.content, 'NEIGHBOR');
   assert.equal(host.files[fileKey(neighbor)]?.updatedAt, 'frozen');
   assert.equal(host.files[fileKey(ontology)]?.content, ontologyBefore);
@@ -150,7 +164,10 @@ void test('support70 writes scope, authority and the registry once', async () =>
   const draft = host.files[fileKey(draftFile(PROJECT, MODULE, 'support70'))]?.content || '';
   assert.equal(draft.includes('"llmCalls": 0'), true);
   assert.equal(draft.includes('ENUMERATIONS_NOT_CONSUMED'), true);
+  assert.equal(draft.includes('ENUMERATIONS_CONSUMED'), true);
   assert.equal(draft.includes('"consumed": false'), true);
+  assert.equal(draft.includes('"materialized": false'), true);
+  assert.equal(draft.includes('"rowCount": 0'), true);
   assert.equal(draft.includes('ACCESS_ANCHOR'), true);
   assert.equal(draft.includes('l5/'), false);
   const saved = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
@@ -160,4 +177,24 @@ void test('support70 writes scope, authority and the registry once', async () =>
   host.writes.length = 0;
   await agent.beforePromptStep!(meta(), ctx, parent, step, 6);
   assert.deepEqual(host.writes, []);
+});
+
+void test('a structured ref stops support70 on the pipeline and writes no seed file', async () => {
+  const { host, agent, ctx, parent } = await throughControllers();
+  const index = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/ontology/index.defs.ts`)!;
+  const current = host.files[fileKey(index)]?.content || '';
+  host.files[fileKey(index)]!.content = current.replace('"field": "Consulta.patientId"', '"field": "Consulta.details.attendanceNote"');
+  host.writes.length = 0;
+
+  const step = createD1AgentStep('support70', MODULE, PROJECT, 'run');
+  step.stepId = 70;
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 5);
+  assert.equal(intents.some(intent => intent.type === 'add-step'), false);
+  const saved = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
+  assert.equal(saved.status, 'awaitingStep');
+  assert.equal(saved.awaitingStep, 'support70');
+  assert.equal(saved.steps.support70?.status, 'failed');
+  assert.equal(saved.steps.support70?.error, 'SEED_REF_UNRELATED:1');
+  assert.equal(Object.values(host.files).some(file => file.shortName === 'seeds'), false);
+  assert.equal(host.writes.some(key => key.includes('/l5/') || key.endsWith('/seeds.ts')), false);
 });

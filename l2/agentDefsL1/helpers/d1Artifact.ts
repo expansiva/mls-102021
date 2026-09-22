@@ -186,9 +186,39 @@ export interface D1RegistrationData {
   adapters: Array<{ portId: string; adapterArtifactId: string }>;
 }
 
+export interface D1SeedRefData {
+  field: string;
+  relationshipId: string;
+  entityId: string;
+}
+
+export interface D1SeedDependencyData {
+  entityId: string;
+  kind: 'mdm' | 'module';
+  seeded: false;
+}
+
+export interface D1SeedDatasetData {
+  datasetId: string;
+  tableId: string;
+  owners: string[];
+}
+
+/** A plan for the later materializer. `phase` is `plan`. This artifact has no rows. */
 export interface D1SeedsData {
   seedId: string;
-  scenarios: Array<{ scenarioId: string; tableId: string; constraints: string[] }>;
+  phase?: 'plan';
+  scenarios: Array<{
+    scenarioId: string;
+    tableId: string;
+    source?: string;
+    constraints: string[];
+    refs?: D1SeedRefData[];
+    states?: string[];
+    requires?: string[];
+  }>;
+  dependencies?: D1SeedDependencyData[];
+  datasets?: D1SeedDatasetData[];
 }
 
 export interface D1IntegrationData {
@@ -789,29 +819,122 @@ export function registrationIssues(data: unknown): string[] {
   return issues;
 }
 
+const SEED_SOURCE = /^[A-Za-z][A-Za-z0-9:_-]*$/;
+const SEED_FIELD = /^[A-Za-z][A-Za-z0-9._]*$/;
+
+function seedText(value: string): boolean {
+  return /password|credential|secret|quantity/i.test(value);
+}
+
 export function seedScenarioIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['seedId', 'scenarios'], 'data', issues);
+  unknownKeys(data, ['seedId', 'phase', 'scenarios', 'dependencies', 'datasets'], 'data', issues);
   needString(data, 'seedId', 'data', issues);
+  if (data.phase !== undefined && data.phase !== 'plan') {
+    issues.push('data.phase must be plan. This artifact does not carry rows.');
+  }
   if (!Array.isArray(data.scenarios)) issues.push('Missing field data.scenarios.');
-  else data.scenarios.forEach((scenario, index) => {
-    const path = `data.scenarios.${index}`;
-    if (!isRecord(scenario)) {
+  else data.scenarios.forEach((scenario, index) => seedScenarioItem(scenario, index, issues));
+  if (data.dependencies !== undefined) seedDependencies(data.dependencies, issues);
+  if (data.datasets !== undefined) seedDatasets(data.datasets, issues);
+  return issues;
+}
+
+function seedScenarioItem(scenario: unknown, index: number, issues: string[]): void {
+  const path = `data.scenarios.${index}`;
+  if (!isRecord(scenario)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  unknownKeys(scenario, ['scenarioId', 'tableId', 'source', 'constraints', 'refs', 'states', 'requires'], path, issues);
+  needString(scenario, 'scenarioId', path, issues);
+  needString(scenario, 'tableId', path, issues);
+  if (scenario.source !== undefined && (typeof scenario.source !== 'string' || !SEED_SOURCE.test(scenario.source))) {
+    issues.push(`${path}.source must name a journey or a model.`);
+  }
+  const constraints = stringList(scenario.constraints, `${path}.constraints`, issues);
+  for (const constraint of constraints) {
+    if (!CONSTRAINT.test(constraint) || seedText(constraint)) {
+      issues.push(`${path}.constraints must name a constraint, not a person, credential or quantity.`);
+    }
+  }
+  if (scenario.refs !== undefined) seedRefs(scenario.refs, `${path}.refs`, issues);
+  if (scenario.states !== undefined) seedTokens(scenario.states, `${path}.states`, issues);
+  if (scenario.requires !== undefined) {
+    const requires = stringList(scenario.requires, `${path}.requires`, issues);
+    for (const field of requires) {
+      if (!SEED_FIELD.test(field) || seedText(field)) issues.push(`${path}.requires must name a field.`);
+    }
+  }
+}
+
+function seedRefs(value: unknown, path: string, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  value.forEach((ref, index) => {
+    const refPath = `${path}.${index}`;
+    if (!isRecord(ref)) {
+      issues.push(`Missing field ${refPath}.`);
+      return;
+    }
+    unknownKeys(ref, ['field', 'relationshipId', 'entityId'], refPath, issues);
+    const field = needString(ref, 'field', refPath, issues);
+    const relationshipId = needString(ref, 'relationshipId', refPath, issues);
+    const entityId = needString(ref, 'entityId', refPath, issues);
+    if (field && !SEED_FIELD.test(field)) issues.push(`${refPath}.field must name a column.`);
+    if (relationshipId && !TOKEN.test(relationshipId)) issues.push(`${refPath}.relationshipId must be a token.`);
+    if (entityId && !TOKEN.test(entityId)) issues.push(`${refPath}.entityId must be an entity id, not a role tag.`);
+  });
+}
+
+function seedTokens(value: unknown, path: string, issues: string[]): void {
+  const tokens = stringList(value, path, issues);
+  for (const token of tokens) {
+    if (!TOKEN.test(token)) issues.push(`${path} must name a state.`);
+  }
+}
+
+function seedDependencies(value: unknown, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.dependencies.');
+    return;
+  }
+  value.forEach((item, index) => {
+    const path = `data.dependencies.${index}`;
+    if (!isRecord(item)) {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(scenario, ['scenarioId', 'tableId', 'constraints'], path, issues);
-    needString(scenario, 'scenarioId', path, issues);
-    needString(scenario, 'tableId', path, issues);
-    const constraints = stringList(scenario.constraints, `${path}.constraints`, issues);
-    for (const constraint of constraints) {
-      if (!CONSTRAINT.test(constraint) || /password|credential|secret|quantity/i.test(constraint)) {
-        issues.push(`${path}.constraints must name a constraint, not a person, credential or quantity.`);
-      }
+    unknownKeys(item, ['entityId', 'kind', 'seeded'], path, issues);
+    const entityId = needString(item, 'entityId', path, issues);
+    if (entityId && !TOKEN.test(entityId)) issues.push(`${path}.entityId must be an entity id, not a role tag.`);
+    if (item.kind !== 'mdm' && item.kind !== 'module') issues.push(`${path}.kind is invalid.`);
+    if (item.seeded !== false) issues.push(`${path}.seeded must be false. This artifact is a plan, not loaded rows.`);
+  });
+}
+
+function seedDatasets(value: unknown, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.datasets.');
+    return;
+  }
+  value.forEach((item, index) => {
+    const path = `data.datasets.${index}`;
+    if (!isRecord(item)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    unknownKeys(item, ['datasetId', 'tableId', 'owners'], path, issues);
+    needString(item, 'datasetId', path, issues);
+    needString(item, 'tableId', path, issues);
+    const owners = stringList(item.owners, `${path}.owners`, issues);
+    for (const owner of owners) {
+      if (!TOKEN.test(owner)) issues.push(`${path}.owners must name a scenario.`);
     }
   });
-  return issues;
 }
 
 function integrationShapeIssues(data: unknown): string[] {

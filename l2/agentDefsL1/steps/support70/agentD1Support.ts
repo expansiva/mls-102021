@@ -52,6 +52,10 @@ export async function beforeD1SupportPromptStep(
   if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
   const committed = await commitD1Support(prompt.project, assembled.build, assembled.files);
   if (!assembled.build.ok || committed.issues.length > 0) {
+    const artifact = displayPath(draftFile(prompt.project, prompt.moduleName, 'support70'));
+    const reason = blockingReason(assembled.build, committed.issues.length);
+    const held = withSupportHeld(pipeline, artifact, reason, new Date().toISOString());
+    if (JSON.stringify(held) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, held);
     const message = committed.issues[0]
       || assembled.build.problems.find(problem => problem.severity === 'error')?.message
       || 'support70 refused the support plan.';
@@ -78,6 +82,47 @@ export async function afterD1SupportPromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'support70 already recorded.')];
+}
+
+/** Error-severity codes and counts, the same shape input20 writes. */
+function blockingReason(build: { problems: Array<{ severity: string; code: string }> }, commitIssues: number): string {
+  const counts = new Map<string, number>();
+  for (const problem of build.problems) {
+    if (problem.severity !== 'error' || problem.code.length === 0) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  if (commitIssues > 0 && counts.size === 0) counts.set('COMMIT_REFUSED', commitIssues);
+  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+}
+
+function withSupportHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
+  const current = pipeline.steps.support70;
+  const paths = current?.artifactPaths || [];
+  if (
+    pipeline.status === 'awaitingStep'
+    && pipeline.awaitingStep === 'support70'
+    && current?.status === 'failed'
+    && (current.error || '') === reason
+    && paths.length === 1
+    && paths[0] === artifact
+  ) {
+    return pipeline;
+  }
+  return {
+    ...pipeline,
+    status: 'awaitingStep',
+    awaitingStep: 'support70',
+    steps: {
+      ...pipeline.steps,
+      support70: {
+        status: 'failed',
+        updatedAt: now,
+        artifactPaths: [artifact],
+        ...(reason ? { error: reason } : {}),
+      },
+    },
+    updatedAt: now,
+  };
 }
 
 function withSupportApproved(pipeline: D1PipelineState, artifact: string, now: string): D1PipelineState {

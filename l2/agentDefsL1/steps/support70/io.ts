@@ -5,12 +5,17 @@ import { displayPath, draftFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { inputPaths } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityPath, inputPaths, journeyPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import {
   D1_SUPPORT_VERSION,
+  type D1SeedDataset,
+  type D1SeedJourney,
+  type D1SeedModel,
+  type D1SeedRoleTag,
   type D1SupportBuild,
   type D1SupportFile,
   type D1SupportHelper,
@@ -19,7 +24,7 @@ import {
 import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1ControllerGrant, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration']);
+const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds']);
 
 export async function assembleD1Support(
   project: number,
@@ -36,21 +41,29 @@ export async function assembleD1Support(
   if (!controllers) return { refusal: 'controllers60 draft does not belong to this project. support70 wrote nothing.' };
   const persistence = parseDraft(persistenceText, D1_PERSISTENCE_VERSION, project, moduleName);
   if (!persistence) return { refusal: 'persistence40 draft does not belong to this project. support70 wrote nothing.' };
+  const domainText = await readText(draftFile(project, moduleName, 'domain30'));
+  if (!domainText) return { refusal: 'domain30 draft is missing. support70 wrote nothing.' };
+  const domain = parseDraft(domainText, D1_DOMAIN_VERSION, project, moduleName);
+  if (!domain) return { refusal: 'domain30 draft does not belong to this project. support70 wrote nothing.' };
 
   const paths = inputPaths(moduleName);
   const accessText = await readLogical(project, paths.access);
   const indexText = await readLogical(project, paths.ontologyIndex);
   const access = accessText ? parseD1Source(accessText, 'defs') : null;
   const index = indexText ? parseD1Source(indexText, 'defs') : null;
+  const journeys = await journeysOf(project, moduleName);
+  const roleTags = await roleTagsOf(project, moduleName, index);
   const usecasesText = await readText(draftFile(project, moduleName, 'usecases50'));
   const usecases = usecasesText ? parseObject(usecasesText) : null;
   const previousText = await readText(draftFile(project, moduleName, 'support70'));
   const previous = previousText ? parseObject(previousText) : null;
   const files = await receiptFiles(project, snapshot.files);
+  const grants = grantsOf(access);
+  const models = modelsOf(domain, index);
   const request: D1SupportRequest = {
     project,
     moduleName,
-    grants: grantsOf(access),
+    grants,
     relationships: relationshipsOf(index),
     scopePlans: plansOf(controllers),
     citedGrantIds: citedOf(controllers),
@@ -60,6 +73,14 @@ export async function assembleD1Support(
     applicationEdges: [...edgesOf(usecases), ...edgesOf(controllers)],
     formFields: formFieldsOf(controllers),
     enumerations: enumerationsOf(controllers),
+    tables: tablesOf(persistence),
+    models,
+    journeys: journeys.journeys,
+    missingJourneys: journeys.missing,
+    roleTags: [...roleTags, ...actorTags(grants, models)],
+    seedRefs: [],
+    existingDatasets: datasetsOf(previous),
+    maintenance: null,
   };
   return { build: buildD1Support(request), files };
 }
@@ -316,4 +337,157 @@ function arrayOf(value: unknown): unknown[] {
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function tablesOf(draft: Record<string, unknown>): D1SupportRequest['tables'] {
+  const out: D1SupportRequest['tables'] = [];
+  for (const table of arrayOf(draft.tables)) {
+    if (!isRecord(table) || typeof table.tableId !== 'string' || typeof table.entityId !== 'string') continue;
+    const definition = isRecord(table.definition) ? table.definition : null;
+    const data = definition && isRecord(definition.data) ? definition.data : null;
+    out.push({
+      tableId: table.tableId,
+      entityId: table.entityId,
+      action: typeof table.action === 'string' ? table.action : '',
+      defPath: typeof table.defPath === 'string' ? table.defPath : '',
+      uniqueKeys: pairsOf(data?.uniqueKeys),
+    });
+  }
+  return out;
+}
+
+function modelsOf(draft: Record<string, unknown>, index: unknown): D1SeedModel[] {
+  const kinds = new Map<string, string>();
+  if (isRecord(index)) {
+    for (const entity of arrayOf(index.entities)) {
+      if (!isRecord(entity) || typeof entity.entityId !== 'string') continue;
+      kinds.set(entity.entityId, typeof entity.kind === 'string' ? entity.kind : '');
+    }
+  }
+  const out: D1SeedModel[] = [];
+  for (const entity of arrayOf(draft.entities)) {
+    if (!isRecord(entity) || typeof entity.entityId !== 'string') continue;
+    const definition = isRecord(entity.definition) ? entity.definition : null;
+    const data = definition && isRecord(definition.data) ? definition.data : {};
+    const fields = arrayOf(data.fields).flatMap(field => {
+      if (!isRecord(field) || typeof field.name !== 'string') return [];
+      return [{ name: field.name, type: typeof field.type === 'string' ? field.type : '' }];
+    });
+    const lifecycle = isRecord(data.lifecycle) ? data.lifecycle : {};
+    const storageTarget = typeof entity.storageTarget === 'string' ? entity.storageTarget : '';
+    const kind = kinds.get(entity.entityId) === 'role' || storageTarget === 'mdm' ? 'role' : 'entity';
+    out.push({
+      entityId: entity.entityId,
+      storageTarget,
+      kind,
+      namespace: '',
+      fields,
+      states: arrayOf(lifecycle.states).flatMap(state => {
+        if (!isRecord(state) || typeof state.state !== 'string' || !state.state) return [];
+        return [state.state];
+      }),
+      initialState: typeof entity.derivedInitial === 'string' ? entity.derivedInitial : '',
+      uniqueKeys: pairsOf(entity.uniqueKeys),
+      transitions: arrayOf(lifecycle.transitions).flatMap(transition => {
+        if (!isRecord(transition) || typeof transition.transitionId !== 'string') return [];
+        return [{
+          transitionId: transition.transitionId,
+          to: typeof transition.to === 'string' ? transition.to : '',
+          ruleRefs: stringList(transition.ruleRefs),
+        }];
+      }),
+      noteField: fields.find(field => field.name === 'attendanceNote' || field.name.endsWith('.attendanceNote'))?.name || '',
+    });
+  }
+  return out;
+}
+
+async function journeysOf(
+  project: number,
+  moduleName: string,
+): Promise<{ journeys: D1SeedJourney[]; missing: string[] }> {
+  const journeyIndexText = await readLogical(project, inputPaths(moduleName).journeyIndex);
+  const journeyIndex = journeyIndexText ? parseD1Source(journeyIndexText, 'defs') : null;
+  if (!isRecord(journeyIndex) || !Array.isArray(journeyIndex.journeys)) return { journeys: [], missing: [] };
+  const journeys: D1SeedJourney[] = [];
+  const missing: string[] = [];
+  for (const item of journeyIndex.journeys) {
+    if (!isRecord(item) || typeof item.journeyId !== 'string' || !item.journeyId) continue;
+    const text = await readLogical(project, journeyPath(moduleName, item.journeyId));
+    const parsed = text ? parseD1Source(text, 'defs') : null;
+    if (!isRecord(parsed)) {
+      missing.push(item.journeyId);
+      continue;
+    }
+    journeys.push(journeyOf(item.journeyId, parsed));
+  }
+  return { journeys, missing };
+}
+
+function journeyOf(journeyId: string, parsed: Record<string, unknown>): D1SeedJourney {
+  const business = isRecord(parsed.business) ? parsed.business : parsed;
+  const entities: string[] = [];
+  const effects: D1SeedJourney['effects'] = [];
+  for (const step of arrayOf(business.steps)) {
+    if (!isRecord(step) || typeof step.entity !== 'string' || !step.entity) continue;
+    if (!entities.includes(step.entity)) entities.push(step.entity);
+    const effect = typeof step.effect === 'string' ? step.effect : '';
+    if (!effect) continue;
+    effects.push({
+      entityId: step.entity,
+      effect,
+      transitionRef: typeof step.transitionRef === 'string' ? step.transitionRef : '',
+    });
+  }
+  return { journeyId, entities, effects };
+}
+
+async function roleTagsOf(project: number, moduleName: string, index: unknown): Promise<D1SeedRoleTag[]> {
+  if (!isRecord(index) || !Array.isArray(index.entities)) return [];
+  const tags: D1SeedRoleTag[] = [];
+  for (const entity of index.entities) {
+    if (!isRecord(entity) || typeof entity.entityId !== 'string') continue;
+    const text = await readLogical(project, entityPath(moduleName, entity.entityId));
+    const parsed = text ? parseD1Source(text, 'defs') : null;
+    if (!isRecord(parsed) || !isRecord(parsed.relationships)) continue;
+    for (const rel of Object.values(parsed.relationships)) {
+      if (!isRecord(rel) || typeof rel.role !== 'string' || !rel.role) continue;
+      const entityId = typeof rel.to === 'string' ? rel.to : '';
+      if (!entityId || rel.role === entityId) continue;
+      if (tags.some(tag => tag.tag === rel.role && tag.entityId === entityId)) continue;
+      tags.push({ tag: rel.role, entityId });
+    }
+  }
+  return tags;
+}
+
+function actorTags(grants: D1SupportRequest['grants'], models: readonly D1SeedModel[]): D1SeedRoleTag[] {
+  const ids = new Set(models.map(model => model.entityId));
+  const tags: D1SeedRoleTag[] = [];
+  for (const grant of grants) {
+    const tag = grant.actorRef;
+    if (!tag || ids.has(tag) || tags.some(item => item.tag === tag)) continue;
+    const entityId = [...ids].find(id => id.toLowerCase() === tag.toLowerCase()) || '';
+    tags.push({ tag, entityId });
+  }
+  return tags;
+}
+
+function datasetsOf(draft: Record<string, unknown> | null): D1SeedDataset[] {
+  if (!draft || draft.schemaVersion !== D1_SUPPORT_VERSION || !isRecord(draft.seedPlan)) return [];
+  const out: D1SeedDataset[] = [];
+  for (const item of arrayOf(draft.seedPlan.datasets)) {
+    if (!isRecord(item) || typeof item.datasetId !== 'string' || typeof item.tableId !== 'string') continue;
+    out.push({ datasetId: item.datasetId, tableId: item.tableId, owners: stringList(item.owners) });
+  }
+  return out;
+}
+
+function pairsOf(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!Array.isArray(item)) return [];
+    const row = item.filter((part): part is string => typeof part === 'string' && part.length > 0);
+    return row.length ? [row] : [];
+  });
 }

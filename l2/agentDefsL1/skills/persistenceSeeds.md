@@ -2,6 +2,8 @@
 
 # persistenceSeeds
 
-Scenarios and constraints for local tables. No people, credentials, quantities
-or policies. Nothing is written to a database here. This type is not
-dispatched by agentChangeBackend.
+A plan for a later materializer. `phase` is `plan`. Scenarios cite journeys
+and model constraints: column refs, unique keys, states and a note only
+where the model already requires one. Dependencies name entity ids. An MDM
+role is not a local row and not a role tag. Nothing here writes `seeds.ts`
+or loads a database. This type is not dispatched by agentChangeBackend.
