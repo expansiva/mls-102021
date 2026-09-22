@@ -112,6 +112,7 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.equal(fanout?.executionMode?.args.length, 13);
   assert.equal(fanout?.step.planning?.executionMode, 'parallel_dynamic');
   assert.equal(fanout?.step.planning?.planId, 'usecases50-fanout');
+  assertFanoutParent(fanout?.step, 13);
   assert.equal(intents.some(intent => intent.type === 'prompt_ready'), false);
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
   assert.match(trace?.traceMsg || '', /dispatched 13 workers/);
@@ -135,6 +136,7 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   const ready = prepared.find((intent): intent is mls.msg.AgentIntentPromptReady => intent.type === 'prompt_ready');
   assert.ok(ready);
   assert.equal(ready.humanPrompt.includes('Do not write TypeScript') || ready.systemPrompt?.includes('Do not write TypeScript'), true);
+  assert.match(ready.systemPrompt || '', /<!-- modelType: reasoning -->/);
   assert.equal(ready.humanPrompt.includes(arg.usecaseId), true);
   const finished = await agent.afterPromptStep!(meta(), ctx, parent, worker, 6);
   assert.equal(finished.some(intent => intent.type === 'add-step'), false);
@@ -151,6 +153,36 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.match(barrierTrace, new RegExp(arg.usecaseId));
   assert.match(barrierTrace, /missing trace|OPERATIONAL|operational/);
   assert.equal(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))], undefined);
+});
+
+void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', async () => {
+  const host = await readyHost();
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  parent.nextSteps = [];
+  const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
+  input.stepId = 20;
+  await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
+  domain.stepId = 30;
+  await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
+  const persistence = createD1AgentStep('persistence40', MODULE, PROJECT, 'run');
+  persistence.stepId = 40;
+  await agent.beforePromptStep!(meta(), ctx, parent, persistence, 3);
+  const kept = keptFiles(host);
+
+  const step = createD1AgentStep('usecases50', MODULE, PROJECT, 'resume');
+  step.stepId = 50;
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 4);
+  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  assert.equal(fanout?.executionMode?.type, 'parallel');
+  assert.equal(fanout?.executionMode?.args.length, 13);
+  assertFanoutParent(fanout?.step, 13);
+  assert.equal(intents.some(intent => intent.type === 'update-status' && /dispatched 13 workers/.test((intent as mls.msg.AgentIntentUpdateStatus).traceMsg || '')), true);
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as { steps?: { persistence40?: { status?: string } } };
+  assert.equal(pipeline.steps?.persistence40?.status, 'approved');
+  assert.deepEqual(keptFiles(host), kept);
 });
 
 void test('the same snapshot does not call the model again', async () => {
@@ -208,6 +240,25 @@ void test('the same snapshot does not call the model again', async () => {
   assert.deepEqual(host.writes, []);
   assert.equal(stored.updatedAt, mtime);
 });
+
+function keptFiles(host: { files: Record<string, { content?: string }> }): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, file] of Object.entries(host.files)) {
+    if (key.includes('usecases50-work')) continue;
+    out[key] = file.content || '';
+  }
+  return out;
+}
+
+function assertFanoutParent(step: mls.msg.AIPayload | undefined, workers: number): void {
+  assert.equal(step?.type, 'agent');
+  if (step?.type !== 'agent') return;
+  assert.equal(step.status, 'in_progress');
+  assert.equal(step.interaction?.cost, 0);
+  assert.equal(step.interaction?.payload, null);
+  assert.deepEqual(step.interaction?.input, [{ type: 'system', content: '<!-- modelType: reasoning -->' }]);
+  assert.deepEqual(step.interaction?.trace, [`queued ${workers} usecases50 workers with maxParallel=5`]);
+}
 
 function fileInfo(path: string) {
   const file = {

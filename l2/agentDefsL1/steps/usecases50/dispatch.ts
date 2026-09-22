@@ -111,9 +111,17 @@ export function fanoutStep(project: number, moduleName: string, args: readonly s
   return {
     type: 'agent',
     stepId: 0,
-    interaction: null,
+    // Same parent interaction as agentNewSolution5 parallelEntityStep. The host
+    // refuses a parallel child update-status, and will not start the child LLM,
+    // when this step has progress and no interaction.
+    interaction: {
+      input: [{ type: 'system', content: '<!-- modelType: reasoning -->' }],
+      cost: 0,
+      trace: [`queued ${args.length} usecases50 workers with maxParallel=${D1_MAX_PARALLEL}`],
+      payload: null,
+    },
     stepTitle: FANOUT_TITLE,
-    status: 'waiting_human_input',
+    status: 'in_progress',
     nextSteps: [],
     agentName: D1_AGENT_NAME,
     prompt: JSON.stringify({ planId: dynamicPlanId('usecases50', 'fanout', ''), moduleName, project, command: 'run' }),

@@ -168,7 +168,8 @@ async function prepareWorker(
     taskId: context.task?.PK || '',
     hookSequential,
     parentStepId: parentStep.stepId,
-    systemPrompt: [stripComment(skill || ''), stripComment(instructions)].filter(Boolean).join('\n\n'),
+    // Skill comment is removed. The step prompt is not: its modelType is what the host routes on.
+    systemPrompt: [stripComment(skill || ''), instructions.trim()].filter(Boolean).join('\n\n'),
     humanPrompt,
     tools: [usecaseTool()],
     toolChoice: { type: 'function', function: { name: 'planUsecaseSteps' } },

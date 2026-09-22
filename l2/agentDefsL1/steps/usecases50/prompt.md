@@ -1,4 +1,5 @@
 <!-- mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/prompt.md" enhancement="_blank" -->
+<!-- modelType: reasoning -->
 
 # usecases50
 

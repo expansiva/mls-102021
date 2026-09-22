@@ -1,5 +1,10 @@
 # usecases50
 
+## 2026-09-22 (d1_13b)
+
+- The fan-out parent carries the interaction `agentNewSolution5` `parallelEntityStep` gives its parent: system `<!-- modelType: reasoning -->`, cost 0, one queue trace, payload null, status `in_progress`. A parallel child `update-status` is refused when that parent has progress and no interaction.
+- The worker system prompt keeps `<!-- modelType: reasoning -->`. The skill comment is still removed. The step prompt is not.
+
 ## 2026-09-22 (d1_07b)
 
 - Contract types are read in the agent, without importing `typescript`.

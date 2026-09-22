@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { decideRepairs, fanoutExecution, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
+import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
@@ -211,6 +211,12 @@ void test('worker args stay compact and a reply cannot invent a field or write t
   const mode = fanoutExecution([arg, firstWorkerArg(102047, 'agendaClinica', 'createConsulta')]);
   assert.equal(mode.maxParallel, 5);
   assert.equal(mode.args.length, 2);
+  const parent = fanoutStep(102047, 'agendaClinica', mode.args);
+  assert.equal(parent.status, 'in_progress');
+  assert.equal(parent.interaction?.cost, 0);
+  assert.equal(parent.interaction?.payload, null);
+  assert.deepEqual(parent.interaction?.input, [{ type: 'system', content: '<!-- modelType: reasoning -->' }]);
+  assert.deepEqual(parent.interaction?.trace, ['queued 2 usecases50 workers with maxParallel=5']);
 
   const invented = parseWorkerReply({ usecaseId: 'other', steps: [] });
   assert.equal(invented.steps, null);
