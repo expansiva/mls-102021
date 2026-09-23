@@ -15,9 +15,9 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { authorizedPayloadNames } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { authorizedPayloadNames, capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { bindMdm, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
-  D1_MDM_CALLS,
   D1_USECASE_VERSION,
   D1_WRITE_CALLS,
   ENUMERATION_REASON,
@@ -27,6 +27,7 @@ import {
   type D1UsecaseEnumeration,
   type D1UsecaseField,
   type D1UsecaseItem,
+  type D1MdmPlannedCall,
   type D1UsecaseMdm,
   type D1UsecaseNormalization,
   type D1UsecasePlanInput,
@@ -36,8 +37,6 @@ import {
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-
-const MDM_CALL: Record<string, string> = { list: 'read', create: 'create', update: 'attach' };
 
 const READ_OPERATIONS = new Set(['list', 'get', 'read']);
 const UPDATE_OPERATIONS = new Set(['update', 'patch']);
@@ -671,15 +670,38 @@ function resolveMdm(
     }
     return null;
   }
-  const call = MDM_CALL[usecase.operation] || '';
-  if (!call || !(D1_MDM_CALLS as readonly string[]).includes(call)) {
-    error(problems, 'INVENTED_OPERATION', path, `Operation ${usecase.operation} has no MDM call.`);
-    return null;
-  }
   if (!entity.namespace) {
     error(problems, 'MDM_NAMESPACE', path, `MDM role ${entity.entityId} names no namespace.`);
     return null;
   }
+  const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
+  const bound = bindMdm({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities: entity.capabilities || [],
+    selected,
+    platformFields: entity.platformFields || [],
+  });
+  if (!selected.length) {
+    error(problems, 'MDM_CAPABILITY_MISSING', path, `MDM role ${entity.entityId} has no capability for operation ${usecase.operation}. No call was invented.`);
+  }
+  for (const gap of bound.gaps) {
+    error(problems, gap.code, path, gap.evidence);
+  }
+  for (const call of bound.calls) {
+    for (const arg of call.arguments) {
+      if (arg.role !== 'patch' || arg.value) continue;
+      if (isForeignMdmPatchKey(entity.namespace, arg.name)) {
+        error(problems, 'MDM_NAMESPACE', path, `Patch key ${arg.name} is not the namespace ${entity.namespace}.`);
+      }
+    }
+  }
+  const required = new Set<string>();
+  for (const call of bound.calls) {
+    if (call.alternative) continue;
+    for (const capability of call.capabilities) required.add(`${capability}\u0000${call.method}`);
+  }
+  const present = new Set<string>();
   for (const step of steps) {
     if (step.kind !== 'mdm') continue;
     if (step.namespace !== entity.namespace) {
@@ -688,11 +710,43 @@ function resolveMdm(
     if (step.entity !== entity.entityId) {
       error(problems, 'INVENTED_OPERATION', path, `MDM entity ${step.entity} is not ${entity.entityId}.`);
     }
-    if (step.call !== call) {
-      error(problems, 'INVENTED_OPERATION', path, `MDM call ${step.call} is not ${call}.`);
+    if (!isMdmFacadeCall(step.call)) {
+      error(problems, 'MDM_CALL_ABSENT', path, `MDM call ${step.call || '(empty)'} is not a method of the MDM facade.`);
+      continue;
+    }
+    const key = `${step.capability}\u0000${step.call}`;
+    if (!required.has(key) && !bound.calls.some(call => call.alternative && call.method === step.call && call.capabilities.includes(step.capability))) {
+      error(problems, 'MDM_CALL_INCOMPATIBLE', path, `MDM call ${step.call} for ${step.capability || '(none)'} does not execute ${usecase.operation} of ${entity.entityId}.`);
+      continue;
+    }
+    present.add(key);
+  }
+  for (const key of required) {
+    if (present.has(key)) continue;
+    const split = key.indexOf('\u0000');
+    const capability = key.slice(0, split);
+    const method = key.slice(split + 1);
+    const call = bound.calls.find(item => item.method === method && item.capabilities.includes(capability));
+    const code = call?.shape === 'write' ? 'MDM_WRITE_MISSING' : 'MDM_CALL_MISSING';
+    const kind = call?.shape === 'write' ? 'write' : 'read';
+    error(problems, code, path, `Capability ${capability} requires ${method}. The plan does not name that ${kind}.`);
+  }
+  const choices = new Map<string, D1MdmPlannedCall[]>();
+  for (const call of bound.calls) {
+    if (!call.alternative) continue;
+    for (const capability of call.capabilities) {
+      const group = choices.get(capability) || [];
+      group.push(call);
+      choices.set(capability, group);
     }
   }
-  return { namespace: entity.namespace, call };
+  for (const [capability, group] of choices) {
+    const named = group.some(call => present.has(`${capability}\u0000${call.method}`));
+    if (!named) {
+      error(problems, 'MDM_WRITE_MISSING', path, `Capability ${capability} requires one of ${group.map(call => call.method).join(' or ')}. The plan names neither.`);
+    }
+  }
+  return bound;
 }
 
 function noteAdapter(steps: readonly D1WorkerStep[], path: string, problems: D1UsecaseProblem[]): void {
@@ -719,11 +773,20 @@ function resolveBoundary(
   path: string,
   problems: D1UsecaseProblem[],
 ): 'local' | null {
-  const writes = portCalls.filter(call => (D1_WRITE_CALLS as readonly string[]).includes(call)).length
-    + (mdm && mdm.call !== 'read' ? 1 : 0);
+  const writes = portCalls.filter(call => (D1_WRITE_CALLS as readonly string[]).includes(call)).length;
   const local = steps.filter(step => step.kind === 'transaction' && step.boundary === 'local').length;
   const external = steps.filter(step => step.kind === 'transaction' && step.boundary === 'external').length;
   const other = steps.filter(step => step.kind === 'transaction' && step.boundary !== 'local' && step.boundary !== 'external').length;
+  if (mdm && (local || external || other)) {
+    const message = mdm.atomic
+      ? `Usecase ${path} claims a transaction around ${mdm.calls[0]?.method || 'an MDM call'}. That facade method is the boundary.`
+      : `Usecase ${path} claims one transaction over ${mdm.calls.length} MDM calls. The facade does not wrap them.`;
+    error(problems, 'MDM_NOT_ATOMIC', path, message);
+    if (external || other) {
+      error(problems, 'EXTERNAL_ATOMICITY', path, `Usecase ${path} promises atomicity the runtime does not grant an external effect.`);
+    }
+    return null;
+  }
   if (external || other) {
     error(problems, 'EXTERNAL_ATOMICITY', path, `Usecase ${path} promises atomicity the runtime does not grant an external effect.`);
   }

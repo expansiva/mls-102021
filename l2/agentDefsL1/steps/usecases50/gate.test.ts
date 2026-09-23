@@ -39,7 +39,11 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   assert.equal(build.normalizations.some(item => item.code === 'ENUMERATIONS_NOT_CONSUMED'), true);
   assert.equal(build.emit.some(item => (item.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/repositoryAdapter/'))), false);
   const paciente = build.usecases.find(item => item.usecaseId === 'createPaciente');
-  assert.deepEqual(paciente?.mdm, { namespace: 'agendaClinica', call: 'create' });
+  assert.equal(paciente?.mdm?.namespace, 'agendaClinica');
+  assert.equal(paciente?.mdm?.role, 'agendaClinica.Paciente');
+  assert.equal(paciente?.mdm?.atomic, false);
+  assert.deepEqual(paciente?.mdm?.calls.map(call => call.method), ['findByDocument', 'findByContact', 'create', 'attachRole']);
+  assert.equal(paciente?.mdm?.calls.some(call => call.method === 'attachRole' && call.arguments.some(arg => arg.name === 'role' && arg.value === 'agendaClinica.Paciente')), true);
   assert.equal((paciente?.definition?.data as { ports: string[] }).ports.length, 0);
 });
 
@@ -298,13 +302,13 @@ void test('the mdm branch call enum is exactly D1_MDM_CALLS', () => {
   assert.deepEqual(propertyOf(branchOf(closed, 'effect'), 'eventId').enum, ['consultaConfirmada']);
 
   for (const catalogCall of D1_MDM_CALLS) {
-    const reply = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: catalogCall, entity: 'Paciente' }] });
+    const reply = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: catalogCall, entity: 'Paciente', capability: 'read.byId' }] });
     assert.equal(reply.problems.length, 0, catalogCall);
     assert.equal(reply.steps?.[0]?.kind === 'mdm' && reply.steps[0].call, catalogCall);
   }
   const outsider = `${D1_MDM_CALLS.join('-')}-extra`;
   assert.equal((D1_MDM_CALLS as readonly string[]).includes(outsider), false);
-  const refused = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: outsider, entity: 'Paciente' }] });
+  const refused = parseWorkerReply({ steps: [{ kind: 'mdm', namespace: 'agendaClinica', call: outsider, entity: 'Paciente', capability: 'read.byId' }] });
   assert.equal(refused.steps, null);
   assert.equal(refused.problems[0]?.code, 'INVENTED_OPERATION');
   assert.match(refused.problems[0]?.message || '', new RegExp(outsider.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -608,7 +612,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
     usecaseId: 'updateProfissional',
     steps: [
       { kind: 'context', source: 'ctx' },
-      { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional' },
+      { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional', capability: 'edit.platformFields' },
       { kind: 'transition', transitionId: 'updateProfissional', payload: ['id'] },
     ],
   }];
@@ -831,7 +835,7 @@ const R10: Record<string, D1WorkerStep[]> = {
   ],
   updateProfissional: [
     { kind: 'context', source: 'ctx' },
-    { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional' },
+    { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional', capability: 'edit.platformFields' },
     { kind: 'transition', transitionId: 'agendaClinica.dados_profissional.cmdUpdateProfissional', payload: [] },
     { kind: 'transition', transitionId: 'agendaClinica.dados_recepcionista.cmdUpdateProfissional', payload: [] },
   ],

@@ -6,6 +6,8 @@ import type {
   D1UsecaseSelection,
   D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 /**
  * Measured from the frozen agendaClinica backend (22 routes, 5 pages).
@@ -110,9 +112,9 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
         rules: [],
         enumerations: [{ path: 'status', values: ['scheduled', 'confirmed', 'noShow', 'attended'] }],
       },
-      mdm('Paciente', [{ path: 'details.identification.subtype', values: ['Person'] }]),
-      mdm('Profissional', []),
-      mdm('Recepcionista', []),
+      mdm('Paciente', [{ path: 'details.identification.subtype', values: ['Person'] }], PACIENTE_CAPABILITIES, PACIENTE_PLATFORM),
+      mdm('Profissional', [], PROFISSIONAL_CAPABILITIES, PROFISSIONAL_PLATFORM),
+      mdm('Recepcionista', [], RECEPCIONISTA_CAPABILITIES, RECEPCIONISTA_PLATFORM),
     ],
     moduleRules: [
       'consultationTransitionFlow',
@@ -138,8 +140,25 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   const entity = request.entities.find(item => item.entityId === usecase.entity);
   const steps: D1WorkerStep[] = [{ kind: 'context', source: 'ctx' }];
   if (entity?.storageTarget === 'mdm') {
-    const call = usecase.operation === 'list' ? 'read' : usecase.operation === 'update' ? 'attach' : 'create';
-    steps.push({ kind: 'mdm', namespace: entity.namespace, call, entity: entity.entityId });
+    const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
+    const bound = bindMdm({
+      entityId: entity.entityId,
+      namespace: entity.namespace,
+      capabilities: entity.capabilities || [],
+      selected,
+      platformFields: entity.platformFields || [],
+    });
+    for (const call of bound.calls) {
+      for (const capability of call.capabilities) {
+        steps.push({
+          kind: 'mdm',
+          namespace: entity.namespace,
+          call: call.method,
+          entity: entity.entityId,
+          capability,
+        });
+      }
+    }
   } else {
     const port = request.ports.find(item => item.entityId === usecase.entity);
     if (port) steps.push({ kind: 'port', call: usecase.operation, port: port.portId });
@@ -155,7 +174,50 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   return { usecaseId: usecase.usecaseId, steps };
 }
 
-function mdm(entityId: string, enumerations: Array<{ path: string; values: string[] }>): D1UsecaseRequest['entities'][number] {
+const IDENTIFICATION = [
+  'details.identification.name',
+  'details.identification.docType',
+  'details.identification.docId',
+  'details.identification.countryCode',
+];
+
+const PROFISSIONAL_CAPABILITIES = [
+  'read.byId', 'locate.byName', 'locate.byDocument', 'locate.byTag',
+  'register.createOrAttach', 'edit.platformFields', 'inactivate', 'invite.login',
+  'statusHistory.read', 'audit',
+];
+
+const PROFISSIONAL_PLATFORM = [
+  ...IDENTIFICATION,
+  'details.person.occupation',
+  'details.person.privacyConsent',
+];
+
+const RECEPCIONISTA_CAPABILITIES = [
+  'read.byId', 'locate.byName', 'locate.byDocument', 'register.createOrAttach',
+  'edit.platformFields', 'edit.moduleNamespace', 'inactivate', 'audit', 'invite.login',
+];
+
+const RECEPCIONISTA_PLATFORM = [...IDENTIFICATION];
+
+const PACIENTE_CAPABILITIES = [
+  'read.byId', 'locate.byName', 'locate.byDocument', 'locate.byContact',
+  'register.createOrAttach', 'edit.platformFields', 'inactivate', 'link.contact', 'listLinks', 'audit',
+];
+
+const PACIENTE_PLATFORM = [
+  ...IDENTIFICATION,
+  'details.base.aliases',
+  'details.base.notes',
+  'details.person.privacyConsent',
+];
+
+function mdm(
+  entityId: string,
+  enumerations: Array<{ path: string; values: string[] }>,
+  capabilities: string[],
+  platformFields: string[],
+): D1UsecaseRequest['entities'][number] {
   return {
     entityId,
     storageTarget: 'mdm',
@@ -165,5 +227,7 @@ function mdm(entityId: string, enumerations: Array<{ path: string; values: strin
     transitions: [],
     rules: [],
     enumerations,
+    capabilities,
+    platformFields,
   };
 }

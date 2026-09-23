@@ -12,7 +12,25 @@ export const ENUMERATION_REASON = 'Usecase projection has no values slot. Enum v
 
 export const D1_WORKER_KINDS = ['port', 'rule', 'mdm', 'transition', 'effect', 'transaction', 'context'] as const;
 
-export const D1_MDM_CALLS = ['read', 'attach', 'create'] as const;
+/**
+ * Facade methods a plan may name. `read` and `attach` are not methods:
+ * a point read, a collection read and a platform-field update are different calls.
+ * Schema-per-operation is a later cut; this catalog is the facade, not one operation.
+ */
+export const D1_MDM_CALLS = [
+  'get',
+  'findByDocument',
+  'findByContact',
+  'listByType',
+  'relatedOfMany',
+  'create',
+  'attachRole',
+  'update',
+  'inactivate',
+  'reactivate',
+  'link',
+  'invite',
+] as const;
 
 export type D1MdmCall = (typeof D1_MDM_CALLS)[number];
 
@@ -68,6 +86,10 @@ export interface D1UsecaseEntity {
   transitions: D1UsecaseTransition[];
   rules: Array<{ ruleId: string; owner: 'module' | 'platform'; source?: string }>;
   enumerations: Array<{ path: string; values: string[] }>;
+  /** Capability ids the ontology declares. Absent when this step was not given the body. */
+  capabilities?: string[];
+  /** Non-derived platform field paths. The MDM binding maps each one to a facade patch key. */
+  platformFields?: string[];
 }
 
 export interface D1PortSignature {
@@ -127,8 +149,11 @@ export interface D1WorkerRule {
 export interface D1WorkerMdm {
   kind: 'mdm';
   namespace: string;
-  call: D1MdmCall;
+  /** Facade method the model named. Not trusted until the gate matches it to a capability. */
+  call: string;
   entity: string;
+  /** Capability this step claims to execute. */
+  capability: string;
 }
 
 export interface D1WorkerTransition {
@@ -288,9 +313,49 @@ export interface D1UsecaseRequest {
   llmCalls: number;
 }
 
+/** One value the facade method takes. A patch key the facade does not accept is not represented. */
+export interface D1MdmArgument {
+  name: string;
+  role: 'selector' | 'parameter' | 'patch';
+  /** Set when a shared call's patch is owned by one capability. */
+  capability?: string;
+  /** Ontology or contract path the value is read from. */
+  path?: string;
+  /** Constant the facade receives when the value is not a field (`role` tag, or `ctx`). */
+  value?: string;
+}
+
+/** One facade invocation. Several capabilities may share it when one patch and one version cover them. */
+export interface D1MdmPlannedCall {
+  method: D1MdmCall;
+  target: 'entity' | 'collection' | 'identity';
+  shape: 'point' | 'collection' | 'write';
+  capabilities: string[];
+  /** True when the capability is a choice (inactivate or reactivate), not a sequence. */
+  alternative: boolean;
+  arguments: D1MdmArgument[];
+  result: string[];
+}
+
+/** A declared capability the facade does not implement. Not a successful call. */
+export interface D1MdmGap {
+  capability: string;
+  /** MDM_UNBOUND: no facade method. MDM_PATCH_UNBOUND: a field the facade cannot patch. */
+  code: 'MDM_UNBOUND' | 'MDM_PATCH_UNBOUND';
+  evidence: string;
+}
+
 export interface D1UsecaseMdm {
   namespace: string;
-  call: string;
+  /** Canonical tag `<namespace>.<entityId>`. */
+  role: string;
+  /**
+   * True only when every selected capability is one facade invocation.
+   * A sequence of calls is not atomic: the facade does not wrap them.
+   */
+  atomic: boolean;
+  calls: D1MdmPlannedCall[];
+  gaps: D1MdmGap[];
 }
 
 export interface D1UsecaseItem {

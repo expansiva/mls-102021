@@ -1,5 +1,12 @@
 # usecases50
 
+## 2026-09-23 (d1_16)
+
+- An MDM plan names the facade method that executes the capability. `update` of platform fields is `entity.update` with `mdmId`, `expectedVersion` and the platform patch. It is not `attachRole`. The caller namespace is the same update, one version bump, because two updates would resubmit a stale version.
+- `register.createOrAttach` is `findByDocument` (and `findByContact` when the role declares that lookup), then `create` for a new person, then `attachRole` for the role tag. An existing document skips `create`. The calls are not one transaction. No module repository is introduced.
+- A list names each read: `get` and `findByDocument` are point lookups; `listByType` is a collection. The method is not chosen because it is called `read`.
+- A namespace of another module, a call the facade does not have, a call the operation does not use, a missing write, and a CRUD transition are refused. `audit` and `statusHistory.read` stay unbound: the facade has no such method.
+
 ## 2026-09-23 (d1_15)
 
 - Derived identity on a list or get input is a filter. On an update or transition input it is a selector. It is not assigned on create, on a patch, or in a transition payload. The field stays on the declared input; the gate does not delete it.

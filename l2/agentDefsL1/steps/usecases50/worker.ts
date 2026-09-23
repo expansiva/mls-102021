@@ -16,7 +16,7 @@ export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 export const STEP_KEYS = {
   port: ['kind', 'call', 'port'],
   rule: ['kind', 'ruleId'],
-  mdm: ['kind', 'namespace', 'call', 'entity'],
+  mdm: ['kind', 'namespace', 'call', 'entity', 'capability'],
   transition: ['kind', 'transitionId', 'payload'],
   effect: ['kind', 'eventId'],
   transaction: ['kind', 'boundary'],
@@ -38,6 +38,7 @@ const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   ruleId: { type: 'string' },
   namespace: { type: 'string' },
   entity: { type: 'string' },
+  capability: { type: 'string' },
   transitionId: { type: 'string' },
   payload: { type: 'array', items: { type: 'string' } },
   eventId: { type: 'string' },
@@ -190,7 +191,7 @@ export function usecaseHumanPrompt(input: {
     '',
     'Plan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.',
     'A transition payload may list only a path the contract or the lifecycle payload already lists.',
-    'More than one write needs one local transaction boundary. An external effect is not atomic.',
+    'More than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.',
     'Authority is ctx.',
     '',
     workerStepShape(),
@@ -221,12 +222,20 @@ function parseStep(value: unknown, index: number): { step: D1WorkerStep } | { pr
   if (kind === 'context') return shaped(value, index, ['source'], raw => ({ kind: 'context', source: raw.source }));
   if (kind === 'transaction') return shaped(value, index, ['boundary'], raw => ({ kind: 'transaction', boundary: raw.boundary }));
   if (kind === 'mdm') {
-    const parsed = textFields(value, index, ['namespace', 'call', 'entity']);
+    const parsed = textFields(value, index, ['namespace', 'call', 'entity', 'capability']);
     if ('problem' in parsed) return parsed;
     if (!isMdmCall(parsed.raw.call)) {
-      return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} MDM call ${parsed.raw.call} is not a catalog call.` } };
+      return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} MDM call ${parsed.raw.call} is not a facade method.` } };
     }
-    return { step: { kind: 'mdm', namespace: parsed.raw.namespace, call: parsed.raw.call, entity: parsed.raw.entity } };
+    return {
+      step: {
+        kind: 'mdm',
+        namespace: parsed.raw.namespace,
+        call: parsed.raw.call,
+        entity: parsed.raw.entity,
+        capability: parsed.raw.capability,
+      },
+    };
   }
   const transitionId = typeof value.transitionId === 'string' ? value.transitionId : '';
   if (!transitionId) return { problem: { code: 'INVENTED_OPERATION', message: `Step ${index} has no transitionId.` } };

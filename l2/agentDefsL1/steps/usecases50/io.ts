@@ -8,7 +8,7 @@ import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers
 import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { buildUsecaseContexts, loadVerifiedSources, namespaceOf, ontologyTransitions } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { buildUsecaseContexts, capabilityNames, loadVerifiedSources, namespaceOf, ontologyTransitions, platformFieldPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { D1_PERSISTENCE_VERSION, type D1PersistenceBuild } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import type { D1AttemptTrace } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
@@ -336,6 +336,8 @@ function entityView(plan: D1DomainBuild['entities'][number], body: unknown | nul
     transitions,
     rules: (plan.rules || []).map(rule => ({ ruleId: rule.ruleId, owner: rule.owner, source: rule.source })),
     enumerations: (plan.enumerations || []).map(item => ({ path: item.path, values: [...item.values] })),
+    capabilities: capabilityNames(body),
+    platformFields: platformFieldPaths(body),
   };
 }
 

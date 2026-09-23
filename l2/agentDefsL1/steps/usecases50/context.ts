@@ -601,6 +601,16 @@ function methodsFor(port: D1UsecasePort, operation: string): D1PortSignature[] {
   return [];
 }
 
+export function capabilityNames(body: unknown): string[] {
+  if (!isRecord(body) || !isRecord(body.capabilities)) return [];
+  const caps = body.capabilities;
+  return Object.keys(caps).filter(name => typeof caps[name] === 'string').sort();
+}
+
+export function platformFieldPaths(body: unknown): string[] {
+  return platformLeaves(body);
+}
+
 function capabilitiesFor(body: unknown, operation: string, storage: string): D1CapabilityText[] {
   if (storage !== 'mdm' || !isRecord(body) || !isRecord(body.capabilities)) return [];
   const caps = body.capabilities;
@@ -613,7 +623,7 @@ function capabilitiesFor(body: unknown, operation: string, storage: string): D1C
   return out;
 }
 
-function capabilityApplies(name: string, operation: string): boolean {
+export function capabilityApplies(name: string, operation: string): boolean {
   if (operation === 'update') return name === 'edit.platformFields' || name.startsWith('edit.');
   if (operation === 'create') return name.startsWith('register.') || name === 'create';
   if (operation === 'list' || operation === 'get') return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
