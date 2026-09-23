@@ -23,7 +23,9 @@ import {
 import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { blockingDrift, blockingFinding } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import type { D1PromptEvidence, D1UsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import {
   barrierStep,
   decideRepairs,
@@ -41,8 +43,11 @@ import {
   loadD1UsecaseWork,
   readAttempts,
   readD1UsecaseWork,
+  readPromptEvidence,
+  sourceBlockTrace,
   writeAttempt,
   writeD1UsecaseWork,
+  writePromptEvidence,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
@@ -155,16 +160,35 @@ async function prepareWorker(
   if (!work || !usecase) return refuse(context, parentStep, step, hookSequential, `Usecase ${arg.usecaseId} is not selected.`);
   const entity = work.request.entities.find(item => item.entityId === usecase.entity);
   const port = work.request.ports.find(item => item.entityId === usecase.entity);
+  const packet = work.request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
   const [skill, instructions] = await Promise.all([
     readText(agentFile('skills', 'usecase')),
     readText(agentFile('steps/usecases50', 'prompt')),
   ]);
   if (!instructions) return refuse(context, parentStep, step, hookSequential, 'usecases50 prompt is missing.');
-  const effects = work.request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId);
-  const ruleIds = [
-    ...work.request.moduleRules,
-    ...(entity?.rules.map(rule => rule.ruleId) || []),
-  ];
+  const snapshot = await readD1Input(arg.project, arg.moduleName);
+  const blocked = packet
+    ? await blockingDrift(arg.project, packet, snapshot?.sources || []) || blockingFinding(packet.findings)
+    : null;
+  if (blocked) {
+    const evidence = await evidenceFor(usecase.usecaseId, blocked.message, packet, snapshot?.snapshotHash || '');
+    await writeAttempt(arg.project, arg.moduleName, {
+      usecaseId: usecase.usecaseId,
+      status: 'operational',
+      trace: blocked.message,
+      unitAttempts: arg.unitAttempts,
+      reply: null,
+      request: evidence,
+    });
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', blocked.message)];
+  }
+  const effects = packet
+    ? packet.effects.map(event => event.eventId)
+    : work.request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId);
+  // Applicable rules decide behavior. moduleRules stays the id catalog the gate checks.
+  const ruleIds = packet
+    ? packet.rules.map(rule => rule.ruleId)
+    : [...work.request.moduleRules, ...(entity?.rules.map(rule => rule.ruleId) || [])];
   // Only the transition this usecase already is. Any other id is refused.
   const transitionIds = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
     ? [usecase.usecaseId]
@@ -179,8 +203,11 @@ async function prepareWorker(
     rules: entity?.transitions.find(item => item.transitionId === usecase.usecaseId)?.ruleRefs || [],
     effects,
     routes: usecase.routes,
+    context: packet,
     feedback: arg.feedback,
   });
+  const evidence = await evidenceFor(usecase.usecaseId, humanPrompt, packet, snapshot?.snapshotHash || '');
+  await writePromptEvidence(arg.project, arg.moduleName, evidence);
   return [{
     type: 'prompt_ready',
     args: prompt,
@@ -220,6 +247,9 @@ async function finishWorker(
     : payload.value === undefined
       ? { steps: null, problems: [{ code: 'INVENTED_OPERATION', message: 'The model reply is not steps.' }] }
       : parseWorkerReply(payload.value);
+  const prior = await readPromptEvidence(arg.project, arg.moduleName, arg.usecaseId);
+  const blockedTrace = !payload.present ? await sourceBlockTrace(arg.project, arg.moduleName, arg.usecaseId) : null;
+  if (blockedTrace) return [completeOnly(context, parentStep, step, hookSequential, blockedTrace)[0]];
   const operational = parsed.problems.some(problem => problem.code === 'OPERATIONAL');
   const outcome = parsed.problems.map(problem => problem.message).join(' ') || `usecases50 recorded steps for ${arg.usecaseId}.`;
   const trace = arg.feedback ? `Repair request: ${arg.feedback} ${outcome}` : outcome;
@@ -229,6 +259,7 @@ async function finishWorker(
     trace,
     unitAttempts: arg.unitAttempts,
     reply: parsed.steps,
+    request: prior || undefined,
   };
   await writeAttempt(arg.project, arg.moduleName, attempt);
   return [completeOnly(context, parentStep, step, hookSequential, trace)[0]];
@@ -508,6 +539,22 @@ function completeOnly(
   message: string,
 ): mls.msg.AgentIntent[] {
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', message)];
+}
+
+async function evidenceFor(
+  usecaseId: string,
+  text: string,
+  packet: D1UsecaseContext | undefined,
+  snapshotHash: string,
+): Promise<D1PromptEvidence> {
+  return {
+    usecaseId,
+    bytes: new TextEncoder().encode(text).length,
+    sha256: await sha256Text(text),
+    snapshotHash,
+    sourceHashes: packet?.sources || [],
+    text,
+  };
 }
 
 function refuse(

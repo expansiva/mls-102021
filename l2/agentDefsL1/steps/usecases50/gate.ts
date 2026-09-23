@@ -15,6 +15,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { authorizedPayloadNames } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import {
   D1_MDM_CALLS,
   D1_USECASE_VERSION,
@@ -114,7 +115,7 @@ function planUsecase(request: D1UsecaseRequest, usecase: D1UsecaseSelection, pro
   const input = sharedInput(request, usecase, entity, routes, problems);
   noteDerived(entity, input, steps, path, problems);
   noteRequiredNotes(entity, usecase, input, path, problems);
-  const transitionOk = noteTransition(entity, usecase, steps, input, path, problems);
+  const transitionOk = noteTransition(request, entity, usecase, steps, input, path, problems);
   const rules = resolveRules(request, entity, usecase, steps, path, problems);
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
@@ -417,6 +418,7 @@ function noteRequiredNotes(
 }
 
 function noteTransition(
+  request: D1UsecaseRequest,
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
   steps: readonly D1WorkerStep[],
@@ -424,7 +426,7 @@ function noteTransition(
   path: string,
   problems: D1UsecaseProblem[],
 ): boolean {
-  const allowed = new Set(input.map(field => field.name));
+  const allowed = authorizedPayloadNames(request, usecase.usecaseId, input.map(field => field.name));
   let ok = true;
   for (const step of steps) {
     if (step.kind !== 'transition') continue;

@@ -53,6 +53,9 @@ export interface D1UsecaseTransition {
   to: string;
   by: string[];
   ruleRefs: string[];
+  /** Field paths the ontology names. Empty when that transition declares none. */
+  payload?: string[];
+  description?: string;
 }
 
 export interface D1UsecaseEntity {
@@ -63,8 +66,14 @@ export interface D1UsecaseEntity {
   namespace: string;
   fields: D1UsecaseField[];
   transitions: D1UsecaseTransition[];
-  rules: Array<{ ruleId: string; owner: 'module' | 'platform' }>;
+  rules: Array<{ ruleId: string; owner: 'module' | 'platform'; source?: string }>;
   enumerations: Array<{ path: string; values: string[] }>;
+}
+
+export interface D1PortSignature {
+  name: string;
+  params: string[];
+  returns: string;
 }
 
 export interface D1UsecasePort {
@@ -72,6 +81,7 @@ export interface D1UsecasePort {
   entityId: string;
   defPath: string;
   methods: string[];
+  signatures?: D1PortSignature[];
 }
 
 export interface D1UsecaseRoute {
@@ -92,6 +102,9 @@ export interface D1UsecaseSelection {
 export interface D1OutboundEvent {
   eventId: string;
   on: string;
+  kind?: string;
+  to?: string;
+  description?: string;
 }
 
 export interface D1ContractSource {
@@ -156,6 +169,107 @@ export interface D1UsecasePlanInput {
   trace?: string;
 }
 
+/** A source the snapshot approved, or a file that was missing or had changed. */
+export interface D1SourceFinding {
+  code: 'SOURCE_ABSENT' | 'SOURCE_CHANGED' | 'RULE_TEXT_ABSENT' | 'CONTRACT_UNPARSED';
+  path: string;
+  message: string;
+}
+
+export interface D1SourceHash {
+  path: string;
+  sha256: string;
+}
+
+/** One rule the operation is subject to. The text is the source, not a summary. */
+export interface D1RuleText {
+  ruleId: string;
+  owner: 'module' | 'platform';
+  source: string;
+  text: string;
+}
+
+export interface D1ContractPath {
+  path: string;
+  type: string;
+  optional: boolean;
+}
+
+export interface D1AccessGrant {
+  grantId: string;
+  actorRef: string;
+  scope: string;
+  anchorEntity: string;
+  scopeDetail: string;
+  disclosure: string;
+  disclosureDetail: string;
+  allowedFields: string[];
+}
+
+export interface D1RouteContext {
+  route: string;
+  page: string;
+  contractPath: string;
+  inputSymbol: string;
+  outputSymbol: string;
+  inputFields: D1ContractPath[];
+  outputFields: D1ContractPath[];
+  /** Set when this route's contract does not bind the route. Not a second type. */
+  unbound: string;
+  access: D1AccessGrant[];
+}
+
+export interface D1CapabilityText {
+  name: string;
+  text: string;
+}
+
+export interface D1JourneyContext {
+  journeyId: string;
+  path: string;
+  actorRef: string;
+  goal: string;
+  steps: Array<{ stepId: string; kind: string; transitionRef: string; description: string }>;
+}
+
+/**
+ * Business context for one usecase. Contract symbols stay a reading of the L2
+ * source. This is not a DTO the gate trusts instead of that source.
+ */
+export interface D1UsecaseContext {
+  usecaseId: string;
+  lifecycle: boolean;
+  transition: {
+    transitionId: string;
+    from: string[];
+    to: string;
+    by: string[];
+    ruleRefs: string[];
+    payload: string[];
+    description: string;
+  } | null;
+  capabilities: D1CapabilityText[];
+  effectiveFields: string[];
+  routes: D1RouteContext[];
+  rules: D1RuleText[];
+  portId: string;
+  portMethods: D1PortSignature[];
+  effects: D1OutboundEvent[];
+  journeys: D1JourneyContext[];
+  findings: D1SourceFinding[];
+  sources: D1SourceHash[];
+}
+
+/** The human prompt that was handed to the worker, plus the hashes it was built from. */
+export interface D1PromptEvidence {
+  usecaseId: string;
+  bytes: number;
+  sha256: string;
+  snapshotHash: string;
+  sourceHashes: D1SourceHash[];
+  text: string;
+}
+
 export interface D1UsecaseRequest {
   project: number;
   moduleName: string;
@@ -163,9 +277,13 @@ export interface D1UsecaseRequest {
   routes: D1UsecaseRoute[];
   ports: D1UsecasePort[];
   entities: D1UsecaseEntity[];
+  /** Ids only. The gate uses this catalog to validate a returned id. */
   moduleRules: string[];
   outbound: D1OutboundEvent[];
   contracts: D1ContractSource[];
+  contexts?: D1UsecaseContext[];
+  sourceFindings?: D1SourceFinding[];
+  sourceHashes?: D1SourceHash[];
   plans: D1UsecasePlanInput[];
   llmCalls: number;
 }

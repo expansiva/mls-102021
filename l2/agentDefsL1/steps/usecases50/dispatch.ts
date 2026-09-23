@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/dispatch.ts" enhancement="_blank"/>
 
+import type { D1PromptEvidence } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import {
   D1_AGENT_NAME,
   D1_MAX_PARALLEL,
@@ -31,6 +32,8 @@ export interface D1AttemptTrace {
   trace: string;
   unitAttempts: number;
   reply: unknown;
+  /** The prompt the hook assembled. Present after prepareWorker. */
+  request?: D1PromptEvidence;
 }
 
 export interface D1RepairOrder {

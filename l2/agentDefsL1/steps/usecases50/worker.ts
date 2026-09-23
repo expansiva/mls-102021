@@ -5,9 +5,11 @@ import {
   D1_MDM_CALLS,
   D1_WORKER_KINDS,
   type D1MdmCall,
+  type D1UsecaseContext,
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
@@ -166,23 +168,33 @@ export function usecaseHumanPrompt(input: {
   rules: string[];
   effects: string[];
   routes: string[];
+  context?: D1UsecaseContext;
   feedback?: string;
 }): string {
   const lines = [
     `Usecase ${input.usecase.usecaseId} is already chosen. Do not rename it.`,
     `Entity ${input.entityId}. Operation ${input.usecase.operation}. Storage ${input.storageTarget}.`,
-    `Routes: ${input.routes.join(', ') || '(none)'}.`,
-    `Port: ${input.portId || '(none)'}. Methods: ${input.methods.join(', ') || '(none)'}.`,
-    `Rules: ${input.rules.join(', ') || '(none)'}.`,
-    `Effects: ${input.effects.join(', ') || '(none)'}.`,
-    `MDM namespace: ${input.namespace || '(none)'}.`,
+  ];
+  if (input.context) {
+    lines.push(`MDM namespace: ${input.namespace || '(none)'}.`, '', formatUsecaseContext(input.context));
+  } else {
+    lines.push(
+      `Routes: ${input.routes.join(', ') || '(none)'}.`,
+      `Port: ${input.portId || '(none)'}. Methods: ${input.methods.join(', ') || '(none)'}.`,
+      `Rules: ${input.rules.join(', ') || '(none)'}.`,
+      `Effects: ${input.effects.join(', ') || '(none)'}.`,
+      `MDM namespace: ${input.namespace || '(none)'}.`,
+    );
+  }
+  lines.push(
+    '',
     'Plan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.',
-    'A transition payload may list only contract input names you were not given to invent.',
+    'A transition payload may list only a path the contract or the lifecycle payload already lists.',
     'More than one write needs one local transaction boundary. An external effect is not atomic.',
     'Authority is ctx.',
     '',
     workerStepShape(),
-  ];
+  );
   if (input.feedback) {
     lines.push('', 'The previous reply was refused:', input.feedback);
   }

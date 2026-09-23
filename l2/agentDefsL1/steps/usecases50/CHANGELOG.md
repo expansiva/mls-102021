@@ -1,5 +1,12 @@
 # usecases50
 
+## 2026-09-23 (d1_14)
+
+- The worker prompt carries the operation's contract fields, rule text, lifecycle payload or MDM capability, port signature, access grants and effects. Module rule ids stay the catalog the gate uses to validate an id. The prompt does not list every module rule.
+- A source is kept only when its hash still matches the approved snapshot. A missing or changed file is a finding and that usecase is not sent to the model.
+- The assembled prompt, its size and those hashes are stored on the attempt. A repair sends the same business context and adds the refusal.
+- A transition payload may name a nested path the contract or the lifecycle payload already lists. The contract source remains the type authority.
+
 ## 2026-09-22 (d1_13g)
 
 - A type that differs across routes of one usecase is not a conflict. Each route projection keeps the fields that route declares. The function output keeps the name and does not store one of the types.

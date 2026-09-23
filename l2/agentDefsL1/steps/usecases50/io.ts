@@ -4,16 +4,17 @@ import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { draftFile, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
-import { contractPath, entityPath, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { buildUsecaseContexts, loadVerifiedSources, namespaceOf, ontologyTransitions } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { D1_PERSISTENCE_VERSION, type D1PersistenceBuild } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import type { D1AttemptTrace } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import {
   D1_USECASE_VERSION,
+  type D1PromptEvidence,
   type D1UsecaseBuild,
   type D1UsecaseEntity,
   type D1UsecaseItem,
@@ -86,6 +87,40 @@ export function attemptFile(project: number, moduleName: string, usecaseId: stri
 
 export async function writeAttempt(project: number, moduleName: string, attempt: D1AttemptTrace): Promise<void> {
   await writeJson(attemptFile(project, moduleName, attempt.usecaseId), attempt);
+}
+
+/** The assembled prompt, written before the model replies. Not an attempt: it has no status. */
+export async function writePromptEvidence(project: number, moduleName: string, evidence: D1PromptEvidence): Promise<void> {
+  await writeJson(attemptFile(project, moduleName, evidence.usecaseId), { usecaseId: evidence.usecaseId, request: evidence });
+}
+
+/** A source finding already closed this worker. A later empty reply must not replace it. */
+export async function sourceBlockTrace(project: number, moduleName: string, usecaseId: string): Promise<string | null> {
+  const text = await readText(attemptFile(project, moduleName, usecaseId));
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!isAttempt(parsed) || parsed.status !== 'operational') return null;
+    if (!parsed.trace.includes('was not sent to the model')) return null;
+    return parsed.trace;
+  } catch {
+    return null;
+  }
+}
+
+export async function readPromptEvidence(project: number, moduleName: string, usecaseId: string): Promise<D1PromptEvidence | null> {
+  const text = await readText(attemptFile(project, moduleName, usecaseId));
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.request)) return null;
+    const request = parsed.request;
+    if (request.usecaseId !== usecaseId || typeof request.text !== 'string' || typeof request.sha256 !== 'string') return null;
+    if (typeof request.bytes !== 'number' || !Array.isArray(request.sourceHashes)) return null;
+    return request as unknown as D1PromptEvidence;
+  } catch {
+    return null;
+  }
 }
 
 export async function readAttempts(project: number, moduleName: string, usecaseIds: readonly string[]): Promise<D1AttemptTrace[]> {
@@ -217,115 +252,91 @@ function problemKey(problem: D1UsecaseProblem): string {
 async function usecaseRequest(
   project: number,
   moduleName: string,
-  snapshot: {
-    selection: {
-      routes: Array<{ route: string; page: string; kind: string; usecaseRef: string }>;
-      usecases: Array<{ usecaseId: string; entity: string; operation: string; routes: string[] }>;
-      pages: Array<{ pageId: string }>;
-    };
-    files: Array<{ artifactType: string; identity: string; defPath: string }>;
-  },
+  snapshot: D1InputSnapshot,
   domain: D1DomainBuild,
   persistence: D1PersistenceBuild,
 ): Promise<D1UsecaseRequest> {
-  const entities: D1UsecaseEntity[] = [];
-  for (const plan of domain.entities) {
-    entities.push(await entityView(project, moduleName, plan));
-  }
-  const rulesText = await readLogical(project, `l4/${moduleName}/rules.defs.ts`);
-  const integrationText = await readLogical(project, `l4/${moduleName}/integration.defs.ts`);
-  const rules = rulesText ? parseD1Source(rulesText, 'defs') : null;
-  const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
-  const moduleRules = isRecord(rules) && isRecord(rules.rules) ? Object.keys(rules.rules) : [];
-  const outbound = outboundOf(integration);
-  const pages = new Set(snapshot.selection.pages.map(page => page.pageId));
-  for (const route of snapshot.selection.routes) pages.add(route.page);
-  const contracts = [];
-  for (const pageId of [...pages].sort()) {
-    if (!isSafeToken(pageId)) continue;
-    const path = contractPath(moduleName, pageId);
-    const source = await readLogical(project, path);
-    contracts.push({ pageId, path, source: source || '' });
-  }
-  const fileByIdentity = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
+  const entityIds = [...new Set([
+    ...domain.entities.map(entity => entity.entityId),
+    ...snapshot.selection.entities,
+  ])];
+  const bundle = await loadVerifiedSources(project, moduleName, snapshot, entityIds);
+  const entities: D1UsecaseEntity[] = domain.entities.map(plan => entityView(plan, bundle.bodies[plan.entityId] ?? null));
+  const usecases = snapshot.selection.usecases.map(usecase => ({
+    usecaseId: usecase.usecaseId,
+    entity: usecase.entity,
+    operation: usecase.operation,
+    routes: [...usecase.routes],
+    defPath: snapshot.files.find(file => file.artifactType === 'usecase' && file.identity === usecase.usecaseId)?.defPath
+      || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
+  }));
+  const routes = snapshot.selection.routes.map(route => ({
+    route: route.route,
+    page: route.page,
+    kind: route.kind,
+    usecaseRef: route.usecaseRef,
+  }));
+  const ports = persistence.ports.map(port => ({
+    portId: port.portId,
+    entityId: port.entityId,
+    defPath: port.defPath,
+    methods: port.methods.map(method => method.name),
+    signatures: port.methods.map(method => ({
+      name: method.name,
+      params: [...method.params],
+      returns: method.returns,
+    })),
+  }));
+  const contexts = buildUsecaseContexts({ moduleName, usecases, routes, entities, ports, bundle });
   return {
     project,
     moduleName,
-    usecases: snapshot.selection.usecases.map(usecase => ({
-      usecaseId: usecase.usecaseId,
-      entity: usecase.entity,
-      operation: usecase.operation,
-      routes: [...usecase.routes],
-      defPath: fileByIdentity.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
-    })),
-    routes: snapshot.selection.routes.map(route => ({
-      route: route.route,
-      page: route.page,
-      kind: route.kind,
-      usecaseRef: route.usecaseRef,
-    })),
-    ports: persistence.ports.map(port => ({
-      portId: port.portId,
-      entityId: port.entityId,
-      defPath: port.defPath,
-      methods: port.methods.map(method => method.name),
-    })),
+    usecases,
+    routes,
+    ports,
     entities,
-    moduleRules,
-    outbound,
-    contracts,
+    moduleRules: bundle.moduleRuleText ? Object.keys(bundle.moduleRuleText).sort() : [],
+    outbound: bundle.outbound,
+    contracts: bundle.contracts,
+    contexts,
+    sourceFindings: bundle.findings,
+    sourceHashes: bundle.hashes,
     plans: [],
     llmCalls: 0,
   };
 }
 
-async function entityView(
-  project: number,
-  moduleName: string,
-  plan: D1DomainBuild['entities'][number],
-): Promise<D1UsecaseEntity> {
+function entityView(plan: D1DomainBuild['entities'][number], body: unknown | null): D1UsecaseEntity {
   const data = plan.definition && isRecord(plan.definition.data) ? plan.definition.data : {};
   const fields = Array.isArray(data.fields) ? data.fields.flatMap(field => {
     if (!isRecord(field) || typeof field.name !== 'string' || typeof field.type !== 'string') return [];
     return [{ name: field.name, type: field.type, derived: field.derived === true }];
   }) : [];
   const lifecycle = isRecord(data.lifecycle) ? data.lifecycle : {};
+  const fromSource = ontologyTransitions(body);
   const transitions = Array.isArray(lifecycle.transitions) ? lifecycle.transitions.flatMap(item => {
     if (!isRecord(item) || typeof item.transitionId !== 'string') return [];
+    const source = fromSource.find(entry => entry.transitionId === item.transitionId);
     return [{
       transitionId: item.transitionId,
-      from: stringList(item.from),
-      to: typeof item.to === 'string' ? item.to : '',
-      by: stringList(item.by),
-      ruleRefs: stringList(item.ruleRefs),
+      from: source?.from.length ? source.from : stringList(item.from),
+      to: source?.to || (typeof item.to === 'string' ? item.to : ''),
+      by: source?.by.length ? source.by : stringList(item.by),
+      ruleRefs: source?.ruleRefs.length ? source.ruleRefs : stringList(item.ruleRefs),
+      payload: source?.payload || [],
+      description: source?.description || '',
     }];
   }) : [];
-  const bodyText = await readLogical(project, entityPath(moduleName, plan.entityId));
-  const body = bodyText ? parseD1Source(bodyText, 'defs') : null;
-  const roleTag = isRecord(body) && typeof body.roleTag === 'string' ? body.roleTag : '';
-  const namespace = roleTag.includes('.') ? roleTag.slice(0, roleTag.indexOf('.')) : roleTag;
   return {
     entityId: plan.entityId,
     storageTarget: plan.storageTarget,
     defPath: plan.defPath,
-    namespace,
+    namespace: namespaceOf(body),
     fields,
     transitions,
-    rules: (plan.rules || []).map(rule => ({ ruleId: rule.ruleId, owner: rule.owner })),
+    rules: (plan.rules || []).map(rule => ({ ruleId: rule.ruleId, owner: rule.owner, source: rule.source })),
     enumerations: (plan.enumerations || []).map(item => ({ path: item.path, values: [...item.values] })),
   };
-}
-
-function outboundOf(value: unknown): D1UsecaseRequest['outbound'] {
-  if (!isRecord(value) || !Array.isArray(value.outbound)) return [];
-  const out: D1UsecaseRequest['outbound'] = [];
-  for (const item of value.outbound) {
-    if (!isRecord(item)) continue;
-    const eventId = typeof item.event === 'string' ? item.event : typeof item.eventId === 'string' ? item.eventId : '';
-    const on = typeof item.on === 'string' ? item.on : '';
-    if (eventId && on) out.push({ eventId, on });
-  }
-  return out;
 }
 
 async function readDraft(
@@ -345,12 +356,6 @@ async function readDraft(
   } catch {
     return { refusal: `${step} draft did not parse. usecases50 wrote nothing.` };
   }
-}
-
-async function readLogical(project: number, logicalPath: string): Promise<string | null> {
-  const info = artifactFile(project, qualifyDefPath(project, logicalPath));
-  if (!info) return null;
-  return readText(info);
 }
 
 function stringList(value: unknown): string[] {
