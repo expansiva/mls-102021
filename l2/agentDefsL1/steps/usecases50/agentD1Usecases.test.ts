@@ -25,7 +25,7 @@ import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
-import { parseWorkerReply, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -141,8 +141,8 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.ok(ready);
   assert.equal(ready.humanPrompt.includes('Do not write TypeScript') || ready.systemPrompt?.includes('Do not write TypeScript'), true);
   assert.match(ready.systemPrompt || '', /<!-- modelType: reasoning -->/);
-  assert.equal(ready.systemPrompt?.includes(workerStepShape()), true);
-  assert.equal(ready.humanPrompt.includes(workerStepShape()), true);
+  const shape = stepShape(ready.humanPrompt);
+  assert.equal(ready.systemPrompt?.includes(shape), true);
   assert.equal(readFileSync(path.join(HERE, 'prompt.md'), 'utf8').includes('- port: kind, call, port'), false);
   assert.equal(ready.humanPrompt.includes(arg.usecaseId), true);
   const finished = await agent.afterPromptStep!(meta(), ctx, parent, worker, 6);
@@ -264,6 +264,15 @@ function keptFiles(host: { files: Record<string, { content?: string }> }): Recor
   return out;
 }
 
+function stepShape(prompt: string): string {
+  const marker = 'Each step is one kind.';
+  const at = prompt.indexOf(marker);
+  assert.ok(at >= 0);
+  const rest = prompt.slice(at);
+  const feedback = rest.indexOf('\n\nThe previous reply was refused:');
+  return feedback === -1 ? rest : rest.slice(0, feedback);
+}
+
 function addedStep(intents: mls.msg.AgentIntent[], planId: string): mls.msg.AIAgentStep {
   const found = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
     intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === planId);
@@ -354,8 +363,9 @@ void test('a key outside the kind is INVENTED_FIELD and the barrier fires one re
   const prepared = await agent.beforePromptStep!(meta(), ctx, parent, repair.step as mls.msg.AIAgentStep, 7);
   const ready = prepared.find((intent): intent is mls.msg.AgentIntentPromptReady => intent.type === 'prompt_ready');
   assert.match(ready?.humanPrompt || '', /names port/);
-  assert.equal(ready?.humanPrompt.includes(workerStepShape()), true);
-  assert.equal(ready?.systemPrompt?.includes(workerStepShape()), true);
+  const repairShape = stepShape(ready?.humanPrompt || '');
+  assert.equal(ready?.systemPrompt?.includes(repairShape), true);
+  assert.equal(repairShape.includes('The previous reply was refused:'), false);
 
   const corrected = fixturePlan(work.request, work.request.usecases.find(item => item.usecaseId === target)!).steps;
   await agent.afterPromptStep!(meta(), ctx, parent, replied(repair.step.type === 'agent' ? repair.step.prompt || '' : '', { steps: corrected }, 52), 8);

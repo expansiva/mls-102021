@@ -1,5 +1,13 @@
 # usecases50
 
+## 2026-09-23 (d1_17)
+
+- A catalog this operation was given, including an empty one, is not a free string. An empty catalog omits that branch. A CRUD usecase does not offer `transition`. A usecase with no outbound event does not offer `effect`. An MDM role does not offer a repository port.
+- A transition offers its own id and the payload paths the contract or the lifecycle payload already lists, including a nested path. An empty payload list is an empty array, not a free string.
+- Port call is the operation, on that entity's port. MDM is one branch per facade method and capability the binding names, with that namespace and entity. A call from the facade catalog that this operation does not use is not in the schema.
+- The step text and the tool are the same selection. The prompt does not list the facade catalog or a kind this operation cannot use.
+- `parseWorkerReply` and the gate are unchanged. A reply that bypasses the schema is still refused there.
+
 ## 2026-09-23 (d1_16)
 
 - An MDM plan names the facade method that executes the capability. `update` of platform fields is `entity.update` with `mdmId`, `expectedVersion` and the platform patch. It is not `attachRole`. The caller namespace is the same update, one version bump, because two updates would resubmit a stale version.

@@ -12,10 +12,13 @@ import { createD1AgentStep, createEntryPipeline, pipelineFile } from '/_102021_/
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { D1_MDM_CALLS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import type { D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { workerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
+import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { attemptFile, readD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
-import type { D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { closedFromRequest, parseWorkerReply, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.resolve(HERE, '../../../../../mls-102047');
@@ -143,7 +146,7 @@ async function promptFor(
   opened: Awaited<ReturnType<typeof openLive>>,
   usecaseId: string,
   feedback = '',
-): Promise<{ prompt: string; status: string }> {
+): Promise<{ prompt: string; system: string; tool: mls.msg.LLMTool | null; status: string }> {
   const worker: mls.msg.AIAgentStep = {
     type: 'agent',
     stepId: 51,
@@ -162,7 +165,12 @@ async function promptFor(
     .filter((item): item is mls.msg.AgentIntentUpdateStatus => item.type === 'update-status')
     .map(item => item.traceMsg)
     .join(' ');
-  return { prompt: ready?.humanPrompt || '', status };
+  return {
+    prompt: ready?.humanPrompt || '',
+    system: ready?.systemPrompt || '',
+    tool: ready?.tools?.[0] || null,
+    status,
+  };
 }
 
 function section(prompt: string, route: string): string {
@@ -296,3 +304,227 @@ void test('a changed rule and contract change the request, and a later edit is r
   assert.doesNotMatch(kept.prompt, /clinicalNote/);
   assert.doesNotMatch(kept.prompt, /attendanceNoteRequired/);
 });
+
+void test('prepareWorker offers only this operation, on the first request and on repair', async () => {
+  const opened = await openLive();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const facade = D1_MDM_CALLS.join(', ');
+
+  const update = await promptFor(opened, 'updateProfissional');
+  const updateRepair = await promptFor(opened, 'updateProfissional', 'Transition was invented.');
+  assert.ok(update.tool);
+  assert.deepEqual(updateRepair.tool, update.tool);
+  const updateClosed = closedFor(work.request, 'updateProfissional');
+  assert.deepEqual(update.tool, usecaseTool(updateClosed));
+  const updateShape = workerStepShape(updateClosed);
+  assert.equal(shapeOf(update.prompt), updateShape);
+  assert.equal(update.system.includes(updateShape), true);
+  assert.equal(shapeOf(updateRepair.prompt), updateShape);
+  assert.equal(updateRepair.prompt.includes('Transition was invented.'), true);
+  assert.equal(kindsOf(update.tool).includes('transition'), false);
+  assert.equal(kindsOf(update.tool).includes('port'), false);
+  assert.equal(kindsOf(update.tool).includes('effect'), false);
+  assert.equal(updateShape.includes('- transition:'), false);
+  assert.equal(updateShape.includes('- port:'), false);
+  assert.equal(updateShape.includes('- effect:'), false);
+  assert.equal(update.prompt.includes(facade), false);
+  assert.equal(update.system.includes(facade), false);
+  assert.equal(updateShape.includes('call attachRole'), false);
+  const updateSteps = fixturePlan(work.request, usecaseOf(work.request, 'updateProfissional')).steps;
+  for (const step of updateSteps) assert.equal(fits(update.tool, step), true, JSON.stringify(step));
+  assert.equal(parseWorkerReply({ steps: updateSteps }).problems.length, 0);
+  const updateGate = buildD1Usecases(only(work.request, 'updateProfissional', updateSteps));
+  assert.equal(updateGate.ok, true, updateGate.problems.map(item => item.message).join('; '));
+  const invented = { kind: 'transition' as const, transitionId: 'agendaClinica.dados_profissional.cmdUpdateProfissional', payload: [] as string[] };
+  assert.equal(fits(update.tool, invented), false);
+  const inventedGate = buildD1Usecases(only(work.request, 'updateProfissional', [...updateSteps, invented]));
+  assert.equal(inventedGate.problems.some(item => item.code === 'INVALID_TRANSITION'), true);
+
+  const created = await promptFor(opened, 'createRecepcionista');
+  const createdRepair = await promptFor(opened, 'createRecepcionista', 'Port was invented.');
+  assert.ok(created.tool);
+  assert.deepEqual(createdRepair.tool, created.tool);
+  assert.equal(kindsOf(created.tool).includes('transition'), false);
+  assert.equal(kindsOf(created.tool).includes('port'), false);
+  assert.equal(kindsOf(created.tool).includes('effect'), false);
+  assert.equal(shapeOf(created.prompt).includes('- effect:'), false);
+  assert.equal(created.prompt.includes(facade), false);
+  const createdSteps = fixturePlan(work.request, usecaseOf(work.request, 'createRecepcionista')).steps;
+  for (const step of createdSteps) assert.equal(fits(created.tool, step), true, JSON.stringify(step));
+  assert.equal(parseWorkerReply({ steps: createdSteps }).problems.length, 0);
+  const createdGate = buildD1Usecases(only(work.request, 'createRecepcionista', createdSteps));
+  assert.equal(createdGate.ok, true, createdGate.problems.map(item => item.message).join('; '));
+  const portStep = { kind: 'port' as const, call: 'create', port: 'RecepcionistaRepository' };
+  assert.equal(fits(created.tool, portStep), false);
+  const portGate = buildD1Usecases(only(work.request, 'createRecepcionista', [...createdSteps, portStep]));
+  assert.equal(portGate.problems.some(item => item.code === 'MDM_LOCAL_PORT'), true);
+
+  const attended = await promptFor(opened, 'registrarAtendimento');
+  const attendedRepair = await promptFor(opened, 'registrarAtendimento', 'Payload was empty.');
+  assert.ok(attended.tool);
+  assert.deepEqual(attendedRepair.tool, attended.tool);
+  const attendedShape = shapeOf(attended.prompt);
+  assert.equal(attended.system.includes(attendedShape), true);
+  assert.equal(attended.prompt.includes(facade), false);
+  assert.deepEqual(enumOf(attended.tool, 'transition', 'transitionId'), ['registrarAtendimento']);
+  const payload = enumOf(attended.tool, 'transition', 'payload');
+  assert.equal(payload.includes('details.attendanceNote'), true);
+  assert.ok(payload.length > 1, payload.join(','));
+  assert.equal(attendedShape.includes('details.attendanceNote'), true);
+  assert.deepEqual(enumOf(attended.tool, 'port', 'call'), ['transition']);
+  assert.deepEqual(enumOf(attended.tool, 'effect', 'eventId'), ['atendimentoRegistrado']);
+  const nested = fixturePlan(work.request, usecaseOf(work.request, 'registrarAtendimento')).steps.map(step => (
+    step.kind === 'transition' ? { ...step, payload: ['details.attendanceNote'] } : step
+  ));
+  for (const step of nested) assert.equal(fits(attended.tool, step), true, JSON.stringify(step));
+  assert.equal(parseWorkerReply({ steps: nested }).problems.length, 0);
+  const nestedGate = buildD1Usecases(only(work.request, 'registrarAtendimento', nested));
+  assert.equal(nestedGate.problems.some(item => item.code === 'PAYLOAD_UNAUTHORIZED'), false, nestedGate.problems.map(item => item.message).join('; '));
+  const foreignPayload = { kind: 'transition' as const, transitionId: 'registrarAtendimento', payload: ['notAField'] };
+  assert.equal(fits(attended.tool, foreignPayload), false);
+  const foreignGate = buildD1Usecases(only(work.request, 'registrarAtendimento', [foreignPayload]));
+  assert.equal(foreignGate.problems.some(item => item.code === 'PAYLOAD_UNAUTHORIZED'), true);
+  const wrongId = { kind: 'transition' as const, transitionId: 'confirmarConsulta', payload: [] as string[] };
+  assert.equal(fits(attended.tool, wrongId), false);
+  const wrongGate = buildD1Usecases(only(work.request, 'registrarAtendimento', [wrongId]));
+  assert.equal(wrongGate.problems.some(item => item.code === 'INVALID_TRANSITION'), true);
+
+  const confirm = await promptFor(opened, 'confirmarConsulta');
+  assert.ok(confirm.tool);
+  assert.deepEqual(enumOf(confirm.tool, 'transition', 'payload'), ['id']);
+  assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['id'] }), true);
+  assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['details.attendanceNote'] }), false);
+  assert.equal(kindsOf(confirm.tool).includes('effect'), true);
+
+  const listed = await promptFor(opened, 'listConsulta');
+  assert.ok(listed.tool);
+  assert.equal(kindsOf(listed.tool).includes('transition'), false);
+  assert.equal(kindsOf(listed.tool).includes('effect'), false);
+  assert.deepEqual(enumOf(listed.tool, 'port', 'call'), ['list']);
+  assert.equal(shapeOf(listed.prompt).includes('- transition:'), false);
+  assert.equal(shapeOf(listed.prompt).includes('- effect:'), false);
+  assert.equal(listed.prompt.includes(facade), false);
+
+  const people = await promptFor(opened, 'listProfissional');
+  assert.ok(people.tool);
+  const pairs = mdmPairs(people.tool);
+  assert.ok(pairs.length > 1, String(pairs.length));
+  const swapped = pairs.find(pair => pairs.some(other => other.call !== pair.call && other.capability !== pair.capability));
+  assert.ok(swapped, pairs.map(pair => `${pair.call}/${pair.capability}`).join('; '));
+  const other = pairs.find(pair => pair.call !== swapped.call && pair.capability !== swapped.capability);
+  assert.ok(other);
+  const crossed = { kind: 'mdm' as const, namespace: swapped.namespace, call: swapped.call, entity: swapped.entity, capability: other.capability };
+  assert.equal(fits(people.tool, crossed), false);
+  assert.equal(fits(people.tool, { kind: 'mdm', namespace: swapped.namespace, call: swapped.call, entity: swapped.entity, capability: swapped.capability }), true);
+  const crossedGate = buildD1Usecases(only(work.request, 'listProfissional', [{ kind: 'context', source: 'ctx' }, crossed]));
+  assert.equal(crossedGate.problems.some(item => item.code === 'MDM_CALL_INCOMPATIBLE'), true);
+});
+
+function closedFor(request: Parameters<typeof closedFromRequest>[0], usecaseId: string) {
+  const usecase = usecaseOf(request, usecaseId);
+  const packet = request.contexts?.find(item => item.usecaseId === usecaseId);
+  return closedFromRequest(request, usecase, packet);
+}
+
+function usecaseOf(request: Parameters<typeof closedFromRequest>[0], usecaseId: string) {
+  const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
+  assert.ok(usecase, usecaseId);
+  return usecase;
+}
+
+function only(request: Parameters<typeof closedFromRequest>[0], usecaseId: string, steps: D1WorkerStep[]) {
+  return {
+    ...request,
+    usecases: request.usecases.filter(item => item.usecaseId === usecaseId),
+    routes: request.routes.filter(item => item.usecaseRef === usecaseId),
+    plans: [{ usecaseId, steps }],
+    llmCalls: 1,
+  };
+}
+
+function shapeOf(prompt: string): string {
+  const marker = 'Each step is one kind.';
+  const at = prompt.indexOf(marker);
+  assert.ok(at >= 0);
+  const rest = prompt.slice(at);
+  const feedback = rest.indexOf('\n\nThe previous reply was refused:');
+  return feedback === -1 ? rest : rest.slice(0, feedback);
+}
+
+function kindsOf(tool: mls.msg.LLMTool): string[] {
+  const kinds: string[] = [];
+  for (const branch of anyOf(tool)) {
+    const kind = kindOf(branch);
+    if (kind && !kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
+function enumOf(tool: mls.msg.LLMTool, kind: string, key: string): string[] {
+  const branch = anyOf(tool).find(item => kindOf(item) === kind);
+  assert.ok(branch, kind);
+  const props = branch.properties as Record<string, { enum?: unknown[]; items?: { enum?: unknown[] } }>;
+  const schema = props[key];
+  assert.ok(schema, key);
+  if (Array.isArray(schema.enum)) return schema.enum.map(String);
+  if (schema.items && Array.isArray(schema.items.enum)) return schema.items.enum.map(String);
+  return [];
+}
+
+function mdmPairs(tool: mls.msg.LLMTool): Array<{ call: string; capability: string; namespace: string; entity: string }> {
+  return anyOf(tool).filter(branch => kindOf(branch) === 'mdm').map(branch => ({
+    call: oneEnum(branch, 'call'),
+    capability: oneEnum(branch, 'capability'),
+    namespace: oneEnum(branch, 'namespace'),
+    entity: oneEnum(branch, 'entity'),
+  }));
+}
+
+function oneEnum(branch: Record<string, unknown>, key: string): string {
+  const props = branch.properties as Record<string, { enum?: unknown[] }>;
+  const values = props[key]?.enum;
+  assert.ok(values && values.length === 1, key);
+  return String(values[0]);
+}
+
+function anyOf(tool: mls.msg.LLMTool): Array<Record<string, unknown>> {
+  const parameters = tool.function.parameters;
+  assert.ok(parameters);
+  const steps = (parameters.properties as { steps?: { items?: { anyOf?: unknown } } }).steps;
+  const found = steps?.items?.anyOf;
+  assert.ok(Array.isArray(found));
+  return found.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item));
+}
+
+function kindOf(branch: Record<string, unknown>): string {
+  const props = branch.properties as { kind?: { const?: unknown } } | undefined;
+  return typeof props?.kind?.const === 'string' ? props.kind.const : '';
+}
+
+function fits(tool: mls.msg.LLMTool, step: D1WorkerStep | Record<string, unknown>): boolean {
+  const record = step as unknown as Record<string, unknown>;
+  return anyOf(tool).some(branch => {
+    const props = branch.properties;
+    const required = branch.required;
+    if (!props || typeof props !== 'object' || Array.isArray(props) || !Array.isArray(required)) return false;
+    const properties = props as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (keys.some(key => !Object.hasOwn(properties, key))) return false;
+    if (required.some(key => typeof key !== 'string' || !Object.hasOwn(record, key))) return false;
+    return required.every(key => typeof key === 'string' && valueFits(properties[key], record[key]));
+  });
+}
+
+function valueFits(schema: unknown, value: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false;
+  const node = schema as { const?: unknown; enum?: unknown[]; type?: unknown; items?: unknown };
+  if (Object.hasOwn(node, 'const')) return JSON.stringify(value) === JSON.stringify(node.const);
+  if (Array.isArray(node.enum)) return node.enum.some(item => JSON.stringify(item) === JSON.stringify(value));
+  if (node.type === 'array') {
+    if (!Array.isArray(value)) return false;
+    return node.items ? value.every(item => valueFits(node.items, item)) : true;
+  }
+  if (node.type === 'string') return typeof value === 'string' && value.length > 0;
+  return false;
+}

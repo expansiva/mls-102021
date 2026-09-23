@@ -6,10 +6,13 @@ import {
   D1_WORKER_KINDS,
   type D1MdmCall,
   type D1UsecaseContext,
+  type D1UsecaseEntity,
+  type D1UsecaseRequest,
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { authorizedPayloadNames, capabilityApplies, formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
@@ -29,8 +32,9 @@ type FieldKey = Exclude<StepField, 'kind'>;
 
 /**
  * Value schema of a step key. The key list itself stays on `STEP_KEYS`.
- * `mdm.call` is always `D1_MDM_CALLS`. A per-unit catalog is an enum only when
- * this call already has the list; an empty list stays a string.
+ * A catalog that this call did not receive stays a string. A catalog it did
+ * receive, including an empty one, is not a free string: an empty catalog
+ * omits the branch.
  */
 const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   call: { type: 'string' },
@@ -46,18 +50,215 @@ const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   source: { type: 'string', enum: ['ctx', 'input'] },
 };
 
-/** Catalogs known for the one usecase being called. Omitted or empty stays a free string. */
+/** One facade method with the capability that binding says it executes. */
+export interface MdmStepPair {
+  call: string;
+  capability: string;
+}
+
+/**
+ * Catalogs known for the one usecase being called.
+ * An omitted catalog was not provided and stays a free string.
+ * An empty catalog was provided and means that branch is unavailable.
+ */
 export interface UsecaseClosedValues {
   portCalls?: readonly string[];
   portIds?: readonly string[];
   ruleIds?: readonly string[];
   namespaces?: readonly string[];
   entityIds?: readonly string[];
+  /** Facade methods this operation may name. Empty omits MDM. Omitted keeps the facade catalog. */
+  mdmCalls?: readonly string[];
+  capabilities?: readonly string[];
+  /** One branch per pair, so a call cannot be paired with another capability. Empty omits MDM. */
+  mdmPairs?: readonly MdmStepPair[];
   transitionIds?: readonly string[];
+  /** Paths a transition payload may name. Empty means the payload array is empty. Omitted keeps a free string. */
+  payloadPaths?: readonly string[];
   eventIds?: readonly string[];
 }
 
-/** Closed branch. `anyOf`, not `oneOf`: provider strict mode rejects `oneOf`. */
+export interface OperationCatalogInput {
+  operation: string;
+  entityId: string;
+  storageTarget: string;
+  namespace: string;
+  portId: string;
+  /** Methods the port declares. Only `operation` is offered, and only when this port has it. */
+  portMethods: readonly string[];
+  ruleIds: readonly string[];
+  eventIds: readonly string[];
+  transitionId: string;
+  payloadPaths: readonly string[];
+  mdmPairs: readonly MdmStepPair[];
+}
+
+/** The catalogs for one operation. Port, MDM and transition come from the same facts the schema uses. */
+export function catalogForOperation(input: OperationCatalogInput): UsecaseClosedValues {
+  const portUsable = input.storageTarget !== 'mdm'
+    && Boolean(input.portId)
+    && input.portMethods.includes(input.operation);
+  const pairs = input.storageTarget === 'mdm' && input.namespace && input.entityId
+    ? dedupePairs(input.mdmPairs)
+    : [];
+  return {
+    portCalls: portUsable ? [input.operation] : [],
+    portIds: portUsable ? [input.portId] : [],
+    ruleIds: dedupe(input.ruleIds),
+    namespaces: pairs.length ? [input.namespace] : [],
+    entityIds: pairs.length ? [input.entityId] : [],
+    mdmCalls: pairs.map(pair => pair.call),
+    capabilities: pairs.map(pair => pair.capability),
+    mdmPairs: pairs,
+    transitionIds: input.transitionId ? [input.transitionId] : [],
+    payloadPaths: input.transitionId ? dedupe(input.payloadPaths) : [],
+    eventIds: dedupe(input.eventIds),
+  };
+}
+
+/** Selection for the usecase the worker is about to call. Schema and prompt both take this object. */
+export function closedFromRequest(
+  request: D1UsecaseRequest,
+  usecase: D1UsecaseSelection,
+  packet?: D1UsecaseContext,
+): UsecaseClosedValues {
+  const entity = request.entities.find(item => item.entityId === usecase.entity);
+  const port = request.ports.find(item => item.entityId === usecase.entity);
+  const storage = entity?.storageTarget || '';
+  const effects = packet
+    ? packet.effects.map(event => event.eventId)
+    : request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId);
+  const ruleIds = packet
+    ? packet.rules.map(rule => rule.ruleId)
+    : [...request.moduleRules, ...(entity?.rules.map(rule => rule.ruleId) || [])];
+  const transitionId = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
+    ? usecase.usecaseId
+    : '';
+  const inputNames: string[] = [];
+  if (transitionId && packet) {
+    for (const route of packet.routes) {
+      for (const field of route.inputFields) inputNames.push(field.path);
+    }
+  }
+  const portMethods = packet
+    ? packet.portMethods.map(method => method.name)
+    : (storage === 'mdm' ? [] : port?.methods || []);
+  const portId = packet ? packet.portId : (storage === 'mdm' ? '' : port?.portId || '');
+  return catalogForOperation({
+    operation: usecase.operation,
+    entityId: usecase.entity,
+    storageTarget: storage,
+    namespace: entity?.namespace || '',
+    portId,
+    portMethods,
+    ruleIds,
+    eventIds: effects,
+    transitionId,
+    payloadPaths: transitionId ? [...authorizedPayloadNames(request, usecase.usecaseId, inputNames)] : [],
+    mdmPairs: pairsFor(entity, usecase.operation),
+  });
+}
+
+interface SelectedBranch {
+  kind: WorkerKind;
+  schema: Record<string, unknown>;
+  notes: string[];
+}
+
+/** Branches this operation can actually emit. Schema and step text are both this list. */
+function selectBranches(closed: UsecaseClosedValues): SelectedBranch[] {
+  const selected: SelectedBranch[] = [];
+  for (const kind of D1_WORKER_KINDS) {
+    if (kind === 'mdm') {
+      selected.push(...mdmBranches(closed));
+      continue;
+    }
+    if (!kindOffered(kind, closed)) continue;
+    selected.push({ kind, schema: stepBranch(kind, closed), notes: notesFor(kind, closed) });
+  }
+  return selected;
+}
+
+function kindOffered(kind: WorkerKind, closed: UsecaseClosedValues): boolean {
+  if (kind === 'port') return !knownEmpty(closed.portCalls) && !knownEmpty(closed.portIds);
+  if (kind === 'rule') return !knownEmpty(closed.ruleIds);
+  if (kind === 'transition') return !knownEmpty(closed.transitionIds);
+  if (kind === 'effect') return !knownEmpty(closed.eventIds);
+  return true;
+}
+
+function mdmBranches(closed: UsecaseClosedValues): SelectedBranch[] {
+  if (knownEmpty(closed.namespaces) || knownEmpty(closed.entityIds)) return [];
+  if (closed.mdmPairs) {
+    if (!closed.mdmPairs.length) return [];
+    const namespaces = dedupe(closed.namespaces || []);
+    const entities = dedupe(closed.entityIds || []);
+    if (!namespaces.length || !entities.length) return [];
+    const seen = new Set<string>();
+    const branches: SelectedBranch[] = [];
+    for (const pair of closed.mdmPairs) {
+      if (!pair.call || !pair.capability) continue;
+      const key = `${pair.call}\u0000${pair.capability}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const narrowed: UsecaseClosedValues = {
+        ...closed,
+        namespaces,
+        entityIds: entities,
+        mdmCalls: [pair.call],
+        capabilities: [pair.capability],
+      };
+      branches.push({
+        kind: 'mdm',
+        schema: stepBranch('mdm', narrowed),
+        notes: [`call ${pair.call}, capability ${pair.capability}, namespace ${namespaces.join(', ')}, entity ${entities.join(', ')}`],
+      });
+    }
+    return branches;
+  }
+  if (knownEmpty(closed.mdmCalls)) return [];
+  return [{ kind: 'mdm', schema: stepBranch('mdm', closed), notes: [] }];
+}
+
+function notesFor(kind: WorkerKind, closed: UsecaseClosedValues): string[] {
+  if (kind === 'port' && closed.portCalls && closed.portIds) {
+    return [`call: ${dedupe(closed.portCalls).join(', ')}`, `port: ${dedupe(closed.portIds).join(', ')}`];
+  }
+  if (kind === 'rule' && closed.ruleIds) return [`ruleId: ${dedupe(closed.ruleIds).join(', ')}`];
+  if (kind === 'effect' && closed.eventIds) return [`eventId: ${dedupe(closed.eventIds).join(', ')}`];
+  if (kind === 'transition' && closed.transitionIds) {
+    const notes = [`transitionId: ${dedupe(closed.transitionIds).join(', ')}`];
+    if (closed.payloadPaths) notes.push(`payload: ${dedupe(closed.payloadPaths).join(', ') || '(none)'}`);
+    return notes;
+  }
+  return [];
+}
+
+function knownEmpty(values: readonly string[] | undefined): boolean {
+  return Boolean(values) && dedupe(values || []).length === 0;
+}
+
+function pairsFor(entity: D1UsecaseEntity | undefined, operation: string): MdmStepPair[] {
+  if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace || !entity.entityId) return [];
+  const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, operation));
+  const bound = bindMdm({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities: entity.capabilities || [],
+    selected,
+    platformFields: entity.platformFields || [],
+  });
+  const pairs: MdmStepPair[] = [];
+  for (const call of bound.calls) {
+    for (const capability of call.capabilities) {
+      if (!call.method || !capability) continue;
+      pairs.push({ call: call.method, capability });
+    }
+  }
+  return pairs;
+}
+
+/** Closed branch. `anyOf`, not `oneOf`: provider strict mode rejects `oneOf`. Every key stays required. */
 function stepBranch(kind: WorkerKind, closed: UsecaseClosedValues): Record<string, unknown> {
   const keys = STEP_KEYS[kind];
   const properties: Record<string, unknown> = {};
@@ -73,37 +274,83 @@ function stepBranch(kind: WorkerKind, closed: UsecaseClosedValues): Record<strin
 }
 
 function fieldSchema(kind: WorkerKind, key: FieldKey, closed: UsecaseClosedValues): Record<string, unknown> {
-  if (kind === 'mdm' && key === 'call') return { type: 'string', enum: [...D1_MDM_CALLS] };
+  if (kind === 'mdm' && key === 'call') {
+    return closed.mdmCalls ? closedString(closed.mdmCalls) : { type: 'string', enum: [...D1_MDM_CALLS] };
+  }
+  if (kind === 'mdm' && key === 'capability') return closed.capabilities ? closedString(closed.capabilities) : FIELD_SCHEMA.capability;
   if (kind === 'port' && key === 'call') return closedString(closed.portCalls);
   if (kind === 'port' && key === 'port') return closedString(closed.portIds);
   if (kind === 'rule' && key === 'ruleId') return closedString(closed.ruleIds);
   if (kind === 'mdm' && key === 'namespace') return closedString(closed.namespaces);
   if (kind === 'mdm' && key === 'entity') return closedString(closed.entityIds);
   if (kind === 'transition' && key === 'transitionId') return closedString(closed.transitionIds);
+  if (kind === 'transition' && key === 'payload') return payloadSchema(closed.payloadPaths);
   if (kind === 'effect' && key === 'eventId') return closedString(closed.eventIds);
   return FIELD_SCHEMA[key];
 }
 
+function payloadSchema(paths: readonly string[] | undefined): Record<string, unknown> {
+  if (!paths) return FIELD_SCHEMA.payload;
+  const unique = dedupe(paths);
+  if (!unique.length) return { type: 'array', const: [] };
+  return { type: 'array', items: { type: 'string', enum: unique } };
+}
+
 function closedString(values: readonly string[] | undefined): Record<string, unknown> {
   if (!values) return { type: 'string' };
+  const unique = dedupe(values);
+  if (!unique.length) return { type: 'string' };
+  return { type: 'string', enum: unique };
+}
+
+function dedupe(values: readonly string[]): string[] {
   const unique: string[] = [];
   for (const value of values) {
     if (!value || unique.includes(value)) continue;
     unique.push(value);
   }
-  if (!unique.length) return { type: 'string' };
-  return { type: 'string', enum: unique };
+  return unique;
 }
 
-/** The gate's key set, rendered. The markdown prompt does not copy this list. */
-export function workerStepShape(): string {
-  const lines = D1_WORKER_KINDS.map(kind => `- ${kind}: ${STEP_KEYS[kind].join(', ')}`);
-  return [
-    'Each step is one kind. A step may name only the keys of that kind:',
-    ...lines,
-    'A key from another kind is refused.',
-    `MDM call is one of: ${D1_MDM_CALLS.join(', ')}.`,
-  ].join('\n');
+function dedupePairs(pairs: readonly MdmStepPair[]): MdmStepPair[] {
+  const unique: MdmStepPair[] = [];
+  const seen = new Set<string>();
+  for (const pair of pairs) {
+    if (!pair.call || !pair.capability) continue;
+    const key = `${pair.call}\u0000${pair.capability}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ call: pair.call, capability: pair.capability });
+  }
+  return unique;
+}
+
+/**
+ * Kinds and calls this operation can use, from `selectBranches`.
+ * An unscoped call still lists every kind and the facade catalog.
+ * The markdown prompt does not copy this list.
+ */
+export function workerStepShape(closed: UsecaseClosedValues = {}): string {
+  const selected = selectBranches(closed);
+  const lines = ['Each step is one kind. A step may name only the keys of that kind:'];
+  const kinds: WorkerKind[] = [];
+  for (const branch of selected) {
+    if (!kinds.includes(branch.kind)) kinds.push(branch.kind);
+  }
+  for (const kind of kinds) {
+    lines.push(`- ${kind}: ${STEP_KEYS[kind].join(', ')}`);
+    for (const branch of selected) {
+      if (branch.kind !== kind) continue;
+      for (const note of branch.notes) lines.push(`  ${note}`);
+    }
+  }
+  lines.push('A key from another kind is refused.');
+  const mdm = selected.filter(branch => branch.kind === 'mdm');
+  if (mdm.length && mdm.every(branch => branch.notes.length === 0)) {
+    const calls = closed.mdmCalls ? dedupe(closed.mdmCalls) : [...D1_MDM_CALLS];
+    lines.push(`MDM call is one of: ${calls.join(', ')}.`);
+  }
+  return lines.join('\n');
 }
 
 export interface D1WorkerReply {
@@ -150,7 +397,7 @@ export function usecaseTool(closed: UsecaseClosedValues = {}): mls.msg.LLMTool {
         properties: {
           steps: {
             type: 'array',
-            items: { anyOf: D1_WORKER_KINDS.map(kind => stepBranch(kind, closed)) },
+            items: { anyOf: selectBranches(closed).map(branch => branch.schema) },
           },
         },
       },
@@ -170,6 +417,8 @@ export function usecaseHumanPrompt(input: {
   effects: string[];
   routes: string[];
   context?: D1UsecaseContext;
+  /** Same object the tool schema was built from. */
+  closed: UsecaseClosedValues;
   feedback?: string;
 }): string {
   const lines = [
@@ -194,7 +443,7 @@ export function usecaseHumanPrompt(input: {
     'More than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.',
     'Authority is ctx.',
     '',
-    workerStepShape(),
+    workerStepShape(input.closed),
   );
   if (input.feedback) {
     lines.push('', 'The previous reply was refused:', input.feedback);

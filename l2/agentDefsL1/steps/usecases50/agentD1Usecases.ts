@@ -49,7 +49,7 @@ import {
   writeD1UsecaseWork,
   writePromptEvidence,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
-import { parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { closedFromRequest, parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 export async function beforeD1UsecasesPromptStep(
   _agent: IAgentMeta,
@@ -159,7 +159,6 @@ async function prepareWorker(
   const usecase = work?.request.usecases.find(item => item.usecaseId === arg.usecaseId);
   if (!work || !usecase) return refuse(context, parentStep, step, hookSequential, `Usecase ${arg.usecaseId} is not selected.`);
   const entity = work.request.entities.find(item => item.entityId === usecase.entity);
-  const port = work.request.ports.find(item => item.entityId === usecase.entity);
   const packet = work.request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
   const [skill, instructions] = await Promise.all([
     readText(agentFile('skills', 'usecase')),
@@ -182,32 +181,25 @@ async function prepareWorker(
     });
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', blocked.message)];
   }
-  const effects = packet
-    ? packet.effects.map(event => event.eventId)
-    : work.request.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`).map(event => event.eventId);
-  // Applicable rules decide behavior. moduleRules stays the id catalog the gate checks.
-  const ruleIds = packet
-    ? packet.rules.map(rule => rule.ruleId)
-    : [...work.request.moduleRules, ...(entity?.rules.map(rule => rule.ruleId) || [])];
-  // Only the transition this usecase already is. Any other id is refused.
-  const transitionIds = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
-    ? [usecase.usecaseId]
-    : [];
+  // Same catalogs for the tool and both prompts. An empty catalog omits that branch.
+  const closed = closedFromRequest(work.request, usecase, packet);
   const humanPrompt = usecaseHumanPrompt({
     usecase,
     entityId: usecase.entity,
     storageTarget: entity?.storageTarget || '',
     namespace: entity?.namespace || '',
-    portId: port?.portId || '',
-    methods: port?.methods || [],
-    rules: entity?.transitions.find(item => item.transitionId === usecase.usecaseId)?.ruleRefs || [],
-    effects,
+    portId: closed.portIds?.[0] || '',
+    methods: [...(closed.portCalls || [])],
+    rules: [...(closed.ruleIds || [])],
+    effects: [...(closed.eventIds || [])],
     routes: usecase.routes,
     context: packet,
+    closed,
     feedback: arg.feedback,
   });
   const evidence = await evidenceFor(usecase.usecaseId, humanPrompt, packet, snapshot?.snapshotHash || '');
   await writePromptEvidence(arg.project, arg.moduleName, evidence);
+  const shape = workerStepShape(closed);
   return [{
     type: 'prompt_ready',
     args: prompt,
@@ -217,17 +209,9 @@ async function prepareWorker(
     hookSequential,
     parentStepId: parentStep.stepId,
     // Skill comment is removed. The step prompt is not: its modelType is what the host routes on.
-    systemPrompt: [stripComment(skill || ''), instructions.trim(), workerStepShape()].filter(Boolean).join('\n\n'),
+    systemPrompt: [stripComment(skill || ''), instructions.trim(), shape].filter(Boolean).join('\n\n'),
     humanPrompt,
-    tools: [usecaseTool({
-      portCalls: port?.methods || [],
-      portIds: port?.portId ? [port.portId] : [],
-      ruleIds,
-      namespaces: entity?.namespace ? [entity.namespace] : [],
-      entityIds: usecase.entity ? [usecase.entity] : [],
-      transitionIds,
-      eventIds: effects,
-    })],
+    tools: [usecaseTool(closed)],
     toolChoice: { type: 'function', function: { name: 'planUsecaseSteps' } },
   }];
 }

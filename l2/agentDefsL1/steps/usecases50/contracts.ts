@@ -15,7 +15,8 @@ export const D1_WORKER_KINDS = ['port', 'rule', 'mdm', 'transition', 'effect', '
 /**
  * Facade methods a plan may name. `read` and `attach` are not methods:
  * a point read, a collection read and a platform-field update are different calls.
- * Schema-per-operation is a later cut; this catalog is the facade, not one operation.
+ * The tool offers only the methods the operation's binding names. This list stays
+ * the facade, so a manipulated reply can still be recognized and refused.
  */
 export const D1_MDM_CALLS = [
   'get',
