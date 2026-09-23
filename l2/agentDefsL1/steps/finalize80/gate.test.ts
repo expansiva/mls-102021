@@ -10,12 +10,20 @@ import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
+import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
 const ROUTE = 'agendaClinica.consultas.cmdRegistrarAtendimento';
 const CONTRACT = contractPath(MODULE, 'consultas');
+const RULES = `l4/${MODULE}/rules.defs.ts`;
+const ONTOLOGY = `l4/${MODULE}/ontology/Consulta.defs.ts`;
+const INTEGRATION = `l4/${MODULE}/integration.defs.ts`;
 const HASH = 'sha256:contract';
+const CONTRACT_TEXT = `export interface Out0 { id: string }\nexport const routes = { "${ROUTE}": { "output": "Out0" } } as const;\n`;
+const RULES_TEXT = 'export const agendaClinicaRules = { "rules": { "noteRequired": "A note is required." } } as const;\n';
+const ONTOLOGY_TEXT = `export const agendaClinicaEntityConsulta = { "entityId": "Consulta", "storage": { "target": "moduleDatabase" }, "record": { "fields": { "id": { "type": "uuid", "derived": true } } }, "transitions": [{ "transitionId": "registrarAtendimento", "payload": ["attendanceNote"], "ruleRefs": ["noteRequired"] }] } as const;\n`;
+const INTEGRATION_TEXT = 'export const agendaClinicaIntegration = { "outbound": [{ "id": "atendimentoRegistrado", "event": "atendimentoRegistrado", "on": "Consulta.registrarAtendimento" }] } as const;\n';
 
 const PATHS = {
   consulta: `l1/${MODULE}/layer_3_domain/entities/consulta.defs.ts`,
@@ -73,7 +81,7 @@ function consultaData(): Record<string, unknown> {
   return {
     entityId: 'Consulta',
     storageTarget: 'moduleDatabase',
-    fields: [{ name: 'id', type: 'string' }, { name: 'status', type: 'string' }],
+    fields: [{ name: 'id', type: 'string', derived: true }, { name: 'status', type: 'string' }],
     lifecycle: {
       states: [
         { state: 'scheduled', reachedBy: 'actor' },
@@ -110,7 +118,7 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
   const adapter = id('repositoryAdapter', 'ConsultaRepositoryAdapter');
   const usecase = id('usecase', 'registrarAtendimento');
   const scope = id('accessScope', 'accessScope');
-  return [
+  const rows = [
     { logical: PATHS.consulta, definition: definition('domainEntity', 'Consulta', consultaData()), item: pipe('domainEntity', 'Consulta', PATHS.consulta, []) },
     { logical: PATHS.paciente, definition: definition('domainEntity', 'Paciente', pacienteData()), item: pipe('domainEntity', 'Paciente', PATHS.paciente, []) },
     {
@@ -161,7 +169,29 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
         routeProjections: [{ route: ROUTE, contractPath: CONTRACT, projection: 'declared', outputFields: ['id'] }],
         portCalls: ['save'],
         transactional: true,
-        effects: [{ eventId: 'atendimentoRegistrado' }],
+        effects: [{ eventId: 'atendimentoRegistrado', path: INTEGRATION, symbol: 'atendimentoRegistrado' }],
+        sequence: [
+          { kind: 'context', source: 'ctx' },
+          { kind: 'port', call: 'save', port: 'ConsultaRepository' },
+          { kind: 'rule', ruleId: 'noteRequired' },
+          { kind: 'transition', transitionId: 'registrarAtendimento', payload: ['attendanceNote'] },
+          { kind: 'effect', eventId: 'atendimentoRegistrado' },
+          { kind: 'transaction', boundary: 'local' },
+        ],
+        uses: fieldUses({
+          operation: 'transition',
+          fields: [{ name: 'id', derived: true }],
+          inputPaths: ['id'],
+          payloadPaths: ['attendanceNote'],
+        }),
+        rules: [{ ruleId: 'noteRequired', path: RULES, symbol: 'noteRequired' }],
+        transaction: { boundary: 'local' },
+        lifecycle: {
+          transitionId: 'registrarAtendimento',
+          payload: ['attendanceNote'],
+          sourcePath: ONTOLOGY,
+          symbol: 'registrarAtendimento',
+        },
       }),
       item: pipe('usecase', 'registrarAtendimento', PATHS.usecase, [consulta, port, scope]),
     },
@@ -212,6 +242,9 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
       item: pipe('integrationOutbound', 'outbound', PATHS.integration, [usecase]),
     },
   ];
+  const usecaseRow = rows.find(row => row.logical === PATHS.usecase);
+  if (usecaseRow) usecaseRow.item.dependsFiles = [...usecaseRow.item.dependsFiles, CONTRACT, RULES, ONTOLOGY, INTEGRATION];
+  return rows;
 }
 
 function observedOf(rows: ReturnType<typeof parts>): D1FinalizeObserved[] {
@@ -245,7 +278,9 @@ function snapshot(files: D1FinalizeObserved[]): D1InputSnapshot {
     moduleName: MODULE,
     device: 'web',
     plannerRun: null,
-    sources: [{ path: CONTRACT, sha256: HASH, bytes: 10, schemaVersion: '', state: 'present' }],
+    sources: [CONTRACT, RULES, ONTOLOGY, INTEGRATION].map(path => ({
+      path, sha256: HASH, bytes: 10, schemaVersion: '', state: 'present' as const,
+    })),
     selection: {
       pages: [{ pageId: 'consultas', routes: [ROUTE] }],
       routes: [{ route: ROUTE, page: 'consultas', kind: 'command', usecaseRef: 'registrarAtendimento', status: 'toCreate' }],
@@ -301,8 +336,14 @@ function request(): D1FinalizeRequest {
     moduleName: MODULE,
     pipeline: pipeline(),
     snapshot: snapshot(observed),
-    sourceHashes: { [CONTRACT]: HASH },
-    contracts: { consultas: { path: CONTRACT, text: `export const routes = { "${ROUTE}": { "output": "Out0" } } as const;\n`, hash: HASH } },
+    sourceHashes: { [CONTRACT]: HASH, [RULES]: HASH, [ONTOLOGY]: HASH, [INTEGRATION]: HASH },
+    dependencyTexts: {
+      [CONTRACT]: CONTRACT_TEXT,
+      [RULES]: RULES_TEXT,
+      [ONTOLOGY]: ONTOLOGY_TEXT,
+      [INTEGRATION]: INTEGRATION_TEXT,
+    },
+    contracts: { consultas: { path: CONTRACT, text: CONTRACT_TEXT, hash: HASH } },
     drafts: {
       domain30: {
         entities: [
@@ -436,6 +477,14 @@ void test('a lost event or rule does not complete', () => {
   assert.equal(report.outcome, 'held');
   assert.equal(codes(report, 'EVENT_LOST'), 1);
   assert.equal(codes(report, 'RULE_LOST'), 1);
+});
+
+void test('a changed rule source is the existing stale check', () => {
+  const input = request();
+  input.sourceHashes[RULES] = 'sha256:changed';
+  const report = buildD1Finalize(input);
+  assert.equal(report.outcome, 'held');
+  assert.equal(report.findings.some(item => item.code === 'STALE' && item.path === RULES), true);
 });
 
 void test('a receipt mismatch and a divergent L2 contract do not complete', () => {

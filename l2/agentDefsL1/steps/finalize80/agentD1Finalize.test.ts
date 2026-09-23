@@ -36,6 +36,36 @@ const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
 
+function mdmOntology(entity: ReturnType<typeof coreUsecaseRequest>['entities'][number]): Record<string, unknown> {
+  const capabilities: Record<string, string> = {};
+  for (const name of entity.capabilities || []) capabilities[name] = name;
+  const fields: Record<string, unknown> = {};
+  for (const field of entity.fields) fields[field.name] = { type: field.type, derived: field.derived };
+  for (const path of entity.platformFields || []) {
+    const parts = path.split('.');
+    let cursor = fields;
+    parts.forEach((key, index) => {
+      const last = index === parts.length - 1;
+      if (last) {
+        cursor[key] = { type: 'string', owner: 'platform' };
+        return;
+      }
+      const current = cursor[key];
+      if (!current || typeof current !== 'object' || !('fields' in (current as object))) {
+        cursor[key] = { type: 'object', fields: {} };
+      }
+      cursor = (cursor[key] as { fields: Record<string, unknown> }).fields;
+    });
+  }
+  return {
+    entityId: entity.entityId,
+    kind: 'role',
+    roleTag: `${entity.namespace}.${entity.entityId}`,
+    capabilities,
+    record: { fields },
+  };
+}
+
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -185,11 +215,12 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
   persistence.stepId = 40;
   await agent.beforePromptStep!(meta(), ctx, parent, persistence, 3);
 
+  const usecaseRequest = coreUsecaseRequest();
   const contracts = contractSources(MODULE, coreControllerRequest().routes);
   for (const contract of contracts) {
     seed(host, fileInfoFromDisplay(PROJECT, contract.path)!, contract.source, 'contract');
   }
-  const usecases = buildD1Usecases(coreUsecaseRequest());
+  const usecases = buildD1Usecases(usecaseRequest);
   await writeJson(draftFile(PROJECT, MODULE, 'usecases50'), usecases);
   for (const part of usecases.emit) {
     const rendered = renderDefinition(part.definition, part.pipeline);
@@ -217,6 +248,15 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
     assert.ok(info);
     seed(host, info!, text, 'contract');
     const source = snapshot.sources.find(item => item.path === `l2/${MODULE}/web/contracts/${page.pageId}.defs.ts`);
+    if (source) source.sha256 = await sha256Text(text);
+  }
+  for (const entity of usecaseRequest.entities) {
+    if (entity.storageTarget !== 'mdm') continue;
+    const text = `export const ${entity.entityId}Ontology = ${JSON.stringify(mdmOntology(entity))} as const;\n`;
+    const info = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/ontology/${entity.entityId}.defs.ts`);
+    assert.ok(info);
+    seed(host, info, text, 'ontology');
+    const source = snapshot.sources.find(item => item.path === `l4/${MODULE}/ontology/${entity.entityId}.defs.ts`);
     if (source) source.sha256 = await sha256Text(text);
   }
   await writeJson(inputFile(PROJECT, MODULE), snapshot);

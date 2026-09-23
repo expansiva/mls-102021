@@ -32,7 +32,11 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   const atendimento = build.emit.find(item => item.definition.artifactId === 'registrarAtendimento');
   const data = atendimento?.definition.data as { functions: Array<{ input: Array<{ name: string }> }>; effects: Array<{ eventId: string }> };
   assert.equal(data.functions[0].input.some(field => field.name === 'attendanceNote'), false);
-  assert.deepEqual(data.effects, [{ eventId: 'atendimentoRegistrado' }]);
+  assert.deepEqual(data.effects, [{
+    eventId: 'atendimentoRegistrado',
+    path: 'l4/agendaClinica/integration.defs.ts',
+    symbol: 'atendimentoRegistrado',
+  }]);
   assert.equal(build.problems.some(item => item.code === 'NOTE_WITHOUT_INPUT' && item.path === 'registrarAtendimento'), true);
   assert.equal(build.enumerations.every(item => item.consumed === false), true);
   assert.equal(build.enumerations.some(item => item.path === 'status' && item.values.includes('attended')), true);

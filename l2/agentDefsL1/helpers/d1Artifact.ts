@@ -173,7 +173,18 @@ export interface D1UsecaseData {
   }>;
   portCalls: string[];
   transactional: boolean;
-  effects: Array<{ eventId: string }>;
+  effects: Array<{ eventId: string; path: string; symbol: string }>;
+  sequence: Array<Record<string, unknown>>;
+  uses: Array<{ path: string; role: 'filter' | 'selector' | 'concurrency' | 'write'; source: 'input' | 'payload' }>;
+  rules: Array<{ ruleId: string; path: string; symbol: string }>;
+  transaction: { boundary: 'local' | 'none' };
+  lifecycle?: { transitionId: string; payload: string[]; sourcePath: string; symbol: string };
+  mdm?: {
+    namespace: string;
+    role: string;
+    atomic: boolean;
+    calls: Array<Record<string, unknown>>;
+  };
 }
 
 export interface D1HttpControllerData {
@@ -680,16 +691,27 @@ export function routeProjectionIssues(data: unknown): string[] {
   return issues;
 }
 
+const SEQUENCE_FIELDS: Record<string, readonly string[]> = {
+  port: ['kind', 'call', 'port'],
+  rule: ['kind', 'ruleId'],
+  mdm: ['kind', 'namespace', 'call', 'entity', 'capability'],
+  transition: ['kind', 'transitionId', 'payload'],
+  effect: ['kind', 'eventId'],
+  transaction: ['kind', 'boundary'],
+  context: ['kind', 'source'],
+};
+
 export function usecaseIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
   unknownKeys(data, [
     'usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'functions',
     'routeProjections', 'portCalls', 'transactional', 'effects',
+    'sequence', 'uses', 'rules', 'transaction', 'lifecycle', 'mdm',
   ], 'data', issues);
   needString(data, 'usecaseId', 'data', issues);
   needString(data, 'entityId', 'data', issues);
-  needString(data, 'operation', 'data', issues);
+  const operation = needString(data, 'operation', 'data', issues);
   stringList(data.ports, 'data.ports', issues);
   stringList(data.rulesApplied, 'data.rulesApplied', issues);
   stringList(data.portCalls, 'data.portCalls', issues);
@@ -712,12 +734,165 @@ export function usecaseIssues(data: unknown): string[] {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(effect, ['eventId'], path, issues);
+    unknownKeys(effect, ['eventId', 'path', 'symbol'], path, issues);
     needString(effect, 'eventId', path, issues);
+    needString(effect, 'path', path, issues);
+    needString(effect, 'symbol', path, issues);
   });
+  sequenceIssues(data.sequence, issues);
+  useIssues(data.uses, issues);
+  ruleRefIssues(data.rules, issues);
+  transactionIssues(data, issues);
+  if (operation === 'transition') {
+    if (!isRecord(data.lifecycle)) issues.push('Missing field data.lifecycle.');
+    else lifecycleRefIssues(data.lifecycle, issues);
+  } else if (data.lifecycle !== undefined) {
+    issues.push('data.lifecycle is only valid on a transition.');
+  }
+  if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
   issues.push(...projectionIssues(data));
   issues.push(...routeProjectionIssues(data));
   return issues;
+}
+
+function sequenceIssues(value: unknown, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.sequence.');
+    return;
+  }
+  value.forEach((step, index) => {
+    const path = `data.sequence.${index}`;
+    if (!isRecord(step)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    const kind = typeof step.kind === 'string' ? step.kind : '';
+    const fields = SEQUENCE_FIELDS[kind];
+    if (!fields) {
+      issues.push(`${path}.kind is invalid.`);
+      return;
+    }
+    unknownKeys(step, fields, path, issues);
+    for (const key of fields) {
+      if (key === 'kind' || key === 'payload') continue;
+      needString(step, key, path, issues);
+    }
+    if (kind === 'transition') stringList(step.payload, `${path}.payload`, issues);
+    if (kind === 'context' && step.source !== 'ctx') issues.push(`${path}.source is not ctx.`);
+    if (kind === 'transaction' && step.boundary !== 'local' && step.boundary !== 'external') {
+      issues.push(`${path}.boundary is invalid.`);
+    }
+  });
+}
+
+function useIssues(value: unknown, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.uses.');
+    return;
+  }
+  value.forEach((use, index) => {
+    const path = `data.uses.${index}`;
+    if (!isRecord(use)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    unknownKeys(use, ['path', 'role', 'source'], path, issues);
+    needString(use, 'path', path, issues);
+    const role = typeof use.role === 'string' ? use.role : '';
+    oneOf(role, ['filter', 'selector', 'concurrency', 'write'], `${path}.role`, issues);
+    if (!role) issues.push(`Missing field ${path}.role.`);
+    const source = typeof use.source === 'string' ? use.source : '';
+    oneOf(source, ['input', 'payload'], `${path}.source`, issues);
+    if (!source) issues.push(`Missing field ${path}.source.`);
+  });
+}
+
+function ruleRefIssues(value: unknown, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.rules.');
+    return;
+  }
+  value.forEach((rule, index) => {
+    const path = `data.rules.${index}`;
+    if (!isRecord(rule)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    unknownKeys(rule, ['ruleId', 'path', 'symbol'], path, issues);
+    needString(rule, 'ruleId', path, issues);
+    needString(rule, 'path', path, issues);
+    needString(rule, 'symbol', path, issues);
+  });
+}
+
+function transactionIssues(data: Record<string, unknown>, issues: string[]): void {
+  if (!isRecord(data.transaction)) {
+    issues.push('Missing field data.transaction.');
+    return;
+  }
+  unknownKeys(data.transaction, ['boundary'], 'data.transaction', issues);
+  const boundary = typeof data.transaction.boundary === 'string' ? data.transaction.boundary : '';
+  oneOf(boundary, ['local', 'none'], 'data.transaction.boundary', issues);
+  if (!boundary) issues.push('Missing field data.transaction.boundary.');
+  if (typeof data.transactional === 'boolean' && boundary) {
+    const local = boundary === 'local';
+    if (data.transactional !== local) issues.push('data.transaction.boundary does not match data.transactional.');
+  }
+}
+
+function lifecycleRefIssues(lifecycle: Record<string, unknown>, issues: string[]): void {
+  unknownKeys(lifecycle, ['transitionId', 'payload', 'sourcePath', 'symbol'], 'data.lifecycle', issues);
+  needString(lifecycle, 'transitionId', 'data.lifecycle', issues);
+  stringList(lifecycle.payload, 'data.lifecycle.payload', issues);
+  needString(lifecycle, 'sourcePath', 'data.lifecycle', issues);
+  needString(lifecycle, 'symbol', 'data.lifecycle', issues);
+}
+
+function mdmBindingIssues(value: unknown, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push('Missing field data.mdm.');
+    return;
+  }
+  unknownKeys(value, ['namespace', 'role', 'atomic', 'calls'], 'data.mdm', issues);
+  needString(value, 'namespace', 'data.mdm', issues);
+  needString(value, 'role', 'data.mdm', issues);
+  needBoolean(value, 'atomic', 'data.mdm', issues);
+  if (!Array.isArray(value.calls)) {
+    issues.push('Missing field data.mdm.calls.');
+    return;
+  }
+  value.calls.forEach((call, index) => {
+    const path = `data.mdm.calls.${index}`;
+    if (!isRecord(call)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    unknownKeys(call, ['method', 'target', 'shape', 'capabilities', 'alternative', 'arguments', 'result'], path, issues);
+    needString(call, 'method', path, issues);
+    needString(call, 'target', path, issues);
+    needString(call, 'shape', path, issues);
+    stringList(call.capabilities, `${path}.capabilities`, issues);
+    needBoolean(call, 'alternative', path, issues);
+    stringList(call.result, `${path}.result`, issues);
+    if (!Array.isArray(call.arguments)) {
+      issues.push(`Missing field ${path}.arguments.`);
+      return;
+    }
+    call.arguments.forEach((arg, argIndex) => {
+      const argPath = `${path}.arguments.${argIndex}`;
+      if (!isRecord(arg)) {
+        issues.push(`Missing field ${argPath}.`);
+        return;
+      }
+      unknownKeys(arg, ['name', 'role', 'capability', 'path', 'value'], argPath, issues);
+      needString(arg, 'name', argPath, issues);
+      const role = needString(arg, 'role', argPath, issues);
+      oneOf(role, ['selector', 'parameter', 'patch'], `${argPath}.role`, issues);
+      if (arg.capability !== undefined) needString(arg, 'capability', argPath, issues);
+      if (arg.path !== undefined) needString(arg, 'path', argPath, issues);
+      if (arg.value !== undefined) needString(arg, 'value', argPath, issues);
+    });
+  });
 }
 
 export function httpControllerIssues(data: unknown): string[] {

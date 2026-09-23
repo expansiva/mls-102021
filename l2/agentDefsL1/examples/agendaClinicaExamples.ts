@@ -150,6 +150,17 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
     portCalls: ['list'],
     transactional: false,
     effects: [],
+    sequence: [
+      { kind: 'context', source: 'ctx' },
+      { kind: 'port', call: 'list', port: 'ConsultaRepository' },
+    ],
+    uses: [],
+    rules: [{
+      ruleId: 'professionalOwnAppointment',
+      path: `l4/${MODULE}/rules.defs.ts`,
+      symbol: 'professionalOwnAppointment',
+    }],
+    transaction: { boundary: 'none' },
   });
 
   const controller = envelope('httpController', page, {

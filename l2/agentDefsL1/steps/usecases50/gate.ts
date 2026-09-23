@@ -16,6 +16,7 @@ import {
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { authorizedPayloadNames, capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { bindMdm, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   D1_USECASE_VERSION,
@@ -27,6 +28,7 @@ import {
   type D1UsecaseEnumeration,
   type D1UsecaseField,
   type D1UsecaseItem,
+  type D1MdmArgument,
   type D1MdmPlannedCall,
   type D1UsecaseMdm,
   type D1UsecaseNormalization,
@@ -146,6 +148,19 @@ function planUsecase(
     .filter(item => item.symbol);
 
   const outputUnion = unionOutputs(outputs);
+  const sourcePayload = usecase.operation === 'transition'
+    ? [...(entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])]
+    : [];
+  const ontologyPath = `l4/${request.moduleName}/ontology/${entity.entityId}.defs.ts`;
+  const integrationPath = `l4/${request.moduleName}/integration.defs.ts`;
+  const lifecycle = usecase.operation === 'transition'
+    ? {
+      transitionId: usecase.usecaseId,
+      payload: sourcePayload,
+      sourcePath: ontologyPath,
+      symbol: usecase.usecaseId,
+    }
+    : undefined;
   const data = {
     usecaseId: usecase.usecaseId,
     entityId: entity.entityId,
@@ -166,7 +181,24 @@ function planUsecase(
     })),
     portCalls,
     transactional: boundary === 'local',
-    effects: effects.map(eventId => ({ eventId })),
+    effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
+    sequence: steps.map(step => step.kind === 'transition'
+      ? { kind: 'transition' as const, transitionId: step.transitionId, payload: [...sourcePayload] }
+      : step),
+    uses: fieldUses({
+      operation: usecase.operation,
+      fields: entity.fields,
+      inputPaths: input.map(field => field.name),
+      payloadPaths: sourcePayload,
+    }),
+    rules: rules.map(ruleId => ({
+      ruleId,
+      path: ruleSourcePath(request, entity, usecase.usecaseId, ruleId),
+      symbol: ruleId,
+    })),
+    transaction: { boundary: boundary === 'local' ? 'local' as const : 'none' as const },
+    ...(lifecycle ? { lifecycle } : {}),
+    ...(mdm ? { mdm: storedMdm(mdm) } : {}),
   };
   const definition: D1Definition = {
     schemaVersion: D1_DEFINITION_SCHEMA,
@@ -810,6 +842,76 @@ function contractPathFor(moduleName: string, pageId: string): string {
   return `l2/${moduleName}/web/contracts/${pageId}.defs.ts`;
 }
 
+function ruleSourcePath(
+  request: D1UsecaseRequest,
+  entity: D1UsecaseEntity,
+  usecaseId: string,
+  ruleId: string,
+): string {
+  const placed = entity.rules.find(rule => rule.ruleId === ruleId);
+  if (placed?.source) return placed.source;
+  const cited = request.contexts?.find(item => item.usecaseId === usecaseId)?.rules.find(rule => rule.ruleId === ruleId);
+  if (cited?.source) return cited.source;
+  return `l4/${request.moduleName}/rules.defs.ts`;
+}
+
+function storedMdm(mdm: D1UsecaseMdm): {
+  namespace: string;
+  role: string;
+  atomic: boolean;
+  calls: D1MdmPlannedCall[];
+} {
+  return {
+    namespace: mdm.namespace,
+    role: mdm.role,
+    atomic: mdm.atomic,
+    calls: mdm.calls.map(call => ({
+      method: call.method,
+      target: call.target,
+      shape: call.shape,
+      capabilities: [...call.capabilities],
+      alternative: call.alternative,
+      arguments: call.arguments.map(arg => storedArgument(arg)),
+      result: [...call.result],
+    })),
+  };
+}
+
+function storedArgument(arg: D1MdmArgument): D1MdmArgument {
+  const stored: D1MdmArgument = { name: arg.name, role: arg.role };
+  if (arg.capability) stored.capability = arg.capability;
+  if (arg.path) stored.path = arg.path;
+  if (arg.value) stored.value = arg.value;
+  return stored;
+}
+
+function dependencyPaths(moduleName: string, item: D1UsecaseItem): string[] {
+  const data = item.definition && isRecord(item.definition.data) ? item.definition.data : {};
+  const paths = new Set<string>();
+  paths.add(`l4/${moduleName}/ontology/${item.entityId}.defs.ts`);
+  if (Array.isArray(data.routeProjections)) {
+    for (const projection of data.routeProjections) {
+      if (isRecord(projection) && typeof projection.contractPath === 'string' && projection.contractPath) {
+        paths.add(projection.contractPath);
+      }
+    }
+  }
+  if (Array.isArray(data.rules)) {
+    for (const rule of data.rules) {
+      if (isRecord(rule) && typeof rule.path === 'string' && rule.path) paths.add(rule.path);
+    }
+  }
+  if (Array.isArray(data.effects)) {
+    for (const effect of data.effects) {
+      if (isRecord(effect) && typeof effect.path === 'string' && effect.path) paths.add(effect.path);
+    }
+  }
+  if (isRecord(data.lifecycle) && typeof data.lifecycle.sourcePath === 'string' && data.lifecycle.sourcePath) {
+    paths.add(data.lifecycle.sourcePath);
+  }
+  return [...paths].sort();
+}
+
 function unconsumedEnumerations(request: D1UsecaseRequest): D1UsecaseEnumeration[] {
   const out: D1UsecaseEnumeration[] = [];
   for (const entity of request.entities) {
@@ -842,6 +944,13 @@ function emitItems(request: D1UsecaseRequest, items: readonly D1UsecaseItem[], p
       error(problems, 'DEFINITION', item.defPath, rendered.issues[0] || 'Definition did not render.');
       continue;
     }
+    if (request.files && request.files.length) {
+      const fidelity = readUsecaseFidelity(rendered.source, request.files);
+      if (fidelity.problems.length) {
+        for (const problem of fidelity.problems) error(problems, problem.code, item.usecaseId, problem.message);
+        continue;
+      }
+    }
     out.push({ definition: item.definition, pipeline: [pipeline] });
   }
   return out;
@@ -856,6 +965,9 @@ function pipelineFor(request: D1UsecaseRequest, item: D1UsecaseItem): D1Pipeline
   if (port && item.definition && isRecord(item.definition.data) && Array.isArray(item.definition.data.ports) && item.definition.data.ports.length) {
     dependsOn.push(pipelineId(request.project, request.moduleName, 'repositoryPort', port.portId));
     if (port.defPath) dependsFiles.push(qualifyDefPath(request.project, port.defPath));
+  }
+  for (const path of dependencyPaths(request.moduleName, item)) {
+    if (!dependsFiles.includes(path)) dependsFiles.push(path);
   }
   return {
     id: pipelineId(request.project, request.moduleName, 'usecase', item.usecaseId),

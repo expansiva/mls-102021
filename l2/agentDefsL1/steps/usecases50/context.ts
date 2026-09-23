@@ -27,6 +27,7 @@ import type {
   D1RuleText,
   D1SourceFinding,
   D1SourceHash,
+  D1SourceText,
   D1UsecaseContext,
   D1UsecaseEntity,
   D1UsecasePort,
@@ -70,6 +71,7 @@ export interface VerifiedBundle {
   catalogs: Array<{ path: string; rules: Record<string, string> }>;
   bodies: Record<string, unknown | null>;
   entityPaths: Record<string, string>;
+  files: D1SourceText[];
 }
 
 interface TransitionBody {
@@ -92,17 +94,18 @@ export async function loadVerifiedSources(
   const paths = inputPaths(moduleName);
   const findings: D1SourceFinding[] = [];
   const hashes: D1SourceHash[] = [];
-  const rules = await take(project, paths.rules, 'defs', snapshot.sources, findings, hashes);
-  const integration = await take(project, paths.integration, 'defs', snapshot.sources, findings, hashes);
-  const access = await take(project, paths.access, 'defs', snapshot.sources, findings, hashes);
-  const needs = await take(project, paths.needs, 'json', snapshot.sources, findings, hashes);
+  const files: D1SourceText[] = [];
+  const rules = await take(project, paths.rules, 'defs', snapshot.sources, findings, hashes, files);
+  const integration = await take(project, paths.integration, 'defs', snapshot.sources, findings, hashes, files);
+  const access = await take(project, paths.access, 'defs', snapshot.sources, findings, hashes, files);
+  const needs = await take(project, paths.needs, 'json', snapshot.sources, findings, hashes, files);
   const bodies: Record<string, unknown | null> = {};
   const entityPaths: Record<string, string> = {};
   for (const entityId of [...new Set(entityIds)].sort()) {
     if (!isSafeToken(entityId)) continue;
     const path = entityPath(moduleName, entityId);
     entityPaths[entityId] = path;
-    bodies[entityId] = await take(project, path, 'defs', snapshot.sources, findings, hashes);
+    bodies[entityId] = await take(project, path, 'defs', snapshot.sources, findings, hashes, files);
   }
   const catalogs: VerifiedBundle['catalogs'] = [];
   const seenCatalog = new Set<string>();
@@ -116,6 +119,7 @@ export async function loadVerifiedSources(
       findings.push(absent(source));
       continue;
     }
+    rememberFile(files, source, text);
     const sha256 = await sha256Text(text);
     hashes.push({ path: source, sha256 });
     const parsed = parseD1Source(text, 'defs');
@@ -130,7 +134,7 @@ export async function loadVerifiedSources(
   for (const digest of snapshot.sources) {
     const journeyId = journeyIdFromPath(digest.path, moduleName);
     if (!journeyId) continue;
-    const body = await take(project, digest.path, 'defs', snapshot.sources, findings, hashes);
+    const body = await take(project, digest.path, 'defs', snapshot.sources, findings, hashes, files);
     const view = body ? journeyView(journeyId, digest.path, body) : null;
     if (view) journeys.push(view);
   }
@@ -141,7 +145,7 @@ export async function loadVerifiedSources(
   for (const pageId of [...pages].sort()) {
     if (!isSafeToken(pageId)) continue;
     const path = contractPath(moduleName, pageId);
-    const body = await take(project, path, 'defs', snapshot.sources, findings, hashes);
+    const body = await take(project, path, 'defs', snapshot.sources, findings, hashes, files);
     contracts.push({ pageId, path, source: typeof body === 'string' ? body : '' });
   }
   findings.sort((left, right) => `${left.path}\u0000${left.code}`.localeCompare(`${right.path}\u0000${right.code}`));
@@ -162,6 +166,7 @@ export async function loadVerifiedSources(
     catalogs,
     bodies,
     entityPaths,
+    files,
   };
 }
 
@@ -916,6 +921,11 @@ function ruleMissing(ruleId: string, path: string): D1SourceFinding {
   };
 }
 
+function rememberFile(files: D1SourceText[], path: string, text: string): void {
+  if (!path || !text || files.some(item => item.path === path)) return;
+  files.push({ path, text });
+}
+
 async function take(
   project: number,
   path: string,
@@ -923,12 +933,14 @@ async function take(
   digests: readonly D1SourceDigest[],
   findings: D1SourceFinding[],
   hashes: D1SourceHash[],
+  files: D1SourceText[],
 ): Promise<unknown | null> {
   const opened = await openVerified(project, path, digests);
   if ('finding' in opened) {
     findings.push(opened.finding);
     return null;
   }
+  rememberFile(files, path, opened.text);
   if (path.includes('/web/contracts/')) {
     hashes.push({ path, sha256: opened.sha256 });
     return opened.text;

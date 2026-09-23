@@ -1,5 +1,12 @@
 # usecases50
 
+## 2026-09-23 (d1_18)
+
+- The serialized usecase keeps the validated sequence, the selector, filter, concurrency and write uses, the MDM binding, the lifecycle payload, rule references, the transaction boundary and effect references. `rulesApplied` stays the id list the inventory reads. A rule reference is a path and a symbol. The rule text stays in the source file.
+- `readUsecaseFidelity` reads the rendered `.defs.ts` and the dependency texts. It does not read the draft. A missing note payload, rule text, rule reference, MDM call, route projection or contract dependency fails with its own code. A rule id or a file count does not pass.
+- The pipeline `dependsFiles` names the ontology, the contracts, the rule source and the integration source. A changed hash of one of those sources is the existing stale check.
+- The same request renders the same bytes. The reader does not evaluate the file.
+
 ## 2026-09-23 (d1_17)
 
 - A catalog this operation was given, including an empty one, is not a free string. An empty catalog omits that branch. A CRUD usecase does not offer `transition`. A usecase with no outbound event does not offer `effect`. An MDM role does not offer a repository port.

@@ -207,6 +207,11 @@ export interface D1SourceHash {
   sha256: string;
 }
 
+export interface D1SourceText {
+  path: string;
+  text: string;
+}
+
 /** One rule the operation is subject to. The text is the source, not a summary. */
 export interface D1RuleText {
   ruleId: string;
@@ -310,6 +315,8 @@ export interface D1UsecaseRequest {
   contexts?: D1UsecaseContext[];
   sourceFindings?: D1SourceFinding[];
   sourceHashes?: D1SourceHash[];
+  /** Raw dependency texts. The fidelity reader uses these, not the draft. */
+  files?: D1SourceText[];
   plans: D1UsecasePlanInput[];
   llmCalls: number;
 }

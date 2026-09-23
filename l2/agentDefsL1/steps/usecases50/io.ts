@@ -301,6 +301,7 @@ async function usecaseRequest(
     contexts,
     sourceFindings: bundle.findings,
     sourceHashes: bundle.hashes,
+    files: bundle.files,
     plans: [],
     llmCalls: 0,
   };

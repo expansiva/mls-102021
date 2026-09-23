@@ -36,8 +36,11 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
   const progress = await readProgress(project, moduleName);
   const observed = await readObserved(project, moduleName, snapshot?.files || [], progress);
   const sourceHashes: Record<string, string> = {};
+  const dependencyTexts: Record<string, string> = {};
   for (const source of snapshot?.sources || []) {
-    sourceHashes[source.path] = await hashLogical(project, source.path);
+    const text = await readLogical(project, source.path);
+    sourceHashes[source.path] = text == null ? '' : await sha256Text(text);
+    if (text != null) dependencyTexts[source.path] = text;
   }
   const contracts: D1FinalizeRequest['contracts'] = {};
   const pages = new Set((snapshot?.selection.routes || []).map(route => route.page).filter(Boolean));
@@ -56,6 +59,7 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
       pipeline,
       snapshot,
       sourceHashes,
+      dependencyTexts,
       contracts,
       drafts,
       observed,
@@ -183,11 +187,6 @@ function productDef(entry: { level: number; folder: string; extension: string },
   const pipeline = `${moduleName}/pipeline`;
   if (entry.folder === pipeline || entry.folder.startsWith(`${pipeline}/`)) return false;
   return entry.folder === moduleName || entry.folder.startsWith(`${moduleName}/`);
-}
-
-async function hashLogical(project: number, path: string): Promise<string> {
-  const text = await readLogical(project, path);
-  return text == null ? '' : sha256Text(text);
 }
 
 async function readLogical(project: number, path: string): Promise<string | null> {

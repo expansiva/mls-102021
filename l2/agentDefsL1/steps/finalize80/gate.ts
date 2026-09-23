@@ -20,6 +20,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import {
   CHAIN_STEP_IDS,
   D1_REPORT_VERSION,
@@ -64,6 +65,7 @@ export function buildD1Finalize(request: D1FinalizeRequest): D1FinalizeReport {
     checkChildren(request, findings);
     checkExtra(request, parsed, findings);
     checkSchemaAndGraph(request, parsed, findings);
+    checkUsecaseFidelity(request, parsed, findings);
     checkRules(request, parsed, findings);
     checkEvents(request, parsed, findings);
     checkMdmTables(parsed, findings);
@@ -279,9 +281,10 @@ function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], fi
       }
     }
   }
+  const sources = new Set((request.snapshot?.sources || []).map(source => source.path));
   for (const pipelineItem of items) {
     for (const dep of pipelineItem.dependsFiles || []) {
-      if (knownDependency(dep, items, present)) continue;
+      if (knownDependency(dep, items, present, sources)) continue;
       error(findings, 'REF_INVALID', dep, `Dependency ${dep} is not a current def or a named future output.`, pipelineItem.id);
     }
   }
@@ -292,15 +295,43 @@ function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], fi
   }
 }
 
-function knownDependency(dep: string, items: D1PipelineItem[], present: Set<string>): boolean {
+function knownDependency(dep: string, items: D1PipelineItem[], present: Set<string>, sources: Set<string>): boolean {
   if (items.some(item => item.defPath === dep || item.outputPath === dep)) return true;
   if (present.has(dep) || present.has(logicalDefPath(dep))) return true;
+  const logical = dep.replace(/^_\d+_\/+/, '');
+  if (sources.has(dep) || sources.has(logical)) return true;
   if (dep.endsWith('.d.ts')) {
     const ts = dep.replace(/\.d\.ts$/, '.ts');
     return items.some(item => item.outputPath === ts);
   }
   const future = futureOutputPath(dep);
   return !!future && items.some(item => item.outputPath === future);
+}
+
+function checkUsecaseFidelity(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
+  const files = fidelityFiles(request, parsed);
+  for (const item of parsed) {
+    if (item.definition.artifactType !== 'usecase' || !item.text) continue;
+    const fidelity = readUsecaseFidelity(item.text, files);
+    for (const problem of fidelity.problems) {
+      const usecaseId = isRecord(item.definition.data) && typeof item.definition.data.usecaseId === 'string'
+        ? item.definition.data.usecaseId
+        : item.definition.artifactId;
+      error(findings, problem.code, item.logical, problem.message, usecaseId);
+    }
+  }
+}
+
+function fidelityFiles(request: D1FinalizeRequest, parsed: ParsedDef[]): FidelityFile[] {
+  const files: FidelityFile[] = [];
+  const add = (path: string, text: string | null | undefined) => {
+    if (!path || !text || files.some(item => item.path === path)) return;
+    files.push({ path, text });
+  };
+  for (const [path, text] of Object.entries(request.dependencyTexts)) add(path, text);
+  for (const contract of Object.values(request.contracts)) add(contract.path, contract.text);
+  for (const item of parsed) add(item.logical, item.text);
+  return files;
 }
 
 function checkRules(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
