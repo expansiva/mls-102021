@@ -39,7 +39,8 @@ const MDM_CALL: Record<string, string> = { list: 'read', create: 'create', updat
 
 interface ProjectionField {
   name: string;
-  type: string;
+  /** Absent when the routes that declare this name do not agree on one type. */
+  type?: string;
   fieldRef?: string;
 }
 
@@ -109,6 +110,7 @@ function planUsecase(request: D1UsecaseRequest, usecase: D1UsecaseSelection, pro
 
   const routes = resolveRoutes(request, usecase, problems);
   const outputs = routeOutputs(request, usecase, entity, routes, problems);
+  noteSameRouteConflicts(outputs, path, problems);
   const input = sharedInput(request, usecase, entity, routes, problems);
   noteDerived(entity, input, steps, path, problems);
   noteRequiredNotes(entity, usecase, input, path, problems);
@@ -234,17 +236,35 @@ function routeOutputs(
       outputFields: fields.map(field => field.name),
       fields,
     };
-  }).map((item, _index, all) => {
-    if (item.projection !== 'declared') return item;
-    const conflict = item.fields.find(field => {
-      const other = all.find(candidate => candidate.projection === 'declared' && candidate.fields.some(peer => peer.name === field.name && peer.type !== field.type));
-      return !!other;
-    });
-    if (conflict) {
-      error(problems, 'TYPE_CONFLICT', usecase.usecaseId, `Field ${conflict.name} has two contract types. No cast was applied.`);
-    }
-    return item;
   });
+}
+
+/** Two types for one name inside a single route. A difference across routes is not a conflict. */
+function conflictingFields(fields: ProjectionField[]): string[] {
+  const types = new Map<string, string | undefined>();
+  const conflicts: string[] = [];
+  for (const field of fields) {
+    const prior = types.get(field.name);
+    if (prior === undefined) {
+      types.set(field.name, field.type);
+      continue;
+    }
+    if (prior !== field.type && !conflicts.includes(field.name)) conflicts.push(field.name);
+  }
+  return conflicts;
+}
+
+function noteSameRouteConflicts(
+  outputs: RouteOutput[],
+  usecaseId: string,
+  problems: D1UsecaseProblem[],
+): void {
+  for (const item of outputs) {
+    if (item.projection !== 'declared') continue;
+    for (const name of conflictingFields(item.fields)) {
+      error(problems, 'TYPE_CONFLICT', usecaseId, `Field ${name} has two contract types. No cast was applied.`);
+    }
+  }
 }
 
 function sharedInput(
@@ -261,7 +281,14 @@ function sharedInput(
     const fields = projectFields(request, route.page, binding.input, entity);
     if (fields) declared.push(fields);
   }
-  if (!declared.length) return [];
+  let conflicted = false;
+  for (const list of declared) {
+    for (const name of conflictingFields(list)) {
+      error(problems, 'TYPE_CONFLICT', usecase.usecaseId, `Input ${name} has two contract types. No cast was applied.`);
+      conflicted = true;
+    }
+  }
+  if (conflicted || !declared.length) return [];
   const [first, ...rest] = declared;
   const shared: ProjectionField[] = [];
   for (const field of first) {
@@ -271,7 +298,9 @@ function sharedInput(
       continue;
     }
     if (peers.some(item => item && item.type !== field.type)) {
-      error(problems, 'TYPE_CONFLICT', usecase.usecaseId, `Input ${field.name} has two contract types. No cast was applied.`);
+      const bare: ProjectionField = { name: field.name };
+      if (field.fieldRef && peers.every(item => item?.fieldRef === field.fieldRef)) bare.fieldRef = field.fieldRef;
+      shared.push(bare);
       continue;
     }
     shared.push(field);
@@ -329,7 +358,15 @@ function unionOutputs(outputs: RouteOutput[]): ProjectionField[] {
   const union: ProjectionField[] = [];
   for (const route of outputs) {
     for (const field of route.fields) {
-      if (!union.some(item => item.name === field.name)) union.push(field);
+      const existing = union.find(item => item.name === field.name);
+      if (!existing) {
+        const copy: ProjectionField = { name: field.name, type: field.type };
+        if (field.fieldRef) copy.fieldRef = field.fieldRef;
+        union.push(copy);
+        continue;
+      }
+      if (existing.type !== field.type) delete existing.type;
+      if (existing.fieldRef && existing.fieldRef !== field.fieldRef) delete existing.fieldRef;
     }
   }
   return union;

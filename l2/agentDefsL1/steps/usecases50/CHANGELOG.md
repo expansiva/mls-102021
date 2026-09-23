@@ -1,5 +1,10 @@
 # usecases50
 
+## 2026-09-22 (d1_13g)
+
+- A type that differs across routes of one usecase is not a conflict. Each route projection keeps the fields that route declares. The function output keeps the name and does not store one of the types.
+- Two types for the same field inside one route stay `TYPE_CONFLICT`. No cast is applied.
+
 ## 2026-09-22 (d1_13f)
 
 - An exported `*Route` const whose value is the route string binds that route to `StemInput`/`StemOutput`. The `routes` map still binds by key. The first interface is not an identity.

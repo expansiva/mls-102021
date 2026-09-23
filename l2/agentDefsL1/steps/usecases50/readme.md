@@ -35,9 +35,13 @@ not rewritten.
 - Every page contract that serves the usecase is read. A type is used only
   when that page's `routes` map binds the route string to a symbol. The first
   interface, and a symbol whose name matches the usecase, are not an identity.
-- Two pages keep one usecase. Each route projects its own output. The
-  function output may be wider. A field is not copied onto a route that does
-  not declare it. Two types for one field are a conflict, not `any`.
+- Two pages keep one usecase. Each route projects the fields that page
+  declares. A field another route omits is not copied onto it, and a field
+  one route declares is not removed because another route is narrower. The
+  function output may list a name the routes do not all share. When those
+  routes declare different types for one name, the function output keeps the
+  name and does not record one type. Two types for the same field inside one
+  route are a conflict. No cast is applied.
 - `data.functions` is the inventory projection (`functionName`, `input`,
   `output`). It is not a second DTO.
 - Application depends on the domain and, when the entity is module-database,

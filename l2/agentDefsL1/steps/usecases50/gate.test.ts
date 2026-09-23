@@ -430,6 +430,106 @@ void test('the six L2 contracts declare route signatures, and a route without a 
   assert.match(problem?.message || '', /cmdMissingShape/);
 });
 
+void test('the six contracts keep one projection per route when disclosure differs', () => {
+  const contracts = realContractSources();
+  assert.equal(contracts.length, 6);
+
+  const list = buildRealUsecase(contracts, 'listConsulta');
+  assert.equal(list.ok, true, list.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(list.emit.length, 1);
+  const listData = list.emit[0]?.definition.data as {
+    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+    functions: Array<{ output: Array<{ name: string; type?: string }> }>;
+  };
+  assert.equal(listData.routeProjections.length, 4);
+  assert.equal(list.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
+  for (const row of listData.routeProjections) {
+    assert.equal(row.projection, 'declared', row.route);
+    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
+  }
+  const professional = listData.routeProjections.find(item => item.route.endsWith('consultas_profissional.qryListConsulta'));
+  const reception = listData.routeProjections.find(item => item.route.endsWith('consultas_recepcionista.qryListConsulta'));
+  assert.equal(professional?.outputFields.includes('details'), true);
+  assert.equal(reception?.outputFields.includes('details'), false);
+  const listed = listData.functions[0].output.find(field => field.name === 'details');
+  assert.equal(listed?.type, declaredFieldType(contracts, professional?.route || '', 'output', 'details'));
+
+  const professionals = buildRealUsecase(contracts, 'listProfissional');
+  assert.equal(professionals.ok, true, professionals.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(professionals.emit.length, 1);
+  const professionalData = professionals.emit[0]?.definition.data as {
+    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+    functions: Array<{ output: Array<{ name: string; type?: string }> }>;
+  };
+  assert.equal(professionalData.routeProjections.length, 5);
+  assert.equal(professionals.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
+  for (const row of professionalData.routeProjections) {
+    assert.equal(row.projection, 'declared', row.route);
+    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
+  }
+  const wide = declaredFieldType(contracts, 'agendaClinica.dados_profissional.qryListProfissional', 'output', 'details');
+  const narrow = declaredFieldType(contracts, 'agendaClinica.pacientes.qryListProfissional', 'output', 'details');
+  assert.notEqual(wide, narrow);
+  const sharedDetails = professionalData.functions[0].output.find(field => field.name === 'details');
+  assert.ok(sharedDetails);
+  assert.equal(Object.hasOwn(sharedDetails, 'type'), false);
+
+  const created = buildRealUsecase(contracts, 'createProfissional');
+  assert.equal(created.ok, true, created.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(created.emit.length, 1);
+  const createdData = created.emit[0]?.definition.data as {
+    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+    functions: Array<{ input: Array<{ name: string; type?: string }> }>;
+  };
+  assert.equal(createdData.routeProjections.length, 2);
+  for (const row of createdData.routeProjections) {
+    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
+  }
+  const wideInput = declaredFieldType(contracts, 'agendaClinica.dados_profissional.cmdCreateProfissional', 'input', 'details');
+  const narrowInput = declaredFieldType(contracts, 'agendaClinica.dados_recepcionista.cmdCreateProfissional', 'input', 'details');
+  assert.notEqual(wideInput, narrowInput);
+  const inputDetails = createdData.functions[0].input.find(field => field.name === 'details');
+  assert.ok(inputDetails);
+  assert.equal(Object.hasOwn(inputDetails, 'type'), false);
+  assert.equal(created.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
+});
+
+void test('two types for one field inside one route stay a conflict', () => {
+  const output = `
+    export interface ListConsultaOutput { id: string; status: string; status: number; }
+    export const listConsultaRoute = "agendaClinica.consultas.qryListConsulta" as const;
+  `;
+  const listed = buildD1Usecases(singleRouteRequest('listConsulta', 'consultas', 'agendaClinica.consultas.qryListConsulta', 'qry', output));
+  const outputProblem = listed.problems.find(item => item.code === 'TYPE_CONFLICT');
+  assert.equal(outputProblem?.message, 'Field status has two contract types. No cast was applied.');
+  assert.equal(listed.emit.length, 0);
+
+  const input = `
+    export interface CreateConsultaInput { patientId: string; patientId: number; }
+    export interface CreateConsultaOutput { id: string; }
+    export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
+  `;
+  const created = buildD1Usecases(singleRouteRequest('createConsulta', 'consultas', 'agendaClinica.consultas.cmdCreateConsulta', 'cmd', input));
+  const inputProblem = created.problems.find(item => item.code === 'TYPE_CONFLICT');
+  assert.equal(inputProblem?.message, 'Input patientId has two contract types. No cast was applied.');
+  assert.equal(created.emit.length, 0);
+});
+
+void test('a derived id on a real list input stays an error', () => {
+  const contracts = realContractSources();
+  const page = contracts.find(item => item.pageId === 'consultas_recepcionista');
+  assert.ok(page);
+  const request = requestForRealRoute(page, 'agendaClinica.consultas_recepcionista.qryListConsulta');
+  for (const entity of request.entities) {
+    const id = entity.fields.find(field => field.name === 'id');
+    if (id) id.derived = true;
+  }
+  const build = buildD1Usecases(request);
+  const problem = build.problems.find(item => item.code === 'DERIVED_EDITABLE');
+  assert.equal(problem?.message, 'Derived field id is an input of listConsulta.');
+  assert.equal(build.emit.length, 0);
+});
+
 function realContractSources(): D1UsecaseRequest['contracts'] {
   const names = readdirSync(REAL_CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
   return names.map(name => {
@@ -476,4 +576,84 @@ function entityOf(usecaseId: string): string {
   if (usecaseId.toLowerCase().includes('profissional')) return 'Profissional';
   if (usecaseId.toLowerCase().includes('recepcionista')) return 'Recepcionista';
   return 'Consulta';
+}
+
+function buildRealUsecase(contracts: D1UsecaseRequest['contracts'], usecaseId: string) {
+  const routes: D1UsecaseRequest['routes'] = [];
+  for (const contract of contracts) {
+    const matcher = /export const (\w+Route) = ["']([^"']+)["']/g;
+    let match: RegExpExecArray | null;
+    while ((match = matcher.exec(contract.source))) {
+      const route = match[2];
+      const tail = route.split('.').pop() || '';
+      const raw = tail.slice(3);
+      const id = `${raw.charAt(0).toLowerCase()}${raw.slice(1)}`;
+      if (id !== usecaseId) continue;
+      routes.push({ route, page: contract.pageId, kind: tail.startsWith('cmd') ? 'cmd' : 'qry', usecaseRef: usecaseId });
+    }
+  }
+  const request = coreUsecaseRequest();
+  for (const entity of request.entities) {
+    for (const field of entity.fields) field.derived = false;
+  }
+  request.contracts = contracts;
+  request.routes = routes;
+  request.usecases = [{
+    usecaseId,
+    entity: entityOf(usecaseId),
+    operation: operationOf(usecaseId),
+    routes: routes.map(item => item.route),
+    defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
+  }];
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  return buildD1Usecases(request);
+}
+
+function singleRouteRequest(usecaseId: string, pageId: string, route: string, kind: string, source: string): D1UsecaseRequest {
+  const request = coreUsecaseRequest();
+  request.contracts = [{ pageId, path: `${pageId}.defs.ts`, source }];
+  request.routes = [{ route, page: pageId, kind, usecaseRef: usecaseId }];
+  request.usecases = [{
+    usecaseId,
+    entity: entityOf(usecaseId),
+    operation: operationOf(usecaseId),
+    routes: [route],
+    defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
+  }];
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  return request;
+}
+
+function contractFields(contracts: D1UsecaseRequest['contracts'], route: string, direction: 'input' | 'output') {
+  const pageId = route.split('.')[1] || '';
+  const contract = contracts.find(item => item.pageId === pageId);
+  assert.ok(contract, route);
+  const ast = readContractAst(contract.source, contract.path);
+  const binding = ast.bindings.find(item => item.route === route);
+  assert.ok(binding, route);
+  const symbolName = direction === 'input' ? binding.input : binding.output;
+  const found = ast.symbols.filter(item => item.name === symbolName);
+  assert.equal(found.length, 1, symbolName);
+  let fields = found[0].fields;
+  if (found[0].shape === 'array' && fields.length === 0 && found[0].element) {
+    const inner = ast.symbols.filter(item => item.name === found[0].element);
+    assert.equal(inner.length, 1, found[0].element);
+    fields = inner[0].fields;
+  }
+  return fields;
+}
+
+function declaredOutputNames(contracts: D1UsecaseRequest['contracts'], route: string): string[] {
+  return contractFields(contracts, route, 'output').map(field => field.name);
+}
+
+function declaredFieldType(
+  contracts: D1UsecaseRequest['contracts'],
+  route: string,
+  direction: 'input' | 'output',
+  name: string,
+): string {
+  const field = contractFields(contracts, route, direction).find(item => item.name === name);
+  assert.ok(field, `${route} ${name}`);
+  return field.type;
 }
