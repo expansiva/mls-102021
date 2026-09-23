@@ -269,6 +269,7 @@ export function buildD1InputSnapshot(
   noteContracts(problems, moduleName, selectedRoutes, artifacts.contracts);
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
+  const receipts = indexWriterReceipts(artifacts.writerReceipts);
   const files = stampHashes(planFiles({
     moduleName,
     routes: selectedRoutes,
@@ -281,8 +282,9 @@ export function buildD1InputSnapshot(
     present,
     previous,
     problems,
+    receipts,
   }), present);
-  noteRemovals(problems, removed, previous, present);
+  noteRemovals(problems, removed, previous, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
   const pages = pageGroups(selectedRoutes);
@@ -334,6 +336,7 @@ function planFiles(input: {
   present: Map<string, string>;
   previous: D1InputSnapshot | null;
   problems: D1InputProblem[];
+  receipts: WriterIndex;
 }): D1PlannedFile[] {
   const moduleName = input.moduleName;
   const files: D1PlannedFile[] = [];
@@ -361,7 +364,7 @@ function planFiles(input: {
       id: `entity:${entityId}`,
       artifactType: 'domainEntity',
       defPath,
-      action: actionFor(worstStatus(owners, input.usecases), defPath, input.present, input.previous, input.problems, `entity:${entityId}`),
+      action: actionFor(worstStatus(owners, input.usecases), defPath, input.present, input.previous, input.receipts, input.problems, `entity:${entityId}`),
       identity: entityId,
       ownerRefs: owners,
       dependsOn: [],
@@ -376,7 +379,7 @@ function planFiles(input: {
       id: `port:${port.portId}`,
       artifactType: 'repositoryPort',
       defPath,
-      action: actionFor(port.status, defPath, input.present, input.previous, input.problems, `port:${port.portId}`),
+      action: actionFor(port.status, defPath, input.present, input.previous, input.receipts, input.problems, `port:${port.portId}`),
       identity: port.portId,
       ownerRefs: [`port:${port.portId}`],
       dependsOn: input.entities.ids.includes(port.entity) ? [`entity:${port.entity}`] : [],
@@ -390,7 +393,7 @@ function planFiles(input: {
       id: `table:${table.tableId}`,
       artifactType: 'table',
       defPath,
-      action: actionFor(table.status, defPath, input.present, input.previous, input.problems, `table:${table.tableId}`),
+      action: actionFor(table.status, defPath, input.present, input.previous, input.receipts, input.problems, `table:${table.tableId}`),
       identity: table.tableId,
       ownerRefs: [`table:${table.tableId}`],
       dependsOn: input.entities.ids.includes(table.entity) ? [`entity:${table.entity}`] : [],
@@ -404,7 +407,7 @@ function planFiles(input: {
       id: `adapter:${port.portId}`,
       artifactType: 'repositoryAdapter',
       defPath: adapterPath,
-      action: actionFor(worstOf(port.status, table.status), adapterPath, input.present, input.previous, input.problems, `adapter:${port.portId}`),
+      action: actionFor(worstOf(port.status, table.status), adapterPath, input.present, input.previous, input.receipts, input.problems, `adapter:${port.portId}`),
       identity: port.portId,
       ownerRefs: [`port:${port.portId}`, `table:${table.tableId}`],
       dependsOn: [`port:${port.portId}`, `table:${table.tableId}`],
@@ -420,7 +423,7 @@ function planFiles(input: {
       id: scopeId,
       artifactType: 'accessScope',
       defPath: scopePath,
-      action: actionFor(scopeStatus, scopePath, input.present, input.previous, input.problems, scopeId),
+      action: actionFor(scopeStatus, scopePath, input.present, input.previous, input.receipts, input.problems, scopeId),
       identity: 'accessScope',
       ownerRefs: input.grants.map(grant => `grant:${grant}`),
       dependsOn: [],
@@ -429,7 +432,7 @@ function planFiles(input: {
       id: 'auth:authorityMap',
       artifactType: 'authorityMap',
       defPath: authPath,
-      action: actionFor(scopeStatus, authPath, input.present, input.previous, input.problems, 'auth:authorityMap'),
+      action: actionFor(scopeStatus, authPath, input.present, input.previous, input.receipts, input.problems, 'auth:authorityMap'),
       identity: 'authorityMap',
       ownerRefs: input.grants.map(grant => `grant:${grant}`),
       dependsOn: [scopeId],
@@ -448,7 +451,7 @@ function planFiles(input: {
       id: `usecase:${usecase.identity}`,
       artifactType: 'usecase',
       defPath,
-      action: actionFor(usecase.status, defPath, input.present, input.previous, input.problems, `usecase:${usecase.usecaseId}`),
+      action: actionFor(usecase.status, defPath, input.present, input.previous, input.receipts, input.problems, `usecase:${usecase.usecaseId}`),
       identity: usecase.identity,
       ownerRefs: unique([`usecase:${usecase.usecaseId}`, ...usecase.routes.map(route => `endpoint:${route}`)]),
       dependsOn,
@@ -470,8 +473,8 @@ function planFiles(input: {
       artifactType: 'httpController',
       defPath,
       action: mixed
-        ? recomposeOrConflict(defPath, input.present, input.previous, input.problems, `controller:${page.pageId}`)
-        : actionFor(status, defPath, input.present, input.previous, input.problems, `controller:${page.pageId}`),
+        ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`)
+        : actionFor(status, defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`),
       identity: page.pageId,
       ownerRefs: page.routes.map(route => `endpoint:${route}`),
       dependsOn: [...usecaseIds, ...(input.grants.length ? [scopeId] : [])],
@@ -485,7 +488,7 @@ function planFiles(input: {
       id: 'registration:repositories',
       artifactType: 'repositoryRegistration',
       defPath,
-      action: actionFor(worstOfList(adapters.map(file => statusOfAction(file.action))), defPath, input.present, input.previous, input.problems, 'registration:repositories'),
+      action: actionFor(worstOfList(adapters.map(file => statusOfAction(file.action))), defPath, input.present, input.previous, input.receipts, input.problems, 'registration:repositories'),
       identity: 'registerRepositories',
       ownerRefs: adapters.map(file => file.id),
       dependsOn: adapters.map(file => file.id),
@@ -497,7 +500,7 @@ function planFiles(input: {
       id: 'seeds:persistence',
       artifactType: 'persistenceSeeds',
       defPath,
-      action: actionFor(table.status, defPath, input.present, input.previous, input.problems, `table:${table.tableId}`),
+      action: actionFor(table.status, defPath, input.present, input.previous, input.receipts, input.problems, `table:${table.tableId}`),
       identity: 'seeds',
       ownerRefs: input.tables.map(item => `table:${item.tableId}`),
       dependsOn: input.tables.map(item => `table:${item.tableId}`),
@@ -515,7 +518,7 @@ function planFiles(input: {
       id: 'integration:outbound',
       artifactType: 'integrationOutbound',
       defPath,
-      action: actionFor('toCreate', defPath, input.present, input.previous, input.problems, 'integration:outbound'),
+      action: actionFor('toCreate', defPath, input.present, input.previous, input.receipts, input.problems, 'integration:outbound'),
       identity: 'outbound',
       ownerRefs: input.outbound.map(event => `event:${event.id}`),
       dependsOn,
@@ -530,50 +533,54 @@ function actionFor(
   defPath: string,
   present: Map<string, string>,
   previous: D1InputSnapshot | null,
+  receipts: WriterIndex,
   problems: D1InputProblem[],
   ownerRef: string,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
-  const receipt = previous?.files.find(file => file.defPath === defPath);
-  const receiptHash = receipt ? presentHash(previous, defPath) : '';
+  const view = receiptView(previous, defPath, receipts);
   if (status === 'done') {
     if (!hash) {
       error(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} has no file. It was not turned into toCreate.`, ownerRef);
       return 'preserve';
     }
-    if (!receipt || !receiptHash || receiptHash !== hash) {
+    if (!view.plan || !view.agrees || view.hash !== hash) {
       error(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} is not an inventoried path and hash.`, ownerRef);
       return 'preserve';
     }
     return 'preserve';
   }
   if (status === 'toUpdate') {
-    if (!receipt || !receiptHash || !hash || receiptHash !== hash) {
+    if (!view.plan || !view.agrees || !view.hash || !hash || view.hash !== hash) {
       error(problems, 'EXISTING_UNRESOLVED', defPath, `Update of ${ownerRef} needs an inventoried path and hash. Ownership is not assumed by prefix.`, ownerRef);
       return 'conflict';
     }
     return 'update';
   }
-  if (hash && (!receipt || !receiptHash || receiptHash !== hash)) {
-    error(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, `toCreate file ${defPath} exists without an inventoried path and hash.`, ownerRef);
+  if (!hash) return 'create';
+  if (!view.plan || !view.agrees || view.hash !== hash) {
+    error(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, existsMessage(defPath, hash, view), ownerRef);
     return 'conflict';
   }
-  if (hash && receipt && receiptHash === hash) return 'recompose';
-  const mixed = status === 'toCreate' ? 'create' : 'create';
-  return mixed;
+  // The inventoried hash turns a present file into recompose. A writer receipt
+  // only proves the bytes, so a create plan keeps its action and its snapshot hash.
+  if (view.inventoried === hash) return 'recompose';
+  return 'create';
 }
 
 function recomposeOrConflict(
   defPath: string,
   present: Map<string, string>,
   previous: D1InputSnapshot | null,
+  receipts: WriterIndex,
   problems: D1InputProblem[],
   ownerRef: string,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
-  const receiptHash = presentHash(previous, defPath);
-  if (hash && receiptHash && hash === receiptHash) return 'recompose';
-  if (!hash && !receiptHash) return 'create';
+  const view = receiptView(previous, defPath, receipts);
+  if (hash && view.inventoried === hash && view.agrees) return 'recompose';
+  if (!hash && !view.inventoried) return 'create';
+  if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
   error(problems, 'EXISTING_UNRESOLVED', defPath, `Recompose of ${ownerRef} needs an inventoried path and hash.`, ownerRef);
   return 'conflict';
 }
@@ -586,8 +593,57 @@ function stampHashes(files: D1PlannedFile[], present: Map<string, string>): D1Pl
   return files;
 }
 
-function presentHash(previous: D1InputSnapshot | null, defPath: string): string {
-  return previous?.files.find(item => item.defPath === defPath)?.contentHash || '';
+interface WriterIndex {
+  hash: Map<string, string>;
+  conflict: Map<string, string[]>;
+}
+
+interface ReceiptView {
+  plan: D1PlannedFile | undefined;
+  inventoried: string;
+  written: string;
+  agrees: boolean;
+  hash: string;
+  refusal: string;
+}
+
+function indexWriterReceipts(rows: ReadonlyArray<{ defPath: string; desiredHash: string }> | undefined): WriterIndex {
+  const grouped = new Map<string, Set<string>>();
+  for (const row of rows || []) {
+    if (!row.defPath || !row.desiredHash) continue;
+    const set = grouped.get(row.defPath) || new Set<string>();
+    set.add(row.desiredHash);
+    grouped.set(row.defPath, set);
+  }
+  const hash = new Map<string, string>();
+  const conflict = new Map<string, string[]>();
+  for (const [defPath, set] of grouped) {
+    const values = [...set].sort();
+    if (values.length === 1) hash.set(defPath, values[0]);
+    else conflict.set(defPath, values);
+  }
+  return { hash, conflict };
+}
+
+function receiptView(previous: D1InputSnapshot | null, defPath: string, receipts: WriterIndex): ReceiptView {
+  const plan = previous?.files.find(file => file.defPath === defPath);
+  const inventoried = plan?.contentHash || '';
+  const conflict = receipts.conflict.get(defPath);
+  const written = conflict ? '' : (receipts.hash.get(defPath) || '');
+  const agrees = !conflict && !(written && inventoried && written !== inventoried);
+  let refusal = '';
+  if (conflict) {
+    refusal = `toCreate file ${defPath} has disagreeing receipts ${conflict.join(' and ')}. The file was not accepted.`;
+  } else if (written && inventoried && written !== inventoried) {
+    refusal = `toCreate file ${defPath} receipt ${written} does not match inventoried hash ${inventoried}. The file was not accepted.`;
+  }
+  return { plan, inventoried, written, agrees, hash: agrees ? (written || inventoried) : '', refusal };
+}
+
+function existsMessage(defPath: string, disk: string, view: ReceiptView): string {
+  if (view.refusal) return view.refusal;
+  if (view.hash && view.hash !== disk) return `toCreate file ${defPath} does not match receipt ${view.hash}. Disk is ${disk}.`;
+  return `toCreate file ${defPath} exists without an inventoried path and hash.`;
 }
 
 function resolveIdentity(problems: D1InputProblem[], path: string, usecaseId: string, existing: string): string {
@@ -646,11 +702,13 @@ function noteRemovals(
   removed: D1RemovedItem[],
   previous: D1InputSnapshot | null,
   present: Map<string, string>,
+  receipts: WriterIndex,
 ): void {
   for (const item of removed) {
     const receipt = previous?.files.find(file => file.identity === item.id || file.ownerRefs.includes(`${item.kind}:${item.id}`) || file.ownerRefs.includes(`endpoint:${item.id}`));
     const hash = receipt ? present.get(receipt.defPath) : '';
-    if (receipt && hash && presentHash(previous, receipt.defPath) === hash) {
+    const view = receipt ? receiptView(previous, receipt.defPath, receipts) : null;
+    if (receipt && hash && view && view.agrees && view.hash === hash) {
       item.defPath = receipt.defPath;
       item.inventoried = true;
       item.contentHash = hash;

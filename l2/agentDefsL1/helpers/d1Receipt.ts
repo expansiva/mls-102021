@@ -8,6 +8,14 @@ import { readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/
 
 export const D1_PROGRESS_SCHEMA = '2026-09-22-d1-progress-v1' as const;
 
+/** Steps that commit defs. The unit id is the step id. A worker trace is not one of these files. */
+const WRITER_STEPS = ['domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const;
+
+export interface D1WriterReceipt {
+  defPath: string;
+  desiredHash: string;
+}
+
 export interface D1UnitPart {
   defPath: string;
   source: string;
@@ -473,6 +481,20 @@ function markDone(progress: D1UnitProgress, logical: string): void {
 function markConflict(progress: D1UnitProgress, logical: string): void {
   const row = progress.files.find(file => file.defPath === logical);
   if (row && row.status !== 'done') row.status = 'conflict';
+}
+
+/** Done write rows. A trace that is not this progress schema is not opened. */
+export async function readWriterReceipts(project: number, moduleName: string): Promise<D1WriterReceipt[]> {
+  const out: D1WriterReceipt[] = [];
+  for (const step of WRITER_STEPS) {
+    const progress = await readProgress(project, moduleName, step, step);
+    if (!progress || !progress.finalized || progress.invalidated) continue;
+    for (const file of progress.files) {
+      if (file.action !== 'write' || file.status !== 'done' || !file.desiredHash) continue;
+      out.push({ defPath: logicalDefPath(file.defPath), desiredHash: file.desiredHash });
+    }
+  }
+  return out;
 }
 
 async function readProgress(project: number, moduleName: string, step: string, unitId: string): Promise<D1UnitProgress | null> {

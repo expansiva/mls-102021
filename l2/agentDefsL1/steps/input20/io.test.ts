@@ -7,8 +7,10 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { inputFile, plannerPipelineFile, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { progressFile } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
+import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { assembleD1Input, fileInfoFromDisplay, persistD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { assembleD1Input, fileInfoFromDisplay, persistD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -135,4 +137,117 @@ void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', 
   assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' && problem.path === contract), false);
   assert.equal(snapshot.sources.find(source => source.path === contract)?.state, 'invalid');
   assert.equal(snapshot.consumersReleased, false);
+});
+
+function seedContracts(host: TestHost): void {
+  const names = realContractFiles();
+  for (const [index, name] of names.entries()) {
+    if (index >= PAGES.length) break;
+    const pageId = PAGES[index];
+    seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, readFileSync(path.join(CONTRACTS, name), 'utf8'), `contract-${pageId}`);
+  }
+}
+
+async function writeUsecaseReceipt(defPath: string, desiredHash: string, snapshotHash: string, finalized = true): Promise<void> {
+  await writeJson(progressFile(PROJECT, MODULE, 'usecases50', 'usecases50'), {
+    schemaVersion: '2026-09-22-d1-progress-v1',
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'usecases50',
+    unitId: 'usecases50',
+    runId: snapshotHash,
+    snapshotHash,
+    draftHash: 'sha256:aa',
+    transaction: false,
+    finalized,
+    invalidated: false,
+    reported: [],
+    files: [{ defPath, action: 'write', previousHash: '', desiredHash, status: 'done', outputTs: [] }],
+    issues: [],
+  });
+}
+
+void test('resume reads the writer receipt, keeps the snapshot, and still refuses a changed or unreceipted def', async () => {
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  seedContracts(host);
+  const first = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(first.consumersReleased, true);
+  await persistD1Input(PROJECT, MODULE, first);
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  const body = 'export const definition = { resume: true } as const;\n';
+  const info = fileInfoFromDisplay(PROJECT, target.defPath);
+  assert.ok(info);
+  seed(host, info, body, 'written-def');
+  const desiredHash = await sha256Text(body);
+  await writeUsecaseReceipt(target.defPath, desiredHash, first.snapshotHash);
+
+  const resume = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT'), false);
+  assert.equal(resume.consumersReleased, true);
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'create');
+  assert.equal(resume.snapshotHash, first.snapshotHash);
+  const again = await persistD1Input(PROJECT, MODULE, resume);
+  assert.equal(again.reused, true);
+
+  seed(host, info, `${body} `, 'tampered');
+  const tampered = await assembleD1Input(PROJECT, MODULE);
+  const problem = tampered.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
+  assert.ok(problem);
+  assert.match(problem.message, new RegExp(desiredHash));
+  assert.equal(tampered.consumersReleased, false);
+
+  delete host.files[fileKey(info)];
+  const missing = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(missing.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
+  assert.equal(missing.files.find(file => file.defPath === target.defPath)?.action, 'create');
+  assert.equal(missing.consumersReleased, true);
+  assert.equal(missing.snapshotHash, first.snapshotHash);
+});
+
+void test('a worker trace is not a file receipt', async () => {
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  seedContracts(host);
+  const first = await assembleD1Input(PROJECT, MODULE);
+  await persistD1Input(PROJECT, MODULE, first);
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  const info = fileInfoFromDisplay(PROJECT, target.defPath);
+  assert.ok(info);
+  seed(host, info, 'export const definition = { traced: true } as const;\n', 'traced-def');
+  await writeJson({
+    project: PROJECT,
+    level: 1,
+    folder: `${MODULE}/pipeline/agentDefsL1/traces`,
+    shortName: 'usecases50-createPaciente',
+    extension: '.json',
+  }, {
+    usecaseId: 'createPaciente',
+    status: 'parsed',
+    trace: 'usecases50 recorded steps for createPaciente.',
+    reply: [],
+  });
+  const resume = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT' && problem.path === target.defPath), true);
+  assert.equal(resume.consumersReleased, false);
+});
+
+void test('an unfinished writer receipt does not authorize a present def', async () => {
+  const host = installStudio(PROJECT);
+  seedFixture(host);
+  seedContracts(host);
+  const first = await assembleD1Input(PROJECT, MODULE);
+  await persistD1Input(PROJECT, MODULE, first);
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  const body = 'export const definition = { pending: true } as const;\n';
+  const info = fileInfoFromDisplay(PROJECT, target.defPath);
+  assert.ok(info);
+  seed(host, info, body, 'pending-def');
+  await writeUsecaseReceipt(target.defPath, await sha256Text(body), first.snapshotHash, false);
+  const resume = await assembleD1Input(PROJECT, MODULE);
+  assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT' && problem.path === target.defPath), true);
+  assert.equal(resume.consumersReleased, false);
 });

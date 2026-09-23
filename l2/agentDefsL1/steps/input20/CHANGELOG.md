@@ -1,5 +1,12 @@
 # input20
 
+## 2026-09-23 (d1_20)
+
+- A present `toCreate` def is accepted when the progress file of the step that wrote it has that `defPath`, `status: done` and a `desiredHash` equal to the bytes on disk. The steps read are `domain30`, `persistence40`, `usecases50`, `controllers60` and `support70` (`traces/<step><step>.json`, schema `2026-09-22-d1-progress-v1`).
+- That match does not retarget the plan. The action stays `create` and `contentHash` stays empty, so the snapshot hash stays the run id recorded on the receipt.
+- A def with no such row, a hash that differs, or two receipts that disagree is still `EXISTS_WITHOUT_RECEIPT`. A missing def is planned again.
+- `usecases50` already commits that progress file. `traces/usecases50-<usecaseId>.json` is a worker trace and is not read as a receipt.
+
 ## 2026-09-22 (d1_13a)
 
 - L2 contracts are read with `readContractAst`. `parseD1Source` stays for `.json` and object-literal `.defs.ts`.

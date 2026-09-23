@@ -5,6 +5,7 @@ import {
   inputFile,
   type D1FileInfo,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import {
   D1_INPUT_VERSION,
@@ -114,12 +115,16 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
   }
 
-  const artifacts = artifactsFrom(moduleName, known, contracts.map(item => item.loaded), parsed, contractMap, []);
+  const loaded = contracts.map(item => item.loaded);
+  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
-  const present = await readPresent(project, draft.files.map(file => file.defPath));
+  const [present, writerReceipts] = await Promise.all([
+    readPresent(project, draft.files.map(file => file.defPath)),
+    readWriterReceipts(project, moduleName),
+  ]);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    artifactsFrom(moduleName, known, contracts.map(item => item.loaded), parsed, contractMap, present),
+    artifactsFrom(moduleName, known, loaded, parsed, contractMap, present, writerReceipts),
     previous,
   ));
   sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
@@ -171,6 +176,7 @@ function artifactsFrom(
   parsed: Map<string, unknown>,
   contractMap: Record<string, D1ContractAst | null>,
   presentDefs: D1PresentDef[],
+  writerReceipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
 ): D1InputArtifacts {
   const sources = [...known, ...contracts].map(item => item.digest).sort((left, right) => left.path.localeCompare(right.path));
   const paths = inputPaths(moduleName);
@@ -204,6 +210,7 @@ function artifactsFrom(
     planner: parsed.get(paths.planner) ?? null,
     contracts: contractMap,
     presentDefs,
+    writerReceipts,
   };
 }
 

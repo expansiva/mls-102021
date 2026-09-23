@@ -11,7 +11,7 @@ must already have `entry10` approved. Sources are read by file identity:
 - `pool/l2/web/menu.json`, `pool/l1/web/needs.json`, `pool/l2/web/backend.json`, `pool/l2/web/effort.json`
 - the planner checkpoint `l1/<module>/pipeline/pipeline.json` (read only)
 - `l2/<module>/web/contracts/<pageId>.defs.ts` when the page id is safe
-- defs already at a planned `l1` path, only to compare an inventoried hash
+- defs already at a planned `l1` path, compared with the inventoried hash or with the writer receipt (`traces/<step><step>.json`, `desiredHash`)
 
 Pool messages are not read. Statuses in the pool are not changed.
 
@@ -35,7 +35,9 @@ Backend and effort must agree on id, status and the route fields. Ports come fro
 backend only. `toRemove` on a live row is an error; removal lives in `removed`.
 A removed route does not drop a usecase that another selected route still uses.
 `existing` is the identity. A path is a base for update only when the previous
-receipt lists that path and hash. A prefix of `l1/<module>` is not ownership.
+receipt or the writer progress lists that path and hash. A file the agent wrote
+keeps its `create` action; the snapshot hash does not change. A prefix of
+`l1/<module>` is not ownership. A worker trace is not a receipt.
 
 Review problems (payload, access anchor, unbound outbound, unattributed changes,
 screens with no routes) stay on the inventory and do not by themselves release

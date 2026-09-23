@@ -68,6 +68,11 @@ export interface D1InputArtifacts {
   /** Page id → contract AST. Null means the file was looked up and is absent. */
   contracts: Record<string, D1ContractAst | null>;
   presentDefs: D1PresentDef[];
+  /**
+   * Done write rows from the progress file of the step that wrote the def.
+   * Not copied into the snapshot. Absent means this caller did not load them.
+   */
+  writerReceipts?: ReadonlyArray<{ defPath: string; desiredHash: string }>;
 }
 
 export interface D1PlannerRun {

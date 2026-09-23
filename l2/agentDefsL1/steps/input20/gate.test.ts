@@ -348,3 +348,109 @@ void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', 
   assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' && problem.path === contract), false);
   assert.equal(snapshot.consumersReleased, false);
 });
+
+const WRITTEN = new Set(['domainEntity', 'repositoryPort', 'table', 'repositoryAdapter', 'usecase']);
+const HASH = `sha256:${'ab'.repeat(32)}`;
+const OTHER = `sha256:${'cd'.repeat(32)}`;
+
+async function releasedHead(): Promise<{ artifacts: D1InputArtifacts; first: D1InputSnapshot }> {
+  const artifacts = await loadHead();
+  const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
+  const asts = names.map(name => {
+    const source = readFileSync(path.join(CONTRACTS, name), 'utf8');
+    const fileName = `l2/${MODULE}/web/contracts/${name.replace(/\.txt$/, '.ts')}`;
+    return readContractAst(source, fileName);
+  });
+  for (const [index, pageId] of PAGES.entries()) artifacts.contracts[pageId] = asts[index];
+  return { artifacts, first: build(artifacts) };
+}
+
+void test('resume accepts the writer receipt and keeps the plan', async () => {
+  const { artifacts, first } = await releasedHead();
+  assert.equal(first.consumersReleased, true);
+  const written = first.files.filter(file => WRITTEN.has(file.artifactType));
+  assert.ok(written.length >= 13);
+  artifacts.presentDefs = written.map(file => ({ path: file.defPath, sha256: HASH }));
+  artifacts.writerReceipts = written.map(file => ({ defPath: file.defPath, desiredHash: HASH }));
+  const resume = build(artifacts, first);
+  assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT'), false);
+  assert.equal(resume.consumersReleased, true);
+  assert.deepEqual(resume.files, first.files);
+  assert.deepEqual(resume.problems, first.problems);
+});
+
+void test('a def changed outside the receipt stays refused', async () => {
+  const { artifacts, first } = await releasedHead();
+  const written = first.files.filter(file => WRITTEN.has(file.artifactType));
+  const target = written[0];
+  artifacts.presentDefs = written.map(file => ({
+    path: file.defPath,
+    sha256: file.defPath === target.defPath ? OTHER : HASH,
+  }));
+  artifacts.writerReceipts = written.map(file => ({ defPath: file.defPath, desiredHash: HASH }));
+  const resume = build(artifacts, first);
+  const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
+  assert.ok(problem);
+  assert.match(problem.message, new RegExp(HASH));
+  assert.match(problem.message, new RegExp(OTHER));
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'conflict');
+  assert.equal(resume.problems.filter(item => item.code === 'EXISTS_WITHOUT_RECEIPT').length, 1);
+  assert.equal(resume.consumersReleased, false);
+});
+
+void test('a missing def is planned again even when a writer receipt names it', async () => {
+  const { artifacts, first } = await releasedHead();
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  artifacts.writerReceipts = [{ defPath: target.defPath, desiredHash: HASH }];
+  const resume = build(artifacts, first);
+  assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'create');
+  assert.deepEqual(resume.files, first.files);
+  assert.equal(resume.consumersReleased, true);
+});
+
+void test('a present def with no receipt is still refused', async () => {
+  const { artifacts, first } = await releasedHead();
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  artifacts.presentDefs = [{ path: target.defPath, sha256: HASH }];
+  const resume = build(artifacts, first);
+  const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
+  assert.ok(problem);
+  assert.match(problem.message, /exists without an inventoried path and hash/);
+  assert.equal(resume.consumersReleased, false);
+});
+
+void test('disagreeing writer receipts do not authorize a present def', async () => {
+  const { artifacts, first } = await releasedHead();
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  artifacts.presentDefs = [{ path: target.defPath, sha256: HASH }];
+  artifacts.writerReceipts = [
+    { defPath: target.defPath, desiredHash: HASH },
+    { defPath: target.defPath, desiredHash: OTHER },
+  ];
+  const resume = build(artifacts, first);
+  const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
+  assert.ok(problem);
+  assert.match(problem.message, /disagreeing receipts/);
+  assert.match(problem.message, new RegExp(HASH));
+  assert.match(problem.message, new RegExp(OTHER));
+  assert.equal(resume.consumersReleased, false);
+});
+
+void test('an inventoried hash still recomposes without a writer receipt', async () => {
+  const { artifacts, first } = await releasedHead();
+  const target = first.files.find(file => file.artifactType === 'usecase');
+  assert.ok(target);
+  const previous = clone(first);
+  previous.files.find(file => file.defPath === target.defPath)!.contentHash = HASH;
+  artifacts.presentDefs = [{ path: target.defPath, sha256: HASH }];
+  const resume = build(artifacts, previous);
+  const file = resume.files.find(item => item.defPath === target.defPath);
+  assert.equal(file?.action, 'recompose');
+  assert.equal(file?.contentHash, HASH);
+  assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
+  assert.equal(resume.consumersReleased, true);
+});
