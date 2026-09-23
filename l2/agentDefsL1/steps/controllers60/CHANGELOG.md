@@ -1,5 +1,10 @@
 # controllers60
 
+## 2026-09-23 (d1_21)
+
+- `fieldsOnly` matches a disclosure path, not the last segment of it. A container covered by a sub-path is narrowed to those sub-paths. It is not released whole, and it is not rejected on the container name.
+- A named branch covers its descendants. `fullRecord` still keeps every declared field. A nested shape that cannot be read does not release the container.
+
 ## 2026-09-22 (d1_07b)
 
 - Reads the same contract slice. An unclosed declaration is `CONTRACT_UNPARSED`.

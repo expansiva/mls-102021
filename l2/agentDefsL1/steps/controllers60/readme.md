@@ -38,6 +38,12 @@ bytes are not rewritten.
 - Grants are the page actor's grants for that entity. A grant of another
   page is a union and is refused. An operation with no grant is
   `AUTHORITY_REQUIRED`. There is no public fallback.
+- `fieldsOnly` matches by path (`Entity.a.b`), not by the last segment.
+  A container is not a violation when a grant discloses a sub-path: the
+  projection keeps those sub-paths and does not keep the container. A
+  named branch covers its descendants. A path the grant does not name
+  stays `DISCLOSURE`. `fullRecord` keeps the declared fields whole. A
+  container whose nested shape cannot be read is not released.
 - A form field named `actorId` is not the session. The session is verified.
 - A route bound by a type assertion is not a projection.
 - A done route keeps the handler already on disk. Updating another route of

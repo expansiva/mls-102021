@@ -247,6 +247,81 @@ void test('removing one route keeps the other routes and does not drop the contr
   assert.ok(empty.emit.some(item => item.definition.artifactId !== 'agenda'));
 });
 
+void test('fieldsOnly narrows a container to the disclosed sub-path', () => {
+  const patient = `{
+    id: string;
+    version: number;
+    details: {
+      identification: { name: string; docType: "SSN" | "Other" };
+      base: { notes: string; aliases: Array<string> };
+    };
+  }`;
+  const allowed = coreControllerRequest();
+  rewriteOutput(allowed, 'agendaClinica.pacientes.qryListPaciente', patient);
+  const listed = buildD1Controllers(allowed);
+  assert.equal(listed.ok, true, listed.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(listed.problems.some(item => item.code === 'DISCLOSURE'), false);
+  assert.equal(listed.problems.some(item => item.code === 'ACCESS_ANCHOR' && item.severity === 'review'), true);
+  const row = handler(listed.controllers.flatMap(item => item.handlers), 'agendaClinica.pacientes.qryListPaciente');
+  assert.deepEqual(row.grantIds, ['recepcionistaCadastroPacientes']);
+  assert.deepEqual(row.projection.fields, ['id', 'version', 'details.identification', 'details.base']);
+
+  const branch = coreControllerRequest();
+  rewriteOutput(branch, 'agendaClinica.consultas.qryListProfissional', `{
+    id: string;
+    version: number;
+    details: {
+      identification: { name: string };
+      person: { occupation: string; privacyConsent: object };
+    };
+  }`);
+  const branched = buildD1Controllers(branch);
+  assert.equal(branched.ok, true, branched.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const professional = handler(branched.controllers.flatMap(item => item.handlers), 'agendaClinica.consultas.qryListProfissional');
+  assert.deepEqual(professional.grantIds, ['recepcionistaLocalizarProfissionais']);
+  assert.deepEqual(professional.projection.fields, ['id', 'version', 'details.identification', 'details.person']);
+  assert.equal(professional.projection.fields.includes('details.person.privacyConsent'), false);
+
+  const leaked = coreControllerRequest();
+  rewriteOutput(leaked, 'agendaClinica.pacientes.qryListPaciente', `{
+    id: string;
+    version: number;
+    details: {
+      identification: { name: string };
+      base: { notes: string };
+      person: { privacyConsent: object };
+    };
+  }`);
+  const blocked = buildD1Controllers(leaked);
+  const blockedRow = handler(blocked.controllers.flatMap(item => item.handlers), 'agendaClinica.pacientes.qryListPaciente');
+  assert.equal(blocked.ok, false);
+  assert.equal(blockedRow.projection.fields.includes('details'), false);
+  assert.equal(blockedRow.projection.fields.includes('details.person.privacyConsent'), true);
+  assert.equal(blocked.problems.some(item => item.code === 'DISCLOSURE' && item.message.includes('details.person.privacyConsent')), true);
+  assert.equal(blocked.emit.length, 0);
+
+  const whole = coreControllerRequest();
+  rewriteOutput(whole, 'agendaClinica.cadastro_profissional.cmdCreateProfissional', `{
+    id: string;
+    version: number;
+    details: { person: { privacyConsent: object } };
+  }`);
+  const released = buildD1Controllers(whole);
+  assert.equal(released.ok, true, released.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const own = handler(released.controllers.flatMap(item => item.handlers), 'agendaClinica.cadastro_profissional.cmdCreateProfissional');
+  assert.deepEqual(own.grantIds, ['profissionalProprioCadastro']);
+  assert.deepEqual(own.projection.fields, ['id', 'version', 'details']);
+  assert.equal(released.problems.some(item => item.code === 'DISCLOSURE'), false);
+
+  const homonym = coreControllerRequest();
+  rewriteOutput(homonym, 'agendaClinica.pacientes.qryListPaciente', '{ identification: string }');
+  const loose = buildD1Controllers(homonym);
+  const looseRow = handler(loose.controllers.flatMap(item => item.handlers), 'agendaClinica.pacientes.qryListPaciente');
+  assert.deepEqual(looseRow.projection.fields, ['identification']);
+  assert.equal(loose.problems.some(item => item.code === 'DISCLOSURE' && item.path.endsWith('pacientes.qryListPaciente') && item.message.includes('identification')), true);
+  assert.equal(loose.ok, false);
+});
+
 void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
   const request = coreControllerRequest();
   const agenda = request.contracts.find(item => item.pageId === 'agenda');
@@ -259,6 +334,20 @@ void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
   assert.equal(build.ok, false);
   assert.equal(build.emit.length, 0);
 });
+
+function rewriteOutput(request: D1ControllerRequest, routeId: string, body: string): void {
+  const route = request.routes.find(item => item.route === routeId);
+  assert.ok(route, routeId);
+  const contract = request.contracts.find(item => item.pageId === route.page);
+  assert.ok(contract);
+  const index = request.routes.filter(item => item.page === route.page).findIndex(item => item.route === routeId);
+  const name = `Out${index}`;
+  const list = route.kind === 'qry' || route.kind === 'query';
+  const current = list ? `export type ${name} = { id: string }[];` : `export interface ${name} { id: string }`;
+  assert.equal(contract.source.includes(current), true, current);
+  const next = list ? `export type ${name} = ${body}[];` : `export interface ${name} ${body}`;
+  contract.source = contract.source.replace(current, next);
+}
 
 function handler(handlers: D1HandlerBinding[], route: string): D1HandlerBinding {
   const found = handlers.find(item => item.route === route);
