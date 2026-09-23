@@ -12,7 +12,7 @@ import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { D1_MDM_CALLS, D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { parseWorkerReply, STEP_KEYS, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
-import type { D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import type { D1UsecaseContext, D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 void test('the frozen core is 13 usecases for 22 routes, and listConsulta and listProfissional are unique', () => {
   assert.equal(frozenRouteCount(), 22);
@@ -515,19 +515,199 @@ void test('two types for one field inside one route stay a conflict', () => {
   assert.equal(created.emit.length, 0);
 });
 
-void test('a derived id on a real list input stays an error', () => {
+void test('a derived identity may filter a list or select an update or transition, and stays on the input', () => {
   const contracts = realContractSources();
-  const page = contracts.find(item => item.pageId === 'consultas_recepcionista');
-  assert.ok(page);
-  const request = requestForRealRoute(page, 'agendaClinica.consultas_recepcionista.qryListConsulta');
-  for (const entity of request.entities) {
-    const id = entity.fields.find(field => field.name === 'id');
-    if (id) id.derived = true;
+  for (const usecaseId of ['listConsulta', 'listPaciente', 'listProfissional', 'listRecepcionista']) {
+    const build = buildRealUsecase(contracts, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
+    assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
+    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string; type?: string }> }> };
+    const id = data.functions[0].input.find(field => field.name === 'id');
+    assert.ok(id, usecaseId);
+    assert.equal(id.type, 'string', usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.id`), true, usecaseId);
   }
-  const build = buildD1Usecases(request);
-  const problem = build.problems.find(item => item.code === 'DERIVED_EDITABLE');
-  assert.equal(problem?.message, 'Derived field id is an input of listConsulta.');
-  assert.equal(build.emit.length, 0);
+
+  for (const usecaseId of ['confirmarConsulta', 'registrarAtendimento', 'registrarFalta']) {
+    const build = buildRealUsecase(contracts, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
+    assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
+    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
+    assert.equal(data.functions[0].input.some(field => field.name === 'id'), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
+  }
+
+  const noted = requestOf(contracts, 'registrarAtendimento');
+  const attendance = noted.entities.find(item => item.entityId === 'Consulta')?.transitions.find(item => item.transitionId === 'registrarAtendimento');
+  assert.ok(attendance);
+  attendance.payload = ['details.attendanceNote'];
+  noted.contexts = [inputContext('registrarAtendimento', noted.routes[0].route, [
+    { path: 'id', type: 'string', optional: false },
+    { path: 'details', type: 'object', optional: false },
+    { path: 'details.attendanceNote', type: 'string', optional: true },
+  ])];
+  const notePlan = noted.plans[0].steps.map(step => (
+    step.kind === 'transition' ? { ...step, payload: ['details.attendanceNote'] } : step
+  ));
+  noted.plans = [{ usecaseId: 'registrarAtendimento', steps: notePlan }];
+  const withNote = buildD1Usecases(noted);
+  assert.equal(withNote.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, withNote.problems.map(item => item.message).join('; '));
+  assert.equal(withNote.problems.some(item => item.code === 'PAYLOAD_UNAUTHORIZED'), false);
+  const noteInput = (withNote.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> }).functions[0].input;
+  assert.equal(noteInput.some(field => field.name === 'id'), true);
+  assert.equal(noteInput.some(field => field.name === 'details'), true);
+
+  for (const usecaseId of ['updateProfissional', 'updateRecepcionista']) {
+    const build = buildRealUsecase(contracts, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
+    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> } | undefined;
+    assert.equal(data?.functions[0].input.some(field => field.name === 'id'), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
+  }
+});
+
+void test('r10 replies no longer carry DERIVED_EDITABLE, and other pending refusals may remain', () => {
+  const contracts = realContractSources();
+  const listed = buildD1Usecases({
+    ...requestOf(contracts, 'listConsulta'),
+    plans: [{ usecaseId: 'listConsulta', steps: R10.listConsulta }],
+  });
+  assert.equal(listed.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
+  assert.equal(listed.ok, true, listed.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(
+    (listed.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> }).functions[0].input.some(field => field.name === 'id'),
+    true,
+  );
+
+  const updated = buildD1Usecases({
+    ...requestOf(contracts, 'updateProfissional'),
+    plans: [{ usecaseId: 'updateProfissional', steps: R10.updateProfissional }],
+  });
+  assert.equal(updated.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
+  assert.equal(updated.problems.some(item => item.code === 'INVALID_TRANSITION'), true);
+  assert.equal(updated.emit.length, 0);
+});
+
+void test('assigning a derived field stays an error, including a nested homonym and a version that is not concurrency', () => {
+  const created = buildD1Usecases(singleRouteRequest(
+    'createConsulta',
+    'consultas',
+    'agendaClinica.consultas.cmdCreateConsulta',
+    'cmd',
+    `
+      export interface CreateConsultaInput { id: string; patientId: string; }
+      export interface CreateConsultaOutput { id: string; }
+      export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
+    `,
+  ));
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
+  assert.equal(created.emit.length, 0);
+
+  const patched = requestOf(realContractSources(), 'updateProfissional');
+  patched.plans = [{
+    usecaseId: 'updateProfissional',
+    steps: [
+      { kind: 'context', source: 'ctx' },
+      { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional' },
+      { kind: 'transition', transitionId: 'updateProfissional', payload: ['id'] },
+    ],
+  }];
+  const replaced = buildD1Usecases(patched);
+  assert.equal(replaced.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by updateProfissional.'), true);
+
+  const payload = requestOf(realContractSources(), 'confirmarConsulta');
+  payload.plans = [{
+    usecaseId: 'confirmarConsulta',
+    steps: [
+      { kind: 'context', source: 'ctx' },
+      { kind: 'rule', ruleId: 'consultationTransitionFlow' },
+      { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['id'] },
+      { kind: 'port', call: 'transition', port: 'ConsultaRepository' },
+      { kind: 'effect', eventId: 'consultaConfirmada' },
+    ],
+  }];
+  const written = buildD1Usecases(payload);
+  assert.equal(written.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by confirmarConsulta.'), true);
+  assert.equal(written.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'confirmarConsulta.id'), true);
+
+  const nested = singleRouteRequest(
+    'listConsulta',
+    'consultas',
+    'agendaClinica.consultas.qryListConsulta',
+    'qry',
+    `
+      export interface ListConsultaInput { id: string; details: { id: string } }
+      export interface ListConsultaOutput { id: string; }
+      export const listConsultaRoute = "agendaClinica.consultas.qryListConsulta" as const;
+    `,
+  );
+  const consulta = nested.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(consulta);
+  consulta.fields.push({ name: 'details.id', type: 'uuid', derived: true });
+  nested.contexts = [inputContext('listConsulta', 'agendaClinica.consultas.qryListConsulta', [
+    { path: 'id', type: 'string', optional: false },
+    { path: 'details.id', type: 'string', optional: false },
+  ])];
+  const homonym = buildD1Usecases(nested);
+  assert.equal(homonym.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field details.id is assigned by listConsulta.'), true);
+  assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
+  assert.equal(homonym.problems.some(item => item.message.includes('Derived field id is assigned')), false);
+
+  const versioned = requestOf(realContractSources(), 'listConsulta');
+  const listed = versioned.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(listed);
+  listed.fields.push({ name: 'version', type: 'integer', derived: true });
+  versioned.contexts = [inputContext('listConsulta', versioned.routes[0].route, [
+    { path: 'id', type: 'string', optional: false },
+    { path: 'version', type: 'number', optional: false },
+  ])];
+  const concurrency = buildD1Usecases(versioned);
+  assert.equal(concurrency.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field version is assigned by listConsulta.'), true);
+  assert.equal(concurrency.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
+  assert.equal(concurrency.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY'), false);
+
+  const updateVersion = requestOf(realContractSources(), 'updateProfissional');
+  const professional = updateVersion.entities.find(item => item.entityId === 'Profissional');
+  assert.ok(professional);
+  professional.fields.push({ name: 'version', type: 'integer', derived: true });
+  updateVersion.contexts = [inputContext('updateProfissional', updateVersion.routes[0].route, [
+    { path: 'id', type: 'string', optional: false },
+    { path: 'version', type: 'number', optional: false },
+  ])];
+  const token = buildD1Usecases(updateVersion);
+  assert.equal(token.problems.some(item => item.code === 'DERIVED_EDITABLE' && /version/.test(item.message)), false);
+  assert.equal(token.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY' && item.path === 'updateProfissional.version'), true);
+  assert.equal(token.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'updateProfissional.id'), true);
+
+  const suffix = requestOf(realContractSources(), 'listConsulta');
+  const entity = suffix.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(entity);
+  const patientId = entity.fields.find(field => field.name === 'patientId');
+  if (patientId) patientId.derived = true;
+  else entity.fields.push({ name: 'patientId', type: 'uuid', derived: true });
+  const byName = buildD1Usecases(suffix);
+  assert.equal(byName.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field patientId is assigned by listConsulta.'), true);
+  assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
+
+  const unknown = singleRouteRequest(
+    'searchConsulta',
+    'consultas',
+    'agendaClinica.consultas.qryListConsulta',
+    'qry',
+    `
+      export interface ListConsultaInput { id: string; }
+      export interface ListConsultaOutput { id: string; }
+      export const listConsultaRoute = "agendaClinica.consultas.qryListConsulta" as const;
+    `,
+  );
+  unknown.usecases[0].usecaseId = 'searchConsulta';
+  unknown.usecases[0].operation = 'search';
+  unknown.usecases[0].routes = ['agendaClinica.consultas.qryListConsulta'];
+  unknown.routes[0].usecaseRef = 'searchConsulta';
+  unknown.plans = [{ usecaseId: 'searchConsulta', steps: [{ kind: 'context', source: 'ctx' }, { kind: 'port', call: 'list', port: 'ConsultaRepository' }] }];
+  const ambiguous = buildD1Usecases(unknown);
+  assert.equal(ambiguous.problems.some(item => item.code === 'DERIVED_AMBIGUOUS' && item.path === 'searchConsulta'), true);
+  assert.match(ambiguous.problems.find(item => item.code === 'DERIVED_AMBIGUOUS')?.message || '', /operation search does not classify it/);
 });
 
 function realContractSources(): D1UsecaseRequest['contracts'] {
@@ -548,9 +728,6 @@ function requestForRealRoute(contract: D1UsecaseRequest['contracts'][number], ro
   const raw = tail.slice(3);
   const usecaseId = `${raw.charAt(0).toLowerCase()}${raw.slice(1)}`;
   const request = coreUsecaseRequest();
-  for (const entity of request.entities) {
-    for (const field of entity.fields) field.derived = false;
-  }
   request.contracts = [contract];
   request.routes = [{ route, page: contract.pageId, kind, usecaseRef: usecaseId }];
   request.usecases = [{
@@ -579,6 +756,30 @@ function entityOf(usecaseId: string): string {
 }
 
 function buildRealUsecase(contracts: D1UsecaseRequest['contracts'], usecaseId: string) {
+  return buildD1Usecases(requestOf(contracts, usecaseId));
+}
+
+function requestOf(
+  contracts: D1UsecaseRequest['contracts'],
+  usecaseId: string,
+  routes?: D1UsecaseRequest['routes'],
+): D1UsecaseRequest {
+  const selected = routes || routesOf(contracts, usecaseId);
+  const request = coreUsecaseRequest();
+  request.contracts = contracts;
+  request.routes = selected;
+  request.usecases = [{
+    usecaseId,
+    entity: entityOf(usecaseId),
+    operation: operationOf(usecaseId),
+    routes: selected.map(item => item.route),
+    defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
+  }];
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  return request;
+}
+
+function routesOf(contracts: D1UsecaseRequest['contracts'], usecaseId: string): D1UsecaseRequest['routes'] {
   const routes: D1UsecaseRequest['routes'] = [];
   for (const contract of contracts) {
     const matcher = /export const (\w+Route) = ["']([^"']+)["']/g;
@@ -592,22 +793,49 @@ function buildRealUsecase(contracts: D1UsecaseRequest['contracts'], usecaseId: s
       routes.push({ route, page: contract.pageId, kind: tail.startsWith('cmd') ? 'cmd' : 'qry', usecaseRef: usecaseId });
     }
   }
-  const request = coreUsecaseRequest();
-  for (const entity of request.entities) {
-    for (const field of entity.fields) field.derived = false;
-  }
-  request.contracts = contracts;
-  request.routes = routes;
-  request.usecases = [{
-    usecaseId,
-    entity: entityOf(usecaseId),
-    operation: operationOf(usecaseId),
-    routes: routes.map(item => item.route),
-    defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
-  }];
-  request.plans = request.usecases.map(item => fixturePlan(request, item));
-  return buildD1Usecases(request);
+  return routes;
 }
+
+function inputContext(usecaseId: string, route: string, inputFields: D1UsecaseContext['routes'][number]['inputFields']): D1UsecaseContext {
+  return {
+    usecaseId,
+    lifecycle: false,
+    transition: null,
+    capabilities: [],
+    effectiveFields: [],
+    routes: [{
+      route,
+      page: route.split('.')[1] || '',
+      contractPath: `${route.split('.')[1] || 'page'}.defs.ts`,
+      inputSymbol: 'Input',
+      outputSymbol: 'Output',
+      inputFields,
+      outputFields: [],
+      unbound: '',
+      access: [],
+    }],
+    rules: [],
+    portId: '',
+    portMethods: [],
+    effects: [],
+    journeys: [],
+    findings: [],
+    sources: [],
+  };
+}
+
+const R10: Record<string, D1WorkerStep[]> = {
+  listConsulta: [
+    { kind: 'context', source: 'ctx' },
+    { kind: 'port', call: 'list', port: 'ConsultaRepository' },
+  ],
+  updateProfissional: [
+    { kind: 'context', source: 'ctx' },
+    { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional' },
+    { kind: 'transition', transitionId: 'agendaClinica.dados_profissional.cmdUpdateProfissional', payload: [] },
+    { kind: 'transition', transitionId: 'agendaClinica.dados_recepcionista.cmdUpdateProfissional', payload: [] },
+  ],
+};
 
 function singleRouteRequest(usecaseId: string, pageId: string, route: string, kind: string, source: string): D1UsecaseRequest {
   const request = coreUsecaseRequest();

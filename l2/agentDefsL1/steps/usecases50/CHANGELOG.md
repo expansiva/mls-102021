@@ -1,5 +1,12 @@
 # usecases50
 
+## 2026-09-23 (d1_15)
+
+- Derived identity on a list or get input is a filter. On an update or transition input it is a selector. It is not assigned on create, on a patch, or in a transition payload. The field stays on the declared input; the gate does not delete it.
+- Declared concurrency (`version`) is classified on its own. Freeing `id` does not free every derived field, and a name `id` or `*Id` is not enough without the entity, field, operation and contract path.
+- A nested homonym is matched by its full path. A use that those sources cannot classify is `DERIVED_AMBIGUOUS` with that path. Unequivocal filter, selector and concurrency uses are recorded as normalizations.
+- The d1_13g rule that kept `Derived field id` on every input is replaced by this classification. The review that held that rule is preserved.
+
 ## 2026-09-23 (d1_14)
 
 - The worker prompt carries the operation's contract fields, rule text, lifecycle payload or MDM capability, port signature, access grants and effects. Module rule ids stay the catalog the gate uses to validate an id. The prompt does not list every module rule.

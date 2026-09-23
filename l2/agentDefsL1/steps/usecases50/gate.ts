@@ -25,6 +25,7 @@ import {
   type D1UsecaseBuild,
   type D1UsecaseEntity,
   type D1UsecaseEnumeration,
+  type D1UsecaseField,
   type D1UsecaseItem,
   type D1UsecaseMdm,
   type D1UsecaseNormalization,
@@ -37,6 +38,10 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 const MDM_CALL: Record<string, string> = { list: 'read', create: 'create', update: 'attach' };
+
+const READ_OPERATIONS = new Set(['list', 'get', 'read']);
+const UPDATE_OPERATIONS = new Set(['update', 'patch']);
+const CREATE_OPERATIONS = new Set(['create']);
 
 interface ProjectionField {
   name: string;
@@ -71,7 +76,7 @@ export function buildD1Usecases(request: D1UsecaseRequest): D1UsecaseBuild {
       continue;
     }
     seen.add(usecase.usecaseId);
-    items.push(planUsecase(request, usecase, problems));
+    items.push(planUsecase(request, usecase, problems, normalizations));
   }
 
   const ok = !problems.some(problem => problem.severity === 'error');
@@ -80,7 +85,12 @@ export function buildD1Usecases(request: D1UsecaseRequest): D1UsecaseBuild {
   return finish(request, stillOk, enumerations, items, problems, normalizations, stillOk ? emit : []);
 }
 
-function planUsecase(request: D1UsecaseRequest, usecase: D1UsecaseSelection, problems: D1UsecaseProblem[]): D1UsecaseItem {
+function planUsecase(
+  request: D1UsecaseRequest,
+  usecase: D1UsecaseSelection,
+  problems: D1UsecaseProblem[],
+  normalizations: D1UsecaseNormalization[],
+): D1UsecaseItem {
   const path = usecase.usecaseId;
   const entity = request.entities.find(item => item.entityId === usecase.entity);
   const plan = request.plans.find(item => item.usecaseId === usecase.usecaseId);
@@ -113,7 +123,7 @@ function planUsecase(request: D1UsecaseRequest, usecase: D1UsecaseSelection, pro
   const outputs = routeOutputs(request, usecase, entity, routes, problems);
   noteSameRouteConflicts(outputs, path, problems);
   const input = sharedInput(request, usecase, entity, routes, problems);
-  noteDerived(entity, input, steps, path, problems);
+  noteDerived(request, entity, usecase, input, steps, path, problems, normalizations);
   noteRequiredNotes(entity, usecase, input, path, problems);
   const transitionOk = noteTransition(request, entity, usecase, steps, input, path, problems);
   const rules = resolveRules(request, entity, usecase, steps, path, problems);
@@ -349,9 +359,9 @@ function bindingFor(request: D1UsecaseRequest, route: D1UsecaseRequest['routes']
 }
 
 function toProjection(field: D1ContractField, entity: D1UsecaseEntity): ProjectionField {
-  const domain = entity.fields.find(item => item.name === field.name || item.name.endsWith(`.${field.name}`));
+  const domain = bindDomainField(entity, field.name);
   const projected: ProjectionField = { name: field.name, type: field.type };
-  if (domain) projected.fieldRef = `${entity.entityId}.${domain.name}`;
+  if (domain && domain !== 'ambiguous') projected.fieldRef = `${entity.entityId}.${domain.name}`;
   return projected;
 }
 
@@ -373,27 +383,137 @@ function unionOutputs(outputs: RouteOutput[]): ProjectionField[] {
   return union;
 }
 
+/**
+ * Identity may filter a read or select an update/transition. It is not assigned.
+ * Other derived fields stay writes, except declared concurrency (`version`).
+ * The d1_13g rule that treated every derived input as DERIVED_EDITABLE is replaced.
+ */
 function noteDerived(
+  request: D1UsecaseRequest,
   entity: D1UsecaseEntity,
+  usecase: D1UsecaseSelection,
   input: ProjectionField[],
   steps: readonly D1WorkerStep[],
   path: string,
   problems: D1UsecaseProblem[],
+  normalizations: D1UsecaseNormalization[],
 ): void {
-  const derived = entity.fields.filter(field => field.derived);
-  const names = new Set<string>();
-  for (const field of input) names.add(field.name);
+  const inputPaths = contractInputPaths(request, usecase, input);
+  const payloadPaths = new Set<string>();
   for (const step of steps) {
-    if (step.kind === 'transition') step.payload.forEach(name => names.add(name));
+    if (step.kind === 'transition') step.payload.forEach(name => payloadPaths.add(name));
   }
-  for (const name of names) {
-    const match = derived.find(field => field.name === name || field.name.endsWith(`.${name}`));
-    if (match) error(problems, 'DERIVED_EDITABLE', path, `Derived field ${match.name} is an input of ${path}.`);
+  const seen = new Set<string>();
+  for (const contractPath of inputPaths) {
+    classifyDerivedUse(entity, usecase, input, contractPath, 'input', path, problems, normalizations, seen);
   }
-  for (let index = input.length - 1; index >= 0; index -= 1) {
-    const name = input[index].name;
-    if (derived.some(field => field.name === name || field.name.endsWith(`.${name}`))) input.splice(index, 1);
+  for (const contractPath of payloadPaths) {
+    classifyDerivedUse(entity, usecase, input, contractPath, 'payload', path, problems, normalizations, seen);
   }
+}
+
+function contractInputPaths(
+  request: D1UsecaseRequest,
+  usecase: D1UsecaseSelection,
+  input: readonly ProjectionField[],
+): Set<string> {
+  const paths = new Set<string>();
+  for (const field of input) paths.add(field.name);
+  const context = request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
+  for (const route of context?.routes || []) {
+    for (const field of route.inputFields) paths.add(field.path);
+  }
+  return paths;
+}
+
+function classifyDerivedUse(
+  entity: D1UsecaseEntity,
+  usecase: D1UsecaseSelection,
+  input: readonly ProjectionField[],
+  contractPath: string,
+  source: 'input' | 'payload',
+  path: string,
+  problems: D1UsecaseProblem[],
+  normalizations: D1UsecaseNormalization[],
+  seen: Set<string>,
+): void {
+  const bound = bindDomainField(entity, contractPath, input.find(item => item.name === contractPath));
+  if (bound === 'ambiguous') {
+    const key = `${contractPath}\u0000ambiguous\u0000${source}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    error(
+      problems,
+      'DERIVED_AMBIGUOUS',
+      path,
+      `Derived field ${contractPath} is ambiguous on ${path}: it does not bind to one field of ${entity.entityId}.`,
+    );
+    return;
+  }
+  if (!bound?.derived) return;
+  const role = derivedRole(usecase.operation, bound, source);
+  const key = `${bound.name}\u0000${role}\u0000${source}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  if (role === 'ambiguous') {
+    error(
+      problems,
+      'DERIVED_AMBIGUOUS',
+      path,
+      `Derived field ${entity.entityId}.${bound.name} is ambiguous on ${path}: operation ${usecase.operation} does not classify it.`,
+    );
+    return;
+  }
+  if (role === 'write') {
+    error(problems, 'DERIVED_EDITABLE', path, `Derived field ${bound.name} is assigned by ${path}.`);
+    return;
+  }
+  const code = role === 'filter' ? 'DERIVED_FILTER' : role === 'selector' ? 'DERIVED_SELECTOR' : 'DERIVED_CONCURRENCY';
+  normalizations.push({
+    code,
+    path: `${path}.${bound.name}`,
+    detail: `${entity.entityId}.${bound.name} is a ${role} of ${path}.`,
+  });
+}
+
+function bindDomainField(
+  entity: D1UsecaseEntity,
+  contractPath: string,
+  projected?: ProjectionField,
+): D1UsecaseField | 'ambiguous' | undefined {
+  const exact = entity.fields.filter(item => item.name === contractPath);
+  if (exact.length > 1) return 'ambiguous';
+  if (exact.length === 1) return exact[0];
+  const fieldRef = projected?.fieldRef;
+  const prefix = `${entity.entityId}.`;
+  if (fieldRef && fieldRef.startsWith(prefix)) {
+    const name = fieldRef.slice(prefix.length);
+    const found = entity.fields.filter(item => item.name === name);
+    if (found.length > 1) return 'ambiguous';
+    if (found.length === 1) return found[0];
+  }
+  return undefined;
+}
+
+function derivedRole(
+  operation: string,
+  field: D1UsecaseField,
+  source: 'input' | 'payload',
+): 'filter' | 'selector' | 'concurrency' | 'write' | 'ambiguous' {
+  if (source === 'payload') return 'write';
+  const identity = field.name === 'id';
+  const concurrency = field.name === 'version';
+  if (identity) {
+    if (READ_OPERATIONS.has(operation)) return 'filter';
+    if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'selector';
+    if (CREATE_OPERATIONS.has(operation)) return 'write';
+    return 'ambiguous';
+  }
+  if (concurrency) {
+    if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
+    return 'write';
+  }
+  return 'write';
 }
 
 function noteRequiredNotes(

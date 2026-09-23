@@ -51,9 +51,14 @@ not rewritten.
   the namespace the ontology already names.
 - A transition payload may name a contract input or a nested path that contract
   or the lifecycle payload already lists. The contract source stays the type
-  authority. A derived field is not an input. A rule id that is not in the
-  module or the platform catalog is unresolved. The worker is shown the text
-  of the rules that operation is subject to, not every module rule id.
+  authority. Derived identity may filter a list or get, and may select an
+  update or transition. It is not assigned on create, patch or a transition
+  payload. Declared concurrency (`version`) has that use; other derived fields
+  stay writes. A nested name is matched by its full path, not by a suffix.
+  The previous rule that treated every derived input as `DERIVED_EDITABLE` is
+  replaced. A rule id that is not in the module or the platform catalog is
+  unresolved. The worker is shown the text of the rules that operation is
+  subject to, not every module rule id.
 - Outbound effects are kept by id even when the reply omits them. The
   omission is a finding.
 - Two or more writes need one local transaction boundary. An external
