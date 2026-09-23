@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { D1_DEFINITION_SCHEMA, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_DEFINITION_SCHEMA, D1_MEASURED_PUBLISH, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { D1_FINALIZE_REPAIR, createEntryPipeline, pipelineFile, type D1PipelineState, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { futureOutputPath, pipelineId, qualifyDefPath, skillPaths, type D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
@@ -483,6 +483,40 @@ void test('an MDM table does not complete', () => {
   const report = buildD1Finalize(input);
   assert.equal(report.outcome, 'held');
   assert.equal(codes(report, 'TABLE_MDM'), 1);
+});
+
+void test('a persisted outbound that names the MDM queue is not a binding', () => {
+  const rows = parts();
+  const integration = rows.find(row => row.logical === PATHS.integration);
+  assert.ok(integration);
+  const data = integration.definition.data as {
+    events: Array<{ eventId: string; mechanism: string; mechanismRef?: string }>;
+  };
+  data.events[0].mechanism = D1_MEASURED_PUBLISH.symbol;
+  data.events[0].mechanismRef = D1_MEASURED_PUBLISH.path;
+  const input = request();
+  const file = input.observed.find(item => item.defPath === PATHS.integration);
+  assert.ok(file);
+  file.text = sourceOf(integration.definition, integration.item);
+  const report = buildD1Finalize(input);
+  assert.equal(report.findings.some(item => item.code === 'MECHANISM_INCOMPATIBLE' && item.ownerRef === 'atendimentoRegistrado'), true);
+  assert.equal(report.findings.some(item => item.code === 'FICTIONAL_API'), false);
+  assert.equal(report.executableBackend, false);
+
+  data.events[0].mechanismRef = 'mls-102034/l1/other.ts';
+  file.text = sourceOf(integration.definition, integration.item);
+  const wrong = buildD1Finalize(input);
+  assert.equal(wrong.findings.some(item => item.code === 'MECHANISM_REF' && item.ownerRef === 'atendimentoRegistrado'), true);
+  assert.equal(wrong.findings.some(item => item.code === 'MECHANISM_INCOMPATIBLE'), true);
+  assert.equal(wrong.outcome, 'held');
+
+  data.events[0].mechanism = 'ctx.publishEvent';
+  delete data.events[0].mechanismRef;
+  file.text = sourceOf(integration.definition, integration.item);
+  const fictional = buildD1Finalize(input);
+  assert.equal(fictional.findings.some(item => item.code === 'FICTIONAL_API'), true);
+  assert.equal(fictional.findings.some(item => item.code === 'MECHANISM_INCOMPATIBLE'), false);
+  assert.equal(fictional.outcome, 'held');
 });
 
 void test('a lost event or rule does not complete', () => {

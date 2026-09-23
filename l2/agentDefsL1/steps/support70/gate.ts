@@ -788,6 +788,7 @@ function classifyEnumerations(request: D1SupportRequest, cited: ReadonlySet<stri
 /**
  * One outbound def. Events keep the transition as consumer.
  * An empty mechanism stays empty. publishEvent and emitEvent are refused.
+ * IQueueRuntime.publish is evidence, not an approved binding.
  * Processes, inbound and plugins stay operations. A scheduled trigger writes no scheduler.
  */
 export function emitEffects(
@@ -803,7 +804,6 @@ export function emitEffects(
   if (problems.some(problem => problem.severity === 'error' && problem.code === 'INTEGRATION_OMITTED')) return empty;
 
   const events: Array<Record<string, unknown>> = [];
-  let bound = false;
   for (const event of [...request.outbound].sort((left, right) => left.eventId.localeCompare(right.eventId))) {
     const parts = event.on.split('.');
     const entityId = parts[0] || '';
@@ -814,7 +814,6 @@ export function emitEffects(
     }
     const resolved = resolveMechanism(event.mechanism, event.eventId, problems);
     if (!resolved) continue;
-    if (resolved.mechanism === D1_MEASURED_PUBLISH.symbol) bound = true;
     const rules = uniqueRules(request, entityId, transition);
     if (!event.payloadDeclared && rules.length) {
       review(
@@ -842,7 +841,6 @@ export function emitEffects(
   for (const operation of [...request.operations].sort((left, right) => left.id.localeCompare(right.id))) {
     const resolved = resolveMechanism(operation.mechanism, operation.id, problems);
     if (!resolved) continue;
-    if (resolved.mechanism === D1_MEASURED_PUBLISH.symbol) bound = true;
     const outside = operation.operations.filter(item => !inPool(item, known));
     if (!operation.operations.length || outside.length) {
       gaps.push({ itemId: operation.id, kind: operation.kind, code: 'POOL_ABSENT' });
@@ -875,7 +873,7 @@ export function emitEffects(
   if (plugins.length) data.plugins = plugins;
   if (gaps.length) data.gaps = gaps.sort((left, right) => String(left.itemId).localeCompare(String(right.itemId)));
   if (!writable(request, 'integrationOutbound', problems, true)) {
-    return { emit: [], report: { phase: 'plan', executed: false, capability: capabilityOf(bound) } };
+    return { emit: [], report: { phase: 'plan', executed: false, capability: capabilityOf(false) } };
   }
   const defPath = filePath(request, 'integrationOutbound', OUTBOUND_PATH(request.moduleName));
   const consumers = events.map(event => String(event.consumer));
@@ -883,7 +881,7 @@ export function emitEffects(
   const emit: D1SupportEmit[] = [];
   pushDefinition(emit, definition, effectsPipeline(request, defPath, consumers), defPath, problems);
   if (problems.some(problem => problem.severity === 'error')) return empty;
-  return { emit, report: { phase: 'plan', executed: false, capability: capabilityOf(bound) } };
+  return { emit, report: { phase: 'plan', executed: false, capability: capabilityOf(false) } };
 }
 
 function resolveMechanism(
@@ -900,8 +898,16 @@ function resolveMechanism(
     review(problems, 'INTEGRATION_UNBOUND', label, `${label} is preserved. No runtime mechanism is named.`);
     return { mechanism: '', mechanismRef: '' };
   }
-  if (mechanism === D1_MEASURED_PUBLISH.symbol) return { mechanism, mechanismRef: D1_MEASURED_PUBLISH.path };
-  review(problems, 'MECHANISM_UNVERIFIED', label, `Mechanism ${mechanism} is not the measured publish symbol. It was kept and not executed.`);
+  if (mechanism === D1_MEASURED_PUBLISH.symbol) {
+    review(
+      problems,
+      'MECHANISM_INCOMPATIBLE',
+      label,
+      `${label} names ${mechanism}. Postgres publish inserts into mdm_outbox. It is not a module bus.`,
+    );
+    return { mechanism, mechanismRef: D1_MEASURED_PUBLISH.path };
+  }
+  review(problems, 'MECHANISM_UNVERIFIED', label, `Mechanism ${mechanism} is not an approved module integration. It was kept and not executed.`);
   return { mechanism, mechanismRef: '' };
 }
 

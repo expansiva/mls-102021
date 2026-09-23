@@ -7,6 +7,7 @@ import {
 import {
   D1_DEFINITION_SCHEMA,
   definitionIssues,
+  integrationMechanismIssues,
   isArtifactType,
   isRecord,
   type D1Definition,
@@ -356,7 +357,11 @@ function checkUsecaseFidelity(request: D1FinalizeRequest, parsed: ParsedDef[], f
       const usecaseId = isRecord(item.definition.data) && typeof item.definition.data.usecaseId === 'string'
         ? item.definition.data.usecaseId
         : item.definition.artifactId;
-      error(findings, problem.code, item.logical, problem.message, usecaseId);
+      if (problem.code === 'MECHANISM_INCOMPATIBLE' || problem.code === 'INTEGRATION_UNBOUND') {
+        review(findings, problem.code, item.logical, problem.message, usecaseId);
+      } else {
+        error(findings, problem.code, item.logical, problem.message, usecaseId);
+      }
     }
   }
 }
@@ -397,6 +402,20 @@ function checkEvents(request: D1FinalizeRequest, parsed: ParsedDef[], findings: 
   for (const eventId of [...selected].sort()) {
     if (events.has(eventId)) continue;
     error(findings, 'EVENT_LOST', eventId, `Outbound ${eventId} was selected and is not on the persisted integration def.`, eventId);
+  }
+  if (!integration) return;
+  for (const issue of integrationMechanismIssues(integration.definition.data)) {
+    const match = /^(INTEGRATION_UNBOUND|FICTIONAL_API|MECHANISM_REF|MECHANISM_INCOMPATIBLE): (\S+)/.exec(issue);
+    if (!match) continue;
+    const code = match[1];
+    const eventId = match[2];
+    const message = issue.slice(issue.indexOf(': ') + 2);
+    if (code === 'INTEGRATION_UNBOUND' && findings.some(item => item.code === code && item.ownerRef === eventId)) continue;
+    if (code === 'INTEGRATION_UNBOUND' || code === 'MECHANISM_INCOMPATIBLE') {
+      review(findings, code, eventId, message, eventId);
+    } else {
+      error(findings, code, eventId, message, eventId);
+    }
   }
 }
 

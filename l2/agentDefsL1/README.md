@@ -164,6 +164,7 @@ That sum is not a count of files this agent generated. usecases50 writes the
 usecase defs. controllers60 writes the controller defs. support70 writes
 the access scope, the authority map, the repository registry, the seed
 plan and the outbound effect plan. An event with no named mechanism stays unbound.
+Naming `IQueueRuntime.publish` is `MECHANISM_INCOMPATIBLE`, not a binding.
 
 ## Flow
 

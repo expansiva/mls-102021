@@ -3,9 +3,11 @@
 # integrationOutbound
 
 Outbound events the plan already named. `consumer` is the usecase id on `on`.
+That id is the emitting usecase, not a subscriber.
 An empty `mechanism` stays on the event and is reported as unbound.
 `RequestContext` has no `publishEvent` or `emitEvent`. The measured publish
-symbol is `IQueueRuntime.publish` on `RequestContext.data.pgQueue`. Copy it
-only when the artifact already names it. Do not call it, and do not add a
-scheduler, broker, outbox, or endpoint.
+symbol is `IQueueRuntime.publish` on `RequestContext.data.pgQueue`. It is
+evidence of the real API, not an approved binding: Postgres publish writes
+`mdm_outbox`. Naming it is `MECHANISM_INCOMPATIBLE`. Do not call it, and do
+not add a scheduler, broker, outbox, or endpoint.
 This type is not dispatched by agentChangeBackend.

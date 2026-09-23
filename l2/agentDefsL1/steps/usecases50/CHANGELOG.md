@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-09-23 (d1_23)
+
+- `readUsecaseFidelity` re-reads persisted `integrationOutbound` defs. Naming `IQueueRuntime.publish` is `MECHANISM_INCOMPATIBLE`. A wrong path is `MECHANISM_REF`. `publishEvent` / `emitEvent` stay `FICTIONAL_API`. Empty mechanism is not treated as a missing API.
+
 ## 2026-09-23 (d1_19)
 
 - `source` comes from the same operation catalog as the other step values. Every operation admits `ctx`. The schema does not offer `input`. The gate still refuses a reply that names it.

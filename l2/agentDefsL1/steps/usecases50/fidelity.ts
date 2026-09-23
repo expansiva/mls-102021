@@ -1,6 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/fidelity.ts" enhancement="_blank"/>
 
-import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { integrationMechanismIssues, isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
@@ -251,6 +251,7 @@ export function readUsecaseFidelity(
   }
 
   const effects = readEffects(data);
+  const outboundIssues = outboundMechanismProblems(files);
   for (const effect of effects) {
     if (!hasDep(dependsFiles, effect.path)) {
       fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Effect source ${effect.path} is not in dependsFiles.`);
@@ -263,6 +264,10 @@ export function readUsecaseFidelity(
     const body = parseD1Source(text, 'defs');
     if (!eventPresent(body, effect.symbol)) {
       fail(problems, 'EVENT_LOST', usecaseId, `Effect ${effect.symbol} is not in ${effect.path}.`);
+    }
+    for (const issue of outboundIssues) {
+      if (!issue.message.includes(effect.eventId)) continue;
+      fail(problems, issue.code, usecaseId, issue.message);
     }
   }
 
@@ -426,6 +431,22 @@ function ruleText(body: unknown, symbol: string): string {
 function eventPresent(body: unknown, symbol: string): boolean {
   if (!isRecord(body) || !Array.isArray(body.outbound)) return false;
   return body.outbound.some(item => isRecord(item) && (item.event === symbol || item.id === symbol));
+}
+
+/** Reads persisted integrationOutbound defs. The draft is not consulted. */
+function outboundMechanismProblems(files: readonly FidelityFile[]): FidelityProblem[] {
+  const problems: FidelityProblem[] = [];
+  for (const file of files) {
+    const rendered = parseRendered(file.text);
+    if (!rendered || !isRecord(rendered.definition) || rendered.definition.artifactType !== 'integrationOutbound') continue;
+    if (!isRecord(rendered.definition.data)) continue;
+    for (const issue of integrationMechanismIssues(rendered.definition.data)) {
+      const match = /^(FICTIONAL_API|MECHANISM_REF|MECHANISM_INCOMPATIBLE): /.exec(issue);
+      if (!match) continue;
+      problems.push({ code: match[1], path: file.path, message: issue });
+    }
+  }
+  return problems;
 }
 
 function functionInputPaths(data: Record<string, unknown>): string[] {

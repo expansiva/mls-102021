@@ -1,5 +1,10 @@
 # support70
 
+## 2026-09-23 (d1_23)
+
+- `IQueueRuntime.publish` remains measured evidence. Naming it on an outbound event is `MECHANISM_INCOMPATIBLE`, not a binding. `effectPlan.executed` stays false and `capability.bound` stays false.
+- `publishEvent` / `emitEvent` stay `FICTIONAL_API`. An empty mechanism stays `INTEGRATION_UNBOUND`. The named symbol is not rewritten.
+
 ## 2026-09-22 (d1_10)
 
 - Writes `outbound.defs.ts` for declared events, processes, inbound items and plugins.

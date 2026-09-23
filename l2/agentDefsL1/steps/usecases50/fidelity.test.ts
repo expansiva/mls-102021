@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_DEFINITION_SCHEMA, D1_MEASURED_PUBLISH, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { fileKey, installStudio } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
@@ -154,6 +154,33 @@ function behaviorOf(source: string, files: readonly FidelityFile[]): UsecaseBeha
   return fidelity.behavior;
 }
 
+function outboundFile(mechanism: string, mechanismRef?: string): FidelityFile {
+  const event: Record<string, unknown> = {
+    eventId: 'atendimentoRegistrado',
+    on: 'Consulta.registrarAtendimento',
+    entityId: 'Consulta',
+    mechanism,
+    consumer: 'registrarAtendimento',
+  };
+  if (mechanismRef) event.mechanismRef = mechanismRef;
+  const definition = {
+    schemaVersion: D1_DEFINITION_SCHEMA,
+    artifactType: 'integrationOutbound',
+    artifactId: 'outbound',
+    moduleName: 'agendaClinica',
+    data: { integrationId: 'outbound', events: [event] },
+  };
+  const pipeline = [{
+    id: '102047/agendaClinica/integrationOutbound/outbound',
+    type: 'integrationOutbound',
+    defPath: 'l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts',
+  }];
+  return {
+    path: 'l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts',
+    text: `export const definition = ${JSON.stringify(definition)} as const;\nexport const pipeline = ${JSON.stringify(pipeline)} as const;\n`,
+  };
+}
+
 function edited(
   source: string,
   edit: (definition: { data: Record<string, unknown> }, pipeline: D1PipelineItem[]) => void,
@@ -272,6 +299,30 @@ void test('removing payload, a rule, an MDM call, a projection or a contract dep
   const dependency = readUsecaseFidelity(withoutDependency, files);
   assert.equal(dependency.behavior, null);
   assert.equal(dependency.problems.some(item => item.code === 'DEPENDENCY_MISSING' && item.message.includes('contracts')), true);
+});
+
+void test('a serialized outbound that names the MDM queue is refused by the file reader', () => {
+  const { request, files } = focused();
+  const registrar = renderedOf(request, 'registrarAtendimento');
+  const named = outboundFile(D1_MEASURED_PUBLISH.symbol, D1_MEASURED_PUBLISH.path);
+  const fidelity = readUsecaseFidelity(registrar, [...files, named]);
+  assert.equal(fidelity.problems.some(item => item.code === 'MECHANISM_INCOMPATIBLE'), true);
+  assert.equal(fidelity.problems.some(item => item.code === 'FICTIONAL_API'), false);
+
+  const wrong = outboundFile(D1_MEASURED_PUBLISH.symbol, 'mls-102034/l1/other.ts');
+  const ref = readUsecaseFidelity(registrar, [...files, wrong]);
+  assert.equal(ref.problems.some(item => item.code === 'MECHANISM_REF'), true);
+  assert.equal(ref.problems.some(item => item.code === 'MECHANISM_INCOMPATIBLE'), true);
+
+  const invented = outboundFile('ctx.publishEvent');
+  const fictional = readUsecaseFidelity(registrar, [...files, invented]);
+  assert.equal(fictional.problems.some(item => item.code === 'FICTIONAL_API'), true);
+  assert.equal(fictional.problems.some(item => item.code === 'MECHANISM_INCOMPATIBLE'), false);
+
+  const empty = outboundFile('');
+  const unbound = readUsecaseFidelity(registrar, [...files, empty]);
+  assert.equal(unbound.problems.some(item => item.code === 'MECHANISM_INCOMPATIBLE' || item.code === 'FICTIONAL_API'), false);
+  assert.ok(unbound.behavior);
 });
 
 void test('the inventory still reads the serialized usecase and the test does not write a module', async () => {

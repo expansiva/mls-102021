@@ -16,6 +16,7 @@ import {
   D1_ARTIFACT_TYPES,
   D1_DEFINITION_SCHEMA,
   D1_FORECAST_CORE,
+  D1_MEASURED_PUBLISH,
   accessAnchorIssues,
   adapterLinkIssues,
   authorityGrantIssues,
@@ -325,6 +326,33 @@ void test('access keeps the contradictory anchor and integration keeps unbound e
   assert.equal(events.length, 3);
   assert.equal(unbound.length, 3);
   assert.equal(definitionIssues(integration?.definition).length, 0);
+});
+
+void test('the measured MDM queue is an incompatible mechanism, not a missing API', () => {
+  const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
+  const integration = examples.find(example => example.definition.artifactType === 'integrationOutbound');
+  assert.ok(integration);
+  const data = structuredClone(integration.definition.data) as {
+    events: Array<{ eventId: string; mechanism: string; mechanismRef?: string }>;
+  };
+  data.events[0].mechanism = D1_MEASURED_PUBLISH.symbol;
+  data.events[0].mechanismRef = D1_MEASURED_PUBLISH.path;
+  const named = integrationMechanismIssues(data);
+  assert.equal(named.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:') && issue.includes(String(data.events[0].eventId))), true);
+  assert.equal(named.some(issue => issue.startsWith('FICTIONAL_API:')), false);
+  assert.equal(named.some(issue => issue.startsWith('MECHANISM_REF:')), false);
+
+  data.events[0].mechanismRef = 'mls-102034/l1/other.ts';
+  const wrong = integrationMechanismIssues(data);
+  assert.equal(wrong.some(issue => issue.startsWith('MECHANISM_REF:')), true);
+  assert.equal(wrong.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:')), true);
+  assert.equal(wrong.some(issue => issue.startsWith('FICTIONAL_API:')), false);
+
+  data.events[0].mechanism = 'ctx.publishEvent';
+  delete data.events[0].mechanismRef;
+  const fictional = integrationMechanismIssues(data);
+  assert.equal(fictional.some(issue => issue.startsWith('FICTIONAL_API:')), true);
+  assert.equal(fictional.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:')), false);
 });
 
 void test('a derived field is rejected as a usecase input', () => {

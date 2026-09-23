@@ -7,7 +7,7 @@ export const D1_DEFINITION_SCHEMA = '2026-09-21-d1-definition-v1' as const;
 /**
  * Measured on RequestContext.data.pgQueue. RequestContext itself has no publishEvent or emitEvent.
  * Postgres publish inserts into the MDM outbox. It is not a module bus.
- * An event keeps this symbol only when the artifact already names it.
+ * The constant is evidence of the real API. It is not an approved integrationOutbound binding.
  */
 export const D1_MEASURED_PUBLISH = {
   symbol: 'IQueueRuntime.publish',
@@ -1204,7 +1204,7 @@ function coverRows(value: unknown, path: string, idKey: string, issues: string[]
   });
 }
 
-/** Empty mechanism is reported and the event is left in place. */
+/** Empty mechanism is reported and the event is left in place. The MDM queue is not a binding. */
 export function integrationMechanismIssues(data: unknown): string[] {
   const issues = integrationShapeIssues(data);
   if (!isRecord(data) || !Array.isArray(data.events)) return issues;
@@ -1223,6 +1223,7 @@ export function integrationMechanismIssues(data: unknown): string[] {
       return;
     }
     if (mechanism === D1_MEASURED_PUBLISH.symbol) {
+      issues.push(`MECHANISM_INCOMPATIBLE: ${eventId} names ${mechanism}. Postgres publish inserts into mdm_outbox. It is not a module bus.`);
       if (ref !== D1_MEASURED_PUBLISH.path) issues.push(`MECHANISM_REF: ${eventId} must cite ${D1_MEASURED_PUBLISH.path}.`);
       return;
     }

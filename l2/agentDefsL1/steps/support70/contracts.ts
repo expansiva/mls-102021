@@ -216,7 +216,7 @@ export interface D1EffectOperation {
   scheduled: boolean;
 }
 
-/** The measured publish API, and whether any artifact already named it. Nothing is executed. */
+/** The measured publish API as evidence. Naming it does not bind or execute an effect. */
 export interface D1EffectReport {
   phase: 'plan' | 'absent';
   executed: false;

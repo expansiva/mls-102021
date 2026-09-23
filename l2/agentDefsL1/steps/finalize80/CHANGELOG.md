@@ -3,6 +3,7 @@
 ## 2026-09-23
 
 - A declared dependency that this pipeline does not generate is a read source, not a future output. It is accepted only when that file was opened. The project in the path is part of the identity. A path that is not on disk stays `REF_INVALID` and `SOURCE_ABSENT`. A missing symbol stays `RULE_TEXT_ABSENT`.
+- Re-reading a persisted `integrationOutbound` def flags `IQueueRuntime.publish` as `MECHANISM_INCOMPATIBLE`. A wrong `mechanismRef` stays `MECHANISM_REF`. `publishEvent` / `emitEvent` stay `FICTIONAL_API`. An empty mechanism stays `INTEGRATION_UNBOUND`.
 
 ## 2026-09-22
 

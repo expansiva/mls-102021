@@ -389,7 +389,7 @@ void test('an omitted event stops the step and a fictional publish name is refus
   assert.equal(JSON.stringify(refused.emit).includes('publishEvent'), false);
 });
 
-void test('a named measured publish symbol keeps the ref and does not execute it', () => {
+void test('naming the measured MDM queue is not a module binding', () => {
   const request = agendaSeedRequest();
   request.outbound = request.outbound.map(event => event.eventId === 'consultaConfirmada'
     ? { ...event, mechanism: D1_MEASURED_PUBLISH.symbol }
@@ -397,7 +397,10 @@ void test('a named measured publish symbol keeps the ref and does not execute it
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
   assert.equal(build.effectPlan.executed, false);
-  assert.equal(build.effectPlan.capability.bound, true);
+  assert.equal(build.effectPlan.capability.bound, false);
+  assert.equal(build.problems.some(item => item.code === 'MECHANISM_INCOMPATIBLE' && item.path === 'consultaConfirmada'), true);
+  assert.equal(build.problems.some(item => item.code === 'FICTIONAL_API'), false);
+  assert.equal(build.problems.filter(item => item.code === 'INTEGRATION_UNBOUND').length, 2);
   const data = build.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
     events: Array<{ eventId: string; mechanism: string; mechanismRef?: string; consumer: string }>;
   };

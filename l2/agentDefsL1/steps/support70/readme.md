@@ -42,11 +42,13 @@ The publication list is the future `.ts` the materializer will still
 register. `seedPlan.phase` is `plan` and `materialized` is false: the def
 describes scenarios, and this step does not write `seeds.ts` or any row.
 `effectPlan.executed` is false. An outbound event keeps `on` and the usecase
-id as `consumer`. `mechanism` stays empty unless the artifact already names
-`IQueueRuntime.publish`; that ref is the measured symbol on
-`RequestContext.data.pgQueue`, and this step does not call it.
-`RequestContext` has no `publishEvent` or `emitEvent`. A transition that
-cites a unique rule and declares no payload stays `PAYLOAD_UNDECLARED`.
+id as `consumer`. That id is the emitting usecase, not a subscriber.
+`mechanism` stays empty unless the artifact already names a symbol.
+`IQueueRuntime.publish` is the measured API on `RequestContext.data.pgQueue`;
+naming it is `MECHANISM_INCOMPATIBLE` because Postgres publish writes
+`mdm_outbox`. It is not a module bus and does not bind. This step does not
+call it. `RequestContext` has no `publishEvent` or `emitEvent`. A transition
+that cites a unique rule and declares no payload stays `PAYLOAD_UNDECLARED`.
 No payload object is added.
 
 Processes, inbound items and plugins are copied as operations. A workflow

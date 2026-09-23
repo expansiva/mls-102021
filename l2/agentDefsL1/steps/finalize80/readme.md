@@ -14,6 +14,8 @@ the defs on disk and the source hashes. It does not run an earlier phase.
 sources, enum consumption, coverage, future outputs and findings.
 `executableBackend` stays false. A future `.ts` that is absent is pending
 materialization. An absent L2 contract is `CONTRACT_ABSENT`.
+A persisted outbound that names `IQueueRuntime.publish` is
+`MECHANISM_INCOMPATIBLE` on the file, not a binding.
 
 A step that is not on the checkpoint is not executed. A run held at an earlier
 step is left there. The report does not call that a completed generation.
