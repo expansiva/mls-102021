@@ -14,6 +14,7 @@ import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { artifactFile, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import {
   type D1FinalizeObserved,
   type D1FinalizeReport,
@@ -42,6 +43,7 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
     sourceHashes[source.path] = text == null ? '' : await sha256Text(text);
     if (text != null) dependencyTexts[source.path] = text;
   }
+  await readDeclaredDependencies(project, observed, dependencyTexts);
   const contracts: D1FinalizeRequest['contracts'] = {};
   const pages = new Set((snapshot?.selection.routes || []).map(route => route.page).filter(Boolean));
   for (const pageId of pages) {
@@ -193,4 +195,44 @@ async function readLogical(project: number, path: string): Promise<string | null
   const info = fileInfoFromDisplay(project, path);
   if (!info) return null;
   return readText(info);
+}
+
+/**
+ * Opens every path a def declares in dependsFiles. A path this project does not
+ * own is read from the project named in the path. Null means the file is not there.
+ */
+async function readDeclaredDependencies(
+  project: number,
+  observed: readonly D1FinalizeObserved[],
+  dependencyTexts: Record<string, string>,
+): Promise<void> {
+  for (const dep of declaredPaths(observed)) {
+    if (typeof dependencyTexts[dep] === 'string') continue;
+    const text = await readDeclared(project, dep);
+    if (text != null) dependencyTexts[dep] = text;
+  }
+}
+
+function declaredPaths(observed: readonly D1FinalizeObserved[]): string[] {
+  const paths = new Set<string>();
+  for (const item of observed) {
+    if (!item.text) continue;
+    const rendered = parseRendered(item.text);
+    if (!rendered || !Array.isArray(rendered.pipeline)) continue;
+    for (const pipelineItem of rendered.pipeline) {
+      if (!isRecord(pipelineItem) || !Array.isArray(pipelineItem.dependsFiles)) continue;
+      for (const dep of pipelineItem.dependsFiles) {
+        if (typeof dep === 'string' && dep) paths.add(dep);
+      }
+    }
+  }
+  return [...paths];
+}
+
+async function readDeclared(project: number, dep: string): Promise<string | null> {
+  const own = artifactFile(project, dep) || fileInfoFromDisplay(project, dep);
+  if (own) return readText(own);
+  const catalog = catalogInfo(dep);
+  if (!catalog) return null;
+  return readText(catalog);
 }

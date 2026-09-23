@@ -350,9 +350,24 @@ function hasDep(dependsFiles: readonly string[], path: string): boolean {
 }
 
 function fileText(files: readonly FidelityFile[], path: string): string | null {
+  const project = embeddedProject(path);
+  if (project) {
+    const tail = unqualified(path);
+    const found = files.find(item => embeddedProject(item.path) === project && unqualified(item.path) === tail);
+    return found ? found.text : null;
+  }
   const logical = strip(path);
   const found = files.find(item => strip(item.path) === logical);
   return found ? found.text : null;
+}
+
+function embeddedProject(path: string): string {
+  const match = /^\/?_(\d+)_\/+/.exec(path);
+  return match ? match[1] : '';
+}
+
+function unqualified(path: string): string {
+  return path.replace(/^\/?_\d+_\/+/, '');
 }
 
 function sameList(left: readonly string[], right: readonly string[]): boolean {

@@ -284,8 +284,8 @@ function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], fi
   const sources = new Set((request.snapshot?.sources || []).map(source => source.path));
   for (const pipelineItem of items) {
     for (const dep of pipelineItem.dependsFiles || []) {
-      if (knownDependency(dep, items, present, sources)) continue;
-      error(findings, 'REF_INVALID', dep, `Dependency ${dep} is not a current def or a named future output.`, pipelineItem.id);
+      if (knownDependency(dep, items, present, sources, request.dependencyTexts)) continue;
+      error(findings, 'REF_INVALID', dep, `Dependency ${dep} is not a current def, a named future output, or an opened read source.`, pipelineItem.id);
     }
   }
   for (const issue of graphIssues(items)) {
@@ -295,17 +295,56 @@ function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], fi
   }
 }
 
-function knownDependency(dep: string, items: D1PipelineItem[], present: Set<string>, sources: Set<string>): boolean {
+/**
+ * A dependency is either an artifact this pipeline generates or a read source.
+ * Generated: a current def, or a named future output (the `.ts` this run will write).
+ * Read: a declared file this run does not generate. It counts only when its text
+ * was opened. The project embedded in the path is part of the identity.
+ */
+function knownDependency(
+  dep: string,
+  items: D1PipelineItem[],
+  present: Set<string>,
+  sources: Set<string>,
+  dependencyTexts: Record<string, string>,
+): boolean {
+  if (isGeneratedArtifact(dep, items, present)) return true;
+  if (sources.has(dep)) return true;
+  // A path that names a project is not this module's snapshot source.
+  if (!embeddedProject(dep)) {
+    const logical = dep.replace(/^_\d+_\/+/, '');
+    if (logical !== dep && sources.has(logical)) return true;
+  }
+  return openedRead(dep, dependencyTexts);
+}
+
+function isGeneratedArtifact(dep: string, items: D1PipelineItem[], present: Set<string>): boolean {
   if (items.some(item => item.defPath === dep || item.outputPath === dep)) return true;
   if (present.has(dep) || present.has(logicalDefPath(dep))) return true;
-  const logical = dep.replace(/^_\d+_\/+/, '');
-  if (sources.has(dep) || sources.has(logical)) return true;
   if (dep.endsWith('.d.ts')) {
     const ts = dep.replace(/\.d\.ts$/, '.ts');
-    return items.some(item => item.outputPath === ts);
+    if (items.some(item => item.outputPath === ts)) return true;
   }
   const future = futureOutputPath(dep);
   return !!future && items.some(item => item.outputPath === future);
+}
+
+function openedRead(dep: string, texts: Record<string, string>): boolean {
+  if (typeof texts[dep] === 'string') return true;
+  const project = embeddedProject(dep);
+  if (!project) return false;
+  const tail = unqualified(dep);
+  return Object.entries(texts).some(([path, text]) =>
+    typeof text === 'string' && embeddedProject(path) === project && unqualified(path) === tail);
+}
+
+function embeddedProject(path: string): string {
+  const match = /^\/?_(\d+)_\/+/.exec(path);
+  return match ? match[1] : '';
+}
+
+function unqualified(path: string): string {
+  return path.replace(/^\/?_\d+_\/+/, '');
 }
 
 function checkUsecaseFidelity(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {

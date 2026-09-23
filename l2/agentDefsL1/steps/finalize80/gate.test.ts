@@ -1,16 +1,37 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { D1_DEFINITION_SCHEMA, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { D1_FINALIZE_REPAIR, createEntryPipeline, type D1PipelineState, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { D1_FINALIZE_REPAIR, createEntryPipeline, pipelineFile, type D1PipelineState, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { futureOutputPath, pipelineId, qualifyDefPath, skillPaths, type D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
+import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const CLINIC_ROOT = path.resolve(HERE, '../../../../../mls-102047');
+const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
+const CATALOG = '/_102034_/l4/ontology/mdm.defs.ts';
+const PLATFORM_USECASES = [
+  'createPaciente',
+  'createProfissional',
+  'createRecepcionista',
+  'listRecepcionista',
+  'updateProfissional',
+  'updateRecepcionista',
+];
 
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
@@ -578,3 +599,132 @@ void test('a run held at input20 does not claim the later phases ran', () => {
     assert.equal(report.phases.find(phase => phase.stepId === stepId)?.status, 'absent', stepId);
   }
 });
+
+function walkFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const abs = path.join(dir, name);
+    if (statSync(abs).isDirectory()) out.push(...walkFiles(abs).map(rel => path.join(name, rel)));
+    else out.push(name);
+  }
+  return out;
+}
+
+function seedDisplay(host: TestHost, project: number, display: string, abs: string): boolean {
+  const info = fileInfoFromDisplay(project, display);
+  if (!info) return false;
+  seed(host, info, readFileSync(abs, 'utf8'));
+  return true;
+}
+
+function seedClinic(): TestHost {
+  const host = installStudio(PROJECT);
+  const l1 = path.join(CLINIC_ROOT, 'l1/agendaClinica');
+  for (const rel of walkFiles(l1)) {
+    const display = `l1/agendaClinica/${rel.split(path.sep).join('/')}`;
+    seedDisplay(host, PROJECT, display, path.join(l1, rel));
+  }
+  const input = JSON.parse(readFileSync(path.join(l1, 'pipeline/agentDefsL1/input.json'), 'utf8')) as { sources: Array<{ path: string }> };
+  for (const source of input.sources) {
+    const abs = path.join(CLINIC_ROOT, source.path);
+    if (!existsSync(abs) || !statSync(abs).isFile()) continue;
+    seedDisplay(host, PROJECT, source.path, abs);
+  }
+  const catalog = catalogInfo(CATALOG);
+  assert.ok(catalog);
+  seed(host, catalog, readFileSync(CATALOG_DISK, 'utf8'));
+  return host;
+}
+
+void test('the six real usecases approve when the platform catalog is on disk', async () => {
+  seedClinic();
+  const assembled = await assembleD1Finalize(PROJECT, MODULE);
+  assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
+  const opened = assembled.request.dependencyTexts[CATALOG];
+  assert.equal(typeof opened, 'string');
+  assert.match(opened, /rule-foreign-namespace-refused/);
+  const report = buildD1Finalize(assembled.request);
+  assert.equal(report.outcome, 'complete', report.blocking);
+  assert.equal(report.defsStatus, 'complete');
+  assert.equal(report.phases.find(phase => phase.stepId === 'finalize80')?.status, 'approved');
+  assert.equal(codes(report, 'REF_INVALID'), 0);
+  assert.equal(codes(report, 'SOURCE_ABSENT'), 0);
+  for (const usecaseId of PLATFORM_USECASES) assert.ok(report.inventory.usecaseIds.includes(usecaseId), usecaseId);
+  assert.equal(report.materializationPending.some(item => item.outputPath.includes('102034')), false);
+  assert.equal(report.executableBackend, false);
+});
+
+void test('a missing read source and a missing symbol stay refused', async () => {
+  seedClinic();
+  const assembled = await assembleD1Finalize(PROJECT, MODULE);
+  assert.ok(!('refusal' in assembled));
+  const missing = '/_102034_/l4/ontology/missing.defs.ts';
+  const otherProject = '/_999999_/l4/ontology/mdm.defs.ts';
+  const absentPath = rewriteCatalog(assembled.request, missing);
+  const absent = buildD1Finalize(absentPath);
+  assert.equal(absent.outcome, 'held');
+  assert.ok(codes(absent, 'REF_INVALID') >= 1);
+  assert.ok(codes(absent, 'SOURCE_ABSENT') >= 1);
+  assert.equal(absent.findings.some(item => item.code === 'REF_INVALID' && item.path === missing), true);
+  assert.equal(absent.findings.some(item => item.message.includes(missing)), true);
+
+  const foreign = buildD1Finalize(rewriteCatalog(assembled.request, otherProject));
+  assert.equal(foreign.outcome, 'held');
+  assert.equal(foreign.findings.some(item => item.code === 'REF_INVALID' && item.path === otherProject), true);
+  assert.equal(foreign.findings.some(item => item.code === 'SOURCE_ABSENT' && item.message.includes(otherProject)), true);
+  assert.equal(foreign.findings.some(item => item.path === CATALOG && item.severity === 'error'), false);
+
+  const symbol = rewriteSymbol(assembled.request);
+  const unread = buildD1Finalize(symbol);
+  assert.equal(unread.outcome, 'held');
+  assert.ok(codes(unread, 'RULE_TEXT_ABSENT') >= 1);
+  assert.equal(codes(unread, 'SOURCE_ABSENT'), 0);
+  assert.equal(codes(unread, 'REF_INVALID'), 0);
+});
+
+void test('a read source is opened from the project the path names', async () => {
+  const host = installStudio(PROJECT);
+  const state = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-23T12:00:00.000Z'));
+  await writeJson(pipelineFile(PROJECT, MODULE), state);
+  const present = '/_102099_/l4/ontology/mdm.defs.ts';
+  const absent = '/_102099_/l4/ontology/absent.defs.ts';
+  const rows = parts();
+  const usecase = rows.find(row => row.logical === PATHS.usecase);
+  assert.ok(usecase);
+  usecase.item.dependsFiles = [...usecase.item.dependsFiles, present, absent];
+  const info = fileInfoFromDisplay(PROJECT, PATHS.usecase);
+  assert.ok(info);
+  seed(host, info, sourceOf(usecase.definition, usecase.item));
+  const catalog = catalogInfo(present);
+  assert.ok(catalog);
+  assert.equal(catalog.project, 102099);
+  seed(host, catalog, 'export const foreignCatalog = { "rules": { "kept": "A declared rule." } } as const;\n');
+  const assembled = await assembleD1Finalize(PROJECT, MODULE);
+  assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
+  assert.match(assembled.request.dependencyTexts[present] || '', /A declared rule/);
+  assert.equal(assembled.request.dependencyTexts[absent], undefined);
+  assert.equal(fileKey(catalog).startsWith('102099_'), true);
+});
+
+function rewriteCatalog(request: D1FinalizeRequest, next: string): D1FinalizeRequest {
+  const copy = structuredClone(request);
+  delete copy.dependencyTexts[next];
+  for (const item of copy.observed) {
+    if (!item.text?.includes(CATALOG)) continue;
+    item.text = item.text.replaceAll(CATALOG, next);
+  }
+  return copy;
+}
+
+function rewriteSymbol(request: D1FinalizeRequest): D1FinalizeRequest {
+  const copy = structuredClone(request);
+  let changed = false;
+  for (const item of copy.observed) {
+    if (!item.text?.includes('"symbol": "rule-foreign-namespace-refused"')) continue;
+    item.text = item.text.replace('"symbol": "rule-foreign-namespace-refused"', '"symbol": "rule-not-in-catalog"');
+    changed = true;
+    break;
+  }
+  assert.equal(changed, true);
+  return copy;
+}

@@ -56,7 +56,7 @@ export interface D1FinalizeRequest {
   pipeline: D1PipelineState;
   snapshot: D1InputSnapshot | null;
   sourceHashes: Record<string, string>;
-  /** Texts of the snapshot sources the fidelity reader opens. Not the usecase draft. */
+  /** Texts opened for fidelity: snapshot sources and declared read dependencies. Not the usecase draft. */
   dependencyTexts: Record<string, string>;
   contracts: Record<string, D1FinalizeContract>;
   drafts: {
