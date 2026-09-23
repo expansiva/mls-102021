@@ -284,6 +284,22 @@ void test('a fixture plan fits the schema, and an incompatible call or id is ref
   const open = workerStepShape();
   for (const kind of D1_WORKER_KINDS) assert.equal(open.includes(`- ${kind}:`), true, kind);
   assert.equal(open.includes(FACADE), true);
+  assert.deepEqual(enumOf(usecaseTool(), 'context', 'source'), ['ctx']);
+  assert.equal(fits(usecaseTool(), { kind: 'context', source: 'input' }), false);
+});
+
+void test('authority is ctx on every operation, and the prompt names that source', () => {
+  const request = coreUsecaseRequest();
+  for (const usecase of request.usecases) {
+    const closed = closedFromRequest(request, usecase);
+    const tool = usecaseTool(closed);
+    assert.deepEqual(closed.sources, ['ctx'], usecase.usecaseId);
+    assert.deepEqual(enumOf(tool, 'context', 'source'), ['ctx'], usecase.usecaseId);
+    assert.equal(fits(tool, { kind: 'context', source: 'ctx' }), true, usecase.usecaseId);
+    assert.equal(fits(tool, { kind: 'context', source: 'input' }), false, usecase.usecaseId);
+    assert.equal(workerStepShape(closed).includes('source: ctx'), true, usecase.usecaseId);
+    assert.equal(workerStepShape(closed).includes('source: ctx, input'), false, usecase.usecaseId);
+  }
 });
 
 function one(request: D1UsecaseRequest, usecaseId: string): D1UsecaseRequest {

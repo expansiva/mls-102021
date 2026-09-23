@@ -188,7 +188,7 @@ function planUsecase(
     uses: fieldUses({
       operation: usecase.operation,
       fields: entity.fields,
-      inputPaths: input.map(field => field.name),
+      inputPaths: [...contractInputPaths(request, usecase, input)],
       payloadPaths: sourcePayload,
     }),
     rules: rules.map(ruleId => ({
@@ -416,6 +416,8 @@ function unionOutputs(outputs: RouteOutput[]): ProjectionField[] {
 
 /**
  * Identity may filter a read or select an update/transition. It is not assigned.
+ * A nested derived field on a read is a filter, matched by its full path.
+ * `details.id` is not identity, and a nested `version` is not concurrency.
  * Other derived fields stay writes, except declared concurrency (`version`).
  * The d1_13g rule that treated every derived input as DERIVED_EDITABLE is replaced.
  */
@@ -544,7 +546,16 @@ function derivedRole(
     if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
     return 'write';
   }
+  if (READ_OPERATIONS.has(operation) && nestedReadFilter(field.name)) return 'filter';
   return 'write';
+}
+
+/** A dotted path on a read. The leaf `id` is a homonym, not the identity field. */
+function nestedReadFilter(name: string): boolean {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return false;
+  const leaf = name.slice(dot + 1);
+  return leaf !== 'id' && leaf !== 'version';
 }
 
 function noteRequiredNotes(

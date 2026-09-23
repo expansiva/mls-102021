@@ -11,7 +11,7 @@ import { decideRepairs, fanoutExecution, fanoutStep, firstWorkerArg, parseWorker
 import { coreUsecaseRequest, fixturePlan, frozenRouteCount } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { D1_MDM_CALLS, D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { parseWorkerReply, STEP_KEYS, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { closedFromRequest, parseWorkerReply, STEP_KEYS, usecaseTool } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 import type { D1UsecaseContext, D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 void test('the frozen core is 13 usecases for 22 routes, and listConsulta and listProfissional are unique', () => {
@@ -717,6 +717,111 @@ void test('assigning a derived field stays an error, including a nested homonym 
   assert.equal(ambiguous.problems.some(item => item.code === 'DERIVED_AMBIGUOUS' && item.path === 'searchConsulta'), true);
   assert.match(ambiguous.problems.find(item => item.code === 'DERIVED_AMBIGUOUS')?.message || '', /operation search does not classify it/);
 });
+
+void test('a nested derived list field is a filter, a transition id is a selector, and a derived write stays refused', () => {
+  const contracts = realContractSources();
+  const paciente = contracts.find(item => item.path.endsWith('/pacientes.defs.ts'));
+  const profissional = contracts.find(item => item.path.endsWith('/profissionais.defs.ts'));
+  const recepcionista = contracts.find(item => item.path.endsWith('/dados_recepcionista.defs.ts'));
+  assert.ok(paciente && profissional && recepcionista);
+  assert.match(paciente.source, /export interface ListPacienteInput[\s\S]*?"status": "Active"/);
+  assert.match(profissional.source, /export interface ListProfissionalInput[\s\S]*?"status": "Active"/);
+  assert.match(recepcionista.source, /export interface ListRecepcionistaInput[\s\S]*?"status": "Active"/);
+
+  for (const usecaseId of ['listPaciente', 'listProfissional', 'listRecepcionista']) {
+    const request = requestOf(contracts, usecaseId);
+    const entity = request.entities.find(item => item.entityId === entityOf(usecaseId));
+    assert.ok(entity);
+    for (const name of ['details.identification.status', 'details.identification.subtype']) {
+      entity.fields.push({ name, type: 'enum', derived: true });
+    }
+    const route = request.routes[0];
+    assert.ok(route);
+    request.contexts = [inputContext(usecaseId, route.route, [
+      { path: 'id', type: 'string', optional: false },
+      { path: 'details', type: 'object', optional: false },
+      { path: 'details.identification.status', type: 'string', optional: false },
+      { path: 'details.identification.subtype', type: 'string', optional: false },
+    ])];
+    const build = buildD1Usecases(request);
+    assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, `${usecaseId}: ${build.problems.map(item => item.message).join('; ')}`);
+    assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
+    assert.equal(build.emit.length, 1, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.details.identification.status`), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.details.identification.subtype`), true, usecaseId);
+    const data = build.emit[0]?.definition.data as { uses?: Array<{ path: string; role: string; source: string }> };
+    assert.equal(data.uses?.some(use => use.path === 'details.identification.status' && use.role === 'filter' && use.source === 'input'), true, usecaseId);
+    const tool = usecaseTool(closedFromRequest(request, request.usecases[0], request.contexts[0]));
+    assert.deepEqual(stepProperty(tool, 'context', 'source').enum, ['ctx'], usecaseId);
+  }
+
+  const transition = requestOf(contracts, 'confirmarConsulta');
+  const transitionRoute = transition.routes[0];
+  assert.ok(transitionRoute);
+  transition.contexts = [inputContext('confirmarConsulta', transitionRoute.route, [
+    { path: 'id', type: 'string', optional: false },
+  ])];
+  const selected = buildD1Usecases(transition);
+  assert.equal(selected.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, selected.problems.map(item => item.message).join('; '));
+  assert.equal(selected.ok, true, selected.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(selected.emit.length, 1);
+  assert.equal(selected.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'confirmarConsulta.id'), true);
+  const transitionTool = usecaseTool(closedFromRequest(transition, transition.usecases[0], transition.contexts[0]));
+  assert.deepEqual(stepProperty(transitionTool, 'context', 'source').enum, ['ctx']);
+  assert.deepEqual(stepProperty(transitionTool, 'transition', 'payload').const, []);
+
+  const written = requestOf(contracts, 'confirmarConsulta');
+  const plan = written.plans[0];
+  assert.ok(plan);
+  written.plans = [{
+    usecaseId: 'confirmarConsulta',
+    steps: plan.steps.map(step => step.kind === 'transition' ? { ...step, payload: ['id'] } : step),
+  }];
+  const assigned = buildD1Usecases(written);
+  assert.equal(assigned.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by confirmarConsulta.'), true);
+  assert.equal(assigned.emit.length, 0);
+
+  const created = buildD1Usecases(singleRouteRequest(
+    'createConsulta',
+    'consultas',
+    'agendaClinica.consultas.cmdCreateConsulta',
+    'cmd',
+    `
+      export interface CreateConsultaInput { id: string; patientId: string; }
+      export interface CreateConsultaOutput { id: string; }
+      export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
+    `,
+  ));
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
+  assert.equal(created.emit.length, 0);
+
+  const authority = requestOf(contracts, 'createProfissional');
+  const authorityPlan = authority.plans[0];
+  assert.ok(authorityPlan);
+  authority.plans = [{
+    usecaseId: 'createProfissional',
+    steps: [...authorityPlan.steps, { kind: 'context', source: 'input' }],
+  }];
+  const fromInput = buildD1Usecases(authority);
+  assert.equal(fromInput.problems.some(item => item.code === 'ACTOR_FROM_INPUT'), true);
+  assert.equal(fromInput.emit.length, 0);
+});
+
+function stepProperty(tool: ReturnType<typeof usecaseTool>, kind: string, key: string): { enum?: unknown[]; const?: unknown } {
+  const parameters = tool.function.parameters;
+  assert.ok(parameters);
+  const steps = (parameters.properties as { steps?: { items?: { anyOf?: unknown[] } } }).steps;
+  const found = steps?.items?.anyOf?.find(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const props = (item as { properties?: { kind?: { const?: unknown } } }).properties;
+    return props?.kind?.const === kind;
+  });
+  assert.ok(found && typeof found === 'object' && !Array.isArray(found), kind);
+  const props = (found as { properties?: Record<string, unknown> }).properties;
+  const value = props?.[key];
+  assert.ok(value && typeof value === 'object' && !Array.isArray(value), key);
+  return value as { enum?: unknown[]; const?: unknown };
+}
 
 function realContractSources(): D1UsecaseRequest['contracts'] {
   const names = readdirSync(REAL_CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();

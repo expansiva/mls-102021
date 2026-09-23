@@ -392,9 +392,15 @@ void test('prepareWorker offers only this operation, on the first request and on
 
   const confirm = await promptFor(opened, 'confirmarConsulta');
   assert.ok(confirm.tool);
-  assert.deepEqual(enumOf(confirm.tool, 'transition', 'payload'), ['id']);
-  assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['id'] }), true);
+  const confirmBranch = anyOf(confirm.tool).find(item => kindOf(item) === 'transition');
+  assert.ok(confirmBranch);
+  const confirmPayload = (confirmBranch.properties as Record<string, { const?: unknown }>).payload;
+  assert.deepEqual(confirmPayload.const, []);
+  assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: [] }), true);
+  assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['id'] }), false);
   assert.equal(fits(confirm.tool, { kind: 'transition', transitionId: 'confirmarConsulta', payload: ['details.attendanceNote'] }), false);
+  assert.deepEqual(enumOf(confirm.tool, 'context', 'source'), ['ctx']);
+  assert.equal(fits(confirm.tool, { kind: 'context', source: 'input' }), false);
   assert.equal(kindsOf(confirm.tool).includes('effect'), true);
 
   const listed = await promptFor(opened, 'listConsulta');

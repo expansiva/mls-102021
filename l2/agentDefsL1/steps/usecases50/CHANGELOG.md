@@ -1,5 +1,11 @@
 # usecases50
 
+## 2026-09-23 (d1_19)
+
+- `source` comes from the same operation catalog as the other step values. Every operation admits `ctx`. The schema does not offer `input`. The gate still refuses a reply that names it.
+- A nested derived field on a list or get input is a filter, matched by its full path. `details.identification.status` is that case. `details.id` is not the identity field and stays a write. `version` on a read stays a write. Create, patch and a transition payload that assign a derived field stay refused.
+- A derived path is not offered on a transition payload. `id` on `confirmarConsulta` is a selector of the input, not a payload value. A reply that still puts it in the payload is refused.
+
 ## 2026-09-23 (d1_18)
 
 - The serialized usecase keeps the validated sequence, the selector, filter, concurrency and write uses, the MDM binding, the lifecycle payload, rule references, the transaction boundary and effect references. `rulesApplied` stays the id list the inventory reads. A rule reference is a path and a symbol. The rule text stays in the source file.

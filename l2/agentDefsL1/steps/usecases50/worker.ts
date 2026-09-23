@@ -47,7 +47,8 @@ const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   payload: { type: 'array', items: { type: 'string' } },
   eventId: { type: 'string' },
   boundary: { type: 'string', enum: ['local', 'external'] },
-  source: { type: 'string', enum: ['ctx', 'input'] },
+  /** Unscoped fallback. A scoped call uses `sources` from the operation catalog. */
+  source: { type: 'string', enum: ['ctx'] },
 };
 
 /** One facade method with the capability that binding says it executes. */
@@ -76,6 +77,8 @@ export interface UsecaseClosedValues {
   /** Paths a transition payload may name. Empty means the payload array is empty. Omitted keeps a free string. */
   payloadPaths?: readonly string[];
   eventIds?: readonly string[];
+  /** Authority values this operation may name. The gate admits `ctx` only. */
+  sources?: readonly string[];
 }
 
 export interface OperationCatalogInput {
@@ -113,7 +116,13 @@ export function catalogForOperation(input: OperationCatalogInput): UsecaseClosed
     transitionIds: input.transitionId ? [input.transitionId] : [],
     payloadPaths: input.transitionId ? dedupe(input.payloadPaths) : [],
     eventIds: dedupe(input.eventIds),
+    sources: authoritySources(),
   };
+}
+
+/** The gate accepts `ctx` on every operation. `input` is not an authority source. */
+function authoritySources(): string[] {
+  return ['ctx'];
 }
 
 /** Selection for the usecase the worker is about to call. Schema and prompt both take this object. */
@@ -140,6 +149,9 @@ export function closedFromRequest(
       for (const field of route.inputFields) inputNames.push(field.path);
     }
   }
+  const payloadNames = transitionId
+    ? writablePayload([...authorizedPayloadNames(request, usecase.usecaseId, inputNames)], entity)
+    : [];
   const portMethods = packet
     ? packet.portMethods.map(method => method.name)
     : (storage === 'mdm' ? [] : port?.methods || []);
@@ -154,9 +166,24 @@ export function closedFromRequest(
     ruleIds,
     eventIds: effects,
     transitionId,
-    payloadPaths: transitionId ? [...authorizedPayloadNames(request, usecase.usecaseId, inputNames)] : [],
+    payloadPaths: payloadNames,
     mdmPairs: pairsFor(entity, usecase.operation),
   });
+}
+
+/**
+ * A derived field in a transition payload is a write. The schema does not offer it.
+ * The gate still refuses a reply that names one.
+ */
+function writablePayload(names: readonly string[], entity: D1UsecaseEntity | undefined): string[] {
+  const out: string[] = [];
+  for (const name of names) {
+    if (!name || out.includes(name)) continue;
+    const field = entity?.fields.find(item => item.name === name);
+    if (field?.derived) continue;
+    out.push(name);
+  }
+  return out;
 }
 
 interface SelectedBranch {
@@ -231,6 +258,10 @@ function notesFor(kind: WorkerKind, closed: UsecaseClosedValues): string[] {
     if (closed.payloadPaths) notes.push(`payload: ${dedupe(closed.payloadPaths).join(', ') || '(none)'}`);
     return notes;
   }
+  if (kind === 'context') {
+    const sources = dedupe(closed.sources || ['ctx']);
+    return sources.length ? [`source: ${sources.join(', ')}`] : [];
+  }
   return [];
 }
 
@@ -286,6 +317,7 @@ function fieldSchema(kind: WorkerKind, key: FieldKey, closed: UsecaseClosedValue
   if (kind === 'transition' && key === 'transitionId') return closedString(closed.transitionIds);
   if (kind === 'transition' && key === 'payload') return payloadSchema(closed.payloadPaths);
   if (kind === 'effect' && key === 'eventId') return closedString(closed.eventIds);
+  if (kind === 'context' && key === 'source') return closed.sources ? closedString(closed.sources) : FIELD_SCHEMA.source;
   return FIELD_SCHEMA[key];
 }
 

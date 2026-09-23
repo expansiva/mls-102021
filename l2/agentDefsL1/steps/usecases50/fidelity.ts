@@ -50,7 +50,8 @@ const UPDATE_OPERATIONS = new Set(['update', 'patch']);
 /**
  * Classifies a derived field the same way the gate does.
  * A payload is a write. Identity on a read is a filter; on an update or
- * transition it is a selector. `version` on those writes is concurrency.
+ * transition it is a selector. A nested derived field on a read is a filter.
+ * `version` on an update or transition is concurrency.
  */
 export function fieldUses(input: {
   operation: string;
@@ -318,7 +319,16 @@ function derivedRole(
     if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
     return 'write';
   }
+  if (READ_OPERATIONS.has(operation) && nestedReadFilter(fieldName)) return 'filter';
   return 'write';
+}
+
+/** A dotted path on a read. The leaf `id` is a homonym, not the identity field. */
+function nestedReadFilter(name: string): boolean {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return false;
+  const leaf = name.slice(dot + 1);
+  return leaf !== 'id' && leaf !== 'version';
 }
 
 function useKey(use: D1FieldUse): string {
