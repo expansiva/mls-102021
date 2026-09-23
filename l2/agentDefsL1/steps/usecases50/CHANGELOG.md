@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-09-23 (d1_24)
+
+- `boundary` comes from the same operation catalog as `source`. A repository operation admits `local`. An MDM operation admits no transaction step, so that branch is omitted. The schema does not offer `external`. The gate still refuses a reply that names it.
+
 ## 2026-09-23 (d1_23)
 
 - `readUsecaseFidelity` re-reads persisted `integrationOutbound` defs. Naming `IQueueRuntime.publish` is `MECHANISM_INCOMPATIBLE`. A wrong path is `MECHANISM_REF`. `publishEvent` / `emitEvent` stay `FICTIONAL_API`. Empty mechanism is not treated as a missing API.

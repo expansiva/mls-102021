@@ -46,7 +46,8 @@ const FIELD_SCHEMA: { [K in FieldKey]: Record<string, unknown> } = {
   transitionId: { type: 'string' },
   payload: { type: 'array', items: { type: 'string' } },
   eventId: { type: 'string' },
-  boundary: { type: 'string', enum: ['local', 'external'] },
+  /** Unscoped fallback. A scoped call uses `boundaries` from the operation catalog. */
+  boundary: { type: 'string', enum: ['local'] },
   /** Unscoped fallback. A scoped call uses `sources` from the operation catalog. */
   source: { type: 'string', enum: ['ctx'] },
 };
@@ -79,6 +80,11 @@ export interface UsecaseClosedValues {
   eventIds?: readonly string[];
   /** Authority values this operation may name. The gate admits `ctx` only. */
   sources?: readonly string[];
+  /**
+   * Transaction boundaries this operation may name.
+   * Empty omits the branch. The gate admits `local` on a repository operation and refuses every other value.
+   */
+  boundaries?: readonly string[];
 }
 
 export interface OperationCatalogInput {
@@ -117,12 +123,22 @@ export function catalogForOperation(input: OperationCatalogInput): UsecaseClosed
     payloadPaths: input.transitionId ? dedupe(input.payloadPaths) : [],
     eventIds: dedupe(input.eventIds),
     sources: authoritySources(),
+    boundaries: transactionBoundaries(input.storageTarget),
   };
 }
 
 /** The gate accepts `ctx` on every operation. `input` is not an authority source. */
 function authoritySources(): string[] {
   return ['ctx'];
+}
+
+/**
+ * Boundaries the gate accepts for this storage.
+ * `external` is refused on every operation. An MDM plan refuses every transaction step.
+ */
+function transactionBoundaries(storageTarget: string): string[] {
+  if (storageTarget === 'mdm') return [];
+  return ['local'];
 }
 
 /** Selection for the usecase the worker is about to call. Schema and prompt both take this object. */
@@ -211,6 +227,7 @@ function kindOffered(kind: WorkerKind, closed: UsecaseClosedValues): boolean {
   if (kind === 'rule') return !knownEmpty(closed.ruleIds);
   if (kind === 'transition') return !knownEmpty(closed.transitionIds);
   if (kind === 'effect') return !knownEmpty(closed.eventIds);
+  if (kind === 'transaction') return !knownEmpty(closed.boundaries);
   return true;
 }
 
@@ -261,6 +278,10 @@ function notesFor(kind: WorkerKind, closed: UsecaseClosedValues): string[] {
   if (kind === 'context') {
     const sources = dedupe(closed.sources || ['ctx']);
     return sources.length ? [`source: ${sources.join(', ')}`] : [];
+  }
+  if (kind === 'transaction') {
+    const boundaries = dedupe(closed.boundaries || ['local']);
+    return boundaries.length ? [`boundary: ${boundaries.join(', ')}`] : [];
   }
   return [];
 }
@@ -318,6 +339,7 @@ function fieldSchema(kind: WorkerKind, key: FieldKey, closed: UsecaseClosedValue
   if (kind === 'transition' && key === 'payload') return payloadSchema(closed.payloadPaths);
   if (kind === 'effect' && key === 'eventId') return closedString(closed.eventIds);
   if (kind === 'context' && key === 'source') return closed.sources ? closedString(closed.sources) : FIELD_SCHEMA.source;
+  if (kind === 'transaction' && key === 'boundary') return closed.boundaries ? closedString(closed.boundaries) : FIELD_SCHEMA.boundary;
   return FIELD_SCHEMA[key];
 }
 

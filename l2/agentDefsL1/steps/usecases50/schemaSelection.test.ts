@@ -302,6 +302,54 @@ void test('authority is ctx on every operation, and the prompt names that source
   }
 });
 
+void test('a boundary the schema offers is a boundary the gate accepts', () => {
+  const request = coreUsecaseRequest();
+  const known = ['local', 'external'];
+  for (const usecase of request.usecases) {
+    const closed = closedFromRequest(request, usecase);
+    const tool = usecaseTool(closed);
+    const offered = offeredBoundaries(tool);
+    assert.deepEqual(offered, [...(closed.boundaries || [])], usecase.usecaseId);
+    const probed = [...new Set([...known, ...offered])];
+    for (const boundary of probed) {
+      const inSchema = offered.includes(boundary);
+      const admitted = !boundaryRefused(request, usecase.usecaseId, boundary);
+      assert.equal(inSchema, admitted, `${usecase.usecaseId} ${boundary}`);
+    }
+    if (offered.length) {
+      assert.equal(workerStepShape(closed).includes(`boundary: ${offered.join(', ')}`), true, usecase.usecaseId);
+      assert.equal(workerStepShape(closed).includes('external'), false, usecase.usecaseId);
+    } else {
+      assert.equal(workerStepShape(closed).includes('- transaction:'), false, usecase.usecaseId);
+    }
+    assert.equal(fits(tool, { kind: 'transaction', boundary: 'external' }), false, usecase.usecaseId);
+  }
+  assert.deepEqual(enumOf(usecaseTool(), 'transaction', 'boundary'), ['local']);
+  assert.equal(fits(usecaseTool(), { kind: 'transaction', boundary: 'local' }), true);
+  assert.equal(fits(usecaseTool(), { kind: 'transaction', boundary: 'external' }), false);
+});
+
+function offeredBoundaries(tool: ReturnType<typeof usecaseTool>): string[] {
+  if (!kindsOf(tool).includes('transaction')) return [];
+  return enumOf(tool, 'transaction', 'boundary');
+}
+
+/** True when the gate refuses this boundary on the fixture plan. Schema and gate must agree. */
+function boundaryRefused(request: D1UsecaseRequest, usecaseId: string, boundary: string): boolean {
+  const scoped = one(structuredClone(request), usecaseId);
+  const usecase = scoped.usecases[0];
+  assert.ok(usecase);
+  const steps: D1WorkerStep[] = [
+    ...fixturePlan(scoped, usecase).steps,
+    { kind: 'transaction', boundary },
+  ];
+  scoped.plans = [{ usecaseId, steps }];
+  const build = buildD1Usecases(scoped);
+  return build.problems.some(item =>
+    item.path === usecaseId
+    && (item.code === 'EXTERNAL_ATOMICITY' || item.code === 'MDM_NOT_ATOMIC' || item.code === 'TRANSACTION_BOUNDARY'));
+}
+
 function one(request: D1UsecaseRequest, usecaseId: string): D1UsecaseRequest {
   return {
     ...request,
