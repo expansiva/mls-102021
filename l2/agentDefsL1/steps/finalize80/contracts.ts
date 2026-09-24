@@ -2,8 +2,14 @@
 
 import type { D1PipelineState, D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1EnumOrigin, D1EnumUse } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
-export const D1_REPORT_VERSION = '2026-09-22-d1-report-v1' as const;
+/**
+ * v2: `consumed` means a covered consumer was proved for this entity and path.
+ * It no longer means "every literal appeared in the seed set".
+ * `origin` separates catalog owner, writer and restriction. `uses` names the consumer.
+ */
+export const D1_REPORT_VERSION = '2026-09-23-d1-report-v2' as const;
 
 /** Recognition by the inventory reader is not a runnable backend. */
 export const INVENTORY_NOTE = 'Inventory recognition is not certification of an executable backend.' as const;
@@ -98,8 +104,13 @@ export interface D1FinalizeFile {
 export interface D1FinalizeEnum {
   entityId: string;
   path: string;
+  /** Effective values declared by the module. Not the catalog. */
   values: string[];
+  /** True when `uses` is non-empty. Not runtime enforcement. */
   consumed: boolean;
+  origin: D1EnumOrigin;
+  uses: D1EnumUse[];
+  limits: string;
 }
 
 export interface D1FinalizePending {
@@ -153,7 +164,23 @@ export function parseFinalizeReport(text: string): D1FinalizeReport | null {
   if (report.llmCalls !== 0 || report.repairOpened !== false || report.executableBackend !== false) return null;
   if (report.inventoryNote !== INVENTORY_NOTE) return null;
   if (!Array.isArray(report.phases) || !Array.isArray(report.findings) || !Array.isArray(report.files)) return null;
+  if (!isEnumBlock(report.enumerations)) return null;
   if (report.outcome !== 'complete' && report.outcome !== 'held') return null;
   if (report.defsStatus !== 'complete' && report.defsStatus !== 'incomplete' && report.defsStatus !== 'notRun') return null;
   return report;
+}
+
+const RESTRICTIONS = new Set(['inherited', 'subset', 'own', 'invalid', 'unresolved']);
+
+function isEnumBlock(value: D1FinalizeReport['enumerations'] | undefined): value is D1FinalizeReport['enumerations'] {
+  if (!value || !Array.isArray(value.consumed) || !Array.isArray(value.notConsumed)) return false;
+  return [...value.consumed, ...value.notConsumed].every(item => isEnumRow(item));
+}
+
+function isEnumRow(value: unknown): value is D1FinalizeEnum {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as D1FinalizeEnum;
+  return typeof row.entityId === 'string' && typeof row.path === 'string' && Array.isArray(row.values)
+    && Array.isArray(row.uses) && typeof row.limits === 'string'
+    && !!row.origin && RESTRICTIONS.has(row.origin.restriction);
 }

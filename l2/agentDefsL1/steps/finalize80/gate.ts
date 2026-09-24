@@ -22,6 +22,7 @@ import {
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
+import { projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
 import {
   CHAIN_STEP_IDS,
   D1_REPORT_VERSION,
@@ -58,7 +59,7 @@ export function buildD1Finalize(request: D1FinalizeRequest): D1FinalizeReport {
 
   const parsed = parseObserved(request, findings);
   const files = classifyFiles(request, chainApproved);
-  const enumerations = chainApproved ? enumsOf(request.drafts.support70) : { consumed: [], notConsumed: [] };
+  const enumerations = chainApproved ? enumsOf(request) : { consumed: [], notConsumed: [] };
   const declaredNotConsumedBy = chainApproved ? declaredNotConsumed(request) : [];
   if (chainApproved) {
     noteEnumerations(enumerations, findings);
@@ -527,35 +528,77 @@ function checkContract(request: D1FinalizeRequest, pageId: string, route: string
   }
 }
 
-function enumsOf(draft: unknown): { consumed: D1FinalizeEnum[]; notConsumed: D1FinalizeEnum[] } {
+function enumsOf(request: D1FinalizeRequest): { consumed: D1FinalizeEnum[]; notConsumed: D1FinalizeEnum[] } {
   const consumed: D1FinalizeEnum[] = [];
   const notConsumed: D1FinalizeEnum[] = [];
-  if (!isRecord(draft) || !Array.isArray(draft.enumerations)) return { consumed, notConsumed };
-  for (const item of draft.enumerations) {
-    if (!isRecord(item) || typeof item.entityId !== 'string' || typeof item.path !== 'string') continue;
-    const row: D1FinalizeEnum = {
-      entityId: item.entityId,
-      path: item.path,
-      values: strings(item.values),
-      consumed: item.consumed === true,
+  const rows = projectEnumerations({
+    enumerations: draftEnums(request.drafts.support70),
+    snapshot: {
+      sources: request.dependencyTexts,
+      definitions: request.observed.flatMap(item => item.text ? [item.text] : []),
+      contracts: Object.values(request.contracts).map(item => ({ path: item.path, text: item.text || '' })),
+      tables: (request.snapshot?.selection.tables || []).map(table => ({ tableId: table.tableId, entityId: table.entity })),
+    },
+  });
+  for (const row of rows) {
+    const reportRow: D1FinalizeEnum = {
+      entityId: row.entityId,
+      path: row.path,
+      values: row.values,
+      consumed: row.consumed,
+      origin: row.origin,
+      uses: row.uses,
+      limits: row.limits,
     };
-    if (row.consumed) consumed.push(row);
-    else notConsumed.push(row);
+    if (reportRow.consumed) consumed.push(reportRow);
+    else notConsumed.push(reportRow);
   }
   return { consumed, notConsumed };
+}
+
+function draftEnums(draft: unknown): Array<{ entityId: string; path: string; values: string[] }> {
+  if (!isRecord(draft) || !Array.isArray(draft.enumerations)) return [];
+  const out: Array<{ entityId: string; path: string; values: string[] }> = [];
+  for (const item of draft.enumerations) {
+    if (!isRecord(item) || typeof item.entityId !== 'string' || typeof item.path !== 'string') continue;
+    out.push({ entityId: item.entityId, path: item.path, values: strings(item.values) });
+  }
+  return out;
 }
 
 function noteEnumerations(
   enumerations: { consumed: D1FinalizeEnum[]; notConsumed: D1FinalizeEnum[] },
   findings: D1FinalizeFinding[],
 ): void {
-  if (enumerations.consumed.length) {
-    const names = enumerations.consumed.map(item => `${item.entityId} ${item.path}`).join(', ');
-    review(findings, 'ENUMERATIONS_CONSUMED', 'domain30.enumerations', `Consumed by the seed plan: ${names}. Values were not copied into rows.`, names);
-  }
-  if (enumerations.notConsumed.length) {
-    const names = enumerations.notConsumed.map(item => `${item.entityId} ${item.path}`).join(', ');
-    review(findings, 'ENUMERATIONS_NOT_CONSUMED', 'domain30.enumerations', `No consumer: ${names}.`, names);
+  for (const row of [...enumerations.consumed, ...enumerations.notConsumed]) {
+    const name = `${row.entityId} ${row.path}`;
+    if (row.origin.restriction === 'invalid') {
+      review(findings, 'ENUMERATION_SUBSET_INVALID', row.path, `Enum ${name} has a value outside its catalog. It was not treated as an inherited platform set.`, name);
+    } else if (row.origin.restriction === 'unresolved' && row.origin.catalogSource) {
+      review(findings, 'ENUMERATION_SOURCE_ABSENT', row.origin.catalogSource, `Enum ${name} names catalog ${row.origin.catalogSource}, and that snapshot was not opened. It was not treated as platform.`, name);
+    } else if (row.origin.restriction === 'subset') {
+      review(findings, 'ENUMERATION_RESTRICTION', row.path, `Enum ${name} narrows its catalog to ${row.values.join('|')}. Owner ${row.origin.owner} does not remove this restriction.`, name);
+    }
+    if (row.origin.owner === 'platform' && !row.uses.some(use => use.purpose === 'seedScenario')) {
+      review(findings, 'ENUMERATION_PLATFORM_UNSEEDED', row.path, `Platform catalog ${name} has no local seed. No row and no catalog copy were written.`, name);
+    }
+    if (row.origin.roleBinding) {
+      review(findings, 'ENUMERATION_ROLE_BINDING', row.path, `Enum ${name} is the role subtype binding, not an editable input.`, name);
+    } else if (row.origin.derived) {
+      review(findings, 'ENUMERATION_DERIVED', row.path, `Enum ${name} is derived. It is not an editable input. A type union is not runtime enforcement.`, name);
+    }
+    if (!row.uses.length) {
+      review(findings, 'ENUMERATIONS_NOT_CONSUMED', row.path, `No consumer: ${name}. ${row.limits}`, name);
+      continue;
+    }
+    const seeded = new Set(row.uses.filter(use => use.purpose === 'seedScenario').flatMap(use => use.values));
+    const fullySeeded = row.values.length > 0 && row.values.every(value => seeded.has(value));
+    if (fullySeeded) {
+      review(findings, 'ENUMERATIONS_CONSUMED', row.path, `Consumed by the seed plan: ${name}. Values were not copied into rows.`, name);
+    } else {
+      const consumers = row.uses.map(use => `${use.purpose} ${use.consumer}`).join(', ');
+      review(findings, 'ENUMERATIONS_CONSUMED', row.path, `Covered use of ${name}: ${consumers}. A type union is not runtime enforcement.`, name);
+    }
   }
 }
 

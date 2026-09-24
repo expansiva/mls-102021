@@ -658,6 +658,8 @@ export const D1_FIELD_READERS = {
   'persistenceSeeds.scenarios.refs.entityId': 'seedScenarioIssues',
   'persistenceSeeds.scenarios.states': 'seedScenarioIssues',
   'persistenceSeeds.scenarios.requires': 'seedScenarioIssues',
+  'persistenceSeeds.scenarios.entityId': 'seedUses',
+  'persistenceSeeds.scenarios.stateField': 'seedUses',
   'persistenceSeeds.dependencies': 'seedScenarioIssues',
   'persistenceSeeds.dependencies.entityId': 'seedScenarioIssues',
   'persistenceSeeds.dependencies.kind': 'seedScenarioIssues',

@@ -1041,7 +1041,7 @@ function seedScenarioItem(scenario: unknown, index: number, issues: string[]): v
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(scenario, ['scenarioId', 'tableId', 'source', 'constraints', 'refs', 'states', 'requires'], path, issues);
+  unknownKeys(scenario, ['scenarioId', 'tableId', 'source', 'constraints', 'refs', 'states', 'requires', 'entityId', 'stateField'], path, issues);
   needString(scenario, 'scenarioId', path, issues);
   needString(scenario, 'tableId', path, issues);
   if (scenario.source !== undefined && (typeof scenario.source !== 'string' || !SEED_SOURCE.test(scenario.source))) {
@@ -1060,6 +1060,12 @@ function seedScenarioItem(scenario: unknown, index: number, issues: string[]): v
     for (const field of requires) {
       if (!SEED_FIELD.test(field) || seedText(field)) issues.push(`${path}.requires must name a field.`);
     }
+  }
+  if (scenario.entityId !== undefined && (typeof scenario.entityId !== 'string' || !SEED_SOURCE.test(scenario.entityId))) {
+    issues.push(`${path}.entityId must name the entity this scenario cites.`);
+  }
+  if (scenario.stateField !== undefined && (typeof scenario.stateField !== 'string' || !SEED_FIELD.test(scenario.stateField) || seedText(scenario.stateField))) {
+    issues.push(`${path}.stateField must name the field this scenario cites.`);
   }
 }
 

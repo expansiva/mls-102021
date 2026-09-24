@@ -1,5 +1,10 @@
 # finalize80
 
+## 2026-09-23 (d1_25)
+
+- Report schema `2026-09-23-d1-report-v2`. `consumed` is a proved use of this entity and path, re-read from the serialized def or contract. The draft flag alone is not credit.
+- `origin` separates catalog owner, writer and restriction. `uses` names the consumer. `ENUMERATIONS_NOT_CONSUMED` is only a field with no covered use. A restriction without a consumer stays a finding. A type union is not runtime enforcement.
+
 ## 2026-09-23
 
 - A declared dependency that this pipeline does not generate is a read source, not a future output. It is accepted only when that file was opened. The project in the path is part of the identity. A path that is not on disk stays `REF_INVALID` and `SOURCE_ABSENT`. A missing symbol stays `RULE_TEXT_ABSENT`.

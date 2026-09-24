@@ -19,14 +19,13 @@ import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import type { D1ControllerGrant, D1ControllerRelationship } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import {
   D1_SUPPORT_VERSION,
-  ENUMERATION_CONSUMED_REASON,
-  ENUMERATION_REASON,
   ENUMERATION_SOURCE,
   type D1PublicationItem,
   type D1PublicationLater,
   type D1RegistryAdapter,
   type D1ScopeResolution,
   type D1EffectReport,
+  type D1SeedCitation,
   type D1SeedDataset,
   type D1SeedDependency,
   type D1SeedJourney,
@@ -43,6 +42,7 @@ import {
   type D1SupportProblem,
   type D1SupportRequest,
 } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import { lifecyclePath, projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
 
 const LIVE_ACTIONS = new Set(['create', 'update', 'recompose', 'preserve']);
 const WRITE_ACTIONS = new Set(['create', 'update', 'recompose']);
@@ -88,7 +88,7 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
     }
   }
   const stillOk = !problems.some(problem => problem.severity === 'error');
-  const enumerations = classifyEnumerations(request, stillOk ? seeds.cited : new Set<string>());
+  const enumerations = classifyEnumerations(request, stillOk ? seeds.citations : []);
   return finish(
     request,
     stillOk,
@@ -202,8 +202,8 @@ export function emitSeeds(
   request: D1SupportRequest,
   problems: D1SupportProblem[],
   normalizations: D1SupportNormalization[],
-): { emit: D1SupportEmit[]; plan: D1SeedReport; cited: Set<string> } {
-  const empty = { emit: [] as D1SupportEmit[], plan: absentPlan(), cited: new Set<string>() };
+): { emit: D1SupportEmit[]; plan: D1SeedReport; citations: D1SeedCitation[] } {
+  const empty = { emit: [] as D1SupportEmit[], plan: absentPlan(), citations: [] as D1SeedCitation[] };
   if (request.maintenance?.action === 'reseed') {
     error(problems, 'MAINTENANCE_RESEED', 'seeds', 'Maintenance does not reseed. No rows were written.');
     return empty;
@@ -219,7 +219,7 @@ export function emitSeeds(
 
   const scenarios: Array<Record<string, unknown>> = [];
   const datasets: D1SeedDataset[] = [];
-  const cited = new Set<string>();
+  const citations: D1SeedCitation[] = [];
   const localEntities = new Set<string>();
   for (const table of [...request.tables].sort((left, right) => left.tableId.localeCompare(right.tableId))) {
     if (!LIVE_ACTIONS.has(table.action)) continue;
@@ -241,12 +241,14 @@ export function emitSeeds(
       return empty;
     }
     const planning = model.uniqueKeys.length ? model : { ...model, uniqueKeys: table.uniqueKeys };
+    const stateField = lifecyclePath(model.entityId, planning.states, request.enumerations);
     const journeys = request.journeys
       .filter(item => item.entities.includes(model.entityId))
       .sort((left, right) => left.journeyId.localeCompare(right.journeyId));
     const built = journeys.length
-      ? journeys.map(item => scenarioOf(table.tableId, planning, refs, item, cited))
-      : [modelScenario(table.tableId, planning, refs, cited)];
+      ? journeys.map(item => scenarioOf(table.tableId, planning, refs, item, stateField))
+      : [modelScenario(table.tableId, planning, refs, stateField)];
+    citations.push(...citationsOf(model.entityId, stateField, built));
     scenarios.push(...built);
     const owners = ownerIds(built.map(item => String(item.scenarioId)), request);
     if (!owners.length) continue;
@@ -272,7 +274,7 @@ export function emitSeeds(
       detail: 'The seed dataset still has an owner. It was not removed.',
     });
   }
-  if (!writable(request, 'persistenceSeeds', problems, true)) return { emit: [], plan: planOf(scenarios, datasets, request, localEntities), cited };
+  if (!writable(request, 'persistenceSeeds', problems, true)) return { emit: [], plan: planOf(scenarios, datasets, request, localEntities), citations };
 
   const dependencies = dependenciesOf(request, localEntities);
   const data = {
@@ -287,7 +289,7 @@ export function emitSeeds(
   const emit: D1SupportEmit[] = [];
   pushDefinition(emit, definition, seedsPipeline(request, defPath, datasets), defPath, problems);
   if (problems.some(problem => problem.severity === 'error')) return empty;
-  return { emit, plan: { phase: 'plan', materialized: false, rowCount: 0, datasets, dependencies }, cited };
+  return { emit, plan: { phase: 'plan', materialized: false, rowCount: 0, datasets, dependencies }, citations };
 }
 
 function columnRefs(request: D1SupportRequest, model: D1SeedModel, problems: D1SupportProblem[]): D1SeedRef[] {
@@ -325,7 +327,7 @@ function scenarioOf(
   model: D1SeedModel,
   refs: readonly D1SeedRef[],
   journey: D1SeedJourney,
-  cited: Set<string>,
+  stateField: string,
 ): Record<string, unknown> {
   const effect = journey.effects.find(item => item.entityId === model.entityId);
   const transition = effect?.transitionRef
@@ -334,18 +336,33 @@ function scenarioOf(
   const states: string[] = [];
   if (transition?.to) states.push(transition.to);
   else if (effect?.effect === 'create' && model.initialState) states.push(model.initialState);
-  for (const state of states) cited.add(state);
   const noteState = transition && model.noteField && transition.ruleRefs.includes(NOTE_RULE) ? transition.to : '';
   const requires = noteState ? [model.noteField] : [];
-  return scenarioRecord(journey.journeyId, tableId, `journey:${journey.journeyId}`, model, refs, states, requires, noteState);
+  return scenarioRecord(journey.journeyId, tableId, `journey:${journey.journeyId}`, model, refs, states, requires, noteState, stateField);
 }
 
-function modelScenario(tableId: string, model: D1SeedModel, refs: readonly D1SeedRef[], cited: Set<string>): Record<string, unknown> {
+function modelScenario(
+  tableId: string,
+  model: D1SeedModel,
+  refs: readonly D1SeedRef[],
+  stateField: string,
+): Record<string, unknown> {
   const states = [...model.states];
-  for (const state of states) cited.add(state);
   const noteState = model.transitions.find(item => item.ruleRefs.includes(NOTE_RULE) && item.to)?.to || '';
   const requires = noteState && model.noteField ? [model.noteField] : [];
-  return scenarioRecord(`model-${tableId}`, tableId, `model:${model.entityId}`, model, refs, states, requires, noteState);
+  return scenarioRecord(`model-${tableId}`, tableId, `model:${model.entityId}`, model, refs, states, requires, noteState, stateField);
+}
+
+function citationsOf(entityId: string, stateField: string, scenarios: readonly Record<string, unknown>[]): D1SeedCitation[] {
+  if (!stateField) return [];
+  const citations: D1SeedCitation[] = [];
+  for (const scenario of scenarios) {
+    const scenarioId = typeof scenario.scenarioId === 'string' ? scenario.scenarioId : '';
+    const values = Array.isArray(scenario.states) ? scenario.states.filter((item): item is string => typeof item === 'string' && !!item) : [];
+    if (!scenarioId || !values.length) continue;
+    citations.push({ entityId, path: stateField, scenarioId, values });
+  }
+  return citations;
 }
 
 function scenarioRecord(
@@ -357,6 +374,7 @@ function scenarioRecord(
   states: readonly string[],
   requires: readonly string[],
   noteState: string,
+  stateField: string,
 ): Record<string, unknown> {
   const constraints = [
     ...uniqueConstraints(model),
@@ -371,7 +389,9 @@ function scenarioRecord(
     constraints,
     refs: refs.map(ref => ({ ...ref })),
     states: [...states],
+    entityId: model.entityId,
   };
+  if (stateField) record.stateField = stateField;
   if (requires.length) record.requires = [...requires];
   return record;
 }
@@ -771,17 +791,11 @@ function edgeOf(item: D1PipelineItem | undefined): { id: string; type: string; d
   };
 }
 
-function classifyEnumerations(request: D1SupportRequest, cited: ReadonlySet<string>): D1SupportEnumeration[] {
-  return request.enumerations.map(item => {
-    const consumed = item.values.length > 0 && item.values.every(value => cited.has(value));
-    return {
-      entityId: item.entityId,
-      path: item.path,
-      values: [...item.values],
-      consumed,
-      source: ENUMERATION_SOURCE,
-      reason: consumed ? ENUMERATION_CONSUMED_REASON : ENUMERATION_REASON,
-    };
+function classifyEnumerations(request: D1SupportRequest, citations: readonly D1SeedCitation[]): D1SupportEnumeration[] {
+  return projectEnumerations({
+    enumerations: request.enumerations,
+    snapshot: request.enumSnapshot,
+    seedCitations: citations,
   });
 }
 
@@ -1025,7 +1039,7 @@ function finish(
     normalizations.push({
       code: 'ENUMERATIONS_CONSUMED',
       path: ENUMERATION_SOURCE,
-      detail: `${consumed.length} enum groups are cited by seed scenarios. No rows were written.`,
+      detail: `${consumed.length} enum groups have a covered consumer. No rows were written.`,
     });
   }
   if ((unconsumed.length || enumerations.length === 0) && !normalizations.some(item => item.code === 'ENUMERATIONS_NOT_CONSUMED')) {

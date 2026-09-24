@@ -100,7 +100,9 @@ values stay on the domain draft. `controllers60` writes one http controller
 def per page. The binding and the projection stay on its draft. Enum values
 stay on the domain draft. `support70` writes the access scope, the authority
 map, the repository registry and the seed plan. Join helpers stay on its
-draft. A seed enum whose values are all cited is consumed. Other enum values
+draft. A seed scenario names the entity and the field it cites. `consumed` means a
+covered consumer was proved for that field. A platform owner does not erase a
+local restriction, and a type union is not runtime enforcement. Enum values
 stay on the domain draft. It writes the outbound effect plan and does not publish it. It does not write `seeds.ts`, rows, a scheduler or l5.
 `finalize80` reads the checkpoint, the snapshot, the drafts and the defs on
 disk. It writes `report.json`. It does not run an earlier phase and it does

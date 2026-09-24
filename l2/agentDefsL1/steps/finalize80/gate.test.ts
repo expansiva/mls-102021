@@ -409,11 +409,15 @@ void test('a complete defs run still refuses an executable backend and names the
   assert.equal(report.materialization, 'pending');
   assert.equal(report.materializationPending.every(item => item.present === false), true);
   assert.equal(codes(report, 'ARTIFACT_ABSENT'), 0);
-  assert.equal(report.enumerations.consumed.some(item => item.entityId === 'Consulta' && item.path === 'status'), true);
+  assert.equal(report.enumerations.consumed.length, 0);
+  const status = report.enumerations.notConsumed.find(item => item.entityId === 'Consulta' && item.path === 'status');
+  assert.equal(status?.consumed, false);
+  assert.equal(status?.origin.owner, 'unresolved');
   const subtype = report.enumerations.notConsumed.find(item => item.path === 'details.identification.subtype');
   assert.equal(subtype?.entityId, 'Paciente');
   assert.equal(subtype?.consumed, false);
-  assert.equal(codes(report, 'ENUMERATIONS_NOT_CONSUMED'), 1);
+  assert.notEqual(subtype?.origin.owner, 'platform');
+  assert.equal(codes(report, 'ENUMERATIONS_NOT_CONSUMED'), 2);
   assert.equal(codes(report, 'INTEGRATION_UNBOUND'), 1);
   assert.equal(report.findings.find(item => item.code === 'PAYLOAD_UNDECLARED')?.ownerRef, 'registrarAtendimento');
   assert.deepEqual(report.declaredNotConsumedBy, ['persistence40', 'usecases50', 'controllers60', 'support70']);
@@ -684,6 +688,27 @@ void test('the six real usecases approve when the platform catalog is on disk', 
   assert.equal(codes(report, 'REF_INVALID'), 0);
   assert.equal(codes(report, 'SOURCE_ABSENT'), 0);
   for (const usecaseId of PLATFORM_USECASES) assert.ok(report.inventory.usecaseIds.includes(usecaseId), usecaseId);
+  assert.equal(report.inventory.usecaseIds.some(id => id.toLowerCase().includes('contato')), false);
+  const status = report.enumerations.consumed.find(item => item.entityId === 'Consulta' && item.path === 'status');
+  assert.equal(status?.uses.some(use => use.purpose === 'seedScenario'), true);
+  const docType = report.enumerations.consumed.find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.docType');
+  assert.equal(docType?.origin.catalogValues.length, 9);
+  assert.deepEqual(docType?.values, ['CPF', 'Passport', 'NationalId', 'Other']);
+  assert.equal(docType?.origin.restriction, 'subset');
+  assert.equal(docType?.uses.some(use => use.purpose === 'usecaseDef' || use.purpose === 'routeContract'), true);
+  const phone = report.enumerations.notConsumed.find(item => item.entityId === 'ContatoPaciente' && item.path === 'details.contactChannel.contactType');
+  assert.equal(phone?.origin.restriction, 'subset');
+  assert.equal(phone?.consumed, false);
+  assert.equal(report.findings.some(item => item.code === 'ENUMERATION_RESTRICTION' && item.ownerRef === 'ContatoPaciente details.contactChannel.contactType'), true);
+  const subtype = [...report.enumerations.consumed, ...report.enumerations.notConsumed]
+    .find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.subtype');
+  assert.equal(subtype?.origin.roleBinding, true);
+  assert.equal(subtype?.uses.every(use => use.editable === false), true);
+  const derived = [...report.enumerations.consumed, ...report.enumerations.notConsumed]
+    .find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.status');
+  assert.equal(derived?.origin.derived, true);
+  assert.equal(derived?.uses.every(use => use.editable === false), true);
+  assert.equal(JSON.stringify(report), JSON.stringify(buildD1Finalize(assembled.request)));
   assert.equal(report.materializationPending.some(item => item.outputPath.includes('102034')), false);
   assert.equal(report.executableBackend, false);
 });

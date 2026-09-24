@@ -17,6 +17,47 @@ export const ENUMERATION_REASON = 'Scope and registry have no values slot. Enum 
 
 export const ENUMERATION_CONSUMED_REASON = 'Seed scenarios cite every value of this enum. The values are not copied into rows.' as const;
 
+/** A covered consumer names this field. The union is not runtime enforcement. */
+export const ENUMERATION_PROVED_REASON = 'A covered consumer names this entity and path. A type union is not runtime enforcement. Values stay on the domain draft.' as const;
+
+export type D1EnumOwner = 'platform' | 'module' | 'unresolved';
+
+export type D1EnumWriter = 'platform' | 'module' | 'derived' | 'unresolved';
+
+export type D1EnumRestriction = 'inherited' | 'subset' | 'own' | 'invalid' | 'unresolved';
+
+export type D1EnumPurpose = 'seedScenario' | 'routeContract' | 'usecaseDef' | 'domainDef';
+
+/** One proved use. A homonymous literal on another entity or path is not this use. */
+export interface D1EnumUse {
+  purpose: D1EnumPurpose;
+  consumer: string;
+  entityId: string;
+  path: string;
+  values: string[];
+  /** False when the field is derived, a role binding, or the literal is only on an output. */
+  editable: boolean;
+}
+
+/** Catalog owner, writer and restriction. They are not one badge. */
+export interface D1EnumOrigin {
+  owner: D1EnumOwner;
+  writer: D1EnumWriter;
+  derived: boolean;
+  restriction: D1EnumRestriction;
+  catalogValues: string[];
+  catalogSource: string;
+  roleBinding: boolean;
+}
+
+/** A seed scenario that names one entity and one field. Not a global set of literals. */
+export interface D1SeedCitation {
+  entityId: string;
+  path: string;
+  scenarioId: string;
+  values: string[];
+}
+
 export interface D1SupportProblem {
   severity: 'error' | 'review';
   code: string;
@@ -34,10 +75,16 @@ export interface D1SupportEnumeration {
   entityId: string;
   path: string;
   values: string[];
+  /** True when `uses` is non-empty. Not runtime enforcement. */
   consumed: boolean;
   source: typeof ENUMERATION_SOURCE;
-  reason: typeof ENUMERATION_REASON | typeof ENUMERATION_CONSUMED_REASON;
+  reason: typeof ENUMERATION_REASON | typeof ENUMERATION_CONSUMED_REASON | typeof ENUMERATION_PROVED_REASON;
+  origin: D1EnumOrigin;
+  uses: D1EnumUse[];
+  limits: string;
 }
+
+export type D1EnumRow = D1SupportEnumeration;
 
 export interface D1SupportFile {
   artifactType: string;
@@ -259,6 +306,16 @@ export interface D1SupportRequest {
   roleTags: D1SeedRoleTag[];
   /** Extra refs a caller proposed. A ref without a column relationship is refused. */
   seedRefs: D1SeedRef[];
+  /**
+   * Ontology, catalog and serialized defs already opened for this run.
+   * Absent on a fixture that only classifies seed citations.
+   */
+  enumSnapshot?: {
+    sources: Record<string, string>;
+    definitions: string[];
+    contracts: Array<{ path: string; text: string }>;
+    tables: Array<{ tableId: string; entityId: string }>;
+  };
   /** Datasets already shared. Dropping one owner does not drop the dataset. */
   existingDatasets: D1SeedDataset[];
   maintenance: D1SeedMaintenance | null;

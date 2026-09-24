@@ -1,5 +1,11 @@
 # support70
 
+## 2026-09-23 (d1_25)
+
+- Seed citation is `entityId` + `stateField` + scenario, not one set of literals.
+- Origin, writer and restriction stay separate. A platform owner does not hide a subset.
+- `consumed` means a covered consumer of this field. It does not mean runtime enforcement.
+
 ## 2026-09-23 (d1_23)
 
 - `IQueueRuntime.publish` remains measured evidence. Naming it on an outbound event is `MECHANISM_INCOMPATIBLE`, not a binding. `effectPlan.executed` stays false and `capability.bound` stays false.

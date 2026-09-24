@@ -70,9 +70,13 @@ that is a role tag rather than the entity id, is an error.
 Maintenance does not reseed or reset. Removing one owner of a dataset that
 still has another owner keeps the dataset.
 
-An enum is `consumed: true` only when every one of its values is cited as a
-seed state (`ENUMERATIONS_CONSUMED`). Any other enum stays `consumed: false`
-with `ENUMERATIONS_NOT_CONSUMED`.
+An enum is `consumed: true` when a covered consumer names that entity and path:
+a seed scenario (`entityId` + `stateField`), a route-contract union, or a
+domain or usecase def whose type carries those literals. A shared literal does
+not move the credit. `ENUMERATIONS_NOT_CONSUMED` is only the field whose covered
+analysis found no consumer. Catalog owner, derived writer and a local subset
+stay separate. A subset with no consumer stays visible. No seed row is written
+to create a consumer.
 
 A seed or effect error sets `awaitingStep` to `support70` and
 `steps.support70.error` to `CODE:count`. The step is `failed`, not `approved`.

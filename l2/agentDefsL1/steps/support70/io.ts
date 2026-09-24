@@ -6,8 +6,9 @@ import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agen
 import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { entityPath, inputPaths, journeyPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { contractPath, entityPath, inputPaths, journeyPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
@@ -90,6 +91,7 @@ export async function assembleD1Support(
     selectedEventIds: [...snapshot.selection.outbound].sort(),
     usecaseIds,
     operations: linked.operations,
+    enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };
   return { build: buildD1Support(request), files };
 }
@@ -188,6 +190,57 @@ async function receiptFiles(
     });
   }
   return files;
+}
+
+const ENUM_DEF_TYPES = new Set(['usecase', 'domainEntity', 'persistenceSeeds']);
+
+/** Ontology and catalog texts whose snapshot digest matches, plus defs this run already wrote. */
+async function enumSnapshotOf(
+  project: number,
+  moduleName: string,
+  snapshot: D1InputSnapshot,
+): Promise<D1SupportRequest['enumSnapshot']> {
+  const sources: Record<string, string> = {};
+  for (const source of snapshot.sources) {
+    if (source.state !== 'present') continue;
+    const text = await readLogical(project, source.path);
+    if (text == null || await sha256Text(text) !== source.sha256) continue;
+    sources[source.path] = text;
+  }
+  const catalogs = new Set<string>();
+  for (const text of Object.values(sources)) {
+    const parsed = parseD1Source(text, 'defs');
+    if (isRecord(parsed) && typeof parsed.source === 'string' && parsed.source) catalogs.add(parsed.source);
+  }
+  for (const source of catalogs) {
+    if (sources[source]) continue;
+    const info = catalogInfo(source);
+    if (!info) continue;
+    const text = await readText(info);
+    if (text == null) continue;
+    const listed = snapshot.sources.find(item => item.path === source);
+    if (listed && listed.sha256 !== await sha256Text(text)) continue;
+    sources[source] = text;
+  }
+  const definitions: string[] = [];
+  for (const file of snapshot.files) {
+    if (!ENUM_DEF_TYPES.has(file.artifactType)) continue;
+    const text = await readLogical(project, logicalDefPath(file.defPath));
+    if (text) definitions.push(text);
+  }
+  const contracts: Array<{ path: string; text: string }> = [];
+  for (const page of snapshot.selection.pages) {
+    if (!page.pageId) continue;
+    const path = contractPath(moduleName, page.pageId);
+    const text = await readLogical(project, path);
+    if (text) contracts.push({ path, text });
+  }
+  return {
+    sources,
+    definitions,
+    contracts,
+    tables: snapshot.selection.tables.map(table => ({ tableId: table.tableId, entityId: table.entity })),
+  };
 }
 
 async function readLogical(project: number, logical: string): Promise<string | null> {
