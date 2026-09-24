@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { coreControllerRequest, frozenControllerCounts } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { buildD1Controllers, grantUnionIssues } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
-import type { D1ControllerRequest, D1HandlerBinding } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import type { D1ControllerBuild, D1ControllerRequest, D1HandlerBinding } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
 void test('the frozen head is 5 controllers and 22 routes, one def per page', () => {
   const measured = frozenControllerCounts();
@@ -39,8 +39,14 @@ void test('the frozen head is 5 controllers and 22 routes, one def per page', ()
     assert.equal(handler.projection.envelope, 'passthrough');
     assert.equal(Object.hasOwn(handler.projection, 'items'), false);
   }
-  assert.equal(build.emit.every(item => (item.pipeline[0]?.dependsFiles || []).every(file => !file.includes('/l2/') && file.includes('/usecases/'))), true);
-  assert.equal(build.emit.every(item => !(item.pipeline[0]?.dependsOn || []).some(dep => dep.includes('accessScope') || dep.includes('repositoryAdapter'))), true);
+  assert.equal(build.emit.every(item => {
+    const files = item.pipeline[0]?.dependsFiles || [];
+    return files.some(file => file.includes('/usecases/'))
+      && files.filter(file => file.includes('/scope/accessScope.defs.ts')).length === 1
+      && files.every(file => !file.includes('/l2/') && (file.includes('/usecases/') || file.includes('/scope/accessScope.defs.ts')));
+  }), true);
+  assert.equal(build.emit.every(item => (item.pipeline[0]?.dependsOn || []).some(dep => dep.endsWith('/accessScope/accessScope'))), true);
+  assert.equal(build.emit.every(item => !(item.pipeline[0]?.dependsOn || []).some(dep => dep.includes('repositoryAdapter'))), true);
   assert.equal(JSON.stringify(build.emit).includes('ctx.mdm'), false);
   assert.equal(build.enumerations.every(item => item.consumed === false && item.source === 'domain30.enumerations'), true);
   assert.equal(build.normalizations.some(item => item.code === 'ENUMERATIONS_NOT_CONSUMED'), true);
@@ -65,6 +71,10 @@ void test('listConsulta keeps two projections and does not union grants', () => 
   assert.deepEqual(agenda.grantIds, ['profissionalAgendaDiaria']);
   assert.deepEqual(consultas.grantIds, ['recepcionistaAgendaConsultas']);
   assert.deepEqual(pacientes.grantIds, ['recepcionistaAgendaConsultas']);
+  const emittedAgenda = handlersOf(build, 'agendaClinica.agenda.qryListConsulta');
+  const emittedConsultas = handlersOf(build, 'agendaClinica.consultas.qryListConsulta');
+  assert.deepEqual(emittedAgenda, ['profissionalAgendaDiaria']);
+  assert.deepEqual(emittedConsultas, ['recepcionistaAgendaConsultas']);
   assert.equal(agenda.grantIds.includes('recepcionistaAgendaConsultas'), false);
   assert.equal(consultas.grantIds.includes('profissionalAgendaDiaria'), false);
   const scope = agenda.scopePlan[0];
@@ -353,4 +363,13 @@ function handler(handlers: D1HandlerBinding[], route: string): D1HandlerBinding 
   const found = handlers.find(item => item.route === route);
   assert.ok(found, route);
   return found;
+}
+
+function handlersOf(build: D1ControllerBuild, route: string): string[] {
+  for (const item of build.emit) {
+    const data = item.definition.data as { handlers?: Array<{ route?: string; grantIds?: string[] }> };
+    const found = data.handlers?.find(handler => handler.route === route);
+    if (found) return [...(found.grantIds || [])];
+  }
+  assert.fail(route);
 }

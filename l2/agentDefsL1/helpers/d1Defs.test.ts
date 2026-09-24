@@ -18,6 +18,7 @@ import {
   D1_FORECAST_CORE,
   D1_MEASURED_PUBLISH,
   accessAnchorIssues,
+  accessScopeIssues,
   adapterLinkIssues,
   authorityGrantIssues,
   definitionIssues,
@@ -316,6 +317,7 @@ void test('access keeps the contradictory anchor and integration keeps unbound e
   const port = examples.find(example => example.definition.artifactType === 'repositoryPort');
   const table = examples.find(example => example.definition.artifactType === 'table');
   assert.ok(scope && authority && integration && adapter && port && table);
+  assert.deepEqual(accessScopeIssues(scope?.definition.data), []);
   const anchors = accessAnchorIssues(scope?.definition.data);
   assert.equal(anchors.length, 1);
   assert.match(anchors[0] || '', /profissionalAgendaDiaria/);

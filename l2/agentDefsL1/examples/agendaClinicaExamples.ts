@@ -34,6 +34,34 @@ function handlerKind(kind: string): 'query' | 'command' {
   throw new Error(`Route kind is not cmd or qry: ${kind}.`);
 }
 
+function scopeGrant(
+  grantId: string,
+  actorRef: string,
+  entityRefs: string[],
+  disclosure: 'fieldsOnly' | 'fullRecord',
+  scopeMode: 'own' | 'organization',
+  extra: {
+    allowedFields?: string[];
+    anchorEntity?: string;
+    path?: Array<{ relationshipId: string; from: string; to: string; field: string }>;
+    pending?: string;
+  } = {},
+): Record<string, unknown> {
+  const grant: Record<string, unknown> = {
+    grantId,
+    actorRef,
+    entityRefs,
+    disclosure,
+    scopeMode,
+    session: 'verified',
+    path: extra.path || [],
+    pending: extra.pending || '',
+  };
+  if (extra.anchorEntity) grant.anchorEntity = extra.anchorEntity;
+  if (disclosure === 'fieldsOnly') grant.allowedFields = extra.allowedFields || [];
+  return grant;
+}
+
 export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Example[] {
   const listRoutes = plan.selection.usecases.find(usecase => usecase.usecaseId === 'listConsulta')?.routes || [];
   for (const route of [PROFESSIONAL_LIST, RECEPTION_LIST]) {
@@ -176,56 +204,30 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
   const scope = envelope('accessScope', 'accessScope', {
     scopeId: 'accessScope',
     grants: [
-      {
-        grantId: 'recepcionistaCadastroPacientes',
-        actorRef: 'recepcionista',
-        entityRefs: ['Paciente', 'ContatoPaciente'],
-        disclosure: 'fieldsOnly',
+      scopeGrant('recepcionistaCadastroPacientes', 'recepcionista', ['Paciente', 'ContatoPaciente'], 'fieldsOnly', 'organization', {
         allowedFields: ['Paciente.id', 'Paciente.details.identification', 'ContatoPaciente.id'],
-      },
-      {
-        grantId: 'recepcionistaAgendaConsultas',
-        actorRef: 'recepcionista',
-        entityRefs: ['Consulta'],
-        disclosure: 'fieldsOnly',
+      }),
+      scopeGrant('recepcionistaAgendaConsultas', 'recepcionista', ['Consulta'], 'fieldsOnly', 'organization', {
         allowedFields: ['Consulta.id', 'Consulta.patientId', 'Consulta.professionalId', 'Consulta.scheduledAt', 'Consulta.status'],
-      },
-      {
-        grantId: 'recepcionistaLocalizarProfissionais',
-        actorRef: 'recepcionista',
-        entityRefs: ['Profissional'],
-        disclosure: 'fieldsOnly',
+      }),
+      scopeGrant('recepcionistaLocalizarProfissionais', 'recepcionista', ['Profissional'], 'fieldsOnly', 'organization', {
         allowedFields: ['Profissional.id', 'Profissional.details.identification'],
-      },
-      {
-        grantId: 'recepcionistaProprioCadastro',
-        actorRef: 'recepcionista',
+      }),
+      scopeGrant('recepcionistaProprioCadastro', 'recepcionista', ['Recepcionista'], 'fullRecord', 'own', {
         anchorEntity: 'Recepcionista',
-        entityRefs: ['Recepcionista'],
-        disclosure: 'fullRecord',
-      },
-      {
-        grantId: 'profissionalProprioCadastro',
-        actorRef: 'profissional',
+      }),
+      scopeGrant('profissionalProprioCadastro', 'profissional', ['Profissional'], 'fullRecord', 'own', {
         anchorEntity: 'Profissional',
-        entityRefs: ['Profissional'],
-        disclosure: 'fullRecord',
-      },
-      {
-        grantId: 'profissionalAgendaDiaria',
-        actorRef: 'profissional',
+      }),
+      scopeGrant('profissionalAgendaDiaria', 'profissional', ['Consulta'], 'fullRecord', 'own', {
         anchorEntity: 'Paciente',
-        entityRefs: ['Consulta'],
-        disclosure: 'fullRecord',
-      },
-      {
-        grantId: 'profissionalPacientesDaAgenda',
-        actorRef: 'profissional',
+        pending: 'ACCESS_ANCHOR',
+        path: [{ relationshipId: 'appointmentPatient', from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId' }],
+      }),
+      scopeGrant('profissionalPacientesDaAgenda', 'profissional', ['Paciente'], 'fieldsOnly', 'own', {
         anchorEntity: 'Paciente',
-        entityRefs: ['Paciente'],
-        disclosure: 'fieldsOnly',
         allowedFields: ['Paciente.id', 'Paciente.details.identification'],
-      },
+      }),
     ],
   });
 

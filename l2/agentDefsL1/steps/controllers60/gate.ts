@@ -587,6 +587,9 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
     dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
     dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
   }
+  const scopeLogical = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;
+  dependsOn.push(pipelineId(request.project, request.moduleName, 'accessScope', 'accessScope'));
+  dependsFiles.push(qualifyDefPath(request.project, scopeLogical));
   return {
     id: pipelineId(request.project, request.moduleName, 'httpController', item.pageId),
     type: 'httpController',

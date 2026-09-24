@@ -10,7 +10,9 @@ import {
   integrationMechanismIssues,
   isArtifactType,
   isRecord,
+  reconstructAccessPolicy,
   type D1Definition,
+  type D1PolicyUnit,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { logicalDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import {
@@ -67,6 +69,7 @@ export function buildD1Finalize(request: D1FinalizeRequest): D1FinalizeReport {
     checkChildren(request, findings);
     checkExtra(request, parsed, findings);
     checkSchemaAndGraph(request, parsed, findings);
+    checkAccessPolicy(parsed, findings);
     checkUsecaseFidelity(request, parsed, findings);
     checkRules(request, parsed, findings);
     checkEvents(request, parsed, findings);
@@ -347,6 +350,18 @@ function embeddedProject(path: string): string {
 
 function unqualified(path: string): string {
   return path.replace(/^\/?_\d+_\/+/, '');
+}
+
+function checkAccessPolicy(parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
+  const units: D1PolicyUnit[] = parsed.map(item => ({
+    defPath: item.pipeline[0]?.defPath || item.logical,
+    artifactType: item.definition.artifactType,
+    data: item.definition.data,
+    dependencies: item.pipeline.flatMap(pipelineItem => pipelineItem.dependsFiles || []),
+  }));
+  for (const issue of reconstructAccessPolicy(units).issues) {
+    error(findings, issue.code, issue.path, issue.message, issue.ownerRef);
+  }
 }
 
 function checkUsecaseFidelity(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {

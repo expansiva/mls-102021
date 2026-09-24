@@ -356,14 +356,29 @@
     "grant": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["grantId", "actorRef", "entityRefs", "disclosure"],
+      "required": ["grantId", "actorRef", "entityRefs", "disclosure", "scopeMode", "session", "path", "pending"],
       "properties": {
         "grantId": { "type": "string", "minLength": 1 },
         "actorRef": { "type": "string", "minLength": 1 },
         "anchorEntity": { "type": "string", "minLength": 1 },
         "entityRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "disclosure": { "type": "string", "enum": ["fieldsOnly", "fullRecord"] },
-        "allowedFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "allowedFields": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "scopeMode": { "type": "string", "enum": ["organization", "assigned", "own", "related", "public", "custom"] },
+        "session": { "type": "string", "enum": ["verified"] },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/accessJoin" } },
+        "pending": { "type": "string" }
+      }
+    },
+    "accessJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relationshipId", "from", "to", "field"],
+      "properties": {
+        "relationshipId": { "type": "string", "minLength": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 }
       }
     },
     "authorityMap": {

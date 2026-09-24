@@ -220,7 +220,16 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
       logical: PATHS.scope,
       definition: definition('accessScope', 'accessScope', {
         scopeId: 'accessScope',
-        grants: [{ grantId: 'desk', actorRef: 'recepcionista', entityRefs: ['Consulta'], disclosure: 'fullRecord' }],
+        grants: [{
+          grantId: 'desk',
+          actorRef: 'recepcionista',
+          entityRefs: ['Consulta'],
+          disclosure: 'fullRecord',
+          scopeMode: 'organization',
+          session: 'verified',
+          path: [],
+          pending: '',
+        }],
       }),
       item: pipe('accessScope', 'accessScope', PATHS.scope, []),
     },
@@ -437,6 +446,43 @@ void test('a completed child with a missing artifact does not complete', () => {
   assert.equal(report.outcome, 'held');
   assert.equal(codes(report, 'ARTIFACT_ABSENT'), 1);
   assert.match(report.blocking, /ARTIFACT_ABSENT:1/);
+});
+
+void test('dropping the scope link or the grant policy does not complete', () => {
+  const rows = parts();
+  const controller = rows.find(row => row.logical === PATHS.controller);
+  const usecase = rows.find(row => row.logical === PATHS.usecase);
+  assert.ok(controller && usecase);
+  controller.item = {
+    ...controller.item,
+    dependsOn: controller.item.dependsOn.filter(dep => !dep.endsWith('/accessScope/accessScope')),
+    dependsFiles: controller.item.dependsFiles.filter(file => !file.includes('/scope/accessScope.defs.ts')),
+  };
+  const transitive = request();
+  transitive.observed = observedOf(rows);
+  const throughUsecase = buildD1Finalize(transitive);
+  assert.equal(codes(throughUsecase, 'POLICY_UNBOUND'), 0, throughUsecase.blocking);
+  assert.equal(throughUsecase.outcome, 'complete', throughUsecase.blocking);
+
+  usecase.item = {
+    ...usecase.item,
+    dependsOn: usecase.item.dependsOn.filter(dep => !dep.endsWith('/accessScope/accessScope')),
+    dependsFiles: usecase.item.dependsFiles.filter(file => !file.includes('/scope/accessScope.defs.ts')),
+  };
+  const unbound = request();
+  unbound.observed = observedOf(rows);
+  const unboundReport = buildD1Finalize(unbound);
+  assert.equal(unboundReport.outcome, 'held');
+  assert.equal(unboundReport.findings.some(item => item.code === 'POLICY_UNBOUND' && item.ownerRef === 'desk'), true);
+
+  const stripped = request();
+  const scope = stripped.observed.find(item => item.defPath === PATHS.scope);
+  assert.ok(scope?.text);
+  scope.text = scope.text.replace('"scopeMode": "organization",\n', '');
+  const strippedReport = buildD1Finalize(stripped);
+  assert.equal(strippedReport.outcome, 'held');
+  assert.equal(strippedReport.findings.some(item => item.code === 'POLICY_UNBOUND' && item.message.includes('scope mode')), true);
+  assert.equal(strippedReport.findings.some(item => item.code === 'SCHEMA_INVALID' && item.message.includes('scopeMode')), true);
 });
 
 void test('an orphan dependency does not complete', () => {

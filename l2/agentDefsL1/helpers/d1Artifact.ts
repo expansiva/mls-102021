@@ -192,6 +192,13 @@ export interface D1HttpControllerData {
   handlers: Array<{ route: string; kind: 'query' | 'command'; usecaseId: string; grantIds: string[] }>;
 }
 
+export interface D1AccessJoin {
+  relationshipId: string;
+  from: string;
+  to: string;
+  field: string;
+}
+
 export interface D1Grant {
   grantId: string;
   actorRef: string;
@@ -199,11 +206,47 @@ export interface D1Grant {
   entityRefs: string[];
   disclosure: 'fieldsOnly' | 'fullRecord';
   allowedFields?: string[];
+  /** Declared mode. own and organization stay distinct. Never a permissive fallback. */
+  scopeMode: string;
+  /** Subject comes from the verified session, never from a form field. */
+  session: 'verified';
+  path: D1AccessJoin[];
+  pending: string;
 }
 
 export interface D1AccessScopeData {
   scopeId: string;
   grants: D1Grant[];
+}
+
+/** A serialized def plus the files it declares. Reconstruction does not read drafts. */
+export interface D1PolicyUnit {
+  defPath: string;
+  artifactType: string;
+  data: unknown;
+  dependencies: readonly string[];
+}
+
+export interface D1ReconstructedPolicy {
+  route: string;
+  grantId: string;
+  actorRef: string;
+  entityRefs: string[];
+  disclosure: string;
+  allowedFields: string[];
+  anchorEntity: string;
+  scopeMode: string;
+  session: 'verified';
+  path: D1AccessJoin[];
+  pending: string;
+  scopePath: string;
+}
+
+export interface D1AccessPolicyIssue {
+  code: 'POLICY_UNBOUND';
+  path: string;
+  ownerRef: string;
+  message: string;
 }
 
 export interface D1AuthorityMapData {
@@ -932,6 +975,16 @@ export function accessAnchorIssues(data: unknown): string[] {
   return issues;
 }
 
+const SCOPE_MODES = ['organization', 'assigned', 'own', 'related', 'public', 'custom'] as const;
+const VERIFIED_SESSION = 'verified';
+const FORM_IDENTITY = new Set(['actorId', 'userId', 'sessionId', 'scope']);
+
+function clientFilter(field: string): boolean {
+  if (FORM_IDENTITY.has(field)) return true;
+  const tail = field.split('.').pop() || '';
+  return FORM_IDENTITY.has(tail);
+}
+
 export function accessScopeIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
@@ -944,7 +997,7 @@ export function accessScopeIssues(data: unknown): string[] {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(grant, ['grantId', 'actorRef', 'anchorEntity', 'entityRefs', 'disclosure', 'allowedFields'], path, issues);
+    unknownKeys(grant, ['grantId', 'actorRef', 'anchorEntity', 'entityRefs', 'disclosure', 'allowedFields', 'scopeMode', 'session', 'path', 'pending'], path, issues);
     needString(grant, 'grantId', path, issues);
     needString(grant, 'actorRef', path, issues);
     if (grant.anchorEntity !== undefined) needString(grant, 'anchorEntity', path, issues);
@@ -958,8 +1011,167 @@ export function accessScopeIssues(data: unknown): string[] {
     } else if (grant.allowedFields !== undefined) {
       issues.push(`${path}.allowedFields is not valid for fullRecord.`);
     }
+    const mode = needString(grant, 'scopeMode', path, issues);
+    oneOf(mode, SCOPE_MODES, `${path}.scopeMode`, issues);
+    const session = needString(grant, 'session', path, issues);
+    oneOf(session, [VERIFIED_SESSION], `${path}.session`, issues);
+    if (typeof grant.pending !== 'string') issues.push(`Missing field ${path}.pending.`);
+    else if (clientFilter(grant.pending)) issues.push(`${path}.pending is a form field. The session stays verified.`);
+    if (!Array.isArray(grant.path)) issues.push(`Missing field ${path}.path.`);
+    else grant.path.forEach((step, stepIndex) => {
+      const stepPath = `${path}.path.${stepIndex}`;
+      if (!isRecord(step)) {
+        issues.push(`Missing field ${stepPath}.`);
+        return;
+      }
+      unknownKeys(step, ['relationshipId', 'from', 'to', 'field'], stepPath, issues);
+      needString(step, 'relationshipId', stepPath, issues);
+      needString(step, 'from', stepPath, issues);
+      needString(step, 'to', stepPath, issues);
+      const field = needString(step, 'field', stepPath, issues);
+      if (field && clientFilter(field)) issues.push(`${stepPath}.field is a form field. The session stays verified.`);
+    });
   });
   return issues;
+}
+
+function normalizePolicyPath(path: string): string {
+  return path.replace(/^\/?_\d+_\/+/, '').replace(/^\/+/, '');
+}
+
+function reachableUnits(dependencies: readonly string[], byPath: ReadonlyMap<string, D1PolicyUnit>): D1PolicyUnit[] {
+  const seen = new Set<string>();
+  const out: D1PolicyUnit[] = [];
+  const queue = dependencies.map(normalizePolicyPath);
+  while (queue.length) {
+    const path = queue.shift();
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    const unit = byPath.get(path);
+    if (!unit) continue;
+    out.push(unit);
+    for (const next of unit.dependencies) queue.push(normalizePolicyPath(next));
+  }
+  return out;
+}
+
+function readJoins(value: unknown): D1AccessJoin[] | null {
+  if (!Array.isArray(value)) return null;
+  const steps: D1AccessJoin[] = [];
+  for (const step of value) {
+    if (!isRecord(step)) return null;
+    const relationshipId = typeof step.relationshipId === 'string' ? step.relationshipId : '';
+    const from = typeof step.from === 'string' ? step.from : '';
+    const to = typeof step.to === 'string' ? step.to : '';
+    const field = typeof step.field === 'string' ? step.field : '';
+    if (!relationshipId || !from || !to || !field) return null;
+    steps.push({ relationshipId, from, to, field });
+  }
+  return steps;
+}
+
+function readSerializedGrant(
+  grant: Record<string, unknown>,
+  scopePath: string,
+): { policy: Omit<D1ReconstructedPolicy, 'route'> } | { issue: string } {
+  const grantId = typeof grant.grantId === 'string' ? grant.grantId : '';
+  const mode = typeof grant.scopeMode === 'string' ? grant.scopeMode : '';
+  if (!mode || !(SCOPE_MODES as readonly string[]).includes(mode)) {
+    return { issue: `Grant ${grantId} has no scope mode. own and organization would be indistinguishable.` };
+  }
+  if (grant.session !== VERIFIED_SESSION) {
+    return { issue: `Grant ${grantId} does not keep a verified session. A form field is not the filter.` };
+  }
+  if (typeof grant.pending !== 'string' || clientFilter(grant.pending)) {
+    return { issue: `Grant ${grantId} does not keep its pending. The anchor was not rewritten.` };
+  }
+  const path = readJoins(grant.path);
+  if (!path) return { issue: `Grant ${grantId} does not keep its relationship path.` };
+  if (path.some(step => clientFilter(step.field))) {
+    return { issue: `Grant ${grantId} uses a form field as a relationship filter. The session stays verified.` };
+  }
+  const entityRefs = Array.isArray(grant.entityRefs) ? grant.entityRefs.filter((item): item is string => typeof item === 'string' && !!item) : [];
+  const disclosure = grant.disclosure === 'fieldsOnly' || grant.disclosure === 'fullRecord' ? grant.disclosure : '';
+  if (!grantId || typeof grant.actorRef !== 'string' || !grant.actorRef || !entityRefs.length || !disclosure) {
+    return { issue: `Grant ${grantId || '(missing)'} is not a complete policy.` };
+  }
+  const allowedFields = disclosure === 'fieldsOnly' && Array.isArray(grant.allowedFields)
+    ? grant.allowedFields.filter((item): item is string => typeof item === 'string')
+    : [];
+  return {
+    policy: {
+      grantId,
+      actorRef: grant.actorRef,
+      entityRefs,
+      disclosure,
+      allowedFields,
+      anchorEntity: typeof grant.anchorEntity === 'string' ? grant.anchorEntity : '',
+      scopeMode: mode,
+      session: 'verified',
+      path,
+      pending: grant.pending,
+      scopePath,
+    },
+  };
+}
+
+/**
+ * Rebuilds each handler grant from serialized defs and declared file dependencies.
+ * A scope reached through an intermediate def counts. Drafts are not an input.
+ */
+export function reconstructAccessPolicy(units: readonly D1PolicyUnit[]): {
+  policies: D1ReconstructedPolicy[];
+  issues: D1AccessPolicyIssue[];
+} {
+  const issues: D1AccessPolicyIssue[] = [];
+  const policies: D1ReconstructedPolicy[] = [];
+  const byPath = new Map<string, D1PolicyUnit>();
+  for (const unit of units) byPath.set(normalizePolicyPath(unit.defPath), unit);
+  for (const controller of units) {
+    if (controller.artifactType !== 'httpController') continue;
+    const scopes = reachableUnits(controller.dependencies, byPath).filter(unit => unit.artifactType === 'accessScope');
+    const data = isRecord(controller.data) ? controller.data : {};
+    const pageId = typeof data.pageId === 'string' && data.pageId ? data.pageId : controller.defPath;
+    const handlers = Array.isArray(data.handlers) ? data.handlers : [];
+    handlers.forEach((handler, index) => {
+      if (!isRecord(handler)) return;
+      const route = typeof handler.route === 'string' && handler.route ? handler.route : `${pageId}#${index}`;
+      const grantIds = Array.isArray(handler.grantIds)
+        ? handler.grantIds.filter((id): id is string => typeof id === 'string' && !!id)
+        : [];
+      for (const grantId of grantIds) {
+        const found: Array<{ grant: Record<string, unknown>; scopePath: string }> = [];
+        for (const scope of scopes) {
+          const scopeData = isRecord(scope.data) ? scope.data : {};
+          const grants = Array.isArray(scopeData.grants) ? scopeData.grants : [];
+          for (const grant of grants) {
+            if (!isRecord(grant) || grant.grantId !== grantId) continue;
+            found.push({ grant, scopePath: normalizePolicyPath(scope.defPath) });
+          }
+        }
+        if (found.length !== 1) {
+          issues.push({
+            code: 'POLICY_UNBOUND',
+            path: route,
+            ownerRef: grantId,
+            message: found.length > 1
+              ? `Grant ${grantId} on ${route} matches more than one reachable access scope.`
+              : scopes.length
+                ? `Grant ${grantId} on ${route} is not on a reachable access scope.`
+                : `Grant ${grantId} on ${route} has no declared dependency on an access scope.`,
+          });
+          continue;
+        }
+        const read = readSerializedGrant(found[0].grant, found[0].scopePath);
+        if ('issue' in read) {
+          issues.push({ code: 'POLICY_UNBOUND', path: route, ownerRef: grantId, message: read.issue });
+          continue;
+        }
+        policies.push({ route, ...read.policy });
+      }
+    });
+  }
+  return { policies, issues };
 }
 
 export function authorityMapIssues(data: unknown): string[] {

@@ -57,7 +57,8 @@ const OUTBOUND_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external
 const NOTE_RULE = 'attendanceNoteRequired';
 
 /**
- * Registry, scope and the seed plan. No model call. Grants and anchors are copied.
+ * Registry, scope and the seed plan. No model call.
+ * A grant keeps its declared mode, the verified session, the relationship path and any pending.
  * A missing grant or an anchor with no explicit path is a diagnosis.
  * It is not rewritten as organization or public.
  * Seeds describe scenarios. They do not write rows.
@@ -609,6 +610,15 @@ function grantData(resolution: D1ScopeResolution): Record<string, unknown> {
   data.entityRefs = resolution.entityRefs;
   data.disclosure = resolution.disclosure;
   if (resolution.disclosure === 'fieldsOnly') data.allowedFields = resolution.allowedFields;
+  data.scopeMode = resolution.scopeMode;
+  data.session = resolution.session;
+  data.path = resolution.path.map(step => ({
+    relationshipId: step.relationshipId,
+    from: step.from,
+    to: step.to,
+    field: step.field,
+  }));
+  data.pending = resolution.pending;
   return data;
 }
 

@@ -5,12 +5,26 @@ import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { D1_MEASURED_PUBLISH } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
+import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
-import type { D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import type { D1SupportEmit, D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+
+interface SerializedGrant {
+  grantId: string;
+  actorRef: string;
+  anchorEntity?: string;
+  entityRefs: string[];
+  disclosure: string;
+  scopeMode: string;
+  session: string;
+  path: Array<{ relationshipId: string; from: string; to: string; field: string }>;
+  pending: string;
+}
 
 void test('the frozen fixture emits scope, authority and the live registry', () => {
   const request = coreSupportRequest();
@@ -24,9 +38,15 @@ void test('the frozen fixture emits scope, authority and the live registry', () 
   assert.equal(build.emit.every(item => !(item.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/usecase/'))), true);
 
   const scope = build.emit.find(item => item.definition.artifactType === 'accessScope');
-  const grants = (scope?.definition.data as { grants: Array<{ grantId: string; anchorEntity?: string }> }).grants;
+  const grants = (scope?.definition.data as { grants: SerializedGrant[] }).grants;
   const daily = grants.find(item => item.grantId === 'profissionalAgendaDiaria');
   assert.equal(daily?.anchorEntity, 'Paciente');
+  assert.equal(daily?.scopeMode, 'own');
+  assert.equal(daily?.session, 'verified');
+  assert.equal(daily?.pending, 'ACCESS_ANCHOR');
+  assert.deepEqual(daily?.path.map(step => step.relationshipId), ['appointmentPatient']);
+  assert.notEqual(daily?.scopeMode, 'organization');
+  assert.notEqual(daily?.scopeMode, 'public');
   const authority = build.emit.find(item => item.definition.artifactType === 'authorityMap');
   const entries = (authority?.definition.data as { entries: Array<{ grantId: string }> }).entries;
   assert.deepEqual(entries.map(item => item.grantId).sort(), grants.map(item => item.grantId).sort());
@@ -142,6 +162,109 @@ void test('a missing grant and an anchor without a path stay diagnoses', () => {
   const daily = build.resolutions.find(item => item.grantId === 'profissionalAgendaDiaria');
   assert.equal(daily?.anchorEntity, 'Paciente');
   assert.equal(daily?.pending, 'ACCESS_ANCHOR');
+  const serialized = (scope?.definition.data as { grants: SerializedGrant[] }).grants.find(item => item.grantId === 'orphanAnchor');
+  assert.equal(serialized?.scopeMode, 'own');
+  assert.equal(serialized?.session, 'verified');
+  assert.deepEqual(serialized?.path, []);
+  assert.equal(serialized?.pending, 'ACCESS_ANCHOR');
+  assert.notEqual(serialized?.scopeMode, 'organization');
+  assert.notEqual(serialized?.scopeMode, 'public');
+});
+
+void test('own and organization stay distinct and a multi-hop path is not just the anchor name', () => {
+  const controllers = buildD1Controllers(coreControllerRequest());
+  const request = coreSupportRequest();
+  request.grants.push(
+    {
+      grantId: 'organizacaoConsulta',
+      actorRef: 'recepcionista',
+      entityRefs: ['Consulta'],
+      disclosure: 'fullRecord',
+      allowedFields: [],
+      anchorEntity: 'Consulta',
+      scopeMode: 'organization',
+    },
+    {
+      grantId: 'propriaConsulta',
+      actorRef: 'profissional',
+      entityRefs: ['Consulta'],
+      disclosure: 'fullRecord',
+      allowedFields: [],
+      anchorEntity: 'Consulta',
+      scopeMode: 'own',
+    },
+  );
+  const hops = [
+    { relationshipId: 'appointmentRecord', from: 'Consulta', to: 'Atendimento', field: 'Consulta.recordId', required: true },
+    { relationshipId: 'recordPatient', from: 'Atendimento', to: 'Paciente', field: 'Atendimento.patientId', required: true },
+    { relationshipId: 'appointmentProfessional', from: 'Consulta', to: 'Profissional', field: 'Consulta.professionalId', required: true },
+    { relationshipId: 'nameOnly', from: 'Consulta', to: 'Paciente', field: '', required: true },
+  ];
+  request.relationships = hops;
+  const dailyPlan = request.scopePlans.find(item => item.grantId === 'profissionalAgendaDiaria');
+  assert.ok(dailyPlan);
+  dailyPlan.relationships = hops.map(item => ({
+    relationshipId: item.relationshipId,
+    from: item.from,
+    to: item.to,
+    field: item.field,
+  }));
+  dailyPlan.pending = 'ACCESS_ANCHOR';
+
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const scope = build.emit.find(item => item.definition.artifactType === 'accessScope');
+  assert.ok(scope);
+  const grants = (scope.definition.data as { grants: SerializedGrant[] }).grants;
+  const organization = grants.find(item => item.grantId === 'organizacaoConsulta');
+  const own = grants.find(item => item.grantId === 'propriaConsulta');
+  assert.ok(organization && own);
+  assert.deepEqual(organization.entityRefs, own.entityRefs);
+  assert.equal(organization.disclosure, own.disclosure);
+  assert.equal(organization.scopeMode, 'organization');
+  assert.equal(own.scopeMode, 'own');
+  assert.equal(organization.session, 'verified');
+  assert.equal(own.session, 'verified');
+  assert.deepEqual(organization.path, []);
+  assert.equal(JSON.stringify(own).includes('actorId'), false);
+  assert.notDeepEqual(
+    { mode: organization.scopeMode, path: organization.path, pending: organization.pending },
+    { mode: own.scopeMode, path: own.path, pending: own.pending },
+  );
+
+  const daily = grants.find(item => item.grantId === 'profissionalAgendaDiaria');
+  assert.equal(daily?.anchorEntity, 'Paciente');
+  assert.equal(daily?.scopeMode, 'own');
+  assert.equal(daily?.pending, 'ACCESS_ANCHOR');
+  assert.deepEqual(daily?.path.map(step => step.relationshipId), ['appointmentRecord', 'recordPatient']);
+  assert.equal(daily?.path.some(step => step.relationshipId === 'nameOnly'), false);
+  assert.equal(daily?.path.some(step => step.field === 'actorId' || step.field === 'sessionId'), false);
+
+  const units = [...build.emit.map(policyUnit), ...controllers.emit.map(policyUnit)];
+  const reconstructed = reconstructAccessPolicy(units);
+  assert.deepEqual(reconstructed.issues, []);
+  const policy = reconstructed.policies.find(item => item.route === 'agendaClinica.agenda.qryListConsulta' && item.grantId === 'profissionalAgendaDiaria');
+  assert.deepEqual(policy?.path.map(step => step.relationshipId), ['appointmentRecord', 'recordPatient']);
+  assert.equal(policy?.scopeMode, 'own');
+  assert.equal(policy?.pending, 'ACCESS_ANCHOR');
+  assert.equal(policy?.session, 'verified');
+  const reception = reconstructed.policies.find(item => item.route === 'agendaClinica.consultas.qryListConsulta');
+  assert.equal(reception?.grantId, 'recepcionistaAgendaConsultas');
+  assert.equal(reception?.scopeMode, 'organization');
+  assert.notDeepEqual(policy?.path, reception?.path);
+
+  const scopeUnit = policyUnit(scope);
+  const dropped = reconstructAccessPolicy([
+    scopeUnit,
+    {
+      defPath: policyUnit(controllers.emit[0]).defPath,
+      artifactType: 'httpController',
+      data: policyUnit(controllers.emit[0]).data,
+      dependencies: [],
+    },
+  ]);
+  assert.equal(dropped.issues.some(item => item.code === 'POLICY_UNBOUND'), true);
+  assert.equal(dropped.policies.length, 0);
 });
 
 void test('a receipt mismatch and a form identity do not emit', () => {
@@ -441,3 +564,12 @@ void test('processes, inbound and plugins stay operations and a missing pool ite
   assert.equal(JSON.stringify(build.emit).includes('scheduler'), false);
   assert.equal(build.effectPlan.executed, false);
 });
+
+function policyUnit(part: D1SupportEmit): D1PolicyUnit {
+  return {
+    defPath: part.pipeline[0]?.defPath || '',
+    artifactType: part.definition.artifactType,
+    data: part.definition.data,
+    dependencies: part.pipeline[0]?.dependsFiles || [],
+  };
+}
