@@ -114,7 +114,7 @@ void test('source root reads this project and leaves platform projects on the re
     const same = resolveRunRoots(repo, '', '');
     assert.equal(same.readRoot, repo);
     assert.equal(same.writeRoot, repo);
-    assert.equal(same.platformRoot, null);
+    assert.equal(same.platformRoot, repo);
     assert.equal(scenarioCatalogRef(102047, 'agendaClinica'), '_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.ts');
 
     const marker = '_102034_/l1/server/marker.ts';
@@ -134,6 +134,15 @@ void test('source root reads this project and leaves platform projects on the re
     const current = createDiskHost(sandbox, sandbox, 102047);
     assert.equal(await current.io.read(marker), null);
     assert.equal(await current.io.read(own), 'sandbox-contract');
+
+    const bare = createDiskHost(same.readRoot, same.writeRoot, 102047, same.platformRoot);
+    assert.equal(await bare.io.read(marker), 'platform');
+    assert.equal(await bare.io.read('_102099_/l1/other.ts'), null);
+    const ownOut = '_102047_/l1/agendaClinica/out.ts';
+    await bare.state.writeOwned(ownOut, new TextEncoder().encode('target'));
+    assert.equal(await readFile(join(repo, 'mls-102047', 'l1', 'agendaClinica', 'out.ts'), 'utf8'), 'target');
+    await assert.rejects(() => bare.state.writeOwned(marker, new TextEncoder().encode('no')));
+    assert.equal(await readFile(join(repo, 'mls-102034', 'l1', 'server', 'marker.ts'), 'utf8'), 'platform');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

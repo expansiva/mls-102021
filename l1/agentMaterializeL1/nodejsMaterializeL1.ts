@@ -172,7 +172,7 @@ export function resolveRunRoots(repoRoot: string, outputDir: string, sourceRoot:
   return {
     readRoot: sourceRoot ? resolve(sourceRoot) : repoRoot,
     writeRoot: outputDir ? resolve(outputDir) : repoRoot,
-    platformRoot: sourceRoot ? repoRoot : null,
+    platformRoot: repoRoot,
   };
 }
 
