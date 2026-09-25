@@ -75,7 +75,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'functions', 'routeProjections', 'portCalls', 'transactional', 'effects', 'sequence', 'uses', 'rules', 'transaction'],
-    optional: ['lifecycle', 'mdm'],
+    optional: ['lifecycle', 'mdm', 'rulePlan'],
     nonempty: ['functions'],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },

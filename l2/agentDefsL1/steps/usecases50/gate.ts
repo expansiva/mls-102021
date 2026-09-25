@@ -16,6 +16,7 @@ import {
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { authorizedPayloadNames, capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { bindMdm, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
@@ -35,6 +36,7 @@ import {
   type D1UsecasePlanInput,
   type D1UsecasePort,
   type D1UsecaseProblem,
+  type D1RulePlanRow,
   type D1UsecaseRequest,
   type D1UsecaseSelection,
   type D1WorkerStep,
@@ -127,7 +129,9 @@ function planUsecase(
   noteDerived(request, entity, usecase, input, steps, path, problems, normalizations);
   noteRequiredNotes(entity, usecase, input, path, problems);
   const transitionOk = noteTransition(request, entity, usecase, steps, input, path, problems);
-  const rules = resolveRules(request, entity, usecase, steps, path, problems);
+  const decided = decideRules(request, entity, usecase, steps, path, problems, normalizations);
+  const rules = decided.rules;
+  const sequenceSteps = decided.steps;
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
   const portCalls = resolvePorts(entity, usecase, port, steps, path, problems);
@@ -182,7 +186,7 @@ function planUsecase(
     portCalls,
     transactional: boundary === 'local',
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
-    sequence: steps.map(step => step.kind === 'transition'
+    sequence: sequenceSteps.map(step => step.kind === 'transition'
       ? { kind: 'transition' as const, transitionId: step.transitionId, payload: [...sourcePayload] }
       : step),
     uses: fieldUses({
@@ -196,6 +200,7 @@ function planUsecase(
       path: ruleSourcePath(request, entity, usecase.usecaseId, ruleId),
       symbol: ruleId,
     })),
+    rulePlan: decided.plan,
     transaction: { boundary: boundary === 'local' ? 'local' as const : 'none' as const },
     ...(lifecycle ? { lifecycle } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
@@ -610,34 +615,89 @@ function noteTransition(
   return ok;
 }
 
-function resolveRules(
+function decideRules(
   request: D1UsecaseRequest,
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
   steps: readonly D1WorkerStep[],
   path: string,
   problems: D1UsecaseProblem[],
-): string[] {
+  normalizations: D1UsecaseNormalization[],
+): { rules: string[]; plan: D1RulePlanRow[]; steps: D1WorkerStep[] } {
   const known = new Set([
     ...request.moduleRules,
     ...entity.rules.map(rule => rule.ruleId),
+    ...entity.transitions.flatMap(item => item.ruleRefs),
   ]);
-  const ids: string[] = [];
-  const transition = entity.transitions.find(item => item.transitionId === usecase.usecaseId);
-  if (usecase.operation === 'transition' && transition) ids.push(...transition.ruleRefs);
+  const context = request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
+  const plan = rulePlanForUsecase({
+    moduleName: request.moduleName,
+    entityId: entity.entityId,
+    usecaseId: usecase.usecaseId,
+    operation: usecase.operation,
+    files: request.files,
+    entity: {
+      rules: entity.rules,
+      transitions: entity.transitions.map(item => ({
+        transitionId: item.transitionId,
+        by: item.by,
+        ruleRefs: item.ruleRefs,
+        payload: item.payload || [],
+      })),
+      uniqueKeys: entity.uniqueKeys,
+      capabilities: entity.capabilities,
+      namespace: entity.namespace,
+      storageTarget: entity.storageTarget,
+      platformFields: entity.platformFields,
+    },
+    routes: usecase.routes.map(routeId => {
+      const route = context?.routes.find(item => item.route === routeId);
+      const selected = request.routes.find(item => item.route === routeId);
+      const page = route?.page || selected?.page || '';
+      return {
+        route: routeId,
+        contractPath: route?.contractPath || contractPathFor(request.moduleName, page),
+        grants: (route?.access || []).map(grant => ({
+          grantId: grant.grantId,
+          actorRef: grant.actorRef,
+          scope: grant.scope,
+        })),
+      };
+    }),
+  });
+  for (const row of plan) known.add(row.ruleId);
+  const prescribed = enforcedRuleIds(plan);
+  const cited = new Set<string>();
   for (const step of steps) {
-    if (step.kind === 'rule') ids.push(step.ruleId);
-  }
-  const out: string[] = [];
-  for (const ruleId of ids) {
-    if (!ruleId || out.includes(ruleId)) continue;
-    if (!known.has(ruleId)) {
-      error(problems, 'RULE_UNRESOLVED', path, `Rule ${ruleId} is not in the module or the platform catalog.`);
+    if (step.kind !== 'rule' || !step.ruleId || cited.has(step.ruleId)) continue;
+    cited.add(step.ruleId);
+    if (!known.has(step.ruleId)) {
+      error(problems, 'RULE_UNRESOLVED', path, `Rule ${step.ruleId} is not in the module or the platform catalog.`);
       continue;
     }
-    out.push(ruleId);
+    if (!prescribed.includes(step.ruleId)) {
+      const pending = plan.find(row => row.ruleId === step.ruleId && row.enforcement === 'pending');
+      const why = pending
+        ? `Rule ${step.ruleId} is ${pending.gap} on ${pending.consumer}. Naming it does not enforce it.`
+        : `Rule ${step.ruleId} is not enforced on ${usecase.usecaseId}.`;
+      error(problems, 'RULE_NOT_APPLICABLE', path, why);
+    }
   }
-  return out;
+  for (const ruleId of prescribed) {
+    if (cited.has(ruleId)) continue;
+    normalizations.push({ code: 'RULE_RESTORED', path, detail: ruleId });
+  }
+  return { rules: prescribed, plan, steps: alignRuleSteps(steps, prescribed) };
+}
+
+function alignRuleSteps(steps: readonly D1WorkerStep[], prescribed: readonly string[]): D1WorkerStep[] {
+  const kept = steps.filter(step => step.kind !== 'rule');
+  const ruleSteps: D1WorkerStep[] = prescribed.map(ruleId => ({ kind: 'rule', ruleId }));
+  const transitionAt = kept.findIndex(step => step.kind === 'transition');
+  if (transitionAt >= 0) return [...kept.slice(0, transitionAt), ...ruleSteps, ...kept.slice(transitionAt)];
+  const portAt = kept.findIndex(step => step.kind === 'port' || step.kind === 'mdm');
+  if (portAt >= 0) return [...kept.slice(0, portAt + 1), ...ruleSteps, ...kept.slice(portAt + 1)];
+  return [...kept, ...ruleSteps];
 }
 
 function resolveEffects(
@@ -910,6 +970,13 @@ function dependencyPaths(moduleName: string, item: D1UsecaseItem): string[] {
   if (Array.isArray(data.rules)) {
     for (const rule of data.rules) {
       if (isRecord(rule) && typeof rule.path === 'string' && rule.path) paths.add(rule.path);
+    }
+  }
+  if (Array.isArray(data.rulePlan)) {
+    for (const row of data.rulePlan) {
+      if (!isRecord(row) || typeof row.origin !== 'string') continue;
+      const file = originFile(row.origin);
+      if (file) paths.add(file);
     }
   }
   if (Array.isArray(data.effects)) {

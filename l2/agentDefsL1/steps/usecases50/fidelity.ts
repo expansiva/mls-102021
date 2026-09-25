@@ -1,6 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/fidelity.ts" enhancement="_blank"/>
 
-import { integrationMechanismIssues, isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { integrationMechanismIssues, isRecord, isStorageConstraintRow } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
@@ -12,6 +12,8 @@ import {
   platformFieldPaths,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 export interface FidelityFile {
@@ -193,6 +195,39 @@ export function readUsecaseFidelity(
     const content = ruleText(body, ref.symbol);
     if (!content) {
       fail(problems, 'RULE_TEXT_ABSENT', usecaseId, `Rule ${ref.symbol} has no text in ${ref.path}.`);
+    }
+  }
+
+  const actualPlan = readRulePlan(data);
+  if (!actualPlan) {
+    fail(problems, 'RULE_COVERAGE', usecaseId, `Usecase ${usecaseId} has no applicability plan. A rule name is not coverage.`);
+  } else if (ontology) {
+    const expected = rulePlanForUsecase({
+      moduleName,
+      entityId,
+      usecaseId,
+      operation,
+      files,
+      entity: {
+        rules: [],
+        transitions: [],
+        namespace: '',
+        storageTarget: '',
+      },
+      routes: readPlanRoutes(data),
+    });
+    if (!samePlan(actualPlan, expected)) {
+      fail(problems, 'RULE_COVERAGE', usecaseId, `Applicability of ${usecaseId} does not match its sources.`);
+    }
+    const applied = stringList(data.rulesApplied);
+    const enforced = enforcedRuleIds(expected);
+    if (!sameStrings(applied, enforced)) {
+      fail(problems, 'RULE_COVERAGE', usecaseId, `rulesApplied of ${usecaseId} is not the enforced applicability set.`);
+    }
+    for (const row of expected) {
+      const file = originFile(row.origin);
+      if (!file || hasDep(dependsFiles, file)) continue;
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Applicability source ${file} is not in dependsFiles.`);
     }
   }
 
@@ -382,6 +417,59 @@ function sameList(left: readonly string[], right: readonly string[]): boolean {
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const seen = new Set(left);
+  return right.every(item => seen.has(item));
+}
+
+function readPlanRoutes(data: Record<string, unknown>): Array<{ route: string; contractPath: string; grants: [] }> {
+  if (!Array.isArray(data.routeProjections)) return [];
+  const out: Array<{ route: string; contractPath: string; grants: [] }> = [];
+  for (const item of data.routeProjections) {
+    if (!isRecord(item) || typeof item.route !== 'string') continue;
+    out.push({
+      route: item.route,
+      contractPath: typeof item.contractPath === 'string' ? item.contractPath : '',
+      grants: [],
+    });
+  }
+  return out;
+}
+
+function readRulePlan(data: Record<string, unknown>): D1RulePlanRow[] | null {
+  if (!Array.isArray(data.rulePlan)) return null;
+  const out: D1RulePlanRow[] = [];
+  for (const item of data.rulePlan) {
+    if (!isRecord(item)) return null;
+    const enforcement = item.enforcement;
+    if (enforcement !== 'local' && enforcement !== 'delegated' && enforcement !== 'pending') return null;
+    if (typeof item.ruleId !== 'string') return null;
+    if (typeof item.origin !== 'string' || !item.origin) return null;
+    if (typeof item.consumer !== 'string' || !item.consumer) return null;
+    if (typeof item.gap !== 'string') return null;
+    if (enforcement === 'pending' && !item.gap) return null;
+    if (enforcement !== 'pending' && item.gap) return null;
+    const row: D1RulePlanRow = {
+      ruleId: item.ruleId,
+      origin: item.origin,
+      consumer: item.consumer,
+      enforcement,
+      gap: item.gap,
+    };
+    if (!row.ruleId && !isStorageConstraintRow(row)) return null;
+    out.push(row);
+  }
+  return out;
+}
+
+function samePlan(left: readonly D1RulePlanRow[], right: readonly D1RulePlanRow[]): boolean {
+  const key = (row: D1RulePlanRow) => `${row.consumer}\u0000${row.ruleId}\u0000${row.origin}\u0000${row.enforcement}\u0000${row.gap}`;
+  const a = [...left].map(key).sort();
+  const b = [...right].map(key).sort();
+  return a.length === b.length && a.every((item, index) => item === b[index]);
 }
 
 function recordFields(body: unknown): Array<{ name: string; derived: boolean }> {

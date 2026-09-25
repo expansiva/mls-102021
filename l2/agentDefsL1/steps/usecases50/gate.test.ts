@@ -928,6 +928,8 @@ function inputContext(usecaseId: string, route: string, inputFields: D1UsecaseCo
       access: [],
     }],
     rules: [],
+    rulePlan: [],
+    pendingRules: [],
     portId: '',
     portMethods: [],
     effects: [],

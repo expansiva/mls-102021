@@ -19,6 +19,7 @@ import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } 
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
+import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLINIC_ROOT = path.resolve(HERE, '../../../../../mls-102047');
@@ -181,6 +182,18 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
         operation: 'transition',
         ports: ['ConsultaRepository'],
         rulesApplied: ['noteRequired'],
+        rulePlan: rulePlanForUsecase({
+          moduleName: MODULE,
+          entityId: 'Consulta',
+          usecaseId: 'registrarAtendimento',
+          operation: 'transition',
+          files: [
+            { path: ONTOLOGY, text: ONTOLOGY_TEXT },
+            { path: RULES, text: RULES_TEXT },
+          ],
+          entity: { rules: [], transitions: [], namespace: '', storageTarget: 'moduleDatabase' },
+          routes: [{ route: ROUTE, contractPath: CONTRACT, grants: [] }],
+        }),
         functions: [{
           functionName: 'registrarAtendimento',
           input: [{ name: 'id', type: 'string' }],

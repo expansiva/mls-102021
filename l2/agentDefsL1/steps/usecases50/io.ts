@@ -336,6 +336,7 @@ function entityView(plan: D1DomainBuild['entities'][number], body: unknown | nul
     fields,
     transitions,
     rules: (plan.rules || []).map(rule => ({ ruleId: rule.ruleId, owner: rule.owner, source: rule.source })),
+    uniqueKeys: plan.uniqueKeys.map(key => [...key]),
     enumerations: (plan.enumerations || []).map(item => ({ path: item.path, values: [...item.values] })),
     capabilities: capabilityNames(body),
     platformFields: platformFieldPaths(body),

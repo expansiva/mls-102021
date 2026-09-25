@@ -159,6 +159,14 @@ export interface D1UsecaseData {
   operation: string;
   ports: string[];
   rulesApplied: string[];
+  /** Present on defs written after applicability is planned. Older examples omit it. */
+  rulePlan?: Array<{
+    ruleId: string;
+    origin: string;
+    consumer: string;
+    enforcement: 'local' | 'delegated' | 'pending';
+    gap: string;
+  }>;
   functions: Array<{
     functionName: string;
     input: D1ProjectionField[];
@@ -748,7 +756,7 @@ export function usecaseIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
   unknownKeys(data, [
-    'usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'functions',
+    'usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'rulePlan', 'functions',
     'routeProjections', 'portCalls', 'transactional', 'effects',
     'sequence', 'uses', 'rules', 'transaction', 'lifecycle', 'mdm',
   ], 'data', issues);
@@ -757,6 +765,7 @@ export function usecaseIssues(data: unknown): string[] {
   const operation = needString(data, 'operation', 'data', issues);
   stringList(data.ports, 'data.ports', issues);
   stringList(data.rulesApplied, 'data.rulesApplied', issues);
+  rulePlanIssues(data.rulePlan, issues);
   stringList(data.portCalls, 'data.portCalls', issues);
   needBoolean(data, 'transactional', 'data', issues);
   if (!Array.isArray(data.functions) || data.functions.length === 0) issues.push('Missing field data.functions.');
@@ -848,6 +857,50 @@ function useIssues(value: unknown, issues: string[]): void {
     oneOf(source, ['input', 'payload'], `${path}.source`, issues);
     if (!source) issues.push(`Missing field ${path}.source.`);
   });
+}
+
+function rulePlanIssues(value: unknown, issues: string[]): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push('Missing field data.rulePlan.');
+    return;
+  }
+  value.forEach((row, index) => {
+    const path = `data.rulePlan.${index}`;
+    if (!isRecord(row)) {
+      issues.push(`Missing field ${path}.`);
+      return;
+    }
+    unknownKeys(row, ['ruleId', 'origin', 'consumer', 'enforcement', 'gap'], path, issues);
+    const ruleId = typeof row.ruleId === 'string' ? row.ruleId : '';
+    const origin = typeof row.origin === 'string' ? row.origin : '';
+    const consumer = typeof row.consumer === 'string' ? row.consumer : '';
+    const enforcement = typeof row.enforcement === 'string' ? row.enforcement : '';
+    const gap = typeof row.gap === 'string' ? row.gap : '';
+    const storage = isStorageConstraintRow({ ruleId, origin, consumer, enforcement, gap });
+    if (typeof row.ruleId !== 'string' || (!ruleId.trim() && !storage)) issues.push(`Missing field ${path}.ruleId.`);
+    needString(row, 'origin', path, issues);
+    needString(row, 'consumer', path, issues);
+    oneOf(enforcement, ['local', 'delegated', 'pending'], `${path}.enforcement`, issues);
+    if (typeof row.gap !== 'string') issues.push(`Missing field ${path}.gap.`);
+    else if (enforcement === 'pending' && !row.gap) issues.push(`${path}.gap is required when enforcement is pending.`);
+    else if (enforcement && enforcement !== 'pending' && row.gap) issues.push(`${path}.gap must be empty when enforcement is ${enforcement}.`);
+  });
+}
+
+/** The unique-key line. It is not a business rule, so `ruleId` stays empty. */
+export function isStorageConstraintRow(row: {
+  ruleId: string;
+  origin: string;
+  consumer: string;
+  enforcement: string;
+  gap: string;
+}): boolean {
+  return row.ruleId === ''
+    && row.enforcement === 'local'
+    && row.gap === ''
+    && row.consumer.startsWith('operation:')
+    && (row.origin.endsWith('#uniqueKeys') || row.origin.endsWith('#capabilities.uniqueKey'));
 }
 
 function ruleRefIssues(value: unknown, issues: string[]): void {

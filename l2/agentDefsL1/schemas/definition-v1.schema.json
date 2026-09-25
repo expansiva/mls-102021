@@ -165,6 +165,7 @@
         "operation": { "type": "string", "minLength": 1 },
         "ports": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "rulePlan": { "type": "array", "items": { "$ref": "#/$defs/rulePlanRow" } },
         "functions": { "type": "array", "items": { "$ref": "#/$defs/usecaseFunction" } },
         "routeProjections": { "type": "array", "items": { "$ref": "#/$defs/routeProjection" } },
         "portCalls": { "type": "array", "items": { "type": "string", "minLength": 1 } },
@@ -205,6 +206,18 @@
         "path": { "type": "string", "minLength": 1 },
         "role": { "type": "string", "enum": ["filter", "selector", "concurrency", "write"] },
         "source": { "type": "string", "enum": ["input", "payload"] }
+      }
+    },
+    "rulePlanRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "origin", "consumer", "enforcement", "gap"],
+      "properties": {
+        "ruleId": { "type": "string" },
+        "origin": { "type": "string", "minLength": 1 },
+        "consumer": { "type": "string", "minLength": 1 },
+        "enforcement": { "type": "string", "enum": ["local", "delegated", "pending"] },
+        "gap": { "type": "string" }
       }
     },
     "ruleRef": {

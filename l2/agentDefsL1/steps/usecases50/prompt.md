@@ -3,7 +3,7 @@
 
 # usecases50
 
-Plan the operation steps for the one usecase named in the human message. Its id, entity, operation, routes, port, rules, effects and namespace are already fixed. You do not choose them.
+Plan the operation steps for the one usecase named in the human message. Its id, entity, operation, routes, port, rules, effects and namespace are already fixed. You do not choose them. A pending rule is not a step. Do not add it, and do not drop a rule the message lists under Rule. A storage unique key is not a rule id. Do not invent one, and do not decide from a sentence which route a rule filters or which method a catalog entry calls.
 
 Return only the `planUsecaseSteps` tool.
 

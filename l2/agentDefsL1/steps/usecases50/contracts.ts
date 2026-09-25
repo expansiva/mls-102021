@@ -86,6 +86,8 @@ export interface D1UsecaseEntity {
   fields: D1UsecaseField[];
   transitions: D1UsecaseTransition[];
   rules: Array<{ ruleId: string; owner: 'module' | 'platform'; source?: string }>;
+  /** Ontology unique keys. Empty when the entity draft did not carry them. */
+  uniqueKeys?: string[][];
   enumerations: Array<{ path: string; values: string[] }>;
   /** Capability ids the ontology declares. Absent when this step was not given the body. */
   capabilities?: string[];
@@ -212,6 +214,19 @@ export interface D1SourceText {
   text: string;
 }
 
+/**
+ * One applicability row. `enforcement` is the status of this obligation.
+ * `local` runs in the usecase. `delegated` would name a structured method; the catalog has none.
+ * `pending` is a gap and is not a step. An empty `ruleId` is the storage unique-key row, not a rule.
+ */
+export interface D1RulePlanRow {
+  ruleId: string;
+  origin: string;
+  consumer: string;
+  enforcement: 'local' | 'delegated' | 'pending';
+  gap: string;
+}
+
 /** One rule the operation is subject to. The text is the source, not a summary. */
 export interface D1RuleText {
   ruleId: string;
@@ -282,7 +297,11 @@ export interface D1UsecaseContext {
   capabilities: D1CapabilityText[];
   effectiveFields: string[];
   routes: D1RouteContext[];
+  /** Rules this operation enforces. Pending obligations are not in this list. */
   rules: D1RuleText[];
+  rulePlan: D1RulePlanRow[];
+  /** Texts for pending rows. Not offered to the worker as steps. */
+  pendingRules: D1RuleText[];
   portId: string;
   portMethods: D1PortSignature[];
   effects: D1OutboundEvent[];

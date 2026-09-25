@@ -32,6 +32,11 @@ import { parseFinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/c
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
+
+function fixtureSource(logical: string): string {
+  const stored = logical.endsWith('.defs.ts') ? logical.replace(/\.ts$/, '.txt') : logical;
+  return readFileSync(path.join(FIXTURE, stored), 'utf8');
+}
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
@@ -220,6 +225,19 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
   for (const contract of contracts) {
     seed(host, fileInfoFromDisplay(PROJECT, contract.path)!, contract.source, 'contract');
   }
+  usecaseRequest.files = [
+    ...[
+      'l4/agendaClinica/ontology/Consulta.defs.ts',
+      'l4/agendaClinica/rules.defs.ts',
+      'l4/agendaClinica/access.defs.ts',
+      'l4/agendaClinica/integration.defs.ts',
+      'l4/agendaClinica/pool/l1/web/needs.json',
+    ].map(logical => ({ path: logical, text: fixtureSource(logical) })),
+    ...usecaseRequest.entities.filter(entity => entity.storageTarget === 'mdm').map(entity => ({
+      path: `l4/${MODULE}/ontology/${entity.entityId}.defs.ts`,
+      text: `export const ${entity.entityId}Ontology = ${JSON.stringify(mdmOntology(entity))} as const;\n`,
+    })),
+  ];
   const usecases = buildD1Usecases(usecaseRequest);
   await writeJson(draftFile(PROJECT, MODULE, 'usecases50'), usecases);
   for (const part of usecases.emit) {

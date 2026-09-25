@@ -15,6 +15,15 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import {
+  capabilityApplies,
+  enforcedRuleIds,
+  planRuleApplicability,
+  type RulePlanRule,
+} from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+export { capabilityApplies };
 import type {
   D1AccessGrant,
   D1CapabilityText,
@@ -208,7 +217,7 @@ export function formatUsecaseContext(context: D1UsecaseContext): string {
   }
   for (const route of context.routes) {
     lines.push('');
-    lines.push(...routeLines(route));
+    lines.push(...routeLines(route, context.rulePlan, context.pendingRules));
   }
   if (context.rules.length) lines.push('');
   for (const rule of context.rules) {
@@ -216,6 +225,14 @@ export function formatUsecaseContext(context: D1UsecaseContext): string {
     lines.push(`Owner: ${rule.owner}`);
     lines.push(`Source: ${rule.source}`);
     lines.push(rule.text);
+  }
+  for (const row of context.rulePlan) {
+    if (row.enforcement !== 'pending' || row.consumer.startsWith('route:')) continue;
+    const text = context.pendingRules.find(rule => rule.ruleId === row.ruleId);
+    lines.push(`Pending ${row.ruleId}`);
+    lines.push(`Gap: ${row.gap}`);
+    if (text?.source) lines.push(`Source: ${text.source}`);
+    if (text?.text) lines.push(text.text);
   }
   lines.push('');
   if (context.portId) {
@@ -325,8 +342,8 @@ function oneContext(
   const body = bundle.bodies[usecase.entity] ?? null;
   const transition = transitionFor(usecase, entity, body);
   const lifecycle = usecase.operation === 'transition' && Boolean(transition);
-  const rules = rulesFor(usecase, entity, body, transition, bundle);
   const routes = routesFor(usecase, input.routes, bundle);
+  const rules = rulesFor(usecase, entity, body, routes.routes, bundle);
   const port = input.ports.find(item => item.entityId === usecase.entity) || null;
   const portMethods = port && entity?.storageTarget !== 'mdm' ? methodsFor(port, usecase.operation) : [];
   const effects = bundle.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`);
@@ -346,6 +363,8 @@ function oneContext(
     effectiveFields,
     routes: routes.routes,
     rules: rules.rules,
+    rulePlan: rules.plan,
+    pendingRules: rules.pending,
     portId: port && entity?.storageTarget !== 'mdm' ? port.portId : '',
     portMethods,
     effects,
@@ -359,40 +378,121 @@ function rulesFor(
   usecase: D1UsecaseSelection,
   entity: D1UsecaseEntity | null,
   body: unknown,
-  transition: D1UsecaseContext['transition'],
+  routes: readonly D1RouteContext[],
   bundle: VerifiedBundle,
-): { rules: D1RuleText[]; missing: D1SourceFinding[] } {
-  const rules: D1RuleText[] = [];
+): { rules: D1RuleText[]; pending: D1RuleText[]; plan: D1RulePlanRow[]; missing: D1SourceFinding[] } {
   const missing: D1SourceFinding[] = [];
-  const ids = ruleIdsFor(usecase, entity, body, transition);
-  for (const ruleId of ids) {
+  const transitions = ontologyTransitions(body).length
+    ? ontologyTransitions(body)
+    : (entity?.transitions || []).map(item => ({
+      transitionId: item.transitionId,
+      by: item.by,
+      ruleRefs: item.ruleRefs,
+      payload: item.payload || [],
+    }));
+  const cited = ruleRecords(usecase, entity, body, transitions, bundle);
+  const plan = planRuleApplicability({
+    moduleName: bundleModule(bundle, entity),
+    entityId: usecase.entity,
+    usecaseId: usecase.usecaseId,
+    operation: usecase.operation,
+    rules: cited,
+    transitions,
+    uniqueKeys: uniqueKeysOf(body).length ? uniqueKeysOf(body) : entity?.uniqueKeys || [],
+    capabilities: capabilityNames(body).length ? capabilityNames(body) : entity?.capabilities || [],
+    routes: routes.map(route => ({
+      route: route.route,
+      contractPath: route.contractPath,
+      grants: route.access.map(grant => ({ grantId: grant.grantId, actorRef: grant.actorRef, scope: grant.scope })),
+    })),
+    mdmMethods: mdmMethodsFor(usecase, entity, body),
+  });
+  const rules: D1RuleText[] = [];
+  const pending: D1RuleText[] = [];
+  for (const ruleId of enforcedRuleIds(plan)) {
     const resolved = resolveRule(ruleId, entity, bundle);
     if ('finding' in resolved) missing.push(resolved.finding);
     else rules.push(resolved.rule);
   }
-  return { rules, missing };
+  for (const row of plan) {
+    if (row.enforcement !== 'pending' || pending.some(item => item.ruleId === row.ruleId)) continue;
+    const resolved = resolveRule(row.ruleId, entity, bundle);
+    if ('finding' in resolved) missing.push(resolved.finding);
+    else pending.push(resolved.rule);
+  }
+  return { rules, pending, plan, missing };
 }
 
-function ruleIdsFor(
+function bundleModule(bundle: VerifiedBundle, entity: D1UsecaseEntity | null): string {
+  const ontology = entity ? bundle.entityPaths[entity.entityId] || '' : '';
+  const match = /^l4\/([^/]+)\//.exec(ontology);
+  if (match) return match[1];
+  const rules = bundle.moduleRulesPath;
+  const fromRules = /^l4\/([^/]+)\//.exec(rules);
+  return fromRules ? fromRules[1] : '';
+}
+
+function ruleRecords(
   usecase: D1UsecaseSelection,
   entity: D1UsecaseEntity | null,
   body: unknown,
-  transition: D1UsecaseContext['transition'],
-): string[] {
-  if (usecase.operation === 'transition') return transition ? [...transition.ruleRefs] : [];
-  const onTransitions = new Set(ontologyTransitions(body).flatMap(item => item.ruleRefs));
+  transitions: readonly { ruleRefs: readonly string[] }[],
+  bundle: VerifiedBundle,
+): RulePlanRule[] {
   const cited = entity?.rules.map(rule => rule.ruleId) || [];
   const fromBody = isRecord(body) ? stringList(body.rules) : [];
-  const pool = cited.length ? cited : fromBody;
-  const ids: string[] = [];
-  for (const ruleId of pool) {
-    if (onTransitions.has(ruleId) || ids.includes(ruleId)) continue;
-    ids.push(ruleId);
+  const ids = cited.length ? [...cited] : [...fromBody];
+  for (const transition of transitions) {
+    for (const ruleId of transition.ruleRefs) {
+      if (!ids.includes(ruleId)) ids.push(ruleId);
+    }
   }
-  for (const rule of entity?.rules || []) {
-    if (rule.owner === 'platform' && !ids.includes(rule.ruleId)) ids.push(rule.ruleId);
+  if (usecase.operation === 'transition') {
+    for (const ruleId of transitions.flatMap(item => item.ruleRefs)) {
+      if (!ids.includes(ruleId)) ids.push(ruleId);
+    }
   }
-  return ids;
+  return ids.map(ruleId => {
+    const resolved = resolveRule(ruleId, entity, bundle);
+    if ('finding' in resolved) {
+      const placed = entity?.rules.find(rule => rule.ruleId === ruleId);
+      return {
+        ruleId,
+        owner: placed?.owner || 'module',
+        source: placed?.source || bundle.moduleRulesPath,
+        text: '',
+      };
+    }
+    return {
+      ruleId,
+      owner: resolved.rule.owner,
+      source: resolved.rule.source,
+      text: resolved.rule.text,
+    };
+  });
+}
+
+function mdmMethodsFor(usecase: D1UsecaseSelection, entity: D1UsecaseEntity | null, body: unknown): string[] {
+  if (entity?.storageTarget !== 'mdm') return [];
+  const capabilities = capabilityNames(body).length ? capabilityNames(body) : entity.capabilities || [];
+  return bindMdm({
+    entityId: entity.entityId,
+    namespace: entity.namespace || namespaceOf(body),
+    capabilities,
+    selected: capabilities.filter(name => capabilityApplies(name, usecase.operation)),
+    platformFields: entity.platformFields || platformFieldPaths(body),
+  }).calls.map(call => call.method);
+}
+
+function uniqueKeysOf(body: unknown): string[][] {
+  if (!isRecord(body) || !Array.isArray(body.uniqueKeys)) return [];
+  const out: string[][] = [];
+  for (const row of body.uniqueKeys) {
+    if (!Array.isArray(row)) continue;
+    const fields = row.filter((item): item is string => typeof item === 'string' && item.length > 0);
+    if (fields.length) out.push(fields);
+  }
+  return out;
 }
 
 function resolveRule(
@@ -628,13 +728,6 @@ function capabilitiesFor(body: unknown, operation: string, storage: string): D1C
   return out;
 }
 
-export function capabilityApplies(name: string, operation: string): boolean {
-  if (operation === 'update') return name === 'edit.platformFields' || name.startsWith('edit.');
-  if (operation === 'create') return name.startsWith('register.') || name === 'create';
-  if (operation === 'list' || operation === 'get') return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
-  return false;
-}
-
 function platformLeaves(body: unknown): string[] {
   if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
   const out: string[] = [];
@@ -657,7 +750,7 @@ function walkPlatform(fields: Record<string, unknown>, prefix: string, inherited
   }
 }
 
-function routeLines(route: D1RouteContext): string[] {
+function routeLines(route: D1RouteContext, plan: readonly D1RulePlanRow[], pending: readonly D1RuleText[]): string[] {
   const lines = [`Route ${route.route}`, `Contract: ${route.contractPath || '(none)'}`];
   if (route.unbound) lines.push(route.unbound);
   if (route.inputSymbol) {
@@ -681,6 +774,14 @@ function routeLines(route: D1RouteContext): string[] {
     }
   }
   if (!route.access.length) lines.push('Access: (none for this route).');
+  for (const row of plan) {
+    if (row.consumer !== `route:${route.route}`) continue;
+    lines.push(`Pending ${row.ruleId}`);
+    lines.push(`Gap: ${row.gap}`);
+    lines.push(`Origin: ${row.origin}`);
+    const text = pending.find(rule => rule.ruleId === row.ruleId);
+    if (text?.text) lines.push(text.text);
+  }
   return lines;
 }
 

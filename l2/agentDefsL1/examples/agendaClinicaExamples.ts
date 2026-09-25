@@ -151,7 +151,14 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
     entityId: 'Consulta',
     operation: 'list',
     ports: ['ConsultaRepository'],
-    rulesApplied: ['professionalOwnAppointment'],
+    rulesApplied: [],
+    rulePlan: ['attendanceNoteRequired', 'consultationTransitionFlow', 'professionalOwnAppointment'].map(ruleId => ({
+      ruleId,
+      origin: `l4/${MODULE}/ontology/Consulta.defs.ts#rules`,
+      consumer: 'operation:list',
+      enforcement: 'pending' as const,
+      gap: 'APPLICABILITY_UNDECLARED',
+    })),
     functions: [{
       functionName: 'listConsulta',
       input: [
@@ -183,11 +190,7 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
       { kind: 'port', call: 'list', port: 'ConsultaRepository' },
     ],
     uses: [],
-    rules: [{
-      ruleId: 'professionalOwnAppointment',
-      path: `l4/${MODULE}/rules.defs.ts`,
-      symbol: 'professionalOwnAppointment',
-    }],
+    rules: [],
     transaction: { boundary: 'none' },
   });
 

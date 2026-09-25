@@ -181,6 +181,13 @@ function section(prompt: string, route: string): string {
   return prompt.slice(start, next === -1 ? prompt.length : next);
 }
 
+/** Route text only. Pending rows of the operation sit after the last route. */
+function routeBody(prompt: string, route: string): string {
+  const body = section(prompt, route);
+  const pending = body.indexOf('\nPending ');
+  return pending === -1 ? body : body.slice(0, pending);
+}
+
 void test('the real hook gives registrarAtendimento the note, the rule and the contract', async () => {
   const opened = await openLive();
   const { prompt } = await promptFor(opened, 'registrarAtendimento');
@@ -253,8 +260,8 @@ void test('updateProfissional receives platform fields and is not a lifecycle', 
 void test('listConsulta keeps each route contract and access apart', async () => {
   const opened = await openLive();
   const { prompt } = await promptFor(opened, 'listConsulta');
-  const professional = section(prompt, PROFESSIONAL_LIST);
-  const reception = section(prompt, RECEPTION_LIST);
+  const professional = routeBody(prompt, PROFESSIONAL_LIST);
+  const reception = routeBody(prompt, RECEPTION_LIST);
   assert.match(professional, /attendanceNote/);
   assert.match(professional, /Access grant profissionalAgendaDiaria/);
   assert.match(professional, /Disclosure fullRecord/);
@@ -268,7 +275,15 @@ void test('listConsulta keeps each route contract and access apart', async () =>
   assert.doesNotMatch(reception, /Disclosure fullRecord/);
   const grants = prompt.match(/Access grant recepcionistaAgendaConsultas/g) || [];
   assert.ok(grants.length >= 2, String(grants.length));
-  assert.doesNotMatch(prompt, /attendanceNoteRequired/);
+  assert.doesNotMatch(prompt, /Rule attendanceNoteRequired/);
+  assert.doesNotMatch(prompt, /Rule uniqueProfessionalSchedule/);
+  assert.doesNotMatch(prompt, /Rule professionalOwnAppointment/);
+  assert.doesNotMatch(prompt, /ACCESS_FILTER_UNBOUND/);
+  assert.doesNotMatch(prompt, /uniqueProfessionalSchedule/);
+  assert.match(prompt, /Pending attendanceNoteRequired\nGap: APPLICABILITY_UNDECLARED/);
+  assert.match(prompt, /Pending professionalOwnAppointment\nGap: APPLICABILITY_UNDECLARED/);
+  assert.doesNotMatch(professional, /Pending /);
+  assert.doesNotMatch(reception, /Pending /);
   assert.doesNotMatch(prompt, /RegistrarAtendimentoInput/);
 
   const other = await promptFor(opened, 'createPaciente');
