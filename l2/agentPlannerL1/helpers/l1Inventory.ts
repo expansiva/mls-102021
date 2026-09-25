@@ -288,9 +288,9 @@ async function readTables(project: number, moduleName: string, tableFolder: stri
     const tableId = typeof data.tableId === 'string' && data.tableId
       ? data.tableId
       : (typeof parsed.artifactId === 'string' ? parsed.artifactId : file.shortName);
-    const entity = typeof parsed.artifactId === 'string' && parsed.artifactId
-      ? parsed.artifactId
-      : tableId;
+    const entity = typeof data.entityId === 'string' && data.entityId
+      ? data.entityId
+      : (typeof parsed.artifactId === 'string' && parsed.artifactId ? parsed.artifactId : tableId);
     tables.push({ tableId, entity });
   }
   return tables.sort((a, b) => a.tableId.localeCompare(b.tableId));

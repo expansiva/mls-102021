@@ -270,6 +270,43 @@ void test('the same input twice does not write and does not call a model', async
   assert.equal(await unitIsIntact(PROJECT, MODULE, 'usecases50', 'usecases50', SNAPSHOT), true);
   alpha.content = 'TOUCHED';
   assert.equal(await unitIsIntact(PROJECT, MODULE, 'usecases50', 'usecases50', SNAPSHOT), false);
+});
+
+void test('a v2 status edit stays intact and a behavior edit does not', async () => {
+  const host = await hostWith();
+  const logical = defPath('note');
+  const qualified = `_${PROJECT}_/${logical}`;
+  const definition = pendingDefinition('domainEntity', 'Note', MODULE, {
+    entityId: 'Note',
+    storageTarget: 'moduleDatabase',
+    fields: [{ name: 'id', type: 'string' }],
+    lifecycle: { states: [{ state: 'open', reachedBy: 'actor' }], transitions: [] },
+    invariants: [],
+    imports: [],
+  });
+  const rendered = renderDefinition(definition, qualified);
+  assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
+  if (!('source' in rendered)) return;
+  const pending = rendered.source;
+  await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: logical, source: pending }],
+  });
+  assert.equal(await unitIsIntact(PROJECT, MODULE, 'domain30', 'domain30', SNAPSHOT), true);
+  const file = host.files[fileKey(info(logical))]!;
+  const kept = file.updatedAt;
+  file.content = pending.replace('"status": "pending"', '"status": "generated"');
+  assert.equal(await semanticHash(definition), await semanticHash({ ...definition, status: 'generated' }));
+  assert.equal(await unitIsIntact(PROJECT, MODULE, 'domain30', 'domain30', SNAPSHOT), true);
+  assert.equal(file.updatedAt, kept);
+  file.content = pending.replace('"entityId": "Note"', '"entityId": "Other"');
+  assert.equal(await unitIsIntact(PROJECT, MODULE, 'domain30', 'domain30', SNAPSHOT), false);
   const checkpoint = host.files[fileKey(pipelineFile(PROJECT, MODULE))];
   assert.equal(checkpoint, undefined);
 });

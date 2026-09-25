@@ -122,7 +122,7 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
     ],
   });
 
-  const table = envelope('table', 'Consulta', {
+  const table = envelope('table', 'consulta', {
     tableId: 'consulta',
     entityId: 'Consulta',
     physicalName: 'agendaClinica_consulta',

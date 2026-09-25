@@ -614,14 +614,13 @@ export function tableIssues(data: unknown): string[] {
 }
 
 /**
- * readL1Inventory uses artifactId as the table entity and data.tableId as the logical id.
- * data.entityId must equal artifactId so the two do not diverge.
+ * artifactId is the logical table id. The inventory reads the entity from data.entityId.
  */
 export function tableIdentityIssues(data: unknown, artifactId: string): string[] {
   if (!isRecord(data)) return [];
-  const entityId = typeof data.entityId === 'string' ? data.entityId : '';
-  if (entityId && artifactId && entityId !== artifactId) {
-    return [`data.entityId must equal artifactId because the inventory reads the entity from artifactId.`];
+  const tableId = typeof data.tableId === 'string' ? data.tableId : '';
+  if (tableId && artifactId && tableId !== artifactId) {
+    return ['artifactId must equal data.tableId.'];
   }
   return [];
 }

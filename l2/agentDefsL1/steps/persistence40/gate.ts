@@ -223,7 +223,7 @@ function planEntity(
     interfaceName: portId,
     methods,
   });
-  const tableDefinition = definitionFor(request, 'table', entityId, {
+  const tableDefinition = definitionFor(request, 'table', tableId, {
     tableId,
     entityId,
     physicalName: physical,

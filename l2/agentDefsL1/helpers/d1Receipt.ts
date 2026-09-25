@@ -166,8 +166,8 @@ export async function unitIsIntact(
       if (current != null) return false;
       continue;
     }
-    const hash = current == null ? '' : await sha256Text(current);
-    if (hash !== file.desiredHash) return false;
+    // v2 identity is the semantic hash. A status edit is the same source.
+    if (!await hashesAgree(current || '', file.desiredHash)) return false;
   }
   return true;
 }

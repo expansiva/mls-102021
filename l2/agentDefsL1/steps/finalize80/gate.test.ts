@@ -177,7 +177,7 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
     },
     {
       logical: PATHS.table,
-      definition: definition('table', 'Consulta', {
+      definition: definition('table', 'consulta', {
         tableId: 'consulta',
         entityId: 'Consulta',
         physicalName: 'consulta',

@@ -174,6 +174,46 @@ void test('missing and ambiguous references are reported', () => {
   });
   assert.equal(ambiguous.some(item => item.includes('Ambiguous reference repositoryPort:ConsultaRepository')), true);
   assert.deepEqual(referenceIssues(listConsultaPending, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
+  const contract = '_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts';
+  const catalog = '_102034_/l4/ontology/mdm.defs.ts';
+  const mixed = {
+    ...listConsultaPending,
+    dependencies: [...new Set([...listConsultaPending.dependencies, catalog, contract])].sort(),
+    data: {
+      ...listConsultaPending.data,
+      routeProjections: [
+        ...(Array.isArray(listConsultaPending.data.routeProjections) ? listConsultaPending.data.routeProjections : []),
+        { route: 'agendaClinica.pacientes.cmdCreatePaciente', contractPath: 'l2/agendaClinica/web/contracts/pacientes.defs.ts', projection: 'declared', outputFields: [] },
+      ],
+    },
+  };
+  const mixedIssues = referenceIssues(mixed, { files: mixed.dependencies, artifacts: fixtureIndex.artifacts });
+  assert.equal(mixedIssues.some(item => item.includes('_102034_/l2/')), false, mixedIssues.join('\n'));
+  assert.equal(mixedIssues.some(item => item.includes('pacientes.defs.ts')), false, mixedIssues.join('\n'));
+  const tablePath = '_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts';
+  const portPath = '_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts';
+  const adapter = {
+    ...listConsultaPending,
+    artifactType: 'repositoryAdapter' as const,
+    artifactId: 'ConsultaRepository',
+    data: { entityId: 'Consulta', portId: 'ConsultaRepository', tableId: 'consulta', columns: [] },
+  };
+  const byTableId = referenceIssues(adapter, {
+    files: [tablePath, portPath],
+    artifacts: [
+      { artifactType: 'table', artifactId: 'consulta', defPath: tablePath },
+      { artifactType: 'repositoryPort', artifactId: 'ConsultaRepository', defPath: portPath },
+    ],
+  });
+  assert.equal(byTableId.some(item => item.includes('table:consulta')), false, byTableId.join('\n'));
+  const byFileName = referenceIssues(adapter, {
+    files: [tablePath, portPath],
+    artifacts: [
+      { artifactType: 'table', artifactId: 'Consulta', defPath: tablePath },
+      { artifactType: 'repositoryPort', artifactId: 'ConsultaRepository', defPath: portPath },
+    ],
+  });
+  assert.equal(byFileName.some(item => item.includes('Missing reference table:consulta at data.tableId')), true, byFileName.join('\n'));
 });
 
 void test('traversal orders dependencies and reports a cycle', () => {

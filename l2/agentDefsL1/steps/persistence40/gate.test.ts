@@ -259,6 +259,8 @@ void test('Consulta emits one port, one table and one adapter', async () => {
   assert.equal(first.normalizations.some(item => item.code === 'OUT_OF_STEP'), true);
 
   const table = first.tables[0].definition!.data as unknown as D1TableData;
+  assert.equal(first.tables[0].definition!.artifactId, 'consulta');
+  assert.equal(first.tables[0].definition!.artifactId, table.tableId);
   assert.equal(table.tableId, 'consulta');
   assert.equal(table.entityId, 'Consulta');
   assert.equal(table.physicalName, 'agendaClinica_consulta');

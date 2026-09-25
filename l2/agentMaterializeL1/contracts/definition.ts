@@ -637,11 +637,11 @@ function projectOf(dependencies: readonly string[]): string {
 
 function normalizeFileRef(path: string, dependencies: readonly string[]): string {
   if (QUALIFIED_FILE.test(path)) return path;
-  if (path.startsWith('l')) {
-    const project = projectOf(dependencies);
-    return project === '0' ? path : `_${project}_/${path}`;
-  }
-  return path;
+  if (!path.startsWith('l')) return path;
+  const matches = dependencies.filter(dep => dep === path || dep.endsWith(`/${path}`));
+  if (matches.length === 1) return matches[0];
+  const project = projectOf(dependencies);
+  return project === '0' ? path : `_${project}_/${path}`;
 }
 
 async function hashDriftIssues(
