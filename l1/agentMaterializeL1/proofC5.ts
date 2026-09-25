@@ -6,8 +6,12 @@
  * A lifecycle or payload rule is called on the usecase. A pending grant
  * refuses the route, including a command, and that call does not reach
  * the usecase. --inject disable-rules removes the generated storage and
- * payload checks; those cases must come back failed. --only limits the
- * usecases inside the flows.
+ * payload checks; those cases must come back failed. A derived MDM
+ * usecase is executed on the memory facade: create follows find then
+ * create then attach, and update sends expectedVersion. --inject
+ * disable-rules also removes that create condition and that version
+ * value; those cases must come back failed. --only limits the usecases
+ * inside the flows.
  *
  *   tsx --import ./test/register-hooks.mjs mls-102021/l1/agentMaterializeL1/proofC5.ts --evidence <dir> --defs <dir> --repo <dir> [--flow <id>] [--only <ids>] [--inject disable-rules]
  */
@@ -21,13 +25,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
-import { behaviorNeedsLlm, caseBlock, ruleRunsOnUsecase, withoutPayloadChecks, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCreateChecks, withoutPayloadChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { parseCatalog, renderMonitorCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
+import { verifyBatch, type M1Checkpoint, type M1Evidence, type M1Observation, type M1Verdict } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import { createDiskHost, scenarioCatalogRef } from '/_102021_/l1/agentMaterializeL1/nodejsMaterializeL1.js';
 import type { BffHandler, ModuleBffRegistration } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { createRequestContext, execBff } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { readProjectsConfig } from '/_102034_/l1/server/layer_1_external/config/projectConfig.js';
 import { loadModuleRouter, resetModuleRouterCache } from '/_102034_/l1/server/layer_2_controllers/moduleRegistry.js';
 
@@ -102,7 +107,7 @@ async function main(): Promise<void> {
   const patchProblems = args.inject === 'disable-rules' ? disableRules(sandboxProject, selected.units) : [];
   const compileLog = compileSlice(sandboxProject, selected.files);
   if (compileLog) problems.push('slice did not compile');
-  const scored = await score(host, catalogRef, sandboxProject, selected.units, controls, args.flows);
+  const scored = await score(host, catalogRef, sandboxProject, selected.units, controls, args.flows, args.inject);
   problems.push(...scored.problems, ...patchProblems);
   problems.push(...verdictProblems(scored.checkpoints, scored.blocked, scored.controls, args.inject));
 
@@ -179,8 +184,11 @@ function disableRules(sandboxProject: string, units: readonly FlowUnit[]): strin
     const source = readFileSync(full, 'utf8');
     const storage = withoutStorageChecks(source);
     const payload = withoutPayloadChecks(storage.source);
-    removed += storage.removed + payload.removed;
-    if (storage.removed + payload.removed > 0) writeFileSync(full, payload.source);
+    const version = withoutVersionChecks(payload.source);
+    const created = withoutCreateChecks(version.source);
+    const taken = storage.removed + payload.removed + version.removed + created.removed;
+    removed += taken;
+    if (taken > 0) writeFileSync(full, created.source);
   }
   return removed > 0 ? [] : ['no generated rule check could be removed'];
 }
@@ -192,6 +200,7 @@ async function score(
   units: readonly FlowUnit[],
   controlRules: ReadonlySet<string>,
   flows: readonly string[],
+  inject: InjectMode,
 ): Promise<{ problems: string[]; checkpoints: M1Checkpoint[]; notes: string[]; blocked: Set<string>; controls: Set<string> }> {
   installRuntime(sandboxProject);
   const catalogText = await host.io.read(catalogRef);
@@ -209,9 +218,22 @@ async function score(
   for (const unit of units) {
     const scenario = parsed.catalog.scenarios.find(item => item.artifactId === unit.definition.artifactId);
     if (!scenario) {
-      const probed = await probeTransition(sandboxProject, unit);
-      problems.push(...probed.problems);
-      notes.push(...probed.notes);
+      if (isDerivedMdm(unit.definition)) {
+        const probed = await probeMdm(sandboxProject, unit, inject === 'disable-rules');
+        problems.push(...probed.problems);
+        notes.push(...probed.notes);
+        for (const id of probed.controlIds) controls.add(id);
+        for (const id of probed.blockedIds) blocked.add(id);
+        const reported = await report(host, catalogRef, unit.definition, []);
+        reported.evidence = probed.evidence;
+        reported.ready = probed.evidence.length > 0 && probed.evidence.every(row => row.verdict === 'passed');
+        reported.accepted = reported.ready;
+        checkpoints.push(reported);
+      } else {
+        const probed = await probeTransition(sandboxProject, unit);
+        problems.push(...probed.problems);
+        notes.push(...probed.notes);
+      }
       continue;
     }
     for (const item of scenario.cases) {
@@ -599,11 +621,254 @@ async function flowUnits(sandboxProject: string, flows: readonly string[], only:
 }
 
 function pageOf(definition: M1Definition): string {
+  return contractPages(definition)[0] ?? '';
+}
+
+function contractPages(definition: M1Definition): string[] {
   const functions = definition.data.functions;
   const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : null;
   const refs = fn && Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
-  const route = textOf(refs[0]?.route);
-  return route.split('.')[1] ?? '';
+  return [...new Set(refs.map(item => textOf(item.route).split('.')[1] ?? '').filter(Boolean))];
+}
+
+interface MdmProbe {
+  problems: string[];
+  notes: string[];
+  evidence: M1Evidence[];
+  controlIds: string[];
+  blockedIds: string[];
+}
+
+function evidenceRow(caseId: string, verdict: M1Verdict, detail: string, errorCode: string | null = null, status: number | null = null): M1Evidence {
+  return { caseId, verdict, errorCode, status, durationMs: 0, detail };
+}
+
+async function probeMdm(sandboxProject: string, unit: FlowUnit, injected: boolean): Promise<MdmProbe> {
+  const problems: string[] = [];
+  const notes: string[] = [];
+  const evidence: M1Evidence[] = [];
+  const controlIds: string[] = [];
+  const blockedIds: string[] = [];
+  const definition = unit.definition;
+  const id = definition.artifactId;
+  const operation = textOf(definition.data.operation);
+  const source = await readSandbox(sandboxProject, outputOf(unit.defPath));
+  const pages = contractPages(definition);
+  let called = false;
+  for (const page of pages) {
+    const controller = await readSandbox(sandboxProject, outputOf(`_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${page}.defs.ts`));
+    if (controller?.includes(`${id}(`)) called = true;
+  }
+  if (!called) problems.push(`${id} is not called by its controller`);
+  if (operation === 'update' && !source?.includes('// enforce:version')) {
+    const caseId = `${id}.staleVersion`;
+    blockedIds.push(caseId);
+    evidence.push(evidenceRow(caseId, 'blocked', 'blocked: x1_05', 'PRECONDITION_UNDECLARED', 409));
+    notes.push(`${id} blocked PRECONDITION_UNDECLARED`);
+    return { problems, notes, evidence, controlIds, blockedIds };
+  }
+  const loaded = await importSandbox(sandboxProject, outputOf(unit.defPath));
+  if ('error' in loaded || typeof loaded.module[id] !== 'function') {
+    problems.push(`${id} did not import`);
+    evidence.push(evidenceRow(`${id}.probe`, 'failed', 'error' in loaded ? loaded.error : 'not exported'));
+    return { problems, notes, evidence, controlIds, blockedIds };
+  }
+  const runtime = createMemoryDataRuntime();
+  const ctx = createRequestContext(runtime, { sandbox: true, moduleId: definition.moduleName });
+  const seen: string[] = [];
+  const entity = ctx.mdm.entity as unknown as Record<string, (...args: never[]) => Promise<unknown>>;
+  for (const name of ['findByDocument', 'findByContact', 'create', 'attachRole', 'update', 'get']) {
+    const original = entity[name];
+    if (typeof original !== 'function') continue;
+    entity[name] = (async (...args: never[]) => {
+      seen.push(name);
+      return original.apply(ctx.mdm.entity, args);
+    }) as typeof original;
+  }
+  const call = loaded.module[id] as (input: Record<string, unknown>, context: unknown) => Promise<unknown>;
+  try {
+    if (operation === 'create') await probeCreate(definition, call, ctx, seen, evidence, notes, controlIds, injected);
+    else if (operation === 'update') await probeUpdate(sandboxProject, definition, call, ctx, evidence, notes, controlIds, injected);
+    else if (operation === 'list') await probeList(sandboxProject, definition, call, ctx, evidence, notes);
+    else problems.push(`${id} operation ${operation} was not probed`);
+  } catch (error) {
+    const outcome = await thrownOutcome(error);
+    problems.push(`${id} probe threw ${outcome.errorCode ?? 'INTERNAL_ERROR'}`);
+    evidence.push(evidenceRow(`${id}.probe`, 'failed', outcome.reason ?? '', outcome.errorCode ?? null, outcome.status ?? 500));
+  }
+  return { problems, notes, evidence, controlIds, blockedIds };
+}
+
+async function probeCreate(
+  definition: M1Definition,
+  call: (input: Record<string, unknown>, context: unknown) => Promise<unknown>,
+  ctx: ReturnType<typeof createRequestContext>,
+  seen: string[],
+  evidence: M1Evidence[],
+  notes: string[],
+  controlIds: string[],
+  injected: boolean,
+): Promise<void> {
+  const id = definition.artifactId;
+  const input = mdmSample(definition);
+  const start = seen.length;
+  const first = await call(input, ctx);
+  const order = seen.slice(start).filter(name => name === 'findByDocument' || name === 'findByContact' || name === 'create' || name === 'attachRole');
+  const savedId = isRecord(first) && typeof first.id === 'string' ? first.id : '';
+  const ordered = order[0]?.startsWith('find') && order.includes('create') && order[order.length - 1] === 'attachRole';
+  evidence.push(evidenceRow(`${id}.creates`, savedId && ordered ? 'passed' : 'failed', savedId ? `saved ${savedId} via ${order.join(' -> ')}` : 'no id'));
+  if (savedId && ordered) notes.push(`${id} ${order.join(' -> ')} ${savedId}`);
+  const again = seen.length;
+  const second = await call(input, ctx);
+  const creates = seen.slice(again).filter(name => name === 'create').length;
+  const same = isRecord(second) && second.id === savedId;
+  const controlId = `${id}.attachExisting`;
+  controlIds.push(controlId);
+  const held = Boolean(same && creates === 0);
+  evidence.push(evidenceRow(controlId, injected ? (creates > 0 ? 'failed' : 'passed') : (held ? 'passed' : 'failed'), held ? `reused ${savedId}` : `create calls ${creates}`));
+  if (!injected && held) notes.push(`${id} reused ${savedId}`);
+  if (injected && creates > 0) notes.push(`${id} attachExisting failed`);
+}
+
+async function probeUpdate(
+  sandboxProject: string,
+  definition: M1Definition,
+  call: (input: Record<string, unknown>, context: unknown) => Promise<unknown>,
+  ctx: ReturnType<typeof createRequestContext>,
+  evidence: M1Evidence[],
+  notes: string[],
+  controlIds: string[],
+  injected: boolean,
+): Promise<void> {
+  const id = definition.artifactId;
+  const subtype = await subtypeOf(sandboxProject, definition);
+  const seeded = await ctx.mdm.entity.create({
+    details: { subtype, name: 'Ada', countryCode: 'US', docType: 'Passport', docId: `DOC${id}` },
+  } as never) as { mdmId: string; version: number };
+  const input = mdmSample(definition, { id: seeded.mdmId, version: seeded.version, 'details.identification.name': 'Ada Updated' });
+  const saved = await call(input, ctx);
+  const wrote = isRecord(saved) && typeof saved.id === 'string';
+  evidence.push(evidenceRow(`${id}.updates`, wrote ? 'passed' : 'failed', wrote ? `saved ${String(saved.id)}` : 'update did not return'));
+  if (wrote) notes.push(`${id} updated ${String(saved.id)}`);
+  const controlId = `${id}.staleVersion`;
+  controlIds.push(controlId);
+  try {
+    await call(mdmSample(definition, { id: seeded.mdmId, version: seeded.version, 'details.identification.name': 'Stale' }), ctx);
+    evidence.push(evidenceRow(controlId, 'failed', 'stale version was stored', null, 200));
+    if (injected) notes.push(`${id} staleVersion failed`);
+  } catch (error) {
+    const outcome = await thrownOutcome(error);
+    const conflict = outcome.errorCode === 'CONCURRENCY_CONFLICT';
+    evidence.push(evidenceRow(
+      controlId,
+      injected ? (conflict ? 'passed' : 'failed') : (conflict ? 'passed' : 'failed'),
+      outcome.reason ?? '',
+      outcome.errorCode ?? null,
+      outcome.status ?? 0,
+    ));
+    if (!injected && conflict) notes.push(`${id} staleVersion 409`);
+  }
+}
+
+async function probeList(
+  sandboxProject: string,
+  definition: M1Definition,
+  call: (input: Record<string, unknown>, context: unknown) => Promise<unknown>,
+  ctx: ReturnType<typeof createRequestContext>,
+  evidence: M1Evidence[],
+  notes: string[],
+): Promise<void> {
+  const id = definition.artifactId;
+  const subtype = await subtypeOf(sandboxProject, definition);
+  const role = literalOf(definition);
+  const seeded = await ctx.mdm.entity.create({
+    details: { subtype, name: 'Ada', countryCode: 'US', docType: 'Passport', docId: `DOC${id}` },
+  } as never) as { mdmId: string };
+  if (role) await ctx.mdm.entity.attachRole(seeded.mdmId, role);
+  const listed = await call(nameInput(definition), ctx);
+  const rows = Array.isArray(listed) ? listed : [];
+  const hit = rows.some(row => isRecord(row) && row.id === seeded.mdmId);
+  evidence.push(evidenceRow(`${id}.lists`, hit ? 'passed' : 'failed', hit ? `listed ${seeded.mdmId}` : `missing from ${rows.length} rows`));
+  if (hit) notes.push(`${id} listed ${seeded.mdmId}`);
+}
+
+function mdmSample(definition: M1Definition, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  const mdm = definition.data.mdm;
+  if (isRecord(mdm) && Array.isArray(mdm.calls)) {
+    for (const call of mdm.calls) {
+      if (!isRecord(call) || !Array.isArray(call.arguments)) continue;
+      for (const arg of call.arguments) {
+        if (!isRecord(arg) || !isRecord(arg.origin) || arg.origin.kind !== 'contract') continue;
+        const path = textOf(arg.origin.path);
+        if (!path || path === 'id' || path === 'version' || valueAt(input, path) !== undefined) continue;
+        assignPath(input, path, sampleLeaf(path));
+      }
+    }
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key.includes('.')) assignPath(input, key, value);
+    else input[key] = value;
+  }
+  return input;
+}
+
+function nameInput(definition: M1Definition): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  const mdm = definition.data.mdm;
+  if (!isRecord(mdm) || !Array.isArray(mdm.calls)) return input;
+  for (const call of mdm.calls) {
+    if (!isRecord(call) || call.method !== 'listByType' || !Array.isArray(call.arguments)) continue;
+    for (const arg of call.arguments) {
+      if (!isRecord(arg) || !isRecord(arg.origin) || arg.origin.kind !== 'contract') continue;
+      const path = textOf(arg.origin.path);
+      if (path) assignPath(input, path, 'Ada');
+    }
+  }
+  return input;
+}
+
+function sampleLeaf(path: string): unknown {
+  const leaf = path.split('.').pop() ?? '';
+  if (leaf === 'name') return 'Ada';
+  if (leaf === 'docType') return 'Passport';
+  if (leaf === 'docId') return 'DOC1';
+  if (leaf === 'countryCode') return 'US';
+  if (leaf === 'notes' || leaf === 'occupation') return 'sample';
+  if (leaf === 'aliases') return ['Ada'];
+  if (leaf === 'page') return 1;
+  return {};
+}
+
+function literalOf(definition: M1Definition): string {
+  const mdm = definition.data.mdm;
+  if (!isRecord(mdm) || !Array.isArray(mdm.calls)) return '';
+  for (const call of mdm.calls) {
+    if (!isRecord(call) || !Array.isArray(call.arguments)) continue;
+    for (const arg of call.arguments) {
+      if (isRecord(arg) && isRecord(arg.origin) && arg.origin.kind === 'literal' && typeof arg.value === 'string') return arg.value;
+    }
+  }
+  return '';
+}
+
+async function subtypeOf(sandboxProject: string, definition: M1Definition): Promise<string> {
+  for (const dep of definition.dependencies) {
+    if (!dep.includes('/ontology/') || dep.endsWith('/mdm.defs.ts')) continue;
+    const text = await readSandbox(sandboxProject, dep);
+    const match = text ? /"subtype"\s*:\s*"([^"]+)"/.exec(text) : null;
+    if (match?.[1]) return match[1];
+  }
+  return '';
+}
+
+function valueAt(source: unknown, path: string): unknown {
+  let node: unknown = source;
+  for (const part of path.split('.')) {
+    if (!isRecord(node)) return undefined;
+    node = node[part];
+  }
+  return node;
 }
 
 async function probeTransition(sandboxProject: string, unit: FlowUnit): Promise<{ problems: string[]; notes: string[] }> {

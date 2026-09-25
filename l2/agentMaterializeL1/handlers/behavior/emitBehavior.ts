@@ -10,6 +10,10 @@
  * A pending rule row is not emitted. Events stay in a declared list and are
  * not published. A duplicate slot in this store is not a PostgreSQL atomic
  * constraint. A version the contract does not declare is not invented.
+ * An MDM usecase walks `mdm.calls` in order. `expectedVersion` is emitted
+ * only when a depended ontology field is `writePrecondition` and the
+ * operation input carries that path. Create runs only when its `when` says
+ * the prior find missed. No new facade is written.
  */
 
 import {
@@ -18,6 +22,7 @@ import {
   readDefinition,
   type M1Definition,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
   emitAccess,
@@ -32,6 +37,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
+const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const DERIVED_OPERATIONS = new Set(['create', 'list', 'get', 'read']);
 const BLOCKING_RULE_GAPS = new Set(['APPLICABILITY_UNDECLARED']);
@@ -44,7 +50,20 @@ const GAP_OWNER: Record<string, string> = {
 
 export const STORAGE_MARK = '// enforce:storage';
 export const PAYLOAD_MARK = '// enforce:payload';
+export const VERSION_MARK = '// enforce:version';
+export const CREATE_MARK = '// enforce:create';
 const LIFECYCLE_MARK = '// enforce:lifecycle';
+const CREATE_END = '// enforce:create end';
+const MDM_METHODS = new Set([
+  'entity.findByDocument',
+  'entity.findByContact',
+  'entity.get',
+  'entity.create',
+  'entity.update',
+  'entity.attachRole',
+  'collection.listByType',
+  'collection.relatedOfMany',
+]);
 
 export interface CaseBlock {
   gap: string;
@@ -69,8 +88,13 @@ interface FieldNode {
   children: Map<string, FieldNode>;
 }
 
+export function isDerivedMdm(definition: M1Definition): boolean {
+  return mdmCalls(definition).length > 0 && mdmPlan(definition);
+}
+
 export function behaviorNeedsLlm(definition: M1Definition): boolean {
   if (definition.artifactType !== 'usecase') return false;
+  if (mdmCalls(definition).length > 0) return !mdmPlan(definition);
   const operation = text(definition.data.operation);
   if (operation === 'transition') {
     if (stringList(definition.data.ports).length !== 1) return true;
@@ -102,6 +126,26 @@ export function withoutPayloadChecks(source: string): { source: string; removed:
   return { source: next, removed };
 }
 
+export function withoutVersionChecks(source: string): { source: string; removed: number } {
+  const pattern = /([ \t]*)\/\/ enforce:version\r?\n\1const expectedVersion = Number\(readPath\(body, (?:"[^"]*"|'[^']*')\)\);\r?\n/g;
+  let removed = 0;
+  const next = source.replace(pattern, (_match, indent: string) => {
+    removed += 1;
+    return `${indent}// enforce:version disabled\n${indent}const expectedVersion = Number(loaded.version);\n`;
+  });
+  return { source: next, removed };
+}
+
+export function withoutCreateChecks(source: string): { source: string; removed: number } {
+  const pattern = /([ \t]*)\/\/ enforce:create\r?\n\1if \([^\n]*\) \{\r?\n([\s\S]*?)\r?\n\1\}\r?\n\1\/\/ enforce:create end\r?\n/g;
+  let removed = 0;
+  const next = source.replace(pattern, (_match, indent: string, body: string) => {
+    removed += 1;
+    return `${indent}// enforce:create disabled\n${body}\n`;
+  });
+  return { source: next, removed };
+}
+
 export async function caseBlock(
   definition: M1Definition,
   defPath: string,
@@ -113,6 +157,11 @@ export async function caseBlock(
   if (rule) return { gap: rule.gap, owner: GAP_OWNER[rule.gap] ?? rule.gap, ruleId: rule.ruleId, unread: false };
   if (ruleId && !ruleRows(definition).some(row => row.ruleId === ruleId)) {
     return { gap: 'PRECONDITION_UNDECLARED', owner: GAP_OWNER.PRECONDITION_UNDECLARED, ruleId, unread: false };
+  }
+  if (text(definition.data.operation) === 'update' && isDerivedMdm(definition)) {
+    const precondition = await confirmedPrecondition(definition, read);
+    if (!precondition) return { gap: 'PRECONDITION_UNDECLARED', owner: GAP_OWNER.PRECONDITION_UNDECLARED, ruleId: ruleId || 'writePrecondition', unread: false };
+    if (ruleId === 'writePrecondition' || ruleId === 'expectedVersion') return null;
   }
   if (text(definition.data.operation) === 'transition' && ruleId) {
     const plan = await planTransition(definition, read);
@@ -155,6 +204,7 @@ export async function emitBehavior(
 }
 
 async function memoryUsecase(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
+  if (isDerivedMdm(definition)) return memoryMdm(definition, output, read);
   if (behaviorNeedsLlm(definition)) {
     return { code: 'NEEDS_LLM', detail: `${definition.artifactId} is not derivable from its def. No file was written.` };
   }
@@ -272,6 +322,364 @@ function storeSource(entity: string): string {
     '}',
     '',
   ].join('\n');
+}
+
+async function memoryMdm(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
+  const facade = await read(PLATFORM_FILES.mdmFacade);
+  const memory = await read(MDM_MEMORY);
+  const facadeReady = facade?.includes('export function createMdmFacade') === true;
+  const memoryReady = memory?.includes('export function createMemoryDataRuntime') === true;
+  if (!facadeReady || !memoryReady) {
+    const missing = [facadeReady ? '' : 'facade', memoryReady ? '' : 'memory'].filter(Boolean).join(' ');
+    return { code: 'MDM_RUNTIME_ABSENT', detail: `${definition.artifactId} has no memory MDM runtime (${missing}). No facade was written.` };
+  }
+  const stub = await emitUsecase(definition, output, read);
+  if ('code' in stub) return stub;
+  const operation = text(definition.data.operation);
+  const entity = await loadEntity(definition, read);
+  if ('code' in entity) return entity;
+  const subtype = await ontologySubtype(definition, read);
+  const precondition = operation === 'update' ? await confirmedPrecondition(definition, read) : '';
+  const returnType = /: Promise<([^>]+)>/.exec(stub.source)?.[1] ?? 'unknown';
+  const body = operation === 'update' && !precondition
+    ? '  void input;\n  throw new AppError(\'PRECONDITION_UNDECLARED\', \'Write precondition is not declared.\', 409);'
+    : mdmBody(definition, entity, subtype, precondition, returnType);
+  const replaced = stub.source.replace(
+    /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
+    body,
+  );
+  if (replaced === stub.source) return { code: 'STUB_SHAPE', detail: `${definition.artifactId} stub body was not recognized.` };
+  const bad = auditImports(replaced, stub.imports);
+  if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
+  return { runsStub: false, imports: stub.imports, source: finish(replaced) };
+}
+
+function mdmBody(definition: M1Definition, entity: M1Definition, subtype: string, precondition: string, returnType: string): string {
+  const operation = text(definition.data.operation);
+  const calls = mdmCalls(definition);
+  const leaves = detailLeaves(entity).map(path => [path.split('.').pop() ?? '', path.slice('details.'.length)] as const);
+  const lines = [
+    '  const body = input as unknown as Record<string, unknown>;',
+    '  const present = (value: unknown): boolean => value !== undefined && value !== null && value !== \'\';',
+    '  const readPath = (source: unknown, path: string): unknown => {',
+    '    let node: unknown = source;',
+    '    for (const part of path.split(\'.\')) {',
+    '      if (!node || typeof node !== \'object\') return undefined;',
+    '      node = (node as Record<string, unknown>)[part];',
+    '    }',
+    '    return node;',
+    '  };',
+    '  const writePath = (source: Record<string, unknown>, path: string, value: unknown): void => {',
+    '    const parts = path.split(\'.\');',
+    '    let node = source;',
+    '    for (let index = 0; index < parts.length - 1; index += 1) {',
+    '      const part = parts[index];',
+    '      const child = node[part];',
+    '      if (!child || typeof child !== \'object\' || Array.isArray(child)) node[part] = {};',
+    '      node = node[part] as Record<string, unknown>;',
+    '    }',
+    '    node[parts[parts.length - 1]] = value;',
+    '  };',
+    `  const nest = (flat: unknown): Record<string, unknown> => {`,
+    '    const source = flat && typeof flat === \'object\' ? flat as Record<string, unknown> : {};',
+    '    const details: Record<string, unknown> = {};',
+    `    const leaves = ${JSON.stringify(leaves)} as ReadonlyArray<readonly [string, string]>;`,
+    '    for (const [tail, path] of leaves) {',
+    '      if (tail && source[tail] !== undefined) writePath(details, path, source[tail]);',
+    '    }',
+    '    return details;',
+    '  };',
+    '  const pack = (row: Record<string, unknown>) => ({ id: String(row.mdmId ?? \'\'), version: Number(row.version ?? 0), details: nest(row.details) });',
+    '  const priors: Record<string, Record<string, unknown>> = {};',
+    '  let current: Record<string, unknown> | null = null;',
+    '  const remember = (id: string, value: Record<string, unknown> | null): void => {',
+    '    priors[id] = value ?? {};',
+    '    if (value && present(value.mdmId)) current = value;',
+    '  };',
+  ];
+  if (operation === 'list') {
+    lines.push('  const hydrate = async (row: Record<string, unknown>): Promise<Record<string, unknown>> => {');
+    lines.push('    if (typeof row.version === \'number\') return row;');
+    lines.push('    return await ctx.mdm.entity.get({ mdmId: String(row.mdmId) }) as unknown as Record<string, unknown>;');
+    lines.push('  };');
+  }
+  for (const call of calls) {
+    lines.push(...emitMdmCall(call, operation, subtype, precondition, returnType));
+  }
+  if (operation === 'list') {
+    lines.push(`  return [] as unknown as ${returnType};`);
+    return lines.join('\n');
+  }
+  const ids = calls.map(call => call.id);
+  lines.push(`  const chosen = ${JSON.stringify(ids)}.map(key => priors[key]).find(item => present(item["mdmId"]));`);
+  lines.push('  if (!chosen) throw new AppError(\'NOT_FOUND\', \'Record was not found.\', 404);');
+  lines.push(`  return pack(chosen) as unknown as ${returnType};`);
+  return lines.join('\n');
+}
+
+function emitMdmCall(call: MdmCall, operation: string, subtype: string, precondition: string, returnType: string): string[] {
+  const guard = [whenExpr(call), requiredExpr(call, precondition)].filter(Boolean).join(' && ');
+  const inner = callBody(call, subtype, precondition).split('\n').filter(line => line.length > 0);
+  const indent = (line: string, spaces: number) => `${' '.repeat(spaces)}${line}`;
+  const depth = guard ? 4 : 2;
+  if (operation === 'list') {
+    const body = [
+      ...inner.map(line => indent(line, depth)),
+      indent(`return ${listReturn(call, returnType)};`, depth),
+    ];
+    return guard ? [indent(`if (${guard}) {`, 2), ...body, indent('}', 2)] : body;
+  }
+  if (call.method === 'create') {
+    return [
+      indent(CREATE_MARK, 2),
+      indent(`if (${guard || 'true'}) {`, 2),
+      ...inner.map(line => indent(line, 4)),
+      indent('}', 2),
+      indent(CREATE_END, 2),
+      indent(`if (!priors[${JSON.stringify(call.id)}]) remember(${JSON.stringify(call.id)}, null);`, 2),
+    ];
+  }
+  const body = inner.map(line => indent(line, depth));
+  if (!guard) return body;
+  return [
+    indent(`if (${guard}) {`, 2),
+    ...body,
+    indent('}', 2),
+    indent(`if (!(${guard})) remember(${JSON.stringify(call.id)}, null);`, 2),
+  ];
+}
+
+function listReturn(call: MdmCall, returnType: string): string {
+  if (call.method === 'findByDocument' || call.method === 'findByContact') {
+    return `(found ? [pack(found as unknown as Record<string, unknown>)] : []) as unknown as ${returnType}`;
+  }
+  if (call.method === 'listByType') return `rows as unknown as ${returnType}`;
+  if (call.method === 'get') return `[pack(found as unknown as Record<string, unknown>)] as unknown as ${returnType}`;
+  return `[] as unknown as ${returnType}`;
+}
+
+function callBody(call: MdmCall, subtype: string, precondition: string): string {
+  const key = `${call.target}.${call.method}`;
+  if (key === 'entity.findByDocument' || key === 'entity.findByContact') {
+    const args = call.args.map(arg => `String(readPath(body, ${JSON.stringify(arg.path)}))`).join(', ');
+    return [
+      `const found = await ctx.mdm.entity.${call.method}(${args});`,
+      `remember(${JSON.stringify(call.id)}, found ? { mdmId: found.mdmId, version: found.version, details: found.details } as Record<string, unknown> : null);`,
+    ].join('\n');
+  }
+  if (key === 'entity.get') {
+    const path = call.args.find(arg => arg.originKind === 'contract')?.path ?? 'id';
+    return [
+      `const found = await ctx.mdm.entity.get({ mdmId: String(readPath(body, ${JSON.stringify(path)})) });`,
+      `remember(${JSON.stringify(call.id)}, { mdmId: found.mdmId, version: found.version, details: found.details } as Record<string, unknown>);`,
+    ].join('\n');
+  }
+  if (key === 'entity.create') {
+    const fields = call.args.filter(arg => arg.originKind === 'contract').map(arg => [
+      `const ${arg.name}Value = readPath(body, ${JSON.stringify(arg.path)});`,
+      `if (present(${arg.name}Value)) details[${JSON.stringify(arg.name)}] = ${arg.name}Value;`,
+    ].join('\n'));
+    return [
+      'const details: Record<string, unknown> = {};',
+      ...(subtype ? [`details.subtype = ${JSON.stringify(subtype)};`] : []),
+      ...fields,
+      'const created = await ctx.mdm.entity.create({ details: details as never });',
+      `remember(${JSON.stringify(call.id)}, { mdmId: created.mdmId, version: created.version, details: created.details } as Record<string, unknown>);`,
+    ].join('\n');
+  }
+  if (key === 'entity.update') {
+    const idPath = call.args.find(arg => arg.name === 'mdmId')?.path ?? 'id';
+    const patches = call.args.filter(arg => arg.originKind === 'contract' && arg.name !== 'mdmId' && arg.path !== precondition);
+    return [
+      `const loaded = await ctx.mdm.entity.get({ mdmId: String(readPath(body, ${JSON.stringify(idPath)})) }) as { mdmId: string; version: number; details: Record<string, unknown> };`,
+      'current = loaded as unknown as Record<string, unknown>;',
+      VERSION_MARK,
+      `const expectedVersion = Number(readPath(body, ${JSON.stringify(precondition)}));`,
+      'const patch: Record<string, unknown> = {};',
+      ...patches.flatMap(arg => [
+        `const ${arg.name}Value = readPath(body, ${JSON.stringify(arg.path)});`,
+        `if (present(${arg.name}Value)) patch[${JSON.stringify(arg.name)}] = ${arg.name}Value;`,
+      ]),
+      'const saved = await ctx.mdm.entity.update({ mdmId: loaded.mdmId, expectedVersion, patch: patch as never });',
+      `remember(${JSON.stringify(call.id)}, { mdmId: saved.mdmId, version: saved.version, details: saved.details } as Record<string, unknown>);`,
+    ].join('\n');
+  }
+  if (key === 'entity.attachRole') {
+    const idArg = call.args.find(arg => arg.originKind === 'prior');
+    const role = call.args.find(arg => arg.originKind === 'literal')?.value ?? '';
+    return [
+      `const attached = await ctx.mdm.entity.attachRole(String(${priorExpr(idArg)}), ${JSON.stringify(role)});`,
+      `remember(${JSON.stringify(call.id)}, { mdmId: attached.mdmId, version: attached.version, details: attached.details } as Record<string, unknown>);`,
+    ].join('\n');
+  }
+  if (key === 'collection.listByType') {
+    const fields = call.args.map(arg => {
+      if (arg.originKind === 'literal') return `${JSON.stringify(arg.name)}: ${JSON.stringify(arg.value)}`;
+      return `${JSON.stringify(arg.name)}: readPath(body, ${JSON.stringify(arg.path)})`;
+    });
+    return [
+      `const page = await ctx.mdm.collection.listByType({ ${fields.join(', ')} } as never);`,
+      'const rows: Array<{ id: string; version: number; details: Record<string, unknown> }> = [];',
+      'for (const item of page.items) {',
+      '  const row = item as unknown as Record<string, unknown>;',
+      '  const full = typeof row.version === \'number\' ? row : await hydrate(row);',
+      '  rows.push(pack(full));',
+      '}',
+    ].join('\n');
+  }
+  if (key === 'collection.relatedOfMany') {
+    const path = call.args.find(arg => arg.originKind === 'contract')?.path ?? 'id';
+    return [
+      `const links = await ctx.mdm.collection.relatedOfMany({ mdmIds: [String(readPath(body, ${JSON.stringify(path)}))] });`,
+      'void links;',
+    ].join('\n');
+  }
+  return `remember(${JSON.stringify(call.id)}, null);`;
+}
+
+function priorExpr(arg: MdmArg | undefined): string {
+  if (!arg) return 'undefined';
+  const calls = arg.calls.length > 0 ? arg.calls : (arg.call ? [arg.call] : []);
+  const items = calls.map(id => `priors[${JSON.stringify(id)}]`).join(', ');
+  return `[${items}].map(item => item[${JSON.stringify(arg.path)}]).find(value => present(value))`;
+}
+
+function whenExpr(call: MdmCall): string {
+  return call.when.map(clause => {
+    if (clause.kind === 'contract') {
+      const check = `present(readPath(body, ${JSON.stringify(clause.path)}))`;
+      return clause.present ? check : `!(${check})`;
+    }
+    if (clause.kind === 'prior') {
+      const check = `present(priors[${JSON.stringify(clause.call)}][${JSON.stringify(clause.path)}])`;
+      return clause.present ? check : `!(${check})`;
+    }
+    return 'false';
+  }).join(' && ');
+}
+
+function requiredExpr(call: MdmCall, precondition: string): string {
+  if (call.when.length > 0) return '';
+  const paths = call.args
+    .filter(arg => arg.originKind === 'contract' && (call.method !== 'update' && call.method !== 'create' || arg.name === 'mdmId' || arg.path === precondition))
+    .map(arg => arg.path)
+    .filter(Boolean);
+  if (call.method === 'update' || call.method === 'create') {
+    return paths.map(path => `present(readPath(body, ${JSON.stringify(path)}))`).join(' && ');
+  }
+  if (paths.length === 0) return '';
+  return paths.map(path => `present(readPath(body, ${JSON.stringify(path)}))`).join(' && ');
+}
+
+async function confirmedPrecondition(definition: M1Definition, read: StructureRead): Promise<string> {
+  const update = mdmCalls(definition).find(call => call.method === 'update');
+  const arg = update?.args.find(item => item.name === 'expectedVersion' && item.evidence === 'writePrecondition' && item.originKind === 'contract');
+  if (!arg?.path) return '';
+  const leaf = arg.path.split('.').pop() ?? '';
+  const inputs = new Set(inputNames(definition));
+  if (!leaf || (!inputs.has(arg.path) && !inputs.has(leaf))) return '';
+  const marked = new Set<string>();
+  for (const dep of definition.dependencies) {
+    const source = await read(dep);
+    if (!source) continue;
+    for (const match of source.matchAll(/"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*\{[^{}]*"writePrecondition"\s*:\s*true/g)) {
+      marked.add(match[1] ?? '');
+    }
+  }
+  return marked.has(leaf) ? arg.path : '';
+}
+
+async function ontologySubtype(definition: M1Definition, read: StructureRead): Promise<string> {
+  for (const dep of definition.dependencies) {
+    if (!dep.includes('/ontology/') || dep.endsWith('/mdm.defs.ts')) continue;
+    const source = await read(dep);
+    const match = source ? /"subtype"\s*:\s*"([^"]+)"/.exec(source) : null;
+    if (match?.[1] && isIdent(match[1])) return match[1];
+  }
+  return '';
+}
+
+function detailLeaves(entity: M1Definition): string[] {
+  const names = (Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : []).map(field => text(field.name)).filter(Boolean);
+  return names.filter(name => name.startsWith('details.') && !names.some(other => other.startsWith(`${name}.`)));
+}
+
+interface MdmArg {
+  name: string;
+  originKind: string;
+  path: string;
+  call: string;
+  calls: string[];
+  evidence: string;
+  value: string;
+}
+
+interface MdmWhen {
+  kind: string;
+  path: string;
+  call: string;
+  present: boolean;
+}
+
+interface MdmCall {
+  id: string;
+  method: string;
+  target: string;
+  when: MdmWhen[];
+  args: MdmArg[];
+}
+
+function mdmCalls(definition: M1Definition): MdmCall[] {
+  const mdm = definition.data.mdm;
+  if (!isRecord(mdm) || !Array.isArray(mdm.calls)) return [];
+  const calls: MdmCall[] = [];
+  for (const item of mdm.calls) {
+    if (!isRecord(item)) continue;
+    const id = text(item.id);
+    const method = text(item.method);
+    const target = text(item.target);
+    if (!isIdent(id) || !isIdent(method) || !isIdent(target)) continue;
+    const when = Array.isArray(item.when) ? item.when.filter(isRecord).map(clause => ({
+      kind: text(clause.kind),
+      path: text(clause.path),
+      call: text(clause.call),
+      present: clause.present !== false,
+    })) : [];
+    const args = Array.isArray(item.arguments) ? item.arguments.filter(isRecord).map(arg => {
+      const origin = isRecord(arg.origin) ? arg.origin : {};
+      return {
+        name: text(arg.name),
+        originKind: text(origin.kind),
+        path: text(origin.path),
+        call: text(origin.call),
+        calls: stringList(origin.calls),
+        evidence: text(origin.evidence),
+        value: text(arg.value),
+      };
+    }) : [];
+    calls.push({ id, method, target, when, args });
+  }
+  return calls;
+}
+
+function mdmPlan(definition: M1Definition): boolean {
+  const calls = mdmCalls(definition);
+  const operation = text(definition.data.operation);
+  if (calls.length === 0 || stringList(definition.data.ports).length !== 0) return false;
+  if (operation !== 'create' && operation !== 'update' && operation !== 'list') return false;
+  return calls.every(call => MDM_METHODS.has(`${call.target}.${call.method}`)
+    && call.when.every(clause => (clause.kind === 'contract' || clause.kind === 'prior') && (!clause.path || clause.path.split('.').every(isIdent)) && (!clause.call || isIdent(clause.call)))
+    && call.args.every(arg => isIdent(arg.name) && argOriginOk(arg)));
+}
+
+function argOriginOk(arg: MdmArg): boolean {
+  if (arg.originKind === 'literal') return arg.value.length > 0;
+  if (arg.originKind === 'contract') return arg.path.length > 0 && arg.path.split('.').every(isIdent);
+  if (arg.originKind === 'prior') {
+    const calls = arg.calls.length > 0 ? arg.calls : (arg.call ? [arg.call] : []);
+    return isIdent(arg.path) && calls.length > 0 && calls.every(isIdent);
+  }
+  return false;
 }
 
 function createBody(

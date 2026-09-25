@@ -16,7 +16,9 @@ import type { HandlerCall } from '/_102021_/l2/agentMaterializeL1/run/execute.js
 import { shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { verifyBatch } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutPayloadChecks, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutPayloadChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +37,12 @@ void test('lote 1 usecases derive the storage constraint and leave pending rules
   assert.equal(behaviorNeedsLlm(definitionFor('registrarAtendimento')), false);
   assert.equal(behaviorNeedsLlm(definitionFor('confirmarConsulta')), false);
   assert.equal(behaviorNeedsLlm(definitionFor('registrarFalta')), false);
-  assert.equal(behaviorNeedsLlm(definitionFor('listPaciente')), true);
+  assert.equal(behaviorNeedsLlm(definitionFor('listPaciente')), false);
+  assert.equal(behaviorNeedsLlm(definitionFor('createPaciente')), false);
+  assert.equal(behaviorNeedsLlm(definitionFor('updateProfissional')), false);
+  const archived = definitionFor('listPaciente');
+  const odd: M1Definition = { ...archived, data: { ...archived.data, operation: 'archive', ports: ['Missing'], mdm: {} } };
+  assert.equal(behaviorNeedsLlm(odd), true);
 
   const create = await runBehavior(callFor('createConsulta'));
   const list = await runBehavior(callFor('listConsulta'));
@@ -59,10 +66,14 @@ void test('lote 1 usecases derive the storage constraint and leave pending rules
   assert.equal(port.runsStub, false);
   assert.equal(create.runsStub, false);
 
-  const outside = await runBehavior(callFor('listPaciente'));
+  const outsideCall = callFor('listPaciente');
+  outsideCall.definition = odd;
+  const outside = await runBehavior(outsideCall);
   assert.equal(outside.failure?.code, 'NEEDS_LLM');
   assert.deepEqual(outside.files, {});
-  const faked = await runBehavior(callFor('listPaciente', 'export const modelBody = 1;\n'));
+  const fakedCall = callFor('listPaciente', 'export const modelBody = 1;\n');
+  fakedCall.definition = odd;
+  const faked = await runBehavior(fakedCall);
   assert.equal(faked.failure, null, faked.failure?.detail);
   assert.match(sourceOf(faked), /modelBody/);
 
@@ -327,6 +338,111 @@ void test('a transition enforces lifecycle and a required payload, and leaves th
     (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'VALIDATION_ERROR' && error.details?.ruleId === 'consultationTransitionFlow',
   );
   rmSync(dir, { recursive: true, force: true });
+});
+
+void test('mdm create attaches an existing record and update rejects a stale version', async () => {
+  const created = await runBehavior(callFor('createPaciente'));
+  const updated = await runBehavior(callFor('updateProfissional'));
+  const listed = await runBehavior(callFor('listPaciente'));
+  assert.equal(created.failure, null, created.failure?.detail);
+  assert.equal(updated.failure, null, updated.failure?.detail);
+  assert.equal(listed.failure, null, listed.failure?.detail);
+  const createSource = sourceOf(created);
+  const updateSource = sourceOf(updated);
+  assert.match(createSource, /enforce:create/);
+  assert.match(createSource, /findByDocument/);
+  assert.match(createSource, /attachRole/);
+  assert.match(updateSource, /enforce:version/);
+  assert.match(updateSource, /readPath\(body, "version"\)/);
+  assert.match(sourceOf(listed), /listByType/);
+  const openCreate = withoutCreateChecks(createSource);
+  const openUpdate = withoutVersionChecks(updateSource);
+  assert.equal(openCreate.removed, 1);
+  assert.equal(openUpdate.removed, 1);
+
+  const dir = join(ROOT, `.m1-06-mdm-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const createFile = join(dir, 'createPaciente.ts');
+  const updateFile = join(dir, 'updateProfissional.ts');
+  const openCreateFile = join(dir, 'createPacienteOpen.ts');
+  const openUpdateFile = join(dir, 'updateProfissionalOpen.ts');
+  writeFileSync(createFile, createSource);
+  writeFileSync(updateFile, updateSource);
+  writeFileSync(openCreateFile, openCreate.source);
+  writeFileSync(openUpdateFile, openUpdate.source);
+  const createModule = await import(pathToFileURL(createFile).href) as {
+    createPaciente: (input: Record<string, unknown>, ctx: unknown) => Promise<{ id: string }>;
+  };
+  const updateModule = await import(pathToFileURL(updateFile).href) as {
+    updateProfissional: (input: Record<string, unknown>, ctx: unknown) => Promise<{ id: string; version: number }>;
+  };
+  const openCreateModule = await import(pathToFileURL(openCreateFile).href) as typeof createModule;
+  const openUpdateModule = await import(pathToFileURL(openUpdateFile).href) as typeof updateModule;
+  const runtime = createMemoryDataRuntime();
+  const ctx = createRequestContext(runtime, { sandbox: true, moduleId: 'agendaClinica' });
+  const seen: string[] = [];
+  const entity = ctx.mdm.entity as unknown as Record<string, (...args: never[]) => Promise<unknown>>;
+  for (const name of ['findByDocument', 'create', 'attachRole']) {
+    const original = entity[name];
+    entity[name] = (async (...args: never[]) => {
+      seen.push(name);
+      return original.apply(ctx.mdm.entity, args);
+    }) as typeof original;
+  }
+  const input = {
+    details: {
+      identification: { name: 'Ada', docType: 'Passport', docId: 'DOC1', countryCode: 'US' },
+      base: { aliases: ['Ada'] },
+    },
+  };
+  const first = await createModule.createPaciente(input, ctx);
+  assert.equal(seen.includes('findByDocument') && seen.includes('create') && seen.includes('attachRole'), true);
+  const before = seen.filter(name => name === 'create').length;
+  const second = await createModule.createPaciente(input, ctx);
+  assert.equal(second.id, first.id);
+  assert.equal(seen.filter(name => name === 'create').length, before);
+  const openRuntime = createMemoryDataRuntime();
+  const openCtx = createRequestContext(openRuntime, { sandbox: true, moduleId: 'agendaClinica' });
+  const openSeen: string[] = [];
+  const openEntity = openCtx.mdm.entity as unknown as Record<string, (...args: never[]) => Promise<unknown>>;
+  const openCreateFn = openEntity.create;
+  openEntity.create = (async (...args: never[]) => {
+    openSeen.push('create');
+    return openCreateFn.apply(openCtx.mdm.entity, args);
+  }) as typeof openCreateFn;
+  await openCreateModule.createPaciente(input, openCtx);
+  await openCreateModule.createPaciente(input, openCtx);
+  assert.equal(openSeen.length, 2);
+
+  const seeded = await ctx.mdm.entity.create({
+    details: { subtype: 'Person', name: 'Ada', countryCode: 'US', docType: 'Passport', docId: 'DOCprof' },
+  });
+  const patch = {
+    id: seeded.mdmId,
+    version: seeded.version,
+    details: { identification: { name: 'Ada Updated', docType: 'Passport', docId: 'DOCprof', countryCode: 'US' }, person: { occupation: 'guide' } },
+  };
+  const saved = await updateModule.updateProfissional(patch, ctx);
+  assert.equal(saved.id, seeded.mdmId);
+  await assert.rejects(
+    () => updateModule.updateProfissional(patch, ctx),
+    (error: { code?: string }) => error.code === 'CONCURRENCY_CONFLICT',
+  );
+  const stale = await openUpdateModule.updateProfissional({ ...patch, id: saved.id, version: seeded.version }, ctx);
+  assert.equal(stale.id, seeded.mdmId);
+  rmSync(dir, { recursive: true, force: true });
+
+  const hidden = await emitBehavior('implement.usecase', definitionFor('updateProfissional'), 'l1/agendaClinica/updateProfissional.ts', async ref => {
+    const text = await read(ref);
+    if (text === null) return null;
+    if (ref.includes('/ontology/') || ref.endsWith('/mdm.defs.ts')) return text.replaceAll('"writePrecondition": true', '"writePrecondition": false');
+    return text;
+  });
+  assert.equal('code' in hidden, false);
+  if (!('code' in hidden)) {
+    assert.match(hidden.source, /PRECONDITION_UNDECLARED/);
+    assert.equal(hidden.source.includes('enforce:version'), false);
+  }
 });
 
 function definitionFor(artifactId: string): M1Definition {
