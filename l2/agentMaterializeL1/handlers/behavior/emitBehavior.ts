@@ -127,6 +127,16 @@ export function withoutPayloadChecks(source: string): { source: string; removed:
   return { source: next, removed };
 }
 
+export function withoutLifecycleChecks(source: string): { source: string; removed: number } {
+  const pattern = /([ \t]*)\/\/ enforce:lifecycle\r?\n\1if \(!\[[\s\S]*?\) throw new AppError\('VALIDATION_ERROR'[\s\S]*?\);\r?\n/g;
+  let removed = 0;
+  const next = source.replace(pattern, (_match, indent: string) => {
+    removed += 1;
+    return `${indent}// enforce:lifecycle disabled\n`;
+  });
+  return { source: next, removed };
+}
+
 export function withoutVersionChecks(source: string): { source: string; removed: number } {
   const pattern = /([ \t]*)\/\/ enforce:version\r?\n\1const expectedVersion = Number\(readPath\(body, (?:"[^"]*"|'[^']*')\)\);\r?\n/g;
   let removed = 0;
@@ -736,7 +746,7 @@ interface TransitionPlan {
 }
 
 function transitionBody(entityName: string, binding: string, plan: TransitionPlan): string {
-  const payload = plan.payload.length > 0 && plan.payloadRule
+  const payload = plan.payload.length > 0
     ? [
       '  const filled = (value: unknown): boolean => value !== undefined && value !== null && value !== \'\';',
       '  const readPath = (source: unknown, path: string): unknown => {',
@@ -760,13 +770,13 @@ function transitionBody(entityName: string, binding: string, plan: TransitionPla
       '  };',
     ]
     : [];
-  const payloadCheck = plan.payload.length > 0 && plan.payloadRule
+  const payloadCheck = plan.payload.length > 0
     ? [
       `  ${PAYLOAD_MARK}`,
       `  if (${plan.payload.map(path => `!filled(readPath(body, ${JSON.stringify(path)}))`).join(' || ')}) throw new AppError('VALIDATION_ERROR', 'Required value is missing.', 400, { ruleId: ${JSON.stringify(plan.payloadRule)} });`,
     ]
     : [];
-  const writes = plan.payload.length > 0 && plan.payloadRule
+  const writes = plan.payload.length > 0
     ? plan.payload.map(path => `  writePath(next, ${JSON.stringify(path)}, readPath(body, ${JSON.stringify(path)}));`)
     : [];
   const version = plan.versionField
@@ -817,27 +827,21 @@ async function planTransition(definition: M1Definition, read: StructureRead): Pr
   }
   const payload = (isRecord(lifecycle) ? stringList(lifecycle.payload) : []).filter(path => path.split('.').every(isIdent));
   const local = ruleRows(definition).filter(row => row.enforcement === 'local' && row.gap === '' && row.ruleId);
-  const flow = local.filter(row => spec.ruleRefs.includes(row.ruleId) && invariantsOf(entity).includes(row.ruleId));
-  if (flow.length !== 1) return { code: 'TRANSITION_UNDECLARED', detail: `${transitionId} does not name one lifecycle rule.` };
-  const payloadRule = payloadRuleId(local, flow[0].ruleId, payload);
-  if (payload.length > 0 && !payloadRule) {
-    return { code: 'RULE_UNCLASSIFIED', detail: `${definition.artifactId} has a payload and no single local rule for it.` };
-  }
-  const claimed = new Set([flow[0].ruleId, payloadRule].filter(Boolean));
+  const cited = local.filter(row => spec.ruleRefs.includes(row.ruleId) && invariantsOf(entity).includes(row.ruleId));
+  const flowRule = cited.length === 1 ? cited[0].ruleId : '';
+  const payloadRule = payloadRuleId(local, flowRule, payload);
+  const claimed = new Set([flowRule, payloadRule].filter(Boolean));
   const leftover = local.map(row => row.ruleId).filter(ruleId => !claimed.has(ruleId));
   const anchor = leftover.length > 0 ? await ownScopePending(definition, read) : false;
   if (typeof anchor !== 'boolean') return anchor;
-  if (leftover.length > 0 && !anchor) {
-    return { code: 'RULE_UNCLASSIFIED', detail: `${definition.artifactId} has a local rule that is not a lifecycle or payload check.` };
-  }
   return {
-    flowRule: flow[0].ruleId,
+    flowRule,
     payloadRule,
     anchorRules: anchor ? leftover : [],
     from: spec.from,
     to: spec.to,
     statusField,
-    payload: payloadRule ? payload : [],
+    payload,
     selector,
     transitionId,
     versionField: versionField(entity, identityField(entity)),

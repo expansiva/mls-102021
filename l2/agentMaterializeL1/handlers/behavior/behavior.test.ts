@@ -16,7 +16,7 @@ import type { HandlerCall } from '/_102021_/l2/agentMaterializeL1/run/execute.js
 import { shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { verifyBatch } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutLifecycleChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { emitController, recordFieldFromGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
@@ -339,6 +339,157 @@ void test('a transition enforces lifecycle and a required payload, and leaves th
     () => confirmed.confirmarConsulta({ id: 'consulta-1' }, ctx, ports),
     (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'VALIDATION_ERROR' && error.details?.ruleId === 'consultationTransitionFlow',
   );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+void test('a transition enforces from/to and payload without picking one lifecycle rule', async () => {
+  const root = join(HERE, '../../../agentDefsL1/fixtures/agendaClinica-3f4f677');
+  const renamed = new Map<string, string>();
+  const load = (ref: string): string | null => {
+    if (ref === CATALOG_REF) return CATALOG;
+    if (renamed.has(ref)) return renamed.get(ref) ?? null;
+    const match = /^_\d+_\/(.+)$/.exec(ref);
+    if (!match) return null;
+    try {
+      return readFileSync(join(root, match[1]), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const defPath = '_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts';
+  const entityPath = '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts';
+  const portPath = '_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts';
+  const call = (path: string, artifactType: string, artifactId: string, text: string) => {
+    const parsed = parseDefinitionSource(text);
+    if (!('definition' in parsed)) throw new Error(parsed.issues.join(' '));
+    const definition = readDefinition(parsed.definition);
+    if ('issues' in definition) throw new Error(definition.issues.join(' '));
+    const handler = handlerFor(artifactType, 'implement');
+    if (!handler) throw new Error(artifactType);
+    const unit: SimulatedUnit = {
+      defPath: path,
+      artifactType,
+      artifactId,
+      action: 'generate',
+      reason: '',
+      handlerId: handler.id,
+      needsLlm: false,
+      unresolved: [],
+      contextRefs: [],
+      blockedBy: [],
+      prompt: '',
+    };
+    return runBehavior({
+      handler,
+      unit,
+      definition,
+      read: async ref => load(ref),
+      catalogRef: CATALOG_REF,
+      repair: false,
+      signal: new AbortController().signal,
+      eventId: path,
+      profile: decideProfile('development', true),
+      modelText: null,
+    });
+  };
+  const attend = await call(defPath, 'usecase', 'registrarAtendimento', load(defPath) ?? '');
+  const port = await call(portPath, 'repositoryPort', 'ConsultaRepository', load(portPath) ?? '');
+  const entity = await call(entityPath, 'domainEntity', 'Consulta', load(entityPath) ?? '');
+  assert.equal(attend.failure, null, attend.failure?.detail);
+  assert.equal(port.failure, null, port.failure?.detail);
+  assert.equal(entity.failure, null, entity.failure?.detail);
+  const attendSource = sourceOf(attend);
+  assert.match(attendSource, /enforce:lifecycle/);
+  assert.match(attendSource, /enforce:payload/);
+  assert.match(attendSource, /\["scheduled"\]/);
+  assert.match(attendSource, /"attended"/);
+  assert.match(attendSource, /"details\.attendanceNote"/);
+  for (const ruleId of [
+    'consultaSomenteAgendadaPodeRegistrarAtendimento',
+    'anotacaoObrigatoriaNoAtendimento',
+    'profissionalAtendeSomentePropriaConsulta',
+  ]) {
+    assert.equal(attendSource.includes(ruleId), false, ruleId);
+  }
+  const usecaseText = load(defPath) ?? '';
+  const entityText = load(entityPath) ?? '';
+  renamed.set(defPath, usecaseText
+    .replaceAll('consultaSomenteAgendadaPodeRegistrarAtendimento', 'ruleAlpha')
+    .replaceAll('anotacaoObrigatoriaNoAtendimento', 'ruleBeta')
+    .replaceAll('profissionalAtendeSomentePropriaConsulta', 'ruleGamma')
+    .replaceAll('details.attendanceNote', 'details.remark'));
+  renamed.set(entityPath, entityText
+    .replaceAll('consultaSomenteAgendadaPodeRegistrarAtendimento', 'ruleAlpha')
+    .replaceAll('anotacaoObrigatoriaNoAtendimento', 'ruleBeta')
+    .replaceAll('profissionalAtendeSomentePropriaConsulta', 'ruleGamma')
+    .replaceAll('"scheduled"', '"alpha"')
+    .replaceAll('"attended"', '"omega"')
+    .replaceAll('details.attendanceNote', 'details.remark'));
+  const renamedAttend = await call(defPath, 'usecase', 'registrarAtendimento', renamed.get(defPath) ?? '');
+  assert.equal(renamedAttend.failure, null, renamedAttend.failure?.detail);
+  const renamedSource = sourceOf(renamedAttend);
+  assert.match(renamedSource, /\["alpha"\]/);
+  assert.match(renamedSource, /"omega"/);
+  assert.match(renamedSource, /"details\.remark"/);
+  assert.equal(renamedSource.includes('ruleAlpha'), false);
+  assert.equal(renamedSource.includes('scheduled'), false);
+
+  const dir = join(ROOT, `.m1-11-transition-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const portFile = join(dir, 'consultaRepository.ts');
+  const attendFile = join(dir, 'registrarAtendimento.ts');
+  writeFileSync(portFile, sourceOf(port));
+  writeFileSync(attendFile, attendSource);
+  const problems = compile([
+    ['consulta.ts', sourceOf(entity)],
+    ['consultaRepository.ts', sourceOf(port)],
+    ['registrarAtendimento.ts', attendSource],
+  ]);
+  assert.equal(problems, '', problems);
+  const memory = await import(pathToFileURL(portFile).href) as {
+    resetMemory: (seed?: Record<string, unknown>[]) => void;
+    pendingConsultaRepository: unknown;
+  };
+  const attended = await import(pathToFileURL(attendFile).href) as {
+    registrarAtendimento: (input: Record<string, unknown>, ctx: unknown, ports: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  };
+  const ports = { consultaRepository: memory.pendingConsultaRepository };
+  const row = {
+    id: 'consulta-1',
+    version: 1,
+    pacienteId: 'patient-1',
+    profissionalId: 'professional-1',
+    scheduledAt: '2026-09-25T13:00:00.000Z',
+    status: 'scheduled',
+    details: { attendanceNote: '' },
+  };
+  memory.resetMemory([row]);
+  await assert.rejects(
+    () => attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: '' } }, {}, ports),
+    (error: { code?: string }) => error.code === 'VALIDATION_ERROR',
+  );
+  memory.resetMemory([{ ...row, status: 'noShow', details: { attendanceNote: 'seen' } }]);
+  await assert.rejects(
+    () => attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: 'seen' } }, {}, ports),
+    (error: { code?: string }) => error.code === 'VALIDATION_ERROR',
+  );
+  memory.resetMemory([row]);
+  const saved = await attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: 'seen' } }, {}, ports);
+  assert.equal(saved.status, 'attended');
+  const openNote = withoutPayloadChecks(attendSource);
+  const openState = withoutLifecycleChecks(attendSource);
+  assert.equal(openNote.removed, 1);
+  assert.equal(openState.removed, 1);
+  writeFileSync(join(dir, 'openNote.ts'), openNote.source);
+  writeFileSync(join(dir, 'openState.ts'), openState.source);
+  const noteModule = await import(pathToFileURL(join(dir, 'openNote.ts')).href) as typeof attended;
+  const stateModule = await import(pathToFileURL(join(dir, 'openState.ts')).href) as typeof attended;
+  memory.resetMemory([row]);
+  const withoutNote = await noteModule.registrarAtendimento({ id: 'consulta-1', details: {} }, {}, ports);
+  assert.equal(withoutNote.status, 'attended');
+  memory.resetMemory([{ ...row, status: 'noShow', details: { attendanceNote: 'seen' } }]);
+  const withoutState = await stateModule.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: 'seen' } }, {}, ports);
+  assert.equal(withoutState.status, 'attended');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -676,6 +827,7 @@ function compile(rows: Array<[string, string]>): string {
       '/_102047_/l1/agendaClinica/layer_3_domain/entities/*': [`./${relative(ROOT, dir)}/*`],
       '/_102047_/l1/agendaClinica/layer_2_application/ports/*': [`./${relative(ROOT, dir)}/*`],
       '/_102047_/l1/agendaClinica/layer_2_application/usecases/*': [`./${relative(ROOT, dir)}/*`],
+      '/_102047_/l2/agendaClinica/web/contracts/agenda.defs.js': ['./mls-102021/l2/agentDefsL1/fixtures/agendaClinica-3f4f677/l2/agendaClinica/web/contracts/agenda.defs.ts'],
     };
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {
       const key = `/_${id}_/*`;

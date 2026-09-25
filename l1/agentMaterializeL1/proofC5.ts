@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
-import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCreateChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCreateChecks, withoutLifecycleChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { parseCatalog, renderMonitorCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch, type M1Checkpoint, type M1Evidence, type M1Observation, type M1Verdict } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
@@ -187,7 +187,7 @@ function controlCases(sandboxProject: string, units: readonly FlowUnit[]): Set<s
     const full = diskOf(sandboxProject, outputOf(unit.defPath));
     if (!existsSync(full)) continue;
     const source = readFileSync(full, 'utf8');
-    for (const match of source.matchAll(/\/\/ enforce:(?:storage|payload)[\s\S]*?ruleId: "([^"]+)"/g)) rules.add(match[1]);
+    for (const match of source.matchAll(/\/\/ enforce:(?:storage|payload|lifecycle)[\s\S]*?ruleId: "([^"]+)"/g)) rules.add(match[1]);
   }
   return rules;
 }
@@ -200,9 +200,10 @@ function disableRules(sandboxProject: string, units: readonly FlowUnit[]): strin
     const source = readFileSync(full, 'utf8');
     const storage = withoutStorageChecks(source);
     const payload = withoutPayloadChecks(storage.source);
-    const version = withoutVersionChecks(payload.source);
+    const lifecycle = withoutLifecycleChecks(payload.source);
+    const version = withoutVersionChecks(lifecycle.source);
     const created = withoutCreateChecks(version.source);
-    const taken = storage.removed + payload.removed + version.removed + created.removed;
+    const taken = storage.removed + payload.removed + lifecycle.removed + version.removed + created.removed;
     removed += taken;
     if (taken > 0) writeFileSync(full, created.source);
   }
@@ -281,6 +282,16 @@ async function score(
       }));
     }
     notes.push(...executed.notes);
+    if (textOf(unit.definition.data.operation) === 'transition') {
+      const probed = await probeTransition(sandboxProject, unit);
+      if (inject === 'disable-rules') {
+        if (probed.problems.length === 0) problems.push(`${unit.definition.artifactId} kept the lifecycle and payload checks after they were removed`);
+        else problems.push(...probed.problems);
+      } else {
+        problems.push(...probed.problems);
+        notes.push(...probed.notes);
+      }
+    }
     const reported = await report(host, catalogRef, unit.definition, executed.observations);
     for (const row of executed.observations) {
       if (reported.evidence.some(item => item.caseId === row.caseId)) continue;
@@ -296,9 +307,6 @@ async function score(
       reported.accepted = false;
     }
     checkpoints.push(reported);
-    const probed = await probeTransition(sandboxProject, unit);
-    problems.push(...probed.problems);
-    notes.push(...probed.notes);
   }
   const refused = await refusePendingRoutes(sandboxProject, flows);
   problems.push(...refused.problems);
@@ -971,11 +979,14 @@ async function probeTransition(sandboxProject: string, unit: FlowUnit): Promise<
   const spec = entity ? transitionOf(entity, transitionId) : null;
   const statusField = entity ? enumName(entity) : '';
   const source = await readSandbox(sandboxProject, outputOf(unit.defPath));
-  const flowRule = /\/\/ enforce:lifecycle[\s\S]*?ruleId: "([^"]+)"/.exec(source ?? '')?.[1] ?? '';
+  const flowRule = /\/\/ enforce:lifecycle[\s\S]*?ruleId: "([^"]*)"/.exec(source ?? '')?.[1] ?? '';
+  const payloadRule = /\/\/ enforce:payload[\s\S]*?ruleId: "([^"]*)"/.exec(source ?? '')?.[1] ?? '';
   const route = pageRoute(unit.definition);
-  if (!spec || !statusField || !flowRule || !route) {
-    const why = !flowRule ? 'lifecycle rule is not an invariant on the entity' : 'transition shape is incomplete';
-    return { problems: [], notes: [`${unit.definition.artifactId} transition stayed unemitted: ${why}`] };
+  const payloadPaths = isRecord(unit.definition.data.lifecycle) && Array.isArray(unit.definition.data.lifecycle.payload)
+    ? unit.definition.data.lifecycle.payload.filter((item): item is string => typeof item === 'string')
+    : [];
+  if (!spec || !statusField || !route) {
+    return { problems: [`${unit.definition.artifactId} transition stayed unemitted: transition shape is incomplete`], notes: [] };
   }
   const outside = (entity ? stateNames(entity) : []).find(state => !spec.from.includes(state)) ?? '';
   const problems: string[] = [];
@@ -986,9 +997,15 @@ async function probeTransition(sandboxProject: string, unit: FlowUnit): Promise<
   else notes.push(`${unit.definition.artifactId} ${spec.from[0]} -> ${spec.to}`);
   if (outside) {
     const refused = await runProbe(sandboxProject, unit, route, outside, statusField, true);
-    if (refused.ok || refused.code !== 'VALIDATION_ERROR' || refused.ruleId !== flowRule) {
+    if (refused.ok || refused.code !== 'VALIDATION_ERROR' || (flowRule && refused.ruleId !== flowRule)) {
       problems.push(`${unit.definition.artifactId} invalid transition returned ${refused.code ?? 'ok'} ${refused.ruleId ?? ''}`);
     } else notes.push(`${unit.definition.artifactId} refused ${outside}`);
+  }
+  if (payloadPaths.length > 0) {
+    const missing = await runProbe(sandboxProject, unit, route, spec.from[0] ?? '', statusField, false);
+    if (missing.ok || missing.code !== 'VALIDATION_ERROR' || (payloadRule && missing.ruleId !== payloadRule)) {
+      problems.push(`${unit.definition.artifactId} missing payload returned ${missing.code ?? 'ok'} ${missing.ruleId ?? ''}`);
+    } else notes.push(`${unit.definition.artifactId} refused an empty payload`);
   }
   return { problems, notes };
 }
