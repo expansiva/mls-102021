@@ -1,8 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/gate.ts" enhancement="_blank"/>
 
 import {
-  D1_DEFINITION_SCHEMA,
   definitionIssues,
+  pendingDefinition,
   type D1Definition,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
@@ -12,7 +12,7 @@ import {
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
   readContractAst,
@@ -533,13 +533,7 @@ function fillDefinition(request: D1ControllerRequest, item: D1ControllerItem, pr
       grantIds: handler.grantIds,
     })),
   };
-  const definition: D1Definition = {
-    schemaVersion: D1_DEFINITION_SCHEMA,
-    artifactType: 'httpController',
-    artifactId: item.pageId,
-    moduleName: request.moduleName,
-    data,
-  };
+  const definition = pendingDefinition('httpController', item.pageId, request.moduleName, data);
   const issues = definitionIssues(definition);
   if (issues.length) {
     error(problems, 'DEFINITION', item.pageId, issues[0]);
@@ -562,7 +556,8 @@ function emitItems(
       error(problems, 'RUNTIME_IMPORT', item.pageId, `Controller depends on ${leaked[0]}.`);
       continue;
     }
-    const rendered = renderDefinition(item.definition, [pipeline]);
+    item.definition = stampDefinition(item.definition, pipeline.defPath, pipeline.dependsFiles);
+    const rendered = renderDefinition(item.definition, pipeline.defPath);
     if ('issues' in rendered) {
       error(problems, 'DEFINITION', item.defPath, rendered.issues[0] || 'Definition did not render.');
       continue;

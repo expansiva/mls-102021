@@ -11,7 +11,7 @@ import { D1_FINALIZE_REPAIR, createEntryPipeline, pipelineFile, type D1PipelineS
 import { futureOutputPath, pipelineId, qualifyDefPath, skillPaths, type D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -66,13 +66,34 @@ function id(type: string, owner: string): string {
   return pipelineId(PROJECT, MODULE, type, owner);
 }
 
+function fileForDependency(dep: string): string {
+  const bits = dep.split('/');
+  const type = bits[bits.length - 2] || '';
+  const owner = bits[bits.length - 1] || '';
+  const logicalOwner = `${owner.charAt(0).toLowerCase()}${owner.slice(1)}`;
+  const folder: Record<string, (path: string) => boolean> = {
+    domainEntity: path => path.includes('/entities/'),
+    repositoryPort: path => path.includes('/ports/'),
+    table: path => path.includes('/persistence/') && !path.includes('Adapter') && !path.includes('register') && !path.endsWith('/seeds.defs.ts'),
+    repositoryAdapter: path => path.includes('Adapter'),
+    usecase: path => path.includes('/usecases/'),
+    httpController: path => path.includes('/controllers/'),
+    accessScope: path => path.includes('/scope/'),
+    authorityMap: path => path.includes('/auth/'),
+    repositoryRegistration: path => path.includes('registerRepositories'),
+    integrationOutbound: path => path.includes('/integration/'),
+    persistenceSeeds: path => path.endsWith('/seeds.defs.ts'),
+  };
+  const pred = folder[type];
+  const values = Object.values(PATHS);
+  const named = values.filter(path => path.endsWith(`/${logicalOwner}.defs.ts`) || path.includes(owner));
+  const found = pred ? (named.find(pred) || values.find(pred)) : named[0];
+  return found ? qualifyDefPath(PROJECT, found) : dep;
+}
+
 function pipe(type: D1PipelineItem['type'], owner: string, logical: string, dependsOn: string[]): D1PipelineItem {
   const defPath = qualifyDefPath(PROJECT, logical);
-  const dependsFiles = dependsOn.map(dep => {
-    const ownerName = dep.split('/').pop() || '';
-    const match = Object.values(PATHS).find(path => path.endsWith(`/${ownerName.charAt(0).toLowerCase()}${ownerName.slice(1)}.defs.ts`) || path.includes(ownerName));
-    return match ? qualifyDefPath(PROJECT, match) : dep;
-  });
+  const dependsFiles = dependsOn.map(fileForDependency);
   return {
     id: id(type, owner),
     type,
@@ -87,11 +108,12 @@ function pipe(type: D1PipelineItem['type'], owner: string, logical: string, depe
 }
 
 function definition(artifactType: D1Definition['artifactType'], artifactId: string, data: Record<string, unknown>): D1Definition {
-  return { schemaVersion: D1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: MODULE, data };
+  return { schemaVersion: D1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: MODULE, status: 'pending', dependencies: [], data };
 }
 
 function sourceOf(definitionValue: D1Definition, item: D1PipelineItem): string {
-  const rendered = renderDefinition(definitionValue, [item]);
+  const stamped = stampDefinition(definitionValue, item.defPath, item.dependsFiles);
+  const rendered = renderDefinition(stamped, item.defPath);
   if ('issues' in rendered) throw new Error(rendered.issues.join('\n'));
   return rendered.source;
 }
@@ -587,7 +609,10 @@ void test('an orphan dependency does not complete', () => {
   const rows = parts();
   const adapter = rows.find(row => row.logical === PATHS.adapter);
   assert.ok(adapter);
-  adapter.item = { ...adapter.item, dependsOn: [...adapter.item.dependsOn, id('domainEntity', 'Missing')] };
+  adapter.item = {
+    ...adapter.item,
+    dependsFiles: [...adapter.item.dependsFiles, qualifyDefPath(PROJECT, `l1/${MODULE}/layer_3_domain/entities/missing.defs.ts`)],
+  };
   const input = request();
   input.observed = observedOf(rows);
   const report = buildD1Finalize(input);
@@ -906,8 +931,9 @@ void test('a read source is opened from the project the path names', async () =>
   seed(host, catalog, 'export const foreignCatalog = { "rules": { "kept": "A declared rule." } } as const;\n');
   const assembled = await assembleD1Finalize(PROJECT, MODULE);
   assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
-  assert.match(assembled.request.dependencyTexts[present] || '', /A declared rule/);
-  assert.equal(assembled.request.dependencyTexts[absent], undefined);
+  const openedPresent = assembled.request.dependencyTexts[present] || assembled.request.dependencyTexts[present.replace(/^\/+/, '')] || '';
+  assert.match(openedPresent, /A declared rule/);
+  assert.equal(assembled.request.dependencyTexts[absent] || assembled.request.dependencyTexts[absent.replace(/^\/+/, '')], undefined);
   assert.equal(fileKey(catalog).startsWith('102099_'), true);
 });
 

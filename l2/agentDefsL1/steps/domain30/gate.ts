@@ -1,9 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/domain30/gate.ts" enhancement="_blank"/>
 
 import {
-  D1_DEFINITION_SCHEMA,
   D1_STORAGE_TARGETS,
   isRecord,
+  pendingDefinition,
   type D1Definition,
   type D1Field,
   type D1LifecycleState,
@@ -17,6 +17,7 @@ import {
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { isSafeToken, lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
   D1_DOMAIN_ACTIONS,
@@ -295,20 +296,14 @@ function entityDefinition(
 ): D1Definition {
   const voIds = [...new Set(fields.filter(field => field.type === 'record' && field.ref && extractedHas(extracted, field.ref)).map(field => field.ref as string))];
   const imports = voIds.map(id => valuePath(request.moduleName, id)).sort();
-  return {
-    schemaVersion: D1_DEFINITION_SCHEMA,
-    artifactType: 'domainEntity',
-    artifactId: entityId,
-    moduleName: request.moduleName,
-    data: {
-      entityId,
-      storageTarget: storage,
-      fields,
-      lifecycle: { states: lifecycle.states, transitions: lifecycle.transitions },
-      invariants: rules.filter(rule => rule.placement === 'invariant').map(rule => rule.ruleId),
-      imports,
-    },
-  };
+  return pendingDefinition('domainEntity', entityId, request.moduleName, {
+    entityId,
+    storageTarget: storage,
+    fields,
+    lifecycle: { states: lifecycle.states, transitions: lifecycle.transitions },
+    invariants: rules.filter(rule => rule.placement === 'invariant').map(rule => rule.ruleId),
+    imports,
+  });
 }
 
 function planValues(
@@ -343,13 +338,11 @@ function planValues(
     }
     const enumerations: D1Enumeration[] = [];
     const fields = emitRaw(node.entityId, node.fields, '', new Map(), resolutions, new Set(), problems, [], enumerations, blocked);
-    const definition: D1Definition = {
-      schemaVersion: D1_DEFINITION_SCHEMA,
-      artifactType: 'valueObject',
-      artifactId: voId,
-      moduleName: request.moduleName,
-      data: { valueObjectId: voId, fields, referencedBy },
-    };
+    const definition = pendingDefinition('valueObject', voId, request.moduleName, {
+      valueObjectId: voId,
+      fields,
+      referencedBy,
+    });
     plans.push({
       valueObjectId: voId,
       defPath: valuePath(request.moduleName, voId),
@@ -367,7 +360,9 @@ function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values
   const out: D1DomainEmit[] = [];
   for (const plan of emittedValues) {
     if (!plan.definition) continue;
-    out.push({ definition: plan.definition, pipeline: [itemFor(request, 'valueObject', plan.valueObjectId, plan.defPath, [], [])] });
+    const pipeline = itemFor(request, 'valueObject', plan.valueObjectId, plan.defPath, [], []);
+    const definition = stampDefinition(plan.definition, pipeline.defPath, pipeline.dependsFiles);
+    out.push({ definition, pipeline: [pipeline] });
   }
   for (const plan of plans) {
     if (!plan.definition || plan.action === 'preserve' || plan.action === 'remove') continue;
@@ -387,7 +382,9 @@ function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values
       const value = valueById.get(owner);
       return value ? qualifyDefPath(request.project, value.defPath) : '';
     }).filter(Boolean);
-    out.push({ definition: plan.definition, pipeline: [itemFor(request, 'domainEntity', plan.entityId, plan.defPath, dependsOn, dependsFiles)] });
+    const pipeline = itemFor(request, 'domainEntity', plan.entityId, plan.defPath, dependsOn, dependsFiles);
+    const definition = stampDefinition(plan.definition, pipeline.defPath, pipeline.dependsFiles);
+    out.push({ definition, pipeline: [pipeline] });
   }
   return out;
 }

@@ -1,11 +1,14 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/gate.ts" enhancement="_blank"/>
 
 import {
-  D1_DEFINITION_SCHEMA,
   D1_MEASURED_PUBLISH,
   definitionIssues,
   fictionalMechanism,
+  integrationMechanismIssues,
+  isRecord,
+  pendingDefinition,
   type D1Definition,
+  type M1Status,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
   cycleIssues,
@@ -15,7 +18,7 @@ import {
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import type { D1ControllerGrant, D1ControllerRelationship } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import {
   D1_SUPPORT_VERSION,
@@ -81,7 +84,9 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
   const errored = problems.some(problem => problem.severity === 'error');
   const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit];
   for (const part of emit) {
-    const rendered = renderDefinition(part.definition, part.pipeline);
+    const item = part.pipeline[0];
+    part.definition = stampDefinition(part.definition, item?.defPath || '', item?.dependsFiles || []);
+    const rendered = renderDefinition(part.definition, item?.defPath || '');
     if ('issues' in rendered) {
       error(problems, 'DEFINITION', part.pipeline[0]?.defPath || '', rendered.issues[0] || 'Definition did not render.');
     } else if (/\bimport\b/.test(rendered.source)) {
@@ -768,14 +773,9 @@ function definitionFor(
   artifactType: D1Definition['artifactType'],
   artifactId: string,
   data: Record<string, unknown>,
+  status: M1Status = 'pending',
 ): D1Definition {
-  return {
-    schemaVersion: D1_DEFINITION_SCHEMA,
-    artifactType,
-    artifactId,
-    moduleName: request.moduleName,
-    data,
-  };
+  return pendingDefinition(artifactType, artifactId, request.moduleName, data, [], status);
 }
 
 function pushDefinition(
@@ -784,13 +784,28 @@ function pushDefinition(
   pipeline: D1PipelineItem,
   defPath: string,
   problems: D1SupportProblem[],
+  blockReason = '',
 ): void {
   const issues = definitionIssues(definition);
   if (issues.length) {
     error(problems, 'DEFINITION', defPath, issues[0]);
     return;
   }
-  emit.push({ definition, pipeline: [pipeline] });
+  emit.push({ definition, pipeline: [pipeline], ...(blockReason ? { blockReason } : {}) });
+}
+
+/** A concrete external gap. Shape errors stay schema issues and are not a status. */
+function integrationGap(data: Record<string, unknown>): string {
+  const issues = integrationMechanismIssues(data).filter(item => /^(INTEGRATION_UNBOUND|MECHANISM_INCOMPATIBLE|MECHANISM_REF|FICTIONAL_API):/.test(item));
+  if (Array.isArray(data.events)) {
+    for (const event of data.events) {
+      if (!isRecord(event) || typeof event.mechanism !== 'string' || !event.mechanism.trim()) continue;
+      if (event.mechanism === D1_MEASURED_PUBLISH.symbol) continue;
+      const eventId = typeof event.eventId === 'string' ? event.eventId : 'event';
+      issues.push(`MECHANISM_UNVERIFIED: ${eventId} is not an approved module integration.`);
+    }
+  }
+  return issues[0] || '';
 }
 
 function edgeOf(item: D1PipelineItem | undefined): { id: string; type: string; dependsOn: string[] } {
@@ -901,9 +916,10 @@ export function emitEffects(
   }
   const defPath = filePath(request, 'integrationOutbound', OUTBOUND_PATH(request.moduleName));
   const consumers = events.map(event => String(event.consumer));
-  const definition = definitionFor(request, 'integrationOutbound', 'outbound', data);
+  const gap = integrationGap(data);
+  const definition = definitionFor(request, 'integrationOutbound', 'outbound', data, gap ? 'blocked' : 'pending');
   const emit: D1SupportEmit[] = [];
-  pushDefinition(emit, definition, effectsPipeline(request, defPath, consumers), defPath, problems);
+  pushDefinition(emit, definition, effectsPipeline(request, defPath, consumers, data), defPath, problems, gap);
   if (problems.some(problem => problem.severity === 'error')) return empty;
   return { emit, report: { phase: 'plan', executed: false, capability: capabilityOf(false) } };
 }
@@ -953,16 +969,27 @@ function inPool(operation: string, usecaseIds: ReadonlySet<string>): boolean {
   return head.length > 0 && usecaseIds.has(head);
 }
 
-function effectsPipeline(request: D1SupportRequest, defPath: string, consumers: readonly string[]): D1PipelineItem {
+function effectsPipeline(
+  request: D1SupportRequest,
+  defPath: string,
+  consumers: readonly string[],
+  data: Record<string, unknown>,
+): D1PipelineItem {
   const qualified = qualifyDefPath(request.project, defPath);
   const usecases = [...new Set(consumers)].filter(Boolean).sort();
+  const refs = Array.isArray(data.events)
+    ? data.events.flatMap(event => isRecord(event) && typeof event.mechanismRef === 'string' ? [event.mechanismRef] : [])
+    : [];
   return {
     id: pipelineId(request.project, request.moduleName, 'integrationOutbound', 'outbound'),
     type: 'integrationOutbound',
     defPath: qualified,
     outputPath: futureOutputPath(qualified),
     outputAvailability: 'future',
-    dependsFiles: usecases.map(id => qualifyDefPath(request.project, `l1/${request.moduleName}/layer_2_application/usecases/${id}.defs.ts`)),
+    dependsFiles: [
+      ...usecases.map(id => qualifyDefPath(request.project, `l1/${request.moduleName}/layer_2_application/usecases/${id}.defs.ts`)),
+      ...refs,
+    ],
     dependsOn: usecases.map(id => pipelineId(request.project, request.moduleName, 'usecase', id)),
     skills: skillPaths('integrationOutbound'),
   };

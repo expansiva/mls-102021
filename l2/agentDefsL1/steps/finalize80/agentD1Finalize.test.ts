@@ -249,7 +249,7 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
   const usecases = buildD1Usecases(usecaseRequest);
   await writeJson(draftFile(PROJECT, MODULE, 'usecases50'), usecases);
   for (const part of usecases.emit) {
-    const rendered = renderDefinition(part.definition, part.pipeline);
+    const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
     assert.equal('issues' in rendered, false);
     if ('issues' in rendered) continue;
     const file = artifactFile(PROJECT, part.pipeline[0]?.defPath || '');

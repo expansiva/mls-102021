@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/fidelity.ts" enhancement="_blank"/>
 
 import { integrationMechanismIssues, isRecord, isStorageConstraintRow } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { declaredDependencyPaths, readDefinitionExport } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import {
@@ -96,14 +96,10 @@ export function readUsecaseFidelity(
   files: readonly FidelityFile[],
 ): { behavior: UsecaseBehavior | null; problems: FidelityProblem[] } {
   const problems: FidelityProblem[] = [];
-  const parsed = parseRendered(source);
-  const definition = parsed && isRecord(parsed.definition) ? parsed.definition : null;
+  const read = readDefinitionExport(source);
+  const definition = read && isRecord(read.definition) ? read.definition : null;
   const data = definition && isRecord(definition.data) ? definition.data : null;
-  const pipeline = parsed && Array.isArray(parsed.pipeline) ? parsed.pipeline.filter(isRecord) : [];
-  const item = pipeline.find(entry => entry.type === 'usecase') || pipeline[0] || null;
-  const dependsFiles = item && Array.isArray(item.dependsFiles)
-    ? item.dependsFiles.filter((path): path is string => typeof path === 'string')
-    : [];
+  const dependsFiles = declaredDependencyPaths(source);
   if (!data) {
     return { behavior: null, problems: [{ code: 'DEFINITION', path: '', message: 'Serialized usecase did not parse.' }] };
   }
@@ -121,7 +117,7 @@ export function readUsecaseFidelity(
     fail(problems, 'SOURCE_CHANGED', usecaseId, `Ontology ${ontologyPath} did not parse.`);
   }
   if (!hasDep(dependsFiles, ontologyPath)) {
-    fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Ontology ${ontologyPath} is not in dependsFiles.`);
+    fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Ontology ${ontologyPath} is not in dependencies.`);
   }
 
   const fields = ontology ? recordFields(ontology) : [];
@@ -186,7 +182,7 @@ export function readUsecaseFidelity(
       continue;
     }
     if (!hasDep(dependsFiles, ref.path)) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Rule source ${ref.path} is not in dependsFiles.`);
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Rule source ${ref.path} is not in dependencies.`);
     }
     const text = fileText(files, ref.path);
     if (text == null) {
@@ -229,7 +225,7 @@ export function readUsecaseFidelity(
     for (const row of expected) {
       const file = originFile(row.origin);
       if (!file || hasDep(dependsFiles, file)) continue;
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Applicability source ${file} is not in dependsFiles.`);
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Applicability source ${file} is not in dependencies.`);
     }
   }
 
@@ -276,7 +272,7 @@ export function readUsecaseFidelity(
   }
   for (const route of routes) {
     if (!hasDep(dependsFiles, route.contractPath)) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Contract ${route.contractPath} is not in dependsFiles.`);
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Contract ${route.contractPath} is not in dependencies.`);
     }
     if (route.projection !== 'declared') continue;
     const ref = contractRefs.find(item => item.route === route.route);
@@ -301,7 +297,7 @@ export function readUsecaseFidelity(
   const outboundIssues = outboundMechanismProblems(files);
   for (const effect of effects) {
     if (!hasDep(dependsFiles, effect.path)) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Effect source ${effect.path} is not in dependsFiles.`);
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Effect source ${effect.path} is not in dependencies.`);
     }
     const text = fileText(files, effect.path);
     if (text == null) {
@@ -393,7 +389,7 @@ function fail(problems: FidelityProblem[], code: string, path: string, message: 
 }
 
 function strip(path: string): string {
-  return path.replace(/^_\d+_\/+/, '');
+  return path.replace(/^\/?_\d+_\/+/, '');
 }
 
 function hasDep(dependsFiles: readonly string[], path: string): boolean {
@@ -537,7 +533,7 @@ function eventPresent(body: unknown, symbol: string): boolean {
 function outboundMechanismProblems(files: readonly FidelityFile[]): FidelityProblem[] {
   const problems: FidelityProblem[] = [];
   for (const file of files) {
-    const rendered = parseRendered(file.text);
+    const rendered = readDefinitionExport(file.text);
     if (!rendered || !isRecord(rendered.definition) || rendered.definition.artifactType !== 'integrationOutbound') continue;
     if (!isRecord(rendered.definition.data)) continue;
     for (const issue of integrationMechanismIssues(rendered.definition.data)) {

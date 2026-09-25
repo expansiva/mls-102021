@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { D1_DEFINITION_SCHEMA, D1_MEASURED_PUBLISH, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { parseRendered, qualifyConsumed, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { fileKey, installStudio } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import type { D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
@@ -142,7 +142,7 @@ function focused(): { request: D1UsecaseRequest; files: FidelityFile[] } {
 function renderedOf(request: D1UsecaseRequest, usecaseId: string): string {
   const part = buildD1Usecases(request).emit.find(item => item.definition.artifactId === usecaseId);
   if (!part) throw new Error(usecaseId);
-  const rendered = renderDefinition(part.definition, part.pipeline);
+  const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
   if ('issues' in rendered) throw new Error(rendered.issues.join('\n'));
   return rendered.source;
 }
@@ -163,34 +163,37 @@ function outboundFile(mechanism: string, mechanismRef?: string): FidelityFile {
     consumer: 'registrarAtendimento',
   };
   if (mechanismRef) event.mechanismRef = mechanismRef;
+  const defPath = '_102047_/l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts';
   const definition = {
     schemaVersion: D1_DEFINITION_SCHEMA,
     artifactType: 'integrationOutbound',
     artifactId: 'outbound',
     moduleName: 'agendaClinica',
+    status: 'blocked',
+    dependencies: mechanismRef ? [qualifyConsumed(102047, mechanismRef)].filter(Boolean) : [],
     data: { integrationId: 'outbound', events: [event] },
   };
-  const pipeline = [{
-    id: '102047/agendaClinica/integrationOutbound/outbound',
-    type: 'integrationOutbound',
-    defPath: 'l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts',
-  }];
   return {
     path: 'l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts',
-    text: `export const definition = ${JSON.stringify(definition)} as const;\nexport const pipeline = ${JSON.stringify(pipeline)} as const;\n`,
+    text: `/// <mls fileReference="${defPath}" enhancement="_blank"/>\n\nexport const definition = ${JSON.stringify(definition)} as const;\n\nexport default definition;\n`,
   };
 }
 
 function edited(
   source: string,
-  edit: (definition: { data: Record<string, unknown> }, pipeline: D1PipelineItem[]) => void,
+  edit: (definition: { data: Record<string, unknown>; dependencies: string[] }, pipeline: D1PipelineItem[]) => void,
 ): string {
   const parsed = parseRendered(source);
   assert.ok(parsed);
   const definition = parsed.definition as D1Definition & { data: Record<string, unknown> };
-  const pipeline = parsed.pipeline as D1PipelineItem[];
+  const header = /fileReference="([^"]+)"/.exec(source);
+  const pipeline = [{
+    defPath: header?.[1] || '',
+    dependsFiles: definition.dependencies,
+  }] as unknown as D1PipelineItem[];
   edit(definition, pipeline);
-  const rendered = renderDefinition(definition, pipeline);
+  definition.dependencies = [...(pipeline[0]?.dependsFiles || definition.dependencies)];
+  const rendered = renderDefinition(definition, pipeline[0]?.defPath || '');
   assert.equal('issues' in rendered, false, 'issues' in rendered ? rendered.issues.join('\n') : '');
   if (!('source' in rendered)) throw new Error('render');
   return rendered.source;
@@ -206,8 +209,8 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(build.ok, true, build.problems.map(item => `${item.code}: ${item.message}`).join('\n'));
   const again = buildD1Usecases(structuredClone(request));
   assert.equal(
-    again.emit.map(item => renderDefinition(item.definition, item.pipeline)).map(item => 'source' in item ? item.source : '').join('\n'),
-    build.emit.map(item => renderDefinition(item.definition, item.pipeline)).map(item => 'source' in item ? item.source : '').join('\n'),
+    again.emit.map(item => renderDefinition(item.definition, item.pipeline[0]?.defPath || '')).map(item => 'source' in item ? item.source : '').join('\n'),
+    build.emit.map(item => renderDefinition(item.definition, item.pipeline[0]?.defPath || '')).map(item => 'source' in item ? item.source : '').join('\n'),
   );
 
   const registrar = renderedOf(request, 'registrarAtendimento');
@@ -226,7 +229,8 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(attendance.transaction, 'none');
   assert.equal(attendance.routes.some(route => route.route.endsWith('cmdRegistrarAtendimento') && route.outputFields.includes('id')), true);
   const parsed = parseRendered(registrar);
-  const depends = (parsed?.pipeline as D1PipelineItem[] | undefined)?.[0]?.dependsFiles || [];
+  const depends = ((parsed?.definition as { dependencies?: string[] } | undefined)?.dependencies || [])
+    .map(path => path.replace(/^_\d+_\/+/, ''));
   assert.equal(depends.includes('l4/agendaClinica/ontology/Consulta.defs.ts'), true);
   assert.equal(depends.includes(RULES), true);
   assert.equal(depends.includes(INTEGRATION), true);

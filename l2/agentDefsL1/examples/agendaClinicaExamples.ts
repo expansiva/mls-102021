@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/examples/agendaClinicaExamples.ts" enhancement="_blank"/>
 
-import { D1_DEFINITION_SCHEMA, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { pendingDefinition, type D1Definition, type M1Status } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { consumedDependencies } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import {
   type D1Catalog,
   type D1MeasuredPlan,
@@ -24,8 +25,13 @@ function item(catalog: D1Catalog, type: string, owner: string): D1PipelineItem {
   return found;
 }
 
-function envelope(artifactType: D1Definition['artifactType'], artifactId: string, data: D1Definition['data']): D1Definition {
-  return { schemaVersion: D1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: MODULE, data };
+function envelope(
+  artifactType: D1Definition['artifactType'],
+  artifactId: string,
+  data: D1Definition['data'],
+  status: M1Status = 'pending',
+): D1Definition {
+  return pendingDefinition(artifactType, artifactId, MODULE, data, [], status);
 }
 
 function handlerKind(kind: string): 'query' | 'command' {
@@ -268,7 +274,7 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
       { eventId: 'faltaPacienteRegistrada', on: 'Consulta.registrarFalta', entityId: 'Consulta', mechanism: '', consumer: 'registrarFalta' },
       { eventId: 'atendimentoRegistrado', on: 'Consulta.registrarAtendimento', entityId: 'Consulta', mechanism: '', consumer: 'registrarAtendimento' },
     ],
-  });
+  }, 'blocked');
 
   const pairs: Array<[D1Definition, string, string]> = [
     [consulta, 'domainEntity', 'Consulta'],
@@ -283,7 +289,16 @@ export function agendaExamples(catalog: D1Catalog, plan: D1MeasuredPlan): D1Exam
     [seeds, 'persistenceSeeds', 'seeds'],
     [integration, 'integrationOutbound', 'outbound'],
   ];
-  return pairs.map(([definition, type, owner]) => ({ definition, pipeline: [item(catalog, type, owner)] }));
+  return pairs.map(([definition, type, owner]) => {
+    const pipeline = [item(catalog, type, owner)];
+    return {
+      definition: {
+        ...definition,
+        dependencies: consumedDependencies(catalog.project, pipeline[0].dependsFiles),
+      },
+      pipeline,
+    };
+  });
 }
 
 /** The listConsulta example also points at L2 contracts. Those paths are not outputs of this catalog. */
@@ -294,5 +309,19 @@ export function listConsultaWithContracts(example: D1Example): D1Example {
     ...entry,
     dependsFiles: [...entry.dependsFiles, ...extra],
   }));
-  return { definition: example.definition, pipeline };
+  return {
+    definition: {
+      ...example.definition,
+      dependencies: consumedDependencies(example.pipeline[0] ? projectOf(example.pipeline[0].defPath) : 0, [
+        ...example.definition.dependencies,
+        ...extra,
+      ]),
+    },
+    pipeline,
+  };
+}
+
+function projectOf(defPath: string): number {
+  const match = /^_(\d+)_/.exec(defPath);
+  return match ? Number(match[1]) : 0;
 }

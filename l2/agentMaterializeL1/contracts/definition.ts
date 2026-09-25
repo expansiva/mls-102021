@@ -55,6 +55,7 @@ export const D1_31_EXPORTS = [
   'statusEvidenceIssues',
   'generatedAllowsSkip',
   'receiptIssues',
+  'receiptPathFor',
   'diagnoseUnit',
 ] as const;
 
@@ -83,7 +84,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   authorityMap: { required: ['mapId', 'entries'], optional: [], nonempty: ['entries'] },
   repositoryRegistration: { required: ['registrationId', 'adapters'], optional: [], nonempty: ['adapters'] },
   persistenceSeeds: { required: ['seedId', 'scenarios'], optional: ['phase', 'dependencies', 'datasets'], nonempty: ['scenarios'] },
-  integrationOutbound: { required: ['integrationId', 'events'], optional: ['processes', 'inbound', 'plugins', 'gaps'], nonempty: ['events'] },
+  integrationOutbound: { required: ['integrationId', 'events'], optional: ['processes', 'inbound', 'plugins', 'gaps'], nonempty: [] },
 };
 
 export interface M1Definition {
@@ -173,6 +174,21 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function receiptFolder(moduleName: string): string {
   return `l1/${moduleName}/materialization/agentMaterializeL1`;
+}
+
+/**
+ * Receipt file for one def. The def path is unique on disk; artifactId is not,
+ * and a case-only difference is the same file. The base name has no extra dot.
+ */
+export function receiptPathFor(defPath: string): string {
+  const match = /^(?:_\d+_\/)?l1\/([a-z][A-Za-z0-9]*)\/(.+)\/([^/]+)\.defs\.ts$/.exec(defPath);
+  if (!match) return '';
+  const moduleName = match[1];
+  const relativeDir = match[2];
+  const base = match[3];
+  if (!MODULE_TOKEN.test(moduleName) || !TOKEN.test(base)) return '';
+  if (relativeDir.split('/').some(part => !part || part === '.' || part === '..' || part.includes('.'))) return '';
+  return `${receiptFolder(moduleName)}/${relativeDir}/${base}.json`;
 }
 
 export function outputPathFromDefPath(defPath: string): string {
@@ -488,6 +504,12 @@ function dependencyListIssues(value: unknown): string[] {
   const ordered = [...paths].sort();
   if (ordered.some((path, index) => path !== paths[index])) issues.push('definition.dependencies must be sorted.');
   return issues;
+}
+
+/** Top-level `data` keys. d1_31 uses this list; agentDefsL1 does not keep a second copy. */
+export function dataAllowList(type: M1ArtifactType): readonly string[] {
+  const spec = DATA_KEYS[type];
+  return [...spec.required, ...spec.optional];
 }
 
 function dataIssues(type: M1ArtifactType, data: Record<string, unknown>): string[] {

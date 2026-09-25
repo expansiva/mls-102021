@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import type { D1UsecaseContext, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
@@ -243,15 +244,16 @@ void test('the gate keeps the prescribed set when the worker omits or adds a kno
   assert.equal(fidelity.problems.length, 0, fidelity.problems.map(item => item.message).join('\n'));
   const parsed = parseRendered(source);
   assert.ok(parsed);
-  const definition = parsed.definition as { data: Record<string, unknown> };
+  const definition = parsed.definition as D1Definition & { data: Record<string, unknown> };
   definition.data.rulesApplied = ['keyRule', 'ownRule'];
-  const tampered = renderDefinition(parsed.definition, parsed.pipeline);
+  const defPath = /fileReference="([^"]+)"/.exec(source)?.[1] || '';
+  const tampered = renderDefinition(definition, defPath);
   assert.equal('source' in tampered, true);
   if (!('source' in tampered)) return;
   const coverage = readUsecaseFidelity(tampered.source, files);
   assert.equal(coverage.problems.some(item => item.code === 'RULE_COVERAGE'), true);
   delete definition.data.rulePlan;
-  const stripped = renderDefinition(parsed.definition, parsed.pipeline);
+  const stripped = renderDefinition(definition, defPath);
   assert.equal('source' in stripped, true);
   if (!('source' in stripped)) return;
   const missing = readUsecaseFidelity(stripped.source, files);
@@ -328,7 +330,7 @@ function clinicFiles(): FidelityFile[] {
 function renderOf(build: ReturnType<typeof buildD1Usecases>): string {
   const part = build.emit[0];
   if (!part) throw new Error('no emit');
-  const rendered = renderDefinition(part.definition, part.pipeline);
+  const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
   if ('issues' in rendered) throw new Error(rendered.issues.join('\n'));
   return rendered.source;
 }

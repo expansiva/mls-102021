@@ -145,13 +145,13 @@ function removalParts(project: number, build: D1SupportBuild, files: readonly D1
 
 function renderParts(
   project: number,
-  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: Parameters<typeof renderDefinition>[1] }[],
+  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: { defPath: string; outputPath: string }[]; blockReason?: string }[],
   files: readonly D1SupportFile[],
 ): { parts: D1UnitPart[]; issues: string[] } {
   const parts: D1UnitPart[] = [];
   const issues: string[] = [];
   for (const part of emit) {
-    const rendered = renderDefinition(part.definition, part.pipeline);
+    const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
     if ('issues' in rendered) {
       issues.push(...rendered.issues);
       continue;
@@ -168,6 +168,7 @@ function renderParts(
       source: rendered.source,
       receiptHash: receipt?.contentHash || '',
       outputTs: [part.pipeline[0]?.outputPath || ''].filter(Boolean),
+      ...(part.blockReason ? { blockReason: part.blockReason } : {}),
     });
   }
   return { parts, issues };

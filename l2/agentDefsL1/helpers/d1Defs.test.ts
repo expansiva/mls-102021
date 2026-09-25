@@ -127,12 +127,13 @@ function assertObjectsClosed(node: unknown, pathName: string): void {
   }
 }
 
-void test('definition and pipeline schemas are closed and have no draft status or materializer', () => {
+void test('definition and pipeline schemas are closed and have no materializer', () => {
   for (const name of SCHEMA_FILES) assertObjectsClosed(readSchema(name), name);
   const definition = readSchema('definition-v1.schema.json');
   const properties = definition.properties as Record<string, unknown>;
-  assert.deepEqual(definition.required, ['schemaVersion', 'artifactType', 'artifactId', 'moduleName', 'data']);
-  assert.equal(Object.hasOwn(properties, 'status'), false);
+  assert.deepEqual(definition.required, ['schemaVersion', 'artifactType', 'artifactId', 'moduleName', 'status', 'dependencies', 'data']);
+  const status = properties.status as { enum: string[] };
+  assert.deepEqual(status.enum, ['pending', 'generated', 'blocked', 'failed']);
   const artifactType = properties.artifactType as { enum: string[] };
   assert.deepEqual(artifactType.enum, [...D1_ARTIFACT_TYPES]);
   const pipeline = readSchema('pipeline-item-v1.schema.json');
@@ -207,16 +208,16 @@ void test('examples render, parse without eval and typecheck', () => {
   const examples = agendaExamples(agendaCatalog(plan), plan);
   assert.equal(examples.length, 11);
   for (const example of examples) {
-    const rendered = renderDefinition(example.definition, example.pipeline);
+    const rendered = renderDefinition(example.definition, example.pipeline[0].defPath);
     assert.equal('issues' in rendered, false, 'issues' in rendered ? rendered.issues.join('\n') : '');
     if (!('source' in rendered)) continue;
     const parsed = parseRendered(rendered.source);
     assert.ok(parsed);
     assert.deepEqual(parsed?.definition, example.definition);
-    assert.deepEqual(parsed?.pipeline, example.pipeline);
+    assert.equal(rendered.source.includes('export const pipeline'), false);
     assert.deepEqual(parseDefsSource(rendered.source), example.definition);
     assert.deepEqual(syntaxIssues(rendered.source, `${example.definition.artifactId}.defs.ts`), []);
-    assert.equal(rendered.source.includes('"status":'), false);
+    assert.equal(rendered.source.includes(`"status": "${example.definition.status}"`), true);
     assert.equal(rendered.source.includes('agentCbMaterialize'), false);
   }
 });
@@ -298,7 +299,7 @@ void test('the gate reports cycle, duplicate id, route and output, orphan depend
 void test('unknown fields, draft status and an empty value object are refused without being stripped', () => {
   const draft = { schemaVersion: D1_DEFINITION_SCHEMA, artifactType: 'domainEntity', artifactId: 'Consulta', moduleName: 'agendaClinica', status: 'draft', data: {} };
   const issues = definitionIssues(draft);
-  assert.equal(issues.some(issue => issue.includes('Unknown field definition.status')), true);
+  assert.equal(issues.some(issue => issue.includes('definition.status is invalid')), true);
   assert.equal((draft as { status?: string }).status, 'draft');
   assert.equal(valueObjectIssues({ valueObjectId: 'Slot', fields: [], referencedBy: [] }).some(issue => issue.includes('referencedBy')), true);
   assert.equal(recordFieldIssues({ fields: [{ name: 'patientId', type: 'record' }] }).some(issue => issue.includes('ref')), true);
@@ -372,12 +373,18 @@ void test('round-trip through the real inventory, and a collision writes nothing
   const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
   const port = examples.find(example => example.definition.artifactType === 'repositoryPort');
   assert.ok(port);
-  const refused = await persistDefinitions(102047, [port!, port!]);
+  const refused = await persistDefinitions(102047, [port!, port!].map(example => ({
+    definition: example.definition,
+    defPath: example.pipeline[0].defPath,
+  })));
   assert.equal(refused.written.length, 0);
   assert.equal(host.writes.length, 0);
   assert.equal(refused.issues.some(issue => issue.startsWith('Duplicate defPath')), true);
 
-  const stored = await persistDefinitions(102047, examples);
+  const stored = await persistDefinitions(102047, examples.map(example => ({
+    definition: example.definition,
+    defPath: example.pipeline[0].defPath,
+  })));
   assert.deepEqual(stored.issues, []);
   assert.equal(stored.written.length, examples.length);
   const sample = stored.written[0];

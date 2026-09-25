@@ -11,7 +11,8 @@ import { fingerprintProject, logicalDefPath, type D1UnitProgress } from '/_10202
 import { futureOutputPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { artifactFile, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { artifactFile, declaredDependencyPaths, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
@@ -146,7 +147,7 @@ async function readObserved(
     byLogical.set(logical, {
       defPath: logical,
       text,
-      currentHash: text == null ? '' : await sha256Text(text),
+      currentHash: text == null ? '' : await sourceIdentityHash(text),
       receiptHash: receipt.get(logical) || '',
       action: planned.find(item => logicalDefPath(item.defPath) === logical)?.action || '',
       ownerRefs: planned.find(item => logicalDefPath(item.defPath) === logical)?.ownerRefs || [],
@@ -173,15 +174,15 @@ async function futureOf(project: number, observed: readonly D1FinalizeObserved[]
   for (const item of observed) {
     if (!item.text) continue;
     const rendered = parseRendered(item.text);
-    if (!rendered || !Array.isArray(rendered.pipeline)) continue;
-    for (const pipelineItem of rendered.pipeline) {
-      if (!isRecord(pipelineItem) || typeof pipelineItem.outputPath !== 'string') continue;
-      const outputPath = pipelineItem.outputPath;
-      const info = artifactFile(project, outputPath);
-      present[outputPath] = info ? (await readText(info)) != null : false;
-      const logicalFuture = futureOutputPath(logicalDefPath(typeof pipelineItem.defPath === 'string' ? pipelineItem.defPath : ''));
-      if (logicalFuture && present[logicalFuture] === undefined) present[logicalFuture] = present[outputPath];
-    }
+    if (!rendered || !isRecord(rendered.definition)) continue;
+    const header = /fileReference="([^"]+)"/.exec(item.text);
+    const defPath = header?.[1] || item.defPath;
+    const outputPath = futureOutputPath(defPath);
+    if (!outputPath) continue;
+    const info = artifactFile(project, outputPath);
+    present[outputPath] = info ? (await readText(info)) != null : false;
+    const logicalFuture = futureOutputPath(logicalDefPath(defPath));
+    if (logicalFuture && present[logicalFuture] === undefined) present[logicalFuture] = present[outputPath];
   }
   return present;
 }
@@ -200,7 +201,7 @@ async function readLogical(project: number, path: string): Promise<string | null
 }
 
 /**
- * Opens every path a def declares in dependsFiles. A path this project does not
+ * Opens every path a def declares in dependencies. A path this project does not
  * own is read from the project named in the path. Null means the file is not there.
  */
 async function readDeclaredDependencies(
@@ -219,14 +220,7 @@ function declaredPaths(observed: readonly D1FinalizeObserved[]): string[] {
   const paths = new Set<string>();
   for (const item of observed) {
     if (!item.text) continue;
-    const rendered = parseRendered(item.text);
-    if (!rendered || !Array.isArray(rendered.pipeline)) continue;
-    for (const pipelineItem of rendered.pipeline) {
-      if (!isRecord(pipelineItem) || !Array.isArray(pipelineItem.dependsFiles)) continue;
-      for (const dep of pipelineItem.dependsFiles) {
-        if (typeof dep === 'string' && dep) paths.add(dep);
-      }
-    }
+    for (const dep of declaredDependencyPaths(item.text)) paths.add(dep);
   }
   return [...paths];
 }

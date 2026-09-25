@@ -73,12 +73,12 @@ export async function commitD1Controllers(
 
 function renderParts(
   project: number,
-  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: Parameters<typeof renderDefinition>[1] }[],
+  emit: readonly { definition: Parameters<typeof renderDefinition>[0]; pipeline: { defPath: string; outputPath: string }[] }[],
 ): { parts: D1UnitPart[]; issues: string[] } {
   const parts: D1UnitPart[] = [];
   const issues: string[] = [];
   for (const part of emit) {
-    const rendered = renderDefinition(part.definition, part.pipeline);
+    const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
     if ('issues' in rendered) {
       issues.push(...rendered.issues);
       continue;
@@ -266,14 +266,6 @@ function existingController(pageId: string, source: string): D1ExistingControlle
     if (!kind || typeof handler.usecaseId !== 'string') continue;
     if (!routes.includes(handler.route)) routes.push(handler.route);
     handlers.push({ route: handler.route, kind, usecaseId: handler.usecaseId, grantIds: stringList(handler.grantIds) });
-  }
-  if (parsed && Array.isArray(parsed.pipeline)) {
-    for (const item of parsed.pipeline) {
-      if (!isRecord(item) || !Array.isArray(item.routes)) continue;
-      for (const route of item.routes) {
-        if (typeof route === 'string' && route && !routes.includes(route)) routes.push(route);
-      }
-    }
   }
   return { pageId, routes, handlers, unreadable: false };
 }

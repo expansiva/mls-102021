@@ -24,7 +24,7 @@ const CATALOG_KEYS = [
 ] as const;
 
 /** What each type may depend on. A usecase must not depend on the registry or the adapter. */
-const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> = {
+export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> = {
   domainEntity: [],
   valueObject: ['domainEntity'],
   repositoryPort: ['domainEntity'],
@@ -501,6 +501,8 @@ export const D1_FIELD_READERS = {
   'definition.artifactType': 'definitionIssues',
   'definition.artifactId': 'definitionIssues',
   'definition.moduleName': 'definitionIssues',
+  'definition.status': 'definitionIssues',
+  'definition.dependencies': 'definitionIssues',
   'definition.data': 'definitionIssues',
   'domainEntity.entityId': 'domainEntityIssues',
   'domainEntity.storageTarget': 'storageTargetIssues',

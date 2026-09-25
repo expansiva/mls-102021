@@ -215,7 +215,7 @@ void test('Consulta keeps the unique key, four states and three named transition
   assert.equal(first.normalizations.some(item => item.code === 'NESTED_KEPT'), true);
 
   for (const part of first.emit) {
-    const rendered = renderDefinition(part.definition, part.pipeline);
+    const rendered = renderDefinition(part.definition, part.pipeline[0]?.defPath || '');
     assert.equal('issues' in rendered, false);
     if ('issues' in rendered) continue;
     assert.equal(definitionIssues(part.definition).length, 0);

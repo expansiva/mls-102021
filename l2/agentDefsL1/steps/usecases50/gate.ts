@@ -1,9 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/gate.ts" enhancement="_blank"/>
 
 import {
-  D1_DEFINITION_SCHEMA,
   definitionIssues,
   isRecord,
+  pendingDefinition,
   type D1Definition,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
@@ -13,7 +13,7 @@ import {
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { authorizedPayloadNames, capabilityApplies, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
@@ -205,13 +205,7 @@ function planUsecase(
     ...(lifecycle ? { lifecycle } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
   };
-  const definition: D1Definition = {
-    schemaVersion: D1_DEFINITION_SCHEMA,
-    artifactType: 'usecase',
-    artifactId: usecase.usecaseId,
-    moduleName: request.moduleName,
-    data,
-  };
+  const definition = pendingDefinition('usecase', usecase.usecaseId, request.moduleName, data);
   const issues = definitionIssues(definition);
   if (issues.length) {
     error(problems, 'DEFINITION', path, issues[0]);
@@ -1040,7 +1034,8 @@ function emitItems(request: D1UsecaseRequest, items: readonly D1UsecaseItem[], p
       error(problems, 'ADAPTER_IMPORT', item.usecaseId, adapter[0]);
       continue;
     }
-    const rendered = renderDefinition(item.definition, [pipeline]);
+    item.definition = stampDefinition(item.definition, pipeline.defPath, pipeline.dependsFiles);
+    const rendered = renderDefinition(item.definition, pipeline.defPath);
     if ('issues' in rendered) {
       error(problems, 'DEFINITION', item.defPath, rendered.issues[0] || 'Definition did not render.');
       continue;

@@ -16,12 +16,14 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { logicalDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import {
+  DEPENDS_ALLOWED,
   futureOutputPath,
   graphIssues,
-  pipelineItemIssues,
+  pipelineId,
+  skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { declaredDependencyPaths, readDefinitionExport } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { accountCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
@@ -179,27 +181,39 @@ function parseObserved(request: D1FinalizeRequest, findings: D1FinalizeFinding[]
       }
       continue;
     }
-    const rendered = parseRendered(observed.text);
-    const definition = rendered?.definition;
-    const pipeline = rendered?.pipeline;
-    if (!definition || !Array.isArray(pipeline) || !isDefinition(definition)) {
+    const read = readDefinitionExport(observed.text);
+    const raw = read?.definition;
+    if (!raw || !isRecord(raw) || !isRecord(raw.data) || typeof raw.artifactType !== 'string') {
       if (inventoried.has(logical)) {
         error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a definition.`, logical);
       }
       continue;
     }
-    const items = pipeline.filter(isPipelineItem);
-    if (items.length !== pipeline.length) {
-      error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} has a pipeline item that is not an object.`, logical);
+    if (!Array.isArray(raw.dependencies)) raw.dependencies = declaredDependencyPaths(observed.text);
+    if (read.pipelineExport && inventoried.has(logical)) {
+      error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} exports pipeline. v2 has no pipeline.`, logical);
+    }
+    if (!isArtifactType(raw.artifactType)) {
+      if (inventoried.has(logical)) {
+        error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
+      }
+      continue;
+    }
+    if (!isDefinition(raw) && inventoried.has(logical)) {
+      error(findings, 'SCHEMA_INVALID', logical, `Inventoried file ${logical} is not a v2 definition.`, logical);
     }
     parsed.push({
       logical,
-      definition,
-      pipeline: items,
+      definition: raw as unknown as D1Definition,
+      pipeline: [],
       currentHash: observed.currentHash,
       receiptHash: observed.receiptHash,
       text: observed.text,
     });
+  }
+  const synthesized = itemsFromDefinitions(request.project, request.moduleName, parsed);
+  for (const item of parsed) {
+    item.pipeline = synthesized.filter(entry => logicalDefPath(entry.defPath) === item.logical);
   }
   return parsed;
 }
@@ -273,23 +287,17 @@ function checkExtra(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D
 }
 
 function checkSchemaAndGraph(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
-  const items: D1PipelineItem[] = [];
   const present = new Set(parsed.map(item => qualify(request.project, item.logical)));
   for (const item of parsed) {
     for (const issue of definitionIssues(item.definition)) {
       error(findings, 'SCHEMA_INVALID', item.logical, issue, item.definition.artifactId);
     }
-    for (const pipelineItem of item.pipeline) {
-      items.push(pipelineItem);
-      for (const issue of pipelineItemIssues(pipelineItem, request.project, request.moduleName)) {
-        error(findings, 'SCHEMA_INVALID', pipelineItem.defPath || item.logical, issue, pipelineItem.id);
-      }
-    }
   }
+  const items = parsed.flatMap(item => item.pipeline);
   const sources = new Set((request.snapshot?.sources || []).map(source => source.path));
   for (const pipelineItem of items) {
     for (const dep of pipelineItem.dependsFiles || []) {
-      if (knownDependency(dep, items, present, sources, request.dependencyTexts)) continue;
+      if (knownDependency(dep, items, present, sources, request.dependencyTexts, request.project)) continue;
       error(findings, 'REF_INVALID', dep, `Dependency ${dep} is not a current def, a named future output, or an opened read source.`, pipelineItem.id);
     }
   }
@@ -312,15 +320,15 @@ function knownDependency(
   present: Set<string>,
   sources: Set<string>,
   dependencyTexts: Record<string, string>,
+  project: number,
 ): boolean {
   if (isGeneratedArtifact(dep, items, present)) return true;
-  if (sources.has(dep)) return true;
-  // A path that names a project is not this module's snapshot source.
-  if (!embeddedProject(dep)) {
-    const logical = dep.replace(/^_\d+_\/+/, '');
-    if (logical !== dep && sources.has(logical)) return true;
-  }
-  return openedRead(dep, dependencyTexts);
+  if (sources.has(dep) || [...sources].some(source => canonPath(source) === canonPath(dep))) return true;
+  const named = embeddedProject(dep);
+  const logical = unqualified(dep);
+  // A path that names another project is not this module's snapshot source.
+  if ((!named || named === String(project)) && sources.has(logical)) return true;
+  return openedRead(dep, dependencyTexts, project);
 }
 
 function isGeneratedArtifact(dep: string, items: D1PipelineItem[], present: Set<string>): boolean {
@@ -334,13 +342,18 @@ function isGeneratedArtifact(dep: string, items: D1PipelineItem[], present: Set<
   return !!future && items.some(item => item.outputPath === future);
 }
 
-function openedRead(dep: string, texts: Record<string, string>): boolean {
-  if (typeof texts[dep] === 'string') return true;
-  const project = embeddedProject(dep);
-  if (!project) return false;
+function canonPath(path: string): string {
+  return path.replace(/^\/+/, '');
+}
+
+function openedRead(dep: string, texts: Record<string, string>, project: number): boolean {
+  if (typeof texts[dep] === 'string' || typeof texts[canonPath(dep)] === 'string' || typeof texts[`/${canonPath(dep)}`] === 'string') return true;
+  const named = embeddedProject(dep);
   const tail = unqualified(dep);
+  if ((!named || named === String(project)) && typeof texts[tail] === 'string') return true;
+  if (!named) return false;
   return Object.entries(texts).some(([path, text]) =>
-    typeof text === 'string' && embeddedProject(path) === project && unqualified(path) === tail);
+    typeof text === 'string' && embeddedProject(path) === named && unqualified(path) === tail);
 }
 
 function embeddedProject(path: string): string {
@@ -352,12 +365,52 @@ function unqualified(path: string): string {
   return path.replace(/^\/?_\d+_\/+/, '');
 }
 
+function itemsFromDefinitions(project: number, moduleName: string, parsed: readonly ParsedDef[]): D1PipelineItem[] {
+  const items: D1PipelineItem[] = parsed.map(item => {
+    const defPath = qualify(project, item.logical);
+    const routes = routesOf(item.definition);
+    return {
+      id: pipelineId(project, moduleName, item.definition.artifactType, item.definition.artifactId),
+      type: item.definition.artifactType,
+      defPath,
+      outputPath: futureOutputPath(defPath),
+      outputAvailability: 'future',
+      dependsFiles: [...item.definition.dependencies],
+      dependsOn: [],
+      skills: skillPaths(item.definition.artifactType),
+      ...(item.definition.artifactType === 'httpController' ? { routes } : {}),
+    };
+  });
+  for (const item of items) {
+    item.dependsOn = item.dependsFiles.flatMap(file => {
+      const found = items.find(other => other.defPath === file || logicalDefPath(other.defPath) === logicalDefPath(file));
+      if (!found || found.id === item.id) return [];
+      const allowed = allowedDependency(item.type, found.type);
+      if (!allowed) return [];
+      return [found.id];
+    });
+  }
+  return items;
+}
+
+function allowedDependency(from: string, to: string): boolean {
+  if (to === 'repositoryAdapter' || to === 'repositoryRegistration') return true;
+  if (!isArtifactType(from) || !isArtifactType(to)) return false;
+  return DEPENDS_ALLOWED[from].includes(to);
+}
+
+function routesOf(definition: D1Definition): string[] {
+  const handlers = definition.data.handlers;
+  if (!Array.isArray(handlers)) return [];
+  return handlers.flatMap(handler => isRecord(handler) && typeof handler.route === 'string' && handler.route ? [handler.route] : []);
+}
+
 function checkAccessPolicy(parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
   const units: D1PolicyUnit[] = parsed.map(item => ({
-    defPath: item.pipeline[0]?.defPath || item.logical,
+    defPath: item.logical,
     artifactType: item.definition.artifactType,
     data: item.definition.data,
-    dependencies: item.pipeline.flatMap(pipelineItem => pipelineItem.dependsFiles || []),
+    dependencies: [...item.definition.dependencies],
   }));
   for (const issue of reconstructAccessPolicy(units).issues) {
     error(findings, issue.code, issue.path, issue.message, issue.ownerRef);
@@ -812,11 +865,9 @@ function isDefinition(value: unknown): value is D1Definition {
     && isArtifactType(value.artifactType)
     && typeof value.artifactId === 'string'
     && typeof value.moduleName === 'string'
+    && typeof value.status === 'string'
+    && Array.isArray(value.dependencies)
     && isRecord(value.data);
-}
-
-function isPipelineItem(value: unknown): value is D1PipelineItem {
-  return isRecord(value) && typeof value.id === 'string' && typeof value.type === 'string' && isArtifactType(value.type);
 }
 
 function strings(value: unknown): string[] {

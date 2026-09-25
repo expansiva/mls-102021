@@ -304,7 +304,7 @@ void test('Consulta emits one port, one table and one adapter', async () => {
   const portEmit = first.emit.find(part => part.definition.artifactType === 'repositoryPort');
   assert.ok(portEmit);
   assert.deepEqual(applicationAdapterIssues(portEmit.pipeline[0]), []);
-  const rendered = renderDefinition(portEmit.definition, portEmit.pipeline);
+  const rendered = renderDefinition(portEmit.definition, portEmit.pipeline[0]?.defPath || '');
   assert.equal('issues' in rendered, false);
   if (!('issues' in rendered)) {
     assert.equal(rendered.source.includes('import '), false);

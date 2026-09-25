@@ -18,6 +18,7 @@ import {
   generatedAllowsSkip,
   parseDefinitionSource,
   receiptFolder,
+  receiptPathFor,
   referenceIssues,
   renderDefinition,
   semanticHash,
@@ -28,13 +29,17 @@ import {
 import {
   LIST,
   LIST_CONSULTA_EXAMPLE,
+  ADAPTER,
   blockedReceipt,
+  CONSULTA,
   definitionsByType,
   failedReceipt,
   fixtureIndex,
   indexedUnits,
   listConsultaPending,
   listConsultaReceipt,
+  PORT,
+  TABLE,
   withStatus,
 } from '/_102021_/l2/agentMaterializeL1/fixtures/cases.js';
 
@@ -54,9 +59,26 @@ void test('d1_31 import surface is this module', () => {
     'statusEvidenceIssues',
     'generatedAllowsSkip',
     'receiptIssues',
+    'receiptPathFor',
     'diagnoseUnit',
   ]);
   assert.equal(receiptFolder('agendaClinica'), 'l1/agendaClinica/materialization/agentMaterializeL1');
+});
+
+void test('receipt path follows the def, so the same id and case do not collide', () => {
+  const folder = receiptFolder('agendaClinica');
+  const port = receiptPathFor(PORT);
+  const adapter = receiptPathFor(ADAPTER);
+  assert.notEqual(port, adapter);
+  const entity = receiptPathFor(CONSULTA);
+  const table = receiptPathFor(TABLE);
+  assert.notEqual(entity.toLowerCase(), table.toLowerCase());
+  for (const path of [port, adapter, entity, table]) {
+    assert.equal(path.startsWith(`${folder}/`), true, path);
+    const base = path.slice(path.lastIndexOf('/') + 1);
+    assert.match(base, /^[A-Za-z][A-Za-z0-9_]*\.json$/, base);
+  }
+  assert.equal(receiptPathFor(PORT.replace(/^_\d+_\//, '')), port);
 });
 
 void test('each artifact type has a valid pending definition', async () => {
@@ -117,14 +139,16 @@ void test('parser refuses pipeline, agent, eval and a missing export', () => {
   assert.equal('issues' in missing, true);
 });
 
-void test('legacy CB writer still refuses v2', () => {
+void test('D1 writer accepts v2 and does not export pipeline', () => {
   const rendered = renderDefinition(listConsultaPending, LIST);
   assert.equal('source' in rendered, true);
   if (!('source' in rendered)) return;
-  assert.equal(parseRendered(rendered.source), null);
+  const parsed = parseRendered(rendered.source);
+  assert.ok(parsed);
+  assert.deepEqual(parsed?.definition, listConsultaPending);
+  assert.equal(rendered.source.includes('export const pipeline'), false);
   const issues = d1DefinitionIssues(listConsultaPending);
-  assert.equal(issues.some(item => item.includes('schemaVersion')), true);
-  assert.equal(issues.some(item => item.includes('status') || item.includes('Unknown field')), true);
+  assert.equal(issues.some(item => item.includes('schemaVersion') || item.includes('status is invalid')), false);
 });
 
 void test('old version, invalid status and unknown data are refused', () => {

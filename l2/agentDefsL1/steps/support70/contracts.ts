@@ -332,6 +332,8 @@ export interface D1SupportRequest {
 export interface D1SupportEmit {
   definition: D1Definition;
   pipeline: D1PipelineItem[];
+  /** Set when status is blocked. The receipt, not the def, carries the reason. */
+  blockReason?: string;
 }
 
 export interface D1SupportBuild {

@@ -3,7 +3,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import {
+  M1_RECEIPT_SCHEMA,
+  receiptFolder,
+  receiptPathFor,
+  semanticHash,
+  type MaterializationReceipt,
+} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { pendingDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { pipelineFile, plannerPipelineFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { hashesAgree } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import {
   commitD1Unit,
   fingerprintProject,
@@ -300,4 +310,171 @@ void test('the project fingerprint includes hidden files and names a neighbor th
   });
   assert.match(refused.issues[0] || '', /not a def this agent can write/);
   assert.equal(host.files[fileKey(info('l1/otherModule/layer_3_domain/entities/neighbor.defs.ts'))]?.content, 'NEIGHBOR');
+});
+
+void test('a status edit with a valid receipt is not a rewrite, and a behavior change does not restore generated', async () => {
+  const host = await hostWith();
+  const qualified = `_${PROJECT}_/${defPath('note')}`;
+  const definition = pendingDefinition('domainEntity', 'Note', MODULE, {
+    entityId: 'Note',
+    storageTarget: 'moduleDatabase',
+    fields: [{ name: 'id', type: 'string' }],
+    lifecycle: { states: [{ state: 'open', reachedBy: 'actor' }], transitions: [] },
+    invariants: [],
+    imports: [],
+  });
+  const rendered = renderDefinition(definition, qualified);
+  assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
+  if (!('source' in rendered)) return;
+  const pending = rendered.source;
+  const file = info(defPath('note'));
+  const first = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: defPath('note'), source: pending, receiptHash: '' }],
+  });
+  assert.deepEqual(first.issues, []);
+  assert.equal(host.files[fileKey(file)]?.content, pending);
+
+  const generated = pending.replace('"status": "pending"', '"status": "generated"');
+  host.files[fileKey(file)]!.content = generated;
+  const hash = await semanticHash({ ...definition, status: 'generated' });
+  const proof: MaterializationReceipt = {
+    schemaVersion: M1_RECEIPT_SCHEMA,
+    runId: 'm1',
+    candidateId: '',
+    defPath: qualified,
+    artifactType: 'domainEntity',
+    artifactId: 'Note',
+    recipeVersion: 'm1',
+    semanticHash: hash,
+    dependencyHashes: {},
+    sourceHashes: {},
+    outputHashes: { [qualified.replace(/\.defs\.ts$/, '.ts')]: 'sha256:out' },
+    stage: 'verify',
+    verifications: [{ id: 'compile', kind: 'compile', passed: true, detail: 'ok' }],
+    failures: [],
+    attempts: 1,
+    reason: '',
+  };
+  const receiptInfo = fileInfoFromDisplay(PROJECT, receiptPathFor(defPath('note')));
+  assert.ok(receiptInfo);
+  seed(host, receiptInfo, `${JSON.stringify(proof)}\n`);
+  assert.equal(await hashesAgree(generated, await sha256Text(pending)), true);
+
+  const again = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: defPath('note'), source: pending, receiptHash: await sha256Text(pending) }],
+  });
+  assert.deepEqual(again.issues, []);
+  assert.equal(host.files[fileKey(file)]?.content, generated);
+
+  const changed = pendingDefinition('domainEntity', 'Note', MODULE, {
+    ...definition.data,
+    fields: [{ name: 'id', type: 'string' }, { name: 'title', type: 'string' }],
+  });
+  const next = renderDefinition(changed, qualified);
+  assert.equal('source' in next, true);
+  if (!('source' in next)) return;
+  const rewritten = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft-2',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: defPath('note'), source: next.source, receiptHash: await sha256Text(pending) }],
+  });
+  assert.deepEqual(rewritten.issues, []);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"title"'), true);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"status": "pending"'), true);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"status": "generated"'), false);
+});
+
+void test('a blocked receipt of another def does not keep the status', async () => {
+  const host = await hostWith();
+  const logical = defPath('note');
+  const qualified = `_${PROJECT}_/${logical}`;
+  const definition = pendingDefinition('domainEntity', 'Note', MODULE, {
+    entityId: 'Note',
+    storageTarget: 'moduleDatabase',
+    fields: [{ name: 'id', type: 'string' }],
+    lifecycle: { states: [{ state: 'open', reachedBy: 'actor' }], transitions: [] },
+    invariants: [],
+    imports: [],
+  }, [], 'blocked');
+  const rendered = renderDefinition(definition, qualified);
+  assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
+  if (!('source' in rendered)) return;
+  const blocked = rendered.source;
+  const file = info(logical);
+  const wrote = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: logical, source: blocked, blockReason: 'missing contract' }],
+  });
+  assert.deepEqual(wrote.issues, []);
+  const receiptInfo = info(receiptPathFor(logical));
+  const oldInfo = info(`${receiptFolder(MODULE)}/Note.json`);
+  assert.equal(fileKey(receiptInfo) === fileKey(oldInfo), false);
+  assert.ok(host.files[fileKey(receiptInfo)]?.content);
+  assert.equal(host.files[fileKey(oldInfo)], undefined);
+
+  const pendingRendered = renderDefinition({ ...definition, status: 'pending' }, qualified);
+  assert.equal('source' in pendingRendered, true);
+  if (!('source' in pendingRendered)) return;
+  const pending = pendingRendered.source;
+  const kept = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft-keep',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: logical, source: pending, receiptHash: await sha256Text(blocked) }],
+  });
+  assert.deepEqual(kept.issues, []);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"status": "blocked"'), true);
+
+  const stored = JSON.parse(host.files[fileKey(receiptInfo)]?.content || '{}') as MaterializationReceipt;
+  seed(host, oldInfo, `${JSON.stringify(stored)}\n`);
+  const foreign: MaterializationReceipt = {
+    ...stored,
+    defPath: defPath('other'),
+    artifactId: 'Other',
+    semanticHash: 'sha256:other',
+    reason: 'still a reason',
+  };
+  host.files[fileKey(receiptInfo)]!.content = `${JSON.stringify(foreign)}\n`;
+  const dropped = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'domain30',
+    draftText: 'draft-drop',
+    snapshotHash: SNAPSHOT,
+    runId: 'run-a',
+    parts: [{ defPath: logical, source: pending, receiptHash: await sha256Text(blocked) }],
+  });
+  assert.deepEqual(dropped.issues, []);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"status": "pending"'), true);
+  assert.equal(host.files[fileKey(file)]?.content.includes('"status": "blocked"'), false);
 });

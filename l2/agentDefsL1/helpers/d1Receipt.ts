@@ -1,10 +1,21 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/helpers/d1Receipt.ts" enhancement="_blank"/>
 
+import {
+  generatedAllowsSkip,
+  M1_RECEIPT_SCHEMA,
+  parseDefinitionSource,
+  readDefinition,
+  receiptPathFor,
+  semanticHash,
+  type M1Definition,
+  type MaterializationReceipt,
+} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { displayPath, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
 import { futureOutputPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, removeDefFile, writeJson, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 export const D1_PROGRESS_SCHEMA = '2026-09-22-d1-progress-v1' as const;
 
@@ -23,6 +34,8 @@ export interface D1UnitPart {
   /** Inventoried hash. Empty when this file has no receipt. */
   receiptHash?: string;
   outputTs?: readonly string[];
+  /** Present when the def status is blocked. Written beside the def, not inside it. */
+  blockReason?: string;
 }
 
 export interface D1FileProgress {
@@ -112,6 +125,7 @@ interface PlannedFile {
   outputTs: string[];
   previousHash: string;
   desiredHash: string;
+  blockReason: string;
 }
 
 export function progressFile(project: number, moduleName: string, step: string, unitId: string): D1FileInfo {
@@ -189,7 +203,8 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       receiptHash: part.receiptHash ?? receiptHashOf(live, logical),
       outputTs,
       previousHash: '',
-      desiredHash: action === 'remove' ? '' : await sha256Text(part.source),
+      desiredHash: action === 'remove' ? '' : await sourceIdentityHash(part.source),
+      blockReason: part.blockReason || '',
     });
   }
   if (issues.length > 0 || planned.length !== input.parts.length) {
@@ -208,7 +223,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
 
   for (const part of planned) {
     const current = await readText(part.file);
-    part.previousHash = current == null ? '' : await sha256Text(current);
+    part.previousHash = current == null ? '' : await sourceIdentityHash(current);
   }
   const reported = reportedOf(planned);
   const existing = await readProgress(input.project, input.moduleName, input.step, input.unitId);
@@ -230,6 +245,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
     && existing.snapshotHash === snapshotHash
     && existing.draftHash === draftHash
     && quiet(planned)
+    && await statusesStillValid(input.project, planned)
   ) {
     return { ...empty, reported: existing.reported, finalized: true };
   }
@@ -262,7 +278,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       return { written, removed, reported, issues: [message], finalized: false, invalidated: false };
     }
     const current = await readText(part.file);
-    const hash = current == null ? '' : await sha256Text(current);
+    const hash = current == null ? '' : await sourceIdentityHash(current);
     if (hash !== part.previousHash) {
       const message = hashChanged(part.logical, part.previousHash, hash, runId);
       progress.issues = [message];
@@ -271,15 +287,18 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       await saveProgress(input, progress);
       return { written, removed, reported, issues: [message], finalized: false, invalidated: false };
     }
-    if (part.action === 'write' && current === part.source) {
-      markDone(progress, part.logical);
-      continue;
+    if (part.action === 'write' && current != null && hash === part.desiredHash) {
+      if (await keepExistingStatus(input.project, current, part.defPath)) {
+        markDone(progress, part.logical);
+        continue;
+      }
     }
     if (part.action === 'remove' && current == null) {
       markDone(progress, part.logical);
       continue;
     }
-    if (current != null && (!part.receiptHash || part.receiptHash !== hash)) {
+    const owned = current != null && part.receiptHash ? await hashesAgree(current, part.receiptHash) : false;
+    if (current != null && !owned) {
       const message = part.receiptHash
         ? `Receipt hash for ${part.logical} does not match the bytes on disk. The file was not overwritten.`
         : `File ${part.logical} exists without a receipt. The file was not overwritten.`;
@@ -294,6 +313,7 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
       removed.push(displayPath(part.file));
     } else {
       await writeText(part.file, part.source);
+      if (part.blockReason) await writeBlockReceipt(input.project, part);
       written.push(displayPath(part.file));
     }
     markDone(progress, part.logical);
@@ -484,6 +504,103 @@ function markConflict(progress: D1UnitProgress, logical: string): void {
 }
 
 /** Done write rows. A trace that is not this progress schema is not opened. */
+async function statusesStillValid(project: number, planned: readonly PlannedFile[]): Promise<boolean> {
+  for (const part of planned) {
+    if (part.action !== 'write') continue;
+    const current = await readText(part.file);
+    if (!current) continue;
+    if (!await keepExistingStatus(project, current, part.defPath)) return false;
+  }
+  return true;
+}
+
+async function keepExistingStatus(project: number, source: string, defPath: string): Promise<boolean> {
+  const parsed = parseDefinitionSource(source);
+  if (!('definition' in parsed)) return true;
+  const read = readDefinition(parsed.definition);
+  if ('issues' in read) return true;
+  if (read.status === 'pending') return true;
+  const receipt = await readMaterializationReceipt(project, defPath);
+  if (read.status === 'generated') return generatedAllowsSkip(read, receipt, await dependencyHashes(read));
+  if (read.status !== 'blocked' && read.status !== 'failed') return false;
+  if (!await receiptOwnsDef(read, receipt, defPath)) return false;
+  if (read.status === 'blocked') return !!receipt?.reason;
+  return !!receipt && receipt.failures.length > 0;
+}
+
+function sameDefPath(left: string, right: string): boolean {
+  const bare = (value: string) => value.replace(/^_\d+_\//, '');
+  return left !== '' && right !== '' && bare(left) === bare(right);
+}
+
+async function receiptOwnsDef(
+  definition: M1Definition,
+  receipt: MaterializationReceipt | null,
+  defPath: string,
+): Promise<boolean> {
+  if (!receipt) return false;
+  if (!sameDefPath(receipt.defPath, defPath)) return false;
+  if (receipt.artifactType !== definition.artifactType) return false;
+  if (receipt.artifactId !== definition.artifactId) return false;
+  return receipt.semanticHash === await semanticHash(definition);
+}
+
+async function readMaterializationReceipt(project: number, defPath: string): Promise<MaterializationReceipt | null> {
+  const display = receiptPathFor(defPath);
+  if (!display) return null;
+  const info = fileInfoFromDisplay(project, display);
+  if (!info) return null;
+  const text = await readText(info);
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as MaterializationReceipt;
+    return parsed && parsed.schemaVersion === M1_RECEIPT_SCHEMA ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function dependencyHashes(definition: M1Definition): Promise<Record<string, string>> {
+  const hashes: Record<string, string> = {};
+  for (const path of definition.dependencies) {
+    const match = /^_(\d+)_\/(l\d+\/.+)$/.exec(path);
+    const info = match ? fileInfoFromDisplay(Number(match[1]), match[2]) : null;
+    if (!info) continue;
+    const text = await readText(info);
+    if (text == null) continue;
+    hashes[path] = await sha256Text(text);
+  }
+  return hashes;
+}
+
+async function writeBlockReceipt(project: number, part: PlannedFile): Promise<void> {
+  const parsed = parseDefinitionSource(part.source);
+  if (!('definition' in parsed)) return;
+  const read = readDefinition(parsed.definition);
+  if ('issues' in read) return;
+  const receipt: MaterializationReceipt = {
+    schemaVersion: M1_RECEIPT_SCHEMA,
+    runId: 'd1',
+    candidateId: '',
+    defPath: part.defPath,
+    artifactType: read.artifactType,
+    artifactId: read.artifactId,
+    recipeVersion: 'd1',
+    semanticHash: await semanticHash(read),
+    dependencyHashes: {},
+    sourceHashes: {},
+    outputHashes: {},
+    stage: 'plan',
+    verifications: [],
+    failures: [],
+    attempts: 0,
+    reason: part.blockReason,
+  };
+  const info = fileInfoFromDisplay(project, receiptPathFor(part.defPath));
+  if (!info) return;
+  await writeJson(info, receipt);
+}
+
 export async function readWriterReceipts(project: number, moduleName: string): Promise<D1WriterReceipt[]> {
   const out: D1WriterReceipt[] = [];
   for (const step of WRITER_STEPS) {

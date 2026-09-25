@@ -1,11 +1,11 @@
 {
-  "$id": "https://collab.codes/schemas/agentDefsL1/definition/2026-09-21-d1-definition-v1",
+  "$id": "https://collab.codes/schemas/agentDefsL1/definition/2026-09-24-d1-definition-v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "artifactType", "artifactId", "moduleName", "data"],
+  "required": ["schemaVersion", "artifactType", "artifactId", "moduleName", "status", "dependencies", "data"],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-09-21-d1-definition-v1" },
+    "schemaVersion": { "type": "string", "const": "2026-09-24-d1-definition-v2" },
     "artifactType": {
       "type": "string",
       "enum": [
@@ -25,7 +25,18 @@
     },
     "artifactId": { "type": "string", "minLength": 1 },
     "moduleName": { "type": "string", "minLength": 1 },
-    "data": { "description": "Payload for artifactType. definitionIssues selects the matching $defs entry. This envelope has no status field." }
+    "status": {
+      "type": "string",
+      "enum": ["pending", "generated", "blocked", "failed"],
+      "description": "Written by D1 or M1. The model does not choose it. The tool schema is the data $def, not this envelope."
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Qualified files this def consumes. Not skills and not output paths."
+    },
+    "data": { "description": "Payload for artifactType. definitionIssues selects the matching $defs entry. Status is not a field of data." }
   },
   "$defs": {
     "field": {

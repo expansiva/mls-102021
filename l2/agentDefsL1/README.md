@@ -117,11 +117,16 @@ not `approved`. A run already held at an earlier step is left there.
 ## Defs contract
 
 Schema `2026-09-21-d1-definition-v1`. The first data export is `definition`
-(`schemaVersion`, `artifactType`, `artifactId`, `moduleName`, `data`). The
-second is `pipeline`. There is no `status` field and no `agent`. A collision
-of path, id, route or output is refused before `writeText`. The file identity
-is `artifactFile`, which uses the same `fileInfoFromDisplay` as input20.
-Nothing is stripped to make a document pass.
+(`schemaVersion` `2026-09-24-d1-definition-v2`, `artifactType`, `artifactId`,
+`moduleName`, `status`, `dependencies`, `data`). There is no `export const pipeline`
+and no `agent`. `status` starts `pending`. A concrete external gap is `blocked`
+and the reason is on the materialization receipt, not chosen by the model.
+`dependencies` are qualified files actually consumed (`_NNNNN_/lN/...`): L2
+contracts, rules, ontology, access scope and 102034 sources. Skills and output
+paths are materializer conventions and are not written into the def. The
+internal checkpoint under `pipeline/agentDefsL1/` stays. A collision of path is
+refused before `writeText`. The file identity is `artifactFile`, which uses the
+same `fileInfoFromDisplay` as input20. Nothing is stripped to make a document pass.
 
 `readL1Inventory` reads `usecase`, `repositoryPort`, `table` and
 `httpController`. For a table it uses `data.tableId` and `artifactId` as the
@@ -144,13 +149,14 @@ are a projection (`name`, `type`, `fieldRef`), not a second DTO.
 | persistenceSeeds | `layer_1_external/adapters/persistence/seeds.defs.ts` | `definition` |
 | integrationOutbound | `layer_1_external/adapters/integration/outbound.defs.ts` | `definition` |
 
-`export default definition` points at that object. Pipeline item fields are
-`id`, `type`, `defPath`, `outputPath`, `outputAvailability`, `dependsFiles`,
-`dependsOn`, `skills`, and `routes` on a controller. `id` is
-`project/module/type/owner`. `outputAvailability: future` is the `.ts` the
-materializer does not write in this delivery. A `.d.ts` with no item
-`outputPath` is an uncontracted declaration. A path that is neither a planned
-def, a present file nor a declared output is a missing input.
+`export default definition` points at that object. The internal catalog still
+records `id`, `type`, `defPath`, `outputPath`, `outputAvailability`,
+`dependsFiles`, `dependsOn`, `skills`, and `routes` on a controller, but that
+catalog is not an export of the def. `id` is `project/module/type/owner`.
+`outputAvailability: future` is the `.ts` the materializer does not write in
+this delivery. A `.d.ts` with no item `outputPath` is an uncontracted
+declaration. A path that is neither a planned def, a present file nor a
+declared output is a missing input.
 
 Every property in the three schemas has a reader in `D1_FIELD_READERS`.
 Auxiliary types (`valueObject`, `accessScope`, `authorityMap`,

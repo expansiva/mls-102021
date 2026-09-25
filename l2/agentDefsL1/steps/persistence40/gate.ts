@@ -1,9 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/persistence40/gate.ts" enhancement="_blank"/>
 
 import {
-  D1_DEFINITION_SCHEMA,
   definitionIssues,
   isRecord,
+  pendingDefinition,
   type D1Definition,
   type D1PortMethod,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
@@ -14,7 +14,7 @@ import {
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild, type D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
@@ -744,13 +744,7 @@ function definitionFor(
   artifactId: string,
   data: Record<string, unknown>,
 ): D1Definition {
-  return {
-    schemaVersion: D1_DEFINITION_SCHEMA,
-    artifactType,
-    artifactId,
-    moduleName: request.moduleName,
-    data,
-  };
+  return pendingDefinition(artifactType, artifactId, request.moduleName, data);
 }
 
 function refuseDefinition(
@@ -872,12 +866,13 @@ function pushEmit(
   defPath: string,
   problems: D1PersistenceProblem[],
 ): void {
-  const rendered = renderDefinition(definition, [pipeline]);
+  const stamped = stampDefinition(definition, pipeline.defPath, pipeline.dependsFiles);
+  const rendered = renderDefinition(stamped, pipeline.defPath);
   if ('issues' in rendered) {
     error(problems, 'DEFINITION', defPath, rendered.issues[0] || 'Definition did not render.');
     return;
   }
-  out.push({ definition, pipeline: [pipeline] });
+  out.push({ definition: stamped, pipeline: [pipeline] });
 }
 
 function sourceOf(body: unknown): string {

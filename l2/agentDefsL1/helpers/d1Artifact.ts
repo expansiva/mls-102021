@@ -1,8 +1,16 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/helpers/d1Artifact.ts" enhancement="_blank"/>
 
-import { moduleTokenOk } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import {
+  dataAllowList,
+  definitionIssues as envelopeIssues,
+  M1_ARTIFACT_TYPES,
+  M1_DEFINITION_SCHEMA,
+  type M1ArtifactType,
+  type M1Status,
+} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 
-export const D1_DEFINITION_SCHEMA = '2026-09-21-d1-definition-v1' as const;
+export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
+export type { M1Status, M1Status as D1DefinitionStatus };
 
 /**
  * Measured on RequestContext.data.pgQueue. RequestContext itself has no publishEvent or emitEvent.
@@ -24,23 +32,10 @@ export function fictionalMechanism(value: string): boolean {
 }
 export const D1_CATALOG_SCHEMA = '2026-09-21-d1-catalog-v1' as const;
 
-/** Closed set. Auxiliary names are not dispatched by agentChangeBackend. */
-export const D1_ARTIFACT_TYPES = [
-  'domainEntity',
-  'valueObject',
-  'repositoryPort',
-  'table',
-  'repositoryAdapter',
-  'usecase',
-  'httpController',
-  'accessScope',
-  'authorityMap',
-  'repositoryRegistration',
-  'persistenceSeeds',
-  'integrationOutbound',
-] as const;
+/** Closed set. Same list as the v2 contract. Auxiliary names are not dispatched by agentChangeBackend. */
+export const D1_ARTIFACT_TYPES = M1_ARTIFACT_TYPES;
 
-export type D1ArtifactType = typeof D1_ARTIFACT_TYPES[number];
+export type D1ArtifactType = M1ArtifactType;
 
 /** Types readL1Inventory already filters on. */
 export const D1_INVENTORY_TYPES = ['usecase', 'repositoryPort', 'table', 'httpController'] as const;
@@ -80,7 +75,6 @@ export const D1_FORECAST_CORE = {
 export const D1_STORAGE_TARGETS = ['moduleDatabase', 'mdm', 'external', 'derived'] as const;
 export type D1StorageTarget = typeof D1_STORAGE_TARGETS[number];
 
-const ENVELOPE_KEYS = ['schemaVersion', 'artifactType', 'artifactId', 'moduleName', 'data'] as const;
 const TOKEN = /^[A-Za-z][A-Za-z0-9_]*$/;
 const CONSTRAINT = /^[A-Za-z][A-Za-z0-9:+._-]*$/;
 
@@ -312,7 +306,29 @@ export interface D1Definition<T = Record<string, unknown>> {
   artifactType: D1ArtifactType;
   artifactId: string;
   moduleName: string;
+  status: M1Status;
+  dependencies: string[];
   data: T;
+}
+
+/** A new def is pending. The caller passes blocked when a concrete external gap is already known. */
+export function pendingDefinition<T extends Record<string, unknown>>(
+  artifactType: D1ArtifactType,
+  artifactId: string,
+  moduleName: string,
+  data: T,
+  dependencies: readonly string[] = [],
+  status: M1Status = 'pending',
+): D1Definition<T> {
+  return {
+    schemaVersion: D1_DEFINITION_SCHEMA,
+    artifactType,
+    artifactId,
+    moduleName,
+    status,
+    dependencies: [...dependencies],
+    data,
+  };
 }
 
 export function isArtifactType(value: string): value is D1ArtifactType {
@@ -368,26 +384,15 @@ export function typeDataSchema(definitionSchema: Record<string, unknown>, typeNa
 }
 
 export function definitionIssues(value: unknown): string[] {
-  if (!isRecord(value)) return ['Definition must be an object.'];
-  const issues: string[] = [];
-  unknownKeys(value, ENVELOPE_KEYS, 'definition', issues);
-  if (value.schemaVersion !== D1_DEFINITION_SCHEMA) issues.push('definition.schemaVersion is unknown.');
+  const envelope = envelopeIssues(value);
+  if (!isRecord(value) || !isRecord(value.data)) return envelope;
   const artifactType = typeof value.artifactType === 'string' ? value.artifactType : '';
-  if (!isArtifactType(artifactType)) issues.push('definition.artifactType is unknown.');
+  if (!isArtifactType(artifactType)) return envelope;
   const artifactId = typeof value.artifactId === 'string' ? value.artifactId : '';
-  if (!TOKEN.test(artifactId)) issues.push('definition.artifactId must be a token.');
-  if (typeof value.moduleName !== 'string' || !moduleTokenOk(value.moduleName)) {
-    issues.push('definition.moduleName must be lowerCamel.');
-  }
-  if (!isRecord(value.data)) {
-    issues.push('Missing field definition.data.');
-    return issues;
-  }
-  if (isArtifactType(artifactType)) {
-    issues.push(...dataIssues(artifactType, value.data, artifactId));
-    if (artifactType === 'domainEntity') issues.push(...definitionImportIssues(value));
-  }
-  return issues;
+  const deep = dataIssues(artifactType, value.data, artifactId);
+  if (artifactType === 'domainEntity') deep.push(...definitionImportIssues(value));
+  const seen = new Set(envelope);
+  return [...envelope, ...deep.filter(item => !seen.has(item))];
 }
 
 function dataIssues(artifactType: D1ArtifactType, data: Record<string, unknown>, artifactId: string): string[] {
@@ -533,7 +538,7 @@ function domainSpecIsExternal(prefix: string, spec: string): boolean {
 export function domainEntityIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['entityId', 'storageTarget', 'fields', 'lifecycle', 'invariants', 'imports'], 'data', issues);
+  unknownKeys(data, dataAllowList('domainEntity'), 'data', issues);
   needString(data, 'entityId', 'data', issues);
   issues.push(...storageTargetIssues(data));
   if (!Array.isArray(data.fields)) issues.push('Missing field data.fields.');
@@ -547,7 +552,7 @@ export function domainEntityIssues(data: unknown): string[] {
 export function valueObjectIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['valueObjectId', 'fields', 'referencedBy'], 'data', issues);
+  unknownKeys(data, dataAllowList('valueObject'), 'data', issues);
   needString(data, 'valueObjectId', 'data', issues);
   if (!Array.isArray(data.fields)) issues.push('Missing field data.fields.');
   else data.fields.forEach((field, index) => fieldIssues(field, `data.fields.${index}`, issues));
@@ -561,7 +566,7 @@ export function valueObjectIssues(data: unknown): string[] {
 export function repositoryPortIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['entityId', 'interfaceName', 'methods'], 'data', issues);
+  unknownKeys(data, dataAllowList('repositoryPort'), 'data', issues);
   needString(data, 'entityId', 'data', issues);
   needString(data, 'interfaceName', 'data', issues);
   if (!Array.isArray(data.methods) || data.methods.length === 0) issues.push('Missing field data.methods.');
@@ -582,7 +587,7 @@ export function repositoryPortIssues(data: unknown): string[] {
 export function tableIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['tableId', 'entityId', 'physicalName', 'primaryKey', 'uniqueKeys', 'indexes'], 'data', issues);
+  unknownKeys(data, dataAllowList('table'), 'data', issues);
   needString(data, 'tableId', 'data', issues);
   needString(data, 'entityId', 'data', issues);
   needString(data, 'physicalName', 'data', issues);
@@ -624,7 +629,7 @@ export function tableIdentityIssues(data: unknown, artifactId: string): string[]
 export function adapterBindingIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['entityId', 'portId', 'tableId', 'columns'], 'data', issues);
+  unknownKeys(data, dataAllowList('repositoryAdapter'), 'data', issues);
   needString(data, 'entityId', 'data', issues);
   needString(data, 'portId', 'data', issues);
   needString(data, 'tableId', 'data', issues);
@@ -755,11 +760,7 @@ const SEQUENCE_FIELDS: Record<string, readonly string[]> = {
 export function usecaseIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, [
-    'usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'rulePlan', 'functions',
-    'routeProjections', 'portCalls', 'transactional', 'effects',
-    'sequence', 'uses', 'rules', 'transaction', 'lifecycle', 'mdm',
-  ], 'data', issues);
+  unknownKeys(data, dataAllowList('usecase'), 'data', issues);
   needString(data, 'usecaseId', 'data', issues);
   needString(data, 'entityId', 'data', issues);
   const operation = needString(data, 'operation', 'data', issues);
@@ -1030,7 +1031,7 @@ function mdmBindingIssues(value: unknown, issues: string[]): void {
 export function httpControllerIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['pageId', 'handlers'], 'data', issues);
+  unknownKeys(data, dataAllowList('httpController'), 'data', issues);
   needString(data, 'pageId', 'data', issues);
   if (!Array.isArray(data.handlers) || data.handlers.length === 0) issues.push('Missing field data.handlers.');
   else data.handlers.forEach((handler, index) => {
@@ -1077,7 +1078,7 @@ function clientFilter(field: string): boolean {
 export function accessScopeIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['scopeId', 'grants'], 'data', issues);
+  unknownKeys(data, dataAllowList('accessScope'), 'data', issues);
   needString(data, 'scopeId', 'data', issues);
   if (!Array.isArray(data.grants) || data.grants.length === 0) issues.push('Missing field data.grants.');
   else data.grants.forEach((grant, index) => {
@@ -1266,7 +1267,7 @@ export function reconstructAccessPolicy(units: readonly D1PolicyUnit[]): {
 export function authorityMapIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['mapId', 'entries'], 'data', issues);
+  unknownKeys(data, dataAllowList('authorityMap'), 'data', issues);
   needString(data, 'mapId', 'data', issues);
   if (!Array.isArray(data.entries) || data.entries.length === 0) issues.push('Missing field data.entries.');
   else data.entries.forEach((entry, index) => {
@@ -1298,7 +1299,7 @@ export function authorityGrantIssues(map: unknown, scope: unknown): string[] {
 export function registrationIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['registrationId', 'adapters'], 'data', issues);
+  unknownKeys(data, dataAllowList('repositoryRegistration'), 'data', issues);
   needString(data, 'registrationId', 'data', issues);
   if (!Array.isArray(data.adapters)) issues.push('Missing field data.adapters.');
   else data.adapters.forEach((adapter, index) => {
@@ -1324,7 +1325,7 @@ function seedText(value: string): boolean {
 export function seedScenarioIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['seedId', 'phase', 'scenarios', 'dependencies', 'datasets'], 'data', issues);
+  unknownKeys(data, dataAllowList('persistenceSeeds'), 'data', issues);
   needString(data, 'seedId', 'data', issues);
   if (data.phase !== undefined && data.phase !== 'plan') {
     issues.push('data.phase must be plan. This artifact does not carry rows.');
@@ -1441,7 +1442,7 @@ function seedDatasets(value: unknown, issues: string[]): void {
 function integrationShapeIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
-  unknownKeys(data, ['integrationId', 'events', 'processes', 'inbound', 'plugins', 'gaps'], 'data', issues);
+  unknownKeys(data, dataAllowList('integrationOutbound'), 'data', issues);
   needString(data, 'integrationId', 'data', issues);
   if (!Array.isArray(data.events)) issues.push('Missing field data.events.');
   else data.events.forEach((event, index) => {

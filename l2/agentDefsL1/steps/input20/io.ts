@@ -5,6 +5,7 @@ import {
   inputFile,
   type D1FileInfo,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import {
@@ -118,10 +119,8 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
   const loaded = contracts.map(item => item.loaded);
   const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
-  const [present, writerReceipts] = await Promise.all([
-    readPresent(project, draft.files.map(file => file.defPath)),
-    readWriterReceipts(project, moduleName),
-  ]);
+  const writerReceipts = await readWriterReceipts(project, moduleName);
+  const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
     artifactsFrom(moduleName, known, loaded, parsed, contractMap, present, writerReceipts),
@@ -156,7 +155,11 @@ export function fileInfoFromDisplay(project: number, display: string): D1FileInf
   };
 }
 
-async function readPresent(project: number, defPaths: string[]): Promise<D1PresentDef[]> {
+async function readPresent(
+  project: number,
+  defPaths: string[],
+  receipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
+): Promise<D1PresentDef[]> {
   const present: D1PresentDef[] = [];
   for (const defPath of defPaths) {
     if (!defPath.startsWith('l1/')) continue;
@@ -164,7 +167,16 @@ async function readPresent(project: number, defPaths: string[]): Promise<D1Prese
     if (!info) continue;
     const text = await readText(info);
     if (text == null) continue;
-    present.push({ path: defPath, sha256: await sha256Text(text) });
+    const identity = await sourceIdentityHash(text);
+    let sha256 = identity;
+    for (const receipt of receipts) {
+      if (receipt.defPath !== defPath || !receipt.desiredHash) continue;
+      if (await hashesAgree(text, receipt.desiredHash)) {
+        sha256 = receipt.desiredHash;
+        break;
+      }
+    }
+    present.push({ path: defPath, sha256 });
   }
   return present;
 }
