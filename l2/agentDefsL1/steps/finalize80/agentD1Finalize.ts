@@ -20,6 +20,7 @@ import {
 import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { earlierHold, buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
+import type { D1CallAccount } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { assembleD1Finalize, writeD1Report } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 
 export async function beforeD1FinalizePromptStep(
@@ -76,7 +77,7 @@ export async function beforeD1FinalizePromptStep(
   const approved = withFinalizeApproved(pipeline, artifact, new Date().toISOString());
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
   const mutationParent = findOpenParent(context, parentStep);
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact)];
+  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, report.calls)];
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', `finalize80 recorded the report for ${prompt.moduleName} in project ${prompt.project}. Defs are complete. Future outputs stay pending. No model was called.`),
@@ -169,6 +170,7 @@ function doneAnchor(
   project: number,
   moduleName: string,
   artifact: string,
+  calls: D1CallAccount,
 ): mls.msg.AgentIntentAddStep {
   const result = {
     project,
@@ -176,8 +178,7 @@ function doneAnchor(
     completedStep: 'finalize80' as const,
     nextStep: '' as const,
     artifact,
-    llmCalls: 0,
-    repairOpened: false,
+    calls,
     executableBackend: false,
   };
   return {

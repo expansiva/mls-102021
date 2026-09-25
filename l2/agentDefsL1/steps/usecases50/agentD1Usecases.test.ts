@@ -24,7 +24,8 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { attemptFile, readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
+import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -248,7 +249,16 @@ void test('the same snapshot does not call the model again', async () => {
   assert.match(trace?.traceMsg || '', /No model was called/);
   const anchor = first.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(anchor?.step.planning?.planId, 'usecases50-done');
-  assert.equal(JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)).llmCalls, 0);
+  const handoff = JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)) as {
+    llmCalls?: number;
+    repliesDelivered: number | null;
+    invocationReplies: number | null;
+    repliesUnknown: string;
+  };
+  assert.equal(handoff.llmCalls, undefined);
+  assert.equal(handoff.invocationReplies, 0);
+  assert.equal(handoff.repliesDelivered, null);
+  assert.match(handoff.repliesUnknown, /absent/);
   assert.equal(stored.content, bytes);
   assert.equal(stored.updatedAt, mtime);
   host.writes.length = 0;
@@ -264,7 +274,7 @@ void test('the same snapshot does not call the model again', async () => {
 function keptFiles(host: { files: Record<string, { content?: string }> }): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, file] of Object.entries(host.files)) {
-    if (key.includes('usecases50-work')) continue;
+    if (key.includes('usecases50-work') || key.includes('/calls/')) continue;
     out[key] = file.content || '';
   }
   return out;
@@ -490,6 +500,198 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
     assert.equal(written, usecase.usecaseId !== target, usecase.usecaseId);
   }
 });
+
+void test('a delivered reply counts once, a redelivery does not, and cost is not the count', async () => {
+  const target = 'listConsulta';
+  const { agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const usecase = work.request.usecases.find(item => item.usecaseId === target);
+  assert.ok(usecase);
+  const workerPrompt = firstPrompt(intents, target);
+  const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
+  assert.equal(prepared.some(intent => intent.type === 'prompt_ready'), true);
+  const handed = accountCalls(await readCallLog(PROJECT, MODULE));
+  assert.equal(handed.promptsAssembled, 1);
+  assert.equal(handed.repliesDelivered, 0);
+
+  const answered = replied(workerPrompt, { steps: fixturePlan(work.request, usecase).steps }, 51);
+  if (answered.interaction) answered.interaction.cost = 99;
+  await agent.afterPromptStep!(meta(), ctx, parent, answered, 6);
+  await agent.afterPromptStep!(meta(), ctx, parent, answered, 7);
+  const account = accountCalls(await readCallLog(PROJECT, MODULE));
+  assert.equal(account.repliesDelivered, 1);
+  assert.notEqual(account.repliesDelivered, 99);
+  assert.notEqual(account.repliesDelivered, work.request.usecases.length);
+  assert.equal(account.promptsAssembled, 1);
+  assert.equal(account.repairsScheduled, 0);
+  assert.equal(account.invocationReplies, 1);
+});
+
+void test('an invalid payload is one delivered reply and not yet a repair', async () => {
+  const target = 'listConsulta';
+  const { host, agent, ctx, parent, intents } = await openUsecases();
+  const workerPrompt = firstPrompt(intents, target);
+  const bad = { steps: [{ kind: 'rule', ruleId: 'keep', port: 'nope' }] };
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(workerPrompt, bad, 51), 5);
+  const account = accountCalls(await readCallLog(PROJECT, MODULE));
+  assert.equal(account.repliesDelivered, 1);
+  assert.equal(account.repairsScheduled, 0);
+  assert.equal(account.promptsAssembled, 0);
+  const saved = JSON.parse(host.files[fileKey(attemptFile(PROJECT, MODULE, target))]?.content || '{}') as { status?: string };
+  assert.equal(saved.status, 'repairable');
+});
+
+void test('a prompt with no payload is not a delivered reply', async () => {
+  const target = 'listConsulta';
+  const { agent, ctx, parent, intents } = await openUsecases();
+  const workerPrompt = firstPrompt(intents, target);
+  const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
+  assert.equal(prepared.some(intent => intent.type === 'prompt_ready'), true);
+  await agent.afterPromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 6);
+  const log = await readCallLog(PROJECT, MODULE);
+  const account = accountCalls(log);
+  assert.equal(account.promptsAssembled, 1);
+  assert.equal(account.repliesDelivered, 0);
+  assert.equal(log?.events.some(event => event.kind === 'reply_absent'), true);
+  assert.equal(log?.events.some(event => event.kind === 'reply_delivered'), false);
+});
+
+void test('a source block is not dispatched and is not a reply', async () => {
+  const target = 'listConsulta';
+  const { agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const packet = work.request.contexts?.find(item => item.usecaseId === target);
+  assert.ok(packet);
+  packet.findings.push({
+    code: 'SOURCE_ABSENT',
+    path: 'l4/agendaClinica/rules.defs.ts',
+    message: 'Source l4/agendaClinica/rules.defs.ts is absent. The usecase was not sent to the model.',
+  });
+  await writeD1UsecaseWork(PROJECT, work);
+  const workerPrompt = firstPrompt(intents, target);
+  const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
+  assert.equal(prepared.some(intent => intent.type === 'prompt_ready'), false);
+  const log = await readCallLog(PROJECT, MODULE);
+  const account = accountCalls(log);
+  assert.equal(account.promptsAssembled, 0);
+  assert.equal(account.repliesDelivered, 0);
+  assert.equal(log?.events.some(event => event.kind === 'not_dispatched' && event.usecaseId === target), true);
+});
+
+void test('one repair is a second reply, and the attempt index is not the total', async () => {
+  const target = 'listConsulta';
+  const { agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const usecase = work.request.usecases.find(item => item.usecaseId === target);
+  assert.ok(usecase);
+  for (const other of work.request.usecases) {
+    if (other.usecaseId === target) continue;
+    await writeAttempt(PROJECT, MODULE, {
+      usecaseId: other.usecaseId,
+      status: 'parsed',
+      trace: `usecases50 recorded steps for ${other.usecaseId}.`,
+      unitAttempts: 0,
+      reply: fixturePlan(work.request, other).steps,
+    });
+  }
+  const workerPrompt = firstPrompt(intents, target);
+  await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
+  const bad = { steps: [{ kind: 'rule', ruleId: 'keep', port: 'nope' }] };
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(workerPrompt, bad, 51), 6);
+  const barrier = addedStep(intents, 'usecases50-barrier');
+  const decided = await agent.beforePromptStep!(meta(), ctx, parent, barrier, 7);
+  const repair = decided.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && String(intent.step.planning?.planId || '').startsWith('usecases50-repair-'));
+  assert.ok(repair);
+  const repairPrompt = repair.step.type === 'agent' ? repair.step.prompt || '' : '';
+  await agent.beforePromptStep!(meta(), ctx, parent, repair.step as mls.msg.AIAgentStep, 8);
+  const corrected = fixturePlan(work.request, usecase).steps;
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(repairPrompt, { steps: corrected }, 52), 9);
+  const log = await readCallLog(PROJECT, MODULE);
+  const account = accountCalls(log);
+  const replies = log?.events.filter(event => event.kind === 'reply_delivered') || [];
+  const attemptSum = replies.reduce((sum, event) => sum + event.unitAttempts, 0);
+  assert.equal(replies.length, 2);
+  assert.equal(account.repliesDelivered, 2);
+  assert.equal(account.promptsAssembled, 2);
+  assert.equal(account.repairsScheduled, 1);
+  assert.equal(attemptSum, 1);
+  assert.notEqual(account.repliesDelivered, attemptSum);
+  assert.notEqual(account.repliesDelivered, work.request.usecases.length);
+  assert.equal(account.finalizeOpenedRepair, false);
+});
+
+void test('resume without a call keeps a proved reply', async () => {
+  const host = installStudio(PROJECT);
+  const snapshot = 'sha256:kept';
+  await writeJson(inputFile(PROJECT, MODULE), {
+    schemaVersion: '2026-09-21-d1-input-v1',
+    project: PROJECT,
+    moduleName: MODULE,
+    snapshotHash: snapshot,
+  });
+  const pipeline = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-22T00:00:00.000Z'));
+  const artifact = displayPath(draftFile(PROJECT, MODULE, 'usecases50'));
+  pipeline.steps.input20 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(inputFile(PROJECT, MODULE))] };
+  pipeline.steps.domain30 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'domain30'))] };
+  pipeline.steps.persistence40 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'persistence40'))] };
+  pipeline.steps.usecases50 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [artifact] };
+  await writeJson(pipelineFile(PROJECT, MODULE), pipeline);
+  const defPath = `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`;
+  await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'usecases50',
+    unitId: 'usecases50',
+    draftText: '{"llmCalls":13}',
+    snapshotHash: snapshot,
+    runId: snapshot,
+    parts: [{ defPath, source: 'export const definition = { "artifactId": "listConsulta" } as const;\n' }],
+  });
+  await openCallDispatch(PROJECT, MODULE);
+  await recordCallEvent(PROJECT, MODULE, {
+    kind: 'reply_delivered',
+    usecaseId: 'listConsulta',
+    planId: 'usecases50-worker-listConsulta',
+    unitAttempts: 0,
+  });
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const step = createD1AgentStep('usecases50', MODULE, PROJECT, 'run');
+  step.stepId = 50;
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
+  assert.equal(intents.some(intent => intent.type === 'prompt_ready'), false);
+  const anchor = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  const handoff = JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)) as {
+    repliesDelivered: number | null;
+    invocationReplies: number | null;
+  };
+  assert.equal(handoff.repliesDelivered, 1);
+  assert.equal(handoff.invocationReplies, 0);
+  const account = accountCalls(await readCallLog(PROJECT, MODULE));
+  assert.equal(account.repliesDelivered, 1);
+  assert.equal(account.invocationReplies, 0);
+  assert.equal(host.files[fileKey(fileInfo(defPath))]?.content.includes('listConsulta'), true);
+});
+
+function workerStep(prompt: string, stepId: number): mls.msg.AIAgentStep {
+  return {
+    type: 'agent',
+    stepId,
+    interaction: null,
+    stepTitle: 'worker',
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: 'agentDefsL1',
+    prompt,
+    rags: [],
+    planning: { planId: '', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  };
+}
 
 function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>

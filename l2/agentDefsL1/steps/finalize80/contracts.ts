@@ -2,6 +2,7 @@
 
 import type { D1PipelineState, D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1CallAccount, D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import type { D1EnumOrigin, D1EnumUse } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 /**
@@ -9,7 +10,7 @@ import type { D1EnumOrigin, D1EnumUse } from '/_102021_/l2/agentDefsL1/steps/sup
  * It no longer means "every literal appeared in the seed set".
  * `origin` separates catalog owner, writer and restriction. `uses` names the consumer.
  */
-export const D1_REPORT_VERSION = '2026-09-23-d1-report-v2' as const;
+export const D1_REPORT_VERSION = '2026-09-24-d1-report-v3' as const;
 
 /** Recognition by the inventory reader is not a runnable backend. */
 export const INVENTORY_NOTE = 'Inventory recognition is not certification of an executable backend.' as const;
@@ -76,6 +77,8 @@ export interface D1FinalizeRequest {
   /** Future output path → the `.ts` file is on disk. Absence is expected. */
   futurePresent: Record<string, boolean>;
   children: D1FinalizeChild[];
+  /** Observations usecases50 recorded. Null when that folder was not written. */
+  callLog: D1CallLog | null;
 }
 
 export interface D1FinalizePhase {
@@ -130,8 +133,11 @@ export interface D1FinalizeReport {
   schemaVersion: typeof D1_REPORT_VERSION;
   project: number;
   moduleName: string;
-  llmCalls: 0;
-  repairOpened: false;
+  /**
+   * Receipts from the call log. Not a billing total and not a unit count.
+   * `finalizeCalledModel` / `finalizeOpenedRepair` describe this step only.
+   */
+  calls: D1CallAccount;
   executableBackend: false;
   inventoryNote: typeof INVENTORY_NOTE;
   defsStatus: 'complete' | 'incomplete' | 'notRun';
@@ -161,13 +167,42 @@ export function parseFinalizeReport(text: string): D1FinalizeReport | null {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const report = parsed as D1FinalizeReport;
   if (report.schemaVersion !== D1_REPORT_VERSION) return null;
-  if (report.llmCalls !== 0 || report.repairOpened !== false || report.executableBackend !== false) return null;
+  if ('llmCalls' in report || 'repairOpened' in report) return null;
+  if (report.executableBackend !== false) return null;
+  if (!isCallAccount(report.calls)) return null;
   if (report.inventoryNote !== INVENTORY_NOTE) return null;
   if (!Array.isArray(report.phases) || !Array.isArray(report.findings) || !Array.isArray(report.files)) return null;
   if (!isEnumBlock(report.enumerations)) return null;
   if (report.outcome !== 'complete' && report.outcome !== 'held') return null;
   if (report.defsStatus !== 'complete' && report.defsStatus !== 'incomplete' && report.defsStatus !== 'notRun') return null;
   return report;
+}
+
+function isCallAccount(value: unknown): value is D1CallAccount {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const calls = value as D1CallAccount;
+  if (calls.finalizeCalledModel !== false || calls.finalizeOpenedRepair !== false) return false;
+  if (!measuredPair(calls.repliesDelivered, calls.repliesUnknown)) return false;
+  if (!measuredPair(calls.invocationReplies, calls.invocationUnknown)) return false;
+  const generationKnown = calls.repliesDelivered !== null;
+  if (generationKnown) {
+    if (!nonNegative(calls.promptsAssembled) || !nonNegative(calls.repairsScheduled)) return false;
+  } else if (calls.promptsAssembled !== null || calls.repairsScheduled !== null) {
+    return false;
+  }
+  if (calls.repliesDelivered !== null && calls.invocationReplies !== null && calls.invocationReplies > calls.repliesDelivered) {
+    return false;
+  }
+  return true;
+}
+
+function measuredPair(count: number | null, reason: string): boolean {
+  if (count === null) return typeof reason === 'string' && reason.length > 0;
+  return nonNegative(count) && reason === '';
+}
+
+function nonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 const RESTRICTIONS = new Set(['inherited', 'subset', 'own', 'invalid', 'unresolved']);

@@ -27,6 +27,13 @@ import { readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/
 import { blockingDrift, blockingFinding } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import type { D1PromptEvidence, D1UsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import {
+  accountCalls,
+  openCallDispatch,
+  openCallResume,
+  readCallLog,
+  recordCallEvent,
+} from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
+import {
   barrierStep,
   decideRepairs,
   fanoutExecution,
@@ -92,10 +99,15 @@ export async function beforeD1UsecasesPromptStep(
     const approved = withUsecasesApproved(pipeline, artifact, new Date().toISOString());
     if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
     const mutationParent = findOpenParent(context, parentStep);
-    const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, parsed.prompt.project, parsed.prompt.moduleName, artifact, 0)];
+    const kept = `usecases50 kept the defs for ${parsed.prompt.moduleName}. No model was called.`;
+    if (anchorPresent(context)) {
+      return [updateStatus(context, mutationParent, step, hookSequential, 'completed', kept)];
+    }
+    await openCallResume(parsed.prompt.project, parsed.prompt.moduleName);
+    const calls = accountCalls(await readCallLog(parsed.prompt.project, parsed.prompt.moduleName));
     return [
-      ...anchor,
-      updateStatus(context, mutationParent, step, hookSequential, 'completed', `usecases50 kept the defs for ${parsed.prompt.moduleName}. No model was called.`),
+      doneAnchor(context, mutationParent, parsed.prompt.project, parsed.prompt.moduleName, artifact, calls),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', kept),
     ];
   }
   const loaded = await loadD1UsecaseWork(parsed.prompt.project, parsed.prompt.moduleName);
@@ -107,6 +119,7 @@ export async function beforeD1UsecasesPromptStep(
   // The host completes a parallel parent without calling its afterPrompt.
   // The barrier depends on the fan-out, so the host unlocks it afterwards.
   const barrierDepends = [fanout.planning?.planId || 'usecases50-fanout'];
+  await openCallDispatch(parsed.prompt.project, parsed.prompt.moduleName);
   return [
     {
       type: 'add-step',
@@ -179,6 +192,12 @@ async function prepareWorker(
       reply: null,
       request: evidence,
     });
+    await recordCallEvent(arg.project, arg.moduleName, {
+      kind: 'not_dispatched',
+      usecaseId: arg.usecaseId,
+      planId: arg.planId,
+      unitAttempts: arg.unitAttempts,
+    });
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', blocked.message)];
   }
   // Same catalogs for the tool and both prompts. An empty catalog omits that branch.
@@ -199,6 +218,12 @@ async function prepareWorker(
   });
   const evidence = await evidenceFor(usecase.usecaseId, humanPrompt, packet, snapshot?.snapshotHash || '');
   await writePromptEvidence(arg.project, arg.moduleName, evidence);
+  await recordCallEvent(arg.project, arg.moduleName, {
+    kind: 'prompt_assembled',
+    usecaseId: arg.usecaseId,
+    planId: arg.planId,
+    unitAttempts: arg.unitAttempts,
+  });
   const shape = workerStepShape(closed);
   return [{
     type: 'prompt_ready',
@@ -246,6 +271,12 @@ async function finishWorker(
     request: prior || undefined,
   };
   await writeAttempt(arg.project, arg.moduleName, attempt);
+  await recordCallEvent(arg.project, arg.moduleName, {
+    kind: payload.present ? 'reply_delivered' : 'reply_absent',
+    usecaseId: arg.usecaseId,
+    planId: arg.planId,
+    unitAttempts: arg.unitAttempts,
+  });
   return [completeOnly(context, parentStep, step, hookSequential, trace)[0]];
 }
 
@@ -276,6 +307,14 @@ async function barrier(
     }
     work.repairs = fresh[fresh.length - 1].globalAttempts;
     await writeD1UsecaseWork(prompt.project, work);
+    for (const order of fresh) {
+      await recordCallEvent(prompt.project, prompt.moduleName, {
+        kind: 'repair_scheduled',
+        usecaseId: order.usecaseId,
+        planId: order.planId,
+        unitAttempts: order.unitAttempts,
+      });
+    }
     const named = fresh.map(item => `${item.usecaseId}: ${item.feedback || item.planId}`).join('; ');
     const follow = barrierStep(prompt.project, prompt.moduleName, fresh.map(item => item.planId), String(work.repairs));
     return [
@@ -315,7 +354,8 @@ async function barrier(
     if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
   }
   const mutationParent = findOpenParent(context, parentStep);
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, build.llmCalls)];
+  const calls = accountCalls(await readCallLog(prompt.project, prompt.moduleName));
+  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, calls)];
   const message = `usecases50 wrote ${committed.written.length} usecase defs.`;
   const usecases = usecasesStep(context);
   return [
@@ -575,7 +615,7 @@ function doneAnchor(
   project: number,
   moduleName: string,
   artifact: string,
-  llmCalls: number,
+  calls: { repliesDelivered: number | null; repliesUnknown: string; invocationReplies: number | null },
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result',
@@ -590,7 +630,9 @@ function doneAnchor(
       completedStep: 'usecases50',
       nextStep: 'controllers60',
       artifact,
-      llmCalls,
+      repliesDelivered: calls.repliesDelivered,
+      repliesUnknown: calls.repliesUnknown,
+      invocationReplies: calls.invocationReplies,
     }),
     planning: { planId: 'usecases50-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);

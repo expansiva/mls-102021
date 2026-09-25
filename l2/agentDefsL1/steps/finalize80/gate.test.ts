@@ -18,6 +18,7 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
+import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 
@@ -412,6 +413,7 @@ function request(): D1FinalizeRequest {
     observed,
     futurePresent: {},
     children: [],
+    callLog: null,
   };
 }
 
@@ -425,8 +427,14 @@ void test('a complete defs run still refuses an executable backend and names the
   assert.equal(report.defsStatus, 'complete');
   assert.equal(report.blocking, '');
   assert.equal(report.executableBackend, false);
-  assert.equal(report.repairOpened, false);
-  assert.equal(report.llmCalls, 0);
+  assert.equal(report.calls.repliesDelivered, null);
+  assert.equal(report.calls.repliesUnknown, CALL_ABSENT);
+  assert.equal(report.calls.promptsAssembled, null);
+  assert.equal(report.calls.invocationReplies, null);
+  assert.equal(report.calls.finalizeCalledModel, false);
+  assert.equal(report.calls.finalizeOpenedRepair, false);
+  assert.equal('llmCalls' in report, false);
+  assert.equal('repairOpened' in report, false);
   assert.equal(D1_FINALIZE_REPAIR, false);
   assert.equal(report.materialization, 'pending');
   assert.equal(report.materializationPending.every(item => item.present === false), true);
@@ -450,6 +458,83 @@ void test('a complete defs run still refuses an executable backend and names the
   assert.equal(report.files.every(file => file.action === 'generated'), true);
   const parsed = parseFinalizeReport(`${JSON.stringify(report)}\n`);
   assert.equal(parsed?.outcome, 'complete');
+});
+
+void test('call receipts are not unit counts, and a resume does not zero history', () => {
+  const input = request();
+  input.drafts.usecases50 = { llmCalls: 13, usecases: Array.from({ length: 13 }, (_, index) => ({ usecaseId: `u${index}` })) };
+  const absent = buildD1Finalize(input);
+  assert.equal(absent.calls.repliesDelivered, null);
+  assert.equal(absent.calls.repliesUnknown, CALL_ABSENT);
+  assert.notEqual(absent.calls.repliesDelivered, 0);
+  assert.notEqual(absent.calls.repliesDelivered, 13);
+
+  const reply = {
+    schemaVersion: D1_CALL_LOG_VERSION,
+    kind: 'reply_delivered' as const,
+    usecaseId: 'listConsulta',
+    planId: 'usecases50-worker-listConsulta',
+    unitAttempts: 0,
+    invocation: 1,
+  };
+  const repairedReply = {
+    schemaVersion: D1_CALL_LOG_VERSION,
+    kind: 'reply_delivered' as const,
+    usecaseId: 'listConsulta',
+    planId: 'usecases50-repair-1',
+    unitAttempts: 1,
+    invocation: 1,
+  };
+  const repair = {
+    schemaVersion: D1_CALL_LOG_VERSION,
+    kind: 'repair_scheduled' as const,
+    usecaseId: 'listConsulta',
+    planId: 'usecases50-repair-1',
+    unitAttempts: 1,
+    invocation: 1,
+  };
+  const proved: D1CallLog = {
+    unreadable: false,
+    invocations: [{ schemaVersion: D1_CALL_LOG_VERSION, kind: 'dispatch', index: 1, historyAbsent: false }],
+    events: [reply, repairedReply, repair],
+  };
+  input.callLog = proved;
+  const measured = buildD1Finalize(input);
+  assert.equal(measured.calls.repliesDelivered, 2);
+  assert.notEqual(measured.calls.repliesDelivered, 13);
+  assert.notEqual(measured.calls.repliesDelivered, reply.unitAttempts + repairedReply.unitAttempts);
+  assert.notEqual(measured.calls.repliesDelivered, measured.calls.repairsScheduled);
+  assert.equal(measured.calls.repairsScheduled, 1);
+  assert.equal(measured.calls.finalizeOpenedRepair, false);
+  assert.equal(measured.calls.finalizeCalledModel, false);
+  assert.equal(parseFinalizeReport(JSON.stringify(measured))?.calls.repliesDelivered, 2);
+  const forged = JSON.parse(JSON.stringify(measured)) as Record<string, unknown>;
+  forged.llmCalls = 0;
+  assert.equal(parseFinalizeReport(JSON.stringify(forged)), null);
+
+  input.callLog = {
+    unreadable: false,
+    invocations: [
+      { schemaVersion: D1_CALL_LOG_VERSION, kind: 'dispatch', index: 1, historyAbsent: false },
+      { schemaVersion: D1_CALL_LOG_VERSION, kind: 'resume', index: 2, historyAbsent: false },
+    ],
+    events: [reply],
+  };
+  const resumed = buildD1Finalize(input);
+  assert.equal(resumed.calls.repliesDelivered, 1);
+  assert.equal(resumed.calls.invocationReplies, 0);
+  assert.equal(resumed.calls.finalizeCalledModel, false);
+
+  input.callLog = {
+    unreadable: false,
+    invocations: [{ schemaVersion: D1_CALL_LOG_VERSION, kind: 'resume', index: 1, historyAbsent: true }],
+    events: [],
+  };
+  const noHistory = buildD1Finalize(input);
+  assert.equal(noHistory.calls.repliesDelivered, null);
+  assert.equal(noHistory.calls.repliesUnknown, CALL_HISTORY_ABSENT);
+  assert.equal(noHistory.calls.invocationReplies, 0);
+  assert.equal(noHistory.calls.promptsAssembled, null);
 });
 
 void test('a completed child with a missing artifact does not complete', () => {
@@ -691,7 +776,9 @@ void test('a run held at input20 does not claim the later phases ran', () => {
   assert.equal(codes(report, 'INTEGRATION_UNBOUND'), 3);
   assert.equal(report.findings.find(item => item.code === 'PAYLOAD_UNDECLARED')?.ownerRef, 'registrarAtendimento');
   assert.equal(report.executableBackend, false);
-  assert.equal(report.repairOpened, false);
+  assert.equal(report.calls.finalizeOpenedRepair, false);
+  assert.equal(report.calls.repliesDelivered, null);
+  assert.equal(report.calls.repliesUnknown, CALL_ABSENT);
   for (const stepId of ['domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as D1StepId[]) {
     assert.equal(report.phases.find(phase => phase.stepId === stepId)?.status, 'absent', stepId);
   }

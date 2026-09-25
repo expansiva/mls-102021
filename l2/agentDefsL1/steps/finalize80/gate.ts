@@ -23,6 +23,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { accountCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
 import {
@@ -91,8 +92,7 @@ export function buildD1Finalize(request: D1FinalizeRequest): D1FinalizeReport {
     schemaVersion: D1_REPORT_VERSION,
     project: request.project,
     moduleName: request.moduleName,
-    llmCalls: 0,
-    repairOpened: false,
+    calls: accountCalls(request.callLog),
     executableBackend: false,
     inventoryNote: INVENTORY_NOTE,
     defsStatus,

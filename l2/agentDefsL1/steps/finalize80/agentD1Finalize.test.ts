@@ -206,7 +206,10 @@ void test('a held input20 run is reported as not generated', async () => {
   assert.equal(report?.files.some(file => file.action === 'generated'), false);
   assert.equal(report?.phases.find(phase => phase.stepId === 'support70')?.executed, false);
   assert.equal(report?.executableBackend, false);
-  assert.equal(report?.repairOpened, false);
+  assert.equal(report?.calls.finalizeCalledModel, false);
+  assert.equal(report?.calls.finalizeOpenedRepair, false);
+  assert.equal(report?.calls.repliesDelivered, null);
+  assert.equal('llmCalls' in (report || {}), false);
 });
 
 void test('finalize80 reports the open gaps and does not run the earlier phases again', async () => {
@@ -303,8 +306,10 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
   const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
   assert.ok(report);
   assert.equal(report?.executableBackend, false);
-  assert.equal(report?.repairOpened, false);
-  assert.equal(report?.llmCalls, 0);
+  assert.equal(report?.calls.finalizeCalledModel, false);
+  assert.equal(report?.calls.finalizeOpenedRepair, false);
+  assert.equal(report?.calls.repliesDelivered, null);
+  assert.notEqual(report?.calls.repliesDelivered, 0);
   assert.equal(report?.enumerations.consumed.some(item => item.entityId === 'Consulta' && item.path === 'status'), true);
   assert.equal(report?.enumerations.notConsumed.some(item => item.entityId === 'Paciente' && item.path === 'details.identification.subtype'), true);
   assert.equal(report?.findings.filter(item => item.code === 'INTEGRATION_UNBOUND').length, 3);

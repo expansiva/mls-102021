@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-09-24 (d1_27)
+
+- A worker or repair records one receipt per observation: prompt assembled, reply delivered, reply absent, not dispatched, or repair scheduled. The same plan and kind does not count twice. `unitAttempts` stays the attempt index. The done anchor reports those receipts. It does not report `classified.length`.
+
 ## 2026-09-24 (d1_29)
 
 - A route contract that was not read is `MDM_CONTRACT_UNREAD`. The call that needs a contract argument is not emitted. `mdmInputFields` names the route: contract absent, binding not unique, or symbol absent. Callers that only need the method list ask the capability catalog.

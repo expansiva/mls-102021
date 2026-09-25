@@ -15,6 +15,7 @@ import { artifactFile, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { readCallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import {
   type D1FinalizeObserved,
   type D1FinalizeReport,
@@ -67,6 +68,7 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
       observed,
       futurePresent,
       children: [],
+      callLog: await readCallLog(project, moduleName),
     },
   };
 }

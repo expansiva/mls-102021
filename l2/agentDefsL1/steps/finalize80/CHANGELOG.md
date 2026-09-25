@@ -1,5 +1,9 @@
 # finalize80
 
+## 2026-09-24 (d1_27)
+
+- Report schema `2026-09-24-d1-report-v3`. `calls` is the usecases50 receipt. A missing or unreadable log is null with a reason, not zero. `finalizeCalledModel` and `finalizeOpenedRepair` are this step. The usecase draft count is not copied.
+
 ## 2026-09-23 (d1_25)
 
 - Report schema `2026-09-23-d1-report-v2`. `consumed` is a proved use of this entity and path, re-read from the serialized def or contract. The draft flag alone is not credit.
