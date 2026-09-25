@@ -14,6 +14,7 @@ import {
   readDefinition,
   receiptPathFor,
   semanticHash,
+  type M1Verification,
   type MaterializationReceipt,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
@@ -51,6 +52,8 @@ export interface HandlerOutcome {
   seeds: boolean;
   resets: boolean;
   runsStub: boolean;
+  /** Extra receipt rows. A compiled table and an unapplied migration are two rows. */
+  evidences?: M1Verification[];
 }
 
 export interface HandlerCall {
@@ -313,6 +316,7 @@ async function runUnit(
     const promoted = await promote(
       request, host, unit, definition, before, first.files, first.checkpoint, first.runsStub,
       first.kind === 'held' ? 'BLOCKED' : 'PROMOTED',
+      first.evidences,
     );
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
     return remember(ledger, unit.defPath, promoted.outcome);
@@ -329,7 +333,10 @@ async function runUnit(
   }
   const second = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, true, modelCalls);
   if (second.kind === 'promoted') {
-    const promoted = await promote(request, host, unit, definition, before, second.files, second.checkpoint, second.runsStub);
+    const promoted = await promote(
+      request, host, unit, definition, before, second.files, second.checkpoint, second.runsStub,
+      'PROMOTED', second.evidences,
+    );
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
     return remember(ledger, unit.defPath, {
       ...promoted.outcome,
@@ -356,6 +363,7 @@ interface Attempt {
   checkpoint: M1Checkpoint | null;
   modelCalls: number;
   runsStub: boolean;
+  evidences?: M1Verification[];
 }
 
 async function attempt(
@@ -452,12 +460,16 @@ async function attempt(
       checkpoint,
       modelCalls: usedModel,
       runsStub: produced.runsStub,
+      evidences: produced.evidences,
     };
   }
   if (!checkpoint.accepted) {
     return { kind: 'failed', code: 'CHECKPOINT_FAILED', detail: checkpoint.nextAction, files: {}, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
   }
-  return { kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
+  return {
+    kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint,
+    modelCalls: usedModel, runsStub: produced.runsStub, evidences: produced.evidences,
+  };
 }
 
 /** Passed cases plus an external block. The output is kept; the unit is not an accepted implementation. */
@@ -479,6 +491,7 @@ async function promote(
   checkpoint: M1Checkpoint | null,
   scaffold: boolean,
   receiptCode = 'PROMOTED',
+  evidences?: M1Verification[],
 ): Promise<{ outcome: UnitOutcome; checkpoint: M1Checkpoint | null }> {
   const after = await fingerprint(host.io, unit);
   const output = outputPathFromDefPath(unit.defPath);
@@ -499,6 +512,7 @@ async function promote(
     request, host, unit, definition, output, body, checkpoint, receiptCode,
     accepted ? '' : (checkpoint?.nextAction || receiptCode),
     scaffold,
+    evidences,
   );
   return {
     outcome: outcome(unit.defPath, receiptCode, checkpoint?.nextAction || (accepted ? 'Promoted.' : receiptCode), accepted, 0),
@@ -557,6 +571,7 @@ async function writeReceipt(
   code: string,
   detail: string,
   scaffold: boolean,
+  evidences?: M1Verification[],
 ): Promise<void> {
   const parsed = readDefinition(definition);
   if ('issues' in parsed) return;
@@ -565,6 +580,12 @@ async function writeReceipt(
   const hash = await semanticHash(parsed);
   const outputHashes = output && body ? { [output]: await contentHash(body) } : {};
   const failed = code !== 'PROMOTED';
+  const checkpointRow: M1Verification[] = checkpoint ? [{
+    id: checkpoint.handlerId,
+    kind: 'test',
+    passed: checkpoint.accepted,
+    detail: checkpoint.nextAction,
+  }] : [];
   const receipt: MaterializationReceipt = {
     schemaVersion: '2026-09-24-m1-receipt-v1',
     runId: `${request.project}:${request.moduleName}`,
@@ -578,12 +599,7 @@ async function writeReceipt(
     sourceHashes: { [unit.defPath]: hash },
     outputHashes,
     stage: failed ? 'plan' : scaffold ? 'compile' : request.stage === 'implement' ? 'verify' : 'generate',
-    verifications: checkpoint ? [{
-      id: checkpoint.handlerId,
-      kind: 'test',
-      passed: checkpoint.accepted,
-      detail: checkpoint.nextAction,
-    }] : [],
+    verifications: [...checkpointRow, ...(evidences ?? [])],
     failures: failed ? [{ code, detail: detail || code }] : [],
     attempts: 1,
     reason: failed ? `${code}: ${detail}` : scaffold ? 'scaffold' : '',

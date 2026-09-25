@@ -11,6 +11,7 @@ import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
+import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import type { MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 
@@ -124,7 +125,7 @@ export function createStudioHost(project: number): MaterializeRunHost {
       return receipt?.semanticHash ?? null;
     },
   };
-  return { io, state, runners: { ...structureRunners, ...behaviorRunners } };
+  return { io, state, runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners } };
 }
 
 function files(): Record<string, StorFile> {
