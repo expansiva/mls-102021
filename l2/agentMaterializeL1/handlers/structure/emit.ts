@@ -394,6 +394,7 @@ function authorizeSource(): string {
     '  for (const grantId of grantIds) {',
     '    const resolved = resolveGrant(grantId);',
     '    if (!(\'grantId\' in resolved)) return new AppError(resolved.code, resolved.detail, 403);',
+    '    if (resolved.pending) return new AppError(resolved.pending, `Grant ${grantId} is pending ${resolved.pending}.`, 403);',
     '    if (authorities.length > 0 && resolved.actorRef && !authorities.some(item => item === resolved.actorRef || item.endsWith(\':\' + resolved.actorRef))) {',
     `      return new AppError('${FORBIDDEN_ACTOR}', 'You have no authority to call this routine.', 403);`,
     '    }',

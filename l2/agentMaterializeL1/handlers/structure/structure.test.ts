@@ -86,6 +86,13 @@ void test('the remaining structure files compile after the first pair', async ()
   const access = sourceOf(emitted, 'accessScope');
   assert.match(access, /profissionalAgendaDiaria/);
   assert.match(access, /ACCESS_ANCHOR/);
+  const professional = sourceOf(emitted, 'consultas_profissional');
+  assert.equal(professional.includes("kind !== 'command'"), false);
+  assert.match(professional, /if \(resolved\.pending\) return new AppError\(resolved\.pending/);
+  const commandStart = professional.indexOf('async function handleCmdRegistrarAtendimento');
+  const commandHandler = professional.slice(commandStart, professional.indexOf('\nasync function ', commandStart + 10));
+  assert.match(commandHandler, /authorize\(input\.request, \['profissionalAgendaDiaria'\]\)/);
+  assert.equal(commandHandler.includes("'command'"), false);
 });
 
 void test('verifyBatch accepts the structure checkpoint and rejects a different failure', async () => {

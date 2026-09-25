@@ -16,7 +16,7 @@ import type { HandlerCall } from '/_102021_/l2/agentMaterializeL1/run/execute.js
 import { shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { verifyBatch } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutPayloadChecks, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -32,7 +32,10 @@ void test('lote 1 usecases derive the storage constraint and leave pending rules
   assert.equal(handlerFor('table', 'implement'), null);
   assert.equal(behaviorNeedsLlm(definitionFor('createConsulta')), false);
   assert.equal(behaviorNeedsLlm(definitionFor('listConsulta')), false);
-  assert.equal(behaviorNeedsLlm(definitionFor('registrarAtendimento')), true);
+  assert.equal(behaviorNeedsLlm(definitionFor('registrarAtendimento')), false);
+  assert.equal(behaviorNeedsLlm(definitionFor('confirmarConsulta')), false);
+  assert.equal(behaviorNeedsLlm(definitionFor('registrarFalta')), false);
+  assert.equal(behaviorNeedsLlm(definitionFor('listPaciente')), true);
 
   const create = await runBehavior(callFor('createConsulta'));
   const list = await runBehavior(callFor('listConsulta'));
@@ -56,10 +59,10 @@ void test('lote 1 usecases derive the storage constraint and leave pending rules
   assert.equal(port.runsStub, false);
   assert.equal(create.runsStub, false);
 
-  const outside = await runBehavior(callFor('registrarAtendimento'));
+  const outside = await runBehavior(callFor('listPaciente'));
   assert.equal(outside.failure?.code, 'NEEDS_LLM');
   assert.deepEqual(outside.files, {});
-  const faked = await runBehavior(callFor('registrarAtendimento', 'export const modelBody = 1;\n'));
+  const faked = await runBehavior(callFor('listPaciente', 'export const modelBody = 1;\n'));
   assert.equal(faked.failure, null, faked.failure?.detail);
   assert.match(sourceOf(faked), /modelBody/);
 
@@ -197,7 +200,133 @@ void test('renamed fixture ids still enforce the storage constraint', async () =
   assert.equal(created?.action, 'generate', created?.reason);
   assert.equal(created?.needsLlm, false, created?.reason);
   assert.equal(transition?.action, 'generate', transition?.reason);
-  assert.equal(transition?.needsLlm, true, transition?.reason);
+  assert.equal(transition?.needsLlm, false, transition?.reason);
+});
+
+void test('a transition enforces lifecycle and a required payload, and leaves the anchor rule out', async () => {
+  const attend = await runBehavior(callFor('registrarAtendimento'));
+  const confirm = await runBehavior(callFor('confirmarConsulta'));
+  const missed = await runBehavior(callFor('registrarFalta'));
+  const port = await runBehavior(callFor('ConsultaRepository'));
+  assert.equal(attend.failure, null, attend.failure?.detail);
+  assert.equal(confirm.failure, null, confirm.failure?.detail);
+  assert.equal(missed.failure, null, missed.failure?.detail);
+  const attendSource = sourceOf(attend);
+  const confirmSource = sourceOf(confirm);
+  assert.match(attendSource, /enforce:lifecycle/);
+  assert.match(attendSource, /enforce:payload/);
+  assert.match(attendSource, /ruleId: "attendanceNoteRequired"/);
+  assert.match(attendSource, /ruleId: "consultationTransitionFlow"/);
+  assert.equal(attendSource.includes('professionalOwnAppointment'), false);
+  assert.match(attendSource, /undelivered/);
+  assert.equal(attendSource.includes('publish'), false);
+  assert.match(confirmSource, /enforce:lifecycle/);
+  assert.equal(confirmSource.includes('enforce:payload'), false);
+  const anchor = await caseBlock(definitionFor('registrarAtendimento'), callFor('registrarAtendimento').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.cmdRegistrarAtendimento',
+    expect: { ruleId: 'professionalOwnAppointment' },
+  }, read);
+  const note = await caseBlock(definitionFor('registrarAtendimento'), callFor('registrarAtendimento').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.cmdRegistrarAtendimento',
+    expect: { ruleId: 'attendanceNoteRequired' },
+  }, read);
+  const version = await caseBlock(definitionFor('registrarAtendimento'), callFor('registrarAtendimento').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.cmdRegistrarAtendimento',
+    expect: { ruleId: 'expectedVersion' },
+  }, read);
+  assert.equal(anchor?.gap, 'ACCESS_ANCHOR');
+  assert.equal(note, null);
+  assert.equal(version?.gap, 'PRECONDITION_UNDECLARED');
+  assert.equal(version?.owner, 'x1_05');
+  const handler = handlerFor('usecase', 'implement');
+  assert.ok(handler);
+  const reported = await verifyBatch({
+    handler,
+    io: { async read(ref) { return ref === CATALOG_REF ? CATALOG : null; } },
+    catalogRef: CATALOG_REF,
+    artifactId: 'registrarAtendimento',
+    observations: attend.observations,
+    runId: 'm1-06',
+    commit: 'proof',
+    startedAt: '2026-09-25T12:00:00.000Z',
+    finishedAt: '2026-09-25T12:00:01.000Z',
+    monitorError: null,
+  });
+  const verdicts = new Map(reported.evidence.map(item => [item.caseId, item.verdict]));
+  assert.equal(verdicts.get('registrarAtendimento.compile'), 'passed');
+  assert.equal(verdicts.get('registrarAtendimento.noteRequired'), 'passed');
+  assert.equal(verdicts.get('registrarAtendimento.invalidTransition'), 'passed');
+  assert.equal(verdicts.get('registrarAtendimento.staleVersion'), 'blocked');
+  assert.equal(reported.counts.failed, 0);
+
+  const dir = join(ROOT, `.m1-06-transition-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const portFile = join(dir, 'consultaRepository.ts');
+  const attendFile = join(dir, 'registrarAtendimento.ts');
+  const confirmFile = join(dir, 'confirmarConsulta.ts');
+  writeFileSync(portFile, sourceOf(port));
+  writeFileSync(attendFile, attendSource);
+  writeFileSync(confirmFile, confirmSource);
+  const problems = compile([
+    ['consulta.ts', sourceOf(await runBehavior(callFor('Consulta')))],
+    ['consultaRepository.ts', sourceOf(port)],
+    ['registrarAtendimento.ts', attendSource],
+    ['confirmarConsulta.ts', confirmSource],
+    ['registrarFalta.ts', sourceOf(missed)],
+  ]);
+  assert.equal(problems, '', problems);
+  const memory = await import(pathToFileURL(portFile).href) as {
+    resetMemory: (seed?: Record<string, unknown>[]) => void;
+    pendingConsultaRepository: unknown;
+  };
+  const attended = await import(pathToFileURL(attendFile).href) as {
+    registrarAtendimento: (input: Record<string, unknown>, ctx: unknown, ports: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  };
+  const confirmed = await import(pathToFileURL(confirmFile).href) as {
+    confirmarConsulta: (input: Record<string, unknown>, ctx: unknown, ports: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  };
+  const ports = { consultaRepository: memory.pendingConsultaRepository };
+  const ctx = {};
+  const row = {
+    id: 'consulta-1',
+    version: 2,
+    patientId: 'patient-1',
+    professionalId: 'professional-1',
+    scheduledAt: '2026-09-25T13:00:00.000Z',
+    status: 'scheduled',
+    details: { attendanceNote: '' },
+  };
+  memory.resetMemory([row]);
+  await assert.rejects(
+    () => attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: '' } }, ctx, ports),
+    (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'VALIDATION_ERROR' && error.details?.ruleId === 'attendanceNoteRequired',
+  );
+  memory.resetMemory([{ ...row, status: 'noShow', details: { attendanceNote: 'seen' } }]);
+  await assert.rejects(
+    () => attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: 'seen' } }, ctx, ports),
+    (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'VALIDATION_ERROR' && error.details?.ruleId === 'consultationTransitionFlow',
+  );
+  memory.resetMemory([row]);
+  const saved = await attended.registrarAtendimento({ id: 'consulta-1', details: { attendanceNote: 'seen' } }, ctx, ports);
+  assert.equal(saved.status, 'attended');
+  assert.equal((saved.details as { attendanceNote?: string }).attendanceNote, 'seen');
+  const opened = withoutPayloadChecks(attendSource);
+  assert.equal(opened.removed, 1);
+  const openFile = join(dir, 'registrarAtendimentoOpen.ts');
+  writeFileSync(openFile, opened.source);
+  const openAttend = await import(pathToFileURL(openFile).href) as typeof attended;
+  memory.resetMemory([row]);
+  const withoutNote = await openAttend.registrarAtendimento({ id: 'consulta-1', details: {} }, ctx, ports);
+  assert.equal(withoutNote.status, 'attended');
+  memory.resetMemory([row]);
+  const confirmedRow = await confirmed.confirmarConsulta({ id: 'consulta-1' }, ctx, ports);
+  assert.equal(confirmedRow.status, 'confirmed');
+  memory.resetMemory([{ ...row, status: 'attended' }]);
+  await assert.rejects(
+    () => confirmed.confirmarConsulta({ id: 'consulta-1' }, ctx, ports),
+    (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'VALIDATION_ERROR' && error.details?.ruleId === 'consultationTransitionFlow',
+  );
+  rmSync(dir, { recursive: true, force: true });
 });
 
 function definitionFor(artifactId: string): M1Definition {

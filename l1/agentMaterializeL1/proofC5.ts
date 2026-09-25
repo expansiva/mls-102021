@@ -1,12 +1,15 @@
 /// <mls fileReference="_102021_/l1/agentMaterializeL1/proofC5.ts" enhancement="_blank"/>
 
 /**
- * Lote 1 of the behavior stage. The flow selects the defs. Every case of
- * that cut is executed. A block comes from the def, not from the case id.
- * --inject disable-rules removes the generated storage check; that case
- * must come back failed.
+ * Behavior stage. The flow selects the defs. Every case of that cut is
+ * executed. A block comes from the def, not from the case id.
+ * A lifecycle or payload rule is called on the usecase. A pending grant
+ * refuses the route, including a command, and that call does not reach
+ * the usecase. --inject disable-rules removes the generated storage and
+ * payload checks; those cases must come back failed. --only limits the
+ * usecases inside the flows.
  *
- *   tsx --import ./test/register-hooks.mjs mls-102021/l1/agentMaterializeL1/proofC5.ts --evidence <dir> --defs <dir> --repo <dir> [--inject disable-rules]
+ *   tsx --import ./test/register-hooks.mjs mls-102021/l1/agentMaterializeL1/proofC5.ts --evidence <dir> --defs <dir> --repo <dir> [--flow <id>] [--only <ids>] [--inject disable-rules]
  */
 
 import { spawnSync } from 'node:child_process';
@@ -18,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
-import { behaviorNeedsLlm, caseBlock, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, ruleRunsOnUsecase, withoutPayloadChecks, withoutStorageChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { parseCatalog, renderMonitorCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
@@ -37,9 +40,8 @@ type InjectMode = '' | typeof INJECT[number];
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
 const CATALOG_FIXTURE = join(HERE, '../../l2/agentMaterializeL1/testing/catalogFixture.json');
-const PAGE_DEF = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${FLOW}.defs.ts`;
 
-interface ProofArgs { evidence: string; defs: string; repo: string; inject: InjectMode }
+interface ProofArgs { evidence: string; defs: string; repo: string; inject: InjectMode; flows: string[]; only: string[] }
 interface SpawnResult { code: number; stdout: string; stderr: string; argv: string[] }
 interface SandboxModule { routes?: Array<{ key: string; handler: BffHandler }>; resetMemory?: (seed?: Record<string, unknown>[]) => void; [key: string]: unknown }
 interface FlowUnit { defPath: string; definition: M1Definition; code: 'PROMOTED' | 'BLOCKED' }
@@ -74,11 +76,18 @@ async function main(): Promise<void> {
 
   const host = createDiskHost(sandboxParent, sandboxParent, PROJECT, REPO_ROOT);
   host.catalogRef = catalogRef;
-  const selected = await flowUnits(sandboxProject);
+  const selected = await flowUnits(sandboxProject, args.flows, args.only);
   const simulate = materialize('simulate', '', sandboxParent);
-  const structure = materialize('structure', FLOW, sandboxParent);
-  const implement = materialize('implement', FLOW, sandboxParent);
+  const structures = args.flows.map(flow => materialize('structure', flow, sandboxParent));
+  const implementRuns = args.flows.map(flow => materialize('implement', flow, sandboxParent));
+  const implement = {
+    code: implementRuns.some(item => item.code !== 0) ? 1 : 0,
+    stdout: implementRuns.map(item => item.stdout).join('\n'),
+    stderr: implementRuns.map(item => item.stderr).join('\n'),
+    argv: implementRuns.flatMap(item => item.argv),
+  };
   if (simulate.code !== 0) problems.push(`simulate exit ${simulate.code}`);
+  if (structures.some(item => item.code !== 0)) problems.push('structure exit');
   if (!simulate.stdout.includes('llmCalls: 0')) problems.push('simulate called a model');
   if (!implement.stdout.includes('llmCalls: 0')) problems.push('implement called a model');
   if (selected.units.length === 0) problems.push('the flow selected no derivable usecase');
@@ -89,12 +98,13 @@ async function main(): Promise<void> {
     if (!implement.stdout.includes(`PROMOTED ${port}`)) problems.push(`${port} was not promoted`);
   }
 
+  const controls = controlCases(sandboxProject, selected.units);
   const patchProblems = args.inject === 'disable-rules' ? disableRules(sandboxProject, selected.units) : [];
   const compileLog = compileSlice(sandboxProject, selected.files);
   if (compileLog) problems.push('slice did not compile');
-  const scored = await score(host, catalogRef, sandboxProject, selected.units);
+  const scored = await score(host, catalogRef, sandboxProject, selected.units, controls, args.flows);
   problems.push(...scored.problems, ...patchProblems);
-  problems.push(...verdictProblems(scored.checkpoints, scored.blocked, scored.storage, args.inject));
+  problems.push(...verdictProblems(scored.checkpoints, scored.blocked, scored.controls, args.inject));
 
   const after = porcelain(repo);
   if (after !== before) problems.push('client repository status changed');
@@ -112,7 +122,7 @@ async function main(): Promise<void> {
     checkpoints: scored.checkpoints,
     notes: scored.notes,
   };
-  const commands = [process.argv.join(' '), ...[simulate, structure, implement].map(item => item.argv.join(' '))];
+  const commands = [process.argv.join(' '), simulate.argv.join(' '), ...structures.map(item => item.argv.join(' ')), ...implementRuns.map(item => item.argv.join(' '))];
   await writeFile(join(outDir, 'commands.txt'), `${commands.join('\n')}\n`);
   await writeFile(join(outDir, 'implement.log'), `${implement.stdout}\n${implement.stderr}`);
   await writeFile(join(outDir, 'compile.log'), compileLog || 'clean\n');
@@ -130,15 +140,17 @@ async function main(): Promise<void> {
 function verdictProblems(
   checkpoints: readonly M1Checkpoint[],
   blocked: ReadonlySet<string>,
-  storage: ReadonlySet<string>,
+  controls: ReadonlySet<string>,
   inject: InjectMode,
 ): string[] {
   const problems: string[] = [];
   const rows = checkpoints.flatMap(item => item.evidence);
   if (rows.length === 0) problems.push('the cut has no cases');
   for (const row of rows) {
-    if (inject === 'disable-rules' && storage.has(row.caseId)) {
-      if (row.verdict !== 'failed') problems.push(`uniqueness control was ${row.verdict}`);
+    if (inject === 'disable-rules' && controls.has(row.caseId)) {
+      if (row.verdict !== 'failed') problems.push(`rule control was ${row.verdict}`);
+      const owner = checkpoints.find(item => item.evidence.some(evidence => evidence.caseId === row.caseId));
+      if (owner?.ready) problems.push(`${row.caseId} was accepted as ready`);
       continue;
     }
     const wanted = blocked.has(row.caseId) ? 'blocked' : 'passed';
@@ -148,8 +160,16 @@ function verdictProblems(
   if (checkpoints.some(item => item.ready && item.evidence.some(row => row.verdict === 'blocked'))) {
     problems.push('a gap was accepted as ready');
   }
-  if (inject === 'disable-rules' && checkpoints.some(item => item.ready)) problems.push('disabled rules were accepted as ready');
   return problems;
+}
+
+function controlCases(sandboxProject: string, units: readonly FlowUnit[]): Set<string> {
+  const rules = new Set<string>();
+  for (const unit of units) {
+    const source = readFileSync(diskOf(sandboxProject, outputOf(unit.defPath)), 'utf8');
+    for (const match of source.matchAll(/\/\/ enforce:(?:storage|payload)[\s\S]*?ruleId: "([^"]+)"/g)) rules.add(match[1]);
+  }
+  return rules;
 }
 
 function disableRules(sandboxProject: string, units: readonly FlowUnit[]): string[] {
@@ -157,11 +177,12 @@ function disableRules(sandboxProject: string, units: readonly FlowUnit[]): strin
   for (const unit of units) {
     const full = diskOf(sandboxProject, outputOf(unit.defPath));
     const source = readFileSync(full, 'utf8');
-    const next = withoutStorageChecks(source);
-    removed += next.removed;
-    if (next.removed > 0) writeFileSync(full, next.source);
+    const storage = withoutStorageChecks(source);
+    const payload = withoutPayloadChecks(storage.source);
+    removed += storage.removed + payload.removed;
+    if (storage.removed + payload.removed > 0) writeFileSync(full, payload.source);
   }
-  return removed > 0 ? [] : ['uniqueness rule was not in the generated usecase'];
+  return removed > 0 ? [] : ['no generated rule check could be removed'];
 }
 
 async function score(
@@ -169,7 +190,9 @@ async function score(
   catalogRef: string,
   sandboxProject: string,
   units: readonly FlowUnit[],
-): Promise<{ problems: string[]; checkpoints: M1Checkpoint[]; notes: string[]; blocked: Set<string>; storage: Set<string> }> {
+  controlRules: ReadonlySet<string>,
+  flows: readonly string[],
+): Promise<{ problems: string[]; checkpoints: M1Checkpoint[]; notes: string[]; blocked: Set<string>; controls: Set<string> }> {
   installRuntime(sandboxProject);
   const catalogText = await host.io.read(catalogRef);
   const parsed = parseCatalog(catalogText ?? '');
@@ -178,26 +201,36 @@ async function score(
   const notes: string[] = [];
   const problems: string[] = [];
   const blocked = new Set<string>();
-  const storage = new Set<string>();
+  const controls = new Set<string>();
   const cases = units.flatMap(unit => parsed.catalog?.scenarios.find(item => item.artifactId === unit.definition.artifactId)?.cases ?? []);
-  await registerRoutes(sandboxProject, cases.map(item => item.routine.split('.')[1] ?? '').filter(Boolean));
+  const pages = new Set(cases.map(item => item.routine.split('.')[1] ?? '').filter(Boolean));
+  for (const unit of units) pages.add(pageOf(unit.definition));
+  await registerRoutes(sandboxProject, [...pages]);
   for (const unit of units) {
     const scenario = parsed.catalog.scenarios.find(item => item.artifactId === unit.definition.artifactId);
     if (!scenario) {
-      problems.push(`${unit.definition.artifactId} has no scenario`);
+      const probed = await probeTransition(sandboxProject, unit);
+      problems.push(...probed.problems);
+      notes.push(...probed.notes);
       continue;
     }
     for (const item of scenario.cases) {
       if (item.gate === 'compile') continue;
       const block = await caseBlock(unit.definition, unit.defPath, item, ref => readSandbox(sandboxProject, ref));
       if (block && !block.unread) blocked.add(item.caseId);
-      else if (!item.expect.ok && item.expect.errorCode === 'CONFLICT' && item.expect.ruleId) storage.add(item.caseId);
+      else if (!item.expect.ok && item.expect.ruleId && controlRules.has(item.expect.ruleId)) controls.add(item.caseId);
     }
     const executed = await executeScenario(sandboxProject, unit, scenario.cases);
     notes.push(...executed.notes);
     checkpoints.push(await report(host, catalogRef, unit.definition, executed.observations));
+    const probed = await probeTransition(sandboxProject, unit);
+    problems.push(...probed.problems);
+    notes.push(...probed.notes);
   }
-  return { problems, checkpoints, notes, blocked, storage };
+  const refused = await refusePendingRoutes(sandboxProject, flows);
+  problems.push(...refused.problems);
+  notes.push(...refused.notes);
+  return { problems, checkpoints, notes, blocked, controls };
 }
 
 async function executeScenario(
@@ -233,11 +266,151 @@ async function executeScenario(
       }));
       continue;
     }
+    const onUsecase = await ruleRunsOnUsecase(unit.definition, item.expect.ruleId ?? '', ref => readSandbox(sandboxProject, ref));
+    if (onUsecase) {
+      const invoked = await invokeUsecase(sandboxProject, unit.defPath, unit.definition, item);
+      if (item.mutating && item.expect.ok && !invoked.reason.startsWith('saved ')) notes.push(`${item.caseId} did not return a saved id`);
+      observations.push(observation(item.caseId, {
+        ok: invoked.ok,
+        status: invoked.status,
+        errorCode: invoked.code,
+        ruleId: invoked.ruleId,
+        durationMs: Date.now() - started,
+        fields: fieldNames(invoked.data),
+        reason: invoked.reason,
+      }));
+      continue;
+    }
     const routed = await callRoute(sandboxProject, unit.definition, item, started);
     if (item.mutating && item.expect.ok && !routed.reason.startsWith('saved ')) notes.push(`${item.caseId} did not return a saved id`);
     observations.push(routed);
   }
   return { observations, notes };
+}
+
+interface Invoked {
+  ok: boolean;
+  status: number;
+  code: string | null;
+  ruleId: string | null;
+  data: unknown;
+  reason: string;
+}
+
+async function invokeUsecase(
+  sandboxProject: string,
+  defPath: string,
+  definition: M1Definition,
+  item: M1ScenarioCase,
+): Promise<Invoked> {
+  const loaded = await importSandbox(sandboxProject, outputOf(defPath));
+  if ('error' in loaded) return { ok: false, status: 0, code: 'IMPORT', ruleId: null, data: null, reason: loaded.error };
+  const fn = loaded.module[definition.artifactId];
+  if (typeof fn !== 'function') {
+    return { ok: false, status: 0, code: 'EXPORT', ruleId: null, data: null, reason: `${definition.artifactId} is not exported` };
+  }
+  const ports = await portsFor(sandboxProject, definition);
+  if (!ports) return { ok: false, status: 0, code: 'PORT', ruleId: null, data: null, reason: `${definition.artifactId} port was not loaded` };
+  await resetStore(sandboxProject, definition, await seedRows(sandboxProject, definition, item));
+  try {
+    const data = await (fn as (...args: unknown[]) => Promise<unknown>)(await paramsFor(sandboxProject, definition, item), {}, ports);
+    const id = isRecord(data) && typeof data.id === 'string' ? data.id : '';
+    return { ok: true, status: 200, code: null, ruleId: null, data, reason: id ? `saved ${id}` : 'returned' };
+  } catch (error) {
+    const outcome = await thrownOutcome(error);
+    return {
+      ok: false,
+      status: outcome.status ?? 0,
+      code: outcome.errorCode ?? null,
+      ruleId: outcome.ruleId ?? null,
+      data: null,
+      reason: outcome.reason ?? '',
+    };
+  }
+}
+
+async function portsFor(sandboxProject: string, definition: M1Definition): Promise<Record<string, unknown> | null> {
+  const names = Array.isArray(definition.data.ports)
+    ? definition.data.ports.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const dep = definition.dependencies.find(path => path.includes('/ports/'));
+  if (!dep || names.length === 0) return {};
+  const loaded = await importSandbox(sandboxProject, outputOf(dep));
+  if ('error' in loaded) return null;
+  const ports: Record<string, unknown> = {};
+  for (const name of names) {
+    const pending = loaded.module[`pending${name}`];
+    if (pending === undefined) return null;
+    ports[name.charAt(0).toLowerCase() + name.slice(1)] = pending;
+  }
+  return ports;
+}
+
+async function refusePendingRoutes(
+  sandboxProject: string,
+  flows: readonly string[],
+): Promise<{ problems: string[]; notes: string[] }> {
+  const problems: string[] = [];
+  const notes: string[] = [];
+  const seen = new Set<string>();
+  for (const flow of flows) {
+    const pageRef = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${flow}.defs.ts`;
+    const controller = await readDefinitionFile(sandboxProject, pageRef);
+    if (!controller) continue;
+    const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
+    for (const handler of handlers) {
+      const route = textOf(handler.route);
+      const usecaseId = textOf(handler.usecaseId);
+      if (!route || !usecaseId || seen.has(route)) continue;
+      seen.add(route);
+      const defPath = controller.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`)) ?? '';
+      const definition = defPath ? await readDefinitionFile(sandboxProject, defPath) : null;
+      if (!definition) continue;
+      const block = await caseBlock(definition, defPath, { routine: route, expect: { ruleId: null } }, ref => readSandbox(sandboxProject, ref));
+      if (!block || block.unread || !block.gap) continue;
+      const prepared = await denialCase(sandboxProject, definition, route);
+      const called = await callRoute(sandboxProject, definition, prepared.item, Date.now());
+      const after = prepared.statusField ? await storedStatus(sandboxProject, definition, prepared.statusField) : null;
+      const kind = textOf(handler.kind) || 'route';
+      if (called.status !== 403 || called.errorCode !== block.gap) {
+        problems.push(`${route} ${kind} returned ${called.errorCode ?? 'ok'} ${called.status}, expected ${block.gap} 403`);
+      } else if (after !== null && prepared.before && after !== prepared.before) {
+        problems.push(`${route} reached the usecase with pending grant ${block.gap}`);
+      } else {
+        notes.push(`${route} ${kind} refused ${block.gap}`);
+      }
+    }
+  }
+  return { problems, notes };
+}
+
+async function denialCase(
+  sandboxProject: string,
+  definition: M1Definition,
+  route: string,
+): Promise<{ item: M1ScenarioCase; statusField: string; before: string }> {
+  if (textOf(definition.data.operation) !== 'transition') {
+    return { item: probeCase(definition.artifactId, route, { id: 'row-1' }), statusField: '', before: '' };
+  }
+  const lifecycle = isRecord(definition.data.lifecycle) ? definition.data.lifecycle : null;
+  const entityRef = definition.dependencies.find(path => path.includes('/entities/')) ?? '';
+  const entity = entityRef ? await readDefinitionFile(sandboxProject, entityRef) : null;
+  const spec = entity ? transitionOf(entity, textOf(lifecycle?.transitionId)) : null;
+  const statusField = entity ? enumName(entity) : '';
+  const flat = spec && statusField
+    ? await probeFlat(sandboxProject, { defPath: '', definition, code: 'PROMOTED' }, spec.from[0] ?? '', statusField, true)
+    : { id: 'row-1' };
+  return { item: probeCase(definition.artifactId, route, flat), statusField, before: spec?.from[0] ?? '' };
+}
+
+async function storedStatus(sandboxProject: string, definition: M1Definition, statusField: string): Promise<string | null> {
+  const ports = await portsFor(sandboxProject, definition);
+  const port = ports ? Object.values(ports)[0] as { list?: (filter: Record<string, unknown>) => Promise<unknown[]> } : null;
+  if (!port?.list) return null;
+  const rows = await port.list({ id: 'row-1' });
+  const row = rows[0];
+  if (!isRecord(row) || typeof row[statusField] !== 'string') return null;
+  return row[statusField];
 }
 
 async function callRoute(
@@ -314,20 +487,57 @@ async function seedRows(sandboxProject: string, definition: M1Definition, item: 
   });
 }
 
-async function paramsFor(sandboxProject: string, definition: M1Definition, item: M1ScenarioCase): Promise<Record<string, string>> {
+async function paramsFor(sandboxProject: string, definition: M1Definition, item: M1ScenarioCase): Promise<Record<string, unknown>> {
   const contract = contractOf(definition, item.routine);
   const contractText = contract ? await readSandbox(sandboxProject, contract.path) : null;
   const required = contract && contractText ? (requiredMembers(contractText, contract.inputType) ?? []) : [];
   const types = inputTypes(definition);
   const names = required.length > 0 ? required : [...types.keys()];
   const row = item.synthetic[0] ? { ...item.synthetic[0] } as Record<string, unknown> : {};
-  const params: Record<string, string> = {};
+  const params: Record<string, unknown> = {};
   for (const field of names) {
-    const fromRow = typeof row[field] === 'string' ? row[field] : '';
+    if (typeof row[field] === 'string' && row[field] !== '') {
+      params[field] = row[field];
+      continue;
+    }
+    const nested = contractText && contract ? nestedMembers(contractText, contract.inputType, field) : null;
+    if (nested) {
+      const value: Record<string, string> = {};
+      for (const key of nested) {
+        if (typeof row[key] === 'string') value[key] = row[key];
+      }
+      params[field] = value;
+      continue;
+    }
     const literal = /"([^"]+)"/.exec(types.get(field) ?? '')?.[1] ?? '';
-    params[field] = fromRow || literal || 'sample';
+    params[field] = literal || 'sample';
   }
   return params;
+}
+
+function nestedMembers(source: string, typeName: string, field: string): string[] | null {
+  const tokenText = `export interface ${typeName} `;
+  const at = source.indexOf(tokenText);
+  if (at < 0) return null;
+  const open = source.indexOf('{', at);
+  if (open < 0) return null;
+  const lines = source.slice(open).split('\n');
+  let depth = 0;
+  let inside = false;
+  const names: string[] = [];
+  for (const line of lines) {
+    if (!inside && depth === 1) {
+      const match = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\??\s*:\s*\{/.exec(line);
+      if (match && match[1] === field) inside = true;
+    } else if (inside && depth === 2) {
+      const match = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\??\s*:/.exec(line);
+      if (match) names.push(match[1]);
+    }
+    depth += (line.match(/\{/g) ?? []).length;
+    depth -= (line.match(/\}/g) ?? []).length;
+    if (inside && depth < 2) break;
+  }
+  return inside ? names : null;
 }
 
 async function resetStore(sandboxProject: string, definition: M1Definition, seed: Record<string, unknown>[]): Promise<void> {
@@ -348,37 +558,192 @@ async function registerRoutes(sandboxProject: string, pages: readonly string[]):
   if (proofRoutes.size > 0) await publishProofRoutes();
 }
 
-async function flowUnits(sandboxProject: string): Promise<{ units: FlowUnit[]; ports: string[]; files: string[] }> {
-  const controller = await readDefinitionFile(sandboxProject, PAGE_DEF);
-  if (!controller) return { units: [], ports: [], files: [] };
-  const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
+async function flowUnits(sandboxProject: string, flows: readonly string[], only: readonly string[]): Promise<{ units: FlowUnit[]; ports: string[]; files: string[] }> {
   const units: FlowUnit[] = [];
   const ports = new Set<string>();
-  const files = new Set<string>([relOf(PAGE_DEF)]);
-  const scope = controller.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
-  if (scope) files.add(relOf(scope));
-  for (const handler of handlers) {
-    const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
-    const defPath = controller.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`)) ?? '';
-    if (!defPath) continue;
-    const definition = await readDefinitionFile(sandboxProject, defPath);
-    if (!definition || behaviorNeedsLlm(definition)) continue;
-    const catalog = parseCatalog(await readFile(CATALOG_FIXTURE, 'utf8'));
-    const cases = catalog.catalog?.scenarios.find(item => item.artifactId === definition.artifactId)?.cases ?? [];
-    let blocked = false;
-    for (const item of cases) {
-      if (item.gate === 'compile') continue;
-      const block = await caseBlock(definition, defPath, item, ref => readSandbox(sandboxProject, ref));
-      if (block && !block.unread) blocked = true;
+  const files = new Set<string>();
+  const seen = new Set<string>();
+  for (const flow of flows) {
+    const page = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${flow}.defs.ts`;
+    const controller = await readDefinitionFile(sandboxProject, page);
+    if (!controller) continue;
+    files.add(relOf(page));
+    const scope = controller.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
+    if (scope) files.add(relOf(scope));
+    const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
+    for (const handler of handlers) {
+      const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
+      if (only.length > 0 && !only.includes(usecaseId)) continue;
+      const defPath = controller.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`)) ?? '';
+      if (!defPath || seen.has(defPath)) continue;
+      const definition = await readDefinitionFile(sandboxProject, defPath);
+      if (!definition || behaviorNeedsLlm(definition)) continue;
+      seen.add(defPath);
+      const catalog = parseCatalog(await readFile(CATALOG_FIXTURE, 'utf8'));
+      const cases = catalog.catalog?.scenarios.find(item => item.artifactId === definition.artifactId)?.cases ?? [];
+      let blocked = false;
+      for (const item of cases) {
+        if (item.gate === 'compile') continue;
+        const block = await caseBlock(definition, defPath, item, ref => readSandbox(sandboxProject, ref));
+        if (block && !block.unread) blocked = true;
+      }
+      units.push({ defPath, definition, code: blocked ? 'BLOCKED' : 'PROMOTED' });
+      for (const dep of definition.dependencies) {
+        if (dep.includes('/ports/')) ports.add(dep);
+        if (dep.includes('/entities/') || dep.includes('/ports/')) files.add(relOf(dep));
+      }
+      files.add(relOf(defPath));
     }
-    units.push({ defPath, definition, code: blocked ? 'BLOCKED' : 'PROMOTED' });
-    for (const dep of definition.dependencies) {
-      if (dep.includes('/ports/')) ports.add(dep);
-      if (dep.includes('/entities/') || dep.includes('/ports/')) files.add(relOf(dep));
-    }
-    files.add(relOf(defPath));
   }
   return { units, ports: [...ports], files: [...files] };
+}
+
+function pageOf(definition: M1Definition): string {
+  const functions = definition.data.functions;
+  const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : null;
+  const refs = fn && Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
+  const route = textOf(refs[0]?.route);
+  return route.split('.')[1] ?? '';
+}
+
+async function probeTransition(sandboxProject: string, unit: FlowUnit): Promise<{ problems: string[]; notes: string[] }> {
+  if (textOf(unit.definition.data.operation) !== 'transition') return { problems: [], notes: [] };
+  const lifecycle = isRecord(unit.definition.data.lifecycle) ? unit.definition.data.lifecycle : null;
+  const transitionId = textOf(lifecycle?.transitionId);
+  const entityRef = unit.definition.dependencies.find(path => path.includes('/entities/')) ?? '';
+  const entity = entityRef ? await readDefinitionFile(sandboxProject, entityRef) : null;
+  const spec = entity ? transitionOf(entity, transitionId) : null;
+  const statusField = entity ? enumName(entity) : '';
+  const source = await readSandbox(sandboxProject, outputOf(unit.defPath));
+  const flowRule = /\/\/ enforce:lifecycle[\s\S]*?ruleId: "([^"]+)"/.exec(source ?? '')?.[1] ?? '';
+  const route = pageRoute(unit.definition);
+  if (!spec || !statusField || !flowRule || !route) {
+    return { problems: [`${unit.definition.artifactId} transition could not be probed`], notes: [] };
+  }
+  const outside = (entity ? stateNames(entity) : []).find(state => !spec.from.includes(state)) ?? '';
+  const problems: string[] = [];
+  const notes: string[] = [];
+  const allowed = await runProbe(sandboxProject, unit, route, spec.from[0] ?? '', statusField, true);
+  const allowedState = isRecord(allowed.data) ? allowed.data[statusField] : '';
+  if (!allowed.ok || allowedState !== spec.to) problems.push(`${unit.definition.artifactId} allowed transition returned ${allowed.code ?? allowedState}`);
+  else notes.push(`${unit.definition.artifactId} ${spec.from[0]} -> ${spec.to}`);
+  if (outside) {
+    const refused = await runProbe(sandboxProject, unit, route, outside, statusField, true);
+    if (refused.ok || refused.code !== 'VALIDATION_ERROR' || refused.ruleId !== flowRule) {
+      problems.push(`${unit.definition.artifactId} invalid transition returned ${refused.code ?? 'ok'} ${refused.ruleId ?? ''}`);
+    } else notes.push(`${unit.definition.artifactId} refused ${outside}`);
+  }
+  return { problems, notes };
+}
+
+async function runProbe(
+  sandboxProject: string,
+  unit: FlowUnit,
+  route: string,
+  status: string,
+  statusField: string,
+  withPayload: boolean,
+): Promise<{ ok: boolean; code: string | null; ruleId: string | null; data: unknown }> {
+  const flat = await probeFlat(sandboxProject, unit, status, statusField, withPayload);
+  const invoked = await invokeUsecase(sandboxProject, unit.defPath, unit.definition, probeCase(unit.definition.artifactId, route, flat));
+  return { ok: invoked.ok, code: invoked.code, ruleId: invoked.ruleId, data: invoked.data };
+}
+
+function probeCase(artifactId: string, route: string, row: Record<string, unknown>): M1ScenarioCase {
+  return {
+    caseId: `${artifactId}.probe`,
+    gate: 'business',
+    mandatory: true,
+    source: 'lifecycle',
+    expectation: '',
+    preconditions: [],
+    synthetic: [{
+      entity: 'row',
+      id: typeof row.id === 'string' ? row.id : 'row-1',
+      professionalId: typeof row.professionalId === 'string' ? row.professionalId : '',
+      patientId: typeof row.patientId === 'string' ? row.patientId : '',
+      scheduledAt: typeof row.scheduledAt === 'string' ? row.scheduledAt : '',
+      status: typeof row.status === 'string' ? row.status : '',
+      version: typeof row.version === 'number' ? row.version : 1,
+      attendanceNote: typeof row.attendanceNote === 'string' ? row.attendanceNote : '',
+    }],
+    actorId: 'probe',
+    routine: route,
+    mutating: true,
+    expect: { ok: true, status: 200, errorCode: null, ruleId: null, forbiddenFields: [], isolatedActorField: null },
+    expectedFailure: null,
+  };
+}
+
+async function probeFlat(sandboxProject: string, unit: FlowUnit, status: string, statusField: string, withPayload: boolean): Promise<Record<string, unknown>> {
+  const entityRef = unit.definition.dependencies.find(path => path.includes('/entities/')) ?? '';
+  const entity = entityRef ? await readDefinitionFile(sandboxProject, entityRef) : null;
+  const fields = entity && Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
+  const row: Record<string, unknown> = {};
+  for (const field of fields) {
+    const path = textOf(field.name);
+    if (!path || path.includes('.')) continue;
+    if (path === statusField) row[path] = status;
+    else if (field.derived === true && (field.type === 'integer' || field.type === 'number')) row[path] = 1;
+    else row[path] = path === 'id' || textOf(field.type) === 'uuid' ? 'row-1' : 'sample';
+  }
+  const payload = isRecord(unit.definition.data.lifecycle) ? unit.definition.data.lifecycle.payload : [];
+  if (Array.isArray(payload)) {
+    for (const path of payload) {
+      if (typeof path !== 'string') continue;
+      const tail = path.split('.').pop() ?? '';
+      if (tail) row[tail] = withPayload ? 'noted' : '';
+    }
+  }
+  return row;
+}
+
+async function shapeRow(sandboxProject: string, definition: M1Definition, flat: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const dep = definition.dependencies.find(path => path.includes('/entities/'));
+  const entity = dep ? await readDefinitionFile(sandboxProject, dep) : null;
+  const fields = entity && Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
+  const record: Record<string, unknown> = {};
+  for (const field of fields) {
+    const path = textOf(field.name);
+    if (!path) continue;
+    if (!path.includes('.')) {
+      if (flat[path] !== undefined) record[path] = flat[path];
+    } else if (flat[path.split('.').pop() ?? ''] !== undefined) {
+      assignPath(record, path, flat[path.split('.').pop() ?? '']);
+    }
+  }
+  return record;
+}
+
+function transitionOf(entity: M1Definition, transitionId: string): { from: string[]; to: string } | null {
+  const lifecycle = entity.data.lifecycle;
+  if (!isRecord(lifecycle) || !Array.isArray(lifecycle.transitions)) return null;
+  const found = lifecycle.transitions.find(item => isRecord(item) && item.transitionId === transitionId);
+  if (!isRecord(found) || !Array.isArray(found.from) || typeof found.to !== 'string') return null;
+  return { from: found.from.filter((item): item is string => typeof item === 'string'), to: found.to };
+}
+
+function stateNames(entity: M1Definition): string[] {
+  const lifecycle = entity.data.lifecycle;
+  if (!isRecord(lifecycle) || !Array.isArray(lifecycle.states)) return [];
+  return lifecycle.states.flatMap(item => isRecord(item) && typeof item.state === 'string' ? [item.state] : []);
+}
+
+function enumName(entity: M1Definition): string {
+  const fields = Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
+  const enums = fields.filter(field => field.type === 'enum' && typeof field.name === 'string' && !String(field.name).includes('.'));
+  return enums.length === 1 ? String(enums[0].name) : '';
+}
+
+function pageRoute(definition: M1Definition): string {
+  const functions = definition.data.functions;
+  const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : null;
+  const refs = fn && Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
+  return textOf(refs[0]?.route);
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function authoritiesFor(item: M1ScenarioCase, definition: M1Definition, resolveGrant: (grantId: string) => unknown): string[] {
@@ -515,11 +880,15 @@ function materialize(stage: string, flow: string, sandboxParent: string): SpawnR
 
 function parseArgs(argv: readonly string[]): ProofArgs {
   const values = new Map<string, string>();
+  const flows: string[] = [];
+  const only: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     const value = argv[index + 1];
     if (!token.startsWith('--') || !value || value.startsWith('--')) throw new Error(`Missing value for ${token}.`);
-    values.set(token, value);
+    if (token === '--flow') flows.push(value);
+    else if (token === '--only') only.push(...value.split(',').map(item => item.trim()).filter(Boolean));
+    else values.set(token, value);
     index += 1;
   }
   const evidence = values.get('--evidence') ?? '';
@@ -528,7 +897,7 @@ function parseArgs(argv: readonly string[]): ProofArgs {
   const inject = values.get('--inject') ?? '';
   if (!evidence || !defs || !repo) throw new Error('Pass --evidence, --defs and --repo.');
   if (inject && !INJECT.includes(inject as typeof INJECT[number])) throw new Error('Inject must be disable-rules.');
-  return { evidence, defs, repo, inject: inject as InjectMode };
+  return { evidence, defs, repo, inject: inject as InjectMode, flows: flows.length > 0 ? flows : [FLOW], only };
 }
 
 async function importSandbox(sandboxProject: string, ref: string): Promise<{ module: SandboxModule } | { error: string }> {
@@ -577,8 +946,14 @@ function observation(caseId: string, patch: Partial<M1Observation>): M1Observati
 }
 
 async function thrownOutcome(error: unknown): Promise<Partial<M1Observation>> {
-  const imported = await import('/_102034_/l1/server/layer_2_controllers/contracts.js') as { AppError: new (...args: never[]) => Error & { code: string; statusCode: number } };
-  if (error instanceof imported.AppError) return { ok: false, status: error.statusCode, errorCode: error.code, reason: error.message };
+  const imported = await import('/_102034_/l1/server/layer_2_controllers/contracts.js') as {
+    AppError: new (...args: never[]) => Error & { code: string; statusCode: number; details?: unknown };
+  };
+  if (error instanceof imported.AppError) {
+    const details = error.details;
+    const ruleId = isRecord(details) && typeof details.ruleId === 'string' ? details.ruleId : null;
+    return { ok: false, status: error.statusCode, errorCode: error.code, ruleId, reason: error.message };
+  }
   return { thrown: true, ok: false, status: 500, errorCode: 'INTERNAL_ERROR', reason: error instanceof Error ? error.message : String(error) };
 }
 
