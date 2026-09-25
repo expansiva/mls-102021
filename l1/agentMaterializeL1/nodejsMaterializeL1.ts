@@ -17,6 +17,7 @@ import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { helpText, parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 
 export interface CliHooks {
@@ -158,8 +159,7 @@ export function createDiskHost(readRoot: string, writeRoot: string, project: num
       return receipt?.semanticHash ?? null;
     },
   };
-  // Bodies are supplied by the task that owns the handler. An empty map blocks with HANDLER_UNBOUND.
-  return { io, state, runners: {} };
+  return { io, state, runners: structureRunners };
 }
 
 export async function readProjectProfile(readRoot: string, project: number): Promise<{ mode: unknown; declared: boolean }> {

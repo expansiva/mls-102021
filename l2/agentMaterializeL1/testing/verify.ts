@@ -88,6 +88,8 @@ export interface MaterializeVerificationRequest {
   handler: MaterializeHandler;
   io: MaterializeReadIo;
   catalogRef: string;
+  /** When set, only this artifact's scenarios are scored. An empty match is not a failed batch. */
+  artifactId?: string;
   observations: readonly M1Observation[];
   runId: string;
   commit: string;
@@ -172,8 +174,11 @@ export async function verifyBatch(request: MaterializeVerificationRequest): Prom
     return checkpoint(request, '', [row('catalog', 'failed', null, null, 0, parsed.issues.join('; '))]);
   }
   const inputHash = await contentHash(canonicalJson(parsed.catalog));
-  const cases = casesFor(parsed.catalog, request.handler.id);
+  const cases = casesFor(parsed.catalog, request.handler.id, request.artifactId);
   if (cases.length === 0) {
+    if (request.artifactId) {
+      return checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no catalog case for this artifact')]);
+    }
     return checkpoint(request, inputHash, [row('batch', 'failed', null, null, 0, `no scenario for handler ${request.handler.id}`)]);
   }
   const byId = new Map(request.observations.map(item => [item.caseId, item]));
@@ -191,8 +196,10 @@ export function noteMonitorFailure(report: M1Checkpoint, error: string): M1Check
   };
 }
 
-function casesFor(catalog: M1ScenarioCatalog, handlerId: string): M1ScenarioCase[] {
-  return catalog.scenarios.filter(scenario => scenario.handlerId === handlerId).flatMap(scenario => scenario.cases);
+function casesFor(catalog: M1ScenarioCatalog, handlerId: string, artifactId?: string): M1ScenarioCase[] {
+  return catalog.scenarios
+    .filter(scenario => scenario.handlerId === handlerId && (!artifactId || scenario.artifactId === artifactId))
+    .flatMap(scenario => scenario.cases);
 }
 
 function matchesFailure(item: M1ScenarioCase, observation: M1Observation): boolean {

@@ -10,6 +10,7 @@ import { parseDefinitionSource, receiptPathFor, type MaterializationReceipt } fr
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
+import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import type { MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 
 interface StorFile {
@@ -122,8 +123,7 @@ export function createStudioHost(project: number): MaterializeRunHost {
       return receipt?.semanticHash ?? null;
     },
   };
-  // Bodies are supplied by the task that owns the handler. An empty map blocks with HANDLER_UNBOUND.
-  return { io, state, runners: {} };
+  return { io, state, runners: structureRunners };
 }
 
 function files(): Record<string, StorFile> {

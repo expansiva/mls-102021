@@ -56,6 +56,10 @@ export interface HandlerOutcome {
 export interface HandlerCall {
   handler: MaterializeHandler;
   unit: SimulatedUnit;
+  /** The def the planner already accepted. The runner does not receive a write port. */
+  definition: unknown;
+  read: (ref: string) => Promise<string | null>;
+  catalogRef: string;
   repair: boolean;
   signal: AbortSignal;
   eventId: string;
@@ -300,9 +304,9 @@ async function runUnit(
   }
 
   const before = await fingerprint(host.io, unit);
-  const first = await attempt(request, host, stage, profile, budget, ledger, unit, handler, runner, false, modelCalls);
+  const first = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, false, modelCalls);
   if (first.kind === 'promoted') {
-    const promoted = await promote(request, host, unit, definition, before, first.files, first.checkpoint, profile);
+    const promoted = await promote(request, host, unit, definition, before, first.files, first.checkpoint, first.runsStub);
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
     return remember(ledger, unit.defPath, promoted.outcome);
   }
@@ -316,9 +320,9 @@ async function runUnit(
     await writeBlockedReceipt(request, host, unit, definition, 'REPAIR_BUDGET', first.detail);
     return remember(ledger, unit.defPath, outcome(unit.defPath, 'REPAIR_BUDGET', first.detail, false, first.modelCalls), first.code);
   }
-  const second = await attempt(request, host, stage, profile, budget, ledger, unit, handler, runner, true, modelCalls);
+  const second = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, true, modelCalls);
   if (second.kind === 'promoted') {
-    const promoted = await promote(request, host, unit, definition, before, second.files, second.checkpoint, profile);
+    const promoted = await promote(request, host, unit, definition, before, second.files, second.checkpoint, second.runsStub);
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
     return remember(ledger, unit.defPath, {
       ...promoted.outcome,
@@ -344,6 +348,7 @@ interface Attempt {
   files: Record<string, string>;
   checkpoint: M1Checkpoint | null;
   modelCalls: number;
+  runsStub: boolean;
 }
 
 async function attempt(
@@ -354,6 +359,7 @@ async function attempt(
   budget: EffectiveBudget,
   ledger: MaterializeLedger,
   unit: SimulatedUnit,
+  definition: unknown,
   handler: MaterializeHandler,
   runner: MaterializeHandlerRunner,
   repair: boolean,
@@ -363,10 +369,10 @@ async function attempt(
   let usedModel = 0;
   if (shouldCallModel(stage, handler)) {
     if (!host.llm) {
-      return { kind: 'failed', code: 'LLM_UNAVAILABLE', detail: `${handler.id} needs a model and none is configured.`, files: {}, checkpoint: null, modelCalls: 0 };
+      return { kind: 'failed', code: 'LLM_UNAVAILABLE', detail: `${handler.id} needs a model and none is configured.`, files: {}, checkpoint: null, modelCalls: 0, runsStub: false };
     }
     if (!noteModelCall(ledger, budget)) {
-      return { kind: 'failed', code: 'BUDGET_CALLS', detail: `Model call ceiling ${budget.callsPerRun} is already used.`, files: {}, checkpoint: null, modelCalls: 0 };
+      return { kind: 'failed', code: 'BUDGET_CALLS', detail: `Model call ceiling ${budget.callsPerRun} is already used.`, files: {}, checkpoint: null, modelCalls: 0, runsStub: false };
     }
     modelCalls.count = ledger.calls;
     usedModel = 1;
@@ -378,7 +384,7 @@ async function attempt(
       }, budget.timeoutMs);
     } catch (error) {
       const mapped = asCallError(error);
-      return { kind: 'failed', code: mapped.code, detail: mapped.message, files: {}, checkpoint: null, modelCalls: usedModel };
+      return { kind: 'failed', code: mapped.code, detail: mapped.message, files: {}, checkpoint: null, modelCalls: usedModel, runsStub: false };
     }
   }
   const unitState = touch(ledger, unit.defPath);
@@ -388,6 +394,9 @@ async function attempt(
     produced = await withTimeout(signal => runner({
       handler,
       unit,
+      definition,
+      read: ref => host.io.read(ref),
+      catalogRef: host.catalogRef || '',
       repair,
       signal,
       eventId: `${unit.defPath}:${unitState.calls}`,
@@ -396,10 +405,10 @@ async function attempt(
     }), budget.timeoutMs);
   } catch (error) {
     const mapped = asCallError(error);
-    return { kind: 'failed', code: mapped.code, detail: mapped.message, files: {}, checkpoint: null, modelCalls: usedModel };
+    return { kind: 'failed', code: mapped.code, detail: mapped.message, files: {}, checkpoint: null, modelCalls: usedModel, runsStub: false };
   }
   if (produced.failure) {
-    return { kind: 'failed', code: produced.failure.code, detail: produced.failure.detail, files: {}, checkpoint: null, modelCalls: usedModel };
+    return { kind: 'failed', code: produced.failure.code, detail: produced.failure.detail, files: {}, checkpoint: null, modelCalls: usedModel, runsStub: produced.runsStub };
   }
   if ((produced.seeds && !profile.allowsSeeds) || (produced.resets && !profile.allowsReset) || (produced.runsStub && !profile.allowsStubRun)) {
     return {
@@ -409,6 +418,7 @@ async function attempt(
       files: {},
       checkpoint: null,
       modelCalls: usedModel,
+      runsStub: produced.runsStub,
     };
   }
   const output = outputPathFromDefPath(unit.defPath);
@@ -421,13 +431,14 @@ async function attempt(
       files: {},
       checkpoint: null,
       modelCalls: usedModel,
+      runsStub: produced.runsStub,
     };
   }
   const checkpoint = await checkUnit(request, host, unit, produced.observations);
   if (!checkpoint.accepted) {
-    return { kind: 'failed', code: 'CHECKPOINT_FAILED', detail: checkpoint.nextAction, files: {}, checkpoint, modelCalls: usedModel };
+    return { kind: 'failed', code: 'CHECKPOINT_FAILED', detail: checkpoint.nextAction, files: {}, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
   }
-  return { kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint, modelCalls: usedModel };
+  return { kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
 }
 
 async function promote(
@@ -438,7 +449,7 @@ async function promote(
   before: string,
   files: Record<string, string>,
   checkpoint: M1Checkpoint | null,
-  _profile: ProfileDecision,
+  scaffold: boolean,
 ): Promise<{ outcome: UnitOutcome; checkpoint: M1Checkpoint | null }> {
   const after = await fingerprint(host.io, unit);
   const output = outputPathFromDefPath(unit.defPath);
@@ -454,7 +465,7 @@ async function promote(
     return { outcome: outcome(unit.defPath, 'INVALID_RESPONSE', 'The handler returned no output file.', false, 0), checkpoint };
   }
   await host.state.writeOwned(output, new TextEncoder().encode(body));
-  await writeReceipt(request, host, unit, definition, output, body, checkpoint, 'PROMOTED', '');
+  await writeReceipt(request, host, unit, definition, output, body, checkpoint, 'PROMOTED', '', scaffold);
   return { outcome: outcome(unit.defPath, 'PROMOTED', checkpoint?.nextAction || 'Promoted.', true, 0), checkpoint };
 }
 
@@ -477,6 +488,7 @@ async function checkUnit(
     handler,
     io: host.io,
     catalogRef: host.catalogRef || '',
+    artifactId: unit.artifactId,
     observations,
     runId: `${request.project}:${request.moduleName}`,
     commit: host.commit || '',
@@ -494,7 +506,7 @@ async function writeBlockedReceipt(
   code: string,
   detail: string,
 ): Promise<void> {
-  await writeReceipt(request, host, unit, definition, '', '', null, code, detail);
+  await writeReceipt(request, host, unit, definition, '', '', null, code, detail, false);
 }
 
 async function writeReceipt(
@@ -507,6 +519,7 @@ async function writeReceipt(
   checkpoint: M1Checkpoint | null,
   code: string,
   detail: string,
+  scaffold: boolean,
 ): Promise<void> {
   const parsed = readDefinition(definition);
   if ('issues' in parsed) return;
@@ -527,7 +540,7 @@ async function writeReceipt(
     dependencyHashes: {},
     sourceHashes: { [unit.defPath]: hash },
     outputHashes,
-    stage: failed ? 'plan' : request.stage === 'implement' ? 'verify' : 'generate',
+    stage: failed ? 'plan' : scaffold ? 'compile' : request.stage === 'implement' ? 'verify' : 'generate',
     verifications: checkpoint ? [{
       id: checkpoint.handlerId,
       kind: 'test',
@@ -536,7 +549,7 @@ async function writeReceipt(
     }] : [],
     failures: failed ? [{ code, detail: detail || code }] : [],
     attempts: 1,
-    reason: failed ? `${code}: ${detail}` : '',
+    reason: failed ? `${code}: ${detail}` : scaffold ? 'scaffold' : '',
   };
   await host.state.writeReceipt(receipt);
 }
