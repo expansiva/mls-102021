@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "2026-09-25-m1-checkpoint-v1",
+  "runId": "m1-04-structure",
+  "inputHash": "sha256:231922cf5b7c0c53773f8697006c94d6ac195caa46d884e530d00172e341a192",
+  "commit": "69adf1f",
+  "stage": "structure",
+  "handlerId": "structure.usecase",
+  "startedAt": "2026-09-25T12:00:00.000Z",
+  "finishedAt": "2026-09-25T12:00:01.000Z",
+  "budgetMs": 1200000,
+  "counts": {
+    "passed": 3,
+    "expectedRed": 8,
+    "failed": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "inconclusive": 0
+  },
+  "durationsMs": {
+    "total": 11
+  },
+  "ready": false,
+  "accepted": true,
+  "evidence": [
+    {
+      "caseId": "createConsulta.compile",
+      "verdict": "passed",
+      "errorCode": null,
+      "status": 0,
+      "durationMs": 1,
+      "detail": "passed"
+    },
+    {
+      "caseId": "createConsulta.creates",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "createConsulta.duplicateSchedule",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "listConsulta.compile",
+      "verdict": "passed",
+      "errorCode": null,
+      "status": 0,
+      "durationMs": 1,
+      "detail": "passed"
+    },
+    {
+      "caseId": "listConsulta.lists",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "listConsulta.ownAppointments",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "listConsulta.receptionistProjection",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "registrarAtendimento.compile",
+      "verdict": "passed",
+      "errorCode": null,
+      "status": 0,
+      "durationMs": 1,
+      "detail": "passed"
+    },
+    {
+      "caseId": "registrarAtendimento.staleVersion",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "registrarAtendimento.noteRequired",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "registrarAtendimento.invalidTransition",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    }
+  ],
+  "nextAction": "Structural checkpoint only. Implement the usecases and remove the expected-red marks. The backend is not ready.",
+  "monitor": {
+    "delivered": true,
+    "error": null
+  }
+}

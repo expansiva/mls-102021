@@ -1,0 +1,483 @@
+{
+  "schemaVersion": "2026-09-25-m1-scenario-catalog-v1",
+  "moduleName": "agendaClinica",
+  "store": "memory",
+  "scenarios": [
+    {
+      "scenarioId": "createConsulta",
+      "source": "C3 create Consulta",
+      "artifactType": "usecase",
+      "artifactId": "createConsulta",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.test.ts",
+      "cases": [
+        {
+          "caseId": "createConsulta.compile",
+          "gate": "compile",
+          "mandatory": true,
+          "source": "structure compile gate",
+          "expectation": "createConsulta.ts imports. A broken import is a failure, not an expected red.",
+          "preconditions": ["memory store", "no database"],
+          "synthetic": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        },
+        {
+          "caseId": "createConsulta.creates",
+          "gate": "business",
+          "mandatory": true,
+          "source": "C3 create Consulta",
+          "expectation": "A receptionist creates one Consulta and receives the saved record.",
+          "preconditions": ["actor recepcionista-1", "memory store empty of that slot"],
+          "synthetic": [],
+          "actorId": "recepcionista-1",
+          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "createConsulta.creates",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        },
+        {
+          "caseId": "createConsulta.duplicateSchedule",
+          "gate": "business",
+          "mandatory": true,
+          "source": "uniqueKeys professionalId+scheduledAt",
+          "expectation": "A second Consulta on the same professional and scheduledAt is CONFLICT uniqueProfessionalSchedule.",
+          "preconditions": ["consulta-1 already stored in memory"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 1,
+              "attendanceNote": ""
+            }
+          ],
+          "actorId": "recepcionista-1",
+          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+          "mutating": true,
+          "expect": {
+            "ok": false,
+            "status": 409,
+            "errorCode": "CONFLICT",
+            "ruleId": "uniqueProfessionalSchedule",
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "createConsulta.duplicateSchedule",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "listConsulta",
+      "source": "C3 list Consulta",
+      "artifactType": "usecase",
+      "artifactId": "listConsulta",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.test.ts",
+      "cases": [
+        {
+          "caseId": "listConsulta.compile",
+          "gate": "compile",
+          "mandatory": true,
+          "source": "structure compile gate",
+          "expectation": "listConsulta.ts imports. A broken import is a failure, not an expected red.",
+          "preconditions": ["memory store", "no database"],
+          "synthetic": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        },
+        {
+          "caseId": "listConsulta.lists",
+          "gate": "business",
+          "mandatory": true,
+          "source": "C3 list Consulta",
+          "expectation": "The professional receives the Consulta rows for the declared filter.",
+          "preconditions": ["actor professional-1", "memory rows below"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 2,
+              "attendanceNote": "seen"
+            }
+          ],
+          "actorId": "professional-1",
+          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "listConsulta.lists",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        },
+        {
+          "caseId": "listConsulta.ownAppointments",
+          "gate": "business",
+          "mandatory": true,
+          "source": "professionalOwnAppointment",
+          "expectation": "professional-1 sees only rows whose professionalId is professional-1.",
+          "preconditions": ["memory holds consulta-1 and consulta-2", "actor comes from the session, not the form"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 2,
+              "attendanceNote": "seen"
+            },
+            {
+              "entity": "Consulta",
+              "id": "consulta-2",
+              "professionalId": "professional-2",
+              "patientId": "patient-2",
+              "scheduledAt": "2026-09-25T15:00:00.000Z",
+              "status": "scheduled",
+              "version": 1,
+              "attendanceNote": ""
+            }
+          ],
+          "actorId": "professional-1",
+          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": "professionalOwnAppointment",
+            "forbiddenFields": [],
+            "isolatedActorField": "professionalId"
+          },
+          "expectedFailure": {
+            "caseId": "listConsulta.ownAppointments",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        },
+        {
+          "caseId": "listConsulta.receptionistProjection",
+          "gate": "business",
+          "mandatory": true,
+          "source": "listConsulta receptionist projection omits attendanceNote",
+          "expectation": "The receptionist list does not contain attendanceNote.",
+          "preconditions": ["actor recepcionista-1", "stored row has attendanceNote"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 2,
+              "attendanceNote": "seen"
+            }
+          ],
+          "actorId": "recepcionista-1",
+          "routine": "agendaClinica.consultas_recepcionista.qryListConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": ["attendanceNote"],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "listConsulta.receptionistProjection",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "registrarAtendimento",
+      "source": "C5 registrarAtendimento",
+      "artifactType": "usecase",
+      "artifactId": "registrarAtendimento",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.test.ts",
+      "cases": [
+        {
+          "caseId": "registrarAtendimento.compile",
+          "gate": "compile",
+          "mandatory": true,
+          "source": "structure compile gate",
+          "expectation": "registrarAtendimento.ts imports. A broken import is a failure, not an expected red.",
+          "preconditions": ["memory store", "no database"],
+          "synthetic": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        },
+        {
+          "caseId": "registrarAtendimento.staleVersion",
+          "gate": "business",
+          "mandatory": true,
+          "source": "expectedVersion on update",
+          "expectation": "A write that sends a stale version is CONFLICT expectedVersion and does not save.",
+          "preconditions": ["consulta-1 version is 2", "caller sends expectedVersion 1"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 2,
+              "attendanceNote": ""
+            }
+          ],
+          "actorId": "professional-1",
+          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+          "mutating": true,
+          "expect": {
+            "ok": false,
+            "status": 409,
+            "errorCode": "CONFLICT",
+            "ruleId": "expectedVersion",
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "registrarAtendimento.staleVersion",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        },
+        {
+          "caseId": "registrarAtendimento.noteRequired",
+          "gate": "business",
+          "mandatory": true,
+          "source": "attendanceNoteRequired",
+          "expectation": "Attending without a note is VALIDATION_ERROR attendanceNoteRequired.",
+          "preconditions": ["consulta-1 status is scheduled", "attendanceNote is empty"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "scheduled",
+              "version": 2,
+              "attendanceNote": ""
+            }
+          ],
+          "actorId": "professional-1",
+          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+          "mutating": true,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": "attendanceNoteRequired",
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "registrarAtendimento.noteRequired",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        },
+        {
+          "caseId": "registrarAtendimento.invalidTransition",
+          "gate": "business",
+          "mandatory": true,
+          "source": "consultationTransitionFlow",
+          "expectation": "Attending from noShow is VALIDATION_ERROR consultationTransitionFlow.",
+          "preconditions": ["consulta-1 status is noShow"],
+          "synthetic": [
+            {
+              "entity": "Consulta",
+              "id": "consulta-1",
+              "professionalId": "professional-1",
+              "patientId": "patient-1",
+              "scheduledAt": "2026-09-25T13:00:00.000Z",
+              "status": "noShow",
+              "version": 2,
+              "attendanceNote": ""
+            }
+          ],
+          "actorId": "professional-1",
+          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+          "mutating": true,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": "consultationTransitionFlow",
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "registrarAtendimento.invalidTransition",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "consultas_recepcionista",
+      "source": "controller contract and auth",
+      "artifactType": "httpController",
+      "artifactId": "consultas_recepcionista",
+      "handlerId": "structure.httpController",
+      "productionFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts",
+      "testFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.test.ts",
+      "cases": [
+        {
+          "caseId": "consultas_recepcionista.contract",
+          "gate": "contract",
+          "mandatory": true,
+          "source": "route input validation",
+          "expectation": "A create body without patientId is VALIDATION_ERROR before the usecase runs.",
+          "preconditions": ["patientId omitted"],
+          "synthetic": [],
+          "actorId": "recepcionista-1",
+          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        },
+        {
+          "caseId": "consultas_recepcionista.auth",
+          "gate": "auth",
+          "mandatory": true,
+          "source": "FORBIDDEN_ACTOR before the usecase",
+          "expectation": "An http caller with no authority is FORBIDDEN_ACTOR. The stub must not hide this.",
+          "preconditions": ["verifiedAuthorities is empty", "source is http"],
+          "synthetic": [],
+          "actorId": "",
+          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        }
+      ]
+    },
+    {
+      "scenarioId": "consultas_profissional",
+      "source": "controller auth",
+      "artifactType": "httpController",
+      "artifactId": "consultas_profissional",
+      "handlerId": "structure.httpController",
+      "productionFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts",
+      "testFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.test.ts",
+      "cases": [
+        {
+          "caseId": "consultas_profissional.auth",
+          "gate": "auth",
+          "mandatory": true,
+          "source": "FORBIDDEN_ACTOR before the usecase",
+          "expectation": "An http caller with no authority is FORBIDDEN_ACTOR on the professional routes.",
+          "preconditions": ["verifiedAuthorities is empty", "source is http"],
+          "synthetic": [],
+          "actorId": "",
+          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null
+        }
+      ]
+    }
+  ]
+}
