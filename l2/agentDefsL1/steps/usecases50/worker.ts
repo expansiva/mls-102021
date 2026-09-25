@@ -11,8 +11,8 @@ import {
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { authorizedPayloadNames, capabilityApplies, formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
-import { mdmCapabilityCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { authorizedPayloadNames, formatUsecaseContext, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { mdmForOperation, mdmStepPairs } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
@@ -183,7 +183,7 @@ export function closedFromRequest(
     eventIds: effects,
     transitionId,
     payloadPaths: payloadNames,
-    mdmPairs: pairsFor(entity, usecase.operation),
+    mdmPairs: pairsFor(request, entity, usecase),
   });
 }
 
@@ -290,17 +290,31 @@ function knownEmpty(values: readonly string[] | undefined): boolean {
   return Boolean(values) && dedupe(values || []).length === 0;
 }
 
-function pairsFor(entity: D1UsecaseEntity | undefined, operation: string): MdmStepPair[] {
+function pairsFor(
+  request: D1UsecaseRequest,
+  entity: D1UsecaseEntity | undefined,
+  usecase: D1UsecaseSelection,
+): MdmStepPair[] {
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace || !entity.entityId) return [];
-  const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, operation));
-  const pairs: MdmStepPair[] = [];
-  for (const call of mdmCapabilityCalls(selected)) {
-    for (const capability of call.capabilities) {
-      if (!call.method || !capability) continue;
-      pairs.push({ call: call.method, capability });
-    }
-  }
-  return pairs;
+  const routes = usecase.routes.flatMap(routeId => {
+    const route = request.routes.find(item => item.route === routeId);
+    return route ? [route] : [];
+  });
+  const read = mdmInputFields(
+    request.contracts,
+    routes,
+    preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+  );
+  return mdmStepPairs(mdmForOperation({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities: entity.capabilities || [],
+    selected: [],
+    platformFields: entity.platformFields || [],
+    inputFields: read.fields,
+    contractUnread: read.unread.join('; '),
+    operation: usecase.operation,
+  }));
 }
 
 /** Closed branch. `anyOf`, not `oneOf`: provider strict mode rejects `oneOf`. Every key stays required. */

@@ -6,8 +6,8 @@ import type {
   D1UsecaseSelection,
   D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { capabilityApplies, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
-import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 /**
  * Measured from the frozen agendaClinica backend (22 routes, 5 pages).
@@ -140,7 +140,6 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   const entity = request.entities.find(item => item.entityId === usecase.entity);
   const steps: D1WorkerStep[] = [{ kind: 'context', source: 'ctx' }];
   if (entity?.storageTarget === 'mdm') {
-    const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
     const routes = usecase.routes.flatMap(routeId => {
       const route = request.routes.find(item => item.route === routeId);
       return route ? [route] : [];
@@ -150,14 +149,15 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
       routes,
       preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
     );
-    const bound = bindMdm({
+    const bound = mdmForOperation({
       entityId: entity.entityId,
       namespace: entity.namespace,
       capabilities: entity.capabilities || [],
-      selected,
+      selected: [],
       platformFields: entity.platformFields || [],
       inputFields: read.fields,
       contractUnread: read.unread.join('; '),
+      operation: usecase.operation,
     });
     for (const call of bound.calls) {
       for (const capability of call.capabilities) {

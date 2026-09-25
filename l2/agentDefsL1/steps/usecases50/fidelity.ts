@@ -13,7 +13,7 @@ import {
   platformFieldPaths,
   preconditionsFor,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
-import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import type { D1MdmArgument, D1MdmClause, D1MdmOrigin, D1MdmPlannedCall, D1UsecaseMdm, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
@@ -240,7 +240,7 @@ export function readUsecaseFidelity(
       })),
       preconditionsFor(files, moduleName, entityId, []),
     );
-    const bound = bindMdm({
+    const bound = mdmForOperation({
       entityId,
       namespace: namespaceOf(ontology),
       capabilities: names,
@@ -248,6 +248,7 @@ export function readUsecaseFidelity(
       platformFields: platformFieldPaths(ontology),
       inputFields: read.fields,
       contractUnread: read.unread.join('; '),
+      operation,
     });
     for (const gap of bound.gaps) fail(problems, gap.code, usecaseId, gap.evidence);
     if (!mdm) {

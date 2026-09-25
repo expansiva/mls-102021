@@ -2,7 +2,9 @@
 
 import { isRecord, isStorageConstraintRow } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { mdmCapabilityCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { capabilityApplies, mdmForOperation, mdmStepPairs } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+
+export { capabilityApplies };
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 /**
@@ -206,7 +208,15 @@ export function rulePlanForUsecase(input: {
   const routes = routesForPlan(input.moduleName, input.entityId, input.routes, files);
   const storage = fromFile ? storageOf(ontology) : input.entity.storageTarget;
   const mdmMethods = storage === 'mdm'
-    ? mdmCapabilityCalls(capabilities.filter(name => capabilityApplies(name, input.operation))).map(call => call.method)
+    ? mdmStepPairs(mdmForOperation({
+      entityId: input.entityId,
+      namespace: '',
+      capabilities,
+      selected: [],
+      platformFields: [],
+      operation: input.operation,
+      inputFields: null,
+    })).map(pair => pair.call)
     : [];
   return planRuleApplicability({
     moduleName: input.moduleName,
@@ -220,13 +230,6 @@ export function rulePlanForUsecase(input: {
     routes,
     mdmMethods,
   });
-}
-
-export function capabilityApplies(name: string, operation: string): boolean {
-  if (operation === 'update') return name === 'edit.platformFields' || name.startsWith('edit.');
-  if (operation === 'create') return name.startsWith('register.') || name === 'create';
-  if (operation === 'list' || operation === 'get') return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
-  return false;
 }
 
 function writesConstraint(

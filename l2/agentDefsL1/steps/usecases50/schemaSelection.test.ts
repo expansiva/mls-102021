@@ -302,6 +302,34 @@ void test('authority is ctx on every operation, and the prompt names that source
   }
 });
 
+void test('list of an MDM role does not offer findByContact when the gate does not accept it', () => {
+  const request = one(coreUsecaseRequest(), 'listPaciente');
+  const closed = closedFromRequest(request, request.usecases[0]);
+  const tool = usecaseTool(closed);
+  const step: D1WorkerStep = {
+    kind: 'mdm',
+    namespace: 'agendaClinica',
+    call: 'findByContact',
+    entity: 'Paciente',
+    capability: 'locate.byContact',
+  };
+  assert.equal(closed.mdmPairs?.some(pair => pair.call === 'findByContact' || pair.capability === 'locate.byContact'), false);
+  assert.equal(fits(tool, step as unknown as Record<string, unknown>), false);
+  const offered = usecaseTool({
+    ...closed,
+    mdmPairs: [...(closed.mdmPairs || []), { call: 'findByContact', capability: 'locate.byContact' }],
+    mdmCalls: [...(closed.mdmCalls || []), 'findByContact'],
+    capabilities: [...(closed.capabilities || []), 'locate.byContact'],
+  });
+  assert.equal(fits(offered, step as unknown as Record<string, unknown>), true);
+  const refused = buildD1Usecases({
+    ...request,
+    plans: [{ usecaseId: 'listPaciente', steps: [{ kind: 'context', source: 'ctx' }, step] }],
+    llmCalls: 1,
+  });
+  assert.equal(refused.problems.some(item => item.code === 'MDM_CALL_INCOMPATIBLE'), true);
+});
+
 void test('a boundary the schema offers is a boundary the gate accepts', () => {
   const request = coreUsecaseRequest();
   const known = ['local', 'external'];

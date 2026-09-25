@@ -47,6 +47,42 @@ const READ_CAPABILITIES = [
   'listLinks',
 ] as const;
 
+/** Same filter the worker catalog and the gate use before bindMdm. */
+export function capabilityApplies(name: string, operation: string): boolean {
+  if (operation === 'update') return name === 'edit.platformFields' || name.startsWith('edit.');
+  if (operation === 'create') return name.startsWith('register.') || name === 'create';
+  if (operation === 'list' || operation === 'get') return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
+  return false;
+}
+
+/**
+ * Capabilities this operation may name, then the calls bindMdm actually emits.
+ * Context, worker schema and the gate all take this result. A locate the input
+ * cannot feed is not offered.
+ */
+export function mdmForOperation(input: MdmBindInput & { operation: string }): D1UsecaseMdm {
+  return bindMdm({
+    ...input,
+    selected: input.capabilities.filter(name => capabilityApplies(name, input.operation)),
+  });
+}
+
+/** One schema pair per bound call. Alternative writes stay in the catalog. */
+export function mdmStepPairs(mdm: D1UsecaseMdm): Array<{ call: string; capability: string }> {
+  const pairs: Array<{ call: string; capability: string }> = [];
+  const seen = new Set<string>();
+  for (const call of mdm.calls) {
+    for (const capability of call.capabilities) {
+      if (!call.method || !capability) continue;
+      const key = `${call.method}\u0000${capability}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push({ call: call.method, capability });
+    }
+  }
+  return pairs;
+}
+
 /**
  * Capabilities the ontology can name and the facade does not implement.
  * Inactivate and reactivate do not write status history. Audit is another module.

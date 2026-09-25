@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-09-25 (d1_34)
+
+- Context, worker schema and the gate take MDM calls from `mdmForOperation` (`bindMdm` after the same capability filter). A `list` that cannot feed `locate.byContact` does not offer `findByContact`. Putting that pair back on the catalog makes the schema accept it and the gate refuse it.
+
 ## 2026-09-24 (d1_27)
 
 - A worker or repair records one receipt per observation: prompt assembled, reply delivered, reply absent, not dispatched, or repair scheduled. The same plan and kind does not count twice. `unitAttempts` stays the attempt index. The done anchor reports those receipts. It does not report `classified.length`.

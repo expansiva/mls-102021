@@ -15,9 +15,8 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { mdmCapabilityCalls, type MdmInputField } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { capabilityApplies, mdmForOperation, mdmStepPairs, type MdmInputField } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
-  capabilityApplies,
   enforcedRuleIds,
   planRuleApplicability,
   type RulePlanRule,
@@ -348,7 +347,8 @@ function oneContext(
   const portMethods = port && entity?.storageTarget !== 'mdm' ? methodsFor(port, usecase.operation) : [];
   const effects = bundle.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`);
   const journeys = journeysFor(usecase, routes.routes.map(route => route.page), bundle);
-  const capabilities = capabilitiesFor(body, usecase.operation, entity?.storageTarget || '');
+  const bound = boundMdm(usecase, entity, body, routes.routes, bundle);
+  const capabilities = capabilitiesFor(body, bound);
   const effectiveFields = entity?.storageTarget === 'mdm' && (usecase.operation === 'update' || usecase.operation === 'create')
     ? platformLeaves(body)
     : [];
@@ -405,7 +405,10 @@ function rulesFor(
       contractPath: route.contractPath,
       grants: route.access.map(grant => ({ grantId: grant.grantId, actorRef: grant.actorRef, scope: grant.scope })),
     })),
-    mdmMethods: mdmMethodsFor(usecase, entity, body),
+    mdmMethods: (() => {
+      const bound = boundMdm(usecase, entity, body, routes, bundle);
+      return bound ? mdmStepPairs(bound).map(pair => pair.call) : [];
+    })(),
   });
   const rules: D1RuleText[] = [];
   const pending: D1RuleText[] = [];
@@ -472,10 +475,30 @@ function ruleRecords(
   });
 }
 
-function mdmMethodsFor(usecase: D1UsecaseSelection, entity: D1UsecaseEntity | null, body: unknown): string[] {
-  if (entity?.storageTarget !== 'mdm') return [];
+function boundMdm(
+  usecase: D1UsecaseSelection,
+  entity: D1UsecaseEntity | null,
+  body: unknown,
+  routes: readonly D1RouteContext[],
+  bundle: VerifiedBundle,
+) {
+  if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace) return null;
   const capabilities = capabilityNames(body).length ? capabilityNames(body) : entity.capabilities || [];
-  return mdmCapabilityCalls(capabilities.filter(name => capabilityApplies(name, usecase.operation))).map(call => call.method);
+  const read = mdmInputFields(
+    bundle.contracts,
+    routes.map(route => ({ route: route.route, page: route.page })),
+    preconditionsFor(bundle.files, bundleModule(bundle, entity), entity.entityId, entity.fields),
+  );
+  return mdmForOperation({
+    entityId: entity.entityId,
+    namespace: entity.namespace,
+    capabilities,
+    selected: [],
+    platformFields: entity.platformFields?.length ? entity.platformFields : platformLeaves(body),
+    inputFields: read.fields,
+    contractUnread: read.unread.join('; '),
+    operation: usecase.operation,
+  });
 }
 
 function uniqueKeysOf(body: unknown): string[][] {
@@ -818,12 +841,12 @@ function walkPreconditions(fields: Record<string, unknown>, prefix: string, out:
   }
 }
 
-function capabilitiesFor(body: unknown, operation: string, storage: string): D1CapabilityText[] {
-  if (storage !== 'mdm' || !isRecord(body) || !isRecord(body.capabilities)) return [];
+function capabilitiesFor(body: unknown, bound: ReturnType<typeof boundMdm>): D1CapabilityText[] {
+  if (!bound || !isRecord(body) || !isRecord(body.capabilities)) return [];
   const caps = body.capabilities;
-  const names = Object.keys(caps).filter(name => capabilityApplies(name, operation));
+  const offered = new Set(bound.calls.flatMap(call => call.capabilities));
   const out: D1CapabilityText[] = [];
-  for (const name of names) {
+  for (const name of offered) {
     const text = caps[name];
     if (typeof text === 'string') out.push({ name, text });
   }

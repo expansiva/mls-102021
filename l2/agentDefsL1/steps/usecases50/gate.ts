@@ -15,10 +15,10 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { authorizedPayloadNames, capabilityApplies, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { authorizedPayloadNames, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
-import { bindMdm, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { capabilityApplies, mdmForOperation, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   D1_USECASE_VERSION,
   D1_WRITE_CALLS,
@@ -779,7 +779,7 @@ function resolveMdm(
     routes,
     preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
   );
-  const bound = bindMdm({
+  const bound = mdmForOperation({
     entityId: entity.entityId,
     namespace: entity.namespace,
     capabilities: entity.capabilities || [],
@@ -787,6 +787,7 @@ function resolveMdm(
     platformFields: entity.platformFields || [],
     inputFields: read.fields,
     contractUnread: read.unread.join('; '),
+    operation: usecase.operation,
   });
   if (!selected.length) {
     error(problems, 'MDM_CAPABILITY_MISSING', path, `MDM role ${entity.entityId} has no capability for operation ${usecase.operation}. No call was invented.`);
