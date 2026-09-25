@@ -17,6 +17,7 @@ import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { helpText, parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 
@@ -166,7 +167,7 @@ export function createDiskHost(
       return receipt?.semanticHash ?? null;
     },
   };
-  return { io, state, runners: structureRunners };
+  return { io, state, runners: { ...structureRunners, ...behaviorRunners } };
 }
 
 export async function readProjectProfile(readRoot: string, project: number): Promise<{ mode: unknown; declared: boolean }> {

@@ -49,8 +49,14 @@ const STRUCTURE: Record<M1ArtifactType, MaterializeHandler> = {
   integrationOutbound: handler('persistence.integrationOutbound', 'integrationOutbound', 'structure', []),
 };
 
-/** Implement recipes are registered by the task that owns the behavior. Empty means no fallback. */
-export const M1_IMPLEMENT_HANDLERS: Partial<Record<M1ArtifactType, MaterializeHandler>> = {};
+/** Implement recipes. A type missing here has no fallback onto the structure scaffolder. */
+export const M1_IMPLEMENT_HANDLERS: Partial<Record<M1ArtifactType, MaterializeHandler>> = {
+  domainEntity: handler('implement.domainEntity', 'domainEntity', 'implement', []),
+  repositoryPort: handler('implement.repositoryPort', 'repositoryPort', 'implement', []),
+  usecase: handler('implement.usecase', 'usecase', 'implement', ['requestContext', 'repositoryRegistry']),
+  accessScope: handler('implement.accessScope', 'accessScope', 'implement', ['requestContext']),
+  authorityMap: handler('implement.authorityMap', 'authorityMap', 'implement', ['requestContext']),
+};
 
 export const M1_STRUCTURE_HANDLERS: Readonly<Record<M1ArtifactType, MaterializeHandler>> = STRUCTURE;
 

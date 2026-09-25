@@ -18,6 +18,7 @@ import {
 import { platformFilesForDefinition } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { handlerFor, type M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
+import { behaviorNeedsLlm } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 
 export const M1_PLAN_ACTIONS = ['generate', 'reuse', 'verify', 'blocked', 'remove'] as const;
 export type M1PlanAction = typeof M1_PLAN_ACTIONS[number];
@@ -221,7 +222,7 @@ async function decide(
     action: 'blocked',
     reason: '',
     handlerId: named?.id ?? null,
-    needsLlm: false,
+    needsLlm: stage === 'implement' && !!node.definition && behaviorNeedsLlm(node.definition),
     unresolved: node.rawType && !named ? unique([`artifactType:${node.rawType}`, ...node.unresolved]) : node.unresolved,
     contextRefs: node.contextRefs,
     blockedBy: [],

@@ -53,6 +53,8 @@ export interface LedgerUnit {
   calls: number;
   signature: string;
   ended: string;
+  /** Stage that closed the unit. Absent on a ledger written before implement followed structure. */
+  stage?: MaterializeLedger['stage'];
 }
 
 export interface LedgerEvent {
@@ -188,7 +190,8 @@ export function parseLedger(text: string, project: number, moduleName: string): 
     const unit = item as Record<string, unknown>;
     if (!isCount(unit.repairs) || !isCount(unit.calls)) return null;
     if (typeof unit.signature !== 'string' || typeof unit.ended !== 'string') return null;
-    units[path] = { repairs: unit.repairs, calls: unit.calls, signature: unit.signature, ended: unit.ended };
+    const unitStage = unit.stage === 'simulate' || unit.stage === 'structure' || unit.stage === 'implement' || unit.stage === 'verify' ? unit.stage : undefined;
+    units[path] = { repairs: unit.repairs, calls: unit.calls, signature: unit.signature, ended: unit.ended, stage: unitStage };
   }
   const events: LedgerEvent[] = [];
   for (const item of raw.events) {

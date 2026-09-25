@@ -176,6 +176,8 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     })), [], 0, false, 'SIMULATED', stage);
   }
 
+  const openedAs = ledger.stage;
+  ledger.stage = stage;
   let wrote = false;
   const outcomes: UnitOutcome[] = [];
   const checkpoints: M1Checkpoint[] = [];
@@ -199,7 +201,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       const unit = snapshot.units.find(item => item.defPath === path);
       if (!unit) return;
       const outcome = await runUnit(
-        request, host, stage, profile, budget, ledger, unit, definitions.get(path), depsOf.get(path) ?? [], checkpoints, modelCalls,
+        request, host, stage, profile, budget, ledger, unit, definitions.get(path), depsOf.get(path) ?? [], checkpoints, modelCalls, openedAs,
       );
       outcomes.push(outcome);
       if (outcome.promoted) wrote = true;
@@ -248,9 +250,11 @@ async function runUnit(
   deps: readonly string[],
   checkpoints: M1Checkpoint[],
   modelCalls: { count: number },
+  openedAs: MaterializeLedger['stage'],
 ): Promise<UnitOutcome> {
   const prior = ledger.units[unit.defPath];
-  if (prior?.ended && prior.ended !== 'INTERRUPTED') {
+  const finishedAs = prior?.stage ?? openedAs;
+  if (prior?.ended && prior.ended !== 'INTERRUPTED' && finishedAs === stage) {
     return outcome(unit.defPath, prior.ended, 'Already finished in this run. Not repeated.', false, 0);
   }
   if (unit.action === 'blocked') {
@@ -305,8 +309,11 @@ async function runUnit(
 
   const before = await fingerprint(host.io, unit);
   const first = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, false, modelCalls);
-  if (first.kind === 'promoted') {
-    const promoted = await promote(request, host, unit, definition, before, first.files, first.checkpoint, first.runsStub);
+  if (first.kind === 'promoted' || first.kind === 'held') {
+    const promoted = await promote(
+      request, host, unit, definition, before, first.files, first.checkpoint, first.runsStub,
+      first.kind === 'held' ? 'BLOCKED' : 'PROMOTED',
+    );
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
     return remember(ledger, unit.defPath, promoted.outcome);
   }
@@ -342,7 +349,7 @@ async function runUnit(
 }
 
 interface Attempt {
-  kind: 'promoted' | 'failed';
+  kind: 'promoted' | 'held' | 'failed';
   code: string;
   detail: string;
   files: Record<string, string>;
@@ -367,9 +374,9 @@ async function attempt(
 ): Promise<Attempt> {
   let modelText: string | null = null;
   let usedModel = 0;
-  if (shouldCallModel(stage, handler)) {
+  if (unit.needsLlm || shouldCallModel(stage, handler)) {
     if (!host.llm) {
-      return { kind: 'failed', code: 'LLM_UNAVAILABLE', detail: `${handler.id} needs a model and none is configured.`, files: {}, checkpoint: null, modelCalls: 0, runsStub: false };
+      return { kind: 'failed', code: 'LLM_UNAVAILABLE', detail: `${unit.defPath} needs a model and none is configured.`, files: {}, checkpoint: null, modelCalls: 0, runsStub: false };
     }
     if (!noteModelCall(ledger, budget)) {
       return { kind: 'failed', code: 'BUDGET_CALLS', detail: `Model call ceiling ${budget.callsPerRun} is already used.`, files: {}, checkpoint: null, modelCalls: 0, runsStub: false };
@@ -435,10 +442,31 @@ async function attempt(
     };
   }
   const checkpoint = await checkUnit(request, host, unit, produced.observations);
+  if (!checkpoint.accepted && heldBlock(checkpoint)) {
+    const blocked = checkpoint.evidence.filter(item => item.verdict === 'blocked').map(item => item.caseId);
+    return {
+      kind: 'held',
+      code: 'BLOCKED',
+      detail: `External gap on ${blocked.join(', ')}. The file is written and the unit is not generated.`,
+      files: produced.files,
+      checkpoint,
+      modelCalls: usedModel,
+      runsStub: produced.runsStub,
+    };
+  }
   if (!checkpoint.accepted) {
     return { kind: 'failed', code: 'CHECKPOINT_FAILED', detail: checkpoint.nextAction, files: {}, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
   }
   return { kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint, modelCalls: usedModel, runsStub: produced.runsStub };
+}
+
+/** Passed cases plus an external block. The output is kept; the unit is not an accepted implementation. */
+function heldBlock(checkpoint: M1Checkpoint): boolean {
+  return checkpoint.counts.blocked > 0
+    && checkpoint.counts.failed === 0
+    && checkpoint.counts.skipped === 0
+    && checkpoint.counts.inconclusive === 0
+    && checkpoint.evidence.every(item => item.verdict === 'passed' || item.verdict === 'blocked');
 }
 
 async function promote(
@@ -450,6 +478,7 @@ async function promote(
   files: Record<string, string>,
   checkpoint: M1Checkpoint | null,
   scaffold: boolean,
+  receiptCode = 'PROMOTED',
 ): Promise<{ outcome: UnitOutcome; checkpoint: M1Checkpoint | null }> {
   const after = await fingerprint(host.io, unit);
   const output = outputPathFromDefPath(unit.defPath);
@@ -465,8 +494,16 @@ async function promote(
     return { outcome: outcome(unit.defPath, 'INVALID_RESPONSE', 'The handler returned no output file.', false, 0), checkpoint };
   }
   await host.state.writeOwned(output, new TextEncoder().encode(body));
-  await writeReceipt(request, host, unit, definition, output, body, checkpoint, 'PROMOTED', '', scaffold);
-  return { outcome: outcome(unit.defPath, 'PROMOTED', checkpoint?.nextAction || 'Promoted.', true, 0), checkpoint };
+  const accepted = receiptCode === 'PROMOTED';
+  await writeReceipt(
+    request, host, unit, definition, output, body, checkpoint, receiptCode,
+    accepted ? '' : (checkpoint?.nextAction || receiptCode),
+    scaffold,
+  );
+  return {
+    outcome: outcome(unit.defPath, receiptCode, checkpoint?.nextAction || (accepted ? 'Promoted.' : receiptCode), accepted, 0),
+    checkpoint,
+  };
 }
 
 async function checkUnit(
@@ -569,6 +606,7 @@ function sameSignature(ledger: MaterializeLedger, defPath: string, code: string)
 function remember(ledger: MaterializeLedger, defPath: string, value: UnitOutcome, signature = ''): UnitOutcome {
   const unit = touch(ledger, defPath);
   unit.ended = value.code;
+  unit.stage = ledger.stage;
   if (signature) unit.signature = signature;
   else if (!unit.signature && value.code !== 'PROMOTED') unit.signature = value.code;
   return value;

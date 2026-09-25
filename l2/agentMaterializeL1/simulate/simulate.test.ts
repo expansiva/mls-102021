@@ -54,9 +54,15 @@ const PLATFORM = Object.values(PLATFORM_FILES);
 
 void test('closed registry names every contract type and no implement fallback', () => {
   assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'structure')), [...M1_ARTIFACT_TYPES]);
-  assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'implement')), []);
+  assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'implement')), [
+    'domainEntity', 'repositoryPort', 'usecase', 'accessScope', 'authorityMap',
+  ]);
+  assert.equal(handlerFor('table', 'implement'), null);
   assert.equal(handlerFor('widget'), null);
   assert.equal(registeredHandlerIds('structure').length, M1_ARTIFACT_TYPES.length);
+  for (const type of ['domainEntity', 'repositoryPort', 'usecase', 'accessScope', 'authorityMap'] as const) {
+    assert.equal(handlerFor(type, 'implement')?.needsLlm, false, type);
+  }
   for (const type of M1_ARTIFACT_TYPES) {
     const named = handlerFor(type, 'structure');
     assert.equal(named?.needsLlm, false, type);
@@ -433,15 +439,35 @@ void test('reuse and verify need an intact receipt; failed does not start over',
 });
 
 void test('implement stage does not fall back to a structure handler', async () => {
-  const snapshot = await simulate({
+  const named = await simulate({
     moduleName: 'agendaClinica',
     stage: 'implement',
     io: spyHost({}).io,
     units: [{ defPath: CONSULTA, definition: entity('Consulta', []) }],
   });
-  assert.match(snapshot.units[0].reason, /^NO_NAMED_HANDLER:/);
-  assert.match(snapshot.units[0].reason, /implement/);
-  assert.equal(snapshot.units[0].action, 'blocked');
+  assert.equal(named.units[0].action, 'generate');
+  assert.equal(named.units[0].handlerId, 'implement.domainEntity');
+  assert.equal(named.units[0].handlerId?.startsWith('structure.'), false);
+  const table = await simulate({
+    moduleName: 'agendaClinica',
+    stage: 'implement',
+    io: spyHost({}).io,
+    units: [{
+      defPath: '_102047_/l1/agendaClinica/layer_1_external/persistence/tables/consulta.defs.ts',
+      definition: {
+        schemaVersion: '2026-09-24-d1-definition-v2',
+        artifactType: 'table',
+        artifactId: 'consulta',
+        moduleName: 'agendaClinica',
+        status: 'pending',
+        dependencies: [],
+        data: { tableId: 'consulta' },
+      },
+    }],
+  });
+  assert.match(table.units[0].reason, /^NO_NAMED_HANDLER:/);
+  assert.match(table.units[0].reason, /implement/);
+  assert.equal(table.units[0].action, 'blocked');
 });
 
 void test('product core does not import node, the legacy rank, or a model client', () => {

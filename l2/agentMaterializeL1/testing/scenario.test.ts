@@ -213,10 +213,11 @@ void test('implement drops the tolerance and an expired mark fails the checkpoin
   const structureHandler = handlerFor('usecase', 'structure');
   const implementHandler = handlerFor('usecase', 'implement');
   assert.ok(structureHandler);
-  assert.equal(implementHandler, null);
+  assert.equal(implementHandler?.id, 'implement.usecase');
+  assert.equal(implementHandler?.needsLlm, false);
   const handler = { ...structureHandler, stage: 'implement' as const, id: 'structure.usecase' };
   const registered = handlerFor('usecase', 'implement');
-  assert.equal(registered, null);
+  assert.equal(registered?.id, 'implement.usecase');
   const forged = await verifyBatch({
     handler,
     io: memoryIo({ [CATALOG_REF]: FIXTURE }),

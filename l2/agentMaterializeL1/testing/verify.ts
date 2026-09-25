@@ -12,6 +12,7 @@ import type { MaterializeHandler, M1HandlerStage } from '/_102021_/l2/agentMater
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import {
   canonicalJson,
+  catalogForStage,
   parseCatalog,
   type M1CaseExpect,
   type M1ScenarioCase,
@@ -174,7 +175,8 @@ export async function verifyBatch(request: MaterializeVerificationRequest): Prom
     return checkpoint(request, '', [row('catalog', 'failed', null, null, 0, parsed.issues.join('; '))]);
   }
   const inputHash = await contentHash(canonicalJson(parsed.catalog));
-  const cases = casesFor(parsed.catalog, request.handler.id, request.artifactId);
+  const staged = catalogForStage(parsed.catalog, stage);
+  const cases = casesFor(staged, request.handler.id, request.artifactId);
   if (cases.length === 0) {
     if (request.artifactId) {
       return checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no catalog case for this artifact')]);
@@ -197,9 +199,12 @@ export function noteMonitorFailure(report: M1Checkpoint, error: string): M1Check
 }
 
 function casesFor(catalog: M1ScenarioCatalog, handlerId: string, artifactId?: string): M1ScenarioCase[] {
-  return catalog.scenarios
-    .filter(scenario => scenario.handlerId === handlerId && (!artifactId || scenario.artifactId === artifactId))
+  const match = (id: string) => catalog.scenarios
+    .filter(scenario => scenario.handlerId === id && (!artifactId || scenario.artifactId === artifactId))
     .flatMap(scenario => scenario.cases);
+  const exact = match(handlerId);
+  if (exact.length > 0 || !handlerId.startsWith('implement.')) return exact;
+  return match(handlerId.replace('implement.', 'structure.'));
 }
 
 function matchesFailure(item: M1ScenarioCase, observation: M1Observation): boolean {

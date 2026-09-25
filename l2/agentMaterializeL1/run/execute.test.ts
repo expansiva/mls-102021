@@ -130,10 +130,13 @@ void test('structure calls only its handler and implement does not fall back to 
   assert.match(missing.units[0].detail, /structure\.domainEntity/);
   assert.equal(bare.map.has(output), false);
 
-  const implement = await runMaterialize(baseRequest([note], { stage: 'implement' }), host(world(), runners));
-  assert.equal(implement.units[0].code, 'NO_NAMED_HANDLER');
-  assert.equal(implementCalls, 0);
-  assert.match(implement.units[0].detail, /implement/);
+  const implementStore = world();
+  const implement = await runMaterialize(baseRequest([note], { stage: 'implement' }), host(implementStore, runners));
+  assert.equal(implement.units[0].code, 'REPEATED_FAILURE');
+  assert.equal(implementCalls, 2);
+  assert.equal(implement.units[0].promoted, false);
+  assert.equal(implementStore.map.has(output), false);
+  assert.match(implement.units[0].detail, /catalog/);
 });
 
 void test('timeout, network, transient and invalid response end the unit without a generic file', async () => {
