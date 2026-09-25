@@ -64,6 +64,8 @@ export interface D1UsecaseField {
   name: string;
   type: string;
   derived: boolean;
+  /** Copied from the ontology. Never inferred from the field name. */
+  writePrecondition?: boolean;
 }
 
 export interface D1UsecaseTransition {
@@ -340,35 +342,69 @@ export interface D1UsecaseRequest {
   llmCalls: number;
 }
 
+/**
+ * Where an argument's value comes from.
+ * `prior.calls` are earlier call ids; the first that produced `path` wins.
+ * A later call, or an id with no producer, is not a source.
+ */
+export interface D1MdmOrigin {
+  kind: 'contract' | 'context' | 'literal' | 'prior';
+  path?: string;
+  calls?: string[];
+  /** `writePrecondition` when the ontology mark and the contract field agree. Not a name. */
+  evidence?: string;
+}
+
 /** One value the facade method takes. A patch key the facade does not accept is not represented. */
 export interface D1MdmArgument {
   name: string;
   role: 'selector' | 'parameter' | 'patch';
   /** Set when a shared call's patch is owned by one capability. */
   capability?: string;
-  /** Ontology or contract path the value is read from. */
+  /** Ontology or contract path the value is read from. Mirrors `origin.path` for a contract source. */
   path?: string;
   /** Constant the facade receives when the value is not a field (`role` tag, or `ctx`). */
   value?: string;
+  origin: D1MdmOrigin;
+}
+
+/**
+ * The call runs only when every clause holds.
+ * A prior clause whose call did not run sees an absent value.
+ */
+export interface D1MdmClause {
+  kind: 'contract' | 'prior';
+  path: string;
+  call?: string;
+  present: boolean;
 }
 
 /** One facade invocation. Several capabilities may share it when one patch and one version cover them. */
 export interface D1MdmPlannedCall {
+  /** Stable id inside this plan. Later calls cite it; it does not cite them. */
+  id: string;
   method: D1MdmCall;
   target: 'entity' | 'collection' | 'identity';
   shape: 'point' | 'collection' | 'write';
   capabilities: string[];
   /** True when the capability is a choice (inactivate or reactivate), not a sequence. */
   alternative: boolean;
+  /** Empty means the call always runs. */
+  when: D1MdmClause[];
   arguments: D1MdmArgument[];
   result: string[];
 }
 
-/** A declared capability the facade does not implement. Not a successful call. */
+/** A declared capability the facade does not implement, or an argument with no source. */
 export interface D1MdmGap {
   capability: string;
-  /** MDM_UNBOUND: no facade method. MDM_PATCH_UNBOUND: a field the facade cannot patch. */
-  code: 'MDM_UNBOUND' | 'MDM_PATCH_UNBOUND';
+  /**
+   * MDM_UNBOUND: no facade method.
+   * MDM_PATCH_UNBOUND: a field the facade cannot patch.
+   * MDM_ARGUMENT_UNBOUND: a required argument has no contract, context, literal or earlier result.
+   * MDM_CONTRACT_UNREAD: the route contract was not read, so a call that needs one was not emitted.
+   */
+  code: 'MDM_UNBOUND' | 'MDM_PATCH_UNBOUND' | 'MDM_ARGUMENT_UNBOUND' | 'MDM_CONTRACT_UNREAD';
   evidence: string;
 }
 

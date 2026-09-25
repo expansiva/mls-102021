@@ -15,7 +15,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { mdmCapabilityCalls, type MdmInputField } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   capabilityApplies,
   enforcedRuleIds,
@@ -475,13 +475,7 @@ function ruleRecords(
 function mdmMethodsFor(usecase: D1UsecaseSelection, entity: D1UsecaseEntity | null, body: unknown): string[] {
   if (entity?.storageTarget !== 'mdm') return [];
   const capabilities = capabilityNames(body).length ? capabilityNames(body) : entity.capabilities || [];
-  return bindMdm({
-    entityId: entity.entityId,
-    namespace: entity.namespace || namespaceOf(body),
-    capabilities,
-    selected: capabilities.filter(name => capabilityApplies(name, usecase.operation)),
-    platformFields: entity.platformFields || platformFieldPaths(body),
-  }).calls.map(call => call.method);
+  return mdmCapabilityCalls(capabilities.filter(name => capabilityApplies(name, usecase.operation))).map(call => call.method);
 }
 
 function uniqueKeysOf(body: unknown): string[][] {
@@ -714,6 +708,114 @@ export function capabilityNames(body: unknown): string[] {
 
 export function platformFieldPaths(body: unknown): string[] {
   return platformLeaves(body);
+}
+
+/** Ontology paths marked writePrecondition. A field named version without the mark is not included. */
+export function writePreconditionPaths(body: unknown): string[] {
+  if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
+  const out: string[] = [];
+  walkPreconditions(body.record.fields, '', out);
+  return out;
+}
+
+/**
+ * The ontology file wins. When that file is absent, only fields the caller already marked count.
+ * An unmarked name is not a precondition.
+ */
+export function preconditionsFor(
+  files: readonly { path: string; text: string }[] | undefined,
+  moduleName: string,
+  entityId: string,
+  fallback: readonly { name: string; writePrecondition?: boolean }[],
+): string[] {
+  const ontologyPath = `l4/${moduleName}/ontology/${entityId}.defs.ts`;
+  const text = files?.find(file => file.path === ontologyPath)?.text;
+  if (text != null) {
+    const body = parseD1Source(text, 'defs');
+    return body ? writePreconditionPaths(body) : [];
+  }
+  return fallback.filter(field => field.writePrecondition === true).map(field => field.name);
+}
+
+/** One route whose contract could not be read, and why. */
+export interface MdmContractRead {
+  /** Shared fields. `null` when no route contract was read. */
+  fields: readonly MdmInputField[] | null;
+  /** One reason per route that did not resolve: contract absent, binding not unique, or symbol absent. */
+  unread: readonly string[];
+}
+
+/**
+ * Input fields shared by every resolved route.
+ * A route that does not resolve is named in `unread`. `fields` is null when none resolve.
+ * An empty field list means the contracts were read and declare no shared field.
+ */
+export function mdmInputFields(
+  contracts: readonly D1ContractSource[],
+  routes: readonly { route: string; page: string }[],
+  preconditions: readonly string[],
+): MdmContractRead {
+  const perRoute: MdmInputField[][] = [];
+  const unread: string[] = [];
+  if (!routes.length) return { fields: null, unread: ['No route contract was read.'] };
+  for (const route of routes) {
+    const contract = contracts.find(item => item.pageId === route.page);
+    if (!contract?.source) {
+      unread.push(`Route ${route.route}: contract absent`);
+      continue;
+    }
+    const ast = readContractAst(contract.source, contract.path || `${route.page}.defs.ts`);
+    const binding = ast.bindings.filter(item => item.route === route.route);
+    if (binding.length !== 1 || !binding[0].input) {
+      unread.push(`Route ${route.route}: binding not unique`);
+      continue;
+    }
+    const symbols = ast.symbols.filter(item => item.name === binding[0].input);
+    if (symbols.length !== 1) {
+      unread.push(`Route ${route.route}: symbol absent`);
+      continue;
+    }
+    perRoute.push(flattenContractFields(symbols[0].fields).map(field => ({
+      path: field.path,
+      optional: field.optional,
+      writePrecondition: false,
+    })));
+  }
+  if (!perRoute.length) return { fields: null, unread };
+  const [first, ...rest] = perRoute;
+  const shared = first.filter(field => rest.every(list => list.some(item => item.path === field.path)));
+  const marked = new Set(preconditions);
+  return {
+    fields: shared.map(field => ({
+      path: field.path,
+      optional: perRoute.some(list => pathMayBeAbsent(list, field.path)),
+      writePrecondition: marked.has(field.path),
+    })),
+    unread,
+  };
+}
+
+export function flattenContractFields(fields: readonly D1ContractField[]): D1ContractPath[] {
+  return flattenFields(fields);
+}
+
+function pathMayBeAbsent(fields: readonly { path: string; optional: boolean }[], path: string): boolean {
+  const parts = path.split('.');
+  let acc = '';
+  for (const part of parts) {
+    acc = acc ? `${acc}.${part}` : part;
+    if (fields.find(field => field.path === acc)?.optional) return true;
+  }
+  return false;
+}
+
+function walkPreconditions(fields: Record<string, unknown>, prefix: string, out: string[]): void {
+  for (const [key, raw] of Object.entries(fields)) {
+    if (!isRecord(raw)) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (raw.writePrecondition === true) out.push(path);
+    if (isRecord(raw.fields)) walkPreconditions(raw.fields, path, out);
+  }
 }
 
 function capabilitiesFor(body: unknown, operation: string, storage: string): D1CapabilityText[] {

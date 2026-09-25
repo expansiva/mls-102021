@@ -944,6 +944,39 @@ function lifecycleRefIssues(lifecycle: Record<string, unknown>, issues: string[]
   needString(lifecycle, 'symbol', 'data.lifecycle', issues);
 }
 
+function clauseList(value: unknown, path: string, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  value.forEach((clause, index) => {
+    const clausePath = `${path}.${index}`;
+    if (!isRecord(clause)) {
+      issues.push(`Missing field ${clausePath}.`);
+      return;
+    }
+    unknownKeys(clause, ['kind', 'path', 'call', 'present'], clausePath, issues);
+    const kind = needString(clause, 'kind', clausePath, issues);
+    oneOf(kind, ['contract', 'prior'], `${clausePath}.kind`, issues);
+    needString(clause, 'path', clausePath, issues);
+    if (clause.call !== undefined) needString(clause, 'call', clausePath, issues);
+    needBoolean(clause, 'present', clausePath, issues);
+  });
+}
+
+function originIssues(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  unknownKeys(value, ['kind', 'path', 'calls', 'evidence'], path, issues);
+  const kind = needString(value, 'kind', path, issues);
+  oneOf(kind, ['contract', 'context', 'literal', 'prior'], `${path}.kind`, issues);
+  if (value.path !== undefined) needString(value, 'path', path, issues);
+  if (value.calls !== undefined) stringList(value.calls, `${path}.calls`, issues);
+  if (value.evidence !== undefined) needString(value, 'evidence', path, issues);
+}
+
 function mdmBindingIssues(value: unknown, issues: string[]): void {
   if (!isRecord(value)) {
     issues.push('Missing field data.mdm.');
@@ -963,13 +996,15 @@ function mdmBindingIssues(value: unknown, issues: string[]): void {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(call, ['method', 'target', 'shape', 'capabilities', 'alternative', 'arguments', 'result'], path, issues);
+    unknownKeys(call, ['id', 'method', 'target', 'shape', 'capabilities', 'alternative', 'when', 'arguments', 'result'], path, issues);
+    needString(call, 'id', path, issues);
     needString(call, 'method', path, issues);
     needString(call, 'target', path, issues);
     needString(call, 'shape', path, issues);
     stringList(call.capabilities, `${path}.capabilities`, issues);
     needBoolean(call, 'alternative', path, issues);
     stringList(call.result, `${path}.result`, issues);
+    clauseList(call.when, `${path}.when`, issues);
     if (!Array.isArray(call.arguments)) {
       issues.push(`Missing field ${path}.arguments.`);
       return;
@@ -980,13 +1015,14 @@ function mdmBindingIssues(value: unknown, issues: string[]): void {
         issues.push(`Missing field ${argPath}.`);
         return;
       }
-      unknownKeys(arg, ['name', 'role', 'capability', 'path', 'value'], argPath, issues);
+      unknownKeys(arg, ['name', 'role', 'capability', 'path', 'value', 'origin'], argPath, issues);
       needString(arg, 'name', argPath, issues);
       const role = needString(arg, 'role', argPath, issues);
       oneOf(role, ['selector', 'parameter', 'patch'], `${argPath}.role`, issues);
       if (arg.capability !== undefined) needString(arg, 'capability', argPath, issues);
       if (arg.path !== undefined) needString(arg, 'path', argPath, issues);
       if (arg.value !== undefined) needString(arg, 'value', argPath, issues);
+      originIssues(arg.origin, `${argPath}.origin`, issues);
     });
   });
 }

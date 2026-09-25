@@ -23,7 +23,7 @@ import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
-import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
@@ -79,10 +79,16 @@ async function readyHost() {
     const file = rel.endsWith('.defs.txt') ? `${rel.slice(0, -4)}.ts` : rel;
     const info = fileInfoFromDisplay(PROJECT, file);
     assert.ok(info, rel);
-    seed(host, info, readFileSync(path.join(FIXTURE, rel), 'utf8'), 'frozen');
+    let text = readFileSync(path.join(FIXTURE, rel), 'utf8');
+    if (/ontology\/(Profissional|Recepcionista|Paciente)\.defs\.txt$/.test(rel)) {
+      text = text.replace(/"version": \{\n(\s*)"type": "integer"/, '"version": {\n$1"writePrecondition": true,\n$1"type": "integer"');
+    }
+    seed(host, info, text, 'frozen');
   }
+  const contracts = coreUsecaseRequest().contracts;
   for (const pageId of PAGES) {
-    const body = `export const ${pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${pageId}" } as const;\n`;
+    const prepared = contracts.find(item => item.pageId === pageId);
+    const body = prepared?.source || `export const ${pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${pageId}" } as const;\n`;
     seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, body, 'contract');
   }
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/steps/usecases50', shortName: 'prompt', extension: '.md' }, readFileSync(path.join(HERE, 'prompt.md'), 'utf8'), 'prompt');

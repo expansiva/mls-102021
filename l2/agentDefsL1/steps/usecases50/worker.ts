@@ -12,7 +12,7 @@ import {
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { authorizedPayloadNames, capabilityApplies, formatUsecaseContext } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
-import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { mdmCapabilityCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
 
@@ -293,15 +293,8 @@ function knownEmpty(values: readonly string[] | undefined): boolean {
 function pairsFor(entity: D1UsecaseEntity | undefined, operation: string): MdmStepPair[] {
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace || !entity.entityId) return [];
   const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, operation));
-  const bound = bindMdm({
-    entityId: entity.entityId,
-    namespace: entity.namespace,
-    capabilities: entity.capabilities || [],
-    selected,
-    platformFields: entity.platformFields || [],
-  });
   const pairs: MdmStepPair[] = [];
-  for (const call of bound.calls) {
+  for (const call of mdmCapabilityCalls(selected)) {
     for (const capability of call.capabilities) {
       if (!call.method || !capability) continue;
       pairs.push({ call: call.method, capability });

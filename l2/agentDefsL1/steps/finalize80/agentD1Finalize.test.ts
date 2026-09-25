@@ -45,7 +45,11 @@ function mdmOntology(entity: ReturnType<typeof coreUsecaseRequest>['entities'][n
   const capabilities: Record<string, string> = {};
   for (const name of entity.capabilities || []) capabilities[name] = name;
   const fields: Record<string, unknown> = {};
-  for (const field of entity.fields) fields[field.name] = { type: field.type, derived: field.derived };
+  for (const field of entity.fields) {
+    const declared: Record<string, unknown> = { type: field.type, derived: field.derived };
+    if (field.writePrecondition === true) declared.writePrecondition = true;
+    fields[field.name] = declared;
+  }
   for (const path of entity.platformFields || []) {
     const parts = path.split('.');
     let cursor = fields;
@@ -237,6 +241,7 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
       path: `l4/${MODULE}/ontology/${entity.entityId}.defs.ts`,
       text: `export const ${entity.entityId}Ontology = ${JSON.stringify(mdmOntology(entity))} as const;\n`,
     })),
+    ...usecaseRequest.contracts.map(contract => ({ path: contract.path, text: contract.source })),
   ];
   const usecases = buildD1Usecases(usecaseRequest);
   await writeJson(draftFile(PROJECT, MODULE, 'usecases50'), usecases);
@@ -260,8 +265,9 @@ void test('finalize80 reports the open gaps and does not run the earlier phases 
 
   const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '') as D1InputSnapshot;
   for (const page of snapshot.selection.pages) {
+    const prepared = usecaseRequest.contracts.find(item => item.pageId === page.pageId);
     const body = page.routes.map(route => `"${route}": { "output": "Out" }`).join(', ');
-    const text = `export const ${page.pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${page.pageId}", "routes": { ${body} } } as const;\n`;
+    const text = prepared?.source || `export const ${page.pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${page.pageId}", "routes": { ${body} } } as const;\n`;
     const info = fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${page.pageId}.defs.ts`);
     assert.ok(info);
     seed(host, info!, text, 'contract');

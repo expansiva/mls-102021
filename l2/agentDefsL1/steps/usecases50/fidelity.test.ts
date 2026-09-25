@@ -70,7 +70,7 @@ function focused(): { request: D1UsecaseRequest; files: FidelityFile[] } {
       pageId: 'cadastro_profissional',
       path: 'l2/agendaClinica/web/contracts/cadastro_profissional.defs.ts',
       source: `
-        export interface UpdateProfissionalInput { id: string; version: number; name: string }
+        export interface UpdateProfissionalInput { id: string; version: number; details: { identification?: { name: string } } }
         export interface UpdateProfissionalOutput { id: string; version: number }
         export const routes = { "agendaClinica.cadastro_profissional.cmdUpdateProfissional": { input: "UpdateProfissionalInput", output: "UpdateProfissionalOutput" } } as const;
       `,
@@ -102,7 +102,7 @@ function focused(): { request: D1UsecaseRequest; files: FidelityFile[] } {
         record: {
           fields: {
             id: { type: 'uuid', derived: true },
-            version: { type: 'integer', derived: true },
+            version: { type: 'integer', derived: true, writePrecondition: true },
             details: {
               type: 'object',
               fields: {
@@ -284,6 +284,15 @@ void test('removing payload, a rule, an MDM call, a projection or a contract dep
   const call = readUsecaseFidelity(withoutCall, files);
   assert.equal(call.behavior, null);
   assert.equal(call.problems.some(item => item.code === 'MDM_CALL_MISSING'), true);
+
+  const withoutCondition = edited(update, definition => {
+    const mdm = definition.data.mdm as { calls: Array<{ arguments: Array<{ origin?: { evidence?: string } }> }> };
+    const version = mdm.calls[0]?.arguments.find(arg => arg.origin?.evidence === 'writePrecondition');
+    if (version?.origin) delete version.origin.evidence;
+  });
+  const condition = readUsecaseFidelity(withoutCondition, files);
+  assert.equal(condition.behavior, null);
+  assert.equal(condition.problems.some(item => item.code === 'MDM_CALL_MISSING' || item.code === 'MDM_ARGUMENT_UNBOUND'), true);
 
   const withoutProjection = edited(list, definition => {
     const data = definition.data as { routeProjections: unknown[] };

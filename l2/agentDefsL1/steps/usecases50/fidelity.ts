@@ -7,14 +7,16 @@ import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102
 import {
   capabilityApplies,
   capabilityNames,
+  mdmInputFields,
   namespaceOf,
   ontologyTransitions,
   platformFieldPaths,
+  preconditionsFor,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import type { D1MdmArgument, D1MdmClause, D1MdmOrigin, D1MdmPlannedCall, D1UsecaseMdm, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 export interface FidelityFile {
   path: string;
@@ -234,12 +236,22 @@ export function readUsecaseFidelity(
   const mdm = readMdm(data);
   if (ontology && isMdmOntology(ontology)) {
     const names = capabilityNames(ontology);
+    const read = mdmInputFields(
+      contractFiles(files),
+      readPlanRoutes(data).map(route => ({
+        route: route.route,
+        page: pageIdOf(route.contractPath),
+      })),
+      preconditionsFor(files, moduleName, entityId, []),
+    );
     const bound = bindMdm({
       entityId,
       namespace: namespaceOf(ontology),
       capabilities: names,
       selected: names.filter(name => capabilityApplies(name, operation)),
       platformFields: platformFieldPaths(ontology),
+      inputFields: read.fields,
+      contractUnread: read.unread.join('; '),
     });
     for (const gap of bound.gaps) fail(problems, gap.code, usecaseId, gap.evidence);
     if (!mdm) {
@@ -630,21 +642,51 @@ function asCall(value: unknown): D1MdmPlannedCall | null {
   for (const raw of value.arguments) {
     if (!isRecord(raw) || typeof raw.name !== 'string') return null;
     if (raw.role !== 'selector' && raw.role !== 'parameter' && raw.role !== 'patch') return null;
-    const arg: D1MdmArgument = { name: raw.name, role: raw.role };
+    const origin = asOrigin(raw.origin);
+    if (!origin) return null;
+    const arg: D1MdmArgument = { name: raw.name, role: raw.role, origin };
     if (typeof raw.capability === 'string') arg.capability = raw.capability;
     if (typeof raw.path === 'string') arg.path = raw.path;
     if (typeof raw.value === 'string') arg.value = raw.value;
     args.push(arg);
   }
+  if (typeof value.id !== 'string' || !value.id) return null;
+  const when = asWhen(value.when);
+  if (!when) return null;
   return {
+    id: value.id,
     method: value.method as D1MdmPlannedCall['method'],
     target,
     shape,
     capabilities: stringList(value.capabilities),
     alternative: value.alternative,
+    when,
     arguments: args,
     result: stringList(value.result),
   };
+}
+
+function asOrigin(value: unknown): D1MdmOrigin | null {
+  if (!isRecord(value)) return null;
+  if (value.kind !== 'contract' && value.kind !== 'context' && value.kind !== 'literal' && value.kind !== 'prior') return null;
+  const origin: D1MdmOrigin = { kind: value.kind };
+  if (typeof value.path === 'string') origin.path = value.path;
+  if (Array.isArray(value.calls) && value.calls.every(item => typeof item === 'string')) origin.calls = stringList(value.calls);
+  if (typeof value.evidence === 'string') origin.evidence = value.evidence;
+  return origin;
+}
+
+function asWhen(value: unknown): D1MdmClause[] | null {
+  if (!Array.isArray(value)) return null;
+  const clauses: D1MdmClause[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw) || (raw.kind !== 'contract' && raw.kind !== 'prior')) return null;
+    if (typeof raw.path !== 'string' || typeof raw.present !== 'boolean') return null;
+    const clause: D1MdmClause = { kind: raw.kind, path: raw.path, present: raw.present };
+    if (typeof raw.call === 'string') clause.call = raw.call;
+    clauses.push(clause);
+  }
+  return clauses;
 }
 
 function sameCall(left: D1MdmPlannedCall, right: D1MdmPlannedCall): boolean {
@@ -653,20 +695,48 @@ function sameCall(left: D1MdmPlannedCall, right: D1MdmPlannedCall): boolean {
 
 function normalizeCall(call: D1MdmPlannedCall): unknown {
   return {
+    id: call.id,
     method: call.method,
     target: call.target,
     shape: call.shape,
     alternative: call.alternative,
+    when: call.when.map(clause => ({
+      kind: clause.kind,
+      path: clause.path,
+      call: clause.call || '',
+      present: clause.present,
+    })),
     arguments: call.arguments.map(arg => ({
       name: arg.name,
       role: arg.role,
       capability: arg.capability || '',
       path: arg.path || '',
       value: arg.value || '',
+      origin: {
+        kind: arg.origin.kind,
+        path: arg.origin.path || '',
+        calls: arg.origin.calls || [],
+        evidence: arg.origin.evidence || '',
+      },
     })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
     capabilities: [...call.capabilities].sort(),
     result: [...call.result],
   };
+}
+
+function contractFiles(files: readonly FidelityFile[]): Array<{ pageId: string; path: string; source: string }> {
+  const out: Array<{ pageId: string; path: string; source: string }> = [];
+  for (const file of files) {
+    const pageId = pageIdOf(file.path);
+    if (!file.path.includes('/web/contracts/') || !pageId) continue;
+    out.push({ pageId, path: file.path, source: file.text });
+  }
+  return out;
+}
+
+function pageIdOf(contractPath: string): string {
+  const name = contractPath.split('/').pop() || '';
+  return name.endsWith('.defs.ts') ? name.slice(0, -'.defs.ts'.length) : '';
 }
 
 function readContractRefs(data: Record<string, unknown>): Array<{ route: string; symbol: string }> {

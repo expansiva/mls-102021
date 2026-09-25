@@ -46,7 +46,7 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   assert.equal(paciente?.mdm?.namespace, 'agendaClinica');
   assert.equal(paciente?.mdm?.role, 'agendaClinica.Paciente');
   assert.equal(paciente?.mdm?.atomic, false);
-  assert.deepEqual(paciente?.mdm?.calls.map(call => call.method), ['findByDocument', 'findByContact', 'create', 'attachRole']);
+  assert.deepEqual(paciente?.mdm?.calls.map(call => call.method), ['findByDocument', 'create', 'attachRole']);
   assert.equal(paciente?.mdm?.calls.some(call => call.method === 'attachRole' && call.arguments.some(arg => arg.name === 'role' && arg.value === 'agendaClinica.Paciente')), true);
   assert.equal((paciente?.definition?.data as { ports: string[] }).ports.length, 0);
 });
@@ -387,6 +387,14 @@ void test('the six L2 contracts declare route signatures, and a route without a 
       const route = match[2];
       const request = requestForRealRoute(contract, route);
       const build = buildD1Usecases(request);
+      const mdmUpdate = /cmdUpdate(?:Profissional|Recepcionista)$/.test(route);
+      if (mdmUpdate) {
+        assert.equal(build.ok, false, route);
+        assert.equal(build.emit.length, 0, route);
+        assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), true, route);
+        declared += 1;
+        continue;
+      }
       assert.equal(
         build.ok,
         true,
@@ -568,8 +576,8 @@ void test('a derived identity may filter a list or select an update or transitio
   for (const usecaseId of ['updateProfissional', 'updateRecepcionista']) {
     const build = buildRealUsecase(contracts, usecaseId);
     assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
-    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> } | undefined;
-    assert.equal(data?.functions[0].input.some(field => field.name === 'id'), true, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), true, usecaseId);
+    assert.equal(build.emit.length, 0, usecaseId);
     assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
   }
 });
@@ -677,7 +685,9 @@ void test('assigning a derived field stays an error, including a nested homonym 
   const updateVersion = requestOf(realContractSources(), 'updateProfissional');
   const professional = updateVersion.entities.find(item => item.entityId === 'Profissional');
   assert.ok(professional);
-  professional.fields.push({ name: 'version', type: 'integer', derived: true });
+  const versionField = professional.fields.find(field => field.name === 'version');
+  if (versionField) versionField.derived = true;
+  else professional.fields.push({ name: 'version', type: 'integer', derived: true });
   updateVersion.contexts = [inputContext('updateProfissional', updateVersion.routes[0].route, [
     { path: 'id', type: 'string', optional: false },
     { path: 'version', type: 'number', optional: false },

@@ -15,7 +15,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { authorizedPayloadNames, capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { authorizedPayloadNames, capabilityApplies, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { bindMdm, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
@@ -135,7 +135,7 @@ function planUsecase(
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
   const portCalls = resolvePorts(entity, usecase, port, steps, path, problems);
-  const mdm = resolveMdm(entity, usecase, steps, path, problems);
+  const mdm = resolveMdm(request, entity, usecase, routes, steps, path, problems);
   noteAdapter(steps, path, problems);
   noteContext(steps, path, problems);
   const boundary = resolveBoundary(portCalls, mdm, steps, path, problems);
@@ -761,8 +761,10 @@ function resolvePorts(
 }
 
 function resolveMdm(
+  request: D1UsecaseRequest,
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
+  routes: D1UsecaseRequest['routes'],
   steps: readonly D1WorkerStep[],
   path: string,
   problems: D1UsecaseProblem[],
@@ -778,12 +780,19 @@ function resolveMdm(
     return null;
   }
   const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
+  const read = mdmInputFields(
+    request.contracts,
+    routes,
+    preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+  );
   const bound = bindMdm({
     entityId: entity.entityId,
     namespace: entity.namespace,
     capabilities: entity.capabilities || [],
     selected,
     platformFields: entity.platformFields || [],
+    inputFields: read.fields,
+    contractUnread: read.unread.join('; '),
   });
   if (!selected.length) {
     error(problems, 'MDM_CAPABILITY_MISSING', path, `MDM role ${entity.entityId} has no capability for operation ${usecase.operation}. No call was invented.`);
@@ -936,20 +945,34 @@ function storedMdm(mdm: D1UsecaseMdm): {
     namespace: mdm.namespace,
     role: mdm.role,
     atomic: mdm.atomic,
-    calls: mdm.calls.map(call => ({
-      method: call.method,
-      target: call.target,
-      shape: call.shape,
-      capabilities: [...call.capabilities],
-      alternative: call.alternative,
-      arguments: call.arguments.map(arg => storedArgument(arg)),
-      result: [...call.result],
-    })),
+    calls: mdm.calls.map(call => {
+      const stored: D1MdmPlannedCall = {
+        id: call.id,
+        method: call.method,
+        target: call.target,
+        shape: call.shape,
+        capabilities: [...call.capabilities],
+        alternative: call.alternative,
+        when: call.when.map(clause => ({
+          kind: clause.kind,
+          path: clause.path,
+          ...(clause.call ? { call: clause.call } : {}),
+          present: clause.present,
+        })),
+        arguments: call.arguments.map(arg => storedArgument(arg)),
+        result: [...call.result],
+      };
+      return stored;
+    }),
   };
 }
 
 function storedArgument(arg: D1MdmArgument): D1MdmArgument {
-  const stored: D1MdmArgument = { name: arg.name, role: arg.role };
+  const origin: D1MdmArgument['origin'] = { kind: arg.origin.kind };
+  if (arg.origin.path) origin.path = arg.origin.path;
+  if (arg.origin.calls?.length) origin.calls = [...arg.origin.calls];
+  if (arg.origin.evidence) origin.evidence = arg.origin.evidence;
+  const stored: D1MdmArgument = { name: arg.name, role: arg.role, origin };
   if (arg.capability) stored.capability = arg.capability;
   if (arg.path) stored.path = arg.path;
   if (arg.value) stored.value = arg.value;

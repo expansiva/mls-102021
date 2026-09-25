@@ -1,5 +1,11 @@
 # usecases50
 
+## 2026-09-24 (d1_29)
+
+- A route contract that was not read is `MDM_CONTRACT_UNREAD`. The call that needs a contract argument is not emitted. `mdmInputFields` names the route: contract absent, binding not unique, or symbol absent. Callers that only need the method list ask the capability catalog.
+- An MDM argument names its origin: a contract path, `ctx`, an authorized literal, or an earlier call id. A later call is not a source. `expectedVersion` is the input field the ontology marks `writePrecondition`. A field named `version` without that mark is not used, and the plan does not read the current version.
+- `locate.byContact` on the role does not add `findByContact` unless this operation's input declares `contactType` and `value`. An optional document is a `when` on `findByDocument`. `create` runs only when those finds missed. `attachRole` names the `mdmId` it uses. Removing that producer or the skip is `MDM_ARGUMENT_UNBOUND` before the def is emitted. `readUsecaseFidelity` checks the same plan against the contract and ontology texts.
+
 ## 2026-09-23 (d1_24)
 
 - `boundary` comes from the same operation catalog as `source`. A repository operation admits `local`. An MDM operation admits no transaction step, so that branch is omitted. The schema does not offer `external`. The gate still refuses a reply that names it.

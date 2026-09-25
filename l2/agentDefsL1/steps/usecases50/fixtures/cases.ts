@@ -6,7 +6,7 @@ import type {
   D1UsecaseSelection,
   D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { capabilityApplies } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { capabilityApplies, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 /**
@@ -127,7 +127,7 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
       { eventId: 'faltaPacienteRegistrada', on: 'Consulta.registrarFalta' },
       { eventId: 'atendimentoRegistrado', on: 'Consulta.registrarAtendimento' },
     ],
-    contracts: [],
+    contracts: mdmFixtureContracts(),
     plans: [],
     llmCalls: 0,
   };
@@ -141,12 +141,23 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   const steps: D1WorkerStep[] = [{ kind: 'context', source: 'ctx' }];
   if (entity?.storageTarget === 'mdm') {
     const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
+    const routes = usecase.routes.flatMap(routeId => {
+      const route = request.routes.find(item => item.route === routeId);
+      return route ? [route] : [];
+    });
+    const read = mdmInputFields(
+      request.contracts,
+      routes,
+      preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+    );
     const bound = bindMdm({
       entityId: entity.entityId,
       namespace: entity.namespace,
       capabilities: entity.capabilities || [],
       selected,
       platformFields: entity.platformFields || [],
+      inputFields: read.fields,
+      contractUnread: read.unread.join('; '),
     });
     for (const call of bound.calls) {
       for (const capability of call.capabilities) {
@@ -212,6 +223,76 @@ const PACIENTE_PLATFORM = [
   'details.person.privacyConsent',
 ];
 
+/** Contract text for the structural fixture. An absent list is not a stand-in for these fields. */
+function mdmFixtureContracts(): D1UsecaseRequest['contracts'] {
+  const byPage = new Map<string, Array<{ route: string; usecaseId: string }>>();
+  for (const [route, page, , usecaseId] of ROWS) {
+    if (!fixtureFields(usecaseId)) continue;
+    const list = byPage.get(page) || [];
+    list.push({ route, usecaseId });
+    byPage.set(page, list);
+  }
+  const contracts: D1UsecaseRequest['contracts'] = [];
+  for (const [pageId, routes] of byPage) {
+    const blocks: string[] = [];
+    const entries: string[] = [];
+    for (const item of routes) {
+      const tail = item.route.split('.').pop() || item.usecaseId;
+      const raw = tail.startsWith('cmd') || tail.startsWith('qry') ? tail.slice(3) : tail;
+      const stem = `${raw.charAt(0).toUpperCase()}${raw.slice(1)}`;
+      blocks.push(`export interface ${stem}Input ${fixtureType(fixtureFields(item.usecaseId))}`);
+      blocks.push(`export interface ${stem}Output { id: string }`);
+      entries.push(`"${item.route}": { input: "${stem}Input", output: "${stem}Output" }`);
+    }
+    contracts.push({
+      pageId,
+      path: `l2/agendaClinica/web/contracts/${pageId}.defs.ts`,
+      source: `${blocks.join('\n')}\nexport const routes = { ${entries.join(', ')} } as const;\n`,
+    });
+  }
+  return contracts;
+}
+
+function fixtureFields(usecaseId: string): string[] {
+  if (usecaseId === 'updateProfissional') return ['id', 'version', ...PROFISSIONAL_PLATFORM];
+  if (usecaseId === 'updateRecepcionista') return ['id', 'version', ...RECEPCIONISTA_PLATFORM, 'details.agendaClinica'];
+  if (usecaseId === 'createProfissional') return [...PROFISSIONAL_PLATFORM];
+  if (usecaseId === 'createRecepcionista') return [...RECEPCIONISTA_PLATFORM];
+  if (usecaseId === 'createPaciente') return [...PACIENTE_PLATFORM];
+  if (usecaseId === 'listProfissional' || usecaseId === 'listRecepcionista' || usecaseId === 'listPaciente') {
+    return ['id', 'details.identification.name', 'details.identification.docType', 'details.identification.docId'];
+  }
+  return [];
+}
+
+function fixtureType(paths: readonly string[]): string {
+  const root = new Map<string, FixtureNode>();
+  for (const path of paths) {
+    const parts = path.split('.');
+    let level = root;
+    parts.forEach((part, index) => {
+      const node = level.get(part) || { children: new Map<string, FixtureNode>() };
+      level.set(part, node);
+      if (index === parts.length - 1) node.leaf = part === 'version' ? 'number' : 'string';
+      level = node.children;
+    });
+  }
+  return printFixture(root);
+}
+
+interface FixtureNode {
+  leaf?: string;
+  children: Map<string, FixtureNode>;
+}
+
+function printFixture(level: Map<string, FixtureNode>): string {
+  const members = [...level.entries()].map(([name, node]) => {
+    const type = node.children.size ? printFixture(node.children) : node.leaf || 'string';
+    return `${name}: ${type}`;
+  });
+  return `{ ${members.join('; ')} }`;
+}
+
 function mdm(
   entityId: string,
   enumerations: Array<{ path: string; values: string[] }>,
@@ -223,7 +304,10 @@ function mdm(
     storageTarget: 'mdm',
     defPath: `l1/agendaClinica/layer_3_domain/entities/${entityId.charAt(0).toLowerCase()}${entityId.slice(1)}.defs.ts`,
     namespace: 'agendaClinica',
-    fields: [{ name: 'id', type: 'uuid', derived: true }],
+    fields: [
+      { name: 'id', type: 'uuid', derived: true },
+      { name: 'version', type: 'integer', derived: true, writePrecondition: true },
+    ],
     transitions: [],
     rules: [],
     enumerations,

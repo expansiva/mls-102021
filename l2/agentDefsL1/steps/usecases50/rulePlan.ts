@@ -2,7 +2,7 @@
 
 import { isRecord, isStorageConstraintRow } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { bindMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { mdmCapabilityCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 /**
@@ -204,17 +204,9 @@ export function rulePlanForUsecase(input: {
       text: '',
     }));
   const routes = routesForPlan(input.moduleName, input.entityId, input.routes, files);
-  const namespace = fromFile ? namespaceOf(ontology) : input.entity.namespace;
   const storage = fromFile ? storageOf(ontology) : input.entity.storageTarget;
-  const platformFields = fromFile ? platformFieldsOf(ontology) : [...(input.entity.platformFields || [])];
   const mdmMethods = storage === 'mdm'
-    ? bindMdm({
-      entityId: input.entityId,
-      namespace,
-      capabilities,
-      selected: capabilities.filter(name => capabilityApplies(name, input.operation)),
-      platformFields,
-    }).calls.map(call => call.method)
+    ? mdmCapabilityCalls(capabilities.filter(name => capabilityApplies(name, input.operation))).map(call => call.method)
     : [];
   return planRuleApplicability({
     moduleName: input.moduleName,
@@ -375,39 +367,11 @@ function capabilityNamesOf(body: unknown): string[] {
   return Object.keys(caps).filter(name => typeof caps[name] === 'string').sort();
 }
 
-function namespaceOf(body: unknown): string {
-  if (!isRecord(body) || typeof body.roleTag !== 'string') return '';
-  const roleTag = body.roleTag;
-  return roleTag.includes('.') ? roleTag.slice(0, roleTag.indexOf('.')) : roleTag;
-}
-
 function storageOf(body: unknown): string {
   if (!isRecord(body)) return '';
   if (body.kind === 'role') return 'mdm';
   if (isRecord(body.storage) && typeof body.storage.target === 'string') return body.storage.target;
   return '';
-}
-
-function platformFieldsOf(body: unknown): string[] {
-  if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
-  const out: string[] = [];
-  walkPlatform(body.record.fields, '', '', out);
-  out.sort((left, right) => left.localeCompare(right));
-  return out;
-}
-
-function walkPlatform(fields: Record<string, unknown>, prefix: string, inherited: string, out: string[]): void {
-  for (const [key, raw] of Object.entries(fields)) {
-    if (!isRecord(raw)) continue;
-    const path = prefix ? `${prefix}.${key}` : key;
-    const owner = typeof raw.owner === 'string' ? raw.owner : inherited;
-    if (isRecord(raw.fields)) {
-      walkPlatform(raw.fields, path, owner, out);
-      continue;
-    }
-    if (owner !== 'platform' || raw.derived === true) continue;
-    out.push(path);
-  }
 }
 
 function grantsFor(access: unknown, actors: readonly string[], entityId: string): RulePlanGrant[] {
