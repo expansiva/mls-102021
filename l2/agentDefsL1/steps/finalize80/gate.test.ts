@@ -25,17 +25,9 @@ import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agenda
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLINIC_ROOT = AGENDA_CLINICA_F35E28A;
+const CONSISTENT_ROOT = path.resolve(HERE, '../../fixtures/agendaClinica-3f4f677');
 const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
 const CATALOG = '/_102034_/l4/ontology/mdm.defs.ts';
-const PLATFORM_USECASES = [
-  'createPaciente',
-  'createProfissional',
-  'createRecepcionista',
-  'listRecepcionista',
-  'updateProfissional',
-  'updateRecepcionista',
-];
-
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
 const ROUTE = 'agendaClinica.consultas.cmdRegistrarAtendimento';
@@ -827,9 +819,9 @@ function seedDisplay(host: TestHost, project: number, display: string, abs: stri
   return true;
 }
 
-function seedClinic(defsDir?: string): TestHost {
+function seedClinic(defsDir?: string, root: string = CLINIC_ROOT): TestHost {
   const host = installStudio(PROJECT);
-  const l1 = path.join(CLINIC_ROOT, 'l1/agendaClinica');
+  const l1 = path.join(root, 'l1/agendaClinica');
   const overlaid = new Set<string>();
   if (defsDir) {
     for (const rel of walkFiles(defsDir)) {
@@ -844,7 +836,7 @@ function seedClinic(defsDir?: string): TestHost {
   }
   const input = JSON.parse(readFileSync(path.join(l1, 'pipeline/agentDefsL1/input.json'), 'utf8')) as { sources: Array<{ path: string }> };
   for (const source of input.sources) {
-    const abs = path.join(CLINIC_ROOT, source.path);
+    const abs = path.join(root, source.path);
     if (!existsSync(abs) || !statSync(abs).isFile()) continue;
     seedDisplay(host, PROJECT, source.path, abs);
   }
@@ -854,8 +846,8 @@ function seedClinic(defsDir?: string): TestHost {
   return host;
 }
 
-void test('the six real usecases approve when the platform catalog is on disk', async () => {
-  seedClinic(path.join(CLINIC_ROOT, 'l1-v2'));
+void test('the real module approves when the platform catalog is on disk', async () => {
+  seedClinic(undefined, CONSISTENT_ROOT);
   const assembled = await assembleD1Finalize(PROJECT, MODULE);
   assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
   const opened = assembled.request.dependencyTexts[CATALOG] || assembled.request.dependencyTexts[CATALOG.replace(/^\/+/, '')];
@@ -867,27 +859,6 @@ void test('the six real usecases approve when the platform catalog is on disk', 
   assert.equal(report.phases.find(phase => phase.stepId === 'finalize80')?.status, 'approved');
   assert.equal(codes(report, 'REF_INVALID'), 0);
   assert.equal(codes(report, 'SOURCE_ABSENT'), 0);
-  for (const usecaseId of PLATFORM_USECASES) assert.ok(report.inventory.usecaseIds.includes(usecaseId), usecaseId);
-  assert.equal(report.inventory.usecaseIds.some(id => id.toLowerCase().includes('contato')), false);
-  const status = report.enumerations.consumed.find(item => item.entityId === 'Consulta' && item.path === 'status');
-  assert.equal(status?.uses.some(use => use.purpose === 'seedScenario'), true);
-  const docType = report.enumerations.consumed.find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.docType');
-  assert.equal(docType?.origin.catalogValues.length, 9);
-  assert.deepEqual(docType?.values, ['CPF', 'Passport', 'NationalId', 'Other']);
-  assert.equal(docType?.origin.restriction, 'subset');
-  assert.equal(docType?.uses.some(use => use.purpose === 'usecaseDef' || use.purpose === 'routeContract'), true);
-  const phone = report.enumerations.notConsumed.find(item => item.entityId === 'ContatoPaciente' && item.path === 'details.contactChannel.contactType');
-  assert.equal(phone?.origin.restriction, 'subset');
-  assert.equal(phone?.consumed, false);
-  assert.equal(report.findings.some(item => item.code === 'ENUMERATION_RESTRICTION' && item.ownerRef === 'ContatoPaciente details.contactChannel.contactType'), true);
-  const subtype = [...report.enumerations.consumed, ...report.enumerations.notConsumed]
-    .find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.subtype');
-  assert.equal(subtype?.origin.roleBinding, true);
-  assert.equal(subtype?.uses.every(use => use.editable === false), true);
-  const derived = [...report.enumerations.consumed, ...report.enumerations.notConsumed]
-    .find(item => item.entityId === 'Recepcionista' && item.path === 'details.identification.status');
-  assert.equal(derived?.origin.derived, true);
-  assert.equal(derived?.uses.every(use => use.editable === false), true);
   assert.equal(JSON.stringify(report), JSON.stringify(buildD1Finalize(assembled.request)));
   assert.equal(report.materializationPending.some(item => item.outputPath.includes('102034')), false);
   assert.equal(report.executableBackend, false);

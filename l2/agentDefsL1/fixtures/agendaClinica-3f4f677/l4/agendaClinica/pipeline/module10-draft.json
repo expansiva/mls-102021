@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "2026-09-10-ns5-module-v2",
+  "moduleName": "agendaClinica",
+  "title": "Agenda clínica",
+  "userLanguage": "pt-BR",
+  "productLanguages": [
+    "pt-BR"
+  ],
+  "defaultLanguage": "pt-BR",
+  "sourcePrompt": "criar o módulo agendaClinica em português. a clínica tem profissionais (médicos e terapeutas) e pacientes. a recepcionista cadastra pacientes, marca consultas para um profissional em data e hora, confirma por telefone, e registra falta quando o paciente não vem. o profissional vê só a própria agenda do dia e marca a consulta como atendida com uma anotação. não pode haver duas consultas do mesmo profissional no mesmo horário. dois perfis: recepcionista e profissional.",
+  "actors": [
+    {
+      "actorId": "recepcionista",
+      "kind": "internal",
+      "origin": "named",
+      "title": "Recepcionista",
+      "description": "Cadastra pacientes, agenda consultas, confirma consultas por telefone e registra faltas."
+    },
+    {
+      "actorId": "profissional",
+      "kind": "internal",
+      "origin": "named",
+      "title": "Profissional",
+      "description": "Consulta a própria agenda diária e registra o atendimento com uma anotação."
+    }
+  ],
+  "normalizations": [
+    {
+      "kind": "ptToPtBR",
+      "detail": "pt→pt-BR"
+    }
+  ]
+}

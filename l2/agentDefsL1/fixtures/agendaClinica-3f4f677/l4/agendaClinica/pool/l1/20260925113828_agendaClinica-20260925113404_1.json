@@ -1,0 +1,12 @@
+{
+  "from": "l2",
+  "to": "l1",
+  "thread": "agendaClinica-20260925113404",
+  "round": 1,
+  "mode": "implement",
+  "subject": "needs of agendaClinica (web)",
+  "artifacts": [
+    "pool/l1/web/needs.json"
+  ],
+  "body": "consultas: 3 reads / 3 writes\npacientes: 1 reads / 1 writes\nagenda: 1 reads / 1 writes"
+}

@@ -1,0 +1,125 @@
+{
+  "moduleName": "agendaClinica",
+  "businessDomain": "Agenda clínica para cadastro de pacientes, agendamento, confirmação e registro de atendimentos.",
+  "entities": [
+    {
+      "entityId": "Paciente",
+      "kind": "role",
+      "family": "mdm",
+      "title": "Paciente",
+      "description": "Pessoa atendida pela clínica e vinculada ao cadastro mestre da organização.",
+      "displayField": "details.identification.name",
+      "subtype": "Person",
+      "roleTag": "agendaClinica.Paciente",
+      "source": "/_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "entityId": "Profissional",
+      "kind": "role",
+      "family": "mdm",
+      "title": "Profissional",
+      "description": "Médico ou terapeuta da clínica para quem as consultas são agendadas e que registra os próprios atendimentos.",
+      "displayField": "details.identification.name",
+      "writer": "crud",
+      "subtype": "Person",
+      "roleTag": "agendaClinica.Profissional",
+      "source": "/_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "entityId": "Recepcionista",
+      "kind": "role",
+      "family": "mdm",
+      "title": "Recepcionista",
+      "description": "Pessoa da clínica que atua no cadastro de pacientes, agendamento, confirmação telefônica e registro de faltas.",
+      "displayField": "details.identification.name",
+      "writer": "crud",
+      "subtype": "Person",
+      "roleTag": "agendaClinica.Recepcionista",
+      "source": "/_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "kind": "role",
+      "family": "mdm",
+      "title": "Contato do paciente",
+      "description": "Canal de contato mestre vinculado ao paciente, utilizado para a confirmação telefônica de consultas.",
+      "displayField": "details.identification.name",
+      "subtype": "ContactChannel",
+      "roleTag": "agendaClinica.ContatoPaciente",
+      "source": "/_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "entityId": "Consulta",
+      "kind": "entity",
+      "family": "tdm",
+      "title": "Consulta",
+      "description": "Agendamento de atendimento de um paciente com um profissional em data e horário definidos, incluindo confirmação, falta ou atendimento realizado.",
+      "displayField": "scheduledAt",
+      "class": "event",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agendaClinica_consulta",
+        "kind": "relational"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "consultaPaciente",
+      "from": "Consulta",
+      "to": "Paciente",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Cada consulta é agendada para um paciente.",
+      "field": "Consulta.pacienteId"
+    },
+    {
+      "relationshipId": "consultaProfissional",
+      "from": "Consulta",
+      "to": "Profissional",
+      "type": "manyToOne",
+      "required": true,
+      "mode": "fk",
+      "description": "Cada consulta é agendada para um profissional.",
+      "field": "Consulta.profissionalId"
+    },
+    {
+      "relationshipId": "pacienteHasContact",
+      "from": "Paciente",
+      "to": "ContatoPaciente",
+      "type": "oneToMany",
+      "required": false,
+      "mode": "mdmRelationship",
+      "description": "O paciente pode ter canais de contato mestre, inclusive telefone, para confirmação de consultas.",
+      "catalogType": "HasContact"
+    }
+  ],
+  "normalizations": [
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Paciente",
+      "detail": "roleTag agendaClinica.Paciente; source /_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Profissional",
+      "detail": "roleTag agendaClinica.Profissional; source /_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Recepcionista",
+      "detail": "roleTag agendaClinica.Recepcionista; source /_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "ContatoPaciente",
+      "detail": "roleTag agendaClinica.ContatoPaciente; source /_102034_/l4/ontology/mdm.defs.ts"
+    },
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Consulta",
+      "detail": "storage.table agendaClinica_consulta"
+    }
+  ]
+}

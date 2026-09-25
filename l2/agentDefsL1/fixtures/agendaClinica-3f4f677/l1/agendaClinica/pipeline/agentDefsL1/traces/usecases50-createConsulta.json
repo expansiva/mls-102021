@@ -1,0 +1,54 @@
+{
+  "usecaseId": "createConsulta",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for createConsulta.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "port",
+      "call": "create",
+      "port": "ConsultaRepository"
+    }
+  ],
+  "request": {
+    "usecaseId": "createConsulta",
+    "bytes": 3015,
+    "sha256": "sha256:7210ce2258bbc666f8cb2ddfa6956208c8e1bda924ca9b39bef472a1ec027444",
+    "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+    "sourceHashes": [
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+        "sha256": "sha256:a9d335bdb8b3b5ad429ad4f5b6e49946f5bf2d51d4443300bd2cbf46c9b8a039"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:22288ce4e7d7522f28879cad28e2582697aebe9124a685a7fc172db1a6e4e65b"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+        "sha256": "sha256:863076673e14c7e7790a944533d03b821034d2c214a392837b2add780e50e190"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/confirmarConsultaPorTelefone.defs.ts",
+        "sha256": "sha256:05e19ede666cffec8343b31911cce2d9f9699af65d16921b26c49921f63d52a0"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+        "sha256": "sha256:044eda5040f80a5f833f7ac1527e698e33cd9f35967ee880370deafe0f841c71"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Consulta.defs.ts",
+        "sha256": "sha256:d288780083aeb12e484740db46702ac341de938194d3380533c93b28200c9552"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:d4628ab1a779f77abead481a10a4db8abb887431b4e7ca7f02988b806076e953"
+      }
+    ],
+    "text": "Usecase createConsulta is already chosen. Do not rename it.\nEntity Consulta. Operation create. Storage moduleDatabase.\nMDM namespace: (none).\n\nThis operation is not a lifecycle transition.\n\nRoute agendaClinica.consultas.cmdCreateConsulta\nContract: l2/agendaClinica/web/contracts/consultas.defs.ts\nInput CreateConsultaInput\n- pacienteId: string\n- profissionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"noShow\" | \"attended\"\n- details: object\n- details.telephoneConfirmation?: object\n- details.telephoneConfirmation.confirmedAt: string\nOutput CreateConsultaOutput\n- id: string\n- version: number\n- pacienteId: string\n- profissionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"noShow\" | \"attended\"\n- details: object\n- details.telephoneConfirmation?: object\n- details.telephoneConfirmation.confirmedAt: string\nAccess grant recepcionistaGestaoAgenda\nActor: recepcionista\nScope: organization\nAbrange os cadastros e as consultas de toda a clínica necessários ao trabalho da recepção.\nDisclosure fieldsOnly: Expõe os dados cadastrais e operacionais necessários à recepção, sem acesso aos dados pessoais do paciente nem à anotação clínica do atendimento.\nAllowed fields:\n- Paciente.id\n- Paciente.version\n- Paciente.details.identification\n- Paciente.details.base\n- Paciente.details.general\n- Paciente.details.agendaClinica\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.base\n- Profissional.details.person\n- Profissional.details.general\n- Profissional.details.agendaClinica\n- Recepcionista.id\n- Recepcionista.version\n- Recepcionista.details.identification\n- Recepcionista.details.base\n- Recepcionista.details.person\n- Recepcionista.details.general\n- Recepcionista.details.agendaClinica\n- ContatoPaciente.id\n- ContatoPaciente.version\n- ContatoPaciente.details.identification\n- ContatoPaciente.details.contactChannel\n- ContatoPaciente.details.general\n- ContatoPaciente.details.agendaClinica\n- Consulta.id\n- Consulta.version\n- Consulta.pacienteId\n- Consulta.profissionalId\n- Consulta.scheduledAt\n- Consulta.status\n- Consulta.details.telephoneConfirmation\nPending consultaHorarioProfissionalUnico\nGap: RULE_UNBOUND\nSource: l4/agendaClinica/rules.defs.ts\nNão pode haver duas consultas para o mesmo profissional na mesma data e horário.\n\nPort ConsultaRepository\ncreate(Consulta): Consulta\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- port: kind, call, port\n  call: create\n  port: ConsultaRepository\n- transaction: kind, boundary\n  boundary: local\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

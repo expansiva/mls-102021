@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2026-09-24-m1-receipt-v1",
+  "runId": "d1",
+  "candidateId": "",
+  "defPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts",
+  "artifactType": "integrationOutbound",
+  "artifactId": "outbound",
+  "recipeVersion": "d1",
+  "semanticHash": "sha256:6862dee20cb30e3bc280dece20848038b9bf45bb781b8de24d4f84c6bd484f62",
+  "dependencyHashes": {},
+  "sourceHashes": {},
+  "outputHashes": {},
+  "stage": "plan",
+  "verifications": [],
+  "failures": [],
+  "attempts": 0,
+  "reason": "INTEGRATION_UNBOUND: registrarAtendimento has no runtime mechanism."
+}

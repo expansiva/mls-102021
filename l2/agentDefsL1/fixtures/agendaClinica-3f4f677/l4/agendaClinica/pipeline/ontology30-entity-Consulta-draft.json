@@ -1,0 +1,247 @@
+{
+  "entity": {
+    "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+    "moduleName": "agendaClinica",
+    "entityId": "Consulta",
+    "title": "Consulta",
+    "description": "Agendamento de atendimento de um paciente com um profissional em data e horário definidos, incluindo confirmação, falta ou atendimento realizado.",
+    "displayField": "scheduledAt",
+    "relationships": {
+      "paciente": {
+        "relationshipId": "consultaPaciente",
+        "to": "Paciente",
+        "via": "Consulta.pacienteId",
+        "cardinality": "N:1",
+        "title": "Paciente da consulta",
+        "description": "Cada consulta é agendada para um paciente.",
+        "mode": "fk",
+        "required": "Sempre",
+        "role": "paciente"
+      },
+      "profissional": {
+        "relationshipId": "consultaProfissional",
+        "to": "Profissional",
+        "via": "Consulta.profissionalId",
+        "cardinality": "N:1",
+        "title": "Profissional da consulta",
+        "description": "Cada consulta é atribuída a um profissional.",
+        "mode": "fk",
+        "required": "Sempre",
+        "role": "profissional"
+      }
+    },
+    "capabilities": {
+      "read.byId": "Lê uma consulta pelo identificador da linha · consulta o repositório pelo id · recepcionista e profissional ao abrir uma consulta autorizada.",
+      "locate.byColumn": "Lista consultas por paciente, profissional, data e situação · filtra e ordena pelas colunas indexadas com paginação · recepcionista para localizar consultas e profissional para ver a própria agenda diária.",
+      "count": "Conta consultas conforme os filtros informados · executa a contagem com os mesmos critérios da lista · recepcionista e profissional em cabeçalhos de agenda.",
+      "listByForeignKey": "Lista consultas vinculadas a um paciente ou profissional · consulta pelas chaves estrangeiras pacienteId e profissionalId · recepcionista e profissional nas agendas e históricos permitidos.",
+      "create": "Cria uma consulta agendada · insere paciente, profissional, data e horário e valida a chave única · recepcionista ao realizar o agendamento.",
+      "update": "Registra a confirmação telefônica de uma consulta agendada · atualiza os detalhes de confirmação pelo identificador da consulta · recepcionista.",
+      "transition": "Move a consulta entre as situações permitidas · atualiza a coluna de situação com as regras da transição · recepcionista ao registrar falta e profissional ao registrar atendimento.",
+      "uniqueKey": "Impede dois agendamentos do mesmo profissional no mesmo horário · aplica índice único em profissional e data/hora · motor da plataforma ao criar ou alterar uma consulta.",
+      "read.mdmRecord": "Lê os dados mestres do paciente e do profissional referenciados · hidrata os registros MDM pelos identificadores estrangeiros · recepcionista e profissional nas telas autorizadas."
+    },
+    "rules": [
+      "consultaHorarioProfissionalUnico",
+      "consultaSomenteAgendadaPodeRegistrarFalta",
+      "consultaSomenteAgendadaPodeRegistrarAtendimento",
+      "anotacaoObrigatoriaNoAtendimento",
+      "profissionalAtendeSomentePropriaConsulta"
+    ],
+    "kind": "entity",
+    "class": "event",
+    "storage": {
+      "target": "moduleDatabase",
+      "table": "agendaClinica_consulta",
+      "kind": "relational"
+    },
+    "record": {
+      "fields": {
+        "id": {
+          "type": "uuid",
+          "required": true,
+          "derived": true,
+          "indexed": true,
+          "title": "Id"
+        },
+        "version": {
+          "type": "integer",
+          "required": true,
+          "derived": true
+        },
+        "pacienteId": {
+          "type": "record",
+          "required": true,
+          "indexed": true,
+          "of": "Address",
+          "to": [
+            "Paciente"
+          ],
+          "title": "Paciente",
+          "description": "Paciente para quem a consulta foi agendada.",
+          "maxLength": 0,
+          "min": 0,
+          "max": 0
+        },
+        "profissionalId": {
+          "type": "record",
+          "required": true,
+          "indexed": true,
+          "of": "Address",
+          "to": [
+            "Profissional"
+          ],
+          "title": "Profissional",
+          "description": "Profissional responsável por realizar a consulta.",
+          "maxLength": 0,
+          "min": 0,
+          "max": 0
+        },
+        "scheduledAt": {
+          "type": "timestamp",
+          "required": true,
+          "indexed": true,
+          "of": "Address",
+          "title": "Data e horário",
+          "description": "Data e horário em que a consulta está marcada; é usado para consultar a agenda diária do profissional.",
+          "maxLength": 0,
+          "min": 0,
+          "max": 0
+        },
+        "status": {
+          "type": "enum",
+          "required": true,
+          "indexed": true,
+          "of": "Address",
+          "values": [
+            {
+              "value": "scheduled",
+              "title": "Agendada",
+              "description": "Consulta marcada e ainda pendente de realização ou registro de falta."
+            },
+            {
+              "value": "noShow",
+              "title": "Falta registrada",
+              "description": "Paciente não compareceu à consulta."
+            },
+            {
+              "value": "attended",
+              "title": "Atendida",
+              "description": "Atendimento realizado pelo profissional."
+            }
+          ],
+          "title": "Situação",
+          "description": "Situação operacional da consulta.",
+          "maxLength": 0,
+          "min": 0,
+          "max": 0
+        },
+        "details": {
+          "type": "object",
+          "required": true,
+          "of": "Address",
+          "title": "Detalhes da consulta",
+          "description": "Informações da consulta que não são usadas para filtro, ordenação ou unicidade.",
+          "maxLength": 0,
+          "min": 0,
+          "max": 0,
+          "fields": {
+            "telephoneConfirmation": {
+              "type": "object",
+              "of": "Address",
+              "title": "Confirmação por telefone",
+              "description": "Registro da confirmação telefônica feita pela recepcionista.",
+              "maxLength": 0,
+              "min": 0,
+              "max": 0,
+              "fields": {
+                "confirmedAt": {
+                  "type": "timestamp",
+                  "required": true,
+                  "of": "Address",
+                  "title": "Confirmada em",
+                  "description": "Data e horário em que a consulta foi confirmada por telefone.",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                }
+              }
+            },
+            "attendanceNote": {
+              "type": "text",
+              "of": "Address",
+              "title": "Anotação do atendimento",
+              "description": "Anotação registrada pelo profissional ao concluir o atendimento.",
+              "maxLength": 0,
+              "min": 0,
+              "max": 0
+            }
+          }
+        }
+      }
+    },
+    "uniqueKeys": [
+      [
+        "profissionalId",
+        "scheduledAt"
+      ]
+    ],
+    "lifecycleStates": [
+      {
+        "state": "scheduled",
+        "reachedBy": "actor"
+      },
+      {
+        "state": "noShow",
+        "reachedBy": "actor"
+      },
+      {
+        "state": "attended",
+        "reachedBy": "actor"
+      }
+    ],
+    "transitions": [
+      {
+        "transitionId": "registrarFalta",
+        "from": [
+          "scheduled"
+        ],
+        "to": "noShow",
+        "by": [
+          "recepcionista"
+        ],
+        "description": "Registra a falta quando o paciente não comparece à consulta agendada.",
+        "payload": [],
+        "ruleRefs": [
+          "consultaSomenteAgendadaPodeRegistrarFalta"
+        ]
+      },
+      {
+        "transitionId": "registrarAtendimento",
+        "from": [
+          "scheduled"
+        ],
+        "to": "attended",
+        "by": [
+          "profissional"
+        ],
+        "description": "Conclui a consulta própria como atendida e registra a anotação do atendimento.",
+        "payload": [
+          "details.attendanceNote"
+        ],
+        "ruleRefs": [
+          "consultaSomenteAgendadaPodeRegistrarAtendimento",
+          "anotacaoObrigatoriaNoAtendimento",
+          "profissionalAtendeSomentePropriaConsulta"
+        ]
+      }
+    ]
+  },
+  "normalizations": [
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Consulta",
+      "detail": "record.fields.id, record.fields.version"
+    }
+  ]
+}

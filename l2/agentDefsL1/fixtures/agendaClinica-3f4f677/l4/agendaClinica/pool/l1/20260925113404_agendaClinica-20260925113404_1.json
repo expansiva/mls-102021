@@ -1,0 +1,31 @@
+{
+  "from": "l4",
+  "to": "l1",
+  "thread": "agendaClinica-20260925113404",
+  "round": 1,
+  "mode": "implement",
+  "subject": "Changed artifacts of agendaClinica",
+  "artifacts": [
+    "access.defs.ts",
+    "integration.defs.ts",
+    "journeys/agendarConsulta.defs.ts",
+    "journeys/cadastrarPaciente.defs.ts",
+    "journeys/confirmarConsultaPorTelefone.defs.ts",
+    "journeys/consultarAgendaDiaria.defs.ts",
+    "journeys/index.defs.ts",
+    "journeys/registrarAtendimento.defs.ts",
+    "journeys/registrarFalta.defs.ts",
+    "module.defs.ts",
+    "ontology/Consulta.defs.ts",
+    "ontology/ContatoPaciente.defs.ts",
+    "ontology/Paciente.defs.ts",
+    "ontology/Profissional.defs.ts",
+    "ontology/Recepcionista.defs.ts",
+    "ontology/index.defs.ts",
+    "rules.defs.ts",
+    "workflows.defs.ts",
+    "pool/l1/web/l4diff.json",
+    "pool/l2/web/l4diff.json"
+  ],
+  "body": "Evaluate and dispatch. The recipient decides what to do with these artifacts."
+}

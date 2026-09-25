@@ -1,0 +1,4744 @@
+{
+  "schemaVersion": "2026-09-21-d1-usecases-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "llmCalls": 8,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "Consulta",
+      "path": "status",
+      "values": [
+        "scheduled",
+        "noShow",
+        "attended"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.contactChannel.contactType",
+      "values": [
+        "Phone"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.identification.subtype",
+      "values": [
+        "ContactChannel"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Paciente",
+      "path": "details.identification.docType",
+      "values": [
+        "CPF",
+        "NationalId",
+        "Passport",
+        "Other"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Paciente",
+      "path": "details.identification.subtype",
+      "values": [
+        "Person"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.docType",
+      "values": [
+        "CPF",
+        "Passport",
+        "NationalId",
+        "Other"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.subtype",
+      "values": [
+        "Person"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Usecase projection has no values slot. Enum values stay on the domain draft."
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createConsulta",
+      "entityId": "Consulta",
+      "operation": "create",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createConsulta.defs.ts",
+      "routes": [
+        "agendaClinica.consultas.cmdCreateConsulta"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "port",
+          "call": "create",
+          "port": "ConsultaRepository"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createConsulta",
+          "entityId": "Consulta",
+          "operation": "create",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "createConsulta",
+              "input": [
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdCreateConsulta",
+                  "symbol": "CreateConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdCreateConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "create"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "create",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "consultaHorarioProfissionalUnico",
+              "origin": "l4/agendaClinica/rules.defs.ts#consultaHorarioProfissionalUnico",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "RULE_UNBOUND"
+            },
+            {
+              "ruleId": "",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#uniqueKeys",
+              "consumer": "operation:create",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "createPaciente",
+      "entityId": "Paciente",
+      "operation": "create",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createPaciente.defs.ts",
+      "routes": [
+        "agendaClinica.pacientes.cmdCreatePaciente"
+      ],
+      "trustedContext": "ctx",
+      "mdm": {
+        "namespace": "agendaClinica",
+        "role": "agendaClinica.Paciente",
+        "atomic": false,
+        "calls": [
+          {
+            "id": "findDocument",
+            "method": "findByDocument",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "register.createOrAttach"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.docType",
+                "present": true
+              },
+              {
+                "kind": "contract",
+                "path": "details.identification.docId",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "docType",
+                "role": "selector",
+                "path": "details.identification.docType",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docType"
+                }
+              },
+              {
+                "name": "docId",
+                "role": "selector",
+                "path": "details.identification.docId",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docId"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          },
+          {
+            "id": "createPerson",
+            "method": "create",
+            "target": "entity",
+            "shape": "write",
+            "capabilities": [
+              "register.createOrAttach"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "prior",
+                "call": "findDocument",
+                "path": "mdmId",
+                "present": false
+              }
+            ],
+            "arguments": [
+              {
+                "name": "countryCode",
+                "role": "patch",
+                "path": "details.identification.countryCode",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.countryCode"
+                },
+                "capability": "register.createOrAttach"
+              },
+              {
+                "name": "docId",
+                "role": "patch",
+                "path": "details.identification.docId",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docId"
+                },
+                "capability": "register.createOrAttach"
+              },
+              {
+                "name": "docType",
+                "role": "patch",
+                "path": "details.identification.docType",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docType"
+                },
+                "capability": "register.createOrAttach"
+              },
+              {
+                "name": "name",
+                "role": "patch",
+                "path": "details.identification.name",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.name"
+                },
+                "capability": "register.createOrAttach"
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "alreadyExists"
+            ]
+          },
+          {
+            "id": "attachRole",
+            "method": "attachRole",
+            "target": "entity",
+            "shape": "write",
+            "capabilities": [
+              "register.createOrAttach"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmId",
+                "role": "selector",
+                "origin": {
+                  "kind": "prior",
+                  "path": "mdmId",
+                  "calls": [
+                    "findDocument",
+                    "createPerson"
+                  ]
+                }
+              },
+              {
+                "name": "role",
+                "role": "parameter",
+                "value": "agendaClinica.Paciente",
+                "origin": {
+                  "kind": "literal",
+                  "evidence": "role"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version"
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "findByDocument",
+          "entity": "Paciente",
+          "capability": "register.createOrAttach"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "create",
+          "entity": "Paciente",
+          "capability": "register.createOrAttach"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "attachRole",
+          "entity": "Paciente",
+          "capability": "register.createOrAttach"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Paciente.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createPaciente",
+          "entityId": "Paciente",
+          "operation": "create",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "createPaciente",
+              "input": [
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Paciente.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.pacientes.cmdCreatePaciente",
+                  "symbol": "CreatePacienteOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.pacientes.cmdCreatePaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "create",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "attachRole",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            }
+          ],
+          "uses": [],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Paciente",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "findDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "createPerson",
+                "method": "create",
+                "target": "entity",
+                "shape": "write",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "prior",
+                    "path": "mdmId",
+                    "call": "findDocument",
+                    "present": false
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "countryCode",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.countryCode"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.countryCode"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.docId"
+                  },
+                  {
+                    "name": "docType",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "name",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "alreadyExists"
+                ]
+              },
+              {
+                "id": "attachRole",
+                "method": "attachRole",
+                "target": "entity",
+                "shape": "write",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "prior",
+                      "path": "mdmId",
+                      "calls": [
+                        "findDocument",
+                        "createPerson"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "role",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Paciente"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "listConsulta",
+      "entityId": "Consulta",
+      "operation": "list",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listConsulta.defs.ts",
+      "routes": [
+        "agendaClinica.agenda.qryListConsulta",
+        "agendaClinica.consultas.qryListConsulta"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "port",
+          "call": "list",
+          "port": "ConsultaRepository"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/agenda.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listConsulta",
+          "entityId": "Consulta",
+          "operation": "list",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listConsulta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.agenda.qryListConsulta",
+                  "symbol": "ListConsultaOutput"
+                },
+                {
+                  "route": "agendaClinica.consultas.qryListConsulta",
+                  "symbol": "ListConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.agenda.qryListConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/agenda.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            },
+            {
+              "route": "agendaClinica.consultas.qryListConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "list"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "list",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "listPaciente",
+      "entityId": "Paciente",
+      "operation": "list",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listPaciente.defs.ts",
+      "routes": [
+        "agendaClinica.consultas.qryListPaciente",
+        "agendaClinica.pacientes.qryListPaciente"
+      ],
+      "trustedContext": "ctx",
+      "mdm": {
+        "namespace": "agendaClinica",
+        "role": "agendaClinica.Paciente",
+        "atomic": false,
+        "calls": [
+          {
+            "id": "get",
+            "method": "get",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "read.byId"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmId",
+                "role": "selector",
+                "path": "id",
+                "origin": {
+                  "kind": "contract",
+                  "path": "id"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          },
+          {
+            "id": "findByDocument",
+            "method": "findByDocument",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "locate.byDocument"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.docType",
+                "present": true
+              },
+              {
+                "kind": "contract",
+                "path": "details.identification.docId",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "docType",
+                "role": "selector",
+                "path": "details.identification.docType",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docType"
+                }
+              },
+              {
+                "name": "docId",
+                "role": "selector",
+                "path": "details.identification.docId",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docId"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          },
+          {
+            "id": "listByName",
+            "method": "listByType",
+            "target": "collection",
+            "shape": "collection",
+            "capabilities": [
+              "locate.byName"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.name",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "type",
+                "role": "parameter",
+                "value": "agendaClinica.Paciente",
+                "origin": {
+                  "kind": "literal",
+                  "evidence": "role"
+                }
+              },
+              {
+                "name": "name",
+                "role": "selector",
+                "path": "details.identification.name",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.name"
+                }
+              }
+            ],
+            "result": [
+              "items",
+              "page",
+              "pageSize",
+              "total"
+            ]
+          },
+          {
+            "id": "listLinks",
+            "method": "relatedOfMany",
+            "target": "collection",
+            "shape": "collection",
+            "capabilities": [
+              "listLinks"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmIds",
+                "role": "selector",
+                "path": "id",
+                "origin": {
+                  "kind": "contract",
+                  "path": "id"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "relationshipId",
+              "type",
+              "direction"
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "get",
+          "entity": "Paciente",
+          "capability": "read.byId"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "listByType",
+          "entity": "Paciente",
+          "capability": "locate.byName"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "findByDocument",
+          "entity": "Paciente",
+          "capability": "locate.byDocument"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "relatedOfMany",
+          "entity": "Paciente",
+          "capability": "listLinks"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Paciente.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listPaciente",
+          "entityId": "Paciente",
+          "operation": "list",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listPaciente",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
+                  "fieldRef": "Paciente.details"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Paciente.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.qryListPaciente",
+                  "symbol": "ListPacienteOutput"
+                },
+                {
+                  "route": "agendaClinica.pacientes.qryListPaciente",
+                  "symbol": "ListPacienteOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.qryListPaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            },
+            {
+              "route": "agendaClinica.pacientes.qryListPaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "get",
+              "entity": "Paciente",
+              "capability": "read.byId"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "listByType",
+              "entity": "Paciente",
+              "capability": "locate.byName"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Paciente",
+              "capability": "locate.byDocument"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "relatedOfMany",
+              "entity": "Paciente",
+              "capability": "listLinks"
+            }
+          ],
+          "uses": [
+            {
+              "path": "details.identification.subtype",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Paciente",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "findByDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "locate.byDocument"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "listByName",
+                "method": "listByType",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.byName"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "type",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Paciente"
+                  },
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "page",
+                  "pageSize",
+                  "total"
+                ]
+              },
+              {
+                "id": "listLinks",
+                "method": "relatedOfMany",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "listLinks"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmIds",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "relationshipId",
+                  "type",
+                  "direction"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "listProfissional",
+      "entityId": "Profissional",
+      "operation": "list",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listProfissional.defs.ts",
+      "routes": [
+        "agendaClinica.consultas.qryListProfissional"
+      ],
+      "trustedContext": "ctx",
+      "mdm": {
+        "namespace": "agendaClinica",
+        "role": "agendaClinica.Profissional",
+        "atomic": false,
+        "calls": [
+          {
+            "id": "get",
+            "method": "get",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "read.byId"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmId",
+                "role": "selector",
+                "path": "id",
+                "origin": {
+                  "kind": "contract",
+                  "path": "id"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          },
+          {
+            "id": "findByDocument",
+            "method": "findByDocument",
+            "target": "entity",
+            "shape": "point",
+            "capabilities": [
+              "locate.byDocument"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.docType",
+                "present": true
+              },
+              {
+                "kind": "contract",
+                "path": "details.identification.docId",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "docType",
+                "role": "selector",
+                "path": "details.identification.docType",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docType"
+                }
+              },
+              {
+                "name": "docId",
+                "role": "selector",
+                "path": "details.identification.docId",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.docId"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "version",
+              "details"
+            ]
+          },
+          {
+            "id": "listByName",
+            "method": "listByType",
+            "target": "collection",
+            "shape": "collection",
+            "capabilities": [
+              "locate.byName"
+            ],
+            "alternative": false,
+            "when": [
+              {
+                "kind": "contract",
+                "path": "details.identification.name",
+                "present": true
+              }
+            ],
+            "arguments": [
+              {
+                "name": "type",
+                "role": "parameter",
+                "value": "agendaClinica.Profissional",
+                "origin": {
+                  "kind": "literal",
+                  "evidence": "role"
+                }
+              },
+              {
+                "name": "name",
+                "role": "selector",
+                "path": "details.identification.name",
+                "origin": {
+                  "kind": "contract",
+                  "path": "details.identification.name"
+                }
+              }
+            ],
+            "result": [
+              "items",
+              "page",
+              "pageSize",
+              "total"
+            ]
+          },
+          {
+            "id": "listLinks",
+            "method": "relatedOfMany",
+            "target": "collection",
+            "shape": "collection",
+            "capabilities": [
+              "listLinks"
+            ],
+            "alternative": false,
+            "when": [],
+            "arguments": [
+              {
+                "name": "mdmIds",
+                "role": "selector",
+                "path": "id",
+                "origin": {
+                  "kind": "contract",
+                  "path": "id"
+                }
+              }
+            ],
+            "result": [
+              "mdmId",
+              "relationshipId",
+              "type",
+              "direction"
+            ]
+          }
+        ],
+        "gaps": []
+      },
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "get",
+          "entity": "Profissional",
+          "capability": "read.byId"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "listByType",
+          "entity": "Profissional",
+          "capability": "locate.byName"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "findByDocument",
+          "entity": "Profissional",
+          "capability": "locate.byDocument"
+        },
+        {
+          "kind": "mdm",
+          "namespace": "agendaClinica",
+          "call": "relatedOfMany",
+          "entity": "Profissional",
+          "capability": "listLinks"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listProfissional",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Profissional.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listProfissional",
+          "entityId": "Profissional",
+          "operation": "list",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listProfissional",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Profissional.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
+                  "fieldRef": "Profissional.details"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Profissional.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Profissional.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: { \"occupation\"?: string; }; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Profissional.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.qryListProfissional",
+                  "symbol": "ListProfissionalOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.qryListProfissional",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "get",
+              "entity": "Profissional",
+              "capability": "read.byId"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "listByType",
+              "entity": "Profissional",
+              "capability": "locate.byName"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Profissional",
+              "capability": "locate.byDocument"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "relatedOfMany",
+              "entity": "Profissional",
+              "capability": "listLinks"
+            }
+          ],
+          "uses": [
+            {
+              "path": "details.identification.status",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "details.identification.subtype",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Profissional",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "findByDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "locate.byDocument"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "listByName",
+                "method": "listByType",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.byName"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "type",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Profissional"
+                  },
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "page",
+                  "pageSize",
+                  "total"
+                ]
+              },
+              {
+                "id": "listLinks",
+                "method": "relatedOfMany",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "listLinks"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmIds",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "relationshipId",
+                  "type",
+                  "direction"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "registrarAtendimento",
+      "entityId": "Consulta",
+      "operation": "transition",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts",
+      "routes": [
+        "agendaClinica.agenda.cmdRegistrarAtendimento"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "rule",
+          "ruleId": "anotacaoObrigatoriaNoAtendimento"
+        },
+        {
+          "kind": "rule",
+          "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento"
+        },
+        {
+          "kind": "rule",
+          "ruleId": "profissionalAtendeSomentePropriaConsulta"
+        },
+        {
+          "kind": "transition",
+          "transitionId": "registrarAtendimento",
+          "payload": [
+            "details.attendanceNote"
+          ]
+        },
+        {
+          "kind": "port",
+          "call": "transition",
+          "port": "ConsultaRepository"
+        },
+        {
+          "kind": "effect",
+          "eventId": "registrarAtendimento"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "registrarAtendimento",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/agenda.defs.ts",
+          "_102047_/l4/agendaClinica/integration.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "registrarAtendimento",
+          "entityId": "Consulta",
+          "operation": "transition",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [
+            "anotacaoObrigatoriaNoAtendimento",
+            "consultaSomenteAgendadaPodeRegistrarAtendimento",
+            "profissionalAtendeSomentePropriaConsulta"
+          ],
+          "functions": [
+            {
+              "functionName": "registrarAtendimento",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"attendanceNote\"?: string; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"attendanceNote\"?: string; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+                  "symbol": "RegistrarAtendimentoOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+              "contractPath": "l2/agendaClinica/web/contracts/agenda.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "transition"
+          ],
+          "transactional": false,
+          "effects": [
+            {
+              "eventId": "registrarAtendimento",
+              "path": "l4/agendaClinica/integration.defs.ts",
+              "symbol": "registrarAtendimento"
+            }
+          ],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "anotacaoObrigatoriaNoAtendimento"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "profissionalAtendeSomentePropriaConsulta"
+            },
+            {
+              "kind": "transition",
+              "transitionId": "registrarAtendimento",
+              "payload": [
+                "details.attendanceNote"
+              ]
+            },
+            {
+              "kind": "port",
+              "call": "transition",
+              "port": "ConsultaRepository"
+            },
+            {
+              "kind": "effect",
+              "eventId": "registrarAtendimento"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            },
+            {
+              "path": "details.attendanceNote",
+              "role": "write",
+              "source": "payload"
+            }
+          ],
+          "rules": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "anotacaoObrigatoriaNoAtendimento"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "consultaSomenteAgendadaPodeRegistrarAtendimento"
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "profissionalAtendeSomentePropriaConsulta"
+            }
+          ],
+          "rulePlan": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "lifecycle": {
+            "transitionId": "registrarAtendimento",
+            "payload": [
+              "details.attendanceNote"
+            ],
+            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "symbol": "registrarAtendimento"
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "registrarFalta",
+      "entityId": "Consulta",
+      "operation": "transition",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarFalta.defs.ts",
+      "routes": [
+        "agendaClinica.consultas.cmdRegistrarFalta"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "port",
+          "call": "transition",
+          "port": "ConsultaRepository"
+        },
+        {
+          "kind": "rule",
+          "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta"
+        },
+        {
+          "kind": "transition",
+          "transitionId": "registrarFalta",
+          "payload": []
+        },
+        {
+          "kind": "effect",
+          "eventId": "registrarFalta"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "registrarFalta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/integration.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "registrarFalta",
+          "entityId": "Consulta",
+          "operation": "transition",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [
+            "consultaSomenteAgendadaPodeRegistrarFalta"
+          ],
+          "functions": [
+            {
+              "functionName": "registrarFalta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdRegistrarFalta",
+                  "symbol": "RegistrarFaltaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdRegistrarFalta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "transition"
+          ],
+          "transactional": false,
+          "effects": [
+            {
+              "eventId": "registrarFalta",
+              "path": "l4/agendaClinica/integration.defs.ts",
+              "symbol": "registrarFalta"
+            }
+          ],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "transition",
+              "port": "ConsultaRepository"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta"
+            },
+            {
+              "kind": "transition",
+              "transitionId": "registrarFalta",
+              "payload": []
+            },
+            {
+              "kind": "effect",
+              "eventId": "registrarFalta"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            }
+          ],
+          "rules": [
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "consultaSomenteAgendadaPodeRegistrarFalta"
+            }
+          ],
+          "rulePlan": [
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarFalta.ruleRefs",
+              "consumer": "usecase:registrarFalta",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "lifecycle": {
+            "transitionId": "registrarFalta",
+            "payload": [],
+            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "symbol": "registrarFalta"
+          }
+        }
+      }
+    },
+    {
+      "usecaseId": "updateConsulta",
+      "entityId": "Consulta",
+      "operation": "update",
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts",
+      "routes": [
+        "agendaClinica.consultas.cmdUpdateConsulta"
+      ],
+      "trustedContext": "ctx",
+      "mdm": null,
+      "transactionBoundary": null,
+      "steps": [
+        {
+          "kind": "context",
+          "source": "ctx"
+        },
+        {
+          "kind": "port",
+          "call": "update",
+          "port": "ConsultaRepository"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateConsulta",
+          "entityId": "Consulta",
+          "operation": "update",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "updateConsulta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdUpdateConsulta",
+                  "symbol": "UpdateConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdUpdateConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "update"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "update",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "consultaHorarioProfissionalUnico",
+              "origin": "l4/agendaClinica/rules.defs.ts#consultaHorarioProfissionalUnico",
+              "consumer": "operation:update",
+              "enforcement": "pending",
+              "gap": "RULE_UNBOUND"
+            },
+            {
+              "ruleId": "",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#uniqueKeys",
+              "consumer": "operation:update",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "9 enum values stay on the domain draft. usecases50 does not copy them."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listConsulta.id",
+      "detail": "Consulta.id is a filter of listConsulta."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listPaciente.details.identification.subtype",
+      "detail": "Paciente.details.identification.subtype is a filter of listPaciente."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listPaciente.id",
+      "detail": "Paciente.id is a filter of listPaciente."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listProfissional.details.identification.status",
+      "detail": "Profissional.details.identification.status is a filter of listProfissional."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listProfissional.details.identification.subtype",
+      "detail": "Profissional.details.identification.subtype is a filter of listProfissional."
+    },
+    {
+      "code": "DERIVED_FILTER",
+      "path": "listProfissional.id",
+      "detail": "Profissional.id is a filter of listProfissional."
+    },
+    {
+      "code": "DERIVED_SELECTOR",
+      "path": "registrarAtendimento.id",
+      "detail": "Consulta.id is a selector of registrarAtendimento."
+    },
+    {
+      "code": "DERIVED_SELECTOR",
+      "path": "registrarFalta.id",
+      "detail": "Consulta.id is a selector of registrarFalta."
+    },
+    {
+      "code": "DERIVED_SELECTOR",
+      "path": "updateConsulta.id",
+      "detail": "Consulta.id is a selector of updateConsulta."
+    }
+  ],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createConsulta",
+          "entityId": "Consulta",
+          "operation": "create",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "createConsulta",
+              "input": [
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdCreateConsulta",
+                  "symbol": "CreateConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdCreateConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "create"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "create",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "consultaHorarioProfissionalUnico",
+              "origin": "l4/agendaClinica/rules.defs.ts#consultaHorarioProfissionalUnico",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "RULE_UNBOUND"
+            },
+            {
+              "ruleId": "",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#uniqueKeys",
+              "consumer": "operation:create",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/createConsulta",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "l4/agendaClinica/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta",
+            "102047/agendaClinica/repositoryPort/ConsultaRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "createPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Paciente.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "createPaciente",
+          "entityId": "Paciente",
+          "operation": "create",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "createPaciente",
+              "input": [
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Paciente.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.pacientes.cmdCreatePaciente",
+                  "symbol": "CreatePacienteOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.pacientes.cmdCreatePaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "create",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "attachRole",
+              "entity": "Paciente",
+              "capability": "register.createOrAttach"
+            }
+          ],
+          "uses": [],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:create",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Paciente",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "findDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "createPerson",
+                "method": "create",
+                "target": "entity",
+                "shape": "write",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "prior",
+                    "path": "mdmId",
+                    "call": "findDocument",
+                    "present": false
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "countryCode",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.countryCode"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.countryCode"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.docId"
+                  },
+                  {
+                    "name": "docType",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "name",
+                    "role": "patch",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "capability": "register.createOrAttach",
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "alreadyExists"
+                ]
+              },
+              {
+                "id": "attachRole",
+                "method": "attachRole",
+                "target": "entity",
+                "shape": "write",
+                "capabilities": [
+                  "register.createOrAttach"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "prior",
+                      "path": "mdmId",
+                      "calls": [
+                        "findDocument",
+                        "createPerson"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "role",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Paciente"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/createPaciente",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createPaciente.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createPaciente.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+            "/_102034_/l4/ontology/mdm.defs.ts",
+            "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+            "l4/agendaClinica/ontology/Paciente.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Paciente"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/agenda.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listConsulta",
+          "entityId": "Consulta",
+          "operation": "list",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listConsulta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.agenda.qryListConsulta",
+                  "symbol": "ListConsultaOutput"
+                },
+                {
+                  "route": "agendaClinica.consultas.qryListConsulta",
+                  "symbol": "ListConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.agenda.qryListConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/agenda.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            },
+            {
+              "route": "agendaClinica.consultas.qryListConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "list"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "list",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#rules",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "APPLICABILITY_UNDECLARED"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/listConsulta",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+            "l2/agendaClinica/web/contracts/agenda.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l4/agendaClinica/ontology/Consulta.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta",
+            "102047/agendaClinica/repositoryPort/ConsultaRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Paciente.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listPaciente",
+          "entityId": "Paciente",
+          "operation": "list",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listPaciente",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
+                  "fieldRef": "Paciente.details"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Paciente.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Paciente.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"docType\"?: \"CPF\" | \"NationalId\" | \"Passport\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Paciente.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.qryListPaciente",
+                  "symbol": "ListPacienteOutput"
+                },
+                {
+                  "route": "agendaClinica.pacientes.qryListPaciente",
+                  "symbol": "ListPacienteOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.qryListPaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            },
+            {
+              "route": "agendaClinica.pacientes.qryListPaciente",
+              "contractPath": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "get",
+              "entity": "Paciente",
+              "capability": "read.byId"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "listByType",
+              "entity": "Paciente",
+              "capability": "locate.byName"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Paciente",
+              "capability": "locate.byDocument"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "relatedOfMany",
+              "entity": "Paciente",
+              "capability": "listLinks"
+            }
+          ],
+          "uses": [
+            {
+              "path": "details.identification.subtype",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Paciente",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "findByDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "locate.byDocument"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "listByName",
+                "method": "listByType",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.byName"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "type",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Paciente"
+                  },
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "page",
+                  "pageSize",
+                  "total"
+                ]
+              },
+              {
+                "id": "listLinks",
+                "method": "relatedOfMany",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "listLinks"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmIds",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "relationshipId",
+                  "type",
+                  "direction"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/listPaciente",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listPaciente.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listPaciente.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+            "/_102034_/l4/ontology/mdm.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+            "l4/agendaClinica/ontology/Paciente.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Paciente"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "listProfissional",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102034_/l4/ontology/mdm.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Profissional.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "listProfissional",
+          "entityId": "Profissional",
+          "operation": "list",
+          "ports": [],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "listProfissional",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Profissional.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
+                  "fieldRef": "Profissional.details"
+                },
+                {
+                  "name": "page",
+                  "type": "number"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Profissional.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Profissional.version"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: { \"occupation\"?: string; }; \"general\"?: object; \"agendaClinica\"?: object; }",
+                  "fieldRef": "Profissional.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.qryListProfissional",
+                  "symbol": "ListProfissionalOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.qryListProfissional",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "get",
+              "entity": "Profissional",
+              "capability": "read.byId"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "listByType",
+              "entity": "Profissional",
+              "capability": "locate.byName"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "findByDocument",
+              "entity": "Profissional",
+              "capability": "locate.byDocument"
+            },
+            {
+              "kind": "mdm",
+              "namespace": "agendaClinica",
+              "call": "relatedOfMany",
+              "entity": "Profissional",
+              "capability": "listLinks"
+            }
+          ],
+          "uses": [
+            {
+              "path": "details.identification.status",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "details.identification.subtype",
+              "role": "filter",
+              "source": "input"
+            },
+            {
+              "path": "id",
+              "role": "filter",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "rule-document-shape-validated",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-document-shape-validated",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-foreign-namespace-refused",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-foreign-namespace-refused",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-identity-never-in-namespace",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-identity-never-in-namespace",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            },
+            {
+              "ruleId": "rule-person-privacy-consent-required-br-eu",
+              "origin": "/_102034_/l4/ontology/mdm.defs.ts#rule-person-privacy-consent-required-br-eu",
+              "consumer": "operation:list",
+              "enforcement": "pending",
+              "gap": "DELEGATION_UNPROVEN"
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "mdm": {
+            "namespace": "agendaClinica",
+            "role": "agendaClinica.Profissional",
+            "atomic": false,
+            "calls": [
+              {
+                "id": "get",
+                "method": "get",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "read.byId"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "findByDocument",
+                "method": "findByDocument",
+                "target": "entity",
+                "shape": "point",
+                "capabilities": [
+                  "locate.byDocument"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docType",
+                    "present": true
+                  },
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.docId",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "docType",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docType"
+                    },
+                    "path": "details.identification.docType"
+                  },
+                  {
+                    "name": "docId",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.docId"
+                    },
+                    "path": "details.identification.docId"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "version",
+                  "details"
+                ]
+              },
+              {
+                "id": "listByName",
+                "method": "listByType",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "locate.byName"
+                ],
+                "alternative": false,
+                "when": [
+                  {
+                    "kind": "contract",
+                    "path": "details.identification.name",
+                    "present": true
+                  }
+                ],
+                "arguments": [
+                  {
+                    "name": "type",
+                    "role": "parameter",
+                    "origin": {
+                      "kind": "literal",
+                      "evidence": "role"
+                    },
+                    "value": "agendaClinica.Profissional"
+                  },
+                  {
+                    "name": "name",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "details.identification.name"
+                    },
+                    "path": "details.identification.name"
+                  }
+                ],
+                "result": [
+                  "items",
+                  "page",
+                  "pageSize",
+                  "total"
+                ]
+              },
+              {
+                "id": "listLinks",
+                "method": "relatedOfMany",
+                "target": "collection",
+                "shape": "collection",
+                "capabilities": [
+                  "listLinks"
+                ],
+                "alternative": false,
+                "when": [],
+                "arguments": [
+                  {
+                    "name": "mdmIds",
+                    "role": "selector",
+                    "origin": {
+                      "kind": "contract",
+                      "path": "id"
+                    },
+                    "path": "id"
+                  }
+                ],
+                "result": [
+                  "mdmId",
+                  "relationshipId",
+                  "type",
+                  "direction"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/listProfissional",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listProfissional.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listProfissional.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+            "/_102034_/l4/ontology/mdm.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l4/agendaClinica/ontology/Profissional.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Profissional"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "registrarAtendimento",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/agenda.defs.ts",
+          "_102047_/l4/agendaClinica/integration.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "registrarAtendimento",
+          "entityId": "Consulta",
+          "operation": "transition",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [
+            "anotacaoObrigatoriaNoAtendimento",
+            "consultaSomenteAgendadaPodeRegistrarAtendimento",
+            "profissionalAtendeSomentePropriaConsulta"
+          ],
+          "functions": [
+            {
+              "functionName": "registrarAtendimento",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"attendanceNote\"?: string; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"attendanceNote\"?: string; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+                  "symbol": "RegistrarAtendimentoOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+              "contractPath": "l2/agendaClinica/web/contracts/agenda.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "transition"
+          ],
+          "transactional": false,
+          "effects": [
+            {
+              "eventId": "registrarAtendimento",
+              "path": "l4/agendaClinica/integration.defs.ts",
+              "symbol": "registrarAtendimento"
+            }
+          ],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "anotacaoObrigatoriaNoAtendimento"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "profissionalAtendeSomentePropriaConsulta"
+            },
+            {
+              "kind": "transition",
+              "transitionId": "registrarAtendimento",
+              "payload": [
+                "details.attendanceNote"
+              ]
+            },
+            {
+              "kind": "port",
+              "call": "transition",
+              "port": "ConsultaRepository"
+            },
+            {
+              "kind": "effect",
+              "eventId": "registrarAtendimento"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            },
+            {
+              "path": "details.attendanceNote",
+              "role": "write",
+              "source": "payload"
+            }
+          ],
+          "rules": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "anotacaoObrigatoriaNoAtendimento"
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "consultaSomenteAgendadaPodeRegistrarAtendimento"
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "profissionalAtendeSomentePropriaConsulta"
+            }
+          ],
+          "rulePlan": [
+            {
+              "ruleId": "anotacaoObrigatoriaNoAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            },
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            },
+            {
+              "ruleId": "profissionalAtendeSomentePropriaConsulta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarAtendimento.ruleRefs",
+              "consumer": "usecase:registrarAtendimento",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "lifecycle": {
+            "transitionId": "registrarAtendimento",
+            "payload": [
+              "details.attendanceNote"
+            ],
+            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "symbol": "registrarAtendimento"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/registrarAtendimento",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+            "l2/agendaClinica/web/contracts/agenda.defs.ts",
+            "l4/agendaClinica/integration.defs.ts",
+            "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "l4/agendaClinica/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta",
+            "102047/agendaClinica/repositoryPort/ConsultaRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "registrarFalta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/integration.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "registrarFalta",
+          "entityId": "Consulta",
+          "operation": "transition",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [
+            "consultaSomenteAgendadaPodeRegistrarFalta"
+          ],
+          "functions": [
+            {
+              "functionName": "registrarFalta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdRegistrarFalta",
+                  "symbol": "RegistrarFaltaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdRegistrarFalta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "transition"
+          ],
+          "transactional": false,
+          "effects": [
+            {
+              "eventId": "registrarFalta",
+              "path": "l4/agendaClinica/integration.defs.ts",
+              "symbol": "registrarFalta"
+            }
+          ],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "transition",
+              "port": "ConsultaRepository"
+            },
+            {
+              "kind": "rule",
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta"
+            },
+            {
+              "kind": "transition",
+              "transitionId": "registrarFalta",
+              "payload": []
+            },
+            {
+              "kind": "effect",
+              "eventId": "registrarFalta"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            }
+          ],
+          "rules": [
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "path": "l4/agendaClinica/rules.defs.ts",
+              "symbol": "consultaSomenteAgendadaPodeRegistrarFalta"
+            }
+          ],
+          "rulePlan": [
+            {
+              "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#transitions.registrarFalta.ruleRefs",
+              "consumer": "usecase:registrarFalta",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          },
+          "lifecycle": {
+            "transitionId": "registrarFalta",
+            "payload": [],
+            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "symbol": "registrarFalta"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/registrarFalta",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarFalta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l4/agendaClinica/integration.defs.ts",
+            "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "l4/agendaClinica/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta",
+            "102047/agendaClinica/repositoryPort/ConsultaRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "usecase",
+        "artifactId": "updateConsulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts",
+          "_102047_/l4/agendaClinica/ontology/Consulta.defs.ts",
+          "_102047_/l4/agendaClinica/rules.defs.ts"
+        ],
+        "data": {
+          "usecaseId": "updateConsulta",
+          "entityId": "Consulta",
+          "operation": "update",
+          "ports": [
+            "ConsultaRepository"
+          ],
+          "rulesApplied": [],
+          "functions": [
+            {
+              "functionName": "updateConsulta",
+              "input": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "output": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "fieldRef": "Consulta.id"
+                },
+                {
+                  "name": "version",
+                  "type": "number",
+                  "fieldRef": "Consulta.version"
+                },
+                {
+                  "name": "pacienteId",
+                  "type": "string",
+                  "fieldRef": "Consulta.pacienteId"
+                },
+                {
+                  "name": "profissionalId",
+                  "type": "string",
+                  "fieldRef": "Consulta.profissionalId"
+                },
+                {
+                  "name": "scheduledAt",
+                  "type": "string",
+                  "fieldRef": "Consulta.scheduledAt"
+                },
+                {
+                  "name": "status",
+                  "type": "\"scheduled\" | \"noShow\" | \"attended\"",
+                  "fieldRef": "Consulta.status"
+                },
+                {
+                  "name": "details",
+                  "type": "{ \"telephoneConfirmation\"?: { \"confirmedAt\": string; }; }",
+                  "fieldRef": "Consulta.details"
+                }
+              ],
+              "contractRefs": [
+                {
+                  "route": "agendaClinica.consultas.cmdUpdateConsulta",
+                  "symbol": "UpdateConsultaOutput"
+                }
+              ]
+            }
+          ],
+          "routeProjections": [
+            {
+              "route": "agendaClinica.consultas.cmdUpdateConsulta",
+              "contractPath": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+              "projection": "declared",
+              "outputFields": [
+                "id",
+                "version",
+                "pacienteId",
+                "profissionalId",
+                "scheduledAt",
+                "status",
+                "details"
+              ]
+            }
+          ],
+          "portCalls": [
+            "update"
+          ],
+          "transactional": false,
+          "effects": [],
+          "sequence": [
+            {
+              "kind": "context",
+              "source": "ctx"
+            },
+            {
+              "kind": "port",
+              "call": "update",
+              "port": "ConsultaRepository"
+            }
+          ],
+          "uses": [
+            {
+              "path": "id",
+              "role": "selector",
+              "source": "input"
+            }
+          ],
+          "rules": [],
+          "rulePlan": [
+            {
+              "ruleId": "consultaHorarioProfissionalUnico",
+              "origin": "l4/agendaClinica/rules.defs.ts#consultaHorarioProfissionalUnico",
+              "consumer": "operation:update",
+              "enforcement": "pending",
+              "gap": "RULE_UNBOUND"
+            },
+            {
+              "ruleId": "",
+              "origin": "l4/agendaClinica/ontology/Consulta.defs.ts#uniqueKeys",
+              "consumer": "operation:update",
+              "enforcement": "local",
+              "gap": ""
+            }
+          ],
+          "transaction": {
+            "boundary": "none"
+          }
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/usecase/updateConsulta",
+          "type": "usecase",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/updateConsulta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+            "l2/agendaClinica/web/contracts/consultas.defs.ts",
+            "l4/agendaClinica/ontology/Consulta.defs.ts",
+            "l4/agendaClinica/rules.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta",
+            "102047/agendaClinica/repositoryPort/ConsultaRepository"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/usecase.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

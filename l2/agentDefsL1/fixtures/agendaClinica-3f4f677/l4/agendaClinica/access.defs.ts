@@ -1,0 +1,152 @@
+/// <mls fileReference="_102047_/l4/agendaClinica/access.defs.ts" enhancement="_blank"/>
+
+import type { Ns5AccessArtifact } from '/_102035_/l2/solution/types.js';
+
+export const agendaClinicaAccess = {
+  "schemaVersion": "2026-09-12-ns5-access-v3",
+  "moduleName": "agendaClinica",
+  "actors": [
+    {
+      "actorId": "recepcionista",
+      "kind": "internal",
+      "origin": "named",
+      "title": "Recepcionista",
+      "description": "Cadastra pacientes, agenda consultas, confirma consultas por telefone e registra faltas.",
+      "personEntity": "Recepcionista"
+    },
+    {
+      "actorId": "profissional",
+      "kind": "internal",
+      "origin": "named",
+      "title": "Profissional",
+      "description": "Consulta a própria agenda diária e registra o atendimento com uma anotação.",
+      "personEntity": "Profissional"
+    }
+  ],
+  "grants": [
+    {
+      "grantId": "recepcionistaGestaoAgenda",
+      "actorRef": "recepcionista",
+      "title": "Gestão de pacientes e agenda",
+      "description": "Permite à recepcionista cadastrar e localizar pacientes, localizar profissionais, consultar telefones de contato e agendar, confirmar ou registrar faltas nas consultas da clínica.",
+      "entityRefs": [
+        "Paciente",
+        "Profissional",
+        "Recepcionista",
+        "ContatoPaciente",
+        "Consulta"
+      ],
+      "dataScope": {
+        "mode": "organization",
+        "description": "Abrange os cadastros e as consultas de toda a clínica necessários ao trabalho da recepção."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "Expõe os dados cadastrais e operacionais necessários à recepção, sem acesso aos dados pessoais do paciente nem à anotação clínica do atendimento.",
+        "allowedFields": [
+          "Paciente.id",
+          "Paciente.version",
+          "Paciente.details.identification",
+          "Paciente.details.base",
+          "Paciente.details.general",
+          "Paciente.details.agendaClinica",
+          "Profissional.id",
+          "Profissional.version",
+          "Profissional.details.identification",
+          "Profissional.details.base",
+          "Profissional.details.person",
+          "Profissional.details.general",
+          "Profissional.details.agendaClinica",
+          "Recepcionista.id",
+          "Recepcionista.version",
+          "Recepcionista.details.identification",
+          "Recepcionista.details.base",
+          "Recepcionista.details.person",
+          "Recepcionista.details.general",
+          "Recepcionista.details.agendaClinica",
+          "ContatoPaciente.id",
+          "ContatoPaciente.version",
+          "ContatoPaciente.details.identification",
+          "ContatoPaciente.details.contactChannel",
+          "ContatoPaciente.details.general",
+          "ContatoPaciente.details.agendaClinica",
+          "Consulta.id",
+          "Consulta.version",
+          "Consulta.pacienteId",
+          "Consulta.profissionalId",
+          "Consulta.scheduledAt",
+          "Consulta.status",
+          "Consulta.details.telephoneConfirmation"
+        ],
+        "deniedFields": [
+          "Paciente.details.person",
+          "Consulta.details.attendanceNote"
+        ]
+      }
+    },
+    {
+      "grantId": "profissionalAgendaPropria",
+      "actorRef": "profissional",
+      "title": "Agenda própria e atendimento",
+      "description": "Permite ao profissional consultar as próprias consultas e registrar o atendimento com sua anotação.",
+      "entityRefs": [
+        "Consulta",
+        "Profissional"
+      ],
+      "dataScope": {
+        "mode": "own",
+        "description": "Abrange somente consultas atribuídas ao próprio profissional e o seu registro profissional.",
+        "anchorEntity": "Profissional"
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "Expõe os dados de agenda e a anotação do atendimento, além do cadastro profissional do próprio titular.",
+        "allowedFields": [
+          "Consulta.id",
+          "Consulta.version",
+          "Consulta.pacienteId",
+          "Consulta.profissionalId",
+          "Consulta.scheduledAt",
+          "Consulta.status",
+          "Consulta.details.attendanceNote",
+          "Profissional.id",
+          "Profissional.version",
+          "Profissional.details.identification",
+          "Profissional.details.base",
+          "Profissional.details.person",
+          "Profissional.details.general",
+          "Profissional.details.agendaClinica"
+        ]
+      }
+    },
+    {
+      "grantId": "profissionalPacientesDaAgenda",
+      "actorRef": "profissional",
+      "title": "Pacientes da própria agenda",
+      "description": "Permite ao profissional identificar os pacientes vinculados às suas próprias consultas.",
+      "entityRefs": [
+        "Paciente"
+      ],
+      "dataScope": {
+        "mode": "related",
+        "description": "Abrange somente pacientes vinculados às consultas atribuídas ao profissional autenticado.",
+        "anchorEntity": "Paciente"
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "Expõe somente a identificação do paciente necessária para a agenda, sem documento, consentimento ou outros dados cadastrais.",
+        "allowedFields": [
+          "Paciente.id",
+          "Paciente.details.identification"
+        ],
+        "deniedFields": [
+          "Paciente.details.person"
+        ]
+      }
+    }
+  ]
+} as const satisfies Ns5AccessArtifact;
+
+export type AgendaClinicaAccessType = typeof agendaClinicaAccess;
+
+export default agendaClinicaAccess;

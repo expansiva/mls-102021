@@ -1,0 +1,268 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.1",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "agendaClinica.agenda.cmdRegistrarAtendimento",
+      "page": "agenda",
+      "kind": "cmd",
+      "usecaseRef": "registrarAtendimento",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.agenda.qryListConsulta",
+      "page": "agenda",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdCreateConsulta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdRegistrarFalta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "registrarFalta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.cmdUpdateConsulta",
+      "page": "consultas",
+      "kind": "cmd",
+      "usecaseRef": "updateConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListConsulta",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListPaciente",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas.qryListProfissional",
+      "page": "consultas",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreatePaciente",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListPaciente",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createConsulta",
+      "entity": "Consulta",
+      "operation": "create",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.create",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createPaciente",
+      "entity": "Paciente",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listConsulta",
+      "entity": "Consulta",
+      "operation": "list",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.list",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listPaciente",
+      "entity": "Paciente",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listProfissional",
+      "entity": "Profissional",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "registrarAtendimento",
+      "entity": "Consulta",
+      "operation": "transition",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "registrarFalta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateConsulta",
+      "entity": "Consulta",
+      "operation": "update",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.update",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "ConsultaRepository",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "consulta",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "meta": {
+    "pages": {
+      "consultas": [
+        "agendaClinica.consultas.cmdCreateConsulta",
+        "agendaClinica.consultas.cmdRegistrarFalta",
+        "agendaClinica.consultas.cmdUpdateConsulta",
+        "agendaClinica.consultas.qryListConsulta",
+        "agendaClinica.consultas.qryListPaciente",
+        "agendaClinica.consultas.qryListProfissional"
+      ],
+      "pacientes": [
+        "agendaClinica.pacientes.cmdCreatePaciente",
+        "agendaClinica.pacientes.qryListPaciente"
+      ],
+      "agenda": [
+        "agendaClinica.agenda.cmdRegistrarAtendimento",
+        "agendaClinica.agenda.qryListConsulta"
+      ]
+    },
+    "generatedAt": "2026-09-25T11:49:38.989Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

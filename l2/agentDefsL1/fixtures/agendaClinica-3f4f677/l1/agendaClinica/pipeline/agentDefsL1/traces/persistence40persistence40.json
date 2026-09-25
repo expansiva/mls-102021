@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "persistence40",
+  "unitId": "persistence40",
+  "runId": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "draftHash": "sha256:8db61883f49c3d7ae86a3e66705f4cdb29488d819159d0cce64edb9e503d0406",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.ts",
+    "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts",
+    "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts",
+    "l1/agendaClinica/layer_2_application/ports/consultaRepository.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:3eae5a0ec73bbdfd86b05bc00020e7f2e61d8fa2212e273aad948af22f20e339",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts",
+        "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:36dcb89d413e2310309029764f7028aaafc61486e0f43ac1aecce2c72e99face",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts",
+        "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:379abd385504914b9900528a11424ba589b3b2772b037de74990237c20f6f9d2",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.ts",
+        "l1/agendaClinica/layer_2_application/ports/consultaRepository.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

@@ -1,0 +1,125 @@
+{
+  "savedAt": "2026-09-25T11:24:15.418Z",
+  "moduleName": "agendaClinica",
+  "agent": "agentNewSolution5",
+  "command": "/fast /rebuild all criar o módulo agendaClinica em português. a clínica tem profissionais (médicos e terapeutas) e pacientes. a recepcionista cadastra pacientes, marca consultas para um profissional em data e hora, confirma por telefone, e registra falta quando o paciente não vem. o profissional vê só a própria agenda do dia e marca a consulta como atendida com uma anotação. não pode haver duas consultas do mesmo profissional no mesmo horário. dois perfis: recepcionista e profissional.",
+  "startedAt": "2026-09-25T11:24:15.413Z",
+  "finishedAt": "2026-09-25T11:24:15.418Z",
+  "verdict": "completed",
+  "reason": "finalize80 passed; pipeline complete. Publish checklist clean.",
+  "cost": {
+    "total": 1.9256,
+    "byStep": {
+      "module10": 0.0491,
+      "journeys20": 0.2157,
+      "workflows50": 0.0308,
+      "ontology30": 1.1959,
+      "rules40": 0.0404,
+      "access60": 0.3184,
+      "integration70": 0.0753
+    }
+  },
+  "counts": {
+    "steps": {
+      "module10": "approved",
+      "journeys20": "approved",
+      "workflows50": "approved",
+      "ontology30": "approved",
+      "judge35": "approved",
+      "rules40": "approved",
+      "access60": "approved",
+      "integration70": "approved",
+      "finalize80": "approved"
+    },
+    "oracle": {
+      "actors": 2,
+      "journeys": 6,
+      "entities": 5,
+      "rules": 5,
+      "processes": 0,
+      "grants": 3
+    }
+  },
+  "checks": [
+    {
+      "checkId": "I1",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I2",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 1
+    },
+    {
+      "checkId": "I3",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I4",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I5",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I6",
+      "status": "warned",
+      "errorCount": 0,
+      "warningCount": 1
+    },
+    {
+      "checkId": "I7",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I8",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I9",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I10",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I11",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I12",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    },
+    {
+      "checkId": "I13",
+      "status": "passed",
+      "errorCount": 0,
+      "warningCount": 0
+    }
+  ],
+  "handoff": "never",
+  "degradations": []
+}

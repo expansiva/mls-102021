@@ -1,0 +1,81 @@
+{
+  "usecaseId": "listProfissional",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for listProfissional.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "get",
+      "entity": "Profissional",
+      "capability": "read.byId"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "listByType",
+      "entity": "Profissional",
+      "capability": "locate.byName"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "findByDocument",
+      "entity": "Profissional",
+      "capability": "locate.byDocument"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "relatedOfMany",
+      "entity": "Profissional",
+      "capability": "listLinks"
+    }
+  ],
+  "request": {
+    "usecaseId": "listProfissional",
+    "bytes": 5333,
+    "sha256": "sha256:9153384410c58dd636661de13a92b78b410a4702a9039059916e117a3c067cb6",
+    "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+    "sourceHashes": [
+      {
+        "path": "/_102034_/l4/ontology/mdm.defs.ts",
+        "sha256": "sha256:3bae63952f7ad722df418ed3dd21a7c556fc6f9d024cdb743fc40405e29ff411"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+        "sha256": "sha256:a9d335bdb8b3b5ad429ad4f5b6e49946f5bf2d51d4443300bd2cbf46c9b8a039"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:22288ce4e7d7522f28879cad28e2582697aebe9124a685a7fc172db1a6e4e65b"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+        "sha256": "sha256:863076673e14c7e7790a944533d03b821034d2c214a392837b2add780e50e190"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/confirmarConsultaPorTelefone.defs.ts",
+        "sha256": "sha256:05e19ede666cffec8343b31911cce2d9f9699af65d16921b26c49921f63d52a0"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+        "sha256": "sha256:044eda5040f80a5f833f7ac1527e698e33cd9f35967ee880370deafe0f841c71"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Profissional.defs.ts",
+        "sha256": "sha256:38b591caa01dec68d410202198270cb41fcee4314477fac8c5b1bc07b46d5f32"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:d4628ab1a779f77abead481a10a4db8abb887431b4e7ca7f02988b806076e953"
+      }
+    ],
+    "text": "Usecase listProfissional is already chosen. Do not rename it.\nEntity Profissional. Operation list. Storage mdm.\nMDM namespace: agendaClinica.\n\nThis operation is not a lifecycle transition.\nCapability read.byId\nLê o cadastro mestre de um profissional pelo identificador para exibi-lo nas consultas e na agenda diária; usado pela recepcionista e pelo profissional.\nCapability locate.byName\nLocaliza profissionais pelo nome no índice do MDM para que a recepcionista selecione quem realizará a consulta.\nCapability locate.byDocument\nLocaliza um profissional pelo documento nacional para evitar duplicidade no seu cadastro; usado pela administração autorizada.\nCapability listLinks\nLista as consultas relacionadas ao profissional por meio do vínculo de consulta; usado pela recepcionista e pelo profissional.\n\nRoute agendaClinica.consultas.qryListProfissional\nContract: l2/agendaClinica/web/contracts/consultas.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.person?: object\n- details.person.occupation?: string\n- details.general?: object\n- details.agendaClinica?: object\nAccess grant recepcionistaGestaoAgenda\nActor: recepcionista\nScope: organization\nAbrange os cadastros e as consultas de toda a clínica necessários ao trabalho da recepção.\nDisclosure fieldsOnly: Expõe os dados cadastrais e operacionais necessários à recepção, sem acesso aos dados pessoais do paciente nem à anotação clínica do atendimento.\nAllowed fields:\n- Paciente.id\n- Paciente.version\n- Paciente.details.identification\n- Paciente.details.base\n- Paciente.details.general\n- Paciente.details.agendaClinica\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.base\n- Profissional.details.person\n- Profissional.details.general\n- Profissional.details.agendaClinica\n- Recepcionista.id\n- Recepcionista.version\n- Recepcionista.details.identification\n- Recepcionista.details.base\n- Recepcionista.details.person\n- Recepcionista.details.general\n- Recepcionista.details.agendaClinica\n- ContatoPaciente.id\n- ContatoPaciente.version\n- ContatoPaciente.details.identification\n- ContatoPaciente.details.contactChannel\n- ContatoPaciente.details.general\n- ContatoPaciente.details.agendaClinica\n- Consulta.id\n- Consulta.version\n- Consulta.pacienteId\n- Consulta.profissionalId\n- Consulta.scheduledAt\n- Consulta.status\n- Consulta.details.telephoneConfirmation\nPending rule-document-shape-validated\nGap: DELEGATION_UNPROVEN\nSource: /_102034_/l4/ontology/mdm.defs.ts\nAddresses, consent, general and the module namespace are validated on write against the schema derived from this ontology · engine · platform: missing, nothing validates the document today\nPending rule-foreign-namespace-refused\nGap: DELEGATION_UNPROVEN\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA caller carrying a moduleId may write the platform keys, general and its own key; any other module key is refused with MDM_FOREIGN_NAMESPACE · engine · platform: ready\nPending rule-identity-never-in-namespace\nGap: DELEGATION_UNPROVEN\nSource: /_102034_/l4/ontology/mdm.defs.ts\nIdentity, document, contact and login are platform layers; a module never redeclares them inside details[moduleId] · engine · platform: partial\nPending rule-person-privacy-consent-required-br-eu\nGap: DELEGATION_UNPROVEN\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA person living in Brazil or the EU without a valid privacy consent is forced to Inactive · engine · platform: ready\n\nPort: (none). This operation does not use a repository port.\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- mdm: kind, namespace, call, entity, capability\n  call get, capability read.byId, namespace agendaClinica, entity Profissional\n  call findByDocument, capability locate.byDocument, namespace agendaClinica, entity Profissional\n  call listByType, capability locate.byName, namespace agendaClinica, entity Profissional\n  call relatedOfMany, capability listLinks, namespace agendaClinica, entity Profissional\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "entity": {
+    "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+    "moduleName": "agendaClinica",
+    "entityId": "Paciente",
+    "title": "Paciente",
+    "description": "Pessoa atendida pela clínica e vinculada ao cadastro mestre da organização.",
+    "displayField": "details.identification.name",
+    "relationships": {
+      "consultas": {
+        "relationshipId": "consultaPaciente",
+        "to": "Consulta",
+        "via": "Consulta.pacienteId",
+        "cardinality": "1:N",
+        "title": "Consultas do paciente",
+        "description": "Consultas agendadas para este paciente.",
+        "mode": "fk",
+        "direction": "to",
+        "required": true
+      },
+      "contatos": {
+        "relationshipId": "pacienteHasContact",
+        "to": "ContatoPaciente",
+        "via": "HasContact",
+        "cardinality": "1:N",
+        "title": "Canais de contato do paciente",
+        "description": "Canais de contato mestre do paciente, inclusive telefone, usados pela recepção para confirmar consultas."
+      }
+    },
+    "capabilities": {
+      "read.byId": "Consulta um paciente pelo identificador mestre para exibir seus dados na agenda; usado pela recepcionista ao agendar e pelo profissional ao consultar a consulta.",
+      "locate.byName": "Localiza pacientes pelo nome no índice do cadastro mestre; usado pela recepcionista antes de criar ou agendar uma consulta.",
+      "locate.byDocument": "Localiza um paciente pelo documento nacional para evitar cadastros duplicados; usado pela recepcionista no cadastro.",
+      "locate.byContact": "Localiza o paciente por telefone ou outro canal de contato já vinculado; usado pela recepcionista durante o atendimento e a confirmação.",
+      "register.createOrAttach": "Cria o registro mestre quando ainda não existe ou vincula o registro existente ao papel de paciente da agenda clínica; usado pela recepcionista ao cadastrar paciente.",
+      "edit.platformFields": "Atualiza os dados mestre permitidos do paciente, como nome, documento e consentimento; usado pela recepcionista para manter o cadastro.",
+      "inactivate": "Inativa ou reativa o paciente no cadastro mestre sem apagar seu histórico de consultas; usado pela recepcionista quando o cadastro deixa de ser utilizado.",
+      "link.contact": "Cria e vincula um canal de contato mestre, como telefone, ao paciente por HasContact; usado pela recepcionista para possibilitar confirmações.",
+      "listLinks": "Lista os canais de contato e outros vínculos mestre ativos ou históricos do paciente; usado pela recepcionista ao consultar o cadastro.",
+      "comment": "Registra uma observação no cadastro mestre do paciente com autoria e data; usado pela recepcionista quando necessário.",
+      "audit": "Consulta quem alterou o cadastro mestre do paciente e quando; usado pela clínica para conferência administrativa."
+    },
+    "rules": [
+      "rule-foreign-namespace-refused",
+      "rule-document-shape-validated",
+      "rule-identity-never-in-namespace",
+      "rule-person-privacy-consent-required-br-eu"
+    ],
+    "kind": "role",
+    "subtype": "Person",
+    "roleTag": "agendaClinica.Paciente",
+    "source": "/_102034_/l4/ontology/mdm.defs.ts",
+    "record": {
+      "fields": {
+        "id": {
+          "type": "uuid",
+          "required": true,
+          "indexed": true,
+          "derived": true,
+          "description": "mdmId; stable through promotion and merge."
+        },
+        "version": {
+          "type": "integer",
+          "required": true,
+          "derived": true,
+          "writePrecondition": true,
+          "description": "Bumped by the engine on every write; optimistic concurrency."
+        },
+        "details": {
+          "type": "object",
+          "required": true,
+          "description": "Registro mestre da pessoa atendida pela clínica, com os dados de identificação, dados pessoais e informações específicas da agenda clínica.",
+          "fields": {
+            "identification": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {
+                "subtype": {
+                  "type": "enum",
+                  "required": true,
+                  "indexed": true,
+                  "derived": true,
+                  "values": [
+                    {
+                      "value": "Person",
+                      "title": "Pessoa física",
+                      "description": "Pessoa atendida pela clínica."
+                    }
+                  ],
+                  "description": "Indica que este registro mestre é uma pessoa.",
+                  "title": "Tipo de cadastro",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "name": {
+                  "type": "string",
+                  "required": true,
+                  "indexed": true,
+                  "maxLength": 0,
+                  "description": "Nome pelo qual o paciente é identificado pela recepção e na agenda.",
+                  "title": "Nome",
+                  "min": 0,
+                  "max": 0
+                },
+                "docType": {
+                  "type": "enum",
+                  "indexed": true,
+                  "values": [
+                    {
+                      "value": "CPF",
+                      "title": "CPF",
+                      "description": "Cadastro de Pessoa Física."
+                    },
+                    {
+                      "value": "NationalId",
+                      "title": "Documento nacional",
+                      "description": "Documento nacional de identificação."
+                    },
+                    {
+                      "value": "Passport",
+                      "title": "Passaporte",
+                      "description": "Documento de viagem."
+                    },
+                    {
+                      "value": "Other",
+                      "title": "Outro",
+                      "description": "Outro documento de identificação."
+                    }
+                  ],
+                  "title": "Tipo de documento",
+                  "description": "Tipo do documento nacional informado para identificar e evitar duplicidade de paciente.",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "docId": {
+                  "type": "string",
+                  "indexed": true,
+                  "description": "Número do documento informado para localizar ou cadastrar o paciente.",
+                  "title": "Número do documento",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "countryCode": {
+                  "type": "string",
+                  "required": true,
+                  "indexed": true,
+                  "pattern": "^[A-Z]{2}$",
+                  "maxLength": 2,
+                  "default": "US",
+                  "description": "Código do país do paciente e das regras aplicáveis ao seu cadastro.",
+                  "title": "País",
+                  "min": 0,
+                  "max": 0
+                }
+              },
+              "description": "Dados de identificação do paciente usados pela clínica para reconhecer e cadastrar o registro mestre."
+            },
+            "base": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {},
+              "description": "Dados básicos do cadastro mestre do paciente que a clínica pode consultar."
+            },
+            "person": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {
+                "birthDate": {
+                  "type": "date",
+                  "title": "Data de nascimento",
+                  "description": "Data de nascimento do paciente, quando informada no cadastro.",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "privacyConsent": {
+                  "type": "object",
+                  "of": "PrivacyConsent",
+                  "description": "Consentimento de privacidade do paciente, exigido quando aplicável pela legislação.",
+                  "title": "Consentimento de privacidade",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                }
+              },
+              "description": "Dados pessoais do paciente disponíveis no cadastro mestre."
+            },
+            "general": {
+              "type": "object",
+              "owner": "organization",
+              "open": true,
+              "description": "Dados promovidos pela organização e apenas consultados pela agenda clínica."
+            },
+            "agendaClinica": {
+              "type": "object",
+              "owner": "module",
+              "fields": {},
+              "description": "Module namespace; the prompt asked for no data of this module about the record."
+            }
+          }
+        }
+      }
+    }
+  },
+  "normalizations": [
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Paciente",
+      "detail": "record.fields.id, record.fields.version"
+    },
+    {
+      "kind": "tightened",
+      "entityId": "Paciente",
+      "detail": "Paciente.details.identification.subtype.values"
+    },
+    {
+      "kind": "tightened",
+      "entityId": "Paciente",
+      "detail": "Paciente.details.identification.docType.values"
+    },
+    {
+      "kind": "namespaceEmpty",
+      "entityId": "Paciente",
+      "detail": "details.agendaClinica"
+    }
+  ]
+}

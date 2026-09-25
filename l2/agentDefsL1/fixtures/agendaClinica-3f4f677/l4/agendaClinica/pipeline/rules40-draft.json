@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "2026-09-16-ns5-rules-v2",
+  "moduleName": "agendaClinica",
+  "rules": {
+    "consultaSomenteAgendadaPodeRegistrarFalta": "A falta do paciente só pode ser registrada para uma consulta com situação agendada.",
+    "consultaSomenteAgendadaPodeRegistrarAtendimento": "O atendimento só pode ser registrado para uma consulta com situação agendada.",
+    "anotacaoObrigatoriaNoAtendimento": "O registro de atendimento deve incluir uma anotação do atendimento.",
+    "profissionalAtendeSomentePropriaConsulta": "O profissional só pode registrar o atendimento de uma consulta atribuída a ele.",
+    "consultaHorarioProfissionalUnico": "Não pode haver duas consultas para o mesmo profissional na mesma data e horário."
+  }
+}

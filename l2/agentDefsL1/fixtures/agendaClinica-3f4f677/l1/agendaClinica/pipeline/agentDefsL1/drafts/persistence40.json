@@ -1,0 +1,680 @@
+{
+  "schemaVersion": "2026-09-21-d1-persistence-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "llmCalls": 0,
+  "ok": true,
+  "enumerations": [
+    {
+      "entityId": "Consulta",
+      "path": "status",
+      "values": [
+        "scheduled",
+        "noShow",
+        "attended"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.contactChannel.contactType",
+      "values": [
+        "Phone"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "path": "details.identification.subtype",
+      "values": [
+        "ContactChannel"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Paciente",
+      "path": "details.identification.docType",
+      "values": [
+        "CPF",
+        "NationalId",
+        "Passport",
+        "Other"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Paciente",
+      "path": "details.identification.subtype",
+      "values": [
+        "Person"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.docType",
+      "values": [
+        "CPF",
+        "Passport",
+        "NationalId",
+        "Other"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.status",
+      "values": [
+        "Active",
+        "Inactive",
+        "Merged",
+        "Blocked"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    },
+    {
+      "entityId": "Profissional",
+      "path": "details.identification.subtype",
+      "values": [
+        "Person"
+      ],
+      "consumed": false,
+      "source": "domain30.enumerations",
+      "reason": "Table and adapter schemas have no enum values. They stay on the domain draft."
+    }
+  ],
+  "uniqueKeys": [
+    {
+      "entityId": "Consulta",
+      "tableId": "consulta",
+      "uniqueKeys": [
+        [
+          "profissionalId",
+          "scheduledAt"
+        ]
+      ],
+      "consumed": true,
+      "placedOn": "table.data.uniqueKeys"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "ConsultaRepository",
+      "entityId": "Consulta",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "Consulta"
+          ],
+          "returns": "Consulta"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ConsultaFilter"
+          ],
+          "returns": "Consulta[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "Consulta"
+          ],
+          "returns": "Consulta"
+        },
+        {
+          "name": "transition",
+          "params": [
+            "Consulta",
+            "transitionId"
+          ],
+          "returns": "Consulta"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "ConsultaRepository",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Consulta",
+          "interfaceName": "ConsultaRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "Consulta"
+              ],
+              "returns": "Consulta"
+            },
+            {
+              "name": "list",
+              "params": [
+                "ConsultaFilter"
+              ],
+              "returns": "Consulta[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "Consulta"
+              ],
+              "returns": "Consulta"
+            },
+            {
+              "name": "transition",
+              "params": [
+                "Consulta",
+                "transitionId"
+              ],
+              "returns": "Consulta"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "consulta",
+      "entityId": "Consulta",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+      "physicalName": "agendaClinica_consulta",
+      "detailsColumn": "details",
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "consulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "tableId": "consulta",
+          "entityId": "Consulta",
+          "physicalName": "agendaClinica_consulta",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "profissionalId",
+              "scheduledAt"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agendaClinica_consulta_profissionalId_scheduledAt",
+              "columns": [
+                "profissionalId",
+                "scheduledAt"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agendaClinica_consulta_pacienteId",
+              "columns": [
+                "pacienteId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_profissionalId",
+              "columns": [
+                "profissionalId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_scheduledAt",
+              "columns": [
+                "scheduledAt"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_status",
+              "columns": [
+                "status"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "adapters": [
+    {
+      "portId": "ConsultaRepository",
+      "entityId": "Consulta",
+      "tableId": "consulta",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts",
+      "methods": [
+        {
+          "name": "create",
+          "params": [
+            "Consulta"
+          ],
+          "returns": "Consulta"
+        },
+        {
+          "name": "list",
+          "params": [
+            "ConsultaFilter"
+          ],
+          "returns": "Consulta[]"
+        },
+        {
+          "name": "update",
+          "params": [
+            "Consulta"
+          ],
+          "returns": "Consulta"
+        },
+        {
+          "name": "transition",
+          "params": [
+            "Consulta",
+            "transitionId"
+          ],
+          "returns": "Consulta"
+        }
+      ],
+      "bindings": [
+        {
+          "field": "id",
+          "column": "id",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "version",
+          "column": "json:version",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "pacienteId",
+          "column": "pacienteId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "profissionalId",
+          "column": "profissionalId",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "scheduledAt",
+          "column": "scheduledAt",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "status",
+          "column": "status",
+          "nullable": false,
+          "placement": "column"
+        },
+        {
+          "field": "details.telephoneConfirmation.confirmedAt",
+          "column": "json:details.telephoneConfirmation.confirmedAt",
+          "nullable": false,
+          "placement": "json"
+        },
+        {
+          "field": "details.attendanceNote",
+          "column": "json:details.attendanceNote",
+          "nullable": true,
+          "placement": "json"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "ConsultaRepository",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Consulta",
+          "portId": "ConsultaRepository",
+          "tableId": "consulta",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "pacienteId",
+              "column": "pacienteId"
+            },
+            {
+              "field": "profissionalId",
+              "column": "profissionalId"
+            },
+            {
+              "field": "scheduledAt",
+              "column": "scheduledAt"
+            },
+            {
+              "field": "status",
+              "column": "status"
+            },
+            {
+              "field": "details.telephoneConfirmation.confirmedAt",
+              "column": "json:details.telephoneConfirmation.confirmedAt"
+            },
+            {
+              "field": "details.attendanceNote",
+              "column": "json:details.attendanceNote"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "DETAILS_COLUMN",
+      "path": "Consulta.details",
+      "detail": "Non-indexed fields use the runtime details JSONB column. Keys inside it are the logical paths."
+    },
+    {
+      "code": "ID_COLUMN",
+      "path": "Consulta.id",
+      "detail": "Primary key column name is the logical field id."
+    },
+    {
+      "code": "VERSION_IN_DETAILS",
+      "path": "Consulta.version",
+      "detail": "Row version stays the logical field version inside details JSON. It is not the table schema version and it was not renamed."
+    },
+    {
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "domain30.enumerations",
+      "detail": "9 enum values stay on the domain draft. persistence40 does not copy them."
+    },
+    {
+      "code": "PK_INDEX_OMITTED",
+      "path": "id",
+      "detail": "The primary key is not repeated as a secondary index."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    },
+    {
+      "code": "OUT_OF_STEP",
+      "path": "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "detail": "persistence40 does not write seeds or the registry."
+    }
+  ],
+  "preserved": [],
+  "removed": [],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "table",
+        "artifactId": "consulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts"
+        ],
+        "data": {
+          "tableId": "consulta",
+          "entityId": "Consulta",
+          "physicalName": "agendaClinica_consulta",
+          "primaryKey": [
+            "id"
+          ],
+          "uniqueKeys": [
+            [
+              "profissionalId",
+              "scheduledAt"
+            ]
+          ],
+          "indexes": [
+            {
+              "name": "agendaClinica_consulta_profissionalId_scheduledAt",
+              "columns": [
+                "profissionalId",
+                "scheduledAt"
+              ],
+              "unique": true
+            },
+            {
+              "name": "agendaClinica_consulta_pacienteId",
+              "columns": [
+                "pacienteId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_profissionalId",
+              "columns": [
+                "profissionalId"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_scheduledAt",
+              "columns": [
+                "scheduledAt"
+              ],
+              "unique": false
+            },
+            {
+              "name": "agendaClinica_consulta_status",
+              "columns": [
+                "status"
+              ],
+              "unique": false
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/table/consulta",
+          "type": "table",
+          "defPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/table.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryAdapter",
+        "artifactId": "ConsultaRepository",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+          "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts"
+        ],
+        "data": {
+          "entityId": "Consulta",
+          "portId": "ConsultaRepository",
+          "tableId": "consulta",
+          "columns": [
+            {
+              "field": "id",
+              "column": "id"
+            },
+            {
+              "field": "version",
+              "column": "json:version"
+            },
+            {
+              "field": "pacienteId",
+              "column": "pacienteId"
+            },
+            {
+              "field": "profissionalId",
+              "column": "profissionalId"
+            },
+            {
+              "field": "scheduledAt",
+              "column": "scheduledAt"
+            },
+            {
+              "field": "status",
+              "column": "status"
+            },
+            {
+              "field": "details.telephoneConfirmation.confirmedAt",
+              "column": "json:details.telephoneConfirmation.confirmedAt"
+            },
+            {
+              "field": "details.attendanceNote",
+              "column": "json:details.attendanceNote"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/repositoryAdapter/ConsultaRepository",
+          "type": "repositoryAdapter",
+          "defPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+            "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/repositoryPort/ConsultaRepository",
+            "102047/agendaClinica/table/consulta"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryAdapter.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "repositoryPort",
+        "artifactId": "ConsultaRepository",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts"
+        ],
+        "data": {
+          "entityId": "Consulta",
+          "interfaceName": "ConsultaRepository",
+          "methods": [
+            {
+              "name": "create",
+              "params": [
+                "Consulta"
+              ],
+              "returns": "Consulta"
+            },
+            {
+              "name": "list",
+              "params": [
+                "ConsultaFilter"
+              ],
+              "returns": "Consulta[]"
+            },
+            {
+              "name": "update",
+              "params": [
+                "Consulta"
+              ],
+              "returns": "Consulta"
+            },
+            {
+              "name": "transition",
+              "params": [
+                "Consulta",
+                "transitionId"
+              ],
+              "returns": "Consulta"
+            }
+          ]
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/repositoryPort/ConsultaRepository",
+          "type": "repositoryPort",
+          "defPath": "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Consulta"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/repositoryPort.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

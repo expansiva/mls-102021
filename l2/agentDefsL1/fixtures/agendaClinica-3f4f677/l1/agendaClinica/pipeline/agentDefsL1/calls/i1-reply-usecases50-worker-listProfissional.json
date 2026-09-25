@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-09-24-d1-calls-v1",
+  "kind": "reply_delivered",
+  "usecaseId": "listProfissional",
+  "planId": "usecases50-worker-listProfissional",
+  "unitAttempts": 0,
+  "invocation": 1
+}
