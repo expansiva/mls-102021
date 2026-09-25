@@ -8,7 +8,8 @@
  * a thrown AppError into statusCode. The client repository is not written.
  * --inject edits those files and must come back failed, not expected-red.
  *
- *   tsx --import ./test/register-hooks.mjs mls-102021/l1/agentMaterializeL1/proofC3.ts --evidence <dir> --defs <dir> --repo <dir> [--inject broken-import|unexpected-500]
+ *   tsx --import ./test/register-hooks.mjs mls-102021/l1/agentMaterializeL1/proofC3.ts --evidence <dir> --defs <dir> --repo <dir> [--inject broken-import|unexpected-500] [--emitted yes]
+ * --emitted scores the tree already at --repo. It does not rewrite the catalog and does not read catalogFixture.json.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -64,6 +65,7 @@ interface ProofArgs {
   defs: string;
   repo: string;
   inject: InjectMode;
+  emitted: boolean;
 }
 
 interface SpawnResult {
@@ -82,7 +84,7 @@ async function main(): Promise<void> {
   if (isInside(evidence, repo) || evidence === repo) {
     throw new Error('Evidence directory must not be inside the client repository.');
   }
-  const before = porcelain(repo);
+  const before = args.emitted ? '' : porcelain(repo);
   const sandboxParent = args.inject
     ? join(evidence, 'inject', args.inject, 'sandbox')
     : join(evidence, 'sandbox');
@@ -92,52 +94,74 @@ async function main(): Promise<void> {
   await mkdir(sandboxProject, { recursive: true });
   await mkdir(outDir, { recursive: true });
 
-  const archived = spawn('git', ['-C', repo, 'archive', 'HEAD', 'l2', 'l4', 'l5']);
-  if (archived.code !== 0) throw new Error(archived.stderr || 'git archive failed');
-  const extracted = spawn('tar', ['-x', '-C', sandboxProject], archived.stdoutRaw);
-  if (extracted.code !== 0) throw new Error(extracted.stderr || 'tar failed');
-  await cp(join(defs, 'l1'), join(sandboxProject, 'l1'), { recursive: true });
-  const projectJsonPath = join(sandboxProject, 'l5', 'project.json');
-  const projectJson = JSON.parse(await readFile(projectJsonPath, 'utf8')) as { appEnv?: unknown };
-  const appEnvBefore = projectJson.appEnv;
-  projectJson.appEnv = 'development';
-  await writeFile(projectJsonPath, `${JSON.stringify(projectJson, null, 2)}\n`);
+  let appEnvBefore: unknown = null;
   const catalogRef = scenarioCatalogRef(PROJECT, MODULE);
-  await writeCatalog(sandboxProject, catalogRef);
+  let simulate: SpawnResult = { code: 0, stdout: 'emitted\n', stderr: '', argv: [] };
+  let structure: SpawnResult = { code: 0, stdout: 'emitted\n', stderr: '', argv: [] };
+  let beforeTree = '';
+  let afterTree = '';
+  if (args.emitted) {
+    const platform = join(REPO_ROOT, `mls-${PROJECT}`);
+    if (existsSync(join(platform, 'l1'))) {
+      await cp(join(platform, 'l1'), join(sandboxProject, 'l1'), { recursive: true });
+    }
+    await cp(repo, sandboxProject, { recursive: true });
+    for (const layer of ['l2', 'l4', 'l5']) {
+      if (!existsSync(join(sandboxProject, layer)) && existsSync(join(platform, layer))) {
+        await cp(join(platform, layer), join(sandboxProject, layer), { recursive: true });
+      }
+    }
+    const catalogOnDisk = join(sandboxProject, catalogRef.replace(/^_\d+_\/(.+)$/, '$1'));
+    const catalogText = await readFile(catalogOnDisk, 'utf8');
+    if (catalogText.includes('catalogFixture') || !catalogText.includes('scenarioCatalog')) {
+      throw new Error('Emitted proof requires the derived scenarioCatalog, not catalogFixture.json.');
+    }
+  } else {
+    const archived = spawn('git', ['-C', repo, 'archive', 'HEAD', 'l2', 'l4', 'l5']);
+    if (archived.code !== 0) throw new Error(archived.stderr || 'git archive failed');
+    const extracted = spawn('tar', ['-x', '-C', sandboxProject], archived.stdoutRaw);
+    if (extracted.code !== 0) throw new Error(extracted.stderr || 'tar failed');
+    await cp(join(defs, 'l1'), join(sandboxProject, 'l1'), { recursive: true });
+    const projectJsonPath = join(sandboxProject, 'l5', 'project.json');
+    const projectJson = JSON.parse(await readFile(projectJsonPath, 'utf8')) as { appEnv?: unknown };
+    appEnvBefore = projectJson.appEnv;
+    projectJson.appEnv = 'development';
+    await writeFile(projectJsonPath, `${JSON.stringify(projectJson, null, 2)}\n`);
+    await writeCatalog(sandboxProject, catalogRef);
+    beforeTree = await treeHash(sandboxProject);
+    simulate = materialize('simulate', '', sandboxParent);
+    afterTree = await treeHash(sandboxProject);
+    if (simulate.code !== 0) problems.push(`simulate exit ${simulate.code}`);
+    if (!simulate.stdout.includes('ended: SIMULATED')) problems.push('simulate did not end SIMULATED');
+    if (!simulate.stdout.includes('llmCalls: 0')) problems.push('simulate called a model');
+    if (!simulate.stdout.includes('wrote: no')) problems.push('simulate wrote');
+    if (beforeTree !== afterTree) problems.push('simulate changed the sandbox');
+    structure = materialize('structure', FLOW, sandboxParent);
+    const structureText = structure.stdout;
+    if (structure.code !== 0) problems.push(`structure exit ${structure.code}`);
+    for (const defPath of PROMOTED) {
+      if (!structureText.includes(`PROMOTED ${defPath}`)) problems.push(`not promoted: ${defPath}`);
+    }
+  }
   await writeBffHome(join(evidence, 'bff-home'));
 
   const host = createDiskHost(sandboxParent, sandboxParent, PROJECT, REPO_ROOT);
   host.catalogRef = catalogRef;
-  const beforeTree = await treeHash(sandboxProject);
-  const simulate = materialize('simulate', '', sandboxParent);
-  const afterTree = await treeHash(sandboxProject);
-  if (simulate.code !== 0) problems.push(`simulate exit ${simulate.code}`);
-  if (!simulate.stdout.includes('ended: SIMULATED')) problems.push('simulate did not end SIMULATED');
-  if (!simulate.stdout.includes('llmCalls: 0')) problems.push('simulate called a model');
-  if (!simulate.stdout.includes('wrote: no')) problems.push('simulate wrote');
-  if (beforeTree !== afterTree) problems.push('simulate changed the sandbox');
-
-  const structure = materialize('structure', FLOW, sandboxParent);
-  const structureText = structure.stdout;
-  if (structure.code !== 0) problems.push(`structure exit ${structure.code}`);
-  for (const defPath of PROMOTED) {
-    if (!structureText.includes(`PROMOTED ${defPath}`)) problems.push(`not promoted: ${defPath}`);
-  }
-
-  if (args.inject === 'broken-import') patchBrokenImport(sandboxProject);
+  const targets = await scoreTargets(host, catalogRef, args.emitted);
+  if (args.inject === 'broken-import') patchBrokenImport(sandboxProject, targets.map(item => item.defPath));
   const patchProblems = args.inject === 'unexpected-500' ? patchStubThrow(sandboxProject) : [];
-  const compileLog = compileSlice(sandboxProject);
+  const compileLog = compileSlice(sandboxProject, args.emitted);
   if (args.inject !== 'broken-import' && compileLog) problems.push('slice did not compile');
 
-  const scored = await score(host, catalogRef, sandboxProject);
+  const scored = await score(host, catalogRef, sandboxProject, targets, args.emitted);
   problems.push(...scored.problems, ...patchProblems);
   if (args.inject) problems.push(...injectionProblems(args.inject, scored.checkpoints, compileLog));
-  else problems.push(...cleanProblems(scored.checkpoints));
+  else problems.push(...cleanProblems(scored.checkpoints, args.emitted));
 
-  const after = porcelain(repo);
+  const after = args.emitted ? '' : porcelain(repo);
   if (after !== before) problems.push('client repository status changed');
 
-  const repoHead = spawn('git', ['-C', repo, 'rev-parse', 'HEAD']).stdout.trim();
+  const repoHead = args.emitted ? 'emitted' : spawn('git', ['-C', repo, 'rev-parse', 'HEAD']).stdout.trim();
   const baseHead = spawn('git', ['-C', REPO_ROOT, 'rev-parse', 'HEAD']).stdout.trim();
   const sliceHashes: Record<string, string> = {};
   for (const rel of SLICE) {
@@ -195,11 +219,13 @@ function parseArgs(argv: readonly string[]): ProofArgs {
   const defs = values.get('--defs') ?? '';
   const repo = values.get('--repo') ?? '';
   const inject = values.get('--inject') ?? '';
+  const emitted = values.get('--emitted') ?? '';
   if (!evidence || !defs || !repo) throw new Error('Pass --evidence, --defs and --repo.');
   if (inject && !INJECT.includes(inject as typeof INJECT[number])) {
     throw new Error('Inject must be broken-import or unexpected-500.');
   }
-  return { evidence, defs, repo, inject: inject as InjectMode };
+  if (emitted && emitted !== 'yes') throw new Error('Pass --emitted yes to score an already written tree.');
+  return { evidence, defs, repo, inject: inject as InjectMode, emitted: emitted === 'yes' };
 }
 
 async function writeCatalog(sandboxProject: string, catalogRef: string): Promise<void> {
@@ -212,10 +238,32 @@ async function writeCatalog(sandboxProject: string, catalogRef: string): Promise
   await writeFile(full, renderMonitorCatalog(parsed.catalog, catalogRef));
 }
 
+interface ScoreTarget {
+  defPath: string;
+  artifactId: string;
+}
+
+async function scoreTargets(
+  host: ReturnType<typeof createDiskHost>,
+  catalogRef: string,
+  emitted: boolean,
+): Promise<ScoreTarget[]> {
+  if (!emitted) return SCORED.map(defPath => ({ defPath, artifactId: defPath.split('/').pop()?.replace(/\.defs\.ts$/, '') || '' }));
+  const catalogText = await host.io.read(catalogRef);
+  const parsed = parseCatalog(catalogText ?? '');
+  if (!parsed.catalog) throw new Error(parsed.issues.join('; ') || 'catalog unreadable');
+  return parsed.catalog.scenarios
+    .filter(item => item.artifactType === 'usecase' || item.artifactType === 'httpController')
+    .filter(item => item.cases.some(entry => entry.gate !== 'compile'))
+    .map(item => ({ defPath: item.source, artifactId: item.artifactId }));
+}
+
 async function score(
   host: ReturnType<typeof createDiskHost>,
   catalogRef: string,
   sandboxProject: string,
+  targets: readonly ScoreTarget[],
+  emitted: boolean,
 ): Promise<{ problems: string[]; checkpoints: M1Checkpoint[]; grantGap: Record<string, unknown> }> {
   installRuntime(sandboxProject);
   const problems: string[] = [];
@@ -223,24 +271,38 @@ async function score(
   const parsed = parseCatalog(catalogText ?? '');
   if (!parsed.catalog) throw new Error(parsed.issues.join('; ') || 'catalog unreadable');
   const checkpoints: M1Checkpoint[] = [];
-  for (const defPath of SCORED) {
-    const definition = await loadDefinition(host, defPath);
+  for (const target of targets) {
+    const definition = await loadDefinition(host, target.defPath);
     const scenario = parsed.catalog.scenarios.find(item => item.artifactId === definition.artifactId);
     if (!scenario) {
       problems.push(`${definition.artifactId} has no scenario`);
       continue;
     }
-    const observations = await executeScenario(sandboxProject, definition, scenario.cases);
-    checkpoints.push(await report(host, catalogRef, defPath, definition, observations));
+    const observations = await executeScenario(sandboxProject, definition, scenario.cases, target.defPath);
+    checkpoints.push(await report(host, catalogRef, target.defPath, definition, observations));
   }
-  const grantGap = await readGrantGap(sandboxProject);
-  if (grantGap.code !== 'ACCESS_ANCHOR' || grantGap.grant) {
+  const grantGap = emitted ? { code: '', grant: false, record: {} } : await readGrantGap(sandboxProject);
+  if (!emitted && (grantGap.code !== 'ACCESS_ANCHOR' || grantGap.grant)) {
     problems.push(`grant gap was ${grantGap.code || 'a resolved grant'}, not ACCESS_ANCHOR`);
   }
   return { problems, checkpoints, grantGap: grantGap.record };
 }
 
-function cleanProblems(checkpoints: readonly M1Checkpoint[]): string[] {
+function cleanProblems(checkpoints: readonly M1Checkpoint[], emitted = false): string[] {
+  if (emitted) {
+    const problems: string[] = [];
+    if (checkpoints.length === 0) problems.push('emitted catalog produced no checkpoints');
+    for (const report of checkpoints) {
+      const artifactId = report.evidence[0]?.caseId.split('.')[0] || report.handlerId;
+      const business = report.evidence.some(item => item.caseId.includes('.reachesStub'));
+      problems.push(...expectStructure(report, artifactId, business));
+      if (business && !report.evidence.some(item => item.verdict === 'expectedRed' && item.status === 501 && item.errorCode === 'USECASE_NOT_IMPLEMENTED')) {
+        problems.push(`${artifactId} stub was not USECASE_NOT_IMPLEMENTED 501`);
+      }
+      if (!business && report.counts.expectedRed !== 0) problems.push(`${artifactId} route case was expected red`);
+    }
+    return problems;
+  }
   const create = checkpoints.find(item => item.evidence.some(row => row.caseId.startsWith('createConsulta.')));
   const list = checkpoints.find(item => item.evidence.some(row => row.caseId.startsWith('listConsulta.')));
   const page = checkpoints.find(item => item.evidence.some(row => row.caseId.startsWith(`${FLOW}.`)));
@@ -262,13 +324,13 @@ function injectionProblems(mode: InjectMode, checkpoints: readonly M1Checkpoint[
     return problems;
   }
   const problems: string[] = [];
-  const created = rows.find(item => item.caseId === 'createConsulta.creates');
+  const created = rows.find(item => item.caseId === 'createConsulta.creates' || item.caseId === 'createConsulta.reachesStub');
   if (!created || created.verdict !== 'failed' || created.status !== 500) {
     problems.push(`unexpected 500 verdict was ${created?.verdict ?? 'missing'} status ${created?.status ?? 'missing'}`);
   }
   if (created?.verdict === 'expectedRed') problems.push('unexpected 500 was expected red');
-  const business = rows.filter(item => !item.caseId.endsWith('.compile') && !item.caseId.startsWith(`${FLOW}.`));
-  if (business.some(item => item.verdict !== 'failed' || item.status !== 500)) problems.push('a stub case did not return 500');
+  const business = rows.filter(item => (item.caseId.startsWith('createConsulta.') || item.caseId.startsWith('listConsulta.')) && !item.caseId.endsWith('.compile'));
+  if (business.length === 0 || business.some(item => item.verdict !== 'failed' || item.status !== 500)) problems.push('a stub case did not return 500');
   const kept = rows.filter(item => item.caseId.endsWith('.compile') || item.caseId.startsWith(`${FLOW}.`));
   if (kept.length === 0 || kept.some(item => item.verdict !== 'passed')) problems.push('compile or controller case did not pass after the stub throw');
   if (checkpoints.filter(item => item.evidence.some(row => row.caseId.startsWith('createConsulta.') || row.caseId.startsWith('listConsulta.'))).some(item => item.accepted)) {
@@ -292,9 +354,9 @@ function expectStructure(report: M1Checkpoint, artifactId: string, businessRed: 
   return problems;
 }
 
-function patchBrokenImport(sandboxProject: string): void {
+function patchBrokenImport(sandboxProject: string, refs: readonly string[] = SCORED): void {
   const line = `import { missing } from '/_${PROJECT}_/l1/${MODULE}/missing.js';\nvoid missing;`;
-  for (const ref of SCORED) {
+  for (const ref of refs) {
     const full = diskOf(sandboxProject, outputOf(ref));
     const source = readFileSync(full, 'utf8');
     if (!source.includes("from '/_" + PROJECT + `_/l1/${MODULE}/missing.js'`)) writeFileSync(full, `${source}\n${line}\n`);
@@ -335,8 +397,9 @@ async function executeScenario(
   sandboxProject: string,
   definition: M1Definition,
   cases: readonly M1ScenarioCase[],
+  defPath: string,
 ): Promise<M1Observation[]> {
-  const loaded = await importSandbox(sandboxProject, outputOf(definitionPath(definition)));
+  const loaded = await importSandbox(sandboxProject, outputOf(defPath));
   if ('error' in loaded) {
     return cases.map(item => observation(item.caseId, { broken: 'import', reason: loaded.error }));
   }
@@ -618,10 +681,22 @@ async function loadDefinition(host: ReturnType<typeof createDiskHost>, defPath: 
   return definition;
 }
 
-function compileSlice(sandboxProject: string): string {
+function compileSlice(sandboxProject: string, emitted = false): string {
   const config = join(REPO_ROOT, `.tsconfig.m1-05-${process.pid}.json`);
   try {
-    const files = SLICE.map(rel => `./${relative(REPO_ROOT, join(sandboxProject, rel)).split(sep).join('/')}`);
+    const slice = emitted
+      ? [
+        `l1/${MODULE}/layer_1_external/adapters/http/controllers/consultas.ts`,
+        `l1/${MODULE}/layer_1_external/adapters/http/controllers/agenda.ts`,
+        `l1/${MODULE}/layer_1_external/adapters/http/controllers/pacientes.ts`,
+        `l1/${MODULE}/layer_3_domain/entities/consulta.ts`,
+        `l1/${MODULE}/layer_2_application/ports/consultaRepository.ts`,
+        `l1/${MODULE}/layer_2_application/usecases/createConsulta.ts`,
+        `l1/${MODULE}/layer_2_application/usecases/listConsulta.ts`,
+        `l1/${MODULE}/layer_2_application/scope/accessScope.ts`,
+      ]
+      : SLICE;
+    const files = slice.map(rel => `./${relative(REPO_ROOT, join(sandboxProject, rel)).split(sep).join('/')}`);
     const base = readFileSync(join(REPO_ROOT, 'tsconfig.base.json'), 'utf8');
     const paths: Record<string, string[]> = {};
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {

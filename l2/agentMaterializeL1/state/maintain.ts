@@ -176,11 +176,28 @@ export async function decideMaintenance(input: MaintenanceInput): Promise<Mainte
   if (recipeDrift) {
     return { action: 'generate', reason: `RECIPE_CHANGED: recipe ${input.recipeVersion} does not match the receipt.` };
   }
+  if (scaffoldReceiptMatches(input)) {
+    return { action: 'reuse', reason: 'REUSE: scaffold compile receipt matches the semantic hash, dependencies and outputs.' };
+  }
   const handler = input.hasImplementHandler ? 'implement' : 'structure';
   return {
     action: 'generate',
     reason: `GENERATE: output is not an accepted implementation; handler ${handler}.`,
   };
+}
+
+/** A structure scaffold stays pending. Its compile receipt is still a reuse when the bytes match. Implement does not skip on it. */
+function scaffoldReceiptMatches(input: MaintenanceInput): boolean {
+  const receipt = input.receipt;
+  if (!receipt || input.stage !== 'structure') return false;
+  if (receipt.stage !== 'compile' || receipt.reason !== 'scaffold' || receipt.failures.length > 0) return false;
+  if (receipt.semanticHash !== input.semantic) return false;
+  if (!input.outputPresent || !input.outputHash) return false;
+  if (receipt.outputHashes[input.outputPath] !== input.outputHash) return false;
+  for (const path of input.definition.dependencies) {
+    if (input.dependencyHashes[path] !== receipt.dependencyHashes[path]) return false;
+  }
+  return true;
 }
 
 function semanticChanged(input: MaintenanceInput): boolean {

@@ -76,6 +76,8 @@ export interface MaterializeLedger {
   budget: EffectiveBudget;
   units: Record<string, LedgerUnit>;
   events: LedgerEvent[];
+  /** Hash of the derived catalog inputs. A change clears catalog failure signatures. */
+  catalogInputHash?: string;
 }
 
 export type CallErrorCode = 'TIMEOUT' | 'NETWORK_UNAVAILABLE' | 'TRANSIENT' | 'INVALID_RESPONSE';
@@ -219,6 +221,7 @@ export function parseLedger(text: string, project: number, moduleName: string): 
     budget: raw.budget,
     units,
     events,
+    catalogInputHash: typeof raw.catalogInputHash === 'string' ? raw.catalogInputHash : undefined,
   };
 }
 

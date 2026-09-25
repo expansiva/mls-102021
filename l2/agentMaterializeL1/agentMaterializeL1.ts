@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { helpText, parseStudioPrompt, M1_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { runMaterialize } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { receiptFolder } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { createStudioHost, loadStudioUnits, readStudioProfile } from '/_102021_/l2/agentMaterializeL1/studioHost.js';
 
 export function createAgent(): IAgentAsync {
@@ -32,6 +33,8 @@ async function beforePromptImplicit(
       loadStudioUnits(command.project, command.moduleName),
       readStudioProfile(command.project),
     ]);
+    const host = createStudioHost(command.project);
+    host.catalogRef = `_${command.project}_/${receiptFolder(command.moduleName)}/scenarioCatalog.ts`;
     const result = await runMaterialize({
       project: command.project,
       moduleName: command.moduleName,
@@ -41,7 +44,7 @@ async function beforePromptImplicit(
       units,
       profileMode: profile.mode,
       profileDeclared: profile.declared,
-    }, createStudioHost(command.project));
+    }, host);
     return statusTask(agent, context, summarize(result), {
       command: result.stage,
       ended: result.ended,
@@ -73,13 +76,20 @@ async function afterPromptStep(
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'agentMaterializeL1 finished this step without a model call.')];
 }
 
-function summarize(result: { moduleName: string; project: number; stage: string; ended: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }> }): string {
-  return [
+function summarize(result: { moduleName: string; project: number; stage: string; ended: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }>; catalog?: { action: string; ref: string; inputHash: string; detail: string; gaps: Array<{ artifactId: string; origin: string; reason: string }> } }): string {
+  const lines = [
     `agentMaterializeL1 ${result.moduleName} in project ${result.project}.`,
     `Stage ${result.stage}. ${result.ended}.`,
     `Model calls: ${result.llmCalls}. Writes: ${result.wrote ? 'yes' : 'no'}.`,
     ...result.units.map(unit => `${unit.code} ${unit.defPath}`),
-  ].join('\n');
+  ];
+  if (result.catalog) {
+    lines.push(`catalog: ${result.catalog.action} ${result.catalog.ref}`);
+    lines.push(`catalogHash: ${result.catalog.inputHash}`);
+    lines.push(result.catalog.detail);
+    for (const gap of result.catalog.gaps) lines.push(`gap: ${gap.artifactId} ${gap.origin} ${gap.reason}`);
+  }
+  return lines.join('\n');
 }
 
 function statusTask(

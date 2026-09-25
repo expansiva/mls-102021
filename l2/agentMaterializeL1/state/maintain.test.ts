@@ -63,6 +63,23 @@ void test('pending works, generated needs evidence, and a hand edit does not cas
   assert.match(local.reason, /^LOCAL_EDIT:/);
 });
 
+void test('a pending scaffold compile receipt is reuse and implement still generates', async () => {
+  const ready = await receiptFor(note('pending'));
+  ready.stage = 'compile';
+  ready.reason = 'scaffold';
+  const outputHash = ready.outputHashes[outputPathFromDefPath(DEF)];
+  const pending = await input(note('pending'), ready, { present: true, hash: outputHash });
+  pending.dependencyHashes = { 'other.defs.ts': 'sha256:unrelated' };
+  const reuse = await decideMaintenance(pending);
+  assert.equal(reuse.action, 'reuse');
+  assert.match(reuse.reason, /^REUSE:/);
+
+  const implement = await input(note('pending'), ready, { present: true, hash: outputHash });
+  implement.stage = 'implement';
+  const again = await decideMaintenance(implement);
+  assert.equal(again.action, 'generate');
+});
+
 void test('a resolved block is released and a failed resume is not', async () => {
   const blocked = await receiptFor(note('blocked'));
   blocked.reason = 'MISSING_REF: source.ts';

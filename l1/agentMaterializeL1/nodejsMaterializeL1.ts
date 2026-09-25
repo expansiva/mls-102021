@@ -71,6 +71,13 @@ export function renderResult(result: MaterializeRunResult): string {
     `repairsPerRun: ${result.budget.repairsPerRun}`,
   ];
   for (const unit of result.units) lines.push(unit.detail ? `${unit.code} ${unit.defPath} ${unit.detail}` : `${unit.code} ${unit.defPath}`);
+  if (result.catalog) {
+    lines.push(`catalog: ${result.catalog.action} ${result.catalog.ref}`);
+    lines.push(`catalogHash: ${result.catalog.inputHash}`);
+    lines.push(`catalogRecipe: ${result.catalog.recipeVersion}`);
+    lines.push(`catalogDetail: ${result.catalog.detail}`);
+    for (const gap of result.catalog.gaps) lines.push(`gap: ${gap.artifactId} ${gap.origin} ${gap.reason}`);
+  }
   return lines.join('\n');
 }
 
@@ -244,7 +251,7 @@ async function main(): Promise<void> {
   const project = parsed.project;
   const roots = resolveRunRoots(root, parsed.outputDir, parsed.sourceRoot);
   const disk = createDiskHost(roots.readRoot, roots.writeRoot, project, roots.platformRoot);
-  if (roots.platformRoot && parsed.moduleName) disk.catalogRef = scenarioCatalogRef(project, parsed.moduleName);
+  if (parsed.moduleName) disk.catalogRef = scenarioCatalogRef(project, parsed.moduleName);
   const outcome = await executeCli(process.argv.slice(2), {
     host: disk,
     readProfile: readProjectProfile.bind(null, roots.readRoot),

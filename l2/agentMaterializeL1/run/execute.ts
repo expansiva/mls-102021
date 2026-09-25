@@ -24,7 +24,14 @@ import { handlerFor, type MaterializeHandler } from '/_102021_/l2/agentMateriali
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { simulate, type SimulationSnapshot, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import {
+  canonicalJson,
+  parseCatalog,
+  renderMonitorCatalog,
+  renderNodeTest,
+  testFileFor,
+} from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { catalogBytes, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
@@ -143,6 +150,16 @@ export interface MaterializeRunResult {
   llmCalls: number;
   wrote: boolean;
   ended: string;
+  catalog?: CatalogPrep;
+}
+
+export interface CatalogPrep {
+  ref: string;
+  action: 'simulated' | 'written' | 'unchanged' | 'conflict' | 'invalid';
+  inputHash: string;
+  recipeVersion: string;
+  gaps: CatalogGap[];
+  detail: string;
 }
 
 export async function runMaterialize(request: MaterializeRunRequest, host: MaterializeRunHost): Promise<MaterializeRunResult> {
@@ -196,6 +213,18 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     recipeVersion: M1_RECIPE_VERSION,
     removals,
   });
+  const catalogPrep = host.catalogRef ? await prepareCatalog(request, host, merged, stage !== 'simulate') : null;
+  if (catalogPrep?.action === 'invalid') {
+    return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'CATALOG_INVALID', stage, catalogPrep);
+  }
+  if (catalogPrep && ledger.catalogInputHash && ledger.catalogInputHash !== catalogPrep.inputHash) {
+    for (const unit of Object.values(ledger.units)) {
+      if (unit.signature === 'CATALOG_UNREAD' || unit.signature === 'CATALOG_INVALID' || unit.signature === 'CHECKPOINT_FAILED') {
+        unit.signature = '';
+      }
+    }
+  }
+  if (catalogPrep) ledger.catalogInputHash = catalogPrep.inputHash;
   if (stage === 'simulate') {
     return finish(request, profile, budget, snapshot, ledger, snapshot.units.map(unit => ({
       defPath: unit.defPath,
@@ -203,17 +232,17 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       detail: unit.reason,
       promoted: false,
       modelCalls: 0,
-    })), [], 0, false, 'SIMULATED', stage);
+    })), [], 0, false, 'SIMULATED', stage, catalogPrep);
   }
 
   const holder = `${request.project}:${request.moduleName}:${Math.random().toString(16).slice(2)}`;
   if (host.writer && !await host.writer.claim(request.moduleName, holder)) {
-    return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'WRITER_BUSY', stage);
+    return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'WRITER_BUSY', stage, catalogPrep);
   }
   try {
     const openedAs = ledger.stage;
     ledger.stage = stage;
-    let wrote = false;
+    let wrote = catalogPrep?.action === 'written';
     const outcomes: UnitOutcome[] = [];
     const checkpoints: M1Checkpoint[] = [];
     const modelCalls = { count: ledger.calls };
@@ -226,7 +255,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       if (request.signal?.aborted) {
         ledger.stage = stage;
         await persist(host, book, ledger);
-        return finish(request, profile, budget, snapshot, ledger, outcomes, checkpoints, modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0), wrote, 'INTERRUPTED', stage);
+        return finish(request, profile, budget, snapshot, ledger, outcomes, checkpoints, modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0), wrote, 'INTERRUPTED', stage, catalogPrep);
       }
       const ready = pending.filter(path => (depsOf.get(path) ?? []).every(dep => done.has(dep) || !depsOf.has(dep)));
       if (ready.length === 0) break;
@@ -271,6 +300,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       wrote,
       endedName,
       stage,
+      catalogPrep,
     );
   } finally {
     if (host.writer) await host.writer.release(request.moduleName, holder);
@@ -937,6 +967,7 @@ function finish(
   wrote: boolean,
   ended: string,
   stage: M1EntryStage,
+  catalog?: CatalogPrep | null,
 ): MaterializeRunResult {
   return {
     schemaVersion: M1_RUN_SCHEMA,
@@ -953,5 +984,85 @@ function finish(
     llmCalls,
     wrote,
     ended,
+    catalog: catalog ?? undefined,
   };
+}
+
+async function prepareCatalog(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  units: readonly PlanUnitInput[],
+  write: boolean,
+): Promise<CatalogPrep> {
+  const ref = host.catalogRef || '';
+  const texts: Record<string, string> = {};
+  for (const unit of units) {
+    const own = await host.io.read(unit.defPath);
+    if (own) texts[unit.defPath] = own;
+    const raw = isRecord(unit.definition) ? unit.definition : {};
+    const dependencies = Array.isArray(raw.dependencies) ? raw.dependencies.filter((item): item is string => typeof item === 'string') : [];
+    for (const dependency of dependencies) {
+      if (texts[dependency]) continue;
+      const text = await host.io.read(dependency);
+      if (text) texts[dependency] = text;
+    }
+  }
+  const derived = deriveCatalog(request.moduleName, units, texts);
+  const inputHash = await contentHash(catalogBytes(derived.catalog));
+  const existing = await host.io.read(ref);
+  if (existing === null) {
+    if (write) await writeDerived(host, ref, derived.catalog);
+    return {
+      ref,
+      action: write ? 'written' : 'simulated',
+      inputHash,
+      recipeVersion: derived.recipeVersion,
+      gaps: derived.gaps,
+      detail: write ? 'catalog written from defs' : 'catalog planned; nothing written',
+    };
+  }
+  const parsed = parseCatalog(existing);
+  if (!parsed.catalog) {
+    return {
+      ref,
+      action: 'invalid',
+      inputHash,
+      recipeVersion: derived.recipeVersion,
+      gaps: derived.gaps,
+      detail: parsed.issues.join('; ') || 'catalog unreadable',
+    };
+  }
+  if (canonicalJson(parsed.catalog) !== catalogBytes(derived.catalog)) {
+    return {
+      ref,
+      action: 'conflict',
+      inputHash,
+      recipeVersion: derived.recipeVersion,
+      gaps: derived.gaps,
+      detail: 'existing catalog differs from the derived catalog; it was not overwritten',
+    };
+  }
+  return {
+    ref,
+    action: 'unchanged',
+    inputHash,
+    recipeVersion: derived.recipeVersion,
+    gaps: derived.gaps,
+    detail: 'catalog already matches the defs',
+  };
+}
+
+async function writeDerived(
+  host: MaterializeRunHost,
+  ref: string,
+  catalog: ReturnType<typeof deriveCatalog>['catalog'],
+): Promise<void> {
+  await host.state.writeOwned(ref, new TextEncoder().encode(renderMonitorCatalog(catalog, ref)));
+  for (const scenario of catalog.scenarios) {
+    if (!scenario.testFile || scenario.cases.length === 0) continue;
+    const current = await host.io.read(scenario.testFile);
+    const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'));
+    if (current !== null && current !== next) continue;
+    await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));
+  }
 }

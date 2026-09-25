@@ -178,8 +178,12 @@ export async function verifyBatch(request: MaterializeVerificationRequest): Prom
   const staged = catalogForStage(parsed.catalog, stage);
   const cases = casesFor(staged, request.handler.id, request.artifactId);
   if (cases.length === 0) {
+    const runtime = request.handler.artifactType === 'usecase' || request.handler.artifactType === 'httpController';
+    if (request.artifactId && runtime) {
+      return checkpoint(request, inputHash, [row(request.artifactId, 'failed', null, null, 0, 'no catalog case for this artifact')]);
+    }
     if (request.artifactId) {
-      return checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no catalog case for this artifact')]);
+      return checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no runtime scenario; structural file only')]);
     }
     return checkpoint(request, inputHash, [row('batch', 'failed', null, null, 0, `no scenario for handler ${request.handler.id}`)]);
   }

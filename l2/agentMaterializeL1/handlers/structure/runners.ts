@@ -79,7 +79,6 @@ async function produce(id: string, definition: M1Definition, output: string, rea
 }
 
 async function observe(call: HandlerCall, definition: M1Definition, source: string, badImport: string): Promise<M1Observation[] | EmitFailure> {
-  if (call.handler.id !== 'structure.usecase' && call.handler.id !== 'structure.httpController') return [];
   if (!call.catalogRef) return { code: 'CATALOG_UNREAD', detail: 'The scenario catalog was not loaded.' };
   const text = await call.read(call.catalogRef);
   if (text === null) return { code: 'CATALOG_UNREAD', detail: `${call.catalogRef} could not be read.` };
@@ -89,11 +88,18 @@ async function observe(call: HandlerCall, definition: M1Definition, source: stri
     .filter(item => item.handlerId === call.handler.id && item.artifactId === definition.artifactId)
     .flatMap(item => item.cases);
   if (badImport) return cases.map(item => row(item.caseId, { broken: 'import', reason: badImport }));
+  if (call.handler.id !== 'structure.usecase' && call.handler.id !== 'structure.httpController') {
+    return cases.filter(item => item.gate === 'compile').map(item => row(item.caseId, { ok: true, status: 0, errorCode: null, reason: 'structure emitted' }));
+  }
   if (call.handler.id === 'structure.usecase') return cases.map(item => usecaseRow(item));
   const grants = await loadGrants(definition, call.read);
   if ('code' in grants) return grants;
   const rows: M1Observation[] = [];
   for (const item of cases) {
+    if (item.gate === 'compile' || !item.routine) {
+      rows.push(row(item.caseId, { ok: true, status: 0, errorCode: null, reason: 'structure emitted' }));
+      continue;
+    }
     const route = await routeFor(definition, item.routine, call.read);
     if ('code' in route) return route;
     const decision = decideRoute({
