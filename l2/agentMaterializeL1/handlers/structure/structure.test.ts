@@ -79,6 +79,10 @@ void test('the remaining structure files compile after the first pair', async ()
   const handler = controller.slice(start, controller.indexOf('async function handle', start + 20));
   assert.ok(handler.indexOf('authorize(') < handler.indexOf('validateInput('));
   assert.ok(handler.indexOf('validateInput(') < handler.indexOf('await createConsulta('));
+  assert.match(handler, /if \(denied\) throw denied;/);
+  assert.match(handler, /if \(invalid\) throw invalid;/);
+  assert.equal(handler.includes('return fail('), false);
+  assert.equal(handler.includes('catch ('), false);
   const access = sourceOf(emitted, 'accessScope');
   assert.match(access, /profissionalAgendaDiaria/);
   assert.match(access, /ACCESS_ANCHOR/);

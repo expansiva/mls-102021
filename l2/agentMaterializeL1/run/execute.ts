@@ -38,7 +38,7 @@ import {
   type ProfileDecision,
   MaterializeCallError,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
-import { matchesFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 
 export const M1_RUN_SCHEMA = '2026-09-25-m1-run-v1' as const;
@@ -121,7 +121,7 @@ export interface MaterializeRunResult {
 
 export async function runMaterialize(request: MaterializeRunRequest, host: MaterializeRunHost): Promise<MaterializeRunResult> {
   const profile = decideProfile(request.profileMode, request.profileDeclared);
-  const selected = request.flow ? request.units.filter(unit => matchesFlow(unit, request.flow)) : [...request.units];
+  const selected = unitsForFlow(request.units, request.flow);
   const book = ledgerPath(request.moduleName);
   const stored = await readLedger(host, book, request.project, request.moduleName);
   if (request.resume && stored === 'missing') {

@@ -5,14 +5,14 @@
  * Tests pass a fake host. This file does not read a database URL.
  *
  *   tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --help
- *   tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>]
+ *   tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--source-root <dir>]
  */
 
 import { readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseDefinitionSource, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource, receiptFolder, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
@@ -72,15 +72,18 @@ export function renderResult(result: MaterializeRunResult): string {
   return lines.join('\n');
 }
 
+/** Platform projects stay on the repository root when a sandbox is the read root. */
+export const PLATFORM_PROJECTS = new Set(['102034', '102027']);
+
 /** Qualified `_NNNNN_/lN/...` or a receipt `l1/<module>/...` under one project. `..` is refused. */
-export function mapOwnedPath(root: string, project: number, ref: string): string | null {
+export function mapOwnedPath(root: string, project: number, ref: string, also: ReadonlySet<string> | null = null): string | null {
   if (!ref || ref.includes('..') || ref.includes('\\') || ref.startsWith('/') || ref.includes('DATABASE_URL')) return null;
   if (/^(postgres|postgresql|mysql|mongodb):\/\//i.test(ref)) return null;
   const qualified = /^_(\d+)_\/(l[1-7]\/.+)$/.exec(ref);
   const local = /^(l[1-7]\/.+)$/.exec(ref);
   const projectId = qualified ? qualified[1] : String(project);
   const rest = qualified ? qualified[2] : local ? local[1] : '';
-  if (!rest || projectId !== String(project)) return null;
+  if (!rest || (projectId !== String(project) && !also?.has(projectId))) return null;
   const parts = rest.split('/');
   if (parts.some(part => !part || part === '.' || part === '..')) return null;
   const full = resolve(root, `mls-${projectId}`, ...parts);
@@ -90,20 +93,24 @@ export function mapOwnedPath(root: string, project: number, ref: string): string
   return full;
 }
 
-export function createDiskHost(readRoot: string, writeRoot: string, project: number): MaterializeRunHost {
+export function createDiskHost(
+  readRoot: string,
+  writeRoot: string,
+  project: number,
+  platformRoot: string | null = null,
+): MaterializeRunHost {
   const io: MaterializeReadIo = {
     async read(ref: string): Promise<string | null> {
+      if (platformRoot && isPlatformRef(ref)) {
+        const platform = mapOwnedPath(platformRoot, project, ref, PLATFORM_PROJECTS);
+        return platform ? readText(platform) : null;
+      }
       const written = mapOwnedPath(writeRoot, project, ref);
       const source = mapOwnedPath(readRoot, project, ref);
       for (const path of [written, source]) {
         if (!path) continue;
-        try {
-          return await readFile(path, 'utf8');
-        } catch (error) {
-          const code = (error as NodeJS.ErrnoException).code;
-          if (code === 'ENOENT' || code === 'EISDIR' || code === 'ENOTDIR') continue;
-          throw error;
-        }
+        const text = await readText(path);
+        if (text !== null) return text;
       }
       return null;
     },
@@ -188,6 +195,38 @@ export async function loadDefUnits(readRoot: string, project: number, moduleName
   return found;
 }
 
+export function scenarioCatalogRef(project: number, moduleName: string): string {
+  return `_${project}_/${receiptFolder(moduleName)}/scenarioCatalog.ts`;
+}
+
+/** `--output` relocates writes. `--source-root` relocates reads of this project. Platform stays on `repoRoot`. */
+export function resolveRunRoots(repoRoot: string, outputDir: string, sourceRoot: string): {
+  readRoot: string;
+  writeRoot: string;
+  platformRoot: string | null;
+} {
+  return {
+    readRoot: sourceRoot ? resolve(sourceRoot) : repoRoot,
+    writeRoot: outputDir ? resolve(outputDir) : repoRoot,
+    platformRoot: sourceRoot ? repoRoot : null,
+  };
+}
+
+function isPlatformRef(ref: string): boolean {
+  const match = /^_(\d+)_\/l[1-7]\//.exec(ref);
+  return !!match && PLATFORM_PROJECTS.has(match[1]);
+}
+
+async function readText(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'EISDIR' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
 async function writeText(root: string, project: number, ref: string, body: string): Promise<void> {
   const full = mapOwnedPath(root, project, ref);
   if (!full) throw new Error(`Refused a write outside the module tree: ${ref}`);
@@ -214,13 +253,14 @@ async function walk(dir: string, visit: (file: string) => Promise<void>): Promis
 async function main(): Promise<void> {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
   const parsed = parseCliArgs(process.argv.slice(2));
-  const writeRoot = parsed.outputDir ? resolve(parsed.outputDir) : root;
   const project = parsed.project;
-  const disk = createDiskHost(root, writeRoot, project);
+  const roots = resolveRunRoots(root, parsed.outputDir, parsed.sourceRoot);
+  const disk = createDiskHost(roots.readRoot, roots.writeRoot, project, roots.platformRoot);
+  if (roots.platformRoot && parsed.moduleName) disk.catalogRef = scenarioCatalogRef(project, parsed.moduleName);
   const outcome = await executeCli(process.argv.slice(2), {
     host: disk,
-    readProfile: readProjectProfile.bind(null, root),
-    loadUnits: (id, moduleName) => loadDefUnits(root, id, moduleName),
+    readProfile: readProjectProfile.bind(null, roots.readRoot),
+    loadUnits: (id, moduleName) => loadDefUnits(roots.readRoot, id, moduleName),
   });
   if (outcome.stdout) console.log(outcome.stdout);
   if (outcome.stderr) console.error(outcome.stderr);

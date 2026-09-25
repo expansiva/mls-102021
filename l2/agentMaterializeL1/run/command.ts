@@ -25,6 +25,8 @@ export interface MaterializeCommand {
   flow: string;
   resume: boolean;
   outputDir: string;
+  /** Empty means the repository root. A set value is the read root for this project only. */
+  sourceRoot: string;
   budget: BudgetRequest | null;
 }
 
@@ -38,6 +40,7 @@ export function emptyCommand(): MaterializeCommand {
     flow: '',
     resume: false,
     outputDir: '',
+    sourceRoot: '',
     budget: null,
   };
 }
@@ -56,11 +59,11 @@ export function helpText(project: number): string {
     '  @@agentMaterializeL1 <module> /implement',
     '  @@agentMaterializeL1 <module> /verify',
     '  @@agentMaterializeL1 <module> /resume',
-    '  Add flow:<id> to select one flow. An unknown flow is refused. The agent does not ask which file to open.',
+    '  Add flow:<id> to select one flow and the defs it depends on. An unknown flow is refused. The agent does not ask which file to open.',
     '',
     'CLI, from the mls-base root:',
     '  tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --help',
-    '  tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--workers <n>] [--timeout-ms <n>] [--repairs <n>] [--calls <n>]',
+    '  tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--source-root <dir>] [--workers <n>] [--timeout-ms <n>] [--repairs <n>] [--calls <n>]',
     '',
     'Defaults:',
     '  stage simulate — no model call and no write.',
@@ -70,6 +73,8 @@ export function helpText(project: number): string {
     '  development and presentation name DATABASE_URL_TEST and never fall back to DATABASE_URL.',
     '  production and homologation do not run stubs, synthetic seeds or a reset.',
     '  Receipts go to l1/<module>/materialization/agentMaterializeL1. --output only relocates that tree.',
+    '  --source-root reads defs, l5/project.json and this project\'s sources from that directory. mls-102034 and mls-102027 stay on the repository root. Without it, every read stays on the repository root.',
+    '  With --source-root, the scenario catalog is l1/<module>/materialization/agentMaterializeL1/scenarioCatalog.ts under that directory.',
   ].join('\n');
 }
 
@@ -77,7 +82,7 @@ export function parseCliArgs(argv: readonly string[]): MaterializeCommand {
   const command = emptyCommand();
   const budget: BudgetRequest = {};
   let sawBudget = false;
-  const flags = new Set(['--help', '--project', '--module', '--stage', '--flow', '--resume', '--output', '--workers', '--timeout-ms', '--repairs', '--calls']);
+  const flags = new Set(['--help', '--project', '--module', '--stage', '--flow', '--resume', '--output', '--source-root', '--workers', '--timeout-ms', '--repairs', '--calls']);
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--help') {
@@ -132,6 +137,12 @@ export function parseCliArgs(argv: readonly string[]): MaterializeCommand {
         return command;
       }
       command.outputDir = value;
+    } else if (token === '--source-root') {
+      if (!value || value.includes('..') || value.startsWith('-')) {
+        command.refusal = 'Source root must not contain .. .';
+        return command;
+      }
+      command.sourceRoot = value;
     } else if (token === '--workers') {
       const parsed = positive(value);
       if (parsed === null) {
@@ -242,6 +253,28 @@ export function parseStudioPrompt(prompt: string, project: number): MaterializeC
   return command;
 }
 
+/** The matched defs plus every selected def they depend on. The rest of the module stays out. */
+export function unitsForFlow(units: readonly PlanUnitInput[], flow: string): PlanUnitInput[] {
+  if (!flow) return [...units];
+  const byPath = new Map(units.map(unit => [unit.defPath, unit]));
+  const chosen = new Map<string, PlanUnitInput>();
+  const pending = units.filter(unit => matchesFlow(unit, flow));
+  for (const unit of pending) chosen.set(unit.defPath, unit);
+  for (let index = 0; index < pending.length; index += 1) {
+    const definition = pending[index].definition;
+    const raw = isRecord(definition) ? definition : {};
+    const dependencies = Array.isArray(raw.dependencies) ? raw.dependencies : [];
+    for (const dep of dependencies) {
+      if (typeof dep !== 'string' || chosen.has(dep)) continue;
+      const found = byPath.get(dep);
+      if (!found) continue;
+      chosen.set(dep, found);
+      pending.push(found);
+    }
+  }
+  return [...chosen.values()].sort((left, right) => left.defPath < right.defPath ? -1 : left.defPath > right.defPath ? 1 : 0);
+}
+
 export function matchesFlow(unit: PlanUnitInput, flow: string): boolean {
   if (!flow) return true;
   const raw = isRecord(unit.definition) ? unit.definition : {};
@@ -256,7 +289,7 @@ export function moduleTokenOk(value: string): boolean {
 }
 
 function flowTokenOk(value: string): boolean {
-  return /^[A-Za-z][A-Za-z0-9]*$/.test(value) && !value.includes('/') && !value.includes('..');
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(value) && !value.includes('/') && !value.includes('..');
 }
 
 function isStage(value: string): value is M1EntryStage {

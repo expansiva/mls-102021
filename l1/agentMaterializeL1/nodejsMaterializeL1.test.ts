@@ -9,11 +9,14 @@ import { fileURLToPath } from 'node:url';
 
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
+import { parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import {
   createDiskHost,
   executeCli,
   mapOwnedPath,
   readProjectProfile,
+  resolveRunRoots,
+  scenarioCatalogRef,
   type CliHooks,
 } from '/_102021_/l1/agentMaterializeL1/nodejsMaterializeL1.js';
 
@@ -29,6 +32,7 @@ void test('help and a fake host simulate without credentials or a shared output 
   assert.equal(help.exitCode, 0);
   assert.match(help.stdout, /@@agentMaterializeL1 \/help/);
   assert.match(help.stdout, /nodejsMaterializeL1\.ts --project/);
+  assert.match(help.stdout, /--source-root/);
   assert.equal(help.result, null);
 
   const refused = await executeCli(['--project', '102047'], hooks());
@@ -83,6 +87,53 @@ void test('disk writes stay inside the isolated output and a database url is not
     assert.match(ran.stdout, /databaseEnv: DATABASE_URL/);
     assert.match(ran.stdout, /wrote: no/);
     await assert.rejects(() => disk.state.writeOwned('../note.ts', new TextEncoder().encode('x')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test('source root reads this project and leaves platform projects on the repository root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'm1-05-'));
+  const repo = join(root, 'repo');
+  const sandbox = join(root, 'sandbox');
+  try {
+    const absent = parseCliArgs(['--project', '102047', '--module', 'agendaClinica']);
+    assert.equal(absent.refusal, '');
+    assert.equal(absent.sourceRoot, '');
+    const parsed = parseCliArgs(['--project', '102047', '--module', 'agendaClinica', '--source-root', sandbox, '--flow', 'consultas_recepcionista']);
+    assert.equal(parsed.refusal, '');
+    assert.equal(parsed.sourceRoot, sandbox);
+    assert.equal(parsed.flow, 'consultas_recepcionista');
+    assert.match(parseCliArgs(['--project', '102047', '--module', 'agendaClinica', '--source-root', '../out']).refusal, /Source root/);
+    assert.match(parseCliArgs(['--project', '102047', '--module', 'agendaClinica', '--flow', 'a/b']).refusal, /Flow id/);
+
+    const roots = resolveRunRoots(repo, sandbox, sandbox);
+    assert.equal(roots.readRoot, sandbox);
+    assert.equal(roots.writeRoot, sandbox);
+    assert.equal(roots.platformRoot, repo);
+    const same = resolveRunRoots(repo, '', '');
+    assert.equal(same.readRoot, repo);
+    assert.equal(same.writeRoot, repo);
+    assert.equal(same.platformRoot, null);
+    assert.equal(scenarioCatalogRef(102047, 'agendaClinica'), '_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.ts');
+
+    const marker = '_102034_/l1/server/marker.ts';
+    const own = '_102047_/l2/agendaClinica/web/contracts/note.defs.ts';
+    await mkdir(join(sandbox, 'mls-102034', 'l1', 'server'), { recursive: true });
+    await mkdir(join(sandbox, 'mls-102047', 'l2', 'agendaClinica', 'web', 'contracts'), { recursive: true });
+    await mkdir(join(repo, 'mls-102034', 'l1', 'server'), { recursive: true });
+    await writeFile(join(sandbox, 'mls-102034', 'l1', 'server', 'marker.ts'), 'decoy');
+    await writeFile(join(repo, 'mls-102034', 'l1', 'server', 'marker.ts'), 'platform');
+    await writeFile(join(sandbox, 'mls-102047', 'l2', 'agendaClinica', 'web', 'contracts', 'note.defs.ts'), 'sandbox-contract');
+
+    const split = createDiskHost(sandbox, sandbox, 102047, repo);
+    assert.equal(await split.io.read(marker), 'platform');
+    assert.equal(await split.io.read(own), 'sandbox-contract');
+    assert.equal(await split.io.read('_102099_/l1/other.ts'), null);
+
+    const current = createDiskHost(sandbox, sandbox, 102047);
+    assert.equal(await current.io.read(marker), null);
+    assert.equal(await current.io.read(own), 'sandbox-contract');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

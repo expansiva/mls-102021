@@ -20,7 +20,7 @@ CLI, from the mls-base root:
 
 ```
 tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --help
-tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--workers <n>] [--timeout-ms <n>] [--repairs <n>] [--calls <n>]
+tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--source-root <dir>] [--workers <n>] [--timeout-ms <n>] [--repairs <n>] [--calls <n>]
 ```
 
 Defaults: stage `simulate`, 2 workers, 120s call timeout, 1 repair per artifact, 4 repairs and 24 model calls per run. A tighter stored budget wins. Those ceilings are not raised. The profile is `appEnv` in `l5/project.json`. If it is absent the mode is `presentation`, not production.

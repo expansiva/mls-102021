@@ -21,7 +21,7 @@ import {
   noteModelCall,
   tightenBudget,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
-import { helpText, parseCliArgs, parseStudioPrompt } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import { helpText, parseCliArgs, parseStudioPrompt, unitsForFlow } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import {
   runMaterialize,
   type HandlerOutcome,
@@ -395,6 +395,11 @@ void test('verify does not generate and an unknown flow is a refusal', async () 
   assert.equal(missing.ended, 'FLOW_NOT_FOUND');
   assert.equal(missing.wrote, false);
   assert.equal(missing.snapshot, null);
+
+  const task = entity('Task');
+  const linked = { ...note, definition: { ...note.definition, dependencies: [task.defPath] } };
+  const selected = unitsForFlow([linked, task, entity('Other')], 'Note');
+  assert.deepEqual(selected.map(unit => unit.definition.artifactId).sort(), ['Note', 'Task']);
 });
 
 void test('the model port is only for an implement handler that needs it', async () => {
