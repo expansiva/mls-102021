@@ -11,9 +11,11 @@
 import {
   isRecord,
   outputPathFromDefPath,
+  parseDefinitionSource,
   readDefinition,
   receiptPathFor,
   semanticHash,
+  type M1Status,
   type M1Verification,
   type MaterializationReceipt,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
@@ -22,6 +24,7 @@ import { handlerFor, type MaterializeHandler } from '/_102021_/l2/agentMateriali
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { simulate, type SimulationSnapshot, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
+import { testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
@@ -41,9 +44,21 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
 import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
+import {
+  hashEvidence,
+  M1_OWNED_SCHEMA,
+  M1_RECIPE_VERSION,
+  ownedManifestRef,
+  parseOwnedManifest,
+  renderOwnedManifest,
+  replaceStatus,
+  stagingRef,
+  statusForPromotion,
+  type WriteBoundary,
+} from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 export const M1_RUN_SCHEMA = '2026-09-25-m1-run-v1' as const;
-export const M1_RECIPE_VERSION = '2026-09-25-m1-recipe-v1' as const;
+export { M1_RECIPE_VERSION };
 
 export interface HandlerOutcome {
   files: Record<string, string>;
@@ -72,6 +87,11 @@ export interface HandlerCall {
 
 export type MaterializeHandlerRunner = (call: HandlerCall) => Promise<HandlerOutcome>;
 
+export interface MaterializeWriter {
+  claim(moduleName: string, holder: string): Promise<boolean>;
+  release(moduleName: string, holder: string): Promise<void>;
+}
+
 export interface MaterializeRunHost {
   io: MaterializeReadIo;
   state: MaterializeStateStore;
@@ -81,6 +101,9 @@ export interface MaterializeRunHost {
   catalogRef?: string;
   commit?: string;
   monitorError?: string | null;
+  /** One writer per module. Absent in unit tests that do not share a store. */
+  writer?: MaterializeWriter;
+  onBoundary?: (boundary: WriteBoundary) => Promise<void> | void;
 }
 
 export interface MaterializeRunRequest {
@@ -161,13 +184,17 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
   }
 
   const planStage = stage === 'implement' ? 'implement' : 'structure';
+  const merged = await preferDiskDefinitions(host, selected);
+  const removals = request.flow ? [] : await ownedRemovals(host, request.moduleName, request.units);
   const snapshot = await simulate({
     moduleName: request.moduleName,
-    units: selected,
+    units: merged,
     stage: planStage,
     io: host.io,
     state: host.state,
-    verifyOnly: stage === 'verify' ? selected.map(unit => unit.defPath) : [],
+    verifyOnly: stage === 'verify' ? merged.map(unit => unit.defPath) : [],
+    recipeVersion: M1_RECIPE_VERSION,
+    removals,
   });
   if (stage === 'simulate') {
     return finish(request, profile, budget, snapshot, ledger, snapshot.units.map(unit => ({
@@ -179,66 +206,75 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     })), [], 0, false, 'SIMULATED', stage);
   }
 
-  const openedAs = ledger.stage;
-  ledger.stage = stage;
-  let wrote = false;
-  const outcomes: UnitOutcome[] = [];
-  const checkpoints: M1Checkpoint[] = [];
-  const modelCalls = { count: ledger.calls };
-  const pending = snapshot.units.map(unit => unit.defPath);
-  const done = new Set<string>();
-  const definitions = new Map(selected.map(unit => [unit.defPath, unit.definition]));
-  const depsOf = dependencyMap(selected);
+  const holder = `${request.project}:${request.moduleName}:${Math.random().toString(16).slice(2)}`;
+  if (host.writer && !await host.writer.claim(request.moduleName, holder)) {
+    return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'WRITER_BUSY', stage);
+  }
+  try {
+    const openedAs = ledger.stage;
+    ledger.stage = stage;
+    let wrote = false;
+    const outcomes: UnitOutcome[] = [];
+    const checkpoints: M1Checkpoint[] = [];
+    const modelCalls = { count: ledger.calls };
+    const pending = snapshot.units.map(unit => unit.defPath);
+    const done = new Set<string>();
+    const definitions = new Map(merged.map(unit => [unit.defPath, unit.definition]));
+    const depsOf = dependencyMap(merged);
 
-  while (pending.length > 0) {
-    if (request.signal?.aborted) {
+    while (pending.length > 0) {
+      if (request.signal?.aborted) {
+        ledger.stage = stage;
+        await persist(host, book, ledger);
+        return finish(request, profile, budget, snapshot, ledger, outcomes, checkpoints, modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0), wrote, 'INTERRUPTED', stage);
+      }
+      const ready = pending.filter(path => (depsOf.get(path) ?? []).every(dep => done.has(dep) || !depsOf.has(dep)));
+      if (ready.length === 0) break;
+      const wave = ready.slice(0, budget.maxWorkers);
+      for (const path of wave) pending.splice(pending.indexOf(path), 1);
+      await Promise.all(wave.map(async path => {
+        const unit = snapshot.units.find(item => item.defPath === path);
+        if (!unit) return;
+        const outcome = await runUnit(
+          request, host, stage, profile, budget, ledger, unit, definitions.get(path), depsOf.get(path) ?? [], checkpoints, modelCalls, openedAs,
+        );
+        outcomes.push(outcome);
+        if (outcome.promoted) wrote = true;
+        done.add(path);
+      }));
       ledger.stage = stage;
       await persist(host, book, ledger);
-      return finish(request, profile, budget, snapshot, ledger, outcomes, checkpoints, modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0), wrote, 'INTERRUPTED', stage);
     }
-    const ready = pending.filter(path => (depsOf.get(path) ?? []).every(dep => done.has(dep) || !depsOf.has(dep)));
-    if (ready.length === 0) break;
-    const wave = ready.slice(0, budget.maxWorkers);
-    for (const path of wave) pending.splice(pending.indexOf(path), 1);
-    await Promise.all(wave.map(async path => {
-      const unit = snapshot.units.find(item => item.defPath === path);
-      if (!unit) return;
-      const outcome = await runUnit(
-        request, host, stage, profile, budget, ledger, unit, definitions.get(path), depsOf.get(path) ?? [], checkpoints, modelCalls, openedAs,
-      );
-      outcomes.push(outcome);
-      if (outcome.promoted) wrote = true;
-      done.add(path);
-    }));
-    ledger.stage = stage;
-    await persist(host, book, ledger);
-  }
 
-  const endedName = ledger.callsExhausted && outcomes.some(item => item.code === 'BUDGET_CALLS')
-    ? 'BUDGET_CALLS'
-    : 'COMPLETED';
-  if (request.eventId) {
-    ledger.events.push({
-      id: request.eventId,
-      ended: endedName,
-      units: outcomes.map(unit => ({ defPath: unit.defPath, code: unit.code, promoted: unit.promoted })),
-    });
-    ledger.stage = stage;
-    await persist(host, book, ledger);
+    const endedName = ledger.callsExhausted && outcomes.some(item => item.code === 'BUDGET_CALLS')
+      ? 'BUDGET_CALLS'
+      : 'COMPLETED';
+    if (request.eventId) {
+      ledger.events.push({
+        id: request.eventId,
+        ended: endedName,
+        units: outcomes.map(unit => ({ defPath: unit.defPath, code: unit.code, promoted: unit.promoted })),
+      });
+      ledger.stage = stage;
+      await persist(host, book, ledger);
+    }
+    await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath));
+    return finish(
+      request,
+      profile,
+      budget,
+      snapshot,
+      ledger,
+      orderOutcomes(snapshot, outcomes),
+      checkpoints,
+      modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0),
+      wrote,
+      endedName,
+      stage,
+    );
+  } finally {
+    if (host.writer) await host.writer.release(request.moduleName, holder);
   }
-  return finish(
-    request,
-    profile,
-    budget,
-    snapshot,
-    ledger,
-    orderOutcomes(snapshot, outcomes),
-    checkpoints,
-    modelCalls.count - (stored && stored !== 'missing' ? stored.calls : 0),
-    wrote,
-    endedName,
-    stage,
-  );
 }
 
 async function runUnit(
@@ -258,9 +294,24 @@ async function runUnit(
   const prior = ledger.units[unit.defPath];
   const finishedAs = prior?.stage ?? openedAs;
   if (prior?.ended && prior.ended !== 'INTERRUPTED' && finishedAs === stage) {
-    return outcome(unit.defPath, prior.ended, 'Already finished in this run. Not repeated.', false, 0);
+    const success = prior.ended === 'PROMOTED' || prior.ended === 'REUSE' || prior.ended === 'VERIFIED';
+    if (success && (unit.action === 'reuse' || unit.action === 'verify')) {
+      const code = unit.action === 'verify' ? 'VERIFIED' : 'REUSE';
+      return outcome(unit.defPath, code, unit.reason, false, 0);
+    }
+    if (!success && await sameSemantic(host, unit.defPath, definition) && !releasedBlock(definition, unit.action)) {
+      return outcome(unit.defPath, prior.ended, 'Resume kept the failed attempt. The budget was not reset.', false, 0);
+    }
+  }
+  if (unit.action === 'conflict') {
+    await writeConflictReceipt(request, host, unit, definition, codeOf(unit.reason, 'LOCAL_EDIT'), unit.reason);
+    return remember(ledger, unit.defPath, outcome(unit.defPath, codeOf(unit.reason, 'LOCAL_EDIT'), unit.reason, false, 0));
   }
   if (unit.action === 'blocked') {
+    if (!unit.reason.startsWith('BLOCKED_BY:') && !unit.reason.startsWith('STATUS_')) {
+      await writeBlockedReceipt(request, host, unit, definition, codeOf(unit.reason, 'BLOCKED'), unit.reason);
+      await writeDefStatus(host, unit.defPath, 'blocked');
+    }
     return remember(ledger, unit.defPath, outcome(unit.defPath, codeOf(unit.reason, 'BLOCKED'), unit.reason, false, 0));
   }
   if (unit.action === 'reuse') {
@@ -268,7 +319,11 @@ async function runUnit(
   }
   if (unit.action === 'remove') {
     const output = outputPathFromDefPath(unit.defPath);
-    const owned = output ? [output] : [];
+    const previous = await host.state.readReceipt(unit.defPath);
+    const owned = [...new Set([
+      ...(output ? [output] : []),
+      ...Object.keys(previous?.outputHashes ?? {}),
+    ])];
     await host.state.removeOwned(owned, owned);
     return remember(ledger, unit.defPath, outcome(unit.defPath, 'REMOVE', unit.reason, false, 0));
   }
@@ -311,10 +366,11 @@ async function runUnit(
   }
 
   const before = await fingerprint(host.io, unit);
+  const revisionBefore = await host.state.readRevision(unit.defPath);
   const first = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, false, modelCalls);
   if (first.kind === 'promoted' || first.kind === 'held') {
     const promoted = await promote(
-      request, host, unit, definition, before, first.files, first.checkpoint, first.runsStub,
+      request, host, unit, definition, before, revisionBefore, first.files, first.checkpoint, first.runsStub,
       first.kind === 'held' ? 'BLOCKED' : 'PROMOTED',
       first.evidences,
     );
@@ -334,7 +390,7 @@ async function runUnit(
   const second = await attempt(request, host, stage, profile, budget, ledger, unit, definition, handler, runner, true, modelCalls);
   if (second.kind === 'promoted') {
     const promoted = await promote(
-      request, host, unit, definition, before, second.files, second.checkpoint, second.runsStub,
+      request, host, unit, definition, before, revisionBefore, second.files, second.checkpoint, second.runsStub,
       'PROMOTED', second.evidences,
     );
     if (promoted.checkpoint) checkpoints.push(promoted.checkpoint);
@@ -487,26 +543,53 @@ async function promote(
   unit: SimulatedUnit,
   definition: unknown,
   before: string,
+  revisionBefore: string | null,
   files: Record<string, string>,
   checkpoint: M1Checkpoint | null,
   scaffold: boolean,
   receiptCode = 'PROMOTED',
   evidences?: M1Verification[],
 ): Promise<{ outcome: UnitOutcome; checkpoint: M1Checkpoint | null }> {
-  const after = await fingerprint(host.io, unit);
   const output = outputPathFromDefPath(unit.defPath);
-  if (before !== after) {
+  const body = files[output];
+  if (typeof body !== 'string') {
+    return { outcome: outcome(unit.defPath, 'INVALID_RESPONSE', 'The handler returned no output file.', false, 0), checkpoint };
+  }
+  await boundary(host, 'before-promote');
+  const after = await fingerprint(host.io, unit);
+  const revisionNow = await host.state.readRevision(unit.defPath);
+  if (before !== after || revisionBefore !== revisionNow) {
     await writeBlockedReceipt(request, host, unit, definition, 'SNAPSHOT_CHANGED', 'The source changed during the call. The previous output was kept.');
     return {
       outcome: outcome(unit.defPath, 'SNAPSHOT_CHANGED', 'The source changed during the call. The previous output was kept.', false, 0),
       checkpoint,
     };
   }
-  const body = files[output];
-  if (typeof body !== 'string') {
-    return { outcome: outcome(unit.defPath, 'INVALID_RESPONSE', 'The handler returned no output file.', false, 0), checkpoint };
+  const current = await host.io.read(output);
+  const previous = await host.state.readReceipt(unit.defPath);
+  const recorded = previous?.outputHashes[output];
+  if (current !== null && typeof recorded === 'string' && recorded.length > 0 && await contentHash(current) !== recorded) {
+    await writeConflictReceipt(request, host, unit, definition, 'LOCAL_EDIT', 'The output was edited. It was not overwritten.');
+    return {
+      outcome: outcome(unit.defPath, 'LOCAL_EDIT', 'The output was edited. It was not overwritten.', false, 0),
+      checkpoint,
+    };
+  }
+  const staged = stagingRef(request.moduleName, output);
+  await host.state.writeOwned(staged, new TextEncoder().encode(body));
+  await boundary(host, 'staging');
+  const revisionAfterStage = await host.state.readRevision(unit.defPath);
+  const afterStage = await fingerprint(host.io, unit);
+  if (revisionAfterStage !== revisionNow || afterStage !== after) {
+    await host.state.removeOwned([staged], [staged]);
+    await writeBlockedReceipt(request, host, unit, definition, 'SNAPSHOT_CHANGED', 'The source changed during the call. The previous output was kept.');
+    return {
+      outcome: outcome(unit.defPath, 'SNAPSHOT_CHANGED', 'The source changed during the call. The previous output was kept.', false, 0),
+      checkpoint,
+    };
   }
   await host.state.writeOwned(output, new TextEncoder().encode(body));
+  await boundary(host, 'output');
   const accepted = receiptCode === 'PROMOTED';
   await writeReceipt(
     request, host, unit, definition, output, body, checkpoint, receiptCode,
@@ -514,6 +597,11 @@ async function promote(
     scaffold,
     evidences,
   );
+  await boundary(host, 'receipt');
+  const nextStatus = accepted ? statusForPromotion(true, scaffold) : 'blocked';
+  if (nextStatus) await writeDefStatus(host, unit.defPath, nextStatus);
+  await boundary(host, 'status');
+  await host.state.removeOwned([staged], [staged]);
   return {
     outcome: outcome(unit.defPath, receiptCode, checkpoint?.nextAction || (accepted ? 'Promoted.' : receiptCode), accepted, 0),
     checkpoint,
@@ -580,6 +668,17 @@ async function writeReceipt(
   const hash = await semanticHash(parsed);
   const outputHashes = output && body ? { [output]: await contentHash(body) } : {};
   const failed = code !== 'PROMOTED';
+  const dependencyHashes: Record<string, string> = {};
+  for (const dep of parsed.dependencies) {
+    const text = await host.io.read(dep);
+    if (text !== null) dependencyHashes[dep] = await hashEvidence(text);
+  }
+  const sourceHashes: Record<string, string> = { [unit.defPath]: hash };
+  const testPath = output ? testFileFor(output) : '';
+  if (testPath) {
+    const testText = await host.io.read(testPath);
+    if (testText !== null) sourceHashes[testPath] = await contentHash(testText);
+  }
   const checkpointRow: M1Verification[] = checkpoint ? [{
     id: checkpoint.handlerId,
     kind: 'test',
@@ -595,8 +694,8 @@ async function writeReceipt(
     artifactId: parsed.artifactId,
     recipeVersion: M1_RECIPE_VERSION,
     semanticHash: hash,
-    dependencyHashes: {},
-    sourceHashes: { [unit.defPath]: hash },
+    dependencyHashes,
+    sourceHashes,
     outputHashes,
     stage: failed ? 'plan' : scaffold ? 'compile' : request.stage === 'implement' ? 'verify' : 'generate',
     verifications: [...checkpointRow, ...(evidences ?? [])],
@@ -605,6 +704,108 @@ async function writeReceipt(
     reason: failed ? `${code}: ${detail}` : scaffold ? 'scaffold' : '',
   };
   await host.state.writeReceipt(receipt);
+  if (FAILED_STATUS.has(code)) await writeDefStatus(host, unit.defPath, 'failed');
+}
+
+const FAILED_STATUS = new Set([
+  'REPEATED_FAILURE', 'REPAIR_BUDGET', 'BUDGET_CALLS', 'NETWORK_UNAVAILABLE',
+  'TIMEOUT', 'INVALID_RESPONSE', 'CALL_FAILED', 'CHECKPOINT_FAILED',
+]);
+
+async function writeConflictReceipt(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  unit: SimulatedUnit,
+  definition: unknown,
+  code: string,
+  detail: string,
+): Promise<void> {
+  const parsed = readDefinition(definition);
+  if ('issues' in parsed) return;
+  const path = receiptPathFor(unit.defPath);
+  if (!path) return;
+  const previous = await host.state.readReceipt(unit.defPath);
+  const hash = await semanticHash(parsed);
+  const receipt: MaterializationReceipt = {
+    schemaVersion: '2026-09-24-m1-receipt-v1',
+    runId: `${request.project}:${request.moduleName}`,
+    candidateId: previous?.candidateId ?? '',
+    defPath: unit.defPath,
+    artifactType: parsed.artifactType,
+    artifactId: parsed.artifactId,
+    recipeVersion: previous?.recipeVersion || M1_RECIPE_VERSION,
+    semanticHash: hash,
+    dependencyHashes: previous?.dependencyHashes ?? {},
+    sourceHashes: previous?.sourceHashes ?? { [unit.defPath]: hash },
+    outputHashes: previous?.outputHashes ?? {},
+    stage: 'plan',
+    verifications: previous?.verifications ?? [],
+    failures: [{ code, detail: detail || code }],
+    attempts: previous?.attempts ?? 1,
+    reason: `${code}: ${detail}`,
+  };
+  await host.state.writeReceipt(receipt);
+}
+
+async function writeDefStatus(host: MaterializeRunHost, defPath: string, status: M1Status): Promise<void> {
+  const text = await host.io.read(defPath);
+  if (!text) return;
+  const next = replaceStatus(text, status);
+  if (!next || next === text) return;
+  await host.state.writeOwned(defPath, new TextEncoder().encode(next));
+}
+
+async function boundary(host: MaterializeRunHost, name: WriteBoundary): Promise<void> {
+  if (host.onBoundary) await host.onBoundary(name);
+}
+
+async function preferDiskDefinitions(host: MaterializeRunHost, units: readonly PlanUnitInput[]): Promise<PlanUnitInput[]> {
+  const merged: PlanUnitInput[] = [];
+  for (const unit of units) {
+    const text = await host.io.read(unit.defPath);
+    if (!text) {
+      merged.push(unit);
+      continue;
+    }
+    const parsed = parseDefinitionSource(text);
+    merged.push('definition' in parsed ? { defPath: unit.defPath, definition: parsed.definition } : unit);
+  }
+  return merged;
+}
+
+function releasedBlock(definition: unknown, action: string): boolean {
+  if (action !== 'generate') return false;
+  const parsed = readDefinition(definition);
+  return !('issues' in parsed) && parsed.status === 'blocked';
+}
+
+async function sameSemantic(host: MaterializeRunHost, defPath: string, definition: unknown): Promise<boolean> {
+  const parsed = readDefinition(definition);
+  if ('issues' in parsed) return false;
+  const receipt = await host.state.readReceipt(defPath);
+  if (!receipt) return false;
+  return receipt.semanticHash === await semanticHash(parsed);
+}
+
+async function ownedRemovals(host: MaterializeRunHost, moduleName: string, units: readonly PlanUnitInput[]): Promise<string[]> {
+  const bytes = await host.state.readOwned(ownedManifestRef(moduleName));
+  if (!bytes || bytes.byteLength === 0) return [];
+  const manifest = parseOwnedManifest(new TextDecoder().decode(bytes), moduleName);
+  if (!manifest) return [];
+  const present = new Set(units.map(unit => unit.defPath));
+  return manifest.units.map(unit => unit.defPath).filter(path => !present.has(path));
+}
+
+async function persistOwned(host: MaterializeRunHost, moduleName: string, defPaths: readonly string[]): Promise<void> {
+  const units = defPaths.map(defPath => {
+    const output = outputPathFromDefPath(defPath);
+    return { defPath, outputs: output ? [output] : [] };
+  });
+  await host.state.writeOwned(ownedManifestRef(moduleName), new TextEncoder().encode(renderOwnedManifest({
+    schemaVersion: M1_OWNED_SCHEMA,
+    moduleName,
+    units,
+  })));
 }
 
 function dependencyOk(ended: string): boolean {

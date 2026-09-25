@@ -12,9 +12,9 @@ import { readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parseDefinitionSource, receiptFolder, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource, receiptFolder } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
-import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
+import { createLocalBindings } from '/_102021_/l1/agentMaterializeL1/localState.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { helpText, parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
@@ -117,58 +117,20 @@ export function createDiskHost(
       return null;
     },
   };
-  const state: MaterializeStateStore = {
-    async readReceipt(defPath: string): Promise<MaterializationReceipt | null> {
-      const path = receiptPathFor(defPath);
-      if (!path) return null;
-      const text = await io.read(path);
-      if (!text) return null;
-      try {
-        return JSON.parse(text) as MaterializationReceipt;
-      } catch {
-        return null;
-      }
-    },
-    async writeReceipt(receipt: MaterializationReceipt): Promise<void> {
-      const path = receiptPathFor(receipt.defPath);
-      if (!path) throw new Error('Receipt path is empty.');
-      await writeText(writeRoot, project, path, `${JSON.stringify(receipt)}\n`);
-    },
-    async readOwned(outputPath: string): Promise<Uint8Array | null> {
-      const text = await io.read(outputPath);
-      return text === null ? null : new TextEncoder().encode(text);
-    },
-    async writeOwned(outputPath: string, body: Uint8Array): Promise<void> {
-      await writeText(writeRoot, project, outputPath, new TextDecoder().decode(body));
-    },
-    async removeOwned(owned: readonly string[], requested: readonly string[]): Promise<MaterializeOwnedRemoval> {
-      const removed: string[] = [];
-      const kept: string[] = [];
-      for (const path of requested) {
-        if (!owned.includes(path) || path.endsWith('/')) {
-          kept.push(path);
-          continue;
-        }
-        const full = mapOwnedPath(writeRoot, project, path);
-        if (!full) {
-          kept.push(path);
-          continue;
-        }
-        try {
-          await rm(full, { force: true });
-          removed.push(path);
-        } catch {
-          kept.push(path);
-        }
-      }
-      return { removed, kept };
-    },
-    async readRevision(defPath: string): Promise<string | null> {
-      const receipt = await this.readReceipt(defPath);
-      return receipt?.semanticHash ?? null;
-    },
+  const files = {
+    read: (ref: string) => io.read(ref),
+    write: (ref: string, body: string) => writeText(writeRoot, project, ref, body),
+    remove: (ref: string) => removeOwnedFile(writeRoot, project, ref),
+    createExclusive: (ref: string, body: string) => createExclusive(writeRoot, project, ref, body),
   };
-  return { io, state, runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners } };
+  const local = createLocalBindings(io, files);
+  return {
+    io,
+    state: local.state,
+    runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
+    writer: local.writer,
+    onBoundary: local.onBoundary,
+  };
 }
 
 export async function readProjectProfile(readRoot: string, project: number): Promise<{ mode: unknown; declared: boolean }> {
@@ -234,6 +196,30 @@ async function writeText(root: string, project: number, ref: string, body: strin
   if (!full) throw new Error(`Refused a write outside the module tree: ${ref}`);
   await mkdir(dirname(full), { recursive: true });
   await writeFile(full, body, 'utf8');
+}
+
+async function removeOwnedFile(root: string, project: number, ref: string): Promise<boolean> {
+  const full = mapOwnedPath(root, project, ref);
+  if (!full) return false;
+  try {
+    await rm(full, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function createExclusive(root: string, project: number, ref: string, body: string): Promise<boolean> {
+  const full = mapOwnedPath(root, project, ref);
+  if (!full) return false;
+  await mkdir(dirname(full), { recursive: true });
+  try {
+    await writeFile(full, body, { encoding: 'utf8', flag: 'wx' });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
 }
 
 async function walk(dir: string, visit: (file: string) => Promise<void>): Promise<void> {

@@ -13,6 +13,8 @@ import {
   type M1ArtifactType,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
+import { hashEvidence } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
+import { testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import type { MaterializeStateReader } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { handlerFor, type M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import {
@@ -39,6 +41,8 @@ export interface SimulateInput {
   extraArtifacts?: readonly KnownArtifact[];
   verifyOnly?: readonly string[];
   removals?: readonly string[];
+  /** When set, a receipt written for another recipe does not skip. */
+  recipeVersion?: string | null;
 }
 
 export interface SimulatedUnit extends PlannedUnit {
@@ -92,7 +96,16 @@ export async function simulate(input: SimulateInput): Promise<SimulationSnapshot
     const text = await read(ref);
     if (text === null) continue;
     readable.push(ref);
-    dependencyHashes[ref] = await contentHash(text);
+    dependencyHashes[ref] = await hashEvidence(text);
+  }
+
+  const testHashes: Record<string, string> = {};
+  for (const unit of input.units) {
+    const output = outputPathFromDefPath(unit.defPath);
+    const testPath = output ? testFileFor(output) : '';
+    if (!testPath) continue;
+    const text = await read(testPath);
+    if (text !== null) testHashes[testPath] = await contentHash(text);
   }
 
   const receipts = new Map<string, Awaited<ReturnType<MaterializeStateReader['readReceipt']>>>();
@@ -115,6 +128,8 @@ export async function simulate(input: SimulateInput): Promise<SimulationSnapshot
     removals: input.removals,
     dependencyHashes,
     io: { read },
+    recipeVersion: input.recipeVersion ?? null,
+    testHashes,
   });
 
   const units: SimulatedUnit[] = [];

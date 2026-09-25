@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, receiptPathFor, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, receiptPathFor, renderDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
@@ -244,6 +244,11 @@ void test('interruption leaves the finished unit and resume continues the other'
   const note = entity('Note');
   const slot = value('Slot', note.defPath);
   const store = world();
+  const noteSource = renderDefinition(note.definition, note.defPath);
+  const slotSource = renderDefinition(slot.definition, slot.defPath);
+  if (!('source' in noteSource) || !('source' in slotSource)) throw new Error('def seed failed');
+  store.map.set(note.defPath, noteSource.source);
+  store.map.set(slot.defPath, slotSource.source);
   const controller = new AbortController();
   const calls: string[] = [];
   const runners: Record<string, MaterializeHandlerRunner> = {
@@ -264,7 +269,7 @@ void test('interruption leaves the finished unit and resume continues the other'
   assert.equal(stopped.ended, 'INTERRUPTED');
   assert.deepEqual(calls, ['Note']);
   const continued = await runMaterialize(baseRequest([note, slot], { resume: true, stage: null }), host(store, runners, undefined, catalog([note, slot], 'pass')));
-  assert.equal(continued.units.find(unit => unit.defPath === note.defPath)?.code, 'PROMOTED');
+  assert.equal(continued.units.find(unit => unit.defPath === note.defPath)?.code, 'REUSE');
   assert.equal(continued.units.find(unit => unit.defPath === slot.defPath)?.code, 'PROMOTED');
   assert.deepEqual(calls, ['Note', 'Slot']);
 });

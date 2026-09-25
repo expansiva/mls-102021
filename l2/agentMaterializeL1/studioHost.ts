@@ -13,7 +13,12 @@ import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
-import type { MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import type { MaterializeRunHost, MaterializeWriter } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import {
+  M1_WRITER_SCHEMA,
+  selectRemoval,
+  writerRef,
+} from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 interface StorFile {
   project?: number;
@@ -102,16 +107,13 @@ export function createStudioHost(project: number): MaterializeRunHost {
       await writeRef(project, outputPath, new TextDecoder().decode(body));
     },
     async removeOwned(owned: readonly string[], requested: readonly string[]): Promise<MaterializeOwnedRemoval> {
+      const plan = selectRemoval(owned, requested);
       const removed: string[] = [];
-      const kept: string[] = [];
-      for (const path of requested) {
+      const kept = [...plan.keep];
+      for (const path of plan.remove) {
         const file = fileFromRef(project, path);
-        if (!owned.includes(path) || path.endsWith('/') || !file) {
-          kept.push(path);
-          continue;
-        }
-        const stored = lookup(file);
-        if (!stored || stored.status === 'deleted') {
+        const stored = file ? lookup(file) : null;
+        if (!file || !stored || stored.status === 'deleted') {
           kept.push(path);
           continue;
         }
@@ -125,7 +127,37 @@ export function createStudioHost(project: number): MaterializeRunHost {
       return receipt?.semanticHash ?? null;
     },
   };
-  return { io, state, runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners } };
+  return {
+    io,
+    state,
+    runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
+    writer: studioWriter(project),
+  };
+}
+
+/**
+ * One writer per module inside this page. Stor has no compare-and-swap, so two
+ * browser processes are not serialized. The limit is the same one documented
+ * on the local adapter.
+ */
+const studioHolders = new Map<string, string>();
+
+function studioWriter(project: number): MaterializeWriter {
+  return {
+    async claim(moduleName: string, holder: string): Promise<boolean> {
+      const key = `${project}:${moduleName}`;
+      const current = studioHolders.get(key);
+      if (current && current !== holder) return false;
+      await writeRef(project, writerRef(moduleName), `${JSON.stringify({ schemaVersion: M1_WRITER_SCHEMA, moduleName, holder })}\n`);
+      studioHolders.set(key, holder);
+      return true;
+    },
+    async release(moduleName: string, holder: string): Promise<void> {
+      const key = `${project}:${moduleName}`;
+      if (studioHolders.get(key) !== holder) return;
+      studioHolders.delete(key);
+    },
+  };
 }
 
 function files(): Record<string, StorFile> {

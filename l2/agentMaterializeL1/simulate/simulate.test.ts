@@ -365,15 +365,13 @@ void test('reuse and verify need an intact receipt; failed does not start over',
     ],
   });
   const driftedList = drifted.units.find(unit => unit.defPath === LIST)!;
-  assert.equal(driftedList.action, 'blocked');
+  assert.equal(driftedList.action, 'conflict');
   assert.match(driftedList.reason, /^OUTPUT_DRIFT:/);
   assert.equal(driftedList.needsLlm, false);
   assert.equal(editedHost.mutations.length, 0);
   assert.equal(drifted.wrote, false);
   const blockedChild = drifted.units.find(unit => unit.defPath === child)!;
-  assert.equal(blockedChild.action, 'blocked');
-  assert.match(blockedChild.reason, /^BLOCKED_BY:/);
-  assert.match(blockedChild.reason, /listConsulta\.defs\.ts/);
+  assert.notEqual(blockedChild.action, 'blocked', 'a local edit does not cascade');
   const untouched = drifted.units.find(unit => unit.defPath === other)!;
   assert.equal(untouched.action, 'generate');
   assert.match(untouched.reason, /^GENERATE:/);
@@ -387,6 +385,7 @@ void test('reuse and verify need an intact receipt; failed does not start over',
     verifyOnly: [LIST],
     units: [{ defPath: LIST, definition }],
   });
+  assert.equal(verifyDrift.units[0].action, 'conflict');
   assert.match(verifyDrift.units[0].reason, /^OUTPUT_DRIFT:/);
   assert.equal(verifyDriftHost.mutations.length, 0);
 
@@ -503,7 +502,7 @@ void test('d1_32 replay simulates without writing and keeps scope ahead of contr
   assert.equal(first.units.length, 32);
   for (const unit of first.units) {
     assert.equal(unit.needsLlm, false, unit.defPath);
-    assert.ok(['generate', 'reuse', 'verify', 'blocked', 'remove'].includes(unit.action), unit.defPath);
+    assert.ok(['generate', 'reuse', 'verify', 'blocked', 'remove', 'conflict'].includes(unit.action), unit.defPath);
     if (unit.action === 'generate') assert.ok(unit.handlerId, unit.defPath);
   }
   const at = (artifactId: string) => first.order.indexOf(first.units.find(unit => unit.artifactId === artifactId)!.defPath);

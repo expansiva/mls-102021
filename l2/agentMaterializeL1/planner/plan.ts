@@ -6,11 +6,11 @@
  */
 
 import {
-  generatedAllowsSkip,
   isRecord,
   outputPathFromDefPath,
   readDefinition,
   referenceIssues,
+  semanticHash,
   type KnownArtifact,
   type M1Definition,
   type MaterializationReceipt,
@@ -19,8 +19,10 @@ import { platformFilesForDefinition } from '/_102021_/l2/agentMaterializeL1/cont
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { handlerFor, type M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { behaviorNeedsLlm } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { decideMaintenance } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
+import { testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 
-export const M1_PLAN_ACTIONS = ['generate', 'reuse', 'verify', 'blocked', 'remove'] as const;
+export const M1_PLAN_ACTIONS = ['generate', 'reuse', 'verify', 'blocked', 'remove', 'conflict'] as const;
 export type M1PlanAction = typeof M1_PLAN_ACTIONS[number];
 
 export const PLAN_REASON = {
@@ -33,14 +35,11 @@ export const PLAN_REASON = {
   mechanismUnbound: 'MECHANISM_UNBOUND',
   contextUnread: 'CONTEXT_UNREAD',
   blockedBy: 'BLOCKED_BY',
-  statusBlocked: 'STATUS_BLOCKED',
-  statusFailed: 'STATUS_FAILED',
   definition: 'DEFINITION',
   generate: 'GENERATE',
   reuse: 'REUSE',
   verify: 'VERIFY',
   remove: 'REMOVE',
-  outputDrift: 'OUTPUT_DRIFT',
 } as const;
 
 const AUXILIARY = new Set(['accessScope', 'authorityMap', 'integrationOutbound']);
@@ -65,6 +64,9 @@ export interface PlanInput {
   dependencyHashes?: Readonly<Record<string, string>>;
   /** Read port. Reuse and verify compare output bytes through it; there is no write. */
   io?: MaterializeReadIo;
+  /** When set, a receipt recipe that differs invalidates the unit. */
+  recipeVersion?: string | null;
+  testHashes?: Readonly<Record<string, string>>;
 }
 
 export interface PlannedUnit {
@@ -115,6 +117,8 @@ export async function planMaterialization(input: PlanInput): Promise<Materializa
       hashes,
       receipts.get(node.defPath) ?? null,
       input.io ?? null,
+      input.recipeVersion ?? null,
+      input.testHashes ?? {},
     ));
   }
   propagate(planned, graph.incoming);
@@ -213,6 +217,8 @@ async function decide(
   hashes: Readonly<Record<string, string>>,
   receipt: MaterializationReceipt | null,
   io: MaterializeReadIo | null,
+  recipeVersion: string | null,
+  testHashes: Readonly<Record<string, string>>,
 ): Promise<PlannedUnit> {
   const named = handlerFor(node.rawType, stage);
   const base: PlannedUnit = {
@@ -245,13 +251,6 @@ async function decide(
   if (ambiguous.length > 0) return block(base, `${PLAN_REASON.ambiguousRef}: ${ambiguous.join(' ')}`);
   const unbound = unboundMechanisms(node.definition);
   if (unbound.length > 0) return block(base, `${PLAN_REASON.mechanismUnbound}: ${unbound.join(', ')}.`);
-  if (node.definition.status === 'blocked') {
-    return block(base, `${PLAN_REASON.statusBlocked}: ${receipt?.reason || 'definition status is blocked.'}`);
-  }
-  if (node.definition.status === 'failed') {
-    const detail = receipt?.failures.map(item => item.code).join(', ') || 'definition status is failed.';
-    return block(base, `${PLAN_REASON.statusFailed}: ${detail}`);
-  }
   if (AUXILIARY.has(node.definition.artifactType) && node.consumerCount === 0) {
     return block(base, `${PLAN_REASON.noConsumer}: ${node.definition.artifactType} ${node.definition.artifactId} has no dependent artifact.`);
   }
@@ -260,23 +259,31 @@ async function decide(
 
   const output = outputPathFromDefPath(node.defPath);
   const present = output !== '' && outputs.has(output);
-  const skip = present && receipt !== null && await generatedAllowsSkip(node.definition, receipt, hashes);
-  if (skip && output) {
-    const recorded = receipt.outputHashes[output];
-    // A missing receipt entry is not reuse. Different bytes are a local conflict:
-    // block this unit only; propagate blocks its dependents. The file is not overwritten.
-    if (typeof recorded !== 'string' || recorded.length === 0) return generate(base);
-    const bytes = io ? await io.read(output) : null;
-    if (bytes === null) return generate(base);
-    if (await contentHash(bytes) !== recorded) {
-      return block(base, `${PLAN_REASON.outputDrift}: ${output} does not match the receipt; the local file is not overwritten.`);
-    }
-    if (verifyOnly.has(node.defPath)) {
-      return { ...base, action: 'verify', reason: `${PLAN_REASON.verify}: test change only; implementation receipt is intact.` };
-    }
-    return { ...base, action: 'reuse', reason: `${PLAN_REASON.reuse}: receipt matches the semantic hash, dependencies and outputs.` };
+  const bytes = present && io ? await io.read(output) : null;
+  const outputHash = bytes === null ? null : await contentHash(bytes);
+  const testPath = output ? testFileFor(output) : '';
+  const decision = await decideMaintenance({
+    definition: node.definition,
+    semantic: await semanticHash(node.definition),
+    receipt,
+    dependencyHashes: hashes,
+    outputPath: output,
+    outputPresent: present && bytes !== null,
+    outputHash,
+    recipeVersion,
+    stage,
+    hasImplementHandler: handlerFor(node.definition.artifactType, 'implement') !== null,
+    unresolved: node.unresolved,
+    testPath,
+    testHash: testPath ? testHashes[testPath] ?? null : null,
+    verifyOnly: verifyOnly.has(node.defPath),
+  });
+  if (decision.action === 'generate') {
+    if (decision.reason.startsWith('RECIPE_CHANGED')) return { ...base, action: 'generate', reason: decision.reason };
+    return generate(base);
   }
-  return generate(base);
+  if (decision.action === 'blocked') return block(base, decision.reason);
+  return { ...base, action: decision.action, reason: decision.reason, needsLlm: decision.action === 'conflict' ? false : base.needsLlm };
 }
 
 function generate(base: PlannedUnit): PlannedUnit {
