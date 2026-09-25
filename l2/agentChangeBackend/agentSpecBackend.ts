@@ -345,16 +345,16 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     },
   };
 
-  const intents: mls.msg.AgentIntent[] = [addMessageAI, bootstrapAddStep(context, createResultStep('spec-cb-report', 'agentSpecBackend', result.report))];
-  if (result.error) return intents;
-
-  const runs = flattenRuns(result.modules);
-  if (runs.length === 0) return intents;
+  const report = bootstrapAddStep(context, createResultStep('spec-cb-report', 'agentSpecBackend', result.report));
+  const runs = result.error ? [] : flattenRuns(result.modules);
+  if (runs.length === 0) return [addMessageAI, report];
   const entries = result.modules.flatMap(plan => plan.layers.flat().map(item => ({ defRef: item.defRef, outputPath: item.outputPath, module: plan.module })));
   // The first layer is opened by a step of this agent too, so every parallel layer is created from a
   // real parent step (the CB dispatcher pattern) and never from the bootstrap.
-  intents.push(bootstrapAddStep(context, createSpecStep({ mode: 'next', cursor: 0, runs, entries }, [])));
-  return intents;
+  // ORDER MATTERS: the report is a `result` step born `completed`. Added first, the root had only
+  // completed children, auto-completed, and the next add-step was refused ("Parent step cannot be
+  // modified, parentStepId=1, status=completed"). The pending step goes first.
+  return [addMessageAI, bootstrapAddStep(context, createSpecStep({ mode: 'next', cursor: 0, runs, entries }, [])), report];
 }
 
 /** Add a step under the root (stepId 1), created by the skipRootLLM bootstrap above. */
