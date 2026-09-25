@@ -1,7 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -9,7 +10,10 @@ import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, type D1PolicyUnit } from 
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
+import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
+import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import type { D1SupportEmit, D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
@@ -22,8 +26,16 @@ interface SerializedGrant {
   disclosure: string;
   scopeMode: string;
   session: string;
-  path: Array<{ relationshipId: string; from: string; to: string; field: string }>;
+  path: Array<{
+    entityId: string;
+    steps: Array<{ relationshipId: string; from: string; to: string; field: string }>;
+    pending: string;
+  }>;
   pending: string;
+}
+
+function hopIds(path: SerializedGrant['path'] | undefined): string[] {
+  return (path || []).flatMap(entry => entry.steps.map(step => step.relationshipId));
 }
 
 void test('the frozen fixture emits scope, authority and the live registry', () => {
@@ -44,7 +56,7 @@ void test('the frozen fixture emits scope, authority and the live registry', () 
   assert.equal(daily?.scopeMode, 'own');
   assert.equal(daily?.session, 'verified');
   assert.equal(daily?.pending, 'ACCESS_ANCHOR');
-  assert.deepEqual(daily?.path.map(step => step.relationshipId), ['appointmentPatient']);
+  assert.deepEqual(hopIds(daily?.path), ['appointmentPatient']);
   assert.notEqual(daily?.scopeMode, 'organization');
   assert.notEqual(daily?.scopeMode, 'public');
   const authority = build.emit.find(item => item.definition.artifactType === 'authorityMap');
@@ -69,7 +81,7 @@ void test('the frozen fixture emits scope, authority and the live registry', () 
   assert.equal(resolved?.pending, 'ACCESS_ANCHOR');
   assert.equal(resolved?.anchorEntity, 'Paciente');
   assert.equal(resolved?.session, 'verified');
-  assert.deepEqual(resolved?.path.map(step => step.relationshipId), ['appointmentPatient']);
+  assert.deepEqual(hopIds(resolved?.path), ['appointmentPatient']);
   assert.equal(build.problems.some(item => item.code === 'ACCESS_ANCHOR' && item.severity === 'review'), true);
   assert.equal(build.enumerations.every(item => item.consumed === false && item.source === 'domain30.enumerations'), true);
   assert.equal(build.normalizations.some(item => item.code === 'ENUMERATIONS_NOT_CONSUMED'), true);
@@ -151,7 +163,7 @@ void test('a missing grant and an anchor without a path stay diagnoses', () => {
   const orphan = build.resolutions.find(item => item.grantId === 'orphanAnchor');
   assert.equal(orphan?.scopeMode, 'own');
   assert.equal(orphan?.anchorEntity, 'Unrelated');
-  assert.deepEqual(orphan?.path, []);
+  assert.deepEqual(orphan?.path, [{ entityId: 'Consulta', steps: [], pending: 'ANCHOR_UNRESOLVED' }]);
   assert.equal(orphan?.session, 'verified');
   const scope = build.emit.find(item => item.definition.artifactType === 'accessScope');
   const grants = (scope?.definition.data as { grants: Array<{ grantId: string; anchorEntity?: string }> }).grants;
@@ -165,7 +177,7 @@ void test('a missing grant and an anchor without a path stay diagnoses', () => {
   const serialized = (scope?.definition.data as { grants: SerializedGrant[] }).grants.find(item => item.grantId === 'orphanAnchor');
   assert.equal(serialized?.scopeMode, 'own');
   assert.equal(serialized?.session, 'verified');
-  assert.deepEqual(serialized?.path, []);
+  assert.deepEqual(serialized?.path, [{ entityId: 'Consulta', steps: [], pending: 'ANCHOR_UNRESOLVED' }]);
   assert.equal(serialized?.pending, 'ACCESS_ANCHOR');
   assert.notEqual(serialized?.scopeMode, 'organization');
   assert.notEqual(serialized?.scopeMode, 'public');
@@ -225,7 +237,8 @@ void test('own and organization stay distinct and a multi-hop path is not just t
   assert.equal(own.scopeMode, 'own');
   assert.equal(organization.session, 'verified');
   assert.equal(own.session, 'verified');
-  assert.deepEqual(organization.path, []);
+  assert.deepEqual(organization.path, [{ entityId: 'Consulta', steps: [], pending: '' }]);
+  assert.equal(organization.scopeMode, 'organization');
   assert.equal(JSON.stringify(own).includes('actorId'), false);
   assert.notDeepEqual(
     { mode: organization.scopeMode, path: organization.path, pending: organization.pending },
@@ -236,15 +249,15 @@ void test('own and organization stay distinct and a multi-hop path is not just t
   assert.equal(daily?.anchorEntity, 'Paciente');
   assert.equal(daily?.scopeMode, 'own');
   assert.equal(daily?.pending, 'ACCESS_ANCHOR');
-  assert.deepEqual(daily?.path.map(step => step.relationshipId), ['appointmentRecord', 'recordPatient']);
-  assert.equal(daily?.path.some(step => step.relationshipId === 'nameOnly'), false);
-  assert.equal(daily?.path.some(step => step.field === 'actorId' || step.field === 'sessionId'), false);
+  assert.deepEqual(hopIds(daily?.path), ['appointmentRecord', 'recordPatient']);
+  assert.equal(daily?.path.some(entry => entry.steps.some(step => step.relationshipId === 'nameOnly')), false);
+  assert.equal(daily?.path.some(entry => entry.steps.some(step => step.field === 'actorId' || step.field === 'sessionId')), false);
 
   const units = [...build.emit.map(policyUnit), ...controllers.emit.map(policyUnit)];
   const reconstructed = reconstructAccessPolicy(units);
   assert.deepEqual(reconstructed.issues, []);
   const policy = reconstructed.policies.find(item => item.route === 'agendaClinica.agenda.qryListConsulta' && item.grantId === 'profissionalAgendaDiaria');
-  assert.deepEqual(policy?.path.map(step => step.relationshipId), ['appointmentRecord', 'recordPatient']);
+  assert.deepEqual(hopIds(policy?.path), ['appointmentRecord', 'recordPatient']);
   assert.equal(policy?.scopeMode, 'own');
   assert.equal(policy?.pending, 'ACCESS_ANCHOR');
   assert.equal(policy?.session, 'verified');
@@ -563,6 +576,104 @@ void test('processes, inbound and plugins stay operations and a missing pool ite
   assert.equal(build.emit.some(item => item.definition.artifactType === 'httpController'), false);
   assert.equal(JSON.stringify(build.emit).includes('scheduler'), false);
   assert.equal(build.effectPlan.executed, false);
+});
+
+const FIXTURE_3F4F677 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/agendaClinica-3f4f677');
+const REL = /\n\s*\{\n\s*"relationshipId": "consultaProfissional",[\s\S]*?\n\s*\},/;
+
+function dropProfissionalRelationship(rel: string, text: string): string {
+  if (!rel.endsWith('/ontology/index.defs.ts') && !rel.endsWith('/drafts/controllers60.json')) return text;
+  if (rel.endsWith('.json')) {
+    const parsed = JSON.parse(text) as unknown;
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (let index = node.length - 1; index >= 0; index -= 1) {
+          const item = node[index] as { relationshipId?: string };
+          if (item && item.relationshipId === 'consultaProfissional') node.splice(index, 1);
+          else walk(node[index]);
+        }
+        return;
+      }
+      if (node && typeof node === 'object') {
+        for (const value of Object.values(node)) walk(value);
+      }
+    };
+    walk(parsed);
+    return JSON.stringify(parsed);
+  }
+  return text.replace(REL, '');
+}
+
+function walkFixture(dir: string, prefix: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const abs = path.join(dir, name);
+    const rel = prefix ? `${prefix}/${name}` : name;
+    if (statSync(abs).isDirectory()) out.push(...walkFixture(abs, rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+function seedFixture(rewrite: (rel: string, text: string) => string): void {
+  const host = installStudio(102047);
+  for (const rel of walkFixture(FIXTURE_3F4F677, '')) {
+    const info = fileInfoFromDisplay(102047, rel);
+    if (!info) continue;
+    seed(host, info, rewrite(rel, readFileSync(path.join(FIXTURE_3F4F677, rel), 'utf8')), 'frozen');
+  }
+  assert.ok(host.files[fileKey({ project: 102047, level: 1, folder: 'agendaClinica/pipeline/agentDefsL1', shortName: 'input', extension: '.json' })]);
+}
+
+function entryOf(grants: SerializedGrant[], grantId: string, entityId: string): SerializedGrant['path'][number] | undefined {
+  return grants.find(item => item.grantId === grantId)?.path.find(item => item.entityId === entityId);
+}
+
+void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', async () => {
+  seedFixture((_rel, text) => text);
+  const built = await assembleD1Support(102047, 'agendaClinica');
+  assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');
+  if (!('build' in built)) return;
+  const scope = built.build.emit.find(item => item.definition.artifactType === 'accessScope');
+  const grants = (scope?.definition.data as { grants: SerializedGrant[] }).grants;
+  const consulta = entryOf(grants, 'profissionalAgendaPropria', 'Consulta');
+  const profissional = entryOf(grants, 'profissionalAgendaPropria', 'Profissional');
+  assert.deepEqual(consulta?.steps.map(step => step.field), ['Consulta.profissionalId']);
+  assert.equal(consulta?.pending, '');
+  assert.deepEqual(profissional?.steps, []);
+  assert.equal(profissional?.pending, '');
+  const organization = grants.find(item => item.grantId === 'recepcionistaGestaoAgenda');
+  assert.equal(organization?.scopeMode, 'organization');
+  assert.equal(organization?.pending, '');
+  assert.equal(organization?.path.every(item => item.steps.length === 0 && item.pending === ''), true);
+
+  seedFixture(dropProfissionalRelationship);
+  const stripped = await assembleD1Support(102047, 'agendaClinica');
+  assert.equal('build' in stripped, true, 'refusal' in stripped ? stripped.refusal : '');
+  if (!('build' in stripped)) return;
+  const again = (stripped.build.emit.find(item => item.definition.artifactType === 'accessScope')?.definition.data as { grants: SerializedGrant[] }).grants;
+  const pending = entryOf(again, 'profissionalAgendaPropria', 'Consulta');
+  const anchor = entryOf(again, 'profissionalAgendaPropria', 'Profissional');
+  assert.deepEqual(pending?.steps, []);
+  assert.equal(pending?.pending, 'ANCHOR_UNRESOLVED');
+  assert.deepEqual(anchor?.steps, []);
+  assert.equal(anchor?.pending, '');
+  const still = again.find(item => item.grantId === 'recepcionistaGestaoAgenda');
+  assert.equal(still?.scopeMode, 'organization');
+  assert.equal(still?.pending, '');
+
+  seedFixture((rel, text) => rel.endsWith('/ontology/index.defs.ts') || rel.endsWith('/access.defs.ts') || rel.endsWith('/drafts/controllers60.json')
+    ? text.replaceAll('"Consulta"', '"Visita"').replaceAll('"Profissional"', '"Marcador"').replaceAll('Consulta.profissionalId', 'Visita.marcadorId')
+    : text);
+  const renamed = await assembleD1Support(102047, 'agendaClinica');
+  assert.equal('build' in renamed, true, 'refusal' in renamed ? renamed.refusal : '');
+  if (!('build' in renamed)) return;
+  const moved = (renamed.build.emit.find(item => item.definition.artifactType === 'accessScope')?.definition.data as { grants: SerializedGrant[] }).grants;
+  const visita = entryOf(moved, 'profissionalAgendaPropria', 'Visita');
+  const marcador = entryOf(moved, 'profissionalAgendaPropria', 'Marcador');
+  assert.deepEqual(visita?.steps.map(step => step.field), ['Visita.marcadorId']);
+  assert.deepEqual(marcador?.steps, []);
+  assert.equal(marcador?.pending, '');
 });
 
 function policyUnit(part: D1SupportEmit): D1PolicyUnit {

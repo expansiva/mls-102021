@@ -489,6 +489,11 @@ void test('a resolved scope path filters the list and an injected field does not
   assert.equal(recordFieldFromGrant({
     scopeMode: 'own',
     anchorEntity: 'Paciente',
+    path: [{ entityId: 'Consulta', steps: [{ from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId' }], pending: '' }],
+  }), 'patientId');
+  assert.equal(recordFieldFromGrant({
+    scopeMode: 'own',
+    anchorEntity: 'Paciente',
     path: [{ from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId' }],
   }), 'patientId');
   assert.equal(recordFieldFromGrant({ scopeMode: 'own', anchorEntity: 'Profissional', path: [] }), '');

@@ -415,7 +415,17 @@
         "allowedFields": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "scopeMode": { "type": "string", "enum": ["organization", "assigned", "own", "related", "public", "custom"] },
         "session": { "type": "string", "enum": ["verified"] },
-        "path": { "type": "array", "items": { "$ref": "#/$defs/accessJoin" } },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/entityScopePath" } },
+        "pending": { "type": "string" }
+      }
+    },
+    "entityScopePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId", "steps", "pending"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/accessJoin" } },
         "pending": { "type": "string" }
       }
     },

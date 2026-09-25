@@ -512,10 +512,10 @@ export function grantsOf(data: Record<string, unknown>): StructureGrant[] {
   })).filter(grant => grant.grantId);
 }
 
-/** The single path hop names the record field. A missing or contradictory path does not. */
+/** The single path hop of the one non-anchor entity names the record field. A missing or contradictory path does not. */
 export function recordFieldFromGrant(grant: Record<string, unknown>): string {
   if (String(grant.scopeMode ?? '') !== 'own') return '';
-  const hops = Array.isArray(grant.path) ? grant.path.filter(isRecord) : [];
+  const hops = recordHops(grant);
   if (hops.length !== 1) return '';
   const hop = hops[0];
   const from = String(hop.from ?? '');
@@ -528,6 +528,20 @@ export function recordFieldFromGrant(grant: Record<string, unknown>): string {
   const leaf = field.slice(prefix.length);
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(leaf)) return '';
   return leaf;
+}
+
+function recordHops(grant: Record<string, unknown>): Array<Record<string, unknown>> {
+  const path = Array.isArray(grant.path) ? grant.path.filter(isRecord) : [];
+  const entries = path.filter(item => Array.isArray(item.steps));
+  if (!entries.length) return path;
+  const anchor = String(grant.anchorEntity ?? '');
+  const chains = entries.filter(item => {
+    if (String(item.pending ?? '')) return false;
+    if (anchor && String(item.entityId ?? '') === anchor) return false;
+    return (item.steps as unknown[]).length > 0;
+  });
+  if (chains.length !== 1) return chains.length === 0 ? [] : [{}, {}];
+  return (chains[0].steps as unknown[]).filter(isRecord);
 }
 
 export function requiredMembers(source: string, name: string): string[] | null {

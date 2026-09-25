@@ -201,6 +201,13 @@ export interface D1AccessJoin {
   field: string;
 }
 
+/** Path of one entity of the grant. The anchor keeps empty steps. A missing field is this entity's pending only. */
+export interface D1EntityScopePath {
+  entityId: string;
+  steps: D1AccessJoin[];
+  pending: string;
+}
+
 export interface D1Grant {
   grantId: string;
   actorRef: string;
@@ -212,7 +219,7 @@ export interface D1Grant {
   scopeMode: string;
   /** Subject comes from the verified session, never from a form field. */
   session: 'verified';
-  path: D1AccessJoin[];
+  path: D1EntityScopePath[];
   pending: string;
 }
 
@@ -239,7 +246,7 @@ export interface D1ReconstructedPolicy {
   anchorEntity: string;
   scopeMode: string;
   session: 'verified';
-  path: D1AccessJoin[];
+  path: D1EntityScopePath[];
   pending: string;
   scopePath: string;
 }
@@ -1107,19 +1114,52 @@ export function accessScopeIssues(data: unknown): string[] {
     if (typeof grant.pending !== 'string') issues.push(`Missing field ${path}.pending.`);
     else if (clientFilter(grant.pending)) issues.push(`${path}.pending is a form field. The session stays verified.`);
     if (!Array.isArray(grant.path)) issues.push(`Missing field ${path}.path.`);
-    else grant.path.forEach((step, stepIndex) => {
-      const stepPath = `${path}.path.${stepIndex}`;
-      if (!isRecord(step)) {
-        issues.push(`Missing field ${stepPath}.`);
-        return;
+    else {
+      const seen = new Set<string>();
+      grant.path.forEach((entry, entryIndex) => {
+        const entryPath = `${path}.path.${entryIndex}`;
+        if (!isRecord(entry)) {
+          issues.push(`Missing field ${entryPath}.`);
+          return;
+        }
+        unknownKeys(entry, ['entityId', 'steps', 'pending'], entryPath, issues);
+        const entityId = needString(entry, 'entityId', entryPath, issues);
+        if (entityId && seen.has(entityId)) issues.push(`${entryPath}.entityId is duplicated.`);
+        if (entityId) seen.add(entityId);
+        if (entityId && !refs.includes(entityId)) issues.push(`${entryPath}.entityId is not in entityRefs.`);
+        const entryPending = typeof entry.pending === 'string' ? entry.pending : '';
+        if (typeof entry.pending !== 'string') issues.push(`Missing field ${entryPath}.pending.`);
+        else if (clientFilter(entryPending)) issues.push(`${entryPath}.pending is a form field. The session stays verified.`);
+        if (!Array.isArray(entry.steps)) issues.push(`Missing field ${entryPath}.steps.`);
+        else entry.steps.forEach((step, stepIndex) => {
+          const stepPath = `${entryPath}.steps.${stepIndex}`;
+          if (!isRecord(step)) {
+            issues.push(`Missing field ${stepPath}.`);
+            return;
+          }
+          unknownKeys(step, ['relationshipId', 'from', 'to', 'field'], stepPath, issues);
+          needString(step, 'relationshipId', stepPath, issues);
+          needString(step, 'from', stepPath, issues);
+          needString(step, 'to', stepPath, issues);
+          const field = needString(step, 'field', stepPath, issues);
+          if (field && clientFilter(field)) issues.push(`${stepPath}.field is a form field. The session stays verified.`);
+        });
+        const stepCount = Array.isArray(entry.steps) ? entry.steps.length : 0;
+        const anchor = typeof grant.anchorEntity === 'string' ? grant.anchorEntity : '';
+        if (anchor && entityId === anchor && (stepCount > 0 || entryPending)) {
+          issues.push(`${entryPath} is the anchor. Its path stays empty.`);
+        }
+        if (anchor && entityId && entityId !== anchor && stepCount === 0 && !entryPending) {
+          issues.push(`${entryPath} has no relationship field and no pending.`);
+        }
+        if (anchor && entityId && entityId !== anchor && stepCount > 0 && entryPending) {
+          issues.push(`${entryPath} keeps a path and a pending.`);
+        }
+      });
+      for (const ref of refs) {
+        if (!seen.has(ref)) issues.push(`${path}.path has no entry for ${ref}.`);
       }
-      unknownKeys(step, ['relationshipId', 'from', 'to', 'field'], stepPath, issues);
-      needString(step, 'relationshipId', stepPath, issues);
-      needString(step, 'from', stepPath, issues);
-      needString(step, 'to', stepPath, issues);
-      const field = needString(step, 'field', stepPath, issues);
-      if (field && clientFilter(field)) issues.push(`${stepPath}.field is a form field. The session stays verified.`);
-    });
+    }
   });
   return issues;
 }
@@ -1159,6 +1199,20 @@ function readJoins(value: unknown): D1AccessJoin[] | null {
   return steps;
 }
 
+function readEntityPaths(value: unknown): D1EntityScopePath[] | null {
+  if (!Array.isArray(value)) return null;
+  const entries: D1EntityScopePath[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.entityId !== 'string' || !entry.entityId) return null;
+    if (typeof entry.pending !== 'string' || clientFilter(entry.pending)) return null;
+    const steps = readJoins(entry.steps);
+    if (!steps) return null;
+    if (steps.some(step => clientFilter(step.field))) return null;
+    entries.push({ entityId: entry.entityId, steps, pending: entry.pending });
+  }
+  return entries;
+}
+
 function readSerializedGrant(
   grant: Record<string, unknown>,
   scopePath: string,
@@ -1174,11 +1228,8 @@ function readSerializedGrant(
   if (typeof grant.pending !== 'string' || clientFilter(grant.pending)) {
     return { issue: `Grant ${grantId} does not keep its pending. The anchor was not rewritten.` };
   }
-  const path = readJoins(grant.path);
+  const path = readEntityPaths(grant.path);
   if (!path) return { issue: `Grant ${grantId} does not keep its relationship path.` };
-  if (path.some(step => clientFilter(step.field))) {
-    return { issue: `Grant ${grantId} uses a form field as a relationship filter. The session stays verified.` };
-  }
   const entityRefs = Array.isArray(grant.entityRefs) ? grant.entityRefs.filter((item): item is string => typeof item === 'string' && !!item) : [];
   const disclosure = grant.disclosure === 'fieldsOnly' || grant.disclosure === 'fullRecord' ? grant.disclosure : '';
   if (!grantId || typeof grant.actorRef !== 'string' || !grant.actorRef || !entityRefs.length || !disclosure) {

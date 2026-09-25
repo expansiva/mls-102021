@@ -11,13 +11,17 @@ import { D1_FINALIZE_REPAIR, createEntryPipeline, pipelineFile, type D1PipelineS
 import { futureOutputPath, pipelineId, qualifyDefPath, skillPaths, type D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { artifactFile, renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
+import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { logicalDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
+import { sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
@@ -256,7 +260,7 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
           disclosure: 'fullRecord',
           scopeMode: 'organization',
           session: 'verified',
-          path: [],
+          path: [{ entityId: 'Consulta', steps: [], pending: '' }],
           pending: '',
         }],
       }),
@@ -846,8 +850,43 @@ function seedClinic(defsDir?: string, root: string = CLINIC_ROOT): TestHost {
   return host;
 }
 
+/** Frozen accessScope is the pre-change grant. Finalize reads the support70 render of that same fixture, and the receipt hash of that render. */
+async function replaceAccessScopeFromSupport(): Promise<void> {
+  const support = await assembleD1Support(PROJECT, MODULE);
+  assert.ok(!('refusal' in support), 'refusal' in support ? support.refusal : '');
+  assert.equal(support.build.ok, true);
+  const scopeLogical = `l1/${MODULE}/layer_2_application/scope/accessScope.defs.ts`;
+  let source = '';
+  const changed: string[] = [];
+  for (const part of support.build.emit) {
+    const defPath = part.pipeline[0]?.defPath || '';
+    const rendered = renderDefinition(part.definition, defPath);
+    if ('issues' in rendered) throw new Error(rendered.issues.join('\n'));
+    const logical = logicalDefPath(defPath);
+    const info = artifactFile(PROJECT, defPath);
+    const current = info ? await readText(info) : null;
+    if (current !== rendered.source) changed.push(logical);
+    if (logical === scopeLogical) source = rendered.source;
+  }
+  assert.deepEqual(changed, [scopeLogical]);
+  assert.ok(source);
+  const info = artifactFile(PROJECT, scopeLogical);
+  assert.ok(info);
+  await writeText(info, source);
+  const trace = fileInfoFromDisplay(PROJECT, `l1/${MODULE}/pipeline/agentDefsL1/traces/support70support70.json`);
+  assert.ok(trace);
+  const traceText = await readText(trace);
+  assert.ok(traceText);
+  const parsed = JSON.parse(traceText) as { files: Array<{ defPath: string; desiredHash: string }> };
+  const row = parsed.files.find(file => logicalDefPath(file.defPath) === scopeLogical);
+  assert.ok(row);
+  row.desiredHash = await sourceIdentityHash(source);
+  await writeText(trace, `${JSON.stringify(parsed, null, 2)}\n`);
+}
+
 void test('the real module approves when the platform catalog is on disk', async () => {
   seedClinic(undefined, CONSISTENT_ROOT);
+  await replaceAccessScopeFromSupport();
   const assembled = await assembleD1Finalize(PROJECT, MODULE);
   assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
   const opened = assembled.request.dependencyTexts[CATALOG] || assembled.request.dependencyTexts[CATALOG.replace(/^\/+/, '')];

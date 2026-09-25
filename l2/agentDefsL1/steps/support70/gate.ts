@@ -26,6 +26,7 @@ import {
   type D1PublicationItem,
   type D1PublicationLater,
   type D1RegistryAdapter,
+  type D1EntityScopePath,
   type D1ScopeResolution,
   type D1EffectReport,
   type D1SeedCitation,
@@ -497,7 +498,7 @@ function resolveGrant(
   const relationships = relationshipsFor(request, grant);
   const anchor = plan?.anchorEntity ?? grant.anchorEntity;
   const entityRefs = [...(plan?.entityRefs || grant.entityRefs)];
-  const path = pathToAnchor(entityRefs, anchor, relationships);
+  const path = entityPaths(entityRefs, anchor, relationships);
   let pending = plan?.pending || '';
   if (!pending && anchor && !entityRefs.includes(anchor)) {
     const others = request.relationships.filter(rel => rel.required && entityRefs.includes(rel.from) && rel.to && rel.to !== anchor);
@@ -511,15 +512,17 @@ function resolveGrant(
       `Grant ${grant.grantId} anchors on ${anchor}. The contradictory relationship stays pending for the owner. The anchor was not rewritten.`,
     );
   }
-  if (anchor && !entityRefs.includes(anchor) && !path.length) {
+  for (const entry of path) {
+    if (!entry.pending) continue;
     review(
       problems,
       'ANCHOR_UNRESOLVED',
       grant.grantId,
-      `Grant ${grant.grantId} anchors on ${anchor}, which has no explicit relationship path. The scope was not changed to organization or public.`,
+      `Grant ${grant.grantId} has no relationship field from ${entry.entityId} to ${anchor}. The scope was not changed to organization or public.`,
     );
   }
-  const helperId = path.length ? `join:${path.map(step => step.relationshipId).join('>')}` : '';
+  const joined = path.filter(entry => entry.steps.length);
+  const helperId = joined.length === 1 ? `join:${joined[0].steps.map(step => step.relationshipId).join('>')}` : '';
   return {
     grantId: grant.grantId,
     actorRef: grant.actorRef,
@@ -547,6 +550,19 @@ function relationshipsFor(request: D1SupportRequest, grant: D1ControllerGrant): 
     }));
   }
   return request.relationships.filter(rel => grant.entityRefs.includes(rel.from));
+}
+
+/** Each entity of the grant. The anchor is an empty path. Any other entity uses the same chain, or stays pending alone. */
+function entityPaths(
+  entityRefs: readonly string[],
+  anchor: string,
+  relationships: readonly D1ControllerRelationship[],
+): D1EntityScopePath[] {
+  return entityRefs.map(entityId => {
+    if (!anchor || entityId === anchor) return { entityId, steps: [], pending: '' };
+    const steps = pathToAnchor([entityId], anchor, relationships);
+    return { entityId, steps, pending: steps.length ? '' : 'ANCHOR_UNRESOLVED' };
+  });
 }
 
 /** Shortest chain of relationships that declare a field. An Id suffix is not a field. */
@@ -587,18 +603,21 @@ function pathToAnchor(
 function shareHelpers(resolutions: readonly D1ScopeResolution[]): D1SupportHelper[] {
   const groups = new Map<string, D1SupportHelper>();
   for (const resolution of resolutions) {
-    if (!resolution.helperId) continue;
-    const existing = groups.get(resolution.helperId);
-    if (existing) {
-      if (!existing.consumers.includes(resolution.grantId)) existing.consumers.push(resolution.grantId);
-      continue;
+    for (const entry of resolution.path) {
+      if (!entry.steps.length) continue;
+      const helperId = `join:${entry.steps.map(step => step.relationshipId).join('>')}`;
+      const existing = groups.get(helperId);
+      if (existing) {
+        if (!existing.consumers.includes(resolution.grantId)) existing.consumers.push(resolution.grantId);
+        continue;
+      }
+      groups.set(helperId, {
+        helperId,
+        session: 'verified',
+        steps: entry.steps.map(step => ({ ...step })),
+        consumers: [resolution.grantId],
+      });
     }
-    groups.set(resolution.helperId, {
-      helperId: resolution.helperId,
-      session: 'verified',
-      steps: resolution.path.map(step => ({ ...step })),
-      consumers: [resolution.grantId],
-    });
   }
   const helpers = [...groups.values()];
   for (const helper of helpers) helper.consumers.sort();
@@ -617,11 +636,15 @@ function grantData(resolution: D1ScopeResolution): Record<string, unknown> {
   if (resolution.disclosure === 'fieldsOnly') data.allowedFields = resolution.allowedFields;
   data.scopeMode = resolution.scopeMode;
   data.session = resolution.session;
-  data.path = resolution.path.map(step => ({
-    relationshipId: step.relationshipId,
-    from: step.from,
-    to: step.to,
-    field: step.field,
+  data.path = resolution.path.map(entry => ({
+    entityId: entry.entityId,
+    steps: entry.steps.map(step => ({
+      relationshipId: step.relationshipId,
+      from: step.from,
+      to: step.to,
+      field: step.field,
+    })),
+    pending: entry.pending,
   }));
   data.pending = resolution.pending;
   return data;

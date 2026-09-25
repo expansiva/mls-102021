@@ -60,7 +60,11 @@ function scopeGrant(
     disclosure,
     scopeMode,
     session: 'verified',
-    path: extra.path || [],
+    path: entityRefs.map(entityId => ({
+      entityId,
+      steps: entityId === extra.anchorEntity ? [] : (extra.path || []),
+      pending: '',
+    })),
     pending: extra.pending || '',
   };
   if (extra.anchorEntity) grant.anchorEntity = extra.anchorEntity;

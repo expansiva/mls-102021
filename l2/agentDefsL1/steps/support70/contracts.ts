@@ -127,6 +127,13 @@ export interface D1SupportEdge {
   dependsOn: string[];
 }
 
+/** One entity of the grant. The anchor's steps stay empty. Another entity is pending when no field reaches the anchor. */
+export interface D1EntityScopePath {
+  entityId: string;
+  steps: D1SupportJoinStep[];
+  pending: string;
+}
+
 export interface D1ScopeResolution {
   grantId: string;
   actorRef: string;
@@ -137,7 +144,7 @@ export interface D1ScopeResolution {
   /** The mode the access artifact declared. Never replaced by a permissive fallback. */
   scopeMode: string;
   session: 'verified';
-  path: D1SupportJoinStep[];
+  path: D1EntityScopePath[];
   pending: string;
   helperId: string;
 }
