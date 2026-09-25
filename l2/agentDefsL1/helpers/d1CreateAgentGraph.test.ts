@@ -159,8 +159,9 @@ void test('product sources have no filesystem, console log, todo path or Portugu
   const hits: string[] = [];
   for (const file of files) {
     if (file.endsWith(`${path.sep}d1TestHost.ts`)) continue;
-    const source = readFileSync(file, 'utf8');
     const rel = relAgent(file);
+    if (rel.startsWith(`fixtures${path.sep}`) || rel.startsWith('fixtures/')) continue;
+    const source = readFileSync(file, 'utf8');
     if (FS_LEAK.test(stripComments(source))) hits.push(`${rel}: filesystem`);
     if (/\bconsole\.log\b/.test(stripComments(source))) hits.push(`${rel}: console.log`);
     if (source.includes('todo/')) hits.push(`${rel}: todo path`);

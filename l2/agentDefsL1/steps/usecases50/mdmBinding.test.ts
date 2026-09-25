@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { mdmInputFields, writePreconditionPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
@@ -12,8 +11,9 @@ import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { bindMdm, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
-const BENCH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102047');
+const BENCH = AGENDA_CLINICA_F35E28A;
 
 const PROFESSIONAL_FIELDS = {
   id: 'person-1',

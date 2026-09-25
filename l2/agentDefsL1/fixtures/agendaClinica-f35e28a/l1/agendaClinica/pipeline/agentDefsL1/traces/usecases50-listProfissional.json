@@ -1,0 +1,101 @@
+{
+  "usecaseId": "listProfissional",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for listProfissional.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "get",
+      "entity": "Profissional",
+      "capability": "read.byId"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "findByDocument",
+      "entity": "Profissional",
+      "capability": "locate.byDocument"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "listByType",
+      "entity": "Profissional",
+      "capability": "locate.byName"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "listByType",
+      "entity": "Profissional",
+      "capability": "locate.byTag"
+    }
+  ],
+  "request": {
+    "usecaseId": "listProfissional",
+    "bytes": 11349,
+    "sha256": "sha256:db05a95a9ac42643987850d8c6f6c6131e41c5a9d97f67e66ad03753d7c4b0f3",
+    "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+    "sourceHashes": [
+      {
+        "path": "/_102034_/l4/ontology/mdm.defs.ts",
+        "sha256": "sha256:93e3739771fdc663f2e7d40a0d765017eb457d10b7bab47268053aa536b75204"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+        "sha256": "sha256:06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_profissional.defs.ts",
+        "sha256": "sha256:7773359a35ee0789de6b1cd85126bf68d47e484119dad5b40dfd92ebec837671"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts",
+        "sha256": "sha256:73a5a4d7a232a07059bd122ab5004552ed36d06afc6ac3c2163e63697cea026e"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+        "sha256": "sha256:3b586791f72fb024553cd0310577d64bf214aa576228a6bbf2f8711ba704fa7f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/profissionais.defs.ts",
+        "sha256": "sha256:7df6c3adabced3a33a88460a0fb8a1857566e6db2858030ce4b70e8a365425d0"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+        "sha256": "sha256:7e19cdde18c21aed8b637018756ddcc34db97e1338d7daaef4488c66e0b3fe55"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/cadastrarPaciente.defs.ts",
+        "sha256": "sha256:29ef7b8bf940898c20ac1b78e15df6e3ddf5ca82f90b0b9d055bcfcf8c4290af"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/confirmarConsulta.defs.ts",
+        "sha256": "sha256:41a3c8462712d458134ca2792ab922157df393a5b41b0efc8b2834547d84d793"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+        "sha256": "sha256:553cab84d528f05a238dbaba3e3470527c24ce7f02a86882aa5ed884fb5bebec"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Profissional.defs.ts",
+        "sha256": "sha256:e5a5b744049d946aac3a597ff549203562766c9db77c676592b885aeda388f3b"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a"
+      }
+    ],
+    "text": "Usecase listProfissional is already chosen. Do not rename it.\nEntity Profissional. Operation list. Storage mdm.\nMDM namespace: agendaClinica.\n\nThis operation is not a lifecycle transition.\nCapability read.byId\nLê um profissional pelo identificador mestre · consulta direta pelo mdmId · usada pela recepcionista ao agendar e pela agenda do próprio profissional.\nCapability locate.byName\nLocaliza profissionais pelo nome · busca textual no índice de pessoas ativas · usada pela recepcionista para selecionar médico ou terapeuta no agendamento.\nCapability locate.byDocument\nLocaliza um profissional pelo documento nacional · consulta de deduplicação no índice mestre · usada pela recepcionista ao cadastrar ou vincular um profissional.\nCapability locate.byTag\nLista os registros com o papel agendaClinica.Profissional · consulta indexada de tags do MDM · usada pela recepcionista para limitar a seleção aos profissionais da clínica.\n\nRoute agendaClinica.consultas_recepcionista.qryListProfissional\nContract: l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nAccess grant recepcionistaLocalizarProfissionais\nActor: recepcionista\nScope: organization\nAbrange os profissionais cadastrados pela clínica.\nDisclosure fieldsOnly: Disponibiliza a identificação, situação cadastral e profissão do profissional, sem documentos, consentimentos ou dados gerais.\nAllowed fields:\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.person\n\nRoute agendaClinica.dados_profissional.qryListProfissional\nContract: l2/agendaClinica/web/contracts/dados_profissional.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\n- details.general?: object\n- details.agendaClinica?: object\nAccess grant profissionalProprioCadastro\nActor: profissional\nScope: own\nAnchor: Profissional\nAbrange somente o registro profissional vinculado à pessoa autenticada.\nDisclosure fullRecord: Disponibiliza integralmente o próprio registro mestre profissional.\n\nRoute agendaClinica.dados_recepcionista.qryListProfissional\nContract: l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nAccess grant recepcionistaLocalizarProfissionais\nActor: recepcionista\nScope: organization\nAbrange os profissionais cadastrados pela clínica.\nDisclosure fieldsOnly: Disponibiliza a identificação, situação cadastral e profissão do profissional, sem documentos, consentimentos ou dados gerais.\nAllowed fields:\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.person\n\nRoute agendaClinica.pacientes.qryListProfissional\nContract: l2/agendaClinica/web/contracts/pacientes.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nAccess grant recepcionistaLocalizarProfissionais\nActor: recepcionista\nScope: organization\nAbrange os profissionais cadastrados pela clínica.\nDisclosure fieldsOnly: Disponibiliza a identificação, situação cadastral e profissão do profissional, sem documentos, consentimentos ou dados gerais.\nAllowed fields:\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.person\n\nRoute agendaClinica.profissionais.qryListProfissional\nContract: l2/agendaClinica/web/contracts/profissionais.defs.ts\nInput ListProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListProfissionalOutput: array of ListProfissionalItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nAccess grant recepcionistaLocalizarProfissionais\nActor: recepcionista\nScope: organization\nAbrange os profissionais cadastrados pela clínica.\nDisclosure fieldsOnly: Disponibiliza a identificação, situação cadastral e profissão do profissional, sem documentos, consentimentos ou dados gerais.\nAllowed fields:\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.person\n\nRule rule-foreign-namespace-refused\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA caller carrying a moduleId may write the platform keys, general and its own key; any other module key is refused with MDM_FOREIGN_NAMESPACE · engine · platform: ready\nRule rule-document-shape-validated\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nAddresses, consent, general and the module namespace are validated on write against the schema derived from this ontology · engine · platform: missing, nothing validates the document today\nRule rule-identity-never-in-namespace\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nIdentity, document, contact and login are platform layers; a module never redeclares them inside details[moduleId] · engine · platform: partial\nRule rule-person-privacy-consent-required-br-eu\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA person living in Brazil or the EU without a valid privacy consent is forced to Inactive · engine · platform: ready\n\nPort: (none). This operation does not use a repository port.\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- rule: kind, ruleId\n  ruleId: rule-foreign-namespace-refused, rule-document-shape-validated, rule-identity-never-in-namespace, rule-person-privacy-consent-required-br-eu\n- mdm: kind, namespace, call, entity, capability\n  call get, capability read.byId, namespace agendaClinica, entity Profissional\n  call findByDocument, capability locate.byDocument, namespace agendaClinica, entity Profissional\n  call listByType, capability locate.byName, namespace agendaClinica, entity Profissional\n  call listByType, capability locate.byTag, namespace agendaClinica, entity Profissional\n- transaction: kind, boundary\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

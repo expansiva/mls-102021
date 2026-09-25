@@ -1,0 +1,100 @@
+{
+  "usecaseId": "listPaciente",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for listPaciente.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "get",
+      "entity": "Paciente",
+      "capability": "read.byId"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "listByType",
+      "entity": "Paciente",
+      "capability": "locate.byName"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "findByDocument",
+      "entity": "Paciente",
+      "capability": "locate.byDocument"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "findByContact",
+      "entity": "Paciente",
+      "capability": "locate.byContact"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "relatedOfMany",
+      "entity": "Paciente",
+      "capability": "listLinks"
+    }
+  ],
+  "request": {
+    "usecaseId": "listPaciente",
+    "bytes": 9200,
+    "sha256": "sha256:7c4eb9f8895382e1ca7abc7a7e24ad0f9d1bc5f454aca573d60becc23c6c2dfe",
+    "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+    "sourceHashes": [
+      {
+        "path": "/_102034_/l4/ontology/mdm.defs.ts",
+        "sha256": "sha256:93e3739771fdc663f2e7d40a0d765017eb457d10b7bab47268053aa536b75204"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+        "sha256": "sha256:06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+        "sha256": "sha256:3b586791f72fb024553cd0310577d64bf214aa576228a6bbf2f8711ba704fa7f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/profissionais.defs.ts",
+        "sha256": "sha256:7df6c3adabced3a33a88460a0fb8a1857566e6db2858030ce4b70e8a365425d0"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+        "sha256": "sha256:7e19cdde18c21aed8b637018756ddcc34db97e1338d7daaef4488c66e0b3fe55"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/cadastrarPaciente.defs.ts",
+        "sha256": "sha256:29ef7b8bf940898c20ac1b78e15df6e3ddf5ca82f90b0b9d055bcfcf8c4290af"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/confirmarConsulta.defs.ts",
+        "sha256": "sha256:41a3c8462712d458134ca2792ab922157df393a5b41b0efc8b2834547d84d793"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+        "sha256": "sha256:553cab84d528f05a238dbaba3e3470527c24ce7f02a86882aa5ed884fb5bebec"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Paciente.defs.ts",
+        "sha256": "sha256:f5ea404e10f364a58cda8c0a830470753f2a56ca83022efd66564d8e26c468d0"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a"
+      }
+    ],
+    "text": "Usecase listPaciente is already chosen. Do not rename it.\nEntity Paciente. Operation list. Storage mdm.\nMDM namespace: agendaClinica.\n\nThis operation is not a lifecycle transition.\nCapability read.byId\nConsulta um paciente pelo identificador mestre para exibir seus dados cadastrais à recepcionista durante o agendamento.\nCapability locate.byName\nLocaliza pacientes pelo nome para a recepcionista identificar a pessoa antes de cadastrá-la ou agendar uma consulta.\nCapability locate.byDocument\nLocaliza um paciente pelo documento nacional para a recepcionista evitar cadastros duplicados.\nCapability locate.byContact\nLocaliza o paciente pelo telefone ou outro canal de contato para a recepcionista confirmar consultas.\nCapability listLinks\nLista contatos e consultas relacionados ao paciente para a recepcionista consultar as informações necessárias ao atendimento.\n\nRoute agendaClinica.consultas_recepcionista.qryListPaciente\nContract: l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts\nInput ListPacienteInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListPacienteOutput: array of ListPacienteItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.base.aliases: Array<string>\n- details.base.contacts: Array<object>\n- details.base.relationshipRefs: object\n- details.base.notes?: string\nAccess grant recepcionistaCadastroPacientes\nActor: recepcionista\nScope: organization\nAbrange os pacientes e seus canais de contato mantidos pela clínica.\nDisclosure fieldsOnly: Disponibiliza identificação, dados cadastrais básicos e canais de contato; não disponibiliza consentimentos de privacidade nem dados gerais promovidos.\nAllowed fields:\n- Paciente.id\n- Paciente.version\n- Paciente.details.identification\n- Paciente.details.base\n- ContatoPaciente.id\n- ContatoPaciente.version\n- ContatoPaciente.details.identification\n- ContatoPaciente.details.contactChannel\n\nRoute agendaClinica.pacientes.qryListPaciente\nContract: l2/agendaClinica/web/contracts/pacientes.defs.ts\nInput ListPacienteInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListPacienteOutput: array of ListPacienteItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.base.aliases: Array<string>\n- details.base.contacts: Array<object>\n- details.base.relationshipRefs: object\n- details.base.notes?: string\nAccess grant recepcionistaCadastroPacientes\nActor: recepcionista\nScope: organization\nAbrange os pacientes e seus canais de contato mantidos pela clínica.\nDisclosure fieldsOnly: Disponibiliza identificação, dados cadastrais básicos e canais de contato; não disponibiliza consentimentos de privacidade nem dados gerais promovidos.\nAllowed fields:\n- Paciente.id\n- Paciente.version\n- Paciente.details.identification\n- Paciente.details.base\n- ContatoPaciente.id\n- ContatoPaciente.version\n- ContatoPaciente.details.identification\n- ContatoPaciente.details.contactChannel\n\nRoute agendaClinica.profissionais.qryListPaciente\nContract: l2/agendaClinica/web/contracts/profissionais.defs.ts\nInput ListPacienteInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListPacienteOutput: array of ListPacienteItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.base.aliases: Array<string>\n- details.base.contacts: Array<object>\n- details.base.relationshipRefs: object\n- details.base.notes?: string\nAccess grant recepcionistaCadastroPacientes\nActor: recepcionista\nScope: organization\nAbrange os pacientes e seus canais de contato mantidos pela clínica.\nDisclosure fieldsOnly: Disponibiliza identificação, dados cadastrais básicos e canais de contato; não disponibiliza consentimentos de privacidade nem dados gerais promovidos.\nAllowed fields:\n- Paciente.id\n- Paciente.version\n- Paciente.details.identification\n- Paciente.details.base\n- ContatoPaciente.id\n- ContatoPaciente.version\n- ContatoPaciente.details.identification\n- ContatoPaciente.details.contactChannel\n\nRule rule-foreign-namespace-refused\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA caller carrying a moduleId may write the platform keys, general and its own key; any other module key is refused with MDM_FOREIGN_NAMESPACE · engine · platform: ready\nRule rule-delete-blocked-by-relationships\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA physical delete is refused while an active relationship exists · engine · platform: ready\nRule rule-document-shape-validated\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nAddresses, consent, general and the module namespace are validated on write against the schema derived from this ontology · engine · platform: missing, nothing validates the document today\nRule rule-identity-never-in-namespace\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nIdentity, document, contact and login are platform layers; a module never redeclares them inside details[moduleId] · engine · platform: partial\nRule rule-person-ssn-unique-for-us\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nTwo permanent people in the US must not share the same SSN · engine · platform: partial, because the unique index does not exist\nRule rule-person-privacy-consent-required-br-eu\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA person living in Brazil or the EU without a valid privacy consent is forced to Inactive · engine · platform: ready\n\nPort: (none). This operation does not use a repository port.\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- rule: kind, ruleId\n  ruleId: rule-foreign-namespace-refused, rule-delete-blocked-by-relationships, rule-document-shape-validated, rule-identity-never-in-namespace, rule-person-ssn-unique-for-us, rule-person-privacy-consent-required-br-eu\n- mdm: kind, namespace, call, entity, capability\n  call get, capability read.byId, namespace agendaClinica, entity Paciente\n  call findByDocument, capability locate.byDocument, namespace agendaClinica, entity Paciente\n  call listByType, capability locate.byName, namespace agendaClinica, entity Paciente\n  call findByContact, capability locate.byContact, namespace agendaClinica, entity Paciente\n  call relatedOfMany, capability listLinks, namespace agendaClinica, entity Paciente\n- transaction: kind, boundary\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

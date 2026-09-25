@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "controllers60",
+  "unitId": "controllers60",
+  "runId": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "draftHash": "sha256:1db5f0db975458b9111d28604b0a761579773727775d754cddf878c94c731d10",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_profissional.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_recepcionista.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/profissionais.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_profissional.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_recepcionista.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/profissionais.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:f80f8d72d1f9f5e5af62fe70b5e4be9fbbe8b63aa1f62cf11fcda5ea8202238e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:ce9c99975891cac9a700a776635aefd8d82041e1877961c5c45c908394db7771",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_profissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:55626bb0d02bfd5afc0aa9f82633b33917db51a6a620922a0fe0b0f6a8d18513",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_profissional.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_profissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_recepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:23f2fa7d68f75e0a4e599faf556bbf7c16d5042910989bfabc9f4257cf80a112",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_recepcionista.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/dados_recepcionista.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:101d5a663b6f4882155d071f936d376051426bf8f62178dbe2d253d6846e5bc9",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/profissionais.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:b335b17b287c4d3c95737ba2dc20afd668111067dad9f375219451d834303a8c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/profissionais.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/profissionais.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { projectEnumerations, type D1EnumSnapshot } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLINIC = path.resolve(HERE, '../../../../../mls-102047/l4/agendaClinica');
+const CLINIC = path.join(AGENDA_CLINICA_F35E28A, 'l4/agendaClinica');
 const CATALOG_PATH = '/_102034_/l4/ontology/mdm.defs.ts';
 const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
-const L1 = path.resolve(HERE, '../../../../../mls-102047/l1/agendaClinica');
+const L1 = path.join(AGENDA_CLINICA_F35E28A, 'l1/agendaClinica');
 
 function text(file: string): string {
   return readFileSync(file, 'utf8');
@@ -90,7 +91,7 @@ void test('an explicit seed field does not transfer a homonym on the same entity
 
 void test('agenda sources keep seed use, the docType subset and the Phone restriction', () => {
   const create = text(path.join(L1, 'layer_2_application/usecases/createRecepcionista.defs.ts'));
-  const contractFile = path.resolve(HERE, '../../../../../mls-102047/l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts');
+  const contractFile = path.join(AGENDA_CLINICA_F35E28A, 'l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts');
   const seeds = text(path.join(L1, 'layer_1_external/adapters/persistence/seeds.defs.ts'));
   const rows = projectEnumerations({
     enumerations: [

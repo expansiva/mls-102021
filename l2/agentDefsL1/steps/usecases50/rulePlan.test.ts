@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
@@ -18,9 +17,9 @@ import {
   type RulePlanInput,
   type RulePlanTransition,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLINIC = path.resolve(HERE, '../../../../../mls-102047/l4/agendaClinica');
+const CLINIC = path.join(AGENDA_CLINICA_F35E28A, 'l4/agendaClinica');
 const OWNER_ROUTE = 'sample.owner.qryListSlot';
 const CLERK_ROUTE = 'sample.clerk.qryListSlot';
 const CLOSE_ROUTE = 'sample.owner.cmdCloseSlot';

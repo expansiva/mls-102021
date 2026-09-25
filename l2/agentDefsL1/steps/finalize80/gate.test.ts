@@ -21,9 +21,10 @@ import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLINIC_ROOT = path.resolve(HERE, '../../../../../mls-102047');
+const CLINIC_ROOT = AGENDA_CLINICA_F35E28A;
 const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
 const CATALOG = '/_102034_/l4/ontology/mdm.defs.ts';
 const PLATFORM_USECASES = [
@@ -826,11 +827,19 @@ function seedDisplay(host: TestHost, project: number, display: string, abs: stri
   return true;
 }
 
-function seedClinic(): TestHost {
+function seedClinic(defsDir?: string): TestHost {
   const host = installStudio(PROJECT);
   const l1 = path.join(CLINIC_ROOT, 'l1/agendaClinica');
+  const overlaid = new Set<string>();
+  if (defsDir) {
+    for (const rel of walkFiles(defsDir)) {
+      const display = `l1/agendaClinica/${rel.split(path.sep).join('/')}`;
+      if (seedDisplay(host, PROJECT, display, path.join(defsDir, rel))) overlaid.add(display);
+    }
+  }
   for (const rel of walkFiles(l1)) {
     const display = `l1/agendaClinica/${rel.split(path.sep).join('/')}`;
+    if (overlaid.has(display)) continue;
     seedDisplay(host, PROJECT, display, path.join(l1, rel));
   }
   const input = JSON.parse(readFileSync(path.join(l1, 'pipeline/agentDefsL1/input.json'), 'utf8')) as { sources: Array<{ path: string }> };
@@ -846,10 +855,10 @@ function seedClinic(): TestHost {
 }
 
 void test('the six real usecases approve when the platform catalog is on disk', async () => {
-  seedClinic();
+  seedClinic(path.join(CLINIC_ROOT, 'l1-v2'));
   const assembled = await assembleD1Finalize(PROJECT, MODULE);
   assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
-  const opened = assembled.request.dependencyTexts[CATALOG];
+  const opened = assembled.request.dependencyTexts[CATALOG] || assembled.request.dependencyTexts[CATALOG.replace(/^\/+/, '')];
   assert.equal(typeof opened, 'string');
   assert.match(opened, /rule-foreign-namespace-refused/);
   const report = buildD1Finalize(assembled.request);

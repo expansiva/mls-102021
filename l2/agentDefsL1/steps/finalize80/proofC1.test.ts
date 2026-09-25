@@ -42,10 +42,11 @@ import { commitD1Usecases, loadD1UsecaseWork } from '/_102021_/l2/agentDefsL1/st
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import type { D1UsecaseBuild, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MONOREPO = path.resolve(HERE, '../../../../..');
-const CLINIC = path.join(MONOREPO, 'mls-102047');
+const CLINIC = AGENDA_CLINICA_F35E28A;
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
 const PIPELINE_EXPORT = 'export const pipeline';

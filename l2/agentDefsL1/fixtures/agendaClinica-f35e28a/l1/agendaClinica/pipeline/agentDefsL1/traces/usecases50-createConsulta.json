@@ -1,0 +1,74 @@
+{
+  "usecaseId": "createConsulta",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for createConsulta.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "uniqueProfessionalSchedule"
+    },
+    {
+      "kind": "port",
+      "call": "create",
+      "port": "ConsultaRepository"
+    }
+  ],
+  "request": {
+    "usecaseId": "createConsulta",
+    "bytes": 3656,
+    "sha256": "sha256:de518445ba539535db3782b6d2b4412757e0f0d3417b4320068a3189a298a8d5",
+    "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+    "sourceHashes": [
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+        "sha256": "sha256:06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+        "sha256": "sha256:3b586791f72fb024553cd0310577d64bf214aa576228a6bbf2f8711ba704fa7f"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/profissionais.defs.ts",
+        "sha256": "sha256:7df6c3adabced3a33a88460a0fb8a1857566e6db2858030ce4b70e8a365425d0"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+        "sha256": "sha256:7e19cdde18c21aed8b637018756ddcc34db97e1338d7daaef4488c66e0b3fe55"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/cadastrarPaciente.defs.ts",
+        "sha256": "sha256:29ef7b8bf940898c20ac1b78e15df6e3ddf5ca82f90b0b9d055bcfcf8c4290af"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/confirmarConsulta.defs.ts",
+        "sha256": "sha256:41a3c8462712d458134ca2792ab922157df393a5b41b0efc8b2834547d84d793"
+      },
+      {
+        "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+        "sha256": "sha256:553cab84d528f05a238dbaba3e3470527c24ce7f02a86882aa5ed884fb5bebec"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Consulta.defs.ts",
+        "sha256": "sha256:b1dd7accf8b26e1a467a48f738a03e2a670f426c594e2cc03a2dc900eea89024"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a"
+      },
+      {
+        "path": "l4/agendaClinica/rules.defs.ts",
+        "sha256": "sha256:8c14bc8276f4833b7587589f9ce4711b8304824231415b8373e9b40549ab509a"
+      }
+    ],
+    "text": "Usecase createConsulta is already chosen. Do not rename it.\nEntity Consulta. Operation create. Storage moduleDatabase.\nMDM namespace: (none).\n\nThis operation is not a lifecycle transition.\n\nRoute agendaClinica.consultas_recepcionista.cmdCreateConsulta\nContract: l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts\nInput CreateConsultaInput\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nOutput CreateConsultaOutput\n- id: string\n- version: number\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nAccess grant recepcionistaAgendaConsultas\nActor: recepcionista\nScope: organization\nAbrange todos os agendamentos da clínica.\nDisclosure fieldsOnly: Disponibiliza os dados operacionais do agendamento, sem a anotação clínica registrada pelo profissional.\nAllowed fields:\n- Consulta.id\n- Consulta.version\n- Consulta.patientId\n- Consulta.professionalId\n- Consulta.scheduledAt\n- Consulta.status\n\nRoute agendaClinica.pacientes.cmdCreateConsulta\nContract: l2/agendaClinica/web/contracts/pacientes.defs.ts\nInput CreateConsultaInput\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nOutput CreateConsultaOutput\n- id: string\n- version: number\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nAccess grant recepcionistaAgendaConsultas\nActor: recepcionista\nScope: organization\nAbrange todos os agendamentos da clínica.\nDisclosure fieldsOnly: Disponibiliza os dados operacionais do agendamento, sem a anotação clínica registrada pelo profissional.\nAllowed fields:\n- Consulta.id\n- Consulta.version\n- Consulta.patientId\n- Consulta.professionalId\n- Consulta.scheduledAt\n- Consulta.status\n\nRoute agendaClinica.profissionais.cmdCreateConsulta\nContract: l2/agendaClinica/web/contracts/profissionais.defs.ts\nInput CreateConsultaInput\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nOutput CreateConsultaOutput\n- id: string\n- version: number\n- patientId: string\n- professionalId: string\n- scheduledAt: string\n- status: \"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"\nAccess grant recepcionistaAgendaConsultas\nActor: recepcionista\nScope: organization\nAbrange todos os agendamentos da clínica.\nDisclosure fieldsOnly: Disponibiliza os dados operacionais do agendamento, sem a anotação clínica registrada pelo profissional.\nAllowed fields:\n- Consulta.id\n- Consulta.version\n- Consulta.patientId\n- Consulta.professionalId\n- Consulta.scheduledAt\n- Consulta.status\n\nRule uniqueProfessionalSchedule\nOwner: module\nSource: l4/agendaClinica/rules.defs.ts\nNão pode haver duas consultas para o mesmo profissional na mesma data e horário.\n\nPort ConsultaRepository\ncreate(Consulta): Consulta\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- port: kind, call, port\n  call: create\n  port: ConsultaRepository\n- rule: kind, ruleId\n  ruleId: uniqueProfessionalSchedule\n- transaction: kind, boundary\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

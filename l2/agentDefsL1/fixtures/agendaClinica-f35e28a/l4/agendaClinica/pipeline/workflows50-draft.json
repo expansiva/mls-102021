@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "2026-09-17-ns5-workflows-v3",
+  "moduleName": "agendaClinica",
+  "processes": [],
+  "journeyDecisions": [
+    {
+      "journeyId": "cadastrarPaciente",
+      "inProcess": false
+    },
+    {
+      "journeyId": "agendarConsulta",
+      "inProcess": false
+    },
+    {
+      "journeyId": "confirmarConsulta",
+      "inProcess": false
+    },
+    {
+      "journeyId": "registrarFalta",
+      "inProcess": false
+    },
+    {
+      "journeyId": "consultarAgendaDiaria",
+      "inProcess": false
+    },
+    {
+      "journeyId": "registrarAtendimento",
+      "inProcess": false
+    }
+  ]
+}

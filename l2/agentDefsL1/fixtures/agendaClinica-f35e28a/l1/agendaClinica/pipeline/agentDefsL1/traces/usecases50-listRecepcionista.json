@@ -1,0 +1,78 @@
+{
+  "usecaseId": "listRecepcionista",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for listRecepcionista.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-foreign-namespace-refused"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-document-shape-validated"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-identity-never-in-namespace"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-person-privacy-consent-required-br-eu"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "get",
+      "entity": "Recepcionista",
+      "capability": "read.byId"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "findByDocument",
+      "entity": "Recepcionista",
+      "capability": "locate.byDocument"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "listByType",
+      "entity": "Recepcionista",
+      "capability": "locate.byName"
+    }
+  ],
+  "request": {
+    "usecaseId": "listRecepcionista",
+    "bytes": 4175,
+    "sha256": "sha256:62e21430cbc3ed1957f8e440c2f5505f16a53bdd04e9ea6d7bde2a942b96125f",
+    "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+    "sourceHashes": [
+      {
+        "path": "/_102034_/l4/ontology/mdm.defs.ts",
+        "sha256": "sha256:93e3739771fdc663f2e7d40a0d765017eb457d10b7bab47268053aa536b75204"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts",
+        "sha256": "sha256:73a5a4d7a232a07059bd122ab5004552ed36d06afc6ac3c2163e63697cea026e"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Recepcionista.defs.ts",
+        "sha256": "sha256:eb84b39d2bd8e40bc05d34345f5febb2d9a1e031230744ff960fdb38c816c02f"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a"
+      }
+    ],
+    "text": "Usecase listRecepcionista is already chosen. Do not rename it.\nEntity Recepcionista. Operation list. Storage mdm.\nMDM namespace: agendaClinica.\n\nThis operation is not a lifecycle transition.\nCapability read.byId\nLê a recepcionista pelo identificador mestre, por consulta direta no índice e no documento, para telas internas que já possuem seu registro.\nCapability locate.byName\nLocaliza recepcionistas pelo nome, pesquisando o índice de pessoas, para quem administra os cadastros da clínica.\nCapability locate.byDocument\nLocaliza uma recepcionista pelo documento nacional, para evitar duplicidade durante seu cadastro interno.\n\nRoute agendaClinica.dados_recepcionista.qryListRecepcionista\nContract: l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts\nInput ListRecepcionistaInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- page?: number\nOutput ListRecepcionistaOutput: array of ListRecepcionistaItem\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.person?: object\n- details.general?: object\n- details.agendaClinica?: object\nAccess grant recepcionistaProprioCadastro\nActor: recepcionista\nScope: own\nAnchor: Recepcionista\nAbrange somente o registro de recepcionista vinculado à pessoa autenticada.\nDisclosure fullRecord: Disponibiliza integralmente o próprio registro mestre de recepcionista.\n\nRule rule-foreign-namespace-refused\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA caller carrying a moduleId may write the platform keys, general and its own key; any other module key is refused with MDM_FOREIGN_NAMESPACE · engine · platform: ready\nRule rule-document-shape-validated\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nAddresses, consent, general and the module namespace are validated on write against the schema derived from this ontology · engine · platform: missing, nothing validates the document today\nRule rule-identity-never-in-namespace\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nIdentity, document, contact and login are platform layers; a module never redeclares them inside details[moduleId] · engine · platform: partial\nRule rule-person-privacy-consent-required-br-eu\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA person living in Brazil or the EU without a valid privacy consent is forced to Inactive · engine · platform: ready\n\nPort: (none). This operation does not use a repository port.\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- rule: kind, ruleId\n  ruleId: rule-foreign-namespace-refused, rule-document-shape-validated, rule-identity-never-in-namespace, rule-person-privacy-consent-required-br-eu\n- mdm: kind, namespace, call, entity, capability\n  call get, capability read.byId, namespace agendaClinica, entity Recepcionista\n  call findByDocument, capability locate.byDocument, namespace agendaClinica, entity Recepcionista\n  call listByType, capability locate.byName, namespace agendaClinica, entity Recepcionista\n- transaction: kind, boundary\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "domain30",
+  "unitId": "domain30",
+  "runId": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "draftHash": "sha256:3b139fa9baab66159a1ad7f498daabec93a04d3db40067bafc41a16adef8f3a5",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/recepcionista.ts",
+    "l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+    "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+    "l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+    "l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+    "l1/agendaClinica/layer_3_domain/entities/recepcionista.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:8c584c26ffaf47d065443727300363da85cc061e775d2ae119caea9af1ee4993",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+        "l1/agendaClinica/layer_3_domain/entities/consulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:80655c74a7f1445cfd5c10d54bcafcc7c81c55613bc8edb7908e1cd23c7cf94b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+        "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:fa7bdf644a66e440fa1de7853d8354a39c47390a4e04acaea5664b35d531385e",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+        "l1/agendaClinica/layer_3_domain/entities/paciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:a541da26b4dd0815cb1dc0b1cb5058e3fe5ce8253048224aa1e55adac0b179cc",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+        "l1/agendaClinica/layer_3_domain/entities/profissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/recepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:82ac1aa5144c9ed3bbe236f7cf797b075be63aae466a51ae76e7b6e2c3f37076",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/recepcionista.ts",
+        "l1/agendaClinica/layer_3_domain/entities/recepcionista.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

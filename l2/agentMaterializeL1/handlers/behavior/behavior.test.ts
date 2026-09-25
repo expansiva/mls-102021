@@ -20,6 +20,7 @@ import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, without
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
@@ -463,7 +464,8 @@ function rewriteFixture(): Map<string, string> {
   for (const ref of extras) {
     const match = /^_(\d+)_\/(.+)$/.exec(ref);
     if (!match) continue;
-    sources.push({ key: ref, text: readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8') });
+    const disk = match[1] === '102047' ? join(AGENDA_CLINICA_F35E28A, match[2]) : join(ROOT, `mls-${match[1]}`, match[2]);
+    sources.push({ key: ref, text: readFileSync(disk, 'utf8') });
   }
   for (const source of sources) {
     const rewritten = source.text
@@ -533,6 +535,7 @@ async function read(ref: string): Promise<string | null> {
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
   if (!match) return null;
   try {
+    if (match[1] === '102047') return readFileSync(join(AGENDA_CLINICA_F35E28A, match[2]), 'utf8');
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
     return null;
@@ -562,7 +565,11 @@ function compile(rows: Array<[string, string]>): string {
     };
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {
       const key = `/_${id}_/*`;
-      if (!paths[key]) paths[key] = [`./mls-${id}/*`];
+      if (!paths[key]) {
+        paths[key] = id === '102047'
+          ? [`./${relative(ROOT, AGENDA_CLINICA_F35E28A)}/*`]
+          : [`./mls-${id}/*`];
+      }
     }
     writeFileSync(config, `${JSON.stringify({
       extends: './tsconfig.base.json',

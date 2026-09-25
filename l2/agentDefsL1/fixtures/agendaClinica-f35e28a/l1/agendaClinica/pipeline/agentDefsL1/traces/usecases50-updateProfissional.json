@@ -1,0 +1,68 @@
+{
+  "usecaseId": "updateProfissional",
+  "status": "parsed",
+  "trace": "usecases50 recorded steps for updateProfissional.",
+  "unitAttempts": 0,
+  "reply": [
+    {
+      "kind": "context",
+      "source": "ctx"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-foreign-namespace-refused"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-document-shape-validated"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-identity-never-in-namespace"
+    },
+    {
+      "kind": "rule",
+      "ruleId": "rule-person-privacy-consent-required-br-eu"
+    },
+    {
+      "kind": "mdm",
+      "namespace": "agendaClinica",
+      "call": "update",
+      "entity": "Profissional",
+      "capability": "edit.platformFields"
+    }
+  ],
+  "request": {
+    "usecaseId": "updateProfissional",
+    "bytes": 5815,
+    "sha256": "sha256:452347e1bce5755dfa836a938cecb7903fa59ff42bf56b3648041aa91813752a",
+    "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+    "sourceHashes": [
+      {
+        "path": "/_102034_/l4/ontology/mdm.defs.ts",
+        "sha256": "sha256:93e3739771fdc663f2e7d40a0d765017eb457d10b7bab47268053aa536b75204"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_profissional.defs.ts",
+        "sha256": "sha256:7773359a35ee0789de6b1cd85126bf68d47e484119dad5b40dfd92ebec837671"
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts",
+        "sha256": "sha256:73a5a4d7a232a07059bd122ab5004552ed36d06afc6ac3c2163e63697cea026e"
+      },
+      {
+        "path": "l4/agendaClinica/access.defs.ts",
+        "sha256": "sha256:fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+      },
+      {
+        "path": "l4/agendaClinica/ontology/Profissional.defs.ts",
+        "sha256": "sha256:e5a5b744049d946aac3a597ff549203562766c9db77c676592b885aeda388f3b"
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "sha256:4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a"
+      }
+    ],
+    "text": "Usecase updateProfissional is already chosen. Do not rename it.\nEntity Profissional. Operation update. Storage mdm.\nMDM namespace: agendaClinica.\n\nThis operation is not a lifecycle transition.\nCapability edit.platformFields\nAtualiza os dados de plataforma usados pelo profissional, incluindo nome, documento, profissão e consentimento · atualização do registro mestre e de seu índice · usada pela recepcionista na manutenção cadastral.\nEffective platform fields:\n- details.identification.countryCode\n- details.identification.docId\n- details.identification.docType\n- details.identification.name\n- details.person.occupation\n- details.person.privacyConsent\n\nRoute agendaClinica.dados_profissional.cmdUpdateProfissional\nContract: l2/agendaClinica/web/contracts/dados_profissional.defs.ts\nInput UpdateProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.name: string\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\n- details.general?: object\n- details.agendaClinica?: object\nOutput UpdateProfissionalOutput\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.base?: object\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\n- details.general?: object\n- details.agendaClinica?: object\nAccess grant profissionalProprioCadastro\nActor: profissional\nScope: own\nAnchor: Profissional\nAbrange somente o registro profissional vinculado à pessoa autenticada.\nDisclosure fullRecord: Disponibiliza integralmente o próprio registro mestre profissional.\n\nRoute agendaClinica.dados_recepcionista.cmdUpdateProfissional\nContract: l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts\nInput UpdateProfissionalInput\n- id: string\n- details: object\n- details.identification?: object\n- details.identification.name: string\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nOutput UpdateProfissionalOutput\n- id: string\n- version: number\n- details: object\n- details.identification?: object\n- details.identification.subtype: \"Person\"\n- details.identification.name: string\n- details.identification.status: \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"\n- details.identification.docType?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"\n- details.identification.docId?: string\n- details.identification.countryCode: string\n- details.person?: object\n- details.person.occupation: string\n- details.person.privacyConsent?: object\nAccess grant recepcionistaLocalizarProfissionais\nActor: recepcionista\nScope: organization\nAbrange os profissionais cadastrados pela clínica.\nDisclosure fieldsOnly: Disponibiliza a identificação, situação cadastral e profissão do profissional, sem documentos, consentimentos ou dados gerais.\nAllowed fields:\n- Profissional.id\n- Profissional.version\n- Profissional.details.identification\n- Profissional.details.person\n\nRule rule-foreign-namespace-refused\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA caller carrying a moduleId may write the platform keys, general and its own key; any other module key is refused with MDM_FOREIGN_NAMESPACE · engine · platform: ready\nRule rule-document-shape-validated\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nAddresses, consent, general and the module namespace are validated on write against the schema derived from this ontology · engine · platform: missing, nothing validates the document today\nRule rule-identity-never-in-namespace\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nIdentity, document, contact and login are platform layers; a module never redeclares them inside details[moduleId] · engine · platform: partial\nRule rule-person-privacy-consent-required-br-eu\nOwner: platform\nSource: /_102034_/l4/ontology/mdm.defs.ts\nA person living in Brazil or the EU without a valid privacy consent is forced to Inactive · engine · platform: ready\n\nPort: (none). This operation does not use a repository port.\nEffects: (none).\n\nPlan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.\nA transition payload may list only a path the contract or the lifecycle payload already lists.\nMore than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.\nAuthority is ctx.\n\nEach step is one kind. A step may name only the keys of that kind:\n- rule: kind, ruleId\n  ruleId: rule-foreign-namespace-refused, rule-document-shape-validated, rule-identity-never-in-namespace, rule-person-privacy-consent-required-br-eu\n- mdm: kind, namespace, call, entity, capability\n  call update, capability edit.platformFields, namespace agendaClinica, entity Profissional\n- transaction: kind, boundary\n- context: kind, source\n  source: ctx\nA key from another kind is refused."
+  }
+}

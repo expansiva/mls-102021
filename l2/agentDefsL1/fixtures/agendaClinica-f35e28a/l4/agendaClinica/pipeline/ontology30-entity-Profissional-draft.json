@@ -1,0 +1,281 @@
+{
+  "entity": {
+    "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+    "moduleName": "agendaClinica",
+    "entityId": "Profissional",
+    "title": "Profissional",
+    "description": "Médico ou terapeuta da clínica que realiza consultas e acessa a própria agenda.",
+    "displayField": "details.identification.name",
+    "relationships": {
+      "consultas": {
+        "relationshipId": "appointmentProfessional",
+        "to": "Consulta",
+        "via": "Consulta.professionalId",
+        "cardinality": "1:N",
+        "title": "Consultas realizadas",
+        "description": "Consultas da agenda realizadas por este profissional.",
+        "mode": "fk",
+        "direction": "to",
+        "required": "Não é obrigatório para o profissional; toda consulta vinculada exige um profissional responsável.",
+        "role": "profissional responsável"
+      }
+    },
+    "capabilities": {
+      "read.byId": "Lê um profissional pelo identificador mestre · consulta direta pelo mdmId · usada pela recepcionista ao agendar e pela agenda do próprio profissional.",
+      "locate.byName": "Localiza profissionais pelo nome · busca textual no índice de pessoas ativas · usada pela recepcionista para selecionar médico ou terapeuta no agendamento.",
+      "locate.byDocument": "Localiza um profissional pelo documento nacional · consulta de deduplicação no índice mestre · usada pela recepcionista ao cadastrar ou vincular um profissional.",
+      "locate.byTag": "Lista os registros com o papel agendaClinica.Profissional · consulta indexada de tags do MDM · usada pela recepcionista para limitar a seleção aos profissionais da clínica.",
+      "register.createOrAttach": "Cria ou vincula a pessoa existente ao papel de profissional · deduplica por documento e anexa a tag do módulo · usada pela recepcionista ao cadastrar um profissional da clínica.",
+      "edit.platformFields": "Atualiza os dados de plataforma usados pelo profissional, incluindo nome, documento, profissão e consentimento · atualização do registro mestre e de seu índice · usada pela recepcionista na manutenção cadastral.",
+      "inactivate": "Inativa ou reativa o profissional sem apagar seu registro mestre · alteração da situação no MDM · usada pela recepcionista quando o profissional deixa ou retoma a clínica.",
+      "invite.login": "Concede acesso de login ao profissional · convite que cria o identificador de login no índice da organização · usado pela recepcionista para permitir o acesso à própria agenda.",
+      "statusHistory.read": "Exibe as mudanças de situação do profissional · leitura do histórico de status do MDM · usada pela recepcionista na conferência cadastral.",
+      "audit": "Mostra quem alterou os dados do profissional e quando · leitura da auditoria do registro mestre · usada pela recepcionista na conferência cadastral."
+    },
+    "rules": [
+      "rule-foreign-namespace-refused",
+      "rule-document-shape-validated",
+      "rule-identity-never-in-namespace",
+      "rule-person-privacy-consent-required-br-eu"
+    ],
+    "writer": "crud",
+    "kind": "role",
+    "subtype": "Person",
+    "roleTag": "agendaClinica.Profissional",
+    "source": "/_102034_/l4/ontology/mdm.defs.ts",
+    "record": {
+      "fields": {
+        "id": {
+          "type": "uuid",
+          "required": true,
+          "indexed": true,
+          "derived": true,
+          "description": "mdmId; stable through promotion and merge."
+        },
+        "version": {
+          "type": "integer",
+          "required": true,
+          "derived": true,
+          "description": "Bumped by the engine on every write; optimistic concurrency."
+        },
+        "details": {
+          "type": "object",
+          "required": true,
+          "description": "Registro mestre da pessoa que atua como médico ou terapeuta na clínica.",
+          "fields": {
+            "identification": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {
+                "subtype": {
+                  "type": "enum",
+                  "required": true,
+                  "indexed": true,
+                  "derived": true,
+                  "values": [
+                    {
+                      "value": "Person",
+                      "title": "Pessoa",
+                      "description": "Pessoa física."
+                    }
+                  ],
+                  "description": "Classifica este registro mestre como pessoa.",
+                  "title": "Subtipo",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "name": {
+                  "type": "string",
+                  "required": true,
+                  "indexed": true,
+                  "maxLength": 0,
+                  "description": "Nome pelo qual o profissional é localizado e apresentado na agenda.",
+                  "title": "Nome",
+                  "min": 0,
+                  "max": 0
+                },
+                "status": {
+                  "type": "enum",
+                  "required": true,
+                  "indexed": true,
+                  "derived": true,
+                  "values": [
+                    {
+                      "value": "Active",
+                      "title": "Ativo",
+                      "description": "Registro em uso."
+                    },
+                    {
+                      "value": "Inactive",
+                      "title": "Inativo",
+                      "description": "Registro fora de uso."
+                    },
+                    {
+                      "value": "Merged",
+                      "title": "Mesclado",
+                      "description": "Registro unido a outro registro mestre."
+                    },
+                    {
+                      "value": "Blocked",
+                      "title": "Bloqueado",
+                      "description": "Registro bloqueado pela plataforma."
+                    }
+                  ],
+                  "title": "Situação",
+                  "description": "Situação do registro mestre do profissional na plataforma.",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "docType": {
+                  "type": "enum",
+                  "indexed": true,
+                  "values": [
+                    {
+                      "value": "SSN",
+                      "title": "SSN",
+                      "description": "Documento nacional dos Estados Unidos."
+                    },
+                    {
+                      "value": "EIN",
+                      "title": "EIN",
+                      "description": "Identificador fiscal dos Estados Unidos."
+                    },
+                    {
+                      "value": "Passport",
+                      "title": "Passaporte",
+                      "description": "Documento de passaporte."
+                    },
+                    {
+                      "value": "DriversLicense",
+                      "title": "Carteira de motorista",
+                      "description": "Documento de habilitação."
+                    },
+                    {
+                      "value": "NationalId",
+                      "title": "Documento nacional",
+                      "description": "Documento nacional de identidade."
+                    },
+                    {
+                      "value": "CPF",
+                      "title": "CPF",
+                      "description": "Cadastro de Pessoa Física."
+                    },
+                    {
+                      "value": "CNPJ",
+                      "title": "CNPJ",
+                      "description": "Cadastro Nacional da Pessoa Jurídica."
+                    },
+                    {
+                      "value": "VAT",
+                      "title": "VAT",
+                      "description": "Identificador fiscal de valor agregado."
+                    },
+                    {
+                      "value": "Other",
+                      "title": "Outro",
+                      "description": "Outro tipo de documento."
+                    }
+                  ],
+                  "title": "Tipo de documento",
+                  "description": "Tipo do documento nacional usado para localizar ou deduplicar o profissional.",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "docId": {
+                  "type": "string",
+                  "indexed": true,
+                  "description": "Número do documento nacional do profissional.",
+                  "title": "Número do documento",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                },
+                "countryCode": {
+                  "type": "string",
+                  "required": true,
+                  "indexed": true,
+                  "pattern": "^[A-Z]{2}$",
+                  "maxLength": 0,
+                  "default": "US",
+                  "description": "Código ISO do país aplicável ao documento e às regras legais do profissional.",
+                  "title": "País",
+                  "min": 0,
+                  "max": 0
+                }
+              },
+              "description": "Dados de identificação do registro mestre do profissional."
+            },
+            "base": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {},
+              "description": "Dados comuns de plataforma do registro mestre; nenhum dado básico adicional é usado pela agenda clínica."
+            },
+            "person": {
+              "type": "object",
+              "owner": "platform",
+              "fields": {
+                "occupation": {
+                  "type": "string",
+                  "maxLength": 0,
+                  "title": "Profissão",
+                  "description": "Profissão exercida na clínica, identificando a atuação como médico ou terapeuta.",
+                  "required": true,
+                  "min": 0,
+                  "max": 0
+                },
+                "privacyConsent": {
+                  "type": "object",
+                  "of": "PrivacyConsent",
+                  "description": "Consentimento de privacidade do profissional quando exigido pela legislação aplicável.",
+                  "title": "Consentimento de privacidade",
+                  "maxLength": 0,
+                  "min": 0,
+                  "max": 0
+                }
+              },
+              "description": "Dados próprios de pessoa física usados para caracterizar a atuação clínica."
+            },
+            "general": {
+              "type": "object",
+              "owner": "organization",
+              "open": true,
+              "description": "Dados promovidos pela organização, somente para leitura neste módulo."
+            },
+            "agendaClinica": {
+              "type": "object",
+              "owner": "module",
+              "fields": {},
+              "description": "Module namespace; the prompt asked for no data of this module about the record."
+            }
+          }
+        }
+      }
+    }
+  },
+  "normalizations": [
+    {
+      "kind": "derivedFromPlatform",
+      "entityId": "Profissional",
+      "detail": "record.fields.id, record.fields.version"
+    },
+    {
+      "kind": "tightened",
+      "entityId": "Profissional",
+      "detail": "Profissional.details.identification.subtype.values"
+    },
+    {
+      "kind": "tightened",
+      "entityId": "Profissional",
+      "detail": "Profissional.details.person.occupation.required"
+    },
+    {
+      "kind": "namespaceEmpty",
+      "entityId": "Profissional",
+      "detail": "details.agendaClinica"
+    }
+  ]
+}

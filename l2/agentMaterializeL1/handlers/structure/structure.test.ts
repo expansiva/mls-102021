@@ -19,6 +19,7 @@ import { classifyCase, verifyBatch, type M1Observation } from '/_102021_/l2/agen
 import { grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideRoute } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { runStructure, structureHandlerIds, structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
@@ -267,7 +268,11 @@ function compile(rows: readonly Emitted[]): string {
     const paths: Record<string, string[]> = { '/_102047_/l1/agendaClinica/*': [overlay] };
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {
       const key = `/_${id}_/*`;
-      if (!paths[key]) paths[key] = [`./mls-${id}/*`];
+      if (!paths[key]) {
+        paths[key] = id === '102047'
+          ? [`./${relative(ROOT, AGENDA_CLINICA_F35E28A)}/*`]
+          : [`./mls-${id}/*`];
+      }
     }
     writeFileSync(config, `${JSON.stringify({
       extends: './tsconfig.base.json',
@@ -371,6 +376,7 @@ async function read(ref: string): Promise<string | null> {
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
   if (!match) return null;
   try {
+    if (match[1] === '102047') return readFileSync(join(AGENDA_CLINICA_F35E28A, match[2]), 'utf8');
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
     return null;

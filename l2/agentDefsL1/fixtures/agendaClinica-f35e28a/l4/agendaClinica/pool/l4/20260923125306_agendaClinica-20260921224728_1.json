@@ -1,0 +1,12 @@
+{
+  "from": "l2",
+  "to": "l4",
+  "thread": "agendaClinica-20260921224728",
+  "round": 1,
+  "mode": "implement",
+  "subject": "effort of agendaClinica (web) ready",
+  "artifacts": [
+    "pool/l2/web/effort.json"
+  ],
+  "body": "screens toCreate:6 toUpdate:0 toRemove:0 done:0\nendpoints toCreate:26 toUpdate:0 toRemove:0 done:0\nusecases toCreate:13 toUpdate:0 toRemove:0 done:0\ntables toCreate:1 toUpdate:0 toRemove:0 done:0"
+}

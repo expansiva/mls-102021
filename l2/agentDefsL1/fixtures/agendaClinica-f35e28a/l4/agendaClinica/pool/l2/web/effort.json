@@ -1,0 +1,410 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.1",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 6,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "endpoints": {
+      "toCreate": 26,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "usecases": {
+      "toCreate": 13,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "tables": {
+      "toCreate": 1,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    }
+  },
+  "screens": [
+    {
+      "pageId": "consultas_recepcionista",
+      "label": "Consultas",
+      "actors": [
+        "recepcionista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
+        "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+        "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
+        "agendaClinica.consultas_recepcionista.qryListConsulta",
+        "agendaClinica.consultas_recepcionista.qryListPaciente",
+        "agendaClinica.consultas_recepcionista.qryListProfissional"
+      ]
+    },
+    {
+      "pageId": "pacientes",
+      "label": "Pacientes",
+      "actors": [
+        "recepcionista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.pacientes.cmdCreateConsulta",
+        "agendaClinica.pacientes.cmdCreatePaciente",
+        "agendaClinica.pacientes.qryListConsulta",
+        "agendaClinica.pacientes.qryListPaciente",
+        "agendaClinica.pacientes.qryListProfissional"
+      ]
+    },
+    {
+      "pageId": "profissionais",
+      "label": "Profissionais",
+      "actors": [
+        "recepcionista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.profissionais.cmdCreateConsulta",
+        "agendaClinica.profissionais.qryListConsulta",
+        "agendaClinica.profissionais.qryListPaciente",
+        "agendaClinica.profissionais.qryListProfissional"
+      ]
+    },
+    {
+      "pageId": "consultas_profissional",
+      "label": "Agenda do dia",
+      "actors": [
+        "profissional"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+        "agendaClinica.consultas_profissional.qryListConsulta"
+      ]
+    },
+    {
+      "pageId": "dados_profissional",
+      "label": "Meus dados",
+      "actors": [
+        "profissional"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.dados_profissional.cmdCreateProfissional",
+        "agendaClinica.dados_profissional.cmdUpdateProfissional",
+        "agendaClinica.dados_profissional.qryListProfissional"
+      ]
+    },
+    {
+      "pageId": "dados_recepcionista",
+      "label": "Meus dados",
+      "actors": [
+        "recepcionista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "agendaClinica.dados_recepcionista.cmdCreateProfissional",
+        "agendaClinica.dados_recepcionista.cmdCreateRecepcionista",
+        "agendaClinica.dados_recepcionista.cmdUpdateProfissional",
+        "agendaClinica.dados_recepcionista.cmdUpdateRecepcionista",
+        "agendaClinica.dados_recepcionista.qryListProfissional",
+        "agendaClinica.dados_recepcionista.qryListRecepcionista"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+      "page": "consultas_profissional",
+      "kind": "cmd",
+      "usecaseRef": "registrarAtendimento",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_profissional.qryListConsulta",
+      "page": "consultas_profissional",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
+      "page": "consultas_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "confirmarConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+      "page": "consultas_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
+      "page": "consultas_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "registrarFalta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.qryListConsulta",
+      "page": "consultas_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.qryListPaciente",
+      "page": "consultas_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcionista.qryListProfissional",
+      "page": "consultas_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_profissional.cmdCreateProfissional",
+      "page": "dados_profissional",
+      "kind": "cmd",
+      "usecaseRef": "createProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_profissional.cmdUpdateProfissional",
+      "page": "dados_profissional",
+      "kind": "cmd",
+      "usecaseRef": "updateProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_profissional.qryListProfissional",
+      "page": "dados_profissional",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.cmdCreateProfissional",
+      "page": "dados_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.cmdCreateRecepcionista",
+      "page": "dados_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createRecepcionista",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.cmdUpdateProfissional",
+      "page": "dados_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "updateProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.cmdUpdateRecepcionista",
+      "page": "dados_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "updateRecepcionista",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.qryListProfissional",
+      "page": "dados_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.dados_recepcionista.qryListRecepcionista",
+      "page": "dados_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listRecepcionista",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreateConsulta",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreatePaciente",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createPaciente",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListConsulta",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListPaciente",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListProfissional",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.profissionais.cmdCreateConsulta",
+      "page": "profissionais",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.profissionais.qryListConsulta",
+      "page": "profissionais",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.profissionais.qryListPaciente",
+      "page": "profissionais",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate"
+    },
+    {
+      "route": "agendaClinica.profissionais.qryListProfissional",
+      "page": "profissionais",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "confirmarConsulta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createConsulta",
+      "entity": "Consulta",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createPaciente",
+      "entity": "Paciente",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createProfissional",
+      "entity": "Profissional",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listConsulta",
+      "entity": "Consulta",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listPaciente",
+      "entity": "Paciente",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listProfissional",
+      "entity": "Profissional",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "registrarAtendimento",
+      "entity": "Consulta",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "registrarFalta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateProfissional",
+      "entity": "Profissional",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "consulta",
+      "entity": "Consulta",
+      "status": "toCreate"
+    }
+  ],
+  "removed": [],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "generatedAt": "2026-09-23T12:53:06.307Z"
+  }
+}

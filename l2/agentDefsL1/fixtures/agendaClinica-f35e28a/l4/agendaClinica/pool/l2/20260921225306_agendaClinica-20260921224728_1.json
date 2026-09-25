@@ -1,0 +1,12 @@
+{
+  "from": "l1",
+  "to": "l2",
+  "thread": "agendaClinica-20260921224728",
+  "round": 1,
+  "mode": "implement",
+  "subject": "backend plan of agendaClinica (web)",
+  "artifacts": [
+    "pool/l2/web/backend.json"
+  ],
+  "body": "26 endpoints\n13 usecases\n1 ports\n1 tables\n0 removed\n0 changes\nllmCalled=false"
+}

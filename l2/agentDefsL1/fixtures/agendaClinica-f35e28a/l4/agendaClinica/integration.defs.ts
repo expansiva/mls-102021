@@ -1,0 +1,49 @@
+/// <mls fileReference="_102047_/l4/agendaClinica/integration.defs.ts" enhancement="_blank"/>
+
+import type { Ns5IntegrationArtifact } from '/_102035_/l2/solution/types.js';
+
+export const agendaClinicaIntegration = {
+  "schemaVersion": "2026-09-12-ns5-integration-v2",
+  "moduleName": "agendaClinica",
+  "inbound": [],
+  "outbound": [
+    {
+      "id": "consultaConfirmada",
+      "kind": "event",
+      "to": "any",
+      "event": "consultaConfirmada",
+      "on": "Consulta.confirmarConsulta",
+      "description": "Publica que uma consulta foi confirmada por telefone, para que outros módulos interessados possam reagir.",
+      "entityRefs": [
+        "Consulta"
+      ]
+    },
+    {
+      "id": "faltaPacienteRegistrada",
+      "kind": "event",
+      "to": "any",
+      "event": "faltaPacienteRegistrada",
+      "on": "Consulta.registrarFalta",
+      "description": "Publica o registro de falta do paciente em uma consulta, para uso por outros módulos interessados.",
+      "entityRefs": [
+        "Consulta"
+      ]
+    },
+    {
+      "id": "atendimentoRegistrado",
+      "kind": "event",
+      "to": "any",
+      "event": "atendimentoRegistrado",
+      "on": "Consulta.registrarAtendimento",
+      "description": "Publica que uma consulta foi atendida e teve sua anotação registrada, para que outros módulos interessados possam reagir.",
+      "entityRefs": [
+        "Consulta"
+      ]
+    }
+  ],
+  "plugins": []
+} as const satisfies Ns5IntegrationArtifact;
+
+export type AgendaClinicaIntegrationType = typeof agendaClinicaIntegration;
+
+export default agendaClinicaIntegration;

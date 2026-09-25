@@ -19,9 +19,10 @@ import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/
 import { attemptFile, readD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { closedFromRequest, parseWorkerReply, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const APP = path.resolve(HERE, '../../../../../mls-102047');
+const APP = AGENDA_CLINICA_F35E28A;
 const MDM = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;

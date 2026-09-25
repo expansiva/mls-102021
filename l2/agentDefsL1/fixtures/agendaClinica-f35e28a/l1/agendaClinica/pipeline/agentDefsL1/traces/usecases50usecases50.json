@@ -1,0 +1,187 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "usecases50",
+  "unitId": "usecases50",
+  "runId": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "snapshotHash": "sha256:18c8829b4410e0d180c4e932bdd841e40d096e0aec81f8acc3ac937ff8fd0654",
+  "draftHash": "sha256:c3e8b17f6a90b0e60906849d1210e88173433ce69b32b1161867e2a5501c5036",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/confirmarConsulta.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/createPaciente.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/createProfissional.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/createRecepcionista.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/listPaciente.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/listProfissional.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/listRecepcionista.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/updateProfissional.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/usecases/updateRecepcionista.ts",
+    "l1/agendaClinica/layer_2_application/usecases/confirmarConsulta.ts",
+    "l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+    "l1/agendaClinica/layer_2_application/usecases/createPaciente.ts",
+    "l1/agendaClinica/layer_2_application/usecases/createProfissional.ts",
+    "l1/agendaClinica/layer_2_application/usecases/createRecepcionista.ts",
+    "l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+    "l1/agendaClinica/layer_2_application/usecases/listPaciente.ts",
+    "l1/agendaClinica/layer_2_application/usecases/listProfissional.ts",
+    "l1/agendaClinica/layer_2_application/usecases/listRecepcionista.ts",
+    "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+    "l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts",
+    "l1/agendaClinica/layer_2_application/usecases/updateProfissional.ts",
+    "l1/agendaClinica/layer_2_application/usecases/updateRecepcionista.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/confirmarConsulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:581c98552ddb485d48db4f625da48c3746d90473c9b1ea80ffc8935125765399",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/confirmarConsulta.ts",
+        "l1/agendaClinica/layer_2_application/usecases/confirmarConsulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createConsulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:0e5ea7e2280f6264f8564374c713be7a97e07ebd75bdf05b877de873bdf08bb5",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+        "l1/agendaClinica/layer_2_application/usecases/createConsulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createPaciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:18b078850363a7e1b72f6de17e7ebe34e9ab13c5ba8fa1be77c9625bdcb00593",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/createPaciente.ts",
+        "l1/agendaClinica/layer_2_application/usecases/createPaciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createProfissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:34aa3e77f0dbd3e23e5929d72e9af1e459c136a9951fef2503c36dce5867e61b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/createProfissional.ts",
+        "l1/agendaClinica/layer_2_application/usecases/createProfissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createRecepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:ae910d73fd49ff75302ce0d4df647b88cff1b3d829bf5a7377388d29548da282",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/createRecepcionista.ts",
+        "l1/agendaClinica/layer_2_application/usecases/createRecepcionista.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listConsulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:cffb3d0a6dedb10f772a4f354acb997000303a98a59ba45369e2f4b78fc48fe7",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+        "l1/agendaClinica/layer_2_application/usecases/listConsulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listPaciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:284bc7e6ab99f76966f61b50dca3b7382b01513ec7491f2e9cef5edf55fcbfbf",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/listPaciente.ts",
+        "l1/agendaClinica/layer_2_application/usecases/listPaciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listProfissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:353a94751f5dd855b0caa5bc2de94eaf9e3ab0bb5f5b74a9848f4dc8f501c02c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/listProfissional.ts",
+        "l1/agendaClinica/layer_2_application/usecases/listProfissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listRecepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:dd80a01a70e9b483ba36234cdb4ecda24e9e512a974537c3caf8e649e99f551b",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/listRecepcionista.ts",
+        "l1/agendaClinica/layer_2_application/usecases/listRecepcionista.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:9c22ca0cf67e8bdef27f0795f040cff8355871211d898b3a8a8076f17b017bc5",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+        "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarFalta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:6139349c9f6f5946aba0669a2b0488f902cad56d814ecbb0f27c943f0cdbfec5",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts",
+        "l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/updateProfissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:2454c0b28fa90452d5ce6f4d9c6b318cb2cfa7d387fb4419ab5afe026dbe2d45",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/updateProfissional.ts",
+        "l1/agendaClinica/layer_2_application/usecases/updateProfissional.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/updateRecepcionista.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:d7d98931f6bdd02ab75f47229974bffb6677866d497b09e01a4d17b767d853c2",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/usecases/updateRecepcionista.ts",
+        "l1/agendaClinica/layer_2_application/usecases/updateRecepcionista.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

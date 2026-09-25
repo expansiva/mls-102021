@@ -1,0 +1,186 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "consultas_recepcionista",
+      "kind": "page",
+      "label": "Consultas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo as consultas da clínica e os horários que ainda estão livres."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro a consulta e confiro paciente, profissional, data e horário."
+        },
+        {
+          "kind": "form",
+          "text": "Marco a consulta para o paciente com o profissional no horário disponível."
+        },
+        {
+          "kind": "actions",
+          "text": "Confirmo a consulta por telefone ou registro que o paciente faltou."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pacientes",
+      "kind": "page",
+      "label": "Pacientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo os pacientes da clínica e acho quem já está cadastrado."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro o paciente e confiro o nome e os dados."
+        },
+        {
+          "kind": "form",
+          "text": "Preencho o cadastro de um paciente novo para associar à clínica."
+        },
+        {
+          "kind": "actions",
+          "text": "Registro o paciente para ele poder receber consultas."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissionais",
+      "kind": "page",
+      "label": "Profissionais",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Acho o médico ou terapeuta ativo para marcar a consulta."
+        },
+        {
+          "kind": "detail",
+          "text": "Confiro o nome do profissional."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "consultas_profissional",
+      "kind": "page",
+      "label": "Agenda do dia",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo apenas as minhas consultas do dia."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro a consulta e confiro o paciente e o horário."
+        },
+        {
+          "kind": "form",
+          "text": "Registro o atendimento e anoto o que aconteceu na consulta."
+        },
+        {
+          "kind": "actions",
+          "text": "Marco a consulta como atendida."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "cadastro_profissional",
+      "kind": "hub",
+      "label": "Meu cadastro",
+      "context": "Profissional",
+      "text": "Abre já no seu registro. Daí você vê e atualiza os seus dados de profissional.",
+      "children": [
+        {
+          "id": "dados_profissional",
+          "kind": "page",
+          "label": "Meus dados",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo o meu cadastro de profissional."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo os meus dados de atuação clínica."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "cadastro_recepcionista",
+      "kind": "hub",
+      "label": "Meu cadastro",
+      "context": "Recepcionista",
+      "text": "Abre já no seu registro. Daí você vê e atualiza os seus dados de recepcionista.",
+      "children": [
+        {
+          "id": "dados_recepcionista",
+          "kind": "page",
+          "label": "Meus dados",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo o meu cadastro de recepcionista."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo os meus dados de atuação na clínica."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcionista": [
+      "consultas_recepcionista",
+      "pacientes",
+      "profissionais",
+      "cadastro_recepcionista"
+    ],
+    "actor:profissional": [
+      "consultas_profissional",
+      "cadastro_profissional"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "pacientes",
+        "profissionais",
+        "consultas_recepcionista"
+      ],
+      "confirmarConsulta": [
+        "consultas_recepcionista"
+      ],
+      "registrarFalta": [
+        "consultas_recepcionista"
+      ],
+      "consultarAgendaDiaria": [
+        "consultas_profissional"
+      ],
+      "registrarAtendimento": [
+        "consultas_profissional"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}
