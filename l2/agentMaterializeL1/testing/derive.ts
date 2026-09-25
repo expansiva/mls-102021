@@ -13,7 +13,7 @@ import {
   type M1Definition,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
-import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
+import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { grantsOf, requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import {
@@ -52,10 +52,30 @@ export interface DerivedCatalog {
   recipeVersion: typeof M1_CATALOG_RECIPE;
 }
 
+/** A unit that will not write its `.ts` is a gap, not an executable scenario. */
+export function catalogWithheld(
+  units: readonly PlannedUnit[],
+  boundHandlers: ReadonlySet<string>,
+): Map<string, string> {
+  const withheld = new Map<string, string>();
+  for (const unit of units) {
+    if (unit.action === 'reuse' || unit.action === 'verify') continue;
+    if (unit.action === 'generate') {
+      if (unit.handlerId && boundHandlers.has(unit.handlerId)) continue;
+      const handler = unit.handlerId || unit.artifactType || 'unknown';
+      withheld.set(unit.defPath, `HANDLER_UNBOUND: ${handler} has no executor.`);
+      continue;
+    }
+    withheld.set(unit.defPath, unit.reason || unit.action);
+  }
+  return withheld;
+}
+
 export function deriveCatalog(
   moduleName: string,
   units: readonly PlanUnitInput[],
   texts: Readonly<Record<string, string>>,
+  withheld: ReadonlyMap<string, string> = new Map(),
 ): DerivedCatalog {
   const defs = new Map<string, M1Definition>();
   for (const unit of units) {
@@ -67,6 +87,16 @@ export function deriveCatalog(
   const scenarios: M1Scenario[] = [];
   const ordered = [...defs.entries()].sort((left, right) => left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0);
   for (const [defPath, definition] of ordered) {
+    const held = withheld.get(defPath);
+    if (held) {
+      gaps.push({
+        artifactId: definition.artifactId,
+        artifactType: definition.artifactType,
+        origin: defPath,
+        reason: held,
+      });
+      continue;
+    }
     const handler = handlerFor(definition.artifactType, 'structure');
     if (!handler) continue;
     const productionFile = outputPathFromDefPath(defPath);

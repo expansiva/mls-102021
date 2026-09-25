@@ -79,9 +79,12 @@ void test('fixture is the catalog both adapters read', () => {
         assert.equal(item.expectedFailure, null);
       }
     }
+    const production = `/${scenario.productionFile.replace(/\.ts$/, '.js')}`;
+    assert.equal(node.includes(`'${production}'`), true);
+    assert.equal(node.includes(`./${scenario.artifactId}.js`), false);
+    assert.equal(node.includes(`import { ${scenario.artifactId} }`), false);
     if (scenario.artifactType === 'usecase') {
       assert.equal(node.includes("from '/_102034_/l1/server/layer_2_controllers/contracts.js'"), true);
-      assert.equal(node.includes(`./${scenario.artifactId}.js`), true);
     }
   }
 

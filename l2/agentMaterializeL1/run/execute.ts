@@ -31,7 +31,8 @@ import {
   renderNodeTest,
   testFileFor,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { catalogBytes, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
@@ -213,7 +214,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     recipeVersion: M1_RECIPE_VERSION,
     removals,
   });
-  const catalogPrep = host.catalogRef ? await prepareCatalog(request, host, merged, stage !== 'simulate') : null;
+  const catalogPrep = host.catalogRef ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate') : null;
   if (catalogPrep?.action === 'invalid') {
     return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'CATALOG_INVALID', stage, catalogPrep);
   }
@@ -991,6 +992,7 @@ function finish(
 async function prepareCatalog(
   request: MaterializeRunRequest,
   host: MaterializeRunHost,
+  snapshot: SimulationSnapshot,
   units: readonly PlanUnitInput[],
   write: boolean,
 ): Promise<CatalogPrep> {
@@ -1007,11 +1009,15 @@ async function prepareCatalog(
       if (text) texts[dependency] = text;
     }
   }
-  const derived = deriveCatalog(request.moduleName, units, texts);
+  const withheld = snapshot.stage === 'structure'
+    ? catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)))
+    : new Map<string, string>();
+  const derived = deriveCatalog(request.moduleName, units, texts, withheld);
+  const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));
   const existing = await host.io.read(ref);
   if (existing === null) {
-    if (write) await writeDerived(host, ref, derived.catalog);
+    if (write) await writeDerived(host, ref, derived.catalog, valueExports);
     return {
       ref,
       action: write ? 'written' : 'simulated',
@@ -1052,16 +1058,27 @@ async function prepareCatalog(
   };
 }
 
+function valueExportsByDef(units: readonly PlanUnitInput[]): Map<string, readonly string[]> {
+  const map = new Map<string, readonly string[]>();
+  for (const unit of units) {
+    const parsed = readDefinition(unit.definition);
+    if ('issues' in parsed) continue;
+    map.set(unit.defPath, emittedValueExports(parsed));
+  }
+  return map;
+}
+
 async function writeDerived(
   host: MaterializeRunHost,
   ref: string,
   catalog: ReturnType<typeof deriveCatalog>['catalog'],
+  valueExports: ReadonlyMap<string, readonly string[]>,
 ): Promise<void> {
   await host.state.writeOwned(ref, new TextEncoder().encode(renderMonitorCatalog(catalog, ref)));
   for (const scenario of catalog.scenarios) {
     if (!scenario.testFile || scenario.cases.length === 0) continue;
     const current = await host.io.read(scenario.testFile);
-    const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'));
+    const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'), valueExports.get(scenario.source) ?? []);
     if (current !== null && current !== next) continue;
     await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));
   }

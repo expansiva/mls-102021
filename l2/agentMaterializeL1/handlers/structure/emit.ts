@@ -57,6 +57,7 @@ export function emitDomain(definition: M1Definition, output: string): EmitResult
 
 export function emitValueObject(definition: M1Definition, output: string): EmitResult {
   const name = token(definition.data.valueObjectId, definition.artifactId);
+  const [referencedBy] = emittedValueExports(definition);
   const fields = fieldRows(definition.data.fields);
   const referenced = stringList(definition.data.referencedBy);
   const body = renderType(nest(fields, []), '');
@@ -66,7 +67,7 @@ export function emitValueObject(definition: M1Definition, output: string): EmitR
     source: [
       header(output),
       `export interface ${name} ${body}`,
-      `export const referencedBy = ${JSON.stringify(referenced)} as const;`,
+      `export const ${referencedBy} = ${JSON.stringify(referenced)} as const;`,
       '',
     ].join('\n'),
   };
@@ -83,7 +84,7 @@ export function emitPort(definition: M1Definition, output: string): EmitResult |
   const signatures = methods.map(method => renderMethod(method, entity, locals, false));
   const bodies = methods.map(method => renderMethod(method, entity, locals, true));
   const aliases = [...locals].filter(name => name !== entity).map(name => `export type ${name} = Record<string, unknown>;`);
-  const pending = `pending${interfaceName}`;
+  const [pending] = emittedValueExports(definition);
   const entityImport = importSpecifier(entityDep, 'output');
   return {
     runsStub: true,
@@ -109,6 +110,7 @@ export function emitPort(definition: M1Definition, output: string): EmitResult |
 
 export function emitAccess(definition: M1Definition, output: string): EmitResult {
   const grants = grantsOf(definition.data);
+  const [grantsName, resolveName] = emittedValueExports(definition);
   const literal = grants.map(grant => `  ${JSON.stringify(grant)}`).join(',\n');
   return {
     runsStub: false,
@@ -125,12 +127,12 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
       '  recordField: string;',
       '}',
       '',
-      'export const grants: readonly StructureGrant[] = [',
+      `export const ${grantsName}: readonly StructureGrant[] = [`,
       literal,
       '];',
       '',
-      'export function resolveGrant(grantId: string): StructureGrant | { code: string; detail: string } {',
-      '  const grant = grants.find(item => item.grantId === grantId);',
+      `export function ${resolveName}(grantId: string): StructureGrant | { code: string; detail: string } {`,
+      `  const grant = ${grantsName}.find(item => item.grantId === grantId);`,
       `  if (!grant) return { code: '${GRANT_ABSENT}', detail: \`Grant \${grantId} is not declared.\` };`,
       '  if (grant.pending) return { code: grant.pending, detail: `Grant ${grantId} is pending ${grant.pending}.` };',
       `  if (grant.session !== 'verified') return { code: '${SESSION_UNVERIFIED}', detail: \`Grant \${grantId} session is not verified.\` };`,
@@ -145,6 +147,7 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
 
 export function emitAuthority(definition: M1Definition, output: string): EmitResult {
   const entries = Array.isArray(definition.data.entries) ? definition.data.entries.filter(isRecord) : [];
+  const [entriesName, actorRefName] = emittedValueExports(definition);
   const rows = entries
     .map(entry => ({ grantId: String(entry.grantId ?? ''), actorRef: String(entry.actorRef ?? '') }))
     .filter(entry => entry.grantId);
@@ -153,10 +156,10 @@ export function emitAuthority(definition: M1Definition, output: string): EmitRes
     imports: [],
     source: [
       header(output),
-      `export const entries = ${JSON.stringify(rows, null, 2)} as const;`,
+      `export const ${entriesName} = ${JSON.stringify(rows, null, 2)} as const;`,
       '',
-      'export function actorRefFor(grantId: string): string | null {',
-      '  const entry = entries.find(item => item.grantId === grantId);',
+      `export function ${actorRefName}(grantId: string): string | null {`,
+      `  const entry = ${entriesName}.find(item => item.grantId === grantId);`,
       '  return entry ? entry.actorRef : null;',
       '}',
       '',
@@ -166,7 +169,8 @@ export function emitAuthority(definition: M1Definition, output: string): EmitRes
 
 export async function emitUsecase(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
   const fn = firstFunction(definition);
-  if (!fn) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function.` };
+  const [fnName] = emittedValueExports(definition);
+  if (!fn || !fnName) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function.` };
   const contracts = await resolveContracts(definition, fn, read);
   if ('code' in contracts) return contracts;
   const declaredPorts = stringList(definition.data.ports);
@@ -197,11 +201,11 @@ export async function emitUsecase(definition: M1Definition, output: string, read
       ...aliases,
       portImport,
       '',
-      `export async function ${fn.name}(input: ${inputUnion}, ctx: RequestContext${portArg}): Promise<${outputUnion}> {`,
+      `export async function ${fnName}(input: ${inputUnion}, ctx: RequestContext${portArg}): Promise<${outputUnion}> {`,
       '  void input;',
       '  void ctx;',
       voidPorts.trimEnd(),
-      `  throw new AppError('${M1_STUB_ERROR}', '${fn.name} is not implemented.', ${M1_STUB_STATUS});`,
+      `  throw new AppError('${M1_STUB_ERROR}', '${fnName} is not implemented.', ${M1_STUB_STATUS});`,
       '}',
       '',
     ].filter(line => line !== '').join('\n'),
@@ -243,7 +247,7 @@ export async function emitController(definition: M1Definition, output: string, r
       ...typeImports,
       ...portImports,
       '',
-      'export const routes: ControllerRoute[] = [',
+      `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
       ...routes.map(route => `  { key: '${route.route}', handler: ${route.fn} },`),
       '];',
       '',
@@ -486,6 +490,28 @@ function mapToken(tokenValue: string, entity: string, locals: Set<string>): stri
     ts = base;
   }
   return array ? `${ts}[]` : ts;
+}
+
+/** Value bindings the structure emitters write. Types are not included. */
+export function emittedValueExports(definition: M1Definition): readonly string[] {
+  switch (definition.artifactType) {
+    case 'valueObject':
+      return ['referencedBy'];
+    case 'repositoryPort':
+      return [`pending${token(definition.data.interfaceName, definition.artifactId)}`];
+    case 'accessScope':
+      return ['grants', 'resolveGrant'];
+    case 'authorityMap':
+      return ['entries', 'actorRefFor'];
+    case 'usecase': {
+      const fn = firstFunction(definition);
+      return fn ? [fn.name] : [];
+    }
+    case 'httpController':
+      return ['routes'];
+    default:
+      return [];
+  }
 }
 
 export function importSpecifier(defPath: string, kind: 'output' | 'defs'): string {

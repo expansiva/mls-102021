@@ -224,11 +224,17 @@ export function renderMonitorCatalog(catalog: M1ScenarioCatalog, fileReference: 
   ].join('\n');
 }
 
-export function renderNodeTest(scenario: M1Scenario, catalogImport: string): string {
-  const productionImport = `./${scenario.artifactId}.js`;
-  const body = scenario.artifactType === 'httpController'
-    ? renderControllerTest(scenario, catalogImport)
-    : renderUsecaseTest(scenario, catalogImport, productionImport);
+/** Qualified file or import (`_NNNNN_/…` or `/_NNNNN_/…`) as `/_NNNNN_/….js`. Anything else is refused. */
+export function moduleSpecifier(file: string): string {
+  const js = file.replace(/\.ts$/, '.js');
+  if (js.startsWith('/_')) return js;
+  if (/^_\d+_\//.test(js)) return `/${js}`;
+  return '';
+}
+
+export function renderNodeTest(scenario: M1Scenario, catalogImport: string, valueExports: readonly string[] = []): string {
+  const productionImport = moduleSpecifier(scenario.productionFile);
+  const body = renderBoundTest(scenario, moduleSpecifier(catalogImport), productionImport, valueExports);
   return `/// <mls fileReference="${scenario.testFile}" enhancement="_blank"/>\n\n${body}`;
 }
 
@@ -237,44 +243,39 @@ export function testFileFor(productionFile: string): string {
   return productionFile.replace(/\.ts$/, '.test.ts');
 }
 
-function renderUsecaseTest(scenario: M1Scenario, catalogImport: string, productionImport: string): string {
+function renderBoundTest(
+  scenario: M1Scenario,
+  catalogImport: string,
+  productionImport: string,
+  valueExports: readonly string[],
+): string {
   const locks = scenario.cases.map(item => lockLiteral(item)).join('\n');
   const assertFrom = spec('assert/strict');
   const testFrom = spec('test');
+  const appError = scenario.artifactType === 'usecase'
+    ? `import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\n`
+    : '';
+  const catalogLine = catalogImport ? `import { ${M1_CATALOG_EXPORT} } from '${catalogImport}';\n` : '';
+  const productionLine = bindingImport(productionImport, valueExports);
+  const voids = valueExports.map(name => `  void ${name};`).join('\n');
+  const appVoid = scenario.artifactType === 'usecase' ? '  void AppError;\n' : '';
   return `import assert ${assertFrom};
 import test ${testFrom};
 
-import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
-import { ${M1_CATALOG_EXPORT} } from '${catalogImport}';
-import { ${scenario.artifactId} } from '${productionImport}';
-
+${appError}${catalogLine}${productionLine}
 const scenario = ${M1_CATALOG_EXPORT}.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');
 
 void test('${scenario.scenarioId} keeps the catalog assertion', () => {
   if (!scenario) throw new Error('missing scenario ${scenario.scenarioId}');
   assert.equal(${M1_CATALOG_EXPORT}.store, 'memory');
-  void ${scenario.artifactId};
-  void AppError;
-${locks}});
+${voids ? `${voids}\n` : ''}${appVoid}${locks}});
 `;
 }
 
-function renderControllerTest(scenario: M1Scenario, catalogImport: string): string {
-  const locks = scenario.cases.map(item => lockLiteral(item)).join('\n');
-  const assertFrom = spec('assert/strict');
-  const testFrom = spec('test');
-  return `import assert ${assertFrom};
-import test ${testFrom};
-
-import { ${M1_CATALOG_EXPORT} } from '${catalogImport}';
-
-const scenario = ${M1_CATALOG_EXPORT}.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');
-
-void test('${scenario.scenarioId} keeps the catalog assertion', () => {
-  if (!scenario) throw new Error('missing scenario ${scenario.scenarioId}');
-  assert.equal(${M1_CATALOG_EXPORT}.store, 'memory');
-${locks}});
-`;
+function bindingImport(specifier: string, names: readonly string[]): string {
+  if (!specifier) return '';
+  if (names.length === 0) return `import '${specifier}';\n`;
+  return `import { ${names.join(', ')} } from '${specifier}';\n`;
 }
 
 /** Built at runtime so this module's source does not import the runner. The emitted file does. */
