@@ -16,7 +16,8 @@ import type { HandlerCall } from '/_102021_/l2/agentMaterializeL1/run/execute.js
 import { shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { verifyBatch } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutPayloadChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { emitController, recordFieldFromGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
@@ -444,6 +445,114 @@ void test('mdm create attaches an existing record and update rejects a stale ver
     assert.match(hidden.source, /PRECONDITION_UNDECLARED/);
     assert.equal(hidden.source.includes('enforce:version'), false);
   }
+});
+
+void test('a resolved scope path filters the list and an injected field does not widen it', async () => {
+  const read = async (ref: string) => {
+    const found = [...FIXTURES.values()].find(item => item.defPath === ref);
+    const match = /^_(\d+)_\/(.+)$/.exec(ref);
+    const disk = !found && match
+      ? readFileSync(match[1] === '102047' ? join(AGENDA_CLINICA_F35E28A, match[2]) : join(ROOT, `mls-${match[1]}`, match[2]), 'utf8')
+      : null;
+    if (!found && disk === null) return null;
+    if (!ref.endsWith('/accessScope.defs.ts')) return found?.text ?? disk;
+    const base = found?.text ?? disk ?? '';
+    return base.replace(
+      /"grantId": "profissionalAgendaDiaria"[\s\S]*?"pending": "ACCESS_ANCHOR"/,
+      block => block
+        .replace('"anchorEntity": "Paciente"', '"anchorEntity": "Profissional"')
+        .replace('"to": "Paciente"', '"to": "Profissional"')
+        .replace('"field": "Consulta.patientId"', '"field": "Consulta.professionalId"')
+        .replace('"pending": "ACCESS_ANCHOR"', '"pending": ""'),
+    );
+  };
+  const list = definitionFor('listConsulta');
+  const open = await caseBlock(list, callFor('listConsulta').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.qryListConsulta',
+    expect: { ruleId: null },
+  }, read);
+  assert.equal(open, null);
+  const coverage = await caseBlock(list, callFor('listConsulta').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.qryListConsulta',
+    expect: { ruleId: 'professionalOwnAppointment' },
+  }, read);
+  assert.equal(coverage?.gap, 'APPLICABILITY_UNDECLARED');
+  const missing = await caseBlock(list, callFor('listConsulta').unit.defPath, {
+    routine: 'agendaClinica.consultas_profissional.qryListConsulta',
+    expect: { ruleId: null },
+  }, async ref => {
+    const text = await read(ref);
+    if (text === null || !ref.endsWith('/accessScope.defs.ts')) return text;
+    return text.replace(/"path": \[[\s\S]*?\],/, '"path": [],');
+  });
+  assert.equal(missing?.gap, 'ACCESS_ANCHOR');
+  assert.equal(recordFieldFromGrant({
+    scopeMode: 'own',
+    anchorEntity: 'Paciente',
+    path: [{ from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId' }],
+  }), 'patientId');
+  assert.equal(recordFieldFromGrant({ scopeMode: 'own', anchorEntity: 'Profissional', path: [] }), '');
+  assert.equal(recordFieldFromGrant({
+    scopeMode: 'own',
+    anchorEntity: 'Profissional',
+    path: [
+      { from: 'Consulta', to: 'Profissional', field: 'Consulta.professionalId' },
+      { from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId' },
+    ],
+  }), '');
+
+  const page = [...FIXTURES.values()].find(item => item.definition.artifactId === 'consultas_profissional');
+  assert.ok(page);
+  const controller = await emitController(page.definition, 'l1/agendaClinica/consultas_profissional.ts', read);
+  assert.equal('code' in controller, false, 'code' in controller ? controller.detail : '');
+  if ('code' in controller) return;
+  assert.match(controller.source, /enforce:scope/);
+  const stripped = withoutScopeChecks(controller.source);
+  assert.equal(stripped.removed, 1);
+  const resolveGrant = () => ({ grantId: 'g', scopeMode: 'own', recordField: 'professionalId', pending: '' });
+  const apply = (source: string) => new Function('resolveGrant', `${source.slice(source.indexOf('function scopeParams'), source.indexOf('function authorize'))
+    .replaceAll(': unknown', '')
+    .replaceAll(': { sessionContext?: { actorId?: string } }', '')
+    .replaceAll(': readonly string[]', '')
+    .replaceAll(': Record<string, unknown>', '')
+    .replaceAll(' as Record<string, unknown>', '')} return scopeParams;`)(resolveGrant) as (
+    params: Record<string, string>,
+    ctx: { sessionContext: { actorId: string } },
+    grantIds: string[],
+  ) => Record<string, string>;
+  const scoped = apply(controller.source)({ professionalId: 'professional-2' }, { sessionContext: { actorId: 'professional-1' } }, ['g']);
+  assert.equal(scoped.professionalId, 'professional-1');
+  const widened = apply(stripped.source)({ professionalId: 'professional-2' }, { sessionContext: { actorId: 'professional-1' } }, ['g']);
+  assert.equal(widened.professionalId, 'professional-2');
+
+  const emitted = await emitBehavior('implement.usecase', list, 'l1/agendaClinica/listConsulta.ts', read);
+  const port = await emitBehavior('implement.repositoryPort', definitionFor('ConsultaRepository'), 'l1/agendaClinica/consultaRepository.ts', read);
+  assert.equal('code' in emitted || 'code' in port, false);
+  if ('code' in emitted || 'code' in port) return;
+  assert.equal(emitted.source.includes('attendanceNote'), false);
+  const dir = join(ROOT, `.m1-10-scope-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'listConsulta.ts'), emitted.source);
+  writeFileSync(join(dir, 'consultaRepository.ts'), port.source);
+  const loaded = await import(pathToFileURL(join(dir, 'listConsulta.ts')).href) as {
+    listConsulta: (input: Record<string, string>, ctx: unknown, ports: Record<string, unknown>) => Promise<Array<Record<string, string>>>;
+  };
+  const memory = await import(pathToFileURL(join(dir, 'consultaRepository.ts')).href) as {
+    resetMemory: (seed?: Record<string, unknown>[]) => void;
+    pendingConsultaRepository: unknown;
+  };
+  const rows = [
+    { id: 'consulta-1', professionalId: 'professional-1', patientId: 'patient-1', scheduledAt: '2026-09-25T13:00:00.000Z', status: 'scheduled', version: 1, details: { attendanceNote: '' } },
+    { id: 'consulta-2', professionalId: 'professional-2', patientId: 'patient-2', scheduledAt: '2026-09-25T15:00:00.000Z', status: 'scheduled', version: 1, details: { attendanceNote: '' } },
+  ];
+  const ports = { consultaRepository: memory.pendingConsultaRepository };
+  memory.resetMemory(rows);
+  const own = await loaded.listConsulta(scoped, {}, ports);
+  assert.deepEqual(own.map(row => row.id), ['consulta-1']);
+  memory.resetMemory(rows);
+  const foreign = await loaded.listConsulta(widened, {}, ports);
+  assert.deepEqual(foreign.map(row => row.id), ['consulta-2']);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 function definitionFor(artifactId: string): M1Definition {

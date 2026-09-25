@@ -31,6 +31,7 @@ import {
   emitPort,
   emitUsecase,
   importSpecifier,
+  recordFieldFromGrant,
   type EmitFailure,
   type EmitResult,
   type StructureRead,
@@ -132,6 +133,16 @@ export function withoutVersionChecks(source: string): { source: string; removed:
   const next = source.replace(pattern, (_match, indent: string) => {
     removed += 1;
     return `${indent}// enforce:version disabled\n${indent}const expectedVersion = Number(loaded.version);\n`;
+  });
+  return { source: next, removed };
+}
+
+export function withoutScopeChecks(source: string): { source: string; removed: number } {
+  const pattern = /([ \t]*)\/\/ enforce:scope\r?\n\1body\[resolved\.recordField\] = actorId;\r?\n/g;
+  let removed = 0;
+  const next = source.replace(pattern, (_match, indent: string) => {
+    removed += 1;
+    return `${indent}// enforce:scope disabled\n`;
   });
   return { source: next, removed };
 }
@@ -872,7 +883,7 @@ function effectIds(definition: M1Definition): string[] {
   return definition.data.effects.filter(isRecord).map(item => text(item.eventId)).filter(isIdent);
 }
 
-function contractRoutes(definition: M1Definition): string[] {
+export function contractRoutes(definition: M1Definition): string[] {
   const functions = definition.data.functions;
   if (!Array.isArray(functions) || !isRecord(functions[0]) || !Array.isArray(functions[0].contractRefs)) return [];
   return functions[0].contractRefs.filter(isRecord).map(item => text(item.route)).filter(Boolean);
@@ -1028,9 +1039,11 @@ async function grantPending(
   const grants = Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];
   const matched = grants.filter(grant => grantIds.includes(text(grant.grantId)));
   if (matched.length !== grantIds.length) return { pending: '', scopeMode: '', unread: true };
-  const pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
-  const scopeMode = matched.find(grant => text(grant.pending) === pending)?.scopeMode;
-  return { pending, scopeMode: text(scopeMode), unread: false };
+  let pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
+  const scopeMode = text(matched.find(grant => text(grant.pending) === pending)?.scopeMode);
+  const field = matched.length === 1 ? recordFieldFromGrant(matched[0]) : '';
+  if (!pending && scopeMode === 'own' && !field) pending = 'ACCESS_ANCHOR';
+  return { pending, scopeMode, unread: false };
 }
 
 async function loadDefinition(ref: string, read: StructureRead): Promise<M1Definition | EmitFailure> {

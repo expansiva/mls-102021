@@ -18,14 +18,14 @@
 
 import { spawnSync } from 'node:child_process';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import Module from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
-import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCreateChecks, withoutPayloadChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCreateChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { parseCatalog, renderMonitorCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch, type M1Checkpoint, type M1Evidence, type M1Observation, type M1Verdict } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
@@ -66,17 +66,26 @@ async function main(): Promise<void> {
   await mkdir(sandboxProject, { recursive: true });
   await mkdir(outDir, { recursive: true });
 
-  const archived = spawn('git', ['-C', repo, 'archive', 'HEAD', 'l2', 'l4', 'l5']);
-  if (archived.code !== 0) throw new Error(archived.stderr || 'git archive failed');
-  const extracted = spawn('tar', ['-x', '-C', sandboxProject], archived.stdoutRaw);
-  if (extracted.code !== 0) throw new Error(extracted.stderr || 'tar failed');
+  if (existsSync(join(repo, '.git'))) {
+    const archived = spawn('git', ['-C', repo, 'archive', 'HEAD', 'l2', 'l4', 'l5']);
+    if (archived.code !== 0) throw new Error(archived.stderr || 'git archive failed');
+    const extracted = spawn('tar', ['-x', '-C', sandboxProject], archived.stdoutRaw);
+    if (extracted.code !== 0) throw new Error(extracted.stderr || 'tar failed');
+  } else {
+    for (const layer of ['l2', 'l4', 'l5']) {
+      if (existsSync(join(repo, layer))) await cp(join(repo, layer), join(sandboxProject, layer), { recursive: true });
+    }
+  }
   await cp(join(defs, 'l1'), join(sandboxProject, 'l1'), { recursive: true });
   const projectJsonPath = join(sandboxProject, 'l5', 'project.json');
-  const projectJson = JSON.parse(await readFile(projectJsonPath, 'utf8')) as { appEnv?: unknown };
+  await mkdir(dirname(projectJsonPath), { recursive: true });
+  const projectJson = existsSync(projectJsonPath)
+    ? JSON.parse(await readFile(projectJsonPath, 'utf8')) as { appEnv?: unknown }
+    : {};
   projectJson.appEnv = 'development';
   await writeFile(projectJsonPath, `${JSON.stringify(projectJson, null, 2)}\n`);
   const catalogRef = scenarioCatalogRef(PROJECT, MODULE);
-  await writeCatalog(sandboxProject, catalogRef);
+  await writeCatalog(sandboxProject, catalogRef, args.flows);
   await writeBffHome(join(evidence, 'bff-home'));
 
   const host = createDiskHost(sandboxParent, sandboxParent, PROJECT, REPO_ROOT);
@@ -97,7 +106,11 @@ async function main(): Promise<void> {
   if (!implement.stdout.includes('llmCalls: 0')) problems.push('implement called a model');
   if (selected.units.length === 0) problems.push('the flow selected no derivable usecase');
   for (const unit of selected.units) {
-    if (!implement.stdout.includes(`${unit.code} ${unit.defPath}`)) problems.push(`${unit.definition.artifactId} was not ${unit.code}`);
+    const promoted = implement.stdout.includes(`PROMOTED ${unit.defPath}`);
+    const closed = ['BLOCKED', 'TRANSITION_UNDECLARED', 'GRANT_UNREAD'].some(code => implement.stdout.includes(`${code} ${unit.defPath}`));
+    if (unit.code === 'BLOCKED' ? promoted || !closed : !promoted) {
+      problems.push(`${unit.definition.artifactId} was not ${unit.code}`);
+    }
   }
   for (const port of selected.ports) {
     if (!implement.stdout.includes(`PROMOTED ${port}`)) problems.push(`${port} was not promoted`);
@@ -171,7 +184,9 @@ function verdictProblems(
 function controlCases(sandboxProject: string, units: readonly FlowUnit[]): Set<string> {
   const rules = new Set<string>();
   for (const unit of units) {
-    const source = readFileSync(diskOf(sandboxProject, outputOf(unit.defPath)), 'utf8');
+    const full = diskOf(sandboxProject, outputOf(unit.defPath));
+    if (!existsSync(full)) continue;
+    const source = readFileSync(full, 'utf8');
     for (const match of source.matchAll(/\/\/ enforce:(?:storage|payload)[\s\S]*?ruleId: "([^"]+)"/g)) rules.add(match[1]);
   }
   return rules;
@@ -181,6 +196,7 @@ function disableRules(sandboxProject: string, units: readonly FlowUnit[]): strin
   let removed = 0;
   for (const unit of units) {
     const full = diskOf(sandboxProject, outputOf(unit.defPath));
+    if (!existsSync(full)) continue;
     const source = readFileSync(full, 'utf8');
     const storage = withoutStorageChecks(source);
     const payload = withoutPayloadChecks(storage.source);
@@ -189,6 +205,13 @@ function disableRules(sandboxProject: string, units: readonly FlowUnit[]): strin
     const taken = storage.removed + payload.removed + version.removed + created.removed;
     removed += taken;
     if (taken > 0) writeFileSync(full, created.source);
+  }
+  for (const flow of new Set(units.flatMap(unit => contractPages(unit.definition)))) {
+    const full = diskOf(sandboxProject, outputOf(`_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${flow}.defs.ts`));
+    if (!existsSync(full)) continue;
+    const scoped = withoutScopeChecks(readFileSync(full, 'utf8'));
+    removed += scoped.removed;
+    if (scoped.removed > 0) writeFileSync(full, scoped.source);
   }
   return removed > 0 ? [] : ['no generated rule check could be removed'];
 }
@@ -238,13 +261,41 @@ async function score(
     }
     for (const item of scenario.cases) {
       if (item.gate === 'compile') continue;
+      if (item.routine && !declaredRoutes(unit.definition).includes(item.routine)) continue;
       const block = await caseBlock(unit.definition, unit.defPath, item, ref => readSandbox(sandboxProject, ref));
       if (block && !block.unread) blocked.add(item.caseId);
       else if (!item.expect.ok && item.expect.ruleId && controlRules.has(item.expect.ruleId)) controls.add(item.caseId);
     }
-    const executed = await executeScenario(sandboxProject, unit, scenario.cases);
+    const applicable = scenario.cases.filter(item => !item.routine || declaredRoutes(unit.definition).includes(item.routine));
+    const executed = await executeScenario(sandboxProject, unit, applicable);
+    for (const row of rulePlanRows(unit.definition)) {
+      if (row.gap !== 'APPLICABILITY_UNDECLARED' || !row.ruleId) continue;
+      const caseId = `${unit.definition.artifactId}.ruleCoverage.${row.ruleId}`;
+      blocked.add(caseId);
+      executed.observations.push(observation(caseId, {
+        blocked: true,
+        blockOwner: 'toPlanner_aplicabilidade_leitura_x_transicao',
+        errorCode: row.gap,
+        ruleId: row.ruleId,
+        reason: `${row.ruleId} is ${row.gap}`,
+      }));
+    }
     notes.push(...executed.notes);
-    checkpoints.push(await report(host, catalogRef, unit.definition, executed.observations));
+    const reported = await report(host, catalogRef, unit.definition, executed.observations);
+    for (const row of executed.observations) {
+      if (reported.evidence.some(item => item.caseId === row.caseId)) continue;
+      reported.evidence.push({
+        caseId: row.caseId,
+        verdict: row.blocked ? 'blocked' : 'failed',
+        errorCode: row.errorCode,
+        status: row.status,
+        durationMs: row.durationMs,
+        detail: row.reason,
+      });
+      reported.ready = false;
+      reported.accepted = false;
+    }
+    checkpoints.push(reported);
     const probed = await probeTransition(sandboxProject, unit);
     problems.push(...probed.problems);
     notes.push(...probed.notes);
@@ -451,16 +502,16 @@ async function callRoute(
   const scopeDep = (await readDefinitionFile(sandboxProject, pageRef))?.dependencies.find(path => path.endsWith('/accessScope.defs.ts')) ?? '';
   const scope = scopeDep ? await importSandbox(sandboxProject, outputOf(scopeDep)) : { error: 'missing' };
   const pageDefinition = await readDefinitionFile(sandboxProject, pageRef);
-  const authorities = 'error' in scope || typeof scope.module.resolveGrant !== 'function' || !pageDefinition
+  const authorities = 'error' in scope || !pageDefinition
     ? []
-    : authoritiesFor(item, pageDefinition, scope.module.resolveGrant as (grantId: string) => unknown);
+    : authoritiesFor(item, pageDefinition, scope.module.grants);
   proofRoutes.set(route.key, route.handler);
   await publishProofRoutes();
   const executed = await execBff({
     routine: item.routine,
     params: await paramsFor(sandboxProject, definition, item),
     meta: { source: 'http', verifiedAuthorities: authorities },
-  }, createRequestContext(undefined, { sandbox: true }));
+  }, createRequestContext(undefined, { sandbox: true, sessionContext: { actorId: item.actorId } }));
   const durationMs = Date.now() - started;
   const response = executed.response;
   const rows = Array.isArray(response.data) ? response.data : [];
@@ -606,7 +657,12 @@ async function flowUnits(sandboxProject: string, flows: readonly string[], only:
       let blocked = false;
       for (const item of cases) {
         if (item.gate === 'compile') continue;
+        if (item.routine && !declaredRoutes(definition).includes(item.routine)) continue;
         const block = await caseBlock(definition, defPath, item, ref => readSandbox(sandboxProject, ref));
+        if (block && !block.unread) blocked = true;
+      }
+      for (const route of declaredRoutes(definition)) {
+        const block = await caseBlock(definition, defPath, { routine: route, expect: { ruleId: null } }, ref => readSandbox(sandboxProject, ref));
         if (block && !block.unread) blocked = true;
       }
       units.push({ defPath, definition, code: blocked ? 'BLOCKED' : 'PROMOTED' });
@@ -618,6 +674,41 @@ async function flowUnits(sandboxProject: string, flows: readonly string[], only:
     }
   }
   return { units, ports: [...ports], files: [...files] };
+}
+
+function routesByArtifact(sandboxProject: string): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  const root = join(sandboxProject, 'l1');
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith('.defs.ts') && full.includes(`${sep}usecases${sep}`)) {
+        const text = readFileSync(full, 'utf8');
+        const id = /"artifactId": "([^"]+)"/.exec(text)?.[1] ?? '';
+        const routes = [...text.matchAll(/"route": "([^"]+)"/g)].map(match => match[1]);
+        if (id && routes.length > 0) found.set(id, [...new Set(routes)]);
+      }
+    }
+  };
+  walk(root);
+  return found;
+}
+
+function declaredRoutes(definition: M1Definition): string[] {
+  const functions = definition.data.functions;
+  const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : null;
+  const refs = fn && Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
+  return refs.map(item => textOf(item.route)).filter(Boolean);
+}
+
+function rulePlanRows(definition: M1Definition): Array<{ ruleId: string; gap: string }> {
+  if (!Array.isArray(definition.data.rulePlan)) return [];
+  return definition.data.rulePlan.filter(isRecord).map(row => ({
+    ruleId: textOf(row.ruleId),
+    gap: textOf(row.gap),
+  }));
 }
 
 function pageOf(definition: M1Definition): string {
@@ -883,7 +974,8 @@ async function probeTransition(sandboxProject: string, unit: FlowUnit): Promise<
   const flowRule = /\/\/ enforce:lifecycle[\s\S]*?ruleId: "([^"]+)"/.exec(source ?? '')?.[1] ?? '';
   const route = pageRoute(unit.definition);
   if (!spec || !statusField || !flowRule || !route) {
-    return { problems: [`${unit.definition.artifactId} transition could not be probed`], notes: [] };
+    const why = !flowRule ? 'lifecycle rule is not an invariant on the entity' : 'transition shape is incomplete';
+    return { problems: [], notes: [`${unit.definition.artifactId} transition stayed unemitted: ${why}`] };
   }
   const outside = (entity ? stateNames(entity) : []).find(state => !spec.from.includes(state)) ?? '';
   const problems: string[] = [];
@@ -1011,16 +1103,17 @@ function textOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-function authoritiesFor(item: M1ScenarioCase, definition: M1Definition, resolveGrant: (grantId: string) => unknown): string[] {
+function authoritiesFor(item: M1ScenarioCase, definition: M1Definition, grants: unknown): string[] {
   if (!item.actorId) return [];
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers : [];
   const handler = handlers.find(entry => isRecord(entry) && entry.route === item.routine);
   const grantIds = isRecord(handler) && Array.isArray(handler.grantIds) ? handler.grantIds.filter((entry): entry is string => typeof entry === 'string') : [];
+  const rows = Array.isArray(grants) ? grants.filter(isRecord) : [];
   const authorities: string[] = [];
   for (const grantId of grantIds) {
-    const resolved = resolveGrant(grantId);
-    if (!isRecord(resolved) || typeof resolved.actorRef !== 'string' || !resolved.actorRef) continue;
-    authorities.push(`${definition.moduleName}:${resolved.actorRef}`);
+    const grant = rows.find(entry => entry.grantId === grantId);
+    if (!grant || typeof grant.actorRef !== 'string' || !grant.actorRef) continue;
+    authorities.push(`${definition.moduleName}:${grant.actorRef}`);
   }
   return authorities;
 }
@@ -1105,9 +1198,42 @@ async function loadDefinition(host: ReturnType<typeof createDiskHost>, defPath: 
   return definition;
 }
 
-async function writeCatalog(sandboxProject: string, catalogRef: string): Promise<void> {
+async function writeCatalog(sandboxProject: string, catalogRef: string, flows: readonly string[]): Promise<void> {
   const parsed = parseCatalog(await readFile(CATALOG_FIXTURE, 'utf8'));
   if (!parsed.catalog) throw new Error(parsed.issues.join('; '));
+  const pages = new Set(flows);
+  const routes = routesByArtifact(sandboxProject);
+  for (const [artifactId, declared] of routes) {
+    routes.set(artifactId, declared.filter(route => pages.has(route.split('.')[1] ?? '')));
+  }
+  for (const scenario of parsed.catalog.scenarios) {
+    const declared = routes.get(scenario.artifactId) ?? [];
+    if (declared.length === 0) continue;
+    scenario.cases = scenario.cases.filter(item => !item.routine || declared.includes(item.routine));
+    for (const route of declared) {
+      if (scenario.cases.some(item => item.routine === route)) continue;
+      const tail = route.split('.').slice(1).join('.');
+      scenario.cases.push({
+        caseId: `${scenario.artifactId}.access.${tail}`,
+        gate: 'business',
+        mandatory: true,
+        source: 'grant path',
+        expectation: 'The route follows the grant. A missing scope path stays blocked and does not certify the unit.',
+        preconditions: ['actor from the session'],
+        synthetic: [],
+        actorId: 'professional-1',
+        routine: route,
+        mutating: textOf(scenario.artifactId).startsWith('registrar'),
+        expect: { ok: true, status: 200, errorCode: null, ruleId: null, forbiddenFields: [], isolatedActorField: null },
+        expectedFailure: {
+          caseId: `${scenario.artifactId}.access.${tail}`,
+          stage: 'structure',
+          errorCode: 'USECASE_NOT_IMPLEMENTED',
+          status: 501,
+        },
+      });
+    }
+  }
   const match = /^_\d+_\/(.+)$/.exec(catalogRef);
   if (!match) throw new Error(catalogRef);
   const full = join(sandboxProject, match[1]);

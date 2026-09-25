@@ -122,6 +122,7 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
       '  session: string;',
       '  pending: string;',
       '  disclosure: string;',
+      '  recordField: string;',
       '}',
       '',
       'export const grants: readonly StructureGrant[] = [',
@@ -134,6 +135,7 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
       '  if (grant.pending) return { code: grant.pending, detail: `Grant ${grantId} is pending ${grant.pending}.` };',
       `  if (grant.session !== 'verified') return { code: '${SESSION_UNVERIFIED}', detail: \`Grant \${grantId} session is not verified.\` };`,
       `  if (!grant.scopeMode) return { code: '${SCOPE_UNBOUND}', detail: \`Grant \${grantId} has no scope mode.\` };`,
+      '  if (grant.scopeMode === \'own\' && !grant.recordField) return { code: \'ACCESS_ANCHOR\', detail: `Grant ${grantId} has no resolved scope path.` };',
       '  return grant;',
       '}',
       '',
@@ -246,6 +248,7 @@ export async function emitController(definition: M1Definition, output: string, r
       '];',
       '',
       ...functions,
+      scopeSource(),
       authorizeSource(),
       validateSource(),
       projectSource(),
@@ -378,9 +381,26 @@ function renderHandler(route: ResolvedRoute): string {
 }
 
 function argsOf(route: ResolvedRoute): string {
-  const args = [`input.request.params as ${route.inputType}`, 'input.ctx'];
+  const args = [`scopeParams(input.request.params, input.ctx, [${route.grantIds.map(item => `'${item}'`).join(', ')}]) as unknown as ${route.inputType}`, 'input.ctx'];
   if (route.ports.length > 0) args.push(`{ ${route.ports.map(item => `${item.binding}: ${item.pending}`).join(', ')} }`);
   return args.join(', ');
+}
+
+function scopeSource(): string {
+  return [
+    'function scopeParams(params: unknown, ctx: { sessionContext?: { actorId?: string } }, grantIds: readonly string[]): Record<string, unknown> {',
+    '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? { ...(params as Record<string, unknown>) } : {};',
+    '  for (const grantId of grantIds) {',
+    '    const resolved = resolveGrant(grantId);',
+    '    if (!(\'grantId\' in resolved) || resolved.scopeMode !== \'own\' || !resolved.recordField) continue;',
+    '    const actorId = ctx.sessionContext?.actorId ?? \'\';',
+    '    // enforce:scope',
+    '    body[resolved.recordField] = actorId;',
+    '  }',
+    '  return body;',
+    '}',
+    '',
+  ].join('\n');
 }
 
 function authorizeSource(): string {
@@ -488,7 +508,26 @@ export function grantsOf(data: Record<string, unknown>): StructureGrant[] {
     session: String(grant.session ?? ''),
     pending: String(grant.pending ?? ''),
     disclosure: String(grant.disclosure ?? ''),
+    recordField: recordFieldFromGrant(grant),
   })).filter(grant => grant.grantId);
+}
+
+/** The single path hop names the record field. A missing or contradictory path does not. */
+export function recordFieldFromGrant(grant: Record<string, unknown>): string {
+  if (String(grant.scopeMode ?? '') !== 'own') return '';
+  const hops = Array.isArray(grant.path) ? grant.path.filter(isRecord) : [];
+  if (hops.length !== 1) return '';
+  const hop = hops[0];
+  const from = String(hop.from ?? '');
+  const to = String(hop.to ?? '');
+  const field = String(hop.field ?? '');
+  const anchor = String(grant.anchorEntity ?? '');
+  if (!from || !to || !field || (anchor && to !== anchor)) return '';
+  const prefix = `${from}.`;
+  if (!field.startsWith(prefix)) return '';
+  const leaf = field.slice(prefix.length);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(leaf)) return '';
+  return leaf;
 }
 
 export function requiredMembers(source: string, name: string): string[] | null {
