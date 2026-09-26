@@ -1238,9 +1238,7 @@ async function prepareCatalog(
       if (text) texts[dependency] = text;
     }
   }
-  const withheld = snapshot.stage === 'structure'
-    ? catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)))
-    : new Map<string, string>();
+  const withheld = catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)));
   const derived = deriveCatalog(request.moduleName, units, texts, withheld);
   const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));

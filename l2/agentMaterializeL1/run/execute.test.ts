@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, parseDefinitionSource, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
@@ -143,6 +143,29 @@ void test('structure calls only its handler and implement does not fall back to 
   assert.equal(implement.units[0].promoted, false);
   assert.equal(implementStore.map.has(output), false);
   assert.match(implement.units[0].detail, /catalog/);
+});
+
+void test('implement on the clinic fixture does not emit a test for a unit with no output', async () => {
+  const fixture = join(HERE, '../register/fixtures/agendaClinica-8d8729d');
+  const loaded = loadDefs(fixture, '_102047_/');
+  const authority = loaded.units.find(unit => {
+    const definition = unit.definition as { artifactType?: string };
+    return definition.artifactType === 'authorityMap';
+  });
+  assert.ok(authority);
+  const store = world(loaded.texts);
+  const catalogRef = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+  const result = await runMaterialize(baseRequest(loaded.units, {
+    stage: 'implement',
+    budget: { timeoutMs: 2000, repairsPerRun: 0, callsPerRun: 0 },
+  }), {
+    ...host(store, {}, () => Promise.reject(new Error('model must not be called'))),
+    catalogRef,
+  });
+  assert.equal(result.catalog?.gaps.some(gap => gap.artifactId === 'authorityMap' && gap.reason.startsWith('NO_CONSUMER:')), true);
+  assert.equal([...store.map.keys()].some(path => path.endsWith('/authorityMap.test.ts')), false);
+  const written = store.map.get(catalogRef) ?? '';
+  assert.equal(written.includes('authorityMap'), false);
 });
 
 void test('timeout, network, transient and invalid response end the unit without a generic file', async () => {
@@ -660,6 +683,28 @@ void test('help names the studio command and the l2 entry does not import node',
   const readme = readFileSync(join(root, 'readme.md'), 'utf8');
   assert.match(readme, /@@agentMaterializeL1 \/help/);
 });
+
+function loadDefs(root: string, prefix: string): { units: PlanUnitInput[]; texts: Record<string, string> } {
+  const units: PlanUnitInput[] = [];
+  const texts: Record<string, string> = {};
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith('.defs.ts')) {
+        const text = readFileSync(path, 'utf8');
+        const parsed = parseDefinitionSource(text);
+        if (!('definition' in parsed)) continue;
+        const rel = path.slice(root.length + 1).split('/').join('/');
+        const defPath = `${prefix}${rel}`;
+        texts[defPath] = text;
+        units.push({ defPath, definition: parsed.definition });
+      }
+    }
+  };
+  walk(root);
+  return { units, texts };
+}
 
 function entity(id: string): PlanUnitInput {
   const defPath = `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/${id.toLowerCase()}.defs.ts`;

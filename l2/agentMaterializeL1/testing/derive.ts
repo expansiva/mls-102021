@@ -60,8 +60,10 @@ export function catalogWithheld(
 ): Map<string, string> {
   const withheld = new Map<string, string>();
   for (const unit of units) {
-    if (unit.action === 'reuse' || unit.action === 'verify') continue;
-    if (unit.action === 'generate') {
+    const action = unit.action === 'blocked' && unit.heldAction ? unit.heldAction : unit.action;
+    if (action === 'reuse' || action === 'verify') continue;
+    if (unit.action === 'blocked' && unit.reason.startsWith('STATUS_FAILED')) continue;
+    if (action === 'generate') {
       if (unit.handlerId && boundHandlers.has(unit.handlerId)) continue;
       const handler = unit.handlerId || unit.artifactType || 'unknown';
       withheld.set(unit.defPath, `HANDLER_UNBOUND: ${handler} has no executor.`);
