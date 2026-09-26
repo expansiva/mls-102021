@@ -19,6 +19,7 @@ import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/
 import { attemptFile, readD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { closedFromRequest, parseWorkerReply, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -73,7 +74,7 @@ function meta(): IAgentMeta {
 
 function seedTree(host: ReturnType<typeof installStudio>, dir: string, prefix: string, edit?: (logical: string, text: string) => string): void {
   for (const rel of walk(dir, '')) {
-    const logical = `${prefix}/${rel}`;
+    const logical = `${prefix}/${fixtureLogicalRel(rel)}`;
     const text = readFileSync(path.join(dir, rel), 'utf8');
     const info = fileInfoFromDisplay(PROJECT, logical);
     if (!info) continue;

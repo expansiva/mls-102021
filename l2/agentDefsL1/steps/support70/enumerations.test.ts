@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { projectEnumerations, type D1EnumSnapshot } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,7 @@ const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/m
 const L1 = path.join(AGENDA_CLINICA_F35E28A, 'l1/agendaClinica');
 
 function text(file: string): string {
-  return readFileSync(file, 'utf8');
+  return readFileSync(resolveFixtureFile(file), 'utf8');
 }
 
 function clinicSources(): Record<string, string> {

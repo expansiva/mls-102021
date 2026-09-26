@@ -18,6 +18,7 @@ import {
   type L5FileFact,
   type ReconcileL5Input,
 } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
+import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 
 const PROJECT = 109014;
 const MODULE = 'desk';
@@ -208,7 +209,7 @@ test('the real composer reads the patched registration and the controller route 
 const FROZEN = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agendaClinica-8d8729d');
 
 function frozenText(rel: string): string | null {
-  const abs = path.join(FROZEN, rel);
+  const abs = resolveFixtureFile(path.join(FROZEN, rel));
   if (!abs.startsWith(`${FROZEN}${path.sep}`)) return null;
   try {
     return fs.readFileSync(abs, 'utf8');
@@ -223,7 +224,7 @@ function frozenDefs(moduleName: string): string[] {
     for (const name of fs.readdirSync(dir)) {
       const abs = path.join(dir, name);
       if (fs.statSync(abs).isDirectory()) walk(abs);
-      else if (name.endsWith('.defs.ts')) found.push(path.relative(FROZEN, abs).split(path.sep).join('/'));
+      else if (name.endsWith('.defs.ts') || name.endsWith('.defs.txt')) found.push(fixtureLogicalRel(path.relative(FROZEN, abs).split(path.sep).join('/')));
     }
   };
   walk(path.join(FROZEN, 'l1', moduleName));

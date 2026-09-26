@@ -13,6 +13,7 @@ import { observeImplement } from '/_102021_/l1/agentMaterializeL1/caseRun.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_EXISTING_RECORD } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { copyFixtureSources, fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 
 const AGENDA = join(dirname(fileURLToPath(import.meta.url)), '../register/fixtures/agendaClinica-8d8729d');
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), `../../../../mls-${102047}`);
@@ -93,7 +94,7 @@ void test('update positive uses a stored record and the missing id stays 404', a
   assert.equal(catalogBytes(other.catalog).includes('Consulta'), false);
 
   const copy = mkdtempSync(join(tmpdir(), 'm1-18-'));
-  cpSync(AGENDA, copy, { recursive: true });
+  copyFixtureSources(AGENDA, copy);
   try {
     const definition = loaded.units.find(unit => unit.definition.artifactId === 'updateConsulta')?.definition;
     const port = loaded.units.find(unit => unit.definition.artifactType === 'repositoryPort' && unit.definition.artifactId === 'ConsultaRepository');
@@ -176,11 +177,11 @@ function loadTree(root: string, prefix: string): { units: PlanUnitInput[]; texts
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) continue;
-        const rel = path.slice(root.length + 1).split('/').join('/');
+        const rel = fixtureLogicalRel(path.slice(root.length + 1).split('/').join('/'));
         const defPath = `${prefix}${rel}`;
         texts[defPath] = text;
         units.push({ defPath, definition: parsed.definition });
@@ -198,11 +199,11 @@ function loadFixtures(): { units: PlanUnitInput[]; texts: Record<string, string>
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) continue;
-        const rel = path.slice(FIXTURE.length + 1).split('/').join('/');
+        const rel = fixtureLogicalRel(path.slice(FIXTURE.length + 1).split('/').join('/'));
         const defPath = `_102047_/l1/agendaClinica/${rel}`;
         texts[defPath] = text;
         units.push({ defPath, definition: parsed.definition });

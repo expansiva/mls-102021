@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102021_/l2/agentPlannerL1/agentPlannerL1.js';
 import { executeP1Entry, p1BackendFile, p1PipelineFile } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
@@ -106,8 +107,8 @@ const L4_COMPLETE = JSON.stringify({
 function seedOntology(host: Host, moduleRoot = MODULE): void {
   const root = path.join(HERE, 'fixtures/ontology');
   seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'index', extension: '.defs.ts', content: readFileSync(path.join(root, 'index.defs.ts'), 'utf8') });
-  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Mensalidade', extension: '.defs.ts', content: readFileSync(path.join(root, 'Mensalidade.defs.ts'), 'utf8') });
-  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Pagamento', extension: '.defs.ts', content: readFileSync(path.join(root, 'Pagamento.defs.ts'), 'utf8') });
+  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Mensalidade', extension: '.defs.ts', content: readFileSync(resolveFixtureFile(path.join(root, 'Mensalidade.defs.ts')), 'utf8') });
+  seed(host, { folder: `${moduleRoot}/ontology`, shortName: 'Pagamento', extension: '.defs.ts', content: readFileSync(resolveFixtureFile(path.join(root, 'Pagamento.defs.ts')), 'utf8') });
 }
 
 function seedAgentFiles(host: Host): void {

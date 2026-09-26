@@ -630,7 +630,7 @@ function loadFixtures(dir: string): Map<string, { defPath: string; text: string;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));

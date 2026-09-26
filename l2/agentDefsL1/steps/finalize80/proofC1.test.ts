@@ -42,6 +42,7 @@ import { commitD1Usecases, loadD1UsecaseWork } from '/_102021_/l2/agentDefsL1/st
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import type { D1UsecaseBuild, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { fixtureLogicalName } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -350,7 +351,7 @@ function seedClinic(host: TestHost): string[] {
   const walk = (dir: string, logicalRoot: string) => {
     for (const name of readdirSync(dir)) {
       const abs = path.join(dir, name);
-      const logical = `${logicalRoot}/${name}`;
+      const logical = `${logicalRoot}/${fixtureLogicalName(name)}`;
       if (statSync(abs).isDirectory()) walk(abs, logical);
       else add(abs, logical);
     }

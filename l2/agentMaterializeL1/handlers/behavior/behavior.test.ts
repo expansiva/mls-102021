@@ -22,6 +22,7 @@ import { emitController, recordFieldFromGrant } from '/_102021_/l2/agentMaterial
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
+import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -352,7 +353,7 @@ void test('a transition enforces from/to and payload without picking one lifecyc
     const match = /^_\d+_\/(.+)$/.exec(ref);
     if (!match) return null;
     try {
-      return readFileSync(join(root, match[1]), 'utf8');
+      return readFileSync(resolveFixtureFile(join(root, match[1])), 'utf8');
     } catch {
       return null;
     }
@@ -602,7 +603,7 @@ void test('a resolved scope path filters the list and an injected field does not
     const found = [...FIXTURES.values()].find(item => item.defPath === ref);
     const match = /^_(\d+)_\/(.+)$/.exec(ref);
     const disk = !found && match
-      ? readFileSync(match[1] === '102047' ? join(AGENDA_CLINICA_F35E28A, match[2]) : join(ROOT, `mls-${match[1]}`, match[2]), 'utf8')
+      ? readFileSync(match[1] === '102047' ? resolveFixtureFile(join(AGENDA_CLINICA_F35E28A, match[2])) : join(ROOT, `mls-${match[1]}`, match[2]), 'utf8')
       : null;
     if (!found && disk === null) return null;
     if (!ref.endsWith('/accessScope.defs.ts')) return found?.text ?? disk;
@@ -871,7 +872,7 @@ function rewriteFixture(): Map<string, string> {
   for (const ref of extras) {
     const match = /^_(\d+)_\/(.+)$/.exec(ref);
     if (!match) continue;
-    const disk = match[1] === '102047' ? join(AGENDA_CLINICA_F35E28A, match[2]) : join(ROOT, `mls-${match[1]}`, match[2]);
+    const disk = match[1] === '102047' ? resolveFixtureFile(join(AGENDA_CLINICA_F35E28A, match[2])) : join(ROOT, `mls-${match[1]}`, match[2]);
     sources.push({ key: ref, text: readFileSync(disk, 'utf8') });
   }
   for (const source of sources) {
@@ -942,7 +943,7 @@ async function read(ref: string): Promise<string | null> {
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
   if (!match) return null;
   try {
-    if (match[1] === '102047') return readFileSync(join(AGENDA_CLINICA_F35E28A, match[2]), 'utf8');
+    if (match[1] === '102047') return readFileSync(resolveFixtureFile(join(AGENDA_CLINICA_F35E28A, match[2])), 'utf8');
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
     return null;
@@ -966,17 +967,21 @@ function compile(rows: Array<[string, string]>): string {
       files.push(relative(ROOT, full));
     }
     const base = readFileSync(join(ROOT, 'tsconfig.base.json'), 'utf8');
+    const clinic = join(dir, 'clinic');
+    const consistent = join(dir, 'consistent');
+    copyFixtureSources(AGENDA_CLINICA_F35E28A, clinic);
+    copyFixtureSources(join(HERE, '../../../agentDefsL1/fixtures/agendaClinica-3f4f677'), consistent);
     const paths: Record<string, string[]> = {
       '/_102047_/l1/agendaClinica/layer_3_domain/entities/*': [`./${relative(ROOT, dir)}/*`],
       '/_102047_/l1/agendaClinica/layer_2_application/ports/*': [`./${relative(ROOT, dir)}/*`],
       '/_102047_/l1/agendaClinica/layer_2_application/usecases/*': [`./${relative(ROOT, dir)}/*`],
-      '/_102047_/l2/agendaClinica/web/contracts/agenda.defs.js': ['./mls-102021/l2/agentDefsL1/fixtures/agendaClinica-3f4f677/l2/agendaClinica/web/contracts/agenda.defs.ts'],
+      '/_102047_/l2/agendaClinica/web/contracts/agenda.defs.js': [`./${relative(ROOT, join(consistent, 'l2/agendaClinica/web/contracts/agenda.defs.ts'))}`],
     };
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {
       const key = `/_${id}_/*`;
       if (!paths[key]) {
         paths[key] = id === '102047'
-          ? [`./${relative(ROOT, AGENDA_CLINICA_F35E28A)}/*`]
+          ? [`./${relative(ROOT, clinic)}/*`]
           : [`./mls-${id}/*`];
       }
     }
@@ -1007,7 +1012,7 @@ function loadFixtures(dir: string): Map<string, { defPath: string; text: string;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));

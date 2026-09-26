@@ -16,6 +16,7 @@ import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_1020
 import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
+import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import type { D1SupportEmit, D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 interface SerializedGrant {
@@ -618,9 +619,10 @@ function walkFixture(dir: string, prefix: string): string[] {
 function seedFixture(rewrite: (rel: string, text: string) => string): void {
   const host = installStudio(102047);
   for (const rel of walkFixture(FIXTURE_3F4F677, '')) {
-    const info = fileInfoFromDisplay(102047, rel);
+    const logical = fixtureLogicalRel(rel);
+    const info = fileInfoFromDisplay(102047, logical);
     if (!info) continue;
-    seed(host, info, rewrite(rel, readFileSync(path.join(FIXTURE_3F4F677, rel), 'utf8')), 'frozen');
+    seed(host, info, rewrite(logical, readFileSync(path.join(FIXTURE_3F4F677, rel), 'utf8')), 'frozen');
   }
   assert.ok(host.files[fileKey({ project: 102047, level: 1, folder: 'agendaClinica/pipeline/agentDefsL1', shortName: 'input', extension: '.json' })]);
 }

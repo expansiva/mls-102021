@@ -16,6 +16,7 @@ import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderNodeTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   M1_CEILING,
@@ -772,11 +773,11 @@ function loadDefs(root: string, prefix: string): { units: PlanUnitInput[]; texts
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) continue;
-        const rel = path.slice(root.length + 1).split('/').join('/');
+        const rel = fixtureLogicalRel(path.slice(root.length + 1).split('/').join('/'));
         const defPath = `${prefix}${rel}`;
         texts[defPath] = text;
         units.push({ defPath, definition: parsed.definition });

@@ -17,6 +17,7 @@ import {
   type RulePlanInput,
   type RulePlanTransition,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const CLINIC = path.join(AGENDA_CLINICA_F35E28A, 'l4/agendaClinica');
@@ -317,7 +318,7 @@ function clinicPlan(
 }
 
 function clinicFiles(): FidelityFile[] {
-  const read = (rel: string, logical: string) => ({ path: logical, text: readFileSync(path.join(CLINIC, rel), 'utf8') });
+  const read = (rel: string, logical: string) => ({ path: logical, text: readFileSync(resolveFixtureFile(path.join(CLINIC, rel)), 'utf8') });
   return [
     read('ontology/Consulta.defs.ts', 'l4/agendaClinica/ontology/Consulta.defs.ts'),
     read('rules.defs.ts', 'l4/agendaClinica/rules.defs.ts'),

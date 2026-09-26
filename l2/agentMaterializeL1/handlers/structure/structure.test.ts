@@ -19,6 +19,7 @@ import { classifyCase, verifyBatch, type M1Observation } from '/_102021_/l2/agen
 import { grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideRoute } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { runStructure, structureHandlerIds, structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -265,6 +266,8 @@ function compile(rows: readonly Emitted[]): string {
       writeFileSync(full, row.source);
       files.push(relative(ROOT, full));
     }
+    const clinic = join(dir, 'clinic');
+    copyFixtureSources(AGENDA_CLINICA_F35E28A, clinic);
     const overlay = `./${relative(ROOT, dir)}/*`;
     const base = readFileSync(join(ROOT, 'tsconfig.base.json'), 'utf8');
     const paths: Record<string, string[]> = { '/_102047_/l1/agendaClinica/*': [overlay] };
@@ -272,7 +275,7 @@ function compile(rows: readonly Emitted[]): string {
       const key = `/_${id}_/*`;
       if (!paths[key]) {
         paths[key] = id === '102047'
-          ? [`./${relative(ROOT, AGENDA_CLINICA_F35E28A)}/*`]
+          ? [`./${relative(ROOT, clinic)}/*`]
           : [`./mls-${id}/*`];
       }
     }
@@ -385,7 +388,7 @@ async function read(ref: string): Promise<string | null> {
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
   if (!match) return null;
   try {
-    if (match[1] === '102047') return readFileSync(join(AGENDA_CLINICA_F35E28A, match[2]), 'utf8');
+    if (match[1] === '102047') return readFileSync(resolveFixtureFile(join(AGENDA_CLINICA_F35E28A, match[2])), 'utf8');
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
     return null;
@@ -398,7 +401,7 @@ function loadFixtures(dir: string): Map<string, { defPath: string; text: string;
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const path = join(current, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts')) {
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
         const text = readFileSync(path, 'utf8');
         const parsed = parseDefinitionSource(text);
         if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));

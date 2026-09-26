@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { parseDefsSource } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { readL1Inventory, type L1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
@@ -57,7 +58,7 @@ const CHAMADOS_ONTOLOGY: P1EntityView[] = [
 
 function ontologyFromRealL4Fixture(): P1EntityView[] {
   return ['Mensalidade', 'Pagamento'].map(name => {
-    const parsed = parseDefsSource(readFileSync(path.join(HERE, 'fixtures/ontology', `${name}.defs.ts`), 'utf8'));
+    const parsed = parseDefsSource(readFileSync(resolveFixtureFile(path.join(HERE, 'fixtures/ontology', `${name}.defs.ts`)), 'utf8'));
     const view = parseP1Entity(parsed);
     assert.ok(view, name);
     return view;
@@ -151,7 +152,7 @@ function seedControleChamados(host: Host): void {
     const folder = parsed.dir ? `${moduleName}/${parsed.dir}` : moduleName;
     seed(host, project, 1, folder, shortName, ext, readFileSync(full, 'utf8'));
   }
-  seed(host, project, 5, moduleName, 'todoBackend', '.defs.ts', readFileSync(path.join(L1_FIXTURE, 'l5/todoBackend.defs.ts'), 'utf8'));
+  seed(host, project, 5, moduleName, 'todoBackend', '.defs.ts', readFileSync(resolveFixtureFile(path.join(L1_FIXTURE, 'l5/todoBackend.defs.ts')), 'utf8'));
   const backend = JSON.parse(readFileSync(path.join(L1_FIXTURE, 'l5/backend.json'), 'utf8')) as Record<string, unknown>;
   seed(host, project, 5, '', 'project', '.json', `${JSON.stringify({ modules: [{ moduleName, backend }] }, null, 2)}\n`);
 }

@@ -25,6 +25,7 @@ import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.j
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -829,18 +830,18 @@ function seedClinic(defsDir?: string, root: string = CLINIC_ROOT): TestHost {
   const overlaid = new Set<string>();
   if (defsDir) {
     for (const rel of walkFiles(defsDir)) {
-      const display = `l1/agendaClinica/${rel.split(path.sep).join('/')}`;
+      const display = `l1/agendaClinica/${fixtureLogicalRel(rel.split(path.sep).join('/'))}`;
       if (seedDisplay(host, PROJECT, display, path.join(defsDir, rel))) overlaid.add(display);
     }
   }
   for (const rel of walkFiles(l1)) {
-    const display = `l1/agendaClinica/${rel.split(path.sep).join('/')}`;
+    const display = `l1/agendaClinica/${fixtureLogicalRel(rel.split(path.sep).join('/'))}`;
     if (overlaid.has(display)) continue;
     seedDisplay(host, PROJECT, display, path.join(l1, rel));
   }
   const input = JSON.parse(readFileSync(path.join(l1, 'pipeline/agentDefsL1/input.json'), 'utf8')) as { sources: Array<{ path: string }> };
   for (const source of input.sources) {
-    const abs = path.join(root, source.path);
+    const abs = resolveFixtureFile(path.join(root, source.path));
     if (!existsSync(abs) || !statSync(abs).isFile()) continue;
     seedDisplay(host, PROJECT, source.path, abs);
   }

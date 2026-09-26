@@ -19,6 +19,7 @@ import { runStructure, structureHandlerIds } from '/_102021_/l2/agentMaterialize
 import { catalogWithheld, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { moduleSpecifier, renderMonitorCatalog, renderNodeTest } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
@@ -186,8 +187,8 @@ function loadDefs(root: string): Map<string, string> {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith('.defs.ts')) {
-        texts.set(`_${PROJECT}_/${relative(root, full)}`, readFileSync(full, 'utf8'));
+      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
+        texts.set(`_${PROJECT}_/${fixtureLogicalRel(relative(root, full))}`, readFileSync(full, 'utf8'));
       }
     }
   };

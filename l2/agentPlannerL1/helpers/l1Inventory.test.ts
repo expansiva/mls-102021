@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -92,7 +93,7 @@ function seedControleChamados(host: Host): void {
     moduleName,
     'todoBackend',
     '.defs.ts',
-    readFileSync(path.join(FIXTURE_ROOT, 'l5/todoBackend.defs.ts'), 'utf8'),
+    readFileSync(resolveFixtureFile(path.join(FIXTURE_ROOT, 'l5/todoBackend.defs.ts')), 'utf8'),
   );
   const backend = JSON.parse(readFileSync(path.join(FIXTURE_ROOT, 'l5/backend.json'), 'utf8')) as Record<string, unknown>;
   seed(

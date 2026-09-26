@@ -11,6 +11,7 @@ import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { bindMdm, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const BENCH = AGENDA_CLINICA_F35E28A;
@@ -584,10 +585,10 @@ function replay(usecaseId: string, entityId: string, operation: string, pages: r
   request.contracts = pages.map(pageId => ({
     pageId,
     path: `l2/agendaClinica/web/contracts/${pageId}.defs.ts`,
-    source: readFileSync(path.join(BENCH, `l2/agendaClinica/web/contracts/${pageId}.defs.ts`), 'utf8'),
+    source: readFileSync(resolveFixtureFile(path.join(BENCH, `l2/agendaClinica/web/contracts/${pageId}.defs.ts`)), 'utf8'),
   }));
   const ontology = parseD1Source(
-    readFileSync(path.join(BENCH, `l4/agendaClinica/ontology/${entityId}.defs.ts`), 'utf8'),
+    readFileSync(resolveFixtureFile(path.join(BENCH, `l4/agendaClinica/ontology/${entityId}.defs.ts`)), 'utf8'),
     'defs',
   );
   assert.ok(ontology, entityId);
