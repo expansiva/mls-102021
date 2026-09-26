@@ -78,6 +78,20 @@ void test('a pending scaffold compile receipt is reuse and implement still gener
   implement.stage = 'implement';
   const again = await decideMaintenance(implement);
   assert.equal(again.action, 'generate');
+
+  const kept = await input(note('pending'), ready, { present: true, hash: outputHash });
+  kept.stage = 'implement';
+  kept.hasImplementHandler = false;
+  const reused = await decideMaintenance(kept);
+  assert.equal(reused.action, 'reuse');
+  assert.match(reused.reason, /^REUSE:/);
+
+  const missing = await input(note('pending'), null);
+  missing.stage = 'implement';
+  missing.hasImplementHandler = false;
+  const absent = await decideMaintenance(missing);
+  assert.equal(absent.action, 'blocked');
+  assert.match(absent.reason, /^PENDING:/);
 });
 
 void test('a resolved block is released and a failed resume is not', async () => {

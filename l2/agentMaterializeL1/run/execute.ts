@@ -114,6 +114,8 @@ export interface MaterializeRunHost {
   writer?: MaterializeWriter;
   /** Project lock and compare-and-swap for l5/project.json. Module claim does not cover this file. */
   l5?: L5CommitIo;
+  /** Set by the CLI. Implement cases compile and run only when this is present. */
+  workspace?: { repoRoot: string; projectDir: string; projectId: string };
   onBoundary?: (boundary: WriteBoundary) => Promise<void> | void;
 }
 
@@ -553,7 +555,8 @@ async function attempt(
       runsStub: produced.runsStub,
     };
   }
-  const checkpoint = await checkUnit(request, host, unit, produced.observations);
+  const observations = await implementObservations(request, host, stage, unit, definition, produced);
+  const checkpoint = await checkUnit(request, host, unit, observations);
   if (!checkpoint.accepted && heldBlock(checkpoint)) {
     const blocked = checkpoint.evidence.filter(item => item.verdict === 'blocked').map(item => item.caseId);
     return {
@@ -576,13 +579,55 @@ async function attempt(
   };
 }
 
-/** Passed cases plus an external block. The output is kept; the unit is not an accepted implementation. */
+async function implementObservations(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  stage: M1EntryStage,
+  unit: SimulatedUnit,
+  definition: unknown,
+  produced: HandlerOutcome,
+): Promise<readonly M1Observation[]> {
+  if (stage !== 'implement' || !host.workspace || !host.catalogRef) return produced.observations;
+  const parsed = readDefinition(definition);
+  if ('issues' in parsed) return produced.observations;
+  const catalogText = await host.io.read(host.catalogRef);
+  if (!catalogText) return produced.observations;
+  try {
+    const runner = await import('/_102021_/l1/agentMaterializeL1/caseRun.js') as {
+      observeImplement: (input: {
+        repoRoot: string;
+        projectDir: string;
+        projectId: string;
+        catalogText: string;
+        definition: typeof parsed;
+        defPath: string;
+        files: Record<string, string>;
+      }) => Promise<M1Observation[]>;
+    };
+    const observed = await runner.observeImplement({
+      repoRoot: host.workspace.repoRoot,
+      projectDir: host.workspace.projectDir,
+      projectId: host.workspace.projectId,
+      catalogText,
+      definition: parsed,
+      defPath: unit.defPath,
+      files: produced.files,
+    });
+    return observed.length > 0 ? observed : produced.observations;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return produced.observations.map(item => item.caseId.endsWith('.compile')
+      ? { ...item, inconclusive: true, ok: false, reason: message }
+      : item);
+  }
+}
+
+/** Passed cases plus an external block or a case that could not run. The output is kept. */
 function heldBlock(checkpoint: M1Checkpoint): boolean {
-  return checkpoint.counts.blocked > 0
-    && checkpoint.counts.failed === 0
-    && checkpoint.counts.skipped === 0
-    && checkpoint.counts.inconclusive === 0
-    && checkpoint.evidence.every(item => item.verdict === 'passed' || item.verdict === 'blocked');
+  const counts = checkpoint.counts;
+  if (counts.failed > 0 || counts.skipped > 0) return false;
+  if (counts.blocked === 0 && counts.inconclusive === 0) return false;
+  return checkpoint.evidence.every(item => item.verdict === 'passed' || item.verdict === 'blocked' || item.verdict === 'inconclusive');
 }
 
 async function promote(

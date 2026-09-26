@@ -29,12 +29,11 @@ import { behaviorNeedsLlm, caseBlock, isDerivedMdm, ruleRunsOnUsecase, withoutCr
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { parseCatalog, renderMonitorCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch, type M1Checkpoint, type M1Evidence, type M1Observation, type M1Verdict } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
+import { compileFiles, rememberRoute, publishRoutes, routeCount, runRoute, writeBffHome as writeCaseHome } from '/_102021_/l1/agentMaterializeL1/caseRun.js';
 import { createDiskHost, scenarioCatalogRef } from '/_102021_/l1/agentMaterializeL1/nodejsMaterializeL1.js';
-import type { BffHandler, ModuleBffRegistration } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
-import { createRequestContext, execBff } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import type { BffHandler } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
-import { readProjectsConfig } from '/_102034_/l1/server/layer_1_external/config/projectConfig.js';
-import { loadModuleRouter, resetModuleRouterCache } from '/_102034_/l1/server/layer_2_controllers/moduleRegistry.js';
 
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
@@ -500,52 +499,7 @@ async function callRoute(
   item: M1ScenarioCase,
   started: number,
 ): Promise<M1Observation> {
-  const page = item.routine.split('.')[1] ?? '';
-  const pageRef = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${page}.defs.ts`;
-  const pageModule = await importSandbox(sandboxProject, outputOf(pageRef));
-  if ('error' in pageModule) return observation(item.caseId, { broken: 'import', reason: pageModule.error });
-  const route = pageModule.module.routes?.find(entry => entry.key === item.routine);
-  if (!route) return observation(item.caseId, { reason: `route ${item.routine} is not exported` });
-  await resetStore(sandboxProject, definition, await seedRows(sandboxProject, definition, item));
-  const scopeDep = (await readDefinitionFile(sandboxProject, pageRef))?.dependencies.find(path => path.endsWith('/accessScope.defs.ts')) ?? '';
-  const scope = scopeDep ? await importSandbox(sandboxProject, outputOf(scopeDep)) : { error: 'missing' };
-  const pageDefinition = await readDefinitionFile(sandboxProject, pageRef);
-  const authorities = 'error' in scope || !pageDefinition
-    ? []
-    : authoritiesFor(item, pageDefinition, scope.module.grants);
-  proofRoutes.set(route.key, route.handler);
-  await publishProofRoutes();
-  const executed = await execBff({
-    routine: item.routine,
-    params: await paramsFor(sandboxProject, definition, item),
-    meta: { source: 'http', verifiedAuthorities: authorities },
-  }, createRequestContext(undefined, { sandbox: true, sessionContext: { actorId: item.actorId } }));
-  const durationMs = Date.now() - started;
-  const response = executed.response;
-  const rows = Array.isArray(response.data) ? response.data : [];
-  const actorField = item.expect.isolatedActorField;
-  if (response.ok) {
-    const id = isRecord(response.data) && typeof response.data.id === 'string' ? response.data.id : '';
-    return observation(item.caseId, {
-      ok: true,
-      status: executed.statusCode,
-      errorCode: null,
-      durationMs,
-      fields: fieldNames(response.data),
-      rowActorIds: actorField ? rows.map(row => isRecord(row) && typeof row[actorField] === 'string' ? row[actorField] : '') : [],
-      reason: id ? `saved ${id}` : 'returned',
-    });
-  }
-  const details = response.error && typeof response.error === 'object' ? (response.error as { details?: { ruleId?: string } }).details : undefined;
-  return observation(item.caseId, {
-    ok: false,
-    status: executed.statusCode,
-    errorCode: response.error?.code ?? null,
-    ruleId: typeof details?.ruleId === 'string' ? details.ruleId : null,
-    durationMs,
-    fields: fieldNames(response.data),
-    reason: response.error?.message ?? '',
-  });
+  return runRoute(sandboxProject, String(PROJECT), MODULE, definition, item, started);
 }
 
 async function seedRows(sandboxProject: string, definition: M1Definition, item: M1ScenarioCase): Promise<Record<string, unknown>[]> {
@@ -634,9 +588,9 @@ async function registerRoutes(sandboxProject: string, pages: readonly string[]):
     const ref = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${page}.defs.ts`;
     const loaded = await importSandbox(sandboxProject, outputOf(ref));
     if ('error' in loaded) continue;
-    for (const route of loaded.module.routes ?? []) proofRoutes.set(route.key, route.handler);
+    for (const route of loaded.module.routes ?? []) rememberRoute(route.key, route.handler);
   }
-  if (proofRoutes.size > 0) await publishProofRoutes();
+  if (routeCount() > 0) await publishProofRoutes();
 }
 
 async function flowUnits(sandboxProject: string, flows: readonly string[], only: readonly string[]): Promise<{ units: FlowUnit[]; ports: string[]; files: string[] }> {
@@ -1135,51 +1089,13 @@ function authoritiesFor(item: M1ScenarioCase, definition: M1Definition, grants: 
   return authorities;
 }
 
-const proofRoutes = new Map<string, BffHandler>();
-let proofRouterReady = false;
-let bffHome = '';
-
 async function writeBffHome(dir: string): Promise<void> {
-  bffHome = dir;
   await mkdir(dir, { recursive: true });
-  const controllers = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers`;
-  const config = {
-    defaultProjectId: String(PROJECT),
-    projects: {
-      '102034': { root: '../mls-102034', type: 'master backend' },
-      '102020': { root: '../mls-102020', type: 'master frontend' },
-      [String(PROJECT)]: {
-        root: `../mls-${PROJECT}`,
-        type: 'client',
-        modules: [{ moduleId: MODULE, basePath: `/${MODULE}`, backendControllers: controllers }],
-      },
-    },
-  };
-  await writeFile(join(dir, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
+  await writeCaseHome(dir, String(PROJECT), MODULE);
 }
 
 async function publishProofRoutes(): Promise<void> {
-  if (!bffHome) throw new Error('The execBff config was not written.');
-  if (proofRouterReady) return;
-  const previous = process.cwd();
-  process.chdir(bffHome);
-  try {
-    const project = readProjectsConfig().projects[String(PROJECT)];
-    const moduleConfig = project?.modules?.find(item => item.moduleId === MODULE);
-    if (!moduleConfig?.backendControllers) throw new Error(`${MODULE} is not registered for execBff.`);
-    resetModuleRouterCache();
-    const registration: ModuleBffRegistration = {
-      projectId: String(PROJECT),
-      moduleId: MODULE,
-      frontendBasePath: moduleConfig.basePath,
-      frontendEntrypoint: '',
-      loadRouter: async () => proofRoutes,
-    };
-    await loadModuleRouter(registration);
-    proofRouterReady = true;
-  } finally {
-    process.chdir(previous);
-  }
+  await publishRoutes(String(PROJECT), MODULE);
 }
 
 async function report(
@@ -1259,21 +1175,7 @@ async function writeCatalog(sandboxProject: string, catalogRef: string, flows: r
 }
 
 function compileSlice(sandboxProject: string, slice: readonly string[]): string {
-  const config = join(REPO_ROOT, `.tsconfig.m1-06-${process.pid}.json`);
-  try {
-    const files = slice.map(rel => `./${relative(REPO_ROOT, join(sandboxProject, rel)).split(sep).join('/')}`);
-    const base = readFileSync(join(REPO_ROOT, 'tsconfig.base.json'), 'utf8');
-    const paths: Record<string, string[]> = {};
-    for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) paths[`/_${id}_/*`] = [`./mls-${id}/*`];
-    paths[`/_${PROJECT}_/*`] = [`./${relative(REPO_ROOT, sandboxProject).split(sep).join('/')}/*`];
-    writeFileSync(config, `${JSON.stringify({ extends: './tsconfig.base.json', compilerOptions: { noEmit: true, paths }, files }, null, 2)}\n`);
-    const tsc = join(REPO_ROOT, 'node_modules/typescript/bin/tsc');
-    const result = spawnSync(process.execPath, [tsc, '-p', config, '--pretty', 'false'], { cwd: REPO_ROOT, encoding: 'utf8' });
-    if ((result.status ?? 1) === 0) return '';
-    return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
-  } finally {
-    rmSync(config, { force: true });
-  }
+  return compileFiles(REPO_ROOT, sandboxProject, String(PROJECT), slice);
 }
 
 function materialize(stage: string, flow: string, sandboxParent: string): SpawnResult {

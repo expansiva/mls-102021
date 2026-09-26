@@ -2,10 +2,12 @@
 
 /**
  * Plan by declared file references, not by directory order and not by a fixed layer rank.
- * A type with no named handler is blocked. Reuse and verify read output bytes and do not write.
+ * A type with no named handler is blocked, except implement: a type that already
+ * has a structure or persistence output is reused. Reuse and verify read bytes and do not write.
  */
 
 import {
+  isM1ArtifactType,
   isRecord,
   outputPathFromDefPath,
   readDefinition,
@@ -229,11 +231,13 @@ async function decide(
     reason: '',
     handlerId: named?.id ?? null,
     needsLlm: stage === 'implement' && !!node.definition && behaviorNeedsLlm(node.definition),
-    unresolved: node.rawType && !named ? unique([`artifactType:${node.rawType}`, ...node.unresolved]) : node.unresolved,
+    unresolved: node.rawType && !named && !implementKeepsPrior(stage, node.rawType)
+      ? unique([`artifactType:${node.rawType}`, ...node.unresolved])
+      : node.unresolved,
     contextRefs: node.contextRefs,
     blockedBy: [],
   };
-  if (!named) {
+  if (!named && !implementKeepsPrior(stage, node.rawType)) {
     const label = node.rawType || '(empty)';
     if (!node.rawType) base.unresolved = unique(['artifactType:(empty)', ...node.unresolved]);
     return block(base, `${PLAN_REASON.noNamedHandler}: artifact type ${label} has no named ${stage} handler.`);
@@ -284,6 +288,11 @@ async function decide(
   }
   if (decision.action === 'blocked') return block(base, decision.reason);
   return { ...base, action: decision.action, reason: decision.reason, needsLlm: decision.action === 'conflict' ? false : base.needsLlm };
+}
+
+/** Implement does not invent a handler. A known type keeps the previous output or goes pending. */
+function implementKeepsPrior(stage: M1HandlerStage, rawType: string): boolean {
+  return stage === 'implement' && isM1ArtifactType(rawType) && handlerFor(rawType, 'implement') === null;
 }
 
 function generate(base: PlannedUnit): PlannedUnit {

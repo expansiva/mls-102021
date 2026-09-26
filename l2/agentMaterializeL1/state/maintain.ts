@@ -150,6 +150,9 @@ export async function decideMaintenance(input: MaintenanceInput): Promise<Mainte
   if (status === 'blocked' && receipt?.reason && !releasedBlock(input, receipt)) {
     return { action: 'blocked', reason: `STATUS_BLOCKED: ${receipt.reason}` };
   }
+  if (input.stage === 'implement' && !input.hasImplementHandler) {
+    return keptStructureOutput(input);
+  }
   const recipeDrift = input.recipeVersion !== null && !!receipt && receipt.recipeVersion !== input.recipeVersion;
   const implementGap = input.stage === 'implement'
     && input.hasImplementHandler
@@ -184,6 +187,43 @@ export async function decideMaintenance(input: MaintenanceInput): Promise<Mainte
     action: 'generate',
     reason: `GENERATE: output is not an accepted implementation; handler ${handler}.`,
   };
+}
+
+/**
+ * A type with no implement handler keeps the structure or persistence output
+ * when the receipt still matches. A missing or drifted output stays pending.
+ */
+function keptStructureOutput(input: MaintenanceInput): MaintenanceDecision {
+  if (outputDriftOf(input)) {
+    const code = semanticChanged(input) ? 'LOCAL_EDIT' : 'OUTPUT_DRIFT';
+    return {
+      action: 'conflict',
+      reason: `${code}: ${input.outputPath} does not match the receipt; the local file is not overwritten.`,
+    };
+  }
+  if (priorOutputIntact(input)) {
+    return { action: 'reuse', reason: 'REUSE: no implement handler; the previous output and its receipt still match.' };
+  }
+  return { action: 'blocked', reason: 'PENDING: the previous output is missing or invalid.' };
+}
+
+function outputDriftOf(input: MaintenanceInput): boolean {
+  const recorded = input.receipt && input.outputPath ? input.receipt.outputHashes[input.outputPath] : undefined;
+  const hasRecord = typeof recorded === 'string' && recorded.length > 0;
+  return input.outputPresent && hasRecord && input.outputHash !== recorded;
+}
+
+function priorOutputIntact(input: MaintenanceInput): boolean {
+  const receipt = input.receipt;
+  if (!receipt || receipt.failures.length > 0) return false;
+  if (receipt.stage !== 'compile' && receipt.stage !== 'generate' && receipt.stage !== 'verify') return false;
+  if (receipt.semanticHash !== input.semantic) return false;
+  if (!input.outputPresent || !input.outputHash) return false;
+  if (receipt.outputHashes[input.outputPath] !== input.outputHash) return false;
+  for (const path of input.definition.dependencies) {
+    if (input.dependencyHashes[path] !== receipt.dependencyHashes[path]) return false;
+  }
+  return true;
 }
 
 /** A structure scaffold stays pending. Its compile receipt is still a reuse when the bytes match. Implement does not skip on it. */

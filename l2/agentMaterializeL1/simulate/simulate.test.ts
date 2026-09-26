@@ -464,9 +464,9 @@ void test('implement stage does not fall back to a structure handler', async () 
       },
     }],
   });
-  assert.match(table.units[0].reason, /^NO_NAMED_HANDLER:/);
-  assert.match(table.units[0].reason, /implement/);
+  assert.equal(table.units[0].handlerId, null);
   assert.equal(table.units[0].action, 'blocked');
+  assert.equal(table.units[0].reason.includes('structure.'), false);
 });
 
 void test('product core does not import node, the legacy rank, or a model client', () => {

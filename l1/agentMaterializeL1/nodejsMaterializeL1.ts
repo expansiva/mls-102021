@@ -141,6 +141,11 @@ export function createDiskHost(
     io,
     state: local.state,
     runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
+    workspace: {
+      repoRoot: platformRoot ?? readRoot,
+      projectDir: resolve(writeRoot, `mls-${project}`),
+      projectId: String(project),
+    },
     writer: local.writer,
     onBoundary: local.onBoundary,
     l5: {
