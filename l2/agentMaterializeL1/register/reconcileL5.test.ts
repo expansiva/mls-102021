@@ -9,7 +9,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { composeBackendRuntimeConfig } from '/_102021_/l2/agentChangeBackend/nodejsSaveConfigJson.js';
 import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { loadRegistrationFiles, reconcileL5Backend, type L5FileFact, type ReconcileL5Input } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
+import {
+  commitL5Registration,
+  L5_PUBLICATION_OWNER,
+  loadRegistrationFiles,
+  reconcileL5Backend,
+  type L5CommitIo,
+  type L5FileFact,
+  type ReconcileL5Input,
+} from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 
 const PROJECT = 109014;
 const MODULE = 'desk';
@@ -300,4 +308,159 @@ test('the materialized client copy registers from promoted outputs, not a folder
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('a compatible masters.backend signature is preserved and an incompatible one blocks the patch', () => {
+  const kept = ready();
+  const parsed = JSON.parse(kept.projectJson!) as { masters?: unknown };
+  parsed.masters = { frontend: { masterProject: 102020 }, backend: { masterProject: 102021, runtimeProject: 102034, agentFolder: 'agentChangeBackend' } };
+  kept.projectJson = `${JSON.stringify(parsed, null, 2)}\n`;
+  const result = reconcileL5Backend(kept);
+  assert.equal(result.action, 'patch');
+  const next = JSON.parse(result.nextText!) as { masters: { frontend: { masterProject: number }; backend: { agentFolder: string } } };
+  assert.equal(next.masters.backend.agentFolder, 'agentChangeBackend');
+  assert.equal(next.masters.frontend.masterProject, 102020);
+
+  const broken = ready();
+  const bad = JSON.parse(broken.projectJson!) as { masters?: unknown };
+  bad.masters = { backend: { masterProject: 102021, agentFolder: 'agentChangeBackend' } };
+  broken.projectJson = `${JSON.stringify(bad, null, 2)}\n`;
+  const refused = reconcileL5Backend(broken);
+  assert.equal(refused.action, 'pending');
+  assert.equal(refused.nextText, broken.projectJson);
+  assert.equal(refused.pendings[0].reason, 'SIGNATURE_INCOMPATIBLE');
+  assert.equal(refused.backend, null);
+});
+
+test('a missing signature is not attributed to agentChangeBackend, and a reader-ready config is copied', () => {
+  const bare = reconcileL5Backend(ready());
+  assert.equal(bare.action, 'patch');
+  assert.equal((JSON.parse(bare.nextText!) as { masters?: unknown }).masters, undefined);
+
+  const unread = reconcileL5Backend({ ...ready(), backendSignature: { masterProject: 102021, runtimeProject: 102034 } });
+  assert.equal(unread.action, 'pending');
+  assert.equal(unread.pendings[0].reason, 'SIGNATURE_INCOMPATIBLE');
+  assert.equal((JSON.parse(unread.nextText!) as { masters?: unknown }).masters, undefined);
+
+  const filled = reconcileL5Backend({
+    ...ready(),
+    backendSignature: { masterProject: 102021, runtimeProject: 102034, agentFolder: 'agentMaterializeL1' },
+  });
+  assert.equal(filled.action, 'patch');
+  const signature = (JSON.parse(filled.nextText!) as { masters: { backend: { agentFolder: string; runtimeProject: number } } }).masters.backend;
+  assert.equal(signature.agentFolder, 'agentMaterializeL1');
+  assert.equal(signature.runtimeProject, 102034);
+});
+
+test('a divergent runtime.project.json is not patched through project.json, and an owned snapshot is the file that changes', () => {
+  const base = ready();
+  const override = reconcileL5Backend({
+    ...base,
+    runtimeProjectJson: `${JSON.stringify({ modules: [{ moduleName: MODULE, backend: { routeKeys: ['old.route'] } }] }, null, 2)}\n`,
+  });
+  assert.equal(override.action, 'pending');
+  assert.equal(override.nextText, null);
+  assert.equal(override.effectiveSource, 'l5/runtime.project.json');
+  assert.equal(override.pendings[0].reason, 'RUNTIME_OVERRIDE_DIVERGENT');
+  assert.match(override.detail, /owner: unspecified/);
+
+  const invalid = reconcileL5Backend({ ...base, runtimeProjectJson: '{' });
+  assert.equal(invalid.action, 'invalid');
+  assert.equal(invalid.nextText, null);
+  assert.equal(invalid.pendings[0].reason, 'RUNTIME_JSON_INVALID');
+
+  const owned = `${JSON.stringify({ publicationOwner: L5_PUBLICATION_OWNER, modules: [{ moduleName: MODULE }] }, null, 2)}\n`;
+  const derived = reconcileL5Backend({ ...base, runtimeProjectJson: owned });
+  assert.equal(derived.action, 'patch');
+  assert.equal(derived.effectiveSource, 'l5/runtime.project.json');
+  assert.notEqual(derived.nextText, base.projectJson);
+  const written = JSON.parse(derived.nextText!) as { publicationOwner: string; modules: Array<{ backend: { routeKeys: string[] } }> };
+  assert.equal(written.publicationOwner, L5_PUBLICATION_OWNER);
+  assert.deepEqual(written.modules[0].backend.routeKeys, [`${MODULE}.board.open`]);
+});
+
+test('the composer follows runtime.project.json when that file exists', () => {
+  const reconciled = reconcileL5Backend(ready());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'm1-l5-runtime-'));
+  try {
+    const clientRoot = path.join(root, `mls-${PROJECT}`);
+    const controllers = path.join(clientRoot, 'l1', MODULE, 'layer_1_external', 'adapters', 'http', 'controllers');
+    const persistence = path.join(clientRoot, 'l1', MODULE, 'layer_1_external', 'adapters', 'persistence');
+    fs.mkdirSync(controllers, { recursive: true });
+    fs.mkdirSync(path.join(clientRoot, 'l5'), { recursive: true });
+    fs.mkdirSync(persistence, { recursive: true });
+    fs.writeFileSync(path.join(persistence, 'boardRow.js'), 'export const tableName = "board";\n');
+    fs.writeFileSync(path.join(controllers, 'board.js'), 'export const routes = [];\n');
+    const signature = { masters: { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentChangeBackend' } } };
+    fs.writeFileSync(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({ ...signature, modules: [] }, null, 2)}\n`);
+    const runtime = JSON.parse(reconciled.nextText!) as Record<string, unknown>;
+    runtime.masters = signature.masters;
+    fs.writeFileSync(path.join(clientRoot, 'l5', 'runtime.project.json'), `${JSON.stringify(runtime, null, 2)}\n`);
+    fs.writeFileSync(path.join(clientRoot, 'l5', 'config.json'), '{}\n');
+    const composed = composeBackendRuntimeConfig(root, String(PROJECT));
+    const config = JSON.parse(fs.readFileSync(composed.configPath, 'utf8')) as {
+      projects: Record<string, { modules?: Array<{ moduleId: string }> }>;
+    };
+    assert.equal(config.projects[String(PROJECT)].modules?.[0].moduleId, MODULE);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('commit merges a concurrent edit once and stops when the file keeps changing', async () => {
+  const input = ready();
+  let current = input.projectJson!;
+  let swaps = 0;
+  const writes: string[] = [];
+  const io: L5CommitIo = {
+    async claim() { return true; },
+    async release() {},
+    async read(ref: string) {
+      return ref.endsWith('/runtime.project.json') ? null : current;
+    },
+    async compareAndSwap(_ref, expected, next) {
+      swaps += 1;
+      if (swaps === 1) {
+        const edited = JSON.parse(current) as { note?: string };
+        edited.note = 'from-neighbor';
+        current = `${JSON.stringify(edited, null, 2)}\n`;
+      }
+      if (expected !== current) return 'conflict';
+      current = next;
+      writes.push(next);
+      return 'ok';
+    },
+  };
+  const { projectJson: _ignored, ...rest } = input;
+  const merged = await commitL5Registration(rest, io, 'holder-a');
+  assert.equal(merged.action, 'patch');
+  assert.equal(writes.length, 1);
+  const saved = JSON.parse(current) as { note: string; modules: Array<{ backend: { routeKeys: string[] } }> };
+  assert.equal(saved.note, 'from-neighbor');
+  assert.deepEqual(saved.modules[0].backend.routeKeys, [`${MODULE}.board.open`]);
+
+  let flips = 0;
+  const racing: L5CommitIo = {
+    async claim() { return true; },
+    async release() {},
+    async read(ref: string) {
+      if (ref.endsWith('/runtime.project.json')) return null;
+      flips += 1;
+      return `${JSON.stringify({ modules: [{ moduleName: MODULE }], flip: flips }, null, 2)}\n`;
+    },
+    async compareAndSwap() { return 'conflict'; },
+  };
+  const lost = await commitL5Registration(input, racing, 'holder-b');
+  assert.equal(lost.action, 'pending');
+  assert.equal(lost.pendings[0].reason, 'CONCURRENT_EDIT');
+  assert.equal(lost.nextText, null);
+
+  const busy: L5CommitIo = {
+    async claim() { return false; },
+    async release() { throw new Error('release after a missed claim'); },
+    async read() { throw new Error('read after a missed claim'); },
+    async compareAndSwap() { throw new Error('write after a missed claim'); },
+  };
+  const held = await commitL5Registration(input, busy, 'holder-c');
+  assert.equal(held.pendings[0].reason, 'PROJECT_LOCK_BUSY');
 });

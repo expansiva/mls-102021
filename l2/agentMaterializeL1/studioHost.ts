@@ -13,6 +13,7 @@ import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import type { MaterializeRunHost, MaterializeWriter } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import {
   M1_WRITER_SCHEMA,
@@ -132,6 +133,7 @@ export function createStudioHost(project: number): MaterializeRunHost {
     state,
     runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
     writer: studioWriter(project),
+    l5: studioL5(project, io),
   };
 }
 
@@ -141,6 +143,31 @@ export function createStudioHost(project: number): MaterializeRunHost {
  * on the local adapter.
  */
 const studioHolders = new Map<string, string>();
+const studioProjectLocks = new Map<number, string>();
+
+function studioL5(project: number, io: MaterializeReadIo): NonNullable<MaterializeRunHost['l5']> {
+  return {
+    async claim(projectId: number, holder: string): Promise<boolean> {
+      if (projectId !== project) return false;
+      const current = studioProjectLocks.get(projectId);
+      if (current && current !== holder) return false;
+      await writeRef(project, projectLockRef(projectId), `${JSON.stringify({ holder })}\n`);
+      studioProjectLocks.set(projectId, holder);
+      return true;
+    },
+    async release(projectId: number, holder: string): Promise<void> {
+      if (studioProjectLocks.get(projectId) !== holder) return;
+      studioProjectLocks.delete(projectId);
+    },
+    read: ref => io.read(ref),
+    async compareAndSwap(ref: string, expected: string | null, next: string): Promise<'ok' | 'conflict'> {
+      const current = await io.read(ref);
+      if (current !== expected) return 'conflict';
+      await writeRef(project, ref, next);
+      return 'ok';
+    },
+  };
+}
 
 function studioWriter(project: number): MaterializeWriter {
   return {
@@ -188,7 +215,7 @@ async function readStored(stored: StorFile | null): Promise<string | null> {
 async function writeRef(project: number, ref: string, body: string): Promise<void> {
   const file = fileFromRef(project, ref);
   if (!file) throw new Error(`Refused a write outside the module tree: ${ref}`);
-  if (file.shortName.includes('.')) throw new Error(`Refused a file name with an extra dot: ${file.shortName}`);
+  if (file.shortName.includes('.') && file.shortName !== 'runtime.project') throw new Error(`Refused a file name with an extra dot: ${file.shortName}`);
   const stored = lookup(file);
   if (!stored || stored.status === 'deleted') {
     await createStorFile({ ...file, source: body, status: 'new' }, false, false, false);
@@ -208,6 +235,9 @@ function fileFromRef(project: number, ref: string): FileRef | null {
   const slash = rest.lastIndexOf('/');
   const folder = slash >= 0 ? rest.slice(0, slash) : '';
   const filename = slash >= 0 ? rest.slice(slash + 1) : rest;
+  if (folder === 'l5' && filename === 'runtime.project.json') {
+    return { project: projectId, level, folder, shortName: 'runtime.project', extension: '.json' };
+  }
   const doubled = ['.defs.ts', '.test.ts', '.d.ts'].find(item => filename.endsWith(item));
   const dot = doubled ? filename.length - doubled.length : filename.lastIndexOf('.');
   if (dot <= 0) return null;

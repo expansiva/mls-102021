@@ -50,7 +50,7 @@ import {
   type ProfileDecision,
   MaterializeCallError,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
-import { loadRegistrationFiles, reconcileL5Backend, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
+import { commitL5Registration, loadRegistrationFiles, reconcileL5Backend, type L5CommitIo, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import {
@@ -112,6 +112,8 @@ export interface MaterializeRunHost {
   monitorError?: string | null;
   /** One writer per module. Absent in unit tests that do not share a store. */
   writer?: MaterializeWriter;
+  /** Project lock and compare-and-swap for l5/project.json. Module claim does not cover this file. */
+  l5?: L5CommitIo;
   onBoundary?: (boundary: WriteBoundary) => Promise<void> | void;
 }
 
@@ -292,11 +294,17 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       await persist(host, book, ledger);
     }
     await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath));
-    const registration = await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
-    if (registration.action === 'patch' && registration.nextText !== null) {
-      await host.state.writeOwned(projectJsonRef(request.project), new TextEncoder().encode(registration.nextText));
+    const registration = host.l5
+      ? await commitL5Registration(await registrationInput(request, host, snapshot, profile.allowsStubRun), host.l5, holder)
+      : await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
+    if (!host.l5 && registration.action === 'patch' && registration.nextText !== null) {
+      const target = registration.effectiveSource === 'l5/runtime.project.json'
+        ? runtimeProjectJsonRef(request.project)
+        : projectJsonRef(request.project);
+      await host.state.writeOwned(target, new TextEncoder().encode(registration.nextText));
       wrote = true;
     }
+    if (host.l5 && registration.action === 'patch') wrote = true;
     return finish(
       request,
       profile,
@@ -1004,26 +1012,42 @@ function projectJsonRef(project: number): string {
   return `_${project}_/l5/project.json`;
 }
 
+function runtimeProjectJsonRef(project: number): string {
+  return `_${project}_/l5/runtime.project.json`;
+}
+
+async function registrationInput(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  snapshot: SimulationSnapshot,
+  allowStructureStub: boolean,
+) {
+  const files = await loadRegistrationFiles(request.project, request.moduleName, snapshot.units, ref => host.io.read(ref));
+  const catalogRef = host.catalogRef || null;
+  if (catalogRef && !files.some(file => file.ref === catalogRef)) {
+    files.push({ ref: catalogRef, source: await host.io.read(catalogRef), role: 'output' });
+  }
+  return {
+    project: request.project,
+    moduleName: request.moduleName,
+    allowStructureStub,
+    phase: allowStructureStub ? 'structure' as const : 'verified' as const,
+    files,
+    catalogRef,
+  };
+}
+
 async function reconcileRegistration(
   request: MaterializeRunRequest,
   host: MaterializeRunHost,
   snapshot: SimulationSnapshot,
   allowStructureStub: boolean,
 ): Promise<L5ReconcileResult> {
-  const files = await loadRegistrationFiles(request.project, request.moduleName, snapshot.units, ref => host.io.read(ref));
-  const catalogRef = host.catalogRef || null;
-  if (catalogRef && !files.some(file => file.ref === catalogRef)) {
-    files.push({ ref: catalogRef, source: await host.io.read(catalogRef), role: 'output' });
-  }
-  const phase = allowStructureStub ? 'structure' : 'verified';
+  const input = await registrationInput(request, host, snapshot, allowStructureStub);
   return reconcileL5Backend({
-    project: request.project,
-    moduleName: request.moduleName,
-    allowStructureStub,
-    phase,
+    ...input,
     projectJson: await host.io.read(projectJsonRef(request.project)),
-    files,
-    catalogRef,
+    runtimeProjectJson: await host.io.read(runtimeProjectJsonRef(request.project)),
   });
 }
 

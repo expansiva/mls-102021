@@ -8,7 +8,7 @@
  *   tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--source-root <dir>]
  */
 
-import { readFile, readdir, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, rename } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,7 @@ import { helpText, parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/comm
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 
 export interface CliHooks {
@@ -142,6 +143,22 @@ export function createDiskHost(
     runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
     writer: local.writer,
     onBoundary: local.onBoundary,
+    l5: {
+      claim: (projectId, holder) => files.createExclusive(projectLockRef(projectId), `${JSON.stringify({ holder })}\n`),
+      release: async (projectId, holder) => {
+        const text = await files.read(projectLockRef(projectId));
+        let record: { holder?: unknown } | null = null;
+        try {
+          record = text ? JSON.parse(text) as { holder?: unknown } : null;
+        } catch {
+          record = null;
+        }
+        if (!record || record.holder !== holder) return;
+        await files.remove(projectLockRef(projectId));
+      },
+      read: ref => files.read(ref),
+      compareAndSwap: (ref, expected, next) => compareAndSwap(writeRoot, project, ref, expected, next, files.read),
+    },
   };
 }
 
@@ -201,6 +218,24 @@ async function readText(path: string): Promise<string | null> {
     if (code === 'ENOENT' || code === 'EISDIR' || code === 'ENOTDIR') return null;
     throw error;
   }
+}
+
+async function compareAndSwap(
+  root: string,
+  project: number,
+  ref: string,
+  expected: string | null,
+  next: string,
+  read: (ref: string) => Promise<string | null>,
+): Promise<'ok' | 'conflict'> {
+  if (await read(ref) !== expected) return 'conflict';
+  const full = mapOwnedPath(root, project, ref);
+  if (!full) return 'conflict';
+  await mkdir(dirname(full), { recursive: true });
+  const temporary = `${full}.${process.pid}.tmp`;
+  await writeFile(temporary, next, 'utf8');
+  await rename(temporary, full);
+  return 'ok';
 }
 
 async function writeText(root: string, project: number, ref: string, body: string): Promise<void> {

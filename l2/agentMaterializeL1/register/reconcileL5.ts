@@ -53,6 +53,13 @@ export async function loadRegistrationFiles(
   return files;
 }
 
+/** Fields both L5 readers use. `agentFolder` is required only when this publication fills a missing signature. */
+export interface L5BackendSignature {
+  masterProject: number;
+  runtimeProject: number;
+  agentFolder?: string;
+}
+
 export interface ReconcileL5Input {
   project: number;
   moduleName: string;
@@ -60,6 +67,16 @@ export interface ReconcileL5Input {
   allowStructureStub: boolean;
   phase: 'structure' | 'verified';
   projectJson: string | null;
+  /**
+   * Absent or omitted: the composer falls back to project.json. A string is an existing file.
+   * This function never creates that second file.
+   */
+  runtimeProjectJson?: string | null;
+  /**
+   * Copied only when masters.backend is absent and the value already satisfies both readers.
+   * This module does not invent agentChangeBackend.
+   */
+  backendSignature?: L5BackendSignature | null;
   files: readonly L5FileFact[];
   catalogRef: string | null;
 }
@@ -73,39 +90,105 @@ export interface L5ReconcileResult {
   action: 'patch' | 'unchanged' | 'pending' | 'invalid';
   /** Null when the caller must keep the previous bytes (absent or unreadable). */
   nextText: string | null;
+  /** File the composer reads. A patch applies only to this file. */
+  effectiveSource: 'l5/project.json' | 'l5/runtime.project.json';
   backend: Record<string, unknown> | null;
   pendings: L5Pending[];
   detail: string;
 }
 
+/** Marker on a runtime.project.json snapshot this publication already owns. Not written onto a new file. */
+export const L5_PUBLICATION_OWNER = 'agentMaterializeL1';
+
+export interface L5CommitIo {
+  claim(project: number, holder: string): Promise<boolean>;
+  release(project: number, holder: string): Promise<void>;
+  read(ref: string): Promise<string | null>;
+  /** Writes only when the current bytes still equal `expected`. `expected` null means the file is absent. */
+  compareAndSwap(ref: string, expected: string | null, next: string): Promise<'ok' | 'conflict'>;
+}
+
 const OWNED_BACKEND = ['backendControllers', 'routeKeys', 'scenarioCatalog', 'materialization'] as const;
 
+export function projectJsonRef(project: number): string {
+  return `_${project}_/l5/project.json`;
+}
+
+export function runtimeProjectJsonRef(project: number): string {
+  return `_${project}_/l5/runtime.project.json`;
+}
+
+export function projectLockRef(project: number): string {
+  return `_${project}_/l5/m1-project-lock.json`;
+}
+
+/**
+ * Lock the project, reread both L5 documents, merge, and compare-and-swap the file the composer
+ * reads. A second conflict leaves the bytes another writer stored. Does not regenerate sources.
+ */
+export async function commitL5Registration(
+  input: Omit<ReconcileL5Input, 'projectJson' | 'runtimeProjectJson'>,
+  io: L5CommitIo,
+  holder: string,
+): Promise<L5ReconcileResult> {
+  if (!await io.claim(input.project, holder)) {
+    return pendingResult('l5 project lock is held. Registration was not written.', [
+      { origin: projectLockRef(input.project), reason: 'PROJECT_LOCK_BUSY' },
+    ]);
+  }
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const projectJson = await io.read(projectJsonRef(input.project));
+      const runtimeProjectJson = await io.read(runtimeProjectJsonRef(input.project));
+      const result = reconcileL5Backend({ ...input, projectJson, runtimeProjectJson });
+      if (result.action !== 'patch' || result.nextText === null) return result;
+      const target = result.effectiveSource === 'l5/runtime.project.json'
+        ? runtimeProjectJsonRef(input.project)
+        : projectJsonRef(input.project);
+      const expected = result.effectiveSource === 'l5/runtime.project.json' ? runtimeProjectJson : projectJson;
+      if (await io.compareAndSwap(target, expected, result.nextText) === 'ok') return result;
+    }
+    return pendingResult('l5 changed again before the write. The concurrent bytes were kept.', [
+      { origin: projectJsonRef(input.project), reason: 'CONCURRENT_EDIT' },
+    ]);
+  } finally {
+    await io.release(input.project, holder);
+  }
+}
+
 export function reconcileL5Backend(input: ReconcileL5Input): L5ReconcileResult {
-  if (input.projectJson === null) {
-    return pendingResult('l5/project.json is absent. Registration was not created.', [
-      { origin: 'l5/project.json', reason: 'PROJECT_JSON_ABSENT' },
+  const selected = selectDocument(input);
+  if (selected.stop) return selected.stop;
+  const sourceName = selected.source === 'l5/runtime.project.json' ? 'l5/runtime.project.json' : 'l5/project.json';
+  if (selected.text === null) {
+    return pendingResult(`${sourceName} is absent. Registration was not created.`, [
+      { origin: sourceName, reason: 'PROJECT_JSON_ABSENT' },
     ]);
   }
   let cfg: Record<string, unknown>;
   try {
-    const parsed: unknown = JSON.parse(input.projectJson);
+    const parsed: unknown = JSON.parse(selected.text);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return invalidResult('l5/project.json is not an object. Bytes were kept.');
+      return invalidResult(`${sourceName} is not an object. Bytes were kept.`, selected.source);
     }
     cfg = parsed as Record<string, unknown>;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return invalidResult(`l5/project.json could not be parsed (${message}). Bytes were kept.`);
+    return invalidResult(`${sourceName} could not be parsed (${message}). Bytes were kept.`, selected.source);
+  }
+  const signature = applySignature(cfg, input.backendSignature);
+  if (signature) {
+    return pendingKeep(selected.text, `${signature.reason} ${signature.origin}. Bytes were kept.`, [signature], selected.source);
   }
   if (cfg.modules !== undefined && !Array.isArray(cfg.modules)) {
-    return pendingKeep(input.projectJson, 'modules is not a list. Bytes were kept.', [
-      { origin: 'l5/project.json', reason: 'MODULES_NOT_A_LIST' },
-    ]);
+    return pendingKeep(selected.text, 'modules is not a list. Bytes were kept.', [
+      { origin: sourceName, reason: 'MODULES_NOT_A_LIST' },
+    ], selected.source);
   }
 
   const built = buildBackend(input);
   if (!built.backend) {
-    return pendingKeep(input.projectJson, built.detail, built.pendings);
+    return pendingKeep(selected.text, built.detail, built.pendings, selected.source);
   }
 
   const modules = Array.isArray(cfg.modules) ? cfg.modules.map(cloneRecord) : [];
@@ -118,11 +201,12 @@ export function reconcileL5Backend(input: ReconcileL5Input): L5ReconcileResult {
   mod.backend = mergeBackend(previous, built.backend);
   cfg.modules = modules;
 
-  const next = stringifyLike(cfg, input.projectJson);
-  if (next === input.projectJson) {
+  const next = stringifyLike(cfg, selected.text);
+  if (next === selected.text) {
     return {
       action: 'unchanged',
-      nextText: input.projectJson,
+      nextText: selected.text,
+      effectiveSource: selected.source,
       backend: built.backend,
       pendings: built.pendings,
       detail: built.pendings.length > 0
@@ -133,12 +217,81 @@ export function reconcileL5Backend(input: ReconcileL5Input): L5ReconcileResult {
   return {
     action: 'patch',
     nextText: next,
+    effectiveSource: selected.source,
     backend: isRecord(mod.backend) ? mod.backend : built.backend,
     pendings: built.pendings,
     detail: built.pendings.length > 0
       ? built.detail
       : `backend registration patched for ${input.moduleName}.`,
   };
+}
+
+function selectDocument(input: ReconcileL5Input): { text: string | null; source: L5ReconcileResult['effectiveSource']; stop: L5ReconcileResult | null } {
+  if (input.runtimeProjectJson == null) {
+    return { text: input.projectJson, source: 'l5/project.json', stop: null };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.runtimeProjectJson);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      text: null,
+      source: 'l5/runtime.project.json',
+      stop: invalidResult(`l5/runtime.project.json could not be parsed (${message}). Bytes were kept.`, 'l5/runtime.project.json', 'RUNTIME_JSON_INVALID'),
+    };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      text: null,
+      source: 'l5/runtime.project.json',
+      stop: invalidResult('l5/runtime.project.json is not an object. Bytes were kept.', 'l5/runtime.project.json', 'RUNTIME_JSON_INVALID'),
+    };
+  }
+  const owner = (parsed as Record<string, unknown>).publicationOwner;
+  if (owner !== L5_PUBLICATION_OWNER) {
+    const who = typeof owner === 'string' && owner ? owner : 'unspecified';
+    return {
+      text: null,
+      source: 'l5/runtime.project.json',
+      stop: pendingResult(
+        `composer reads l5/runtime.project.json (owner: ${who}). project.json was not modified.`,
+        [{ origin: 'l5/runtime.project.json', reason: 'RUNTIME_OVERRIDE_DIVERGENT' }],
+        'l5/runtime.project.json',
+      ),
+    };
+  }
+  return { text: input.runtimeProjectJson, source: 'l5/runtime.project.json', stop: null };
+}
+
+/** A stored signature the nodejs composer and the publish script can both keep. Absent agentFolder stays absent. */
+function signatureIsCompatible(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (!isProjectId(value.masterProject) || !isProjectId(value.runtimeProject)) return false;
+  if (value.agentFolder === undefined) return true;
+  return typeof value.agentFolder === 'string' && value.agentFolder.length > 0;
+}
+
+/** Filling a hole needs the folder the publish script uses to find the composer. */
+function readersAcceptFill(value: L5BackendSignature | null | undefined): value is L5BackendSignature {
+  if (!value) return false;
+  return signatureIsCompatible(value) && typeof value.agentFolder === 'string' && value.agentFolder.length > 0;
+}
+
+function applySignature(cfg: Record<string, unknown>, candidate: L5BackendSignature | null | undefined): L5Pending | null {
+  const masters = isRecord(cfg.masters) ? cfg.masters : {};
+  if (!('backend' in masters)) {
+    if (candidate == null) return null;
+    if (!readersAcceptFill(candidate)) {
+      return { origin: 'masters.backend', reason: 'SIGNATURE_INCOMPATIBLE' };
+    }
+    cfg.masters = { ...masters, backend: { masterProject: candidate.masterProject, runtimeProject: candidate.runtimeProject, agentFolder: candidate.agentFolder } };
+    return null;
+  }
+  if (!signatureIsCompatible(masters.backend)) {
+    return { origin: 'masters.backend', reason: 'SIGNATURE_INCOMPATIBLE' };
+  }
+  return null;
 }
 
 const BLOCKING = new Set([
@@ -299,16 +452,21 @@ function stringifyLike(value: unknown, original: string): string {
   return original.endsWith('\n') ? `${body}\n` : body;
 }
 
-function pendingResult(detail: string, pendings: L5Pending[]): L5ReconcileResult {
-  return { action: 'pending', nextText: null, backend: null, pendings, detail };
+function pendingResult(detail: string, pendings: L5Pending[], effectiveSource: L5ReconcileResult['effectiveSource'] = 'l5/project.json'): L5ReconcileResult {
+  return { action: 'pending', nextText: null, effectiveSource, backend: null, pendings, detail };
 }
 
-function pendingKeep(original: string, detail: string, pendings: L5Pending[]): L5ReconcileResult {
-  return { action: 'pending', nextText: original, backend: null, pendings, detail };
+function pendingKeep(original: string, detail: string, pendings: L5Pending[], effectiveSource: L5ReconcileResult['effectiveSource'] = 'l5/project.json'): L5ReconcileResult {
+  return { action: 'pending', nextText: original, effectiveSource, backend: null, pendings, detail };
 }
 
-function invalidResult(detail: string): L5ReconcileResult {
-  return { action: 'invalid', nextText: null, backend: null, pendings: [{ origin: 'l5/project.json', reason: 'PROJECT_JSON_INVALID' }], detail };
+function invalidResult(detail: string, effectiveSource: L5ReconcileResult['effectiveSource'] = 'l5/project.json', reason = 'PROJECT_JSON_INVALID'): L5ReconcileResult {
+  const origin = effectiveSource;
+  return { action: 'invalid', nextText: null, effectiveSource, backend: null, pendings: [{ origin, reason }], detail };
+}
+
+function isProjectId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 function cloneRecord(value: unknown): Record<string, unknown> {
