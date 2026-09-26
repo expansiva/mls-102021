@@ -9,6 +9,7 @@
 import {
   isRecord,
   outputPathFromDefPath,
+  readDefinition,
   type M1Definition,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
@@ -23,9 +24,10 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-26-structure-handler-v2';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-26-structure-handler-v3';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
+const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 
 export interface EmitFailure {
   code: string;
@@ -215,22 +217,33 @@ export async function emitUsecase(definition: M1Definition, output: string, read
   };
 }
 
-export async function emitController(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
+export async function emitController(
+  definition: M1Definition,
+  output: string,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[] = [],
+): Promise<EmitResult | EmitFailure> {
   const scopeDep = definition.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
   if (!scopeDep) return { code: 'GRANT_UNREAD', detail: `${definition.artifactId} has no access scope dependency.` };
   const scopeText = await read(scopeDep);
   if (scopeText === null) return { code: 'GRANT_UNREAD', detail: `${scopeDep} could not be read.` };
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers.filter(isRecord) : [];
   if (handlers.length === 0) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} declares no route.` };
+  const registered = registeredPortNames(moduleDefinitions);
   const routes: ResolvedRoute[] = [];
   for (const handler of handlers) {
-    const resolved = await resolveRoute(definition, handler, read);
+    const resolved = await resolveRoute(definition, handler, read, registered);
     if ('code' in resolved) return resolved;
     routes.push(resolved);
   }
   const usecaseImports = unique(routes.map(route => `import { ${route.usecaseId} } from '${route.usecaseSpecifier}';`));
   const typeImports = unique(routes.map(route => `import type { ${route.inputType} } from '${route.inputSpecifier}';`));
-  const portImports = unique(routes.flatMap(route => route.ports.map(port => `import { ${port.pending} } from '${port.specifier}';`)));
+  const ports = routes.flatMap(route => route.ports);
+  const portImports = unique(ports.filter(port => !port.registered).map(port => `import { ${port.pending} } from '${port.specifier}';`));
+  const registeredTypes = unique(ports.filter(port => port.registered).map(port => `import type { ${port.interfaceName} } from '${port.specifier}';`));
+  const registryImport = ports.some(port => port.registered)
+    ? [`import { resolveRepository } from '${REPOSITORY_REGISTRY}';`]
+    : [];
   const functions = routes.map(renderHandler);
   const imports = [
     PLATFORM_CONTRACTS,
@@ -238,6 +251,7 @@ export async function emitController(definition: M1Definition, output: string, r
     ...routes.map(route => route.usecaseSpecifier),
     ...routes.map(route => route.inputSpecifier),
     ...routes.flatMap(route => route.ports.map(port => port.specifier)),
+    ...(ports.some(port => port.registered) ? [REPOSITORY_REGISTRY] : []),
   ];
   return {
     runsStub: false,
@@ -248,6 +262,8 @@ export async function emitController(definition: M1Definition, output: string, r
       `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
       ...usecaseImports,
       ...typeImports,
+      ...registryImport,
+      ...registeredTypes,
       ...portImports,
       '',
       `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
@@ -277,6 +293,7 @@ interface PortBinding {
   specifier: string;
   binding: string;
   pending: string;
+  registered: boolean;
 }
 
 interface ResolvedRoute {
@@ -332,7 +349,12 @@ async function resolveContract(definition: M1Definition, fn: { contractRefs: { r
   };
 }
 
-async function resolveRoute(definition: M1Definition, handler: Record<string, unknown>, read: StructureRead): Promise<ResolvedRoute | EmitFailure> {
+async function resolveRoute(
+  definition: M1Definition,
+  handler: Record<string, unknown>,
+  read: StructureRead,
+  registered: ReadonlySet<string>,
+): Promise<ResolvedRoute | EmitFailure> {
   const route = typeof handler.route === 'string' ? handler.route : '';
   const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
   const grantIds = stringList(handler.grantIds);
@@ -351,10 +373,10 @@ async function resolveRoute(definition: M1Definition, handler: Record<string, un
   if (!projection || projection.outputFields.length === 0) {
     return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
   }
-  const ports = portBindings(parsed);
+  const ports = portBindings(parsed, registered);
   const args = [`input.request.params as ${contract.inputType}`, 'input.ctx'];
   if (ports.length > 0) {
-    args.push(`{ ${ports.map(item => `${item.binding}: ${item.pending}`).join(', ')} }`);
+    args.push(`{ ${ports.map(portExpression).join(', ')} }`);
   }
   return {
     route,
@@ -389,7 +411,7 @@ function renderHandler(route: ResolvedRoute): string {
 
 function argsOf(route: ResolvedRoute): string {
   const args = [`scopeParams(input.request.params, input.ctx, [${route.grantIds.map(item => `'${item}'`).join(', ')}]) as unknown as ${route.inputType}`, 'input.ctx'];
-  if (route.ports.length > 0) args.push(`{ ${route.ports.map(item => `${item.binding}: ${item.pending}`).join(', ')} }`);
+  if (route.ports.length > 0) args.push(`{ ${route.ports.map(portExpression).join(', ')} }`);
   return args.join(', ');
 }
 
@@ -459,7 +481,7 @@ function projectSource(): string {
   ].join('\n');
 }
 
-function portBindings(definition: M1Definition): PortBinding[] {
+function portBindings(definition: M1Definition, registered: ReadonlySet<string> = new Set()): PortBinding[] {
   const names = stringList(definition.data.ports);
   if (names.length === 0) return [];
   const specifier = definition.dependencies.find(path => path.includes('/ports/'));
@@ -469,7 +491,30 @@ function portBindings(definition: M1Definition): PortBinding[] {
     specifier: importSpecifier(specifier, 'output'),
     binding: camel(interfaceName),
     pending: `pending${interfaceName}`,
+    registered: registered.has(interfaceName),
   }));
+}
+
+function portExpression(port: PortBinding): string {
+  const value = port.registered
+    ? `resolveRepository<${port.interfaceName}>(input.ctx, '${port.interfaceName}')`
+    : port.pending;
+  return `${port.binding}: ${value}`;
+}
+
+/** Port names named by a repositoryRegistration adapter row in this module's defs. */
+function registeredPortNames(definitions: readonly unknown[]): Set<string> {
+  const names = new Set<string>();
+  for (const value of definitions) {
+    const parsed = readDefinition(value);
+    if ('issues' in parsed || parsed.artifactType !== 'repositoryRegistration') continue;
+    const adapters = Array.isArray(parsed.data.adapters) ? parsed.data.adapters.filter(isRecord) : [];
+    for (const adapter of adapters) {
+      const portId = typeof adapter.portId === 'string' ? adapter.portId : '';
+      if (portId) names.add(portId);
+    }
+  }
+  return names;
 }
 
 function renderMethod(method: Record<string, unknown>, entity: string, locals: Set<string>, body: boolean): string {

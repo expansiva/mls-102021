@@ -96,6 +96,8 @@ export interface HandlerCall {
   eventId: string;
   profile: ProfileDecision;
   modelText: string | null;
+  /** Defs loaded for the module. Absent in callers that emit one file alone. */
+  moduleDefinitions?: readonly unknown[];
 }
 
 export type MaterializeHandlerRunner = (call: HandlerCall) => Promise<HandlerOutcome>;
@@ -566,6 +568,7 @@ async function attempt(
       eventId: `${unit.defPath}:${unitState.calls}`,
       profile,
       modelText,
+      moduleDefinitions: request.units.map(item => item.definition),
     }), budget.timeoutMs);
   } catch (error) {
     const mapped = asCallError(error);

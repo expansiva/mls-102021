@@ -52,7 +52,7 @@ export async function runStructure(call: HandlerCall): Promise<HandlerOutcome> {
   if ('issues' in parsed) return failed('DEFINITION', parsed.issues.join(' '));
   const output = outputPathFromDefPath(call.unit.defPath);
   if (!output) return failed('OUTPUT_PATH', `${call.unit.defPath} has no output file.`);
-  const produced = await produce(call.handler.id, parsed, output, call.read);
+  const produced = await produce(call.handler.id, parsed, output, call.read, call);
   if ('code' in produced) return failed(produced.code, produced.detail);
   const bad = auditImports(produced.source, produced.imports);
   const observations = await observe(call, parsed, produced.source, bad);
@@ -67,14 +67,14 @@ export async function runStructure(call: HandlerCall): Promise<HandlerOutcome> {
   };
 }
 
-async function produce(id: string, definition: M1Definition, output: string, read: HandlerCall['read']): Promise<EmitResult | EmitFailure> {
+async function produce(id: string, definition: M1Definition, output: string, read: HandlerCall['read'], call: HandlerCall): Promise<EmitResult | EmitFailure> {
   if (id === 'structure.domainEntity') return emitDomain(definition, output);
   if (id === 'structure.valueObject') return emitValueObject(definition, output);
   if (id === 'structure.repositoryPort') return emitPort(definition, output);
   if (id === 'structure.accessScope') return emitAccess(definition, output);
   if (id === 'structure.authorityMap') return emitAuthority(definition, output);
   if (id === 'structure.usecase') return emitUsecase(definition, output, read);
-  if (id === 'structure.httpController') return emitController(definition, output, read);
+  if (id === 'structure.httpController') return emitController(definition, output, read, call.moduleDefinitions ?? []);
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a structure body.` };
 }
 
