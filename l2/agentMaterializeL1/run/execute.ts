@@ -31,6 +31,7 @@ import {
   renderMonitorCatalog,
   renderNodeTest,
   testFileFor,
+  type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
@@ -746,6 +747,7 @@ async function promote(
     };
   }
   await host.state.writeOwned(output, new TextEncoder().encode(body));
+  await writePromotedTest(host, unit.defPath, definition);
   await boundary(host, 'output');
   const accepted = receiptCode === 'PROMOTED';
   await writeReceipt(
@@ -1244,7 +1246,7 @@ async function prepareCatalog(
   const inputHash = await contentHash(catalogBytes(derived.catalog));
   const existing = await host.io.read(ref);
   if (existing === null) {
-    if (write) await writeDerived(host, ref, derived.catalog, valueExports);
+    if (write) await writeDerived(host, ref, derived.catalog, valueExports, null);
     return {
       ref,
       action: write ? 'written' : 'simulated',
@@ -1277,7 +1279,7 @@ async function prepareCatalog(
     const ledgerAhead = !!recordedHash && recordedHash === inputHash && !ownedHash && emitted;
     const unrecordedEmission = emitted && !ownedHash;
     if (known.has(existingHash) || ledgerAhead || unrecordedEmission) {
-      if (write) await writeDerived(host, ref, derived.catalog, valueExports);
+      if (write) await writeDerived(host, ref, derived.catalog, valueExports, parsed.catalog);
       return {
         ref,
         action: write ? 'written' : 'simulated',
@@ -1323,13 +1325,36 @@ async function writeDerived(
   ref: string,
   catalog: ReturnType<typeof deriveCatalog>['catalog'],
   valueExports: ReadonlyMap<string, readonly string[]>,
+  previous: M1ScenarioCatalog | null,
 ): Promise<void> {
   await host.state.writeOwned(ref, new TextEncoder().encode(renderMonitorCatalog(catalog, ref)));
+  const priorCases = new Map((previous?.scenarios ?? []).map(scenario => [scenario.scenarioId, canonicalJson(scenario.cases)]));
   for (const scenario of catalog.scenarios) {
     if (!scenario.testFile || scenario.cases.length === 0) continue;
     const current = await host.io.read(scenario.testFile);
     const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'), valueExports.get(scenario.source) ?? []);
-    if (current !== null && current !== next) continue;
+    if (current === next) continue;
+    // A first catalog does not clobber a test that is already on disk.
+    if (current !== null && previous === null) continue;
+    // Same cases and the unit was not promoted: leave the bytes alone.
+    if (current !== null && previous !== null && priorCases.get(scenario.scenarioId) === canonicalJson(scenario.cases)) continue;
     await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));
   }
+}
+
+/** Promotion rewrites this unit's test from the catalog just written. Other tests stay put. */
+async function writePromotedTest(host: MaterializeRunHost, defPath: string, definition: unknown): Promise<void> {
+  const ref = host.catalogRef || '';
+  if (!ref) return;
+  const raw = await host.io.read(ref);
+  if (raw === null) return;
+  const parsed = parseCatalog(raw);
+  const scenario = parsed.catalog?.scenarios.find(item => item.source === defPath);
+  if (!scenario?.testFile || scenario.cases.length === 0) return;
+  const parsedDef = readDefinition(definition);
+  const names = 'issues' in parsedDef ? [] : emittedValueExports(parsedDef);
+  const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'), names);
+  const current = await host.io.read(scenario.testFile);
+  if (current === next) return;
+  await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));
 }

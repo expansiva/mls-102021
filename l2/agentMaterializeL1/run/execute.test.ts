@@ -1,7 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/run/execute.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +14,7 @@ import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderNodeTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
@@ -575,6 +577,85 @@ void test('a catalog that matches the M1 receipt is rewritten; a hand edit is a 
   assert.equal(conflicted.map.get(ref), handText);
 });
 
+void test('removing a controller route regenerates that test and leaves an untouched unit byte-identical', async () => {
+  const note = entity('Note');
+  const board = controller('board', ['qryListAlpha', 'qryListBeta']);
+  const narrowed = controller('board', ['qryListAlpha']);
+  const derived = deriveCatalog(MODULE, [note, board], {});
+  const ref = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+  const catalogText = renderMonitorCatalog(derived.catalog, ref);
+  const noteOutput = outputPathFromDefPath(note.defPath);
+  const boardOutput = outputPathFromDefPath(board.defPath);
+  const noteTest = testFileFor(noteOutput);
+  const boardTest = testFileFor(boardOutput);
+  const boardScenario = derived.catalog.scenarios.find(item => item.artifactId === 'board');
+  assert.ok(boardScenario);
+  const oldBoardTest = renderNodeTest(boardScenario, ref.replace(/\.ts$/, '.js'), ['routes']);
+  assert.match(oldBoardTest, /qryListBeta/);
+  const kept = 'export const kept = 1;\n';
+  const noteBody = 'export const note = 1;\n';
+  const noteRendered = definitionSource(note);
+  const boardRendered = definitionSource(board);
+  const store = world({
+    [ref]: catalogText,
+    [note.defPath]: noteRendered,
+    [board.defPath]: boardRendered,
+    [noteOutput]: noteBody,
+    [boardOutput]: 'export const routes = [];\n',
+    [noteTest]: kept,
+    [boardTest]: oldBoardTest,
+    '_102034_/l1/server/layer_2_controllers/contracts.ts': 'export interface ControllerRoute { key: string }\n',
+  });
+  const noteReceiptPath = receiptPathFor(note.defPath);
+  assert.ok(noteReceiptPath);
+  store.map.set(noteReceiptPath, JSON.stringify(await scaffoldReceipt(note, noteOutput, noteBody)));
+  store.map.set(board.defPath, definitionSource(narrowed));
+  const nextDerived = deriveCatalog(MODULE, [note, narrowed], {});
+  const result = await runMaterialize(baseRequest([note, narrowed]), {
+    ...host(store, {
+      'structure.httpController': async () => {
+        const scenario = nextDerived.catalog.scenarios.find(item => item.artifactId === 'board');
+        if (!scenario) return emptyOutcome();
+        return {
+          files: { [boardOutput]: 'export const routes = [{ key: "qryListAlpha" }];\n' },
+          observations: scenario.cases.map(item => observation(item.caseId, item.expect.ok, item.expect.errorCode, item.expect.status)),
+          failure: null,
+          seeds: false,
+          resets: false,
+          runsStub: false,
+        };
+      },
+    }),
+    catalogRef: ref,
+  });
+  const promoted = result.units.find(item => item.defPath === board.defPath);
+  assert.equal(promoted?.code, 'PROMOTED', promoted?.detail);
+  assert.equal(result.units.find(item => item.defPath === note.defPath)?.code, 'REUSE');
+  assert.notEqual(store.map.get(boardOutput), 'export const routes = [];\n');
+  const regenerated = store.map.get(boardTest) ?? '';
+  assert.notEqual(regenerated, oldBoardTest);
+  assert.equal(regenerated.includes('qryListBeta'), false);
+  assert.match(regenerated, /qryListAlpha/);
+  assert.equal(store.map.get(noteTest), kept);
+  assert.equal(store.map.get(noteOutput), noteBody);
+  assert.equal(store.map.get(note.defPath), noteRendered);
+
+  const dir = mkdtempSync(join(tmpdir(), 'm1-22-'));
+  try {
+    writeFileSync(join(dir, 'catalog.ts'), store.map.get(ref) ?? '');
+    writeFileSync(join(dir, 'routes.ts'), store.map.get(boardOutput) ?? '');
+    const local = regenerated
+      .replace(/import \{ scenarioCatalog \} from '[^']+';/, "import { scenarioCatalog } from './catalog.ts';")
+      .replace(/import \{ routes \} from '[^']+';/, "import { routes } from './routes.ts';");
+    const testFile = join(dir, 'board.test.ts');
+    writeFileSync(testFile, local);
+    const ran = spawnSync(process.execPath, ['--experimental-strip-types', '--test', testFile], { encoding: 'utf8' });
+    assert.equal(ran.status, 0, `${ran.stdout}\n${ran.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 void test('a misaligned ledger still rewrites an emitted catalog and records the new hash', async () => {
   const note = entity('Note');
   const derived = deriveCatalog(MODULE, [note], {});
@@ -704,6 +785,57 @@ function loadDefs(root: string, prefix: string): { units: PlanUnitInput[]; texts
   };
   walk(root);
   return { units, texts };
+}
+
+function definitionSource(unit: PlanUnitInput): string {
+  const rendered = renderDefinition(unit.definition, unit.defPath);
+  if ('source' in rendered) return rendered.source;
+  return `export const definition = ${JSON.stringify(unit.definition)} as const;\n`;
+}
+
+async function scaffoldReceipt(unit: PlanUnitInput, output: string, body: string): Promise<MaterializationReceipt> {
+  const definition = unit.definition as M1Definition;
+  const hash = await semanticHash(definition);
+  return {
+    schemaVersion: M1_RECEIPT_SCHEMA,
+    runId: '102047:agendaClinica',
+    candidateId: '',
+    defPath: unit.defPath,
+    artifactType: definition.artifactType,
+    artifactId: definition.artifactId,
+    recipeVersion: recipeForStage('structure'),
+    semanticHash: hash,
+    dependencyHashes: {},
+    sourceHashes: { [unit.defPath]: hash },
+    outputHashes: { [output]: await contentHash(body) },
+    stage: 'compile',
+    verifications: [],
+    failures: [],
+    attempts: 1,
+    reason: 'scaffold',
+  };
+}
+
+function controller(id: string, routes: readonly string[]): PlanUnitInput {
+  const defPath = `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/${id}.defs.ts`;
+  const definition: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'httpController',
+    artifactId: id,
+    moduleName: MODULE,
+    status: 'pending',
+    dependencies: [],
+    data: {
+      pageId: id,
+      handlers: routes.map(route => ({
+        route: `${MODULE}.${id}.${route}`,
+        kind: 'query',
+        usecaseId: '',
+        grantIds: [],
+      })),
+    },
+  };
+  return { defPath, definition };
 }
 
 function entity(id: string): PlanUnitInput {
