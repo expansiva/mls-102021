@@ -7,15 +7,15 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import Module from 'node:module';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { caseBlock, ruleRunsOnUsecase } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, ruleRunsOnUsecase } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
-import { catalogForStage, parseCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_EXISTING_RECORD, catalogForStage, parseCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import type { BffHandler, ModuleBffRegistration } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import { createRequestContext, execBff } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
@@ -271,7 +271,11 @@ async function invokeExported(
   if (!ports) return row(item.caseId, { inconclusive: true, reason: `${definition.artifactId} port was not loaded` });
   const params = fillCall(definition, await paramsFor(projectDir, definition, item));
   const ctx = createRequestContext(createMemoryDataRuntime(), { sandbox: true, moduleId: definition.moduleName });
-  await resetStore(projectDir, definition, await seedForCall(projectDir, definition, item, params));
+  const prepared = await seedForCall(projectDir, definition, item, params);
+  if (prepared.inconclusive) {
+    return row(item.caseId, { inconclusive: true, reason: prepared.reason });
+  }
+  await resetStore(projectDir, definition, prepared.rows);
   try {
     const data = await (fn as (...args: unknown[]) => Promise<unknown>)(params, ctx, ports);
     const id = isRecord(data) && typeof data.id === 'string' ? data.id : '';
@@ -337,28 +341,88 @@ function valueAt(source: unknown, path: string): unknown {
   return node;
 }
 
+const RECORD_ID = 'record-1';
+
 async function seedForCall(
   projectDir: string,
   definition: M1Definition,
   item: M1ScenarioCase,
   params: Record<string, unknown>,
-): Promise<Record<string, unknown>[]> {
+): Promise<{ rows: Record<string, unknown>[]; inconclusive: boolean; reason: string }> {
   const seeded = await seedRows(projectDir, definition, item);
-  if (seeded.length > 0 || definition.data.operation !== 'transition') return seeded;
-  const lifecycle = isRecord(definition.data.lifecycle) ? definition.data.lifecycle : null;
-  const transitionId = lifecycle && typeof lifecycle.transitionId === 'string' ? lifecycle.transitionId : '';
-  const dep = definition.dependencies.find(path => path.includes('/entities/'));
-  const entity = dep ? await readDefinitionFile(projectDir, dep) : null;
-  const spec = entity ? transitionFrom(entity, transitionId) : null;
-  const statusField = entity ? soleEnumField(entity) : '';
-  if (!spec || !statusField) return seeded;
-  const selector = selectorOf(definition);
-  if (selector && (params[selector] === undefined || params[selector] === '')) params[selector] = 'sample';
-  const payload = lifecycle && Array.isArray(lifecycle.payload) ? lifecycle.payload : [];
-  for (const path of payload) {
-    if (typeof path === 'string' && (valueAt(params, path) === undefined || valueAt(params, path) === '')) assignPath(params, path, 'sample');
+  if (seeded.length > 0 || !item.preconditions.includes(M1_EXISTING_RECORD)) {
+    return { rows: seeded, inconclusive: false, reason: '' };
   }
-  return [{ ...params, [statusField]: spec }];
+  const create = await derivableCreate(projectDir, definition);
+  if (!create) {
+    return { rows: [], inconclusive: true, reason: 'no derivable create for the record' };
+  }
+  const selector = selectorOf(definition);
+  if (!selector) return { rows: [], inconclusive: true, reason: 'selector was not read' };
+  const row = recordFromCreate(create);
+  row[selector] = RECORD_ID;
+  params[selector] = RECORD_ID;
+  if (definition.data.operation === 'transition') {
+    const lifecycle = isRecord(definition.data.lifecycle) ? definition.data.lifecycle : null;
+    const transitionId = lifecycle && typeof lifecycle.transitionId === 'string' ? lifecycle.transitionId : '';
+    const dep = definition.dependencies.find(path => path.includes('/entities/'));
+    const entity = dep ? await readDefinitionFile(projectDir, dep) : null;
+    const spec = entity ? transitionFrom(entity, transitionId) : '';
+    const statusField = entity ? soleEnumField(entity) : '';
+    if (spec && statusField) row[statusField] = spec;
+    const payload = lifecycle && Array.isArray(lifecycle.payload) ? lifecycle.payload : [];
+    for (const path of payload) {
+      if (typeof path !== 'string' || valueAt(params, path) !== undefined) continue;
+      assignPath(params, path, 'value');
+    }
+  }
+  for (const [key, value] of Object.entries(row)) {
+    if (params[key] === undefined) params[key] = value;
+  }
+  return { rows: [row], inconclusive: false, reason: '' };
+}
+
+async function derivableCreate(projectDir: string, definition: M1Definition): Promise<M1Definition | null> {
+  const entityId = typeof definition.data.entityId === 'string' ? definition.data.entityId : '';
+  if (!entityId) return null;
+  const projectId = /^_(\d+)_\//.exec(definition.dependencies.find(path => /^_\d+_\/l1\//.test(path)) ?? '')?.[1] ?? '';
+  if (!projectId) return null;
+  const dir = join(projectDir, 'l1', definition.moduleName, 'layer_2_application', 'usecases');
+  if (!existsSync(dir)) return null;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.defs.ts')) continue;
+    const ref = `_${projectId}_/l1/${definition.moduleName}/layer_2_application/usecases/${name}`;
+    const parsed = await readDefinitionFile(projectDir, ref);
+    if (!parsed || parsed.data.operation !== 'create' || parsed.data.entityId !== entityId) continue;
+    if (behaviorNeedsLlm(parsed)) continue;
+    return parsed;
+  }
+  return null;
+}
+
+function recordFromCreate(create: M1Definition): Record<string, unknown> {
+  const functions = create.data.functions;
+  const input = Array.isArray(functions) && isRecord(functions[0]) && Array.isArray(functions[0].input)
+    ? functions[0].input.filter(isRecord)
+    : [];
+  const row: Record<string, unknown> = {};
+  for (const field of input) {
+    const name = typeof field.name === 'string' ? field.name : '';
+    const type = typeof field.type === 'string' ? field.type : '';
+    if (!name || type.includes('?')) continue;
+    row[name] = sampleContract(type);
+  }
+  if (row.version === undefined) row.version = 1;
+  return row;
+}
+
+function sampleContract(type: string): unknown {
+  const literal = /"([^"]+)"/.exec(type);
+  if (literal) return literal[1];
+  if (type.includes('number') || type.includes('integer')) return 1;
+  if (type.includes('boolean')) return false;
+  if (type.trim().startsWith('{')) return {};
+  return 'value';
 }
 
 function selectorOf(definition: M1Definition): string {

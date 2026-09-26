@@ -18,6 +18,7 @@ import { grantsOf, requiredMembers } from '/_102021_/l2/agentMaterializeL1/handl
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import {
   M1_CATALOG_SCHEMA,
+  M1_EXISTING_RECORD,
   M1_STUB_ERROR,
   M1_STUB_STATUS,
   canonicalJson,
@@ -136,7 +137,7 @@ function casesFor(
     cases.push(compileCase(definition));
   }
   if (definition.artifactType === 'usecase') {
-    cases.push(stubCase(definition, defPath));
+    cases.push(...usecaseCases(definition, defPath));
     noteRuleGaps(definition, defPath, gaps);
   }
   if (definition.artifactType === 'httpController') {
@@ -158,6 +159,45 @@ function compileCase(definition: M1Definition): M1ScenarioCase {
     expect: { ok: true, status: 0, errorCode: null, ruleId: null, forbiddenFields: [], isolatedActorField: null },
     expectedFailure: null,
   });
+}
+
+const RECORD_OPERATIONS = new Set(['update', 'transition', 'get', 'read']);
+
+function needsStoredRecord(definition: M1Definition): boolean {
+  const operation = typeof definition.data.operation === 'string' ? definition.data.operation : '';
+  if (!RECORD_OPERATIONS.has(operation)) return false;
+  if (operation === 'get' || operation === 'read') return selectorPath(definition) !== '';
+  return true;
+}
+
+function selectorPath(definition: M1Definition): string {
+  if (!Array.isArray(definition.data.uses)) return '';
+  const found = definition.data.uses.find(item => isRecord(item) && item.role === 'selector' && item.source === 'input');
+  return isRecord(found) && typeof found.path === 'string' ? found.path : '';
+}
+
+function usecaseCases(definition: M1Definition, defPath: string): M1ScenarioCase[] {
+  const positive = stubCase(definition, defPath);
+  if (!needsStoredRecord(definition)) return [positive];
+  positive.preconditions = [...positive.preconditions, M1_EXISTING_RECORD];
+  const negative = base(definition, {
+    caseId: `${definition.artifactId}.missingRecord`,
+    gate: 'business',
+    source: `${defPath}#operation`,
+    expectation: 'An id that is not stored is NOT_FOUND. This is not the positive case.',
+    preconditions: ['memory store', 'no database'],
+    actorId: '',
+    routine: '',
+    mutating: false,
+    expect: { ok: false, status: 404, errorCode: 'NOT_FOUND', ruleId: null, forbiddenFields: [], isolatedActorField: null },
+    expectedFailure: {
+      caseId: `${definition.artifactId}.missingRecord`,
+      stage: 'structure',
+      errorCode: M1_STUB_ERROR,
+      status: M1_STUB_STATUS,
+    },
+  });
+  return [positive, negative];
 }
 
 function stubCase(definition: M1Definition, defPath: string): M1ScenarioCase {

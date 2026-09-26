@@ -11,6 +11,9 @@ import { isM1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/defi
 import type { M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 
 export const M1_CATALOG_SCHEMA = '2026-09-25-m1-scenario-catalog-v1' as const;
+
+/** Positive case of an operation that addresses one stored record. */
+export const M1_EXISTING_RECORD = 'existing record';
 export const M1_CATALOG_EXPORT = 'scenarioCatalog' as const;
 /** Config key x1_02 will read. It is not `frontend.pageTests`. */
 export const M1_CATALOG_CONFIG_KEY = 'backend.scenarioCatalog' as const;
