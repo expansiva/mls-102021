@@ -33,8 +33,15 @@ import {
   type MaterializationReceipt,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
+import { IMPLEMENT_HANDLER_RECIPE } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { STRUCTURE_HANDLER_RECIPE } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 export const M1_RECIPE_VERSION = '2026-09-25-m1-recipe-v1' as const;
+
+/** Receipts store the recipe of the handler stage that wrote them. */
+export function recipeForStage(stage: 'structure' | 'implement'): string {
+  return stage === 'implement' ? IMPLEMENT_HANDLER_RECIPE : STRUCTURE_HANDLER_RECIPE;
+}
 export const M1_OWNED_SCHEMA = '2026-09-25-m1-owned-v1' as const;
 export const M1_WRITER_SCHEMA = '2026-09-25-m1-writer-v1' as const;
 
@@ -252,7 +259,14 @@ function testChanged(input: MaintenanceInput): boolean {
 
 function releasedFailure(input: MaintenanceInput, receipt: MaterializationReceipt): boolean {
   if (receipt.semanticHash !== input.semantic) return true;
-  return dependencyDrift(input, receipt);
+  if (dependencyDrift(input, receipt)) return true;
+  return staleFailureRecipe(input, receipt);
+}
+
+/** A failed or model-unavailable receipt of an older handler recipe is pending again. The same recipe stays failed. */
+function staleFailureRecipe(input: MaintenanceInput, receipt: MaterializationReceipt): boolean {
+  if (input.recipeVersion === null || receipt.recipeVersion === input.recipeVersion) return false;
+  return receipt.failures.some(item => item.code === 'LLM_UNAVAILABLE' || item.code.length > 0);
 }
 
 function releasedBlock(input: MaintenanceInput, receipt: MaterializationReceipt): boolean {

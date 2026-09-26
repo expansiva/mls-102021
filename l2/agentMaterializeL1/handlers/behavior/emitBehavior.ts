@@ -37,6 +37,9 @@ import {
   type StructureRead,
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
+/** Raised when the implement handler body changes. An older receipt is a new input. */
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-26-implement-handler-v2';
+
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';

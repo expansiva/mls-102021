@@ -57,6 +57,7 @@ import {
   hashEvidence,
   M1_OWNED_SCHEMA,
   M1_RECIPE_VERSION,
+  recipeForStage,
   ownedManifestRef,
   parseOwnedManifest,
   renderOwnedManifest,
@@ -217,7 +218,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     io: host.io,
     state: host.state,
     verifyOnly: stage === 'verify' ? merged.map(unit => unit.defPath) : [],
-    recipeVersion: M1_RECIPE_VERSION,
+    recipeVersion: recipeForStage(planStage),
     removals,
   });
   const catalogPrep = host.catalogRef ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate') : null;
@@ -349,7 +350,7 @@ async function runUnit(
       const code = unit.action === 'verify' ? 'VERIFIED' : 'REUSE';
       return outcome(unit.defPath, code, unit.reason, false, 0);
     }
-    if (!success && await sameSemantic(host, unit.defPath, definition) && !releasedBlock(definition, unit.action)) {
+    if (!success && await sameSemantic(host, unit.defPath, definition) && !releasedBlock(definition, unit.action) && !await failureRecipeChanged(host, unit.defPath, stage)) {
       return outcome(unit.defPath, prior.ended, 'Resume kept the failed attempt. The budget was not reset.', false, 0);
     }
   }
@@ -785,7 +786,7 @@ async function writeReceipt(
     defPath: unit.defPath,
     artifactType: parsed.artifactType,
     artifactId: parsed.artifactId,
-    recipeVersion: M1_RECIPE_VERSION,
+    recipeVersion: recipeForStage(request.stage === 'implement' ? 'implement' : 'structure'),
     semanticHash: hash,
     dependencyHashes,
     sourceHashes,
@@ -870,6 +871,15 @@ function releasedBlock(definition: unknown, action: string): boolean {
   if (action !== 'generate') return false;
   const parsed = readDefinition(definition);
   return !('issues' in parsed) && parsed.status === 'blocked';
+}
+
+/** An older handler recipe releases this unit only. Other ledger rows and the budget stay. */
+async function failureRecipeChanged(host: MaterializeRunHost, defPath: string, stage: M1EntryStage): Promise<boolean> {
+  const receipt = await host.state.readReceipt(defPath);
+  if (!receipt || receipt.failures.length === 0) return false;
+  const current = recipeForStage(stage === 'implement' ? 'implement' : 'structure');
+  if (receipt.recipeVersion === current) return false;
+  return receipt.failures.some(item => item.code === 'LLM_UNAVAILABLE' || item.code.length > 0);
 }
 
 async function sameSemantic(host: MaterializeRunHost, defPath: string, definition: unknown): Promise<boolean> {

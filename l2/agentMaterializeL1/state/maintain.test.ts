@@ -14,7 +14,7 @@ import {
   type MaterializationReceipt,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
-import { M1_RECIPE_VERSION } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { M1_RECIPE_VERSION, recipeForStage } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 import {
   decideMaintenance,
   hashEvidence,
@@ -119,6 +119,20 @@ void test('a resolved block is released and a failed resume is not', async () =>
   moved.data = { ...moved.data, imports: ['extra'] };
   const eligible = await decideMaintenance(await input(moved, failed));
   assert.equal(eligible.action, 'generate');
+
+  const current = recipeForStage('implement');
+  const stale = await decideMaintenance(await input(note('failed'), failed, { recipe: current }));
+  assert.equal(stale.action, 'generate');
+  assert.match(stale.reason, /^RECIPE_CHANGED:/);
+
+  failed.failures = [{ code: 'LLM_UNAVAILABLE', detail: 'no model' }];
+  failed.recipeVersion = current;
+  const same = await decideMaintenance(await input(note('failed'), failed, { recipe: current }));
+  assert.equal(same.action, 'blocked');
+  assert.match(same.reason, /^STATUS_FAILED:/);
+  failed.recipeVersion = M1_RECIPE_VERSION;
+  const retry = await decideMaintenance(await input(note('failed'), failed, { recipe: current }));
+  assert.equal(retry.action, 'generate');
 });
 
 void test('recipe and test changes do not rewrite an unrelated output', async () => {

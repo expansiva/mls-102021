@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, receiptPathFor, renderDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
@@ -18,7 +18,10 @@ import {
   MaterializeCallError,
   decideProfile,
   emptyLedger,
+  encodeLedger,
+  ledgerPath,
   noteModelCall,
+  parseLedger,
   tightenBudget,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
 import { helpText, parseCliArgs, parseStudioPrompt, unitsForFlow } from '/_102021_/l2/agentMaterializeL1/run/command.js';
@@ -30,6 +33,7 @@ import {
   type MaterializeRunRequest,
 } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { invokeModel, shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
+import { recipeForStage } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
@@ -432,6 +436,72 @@ void test('the model port is only for an implement handler that needs it', async
     () => invokeModel(() => Promise.resolve('   '), { prompt: 'x', signal: new AbortController().signal, eventId: 'm' }, 1000),
     (error: unknown) => error instanceof MaterializeCallError && error.code === 'INVALID_RESPONSE',
   );
+});
+
+void test('an old failure recipe works again and the same recipe keeps the budget', async () => {
+  const note = entity('Note');
+  const other = '_102047_/l1/agendaClinica/layer_3_domain/entities/other.defs.ts';
+  const rendered = renderDefinition(note.definition as M1Definition, note.defPath);
+  assert.ok('source' in rendered);
+  const store = world({ [note.defPath]: rendered.source });
+  const output = outputPathFromDefPath(note.defPath);
+  let calls = 0;
+  const runners: Record<string, MaterializeHandlerRunner> = {
+    'implement.domainEntity': async () => {
+      calls += 1;
+      return passOutcome(output);
+    },
+  };
+  const hash = await semanticHash(note.definition as M1Definition);
+  const current = recipeForStage('implement');
+  const receipt: MaterializationReceipt = {
+    schemaVersion: M1_RECEIPT_SCHEMA,
+    runId: '102047:agendaClinica',
+    candidateId: '',
+    defPath: note.defPath,
+    artifactType: 'domainEntity',
+    artifactId: 'Note',
+    recipeVersion: current,
+    semanticHash: hash,
+    dependencyHashes: {},
+    sourceHashes: { [note.defPath]: hash },
+    outputHashes: {},
+    stage: 'plan',
+    verifications: [],
+    failures: [{ code: 'LLM_UNAVAILABLE', detail: 'no model' }],
+    attempts: 1,
+    reason: 'LLM_UNAVAILABLE: no model',
+  };
+  const receiptPath = receiptPathFor(note.defPath);
+  assert.ok(receiptPath);
+  store.map.set(receiptPath, JSON.stringify(receipt));
+  const budget = tightenBudget({ timeoutMs: 2000 }, null);
+  const ledger = emptyLedger(PROJECT, MODULE, budget, 'implement');
+  ledger.calls = 3;
+  ledger.repairs = 2;
+  ledger.units[note.defPath] = { repairs: 1, calls: 1, signature: 'LLM_UNAVAILABLE', ended: 'LLM_UNAVAILABLE', stage: 'implement' };
+  ledger.units[other] = { repairs: 0, calls: 0, signature: '', ended: 'PROMOTED', stage: 'implement' };
+  store.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+
+  const kept = await runMaterialize(baseRequest([note], { stage: 'implement', resume: true }), host(store, runners, undefined, catalog([note], 'pass')));
+  assert.equal(kept.units[0].code, 'LLM_UNAVAILABLE');
+  assert.match(kept.units[0].detail, /budget was not reset/);
+  assert.equal(calls, 0);
+  const keptLedger = parseLedger(store.map.get(ledgerPath(MODULE)) ?? '', PROJECT, MODULE);
+  assert.ok(keptLedger);
+  assert.equal(keptLedger.calls, 3);
+  assert.equal(keptLedger.repairs, 2);
+  assert.equal(keptLedger.units[other]?.ended, 'PROMOTED');
+
+  receipt.recipeVersion = '2026-09-25-m1-recipe-v1';
+  store.map.set(receiptPath, JSON.stringify(receipt));
+  const again = await runMaterialize(baseRequest([note], { stage: 'implement', resume: true }), host(store, runners, undefined, catalog([note], 'pass')));
+  assert.equal(calls, 1);
+  assert.notEqual(again.units[0].code, 'LLM_UNAVAILABLE');
+  const nextLedger = parseLedger(store.map.get(ledgerPath(MODULE)) ?? '', PROJECT, MODULE);
+  assert.equal(nextLedger?.units[other]?.ended, 'PROMOTED');
+  assert.ok((nextLedger?.calls ?? 0) >= 3);
+  assert.ok((nextLedger?.repairs ?? 0) >= 2);
 });
 
 void test('help names the studio command and the l2 entry does not import node', () => {
