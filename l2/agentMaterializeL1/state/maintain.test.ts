@@ -174,6 +174,85 @@ void test('a resolved block is released and a failed resume is not', async () =>
   assert.match(emit.reason, /structure scaffold/);
 });
 
+void test('structure reuses an intact implement receipt and a def change generates again', async () => {
+  const ready = await receiptFor(note('generated'));
+  ready.stage = 'verify';
+  ready.recipeVersion = recipeForStage('implement');
+  const output = outputPathFromDefPath(DEF);
+  const outputHash = ready.outputHashes[output]!;
+  const structure = await decideMaintenance(await input(note('generated'), ready, {
+    present: true,
+    hash: outputHash,
+    recipe: recipeForStage('structure'),
+  }));
+  assert.equal(structure.action, 'reuse');
+  assert.match(structure.reason, /^REUSE:/);
+
+  const changed = note('generated');
+  changed.data = { ...changed.data, imports: ['extra'] };
+  const regenerated = await decideMaintenance(await input(changed, ready, {
+    present: true,
+    hash: outputHash,
+    recipe: recipeForStage('structure'),
+  }));
+  assert.equal(regenerated.action, 'generate');
+
+  const dep = note('generated');
+  dep.dependencies = ['other.defs.ts'];
+  ready.semanticHash = await semanticHash(dep);
+  ready.dependencyHashes = { 'other.defs.ts': 'sha256:old' };
+  const driftedInput = await input(dep, ready, {
+    present: true,
+    hash: outputHash,
+    recipe: recipeForStage('structure'),
+  });
+  driftedInput.dependencyHashes = { 'other.defs.ts': 'sha256:new' };
+  const drifted = await decideMaintenance(driftedInput);
+  assert.equal(drifted.action, 'generate');
+});
+
+void test('structure reuses an intact generate, compile or promote receipt of any type', async () => {
+  for (const stage of ['generate', 'compile', 'promote'] as const) {
+    const ready = await receiptFor(note('pending'));
+    ready.stage = stage;
+    ready.recipeVersion = recipeForStage('structure');
+    ready.verifications = [];
+    ready.reason = '';
+    const outputHash = ready.outputHashes[outputPathFromDefPath(DEF)]!;
+    const reuse = await decideMaintenance(await input(note('pending'), ready, {
+      present: true,
+      hash: outputHash,
+      recipe: recipeForStage('structure'),
+    }));
+    assert.equal(reuse.action, 'reuse', stage);
+    assert.match(reuse.reason, /^REUSE:/);
+  }
+
+  const ready = await receiptFor(note('pending'));
+  ready.stage = 'generate';
+  ready.recipeVersion = recipeForStage('structure');
+  ready.verifications = [];
+  const outputHash = ready.outputHashes[outputPathFromDefPath(DEF)]!;
+  const changed = note('pending');
+  changed.data = { ...changed.data, imports: ['extra'] };
+  const regenerated = await decideMaintenance(await input(changed, ready, {
+    present: true,
+    hash: outputHash,
+    recipe: recipeForStage('structure'),
+  }));
+  assert.equal(regenerated.action, 'generate');
+
+  const planned = await receiptFor(note('pending'));
+  planned.stage = 'plan';
+  planned.verifications = [];
+  const earlier = await decideMaintenance(await input(note('pending'), planned, {
+    present: true,
+    hash: outputHash,
+    recipe: recipeForStage('structure'),
+  }));
+  assert.equal(earlier.action, 'generate');
+});
+
 void test('recipe and test changes do not rewrite an unrelated output', async () => {
   const ready = await receiptFor(note('generated'));
   const outputHash = ready.outputHashes[outputPathFromDefPath(DEF)];

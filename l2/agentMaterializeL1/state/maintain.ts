@@ -197,6 +197,9 @@ export async function decideMaintenance(input: MaintenanceInput): Promise<Mainte
       reason: `${code}: ${input.outputPath} does not match the receipt; the local file is not overwritten.`,
     };
   }
+  if (laterStageIntact(input)) {
+    return { action: 'reuse', reason: 'REUSE: a later stage receipt still matches the semantic hash, dependencies and outputs.' };
+  }
   if (recipeDrift) {
     return { action: 'generate', reason: `RECIPE_CHANGED: recipe ${input.recipeVersion} does not match the receipt.` };
   }
@@ -238,6 +241,36 @@ function priorOutputIntact(input: MaintenanceInput): boolean {
   const receipt = input.receipt;
   if (!receipt || receipt.failures.length > 0) return false;
   if (receipt.stage !== 'compile' && receipt.stage !== 'generate' && receipt.stage !== 'verify') return false;
+  if (receipt.semanticHash !== input.semantic) return false;
+  if (!input.outputPresent || !input.outputHash) return false;
+  if (receipt.outputHashes[input.outputPath] !== input.outputHash) return false;
+  for (const path of input.definition.dependencies) {
+    if (input.dependencyHashes[path] !== receipt.dependencyHashes[path]) return false;
+  }
+  return true;
+}
+
+/**
+ * Structure must not replace an intact receipt from this stage or a later one.
+ * generate, compile, verify and promote all qualify. Plan is earlier.
+ * A later receipt (verify, promote) is reuse even when its recipe is the
+ * implement recipe. The same stage still honors a recipe change.
+ * A real def or dependency change invalidates as before.
+ */
+const STRUCTURE_RECEIPT_RANK: Record<string, number> = {
+  plan: 0,
+  generate: 1,
+  compile: 2,
+  verify: 3,
+  promote: 4,
+};
+
+function laterStageIntact(input: MaintenanceInput): boolean {
+  const receipt = input.receipt;
+  const rank = receipt ? STRUCTURE_RECEIPT_RANK[receipt.stage] ?? 0 : 0;
+  if (!receipt || input.stage !== 'structure' || rank < STRUCTURE_RECEIPT_RANK.generate || receipt.failures.length > 0) return false;
+  const sameStage = rank < STRUCTURE_RECEIPT_RANK.verify;
+  if (sameStage && input.recipeVersion !== null && receipt.recipeVersion !== input.recipeVersion) return false;
   if (receipt.semanticHash !== input.semantic) return false;
   if (!input.outputPresent || !input.outputHash) return false;
   if (receipt.outputHashes[input.outputPath] !== input.outputHash) return false;
