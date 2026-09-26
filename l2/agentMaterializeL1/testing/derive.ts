@@ -17,7 +17,7 @@ import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1
 import { grantsOf, requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import {
-  M1_CATALOG_SCHEMA,
+  M1_CATALOG_SCHEMA_V11,
   M1_EXISTING_RECORD,
   M1_STUB_ERROR,
   M1_STUB_STATUS,
@@ -121,7 +121,7 @@ export function deriveCatalog(
   scenarios.sort((left, right) => left.scenarioId < right.scenarioId ? -1 : left.scenarioId > right.scenarioId ? 1 : 0);
   gaps.sort((left, right) => canonicalJson(left) < canonicalJson(right) ? -1 : canonicalJson(left) > canonicalJson(right) ? 1 : 0);
   return {
-    catalog: { schemaVersion: M1_CATALOG_SCHEMA, moduleName, store: 'memory', scenarios },
+    catalog: { schemaVersion: M1_CATALOG_SCHEMA_V11, moduleName, store: 'memory', scenarios },
     gaps,
     recipeVersion: M1_CATALOG_RECIPE,
   };
@@ -160,6 +160,7 @@ function compileCase(definition: M1Definition): M1ScenarioCase {
     mutating: false,
     expect: { ok: true, status: 0, errorCode: null, ruleId: null, forbiddenFields: [], isolatedActorField: null },
     expectedFailure: null,
+    runner: 'module',
   });
 }
 
@@ -192,6 +193,7 @@ function usecaseCases(definition: M1Definition, defPath: string): M1ScenarioCase
     routine: '',
     mutating: false,
     expect: { ok: false, status: 404, errorCode: 'NOT_FOUND', ruleId: null, forbiddenFields: [], isolatedActorField: null },
+    runner: 'module',
     expectedFailure: {
       caseId: `${definition.artifactId}.missingRecord`,
       stage: 'structure',
@@ -213,6 +215,7 @@ function stubCase(definition: M1Definition, defPath: string): M1ScenarioCase {
     routine: '',
     mutating: false,
     expect: { ok: true, status: 200, errorCode: null, ruleId: null, forbiddenFields: [], isolatedActorField: null },
+    runner: 'module',
     expectedFailure: {
       caseId: `${definition.artifactId}.reachesStub`,
       stage: 'structure',
@@ -280,6 +283,8 @@ function routeCases(
       mutating: false,
       expect: { ok: false, status: 403, errorCode: 'FORBIDDEN_ACTOR', ruleId: null, forbiddenFields: [], isolatedActorField: null },
       expectedFailure: null,
+      runner: 'route',
+      caller: { source: 'http', authorities: [] },
     }));
     const field = requiredField(route.usecaseId, route.route, defs, texts);
     if (!field) {
@@ -316,6 +321,8 @@ function routeCases(
       mutating: false,
       expect: { ok: false, status: 400, errorCode: 'VALIDATION_ERROR', ruleId: null, forbiddenFields: [], isolatedActorField: null },
       expectedFailure: null,
+      runner: 'route',
+      caller: { source: 'http', authorities: authoritiesOf(route.grantIds, grants, definition.moduleName) },
     }));
   }
   return cases;
@@ -353,6 +360,15 @@ function inputName(routine: string, source: string): string {
   const candidate = name.endsWith('Input') ? name : `${name}Input`;
   if (source.includes(`export interface ${candidate} `)) return candidate;
   return '';
+}
+
+/** Actor authorities of the route grants. The case id is not a source. */
+function authoritiesOf(grantIds: readonly string[], grants: ReturnType<typeof grantsOf>, moduleName: string): string[] {
+  const values = grantIds.flatMap(grantId => {
+    const grant = grants.find(item => item.grantId === grantId);
+    return grant?.actorRef ? [`${moduleName}:${grant.actorRef}`] : [];
+  });
+  return [...new Set(values)].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

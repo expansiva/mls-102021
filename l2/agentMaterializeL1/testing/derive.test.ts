@@ -11,7 +11,7 @@ import { parseDefinitionSource, type M1Definition } from '/_102021_/l2/agentMate
 import { emitBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { observeImplement } from '/_102021_/l1/agentMaterializeL1/caseRun.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { M1_EXISTING_RECORD } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11, M1_EXISTING_RECORD, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { copyFixtureSources, fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 
@@ -63,6 +63,58 @@ void test('derived catalog follows the defs and ignores array order', () => {
   assert.equal(removed.length > 0, true);
   assert.equal(removed.every(item => item.routine.endsWith('cmdCreateConsulta')), true);
   assert.equal(after.cases.some(item => item.routine.endsWith('cmdCreateConsulta')), false);
+});
+
+void test('agendaClinica v1.1 names module cases and the route caller from the grant', () => {
+  const loaded = loadTree(AGENDA, '_102047_/');
+  for (const unit of loaded.units) {
+    for (const dependency of unit.definition.dependencies) {
+      if (loaded.texts[dependency]) continue;
+      const full = join(CLIENT, dependency.replace(/^_\d+_\/?/, ''));
+      if (existsSync(full)) loaded.texts[dependency] = readFileSync(full, 'utf8');
+    }
+  }
+  const authority = loaded.units.find(unit => unit.definition.artifactType === 'authorityMap');
+  assert.ok(authority);
+  const derived = deriveCatalog('agendaClinica', loaded.units, loaded.texts, new Map([[authority.defPath, 'NO_CONSUMER: authorityMap']]));
+  assert.equal(derived.catalog.schemaVersion, M1_CATALOG_SCHEMA_V11);
+  const cases = derived.catalog.scenarios.flatMap(item => item.cases);
+  const moduleCases = cases.filter(item => item.runner === 'module');
+  const routeCases = cases.filter(item => item.runner === 'route');
+  assert.equal(moduleCases.length, 28);
+  assert.equal(routeCases.length, 20);
+  assert.equal(moduleCases.every(item => item.caller === undefined), true);
+  const denied = routeCases.filter(item => item.gate === 'auth');
+  assert.equal(denied.length, 10);
+  assert.equal(denied.every(item => item.caller?.source === 'http' && item.caller.authorities.length === 0), true);
+  const scope = loaded.units.find(unit => unit.definition.artifactType === 'accessScope');
+  assert.ok(scope);
+  const actorByGrant = new Map<string, string>();
+  const grants = Array.isArray(scope.definition.data.grants) ? scope.definition.data.grants : [];
+  for (const grant of grants) {
+    if (grant && typeof grant === 'object' && typeof (grant as { grantId?: string }).grantId === 'string') {
+      actorByGrant.set((grant as { grantId: string }).grantId, String((grant as { actorRef?: string }).actorRef ?? ''));
+    }
+  }
+  const positive = routeCases.filter(entry => entry.gate === 'contract');
+  assert.equal(positive.length, 10);
+  for (const item of positive) {
+    assert.equal(item.caller?.source, 'http');
+    const controller = derived.catalog.scenarios.find(scenario => item.caseId.startsWith(`${scenario.artifactId}.`));
+    const unit = loaded.units.find(entry => entry.definition.artifactId === controller?.artifactId);
+    const handlers = Array.isArray(unit?.definition.data.handlers) ? unit.definition.data.handlers : [];
+    const handler = handlers.find(entry => entry && typeof entry === 'object' && (entry as { route?: string }).route === item.routine) as { grantIds?: string[] } | undefined;
+    const expected = [...new Set((handler?.grantIds ?? []).map(id => `agendaClinica:${actorByGrant.get(id) ?? ''}`))].sort();
+    assert.deepEqual(item.caller?.authorities, expected);
+    assert.equal(expected.every(authority => authority !== 'agendaClinica:'), true);
+  }
+  const legacy = parseCatalog(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'catalogFixture.json'), 'utf8'));
+  assert.equal(legacy.issues.length, 0);
+  assert.equal(legacy.catalog?.schemaVersion, M1_CATALOG_SCHEMA);
+  assert.equal(legacy.catalog?.scenarios[0]?.cases[0]?.runner, undefined);
+  const again = parseCatalog(JSON.stringify(derived.catalog));
+  assert.deepEqual(again.issues, []);
+  assert.equal(again.catalog?.scenarios.flatMap(item => item.cases).filter(item => item.runner === 'module').length, 28);
 });
 
 void test('update positive uses a stored record and the missing id stays 404', async () => {
@@ -177,13 +229,14 @@ function loadTree(root: string, prefix: string): { units: PlanUnitInput[]; texts
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.txt')) {
         const text = readFileSync(path, 'utf8');
-        const parsed = parseDefinitionSource(text);
-        if (!('definition' in parsed)) continue;
         const rel = fixtureLogicalRel(path.slice(root.length + 1).split('/').join('/'));
         const defPath = `${prefix}${rel}`;
         texts[defPath] = text;
+        if (!entry.name.endsWith('.defs.ts') && !entry.name.endsWith('.defs.txt')) continue;
+        const parsed = parseDefinitionSource(text);
+        if (!('definition' in parsed)) continue;
         units.push({ defPath, definition: parsed.definition });
       }
     }

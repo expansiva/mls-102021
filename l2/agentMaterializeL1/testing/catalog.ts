@@ -11,6 +11,10 @@ import { isM1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/defi
 import type { M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 
 export const M1_CATALOG_SCHEMA = '2026-09-25-m1-scenario-catalog-v1' as const;
+/** Additive: each case names its runner, and a route case names its caller. */
+export const M1_CATALOG_SCHEMA_V11 = '2026-09-26-m1-scenario-catalog-v1.1' as const;
+export const M1_CATALOG_SCHEMAS = [M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11] as const;
+export type M1CatalogSchema = typeof M1_CATALOG_SCHEMAS[number];
 
 /** Positive case of an operation that addresses one stored record. */
 export const M1_EXISTING_RECORD = 'existing record';
@@ -54,6 +58,14 @@ export interface M1CaseExpect {
   isolatedActorField: string | null;
 }
 
+export type M1CaseRunner = 'route' | 'module';
+
+/** Present only on a route case. Authorities come from the grant, not from the case id. */
+export interface M1CaseCaller {
+  source: 'http';
+  authorities: string[];
+}
+
 export interface M1ScenarioCase {
   caseId: string;
   gate: M1Gate;
@@ -67,6 +79,10 @@ export interface M1ScenarioCase {
   mutating: boolean;
   expect: M1CaseExpect;
   expectedFailure: M1ExpectedFailure | null;
+  /** Absent on a v1 catalog. */
+  runner?: M1CaseRunner;
+  /** Absent on a module case and on a v1 catalog. */
+  caller?: M1CaseCaller;
 }
 
 export interface M1Scenario {
@@ -81,7 +97,7 @@ export interface M1Scenario {
 }
 
 export interface M1ScenarioCatalog {
-  schemaVersion: typeof M1_CATALOG_SCHEMA;
+  schemaVersion: M1CatalogSchema;
   moduleName: string;
   store: 'memory';
   scenarios: M1Scenario[];
@@ -111,6 +127,8 @@ const CASE_KEYS = [
   'caseId', 'gate', 'mandatory', 'source', 'expectation', 'preconditions', 'synthetic',
   'actorId', 'routine', 'mutating', 'expect', 'expectedFailure',
 ] as const;
+const CASE_KEYS_V11 = [...CASE_KEYS, 'runner', 'caller'] as const;
+const CALLER_KEYS = ['source', 'authorities'] as const;
 const SCENARIO_KEYS = [
   'scenarioId', 'source', 'artifactType', 'artifactId', 'handlerId', 'productionFile', 'testFile', 'cases',
 ] as const;
@@ -312,16 +330,18 @@ function catalogIssues(value: unknown): string[] {
   for (const key of Object.keys(value)) {
     if (!(CATALOG_KEYS as readonly string[]).includes(key)) issues.push(`unknown catalog.${key}`);
   }
-  if (value.schemaVersion !== M1_CATALOG_SCHEMA) issues.push('schemaVersion');
+  const schema = value.schemaVersion;
+  if (schema !== M1_CATALOG_SCHEMA && schema !== M1_CATALOG_SCHEMA_V11) issues.push('schemaVersion');
   if (typeof value.moduleName !== 'string' || !/^[a-z][A-Za-z0-9]*$/.test(value.moduleName)) issues.push('moduleName');
   if (value.store !== 'memory') issues.push('store must be memory');
   if (!Array.isArray(value.scenarios)) return [...issues, 'scenarios'];
   const seen = new Set<string>();
-  for (const scenario of value.scenarios) issues.push(...scenarioIssues(scenario, seen));
+  const v11 = schema === M1_CATALOG_SCHEMA_V11;
+  for (const scenario of value.scenarios) issues.push(...scenarioIssues(scenario, seen, v11));
   return issues;
 }
 
-function scenarioIssues(value: unknown, seen: Set<string>): string[] {
+function scenarioIssues(value: unknown, seen: Set<string>, v11: boolean): string[] {
   if (!isRecord(value)) return ['scenario must be an object'];
   const issues: string[] = [];
   for (const key of Object.keys(value)) {
@@ -338,15 +358,16 @@ function scenarioIssues(value: unknown, seen: Set<string>): string[] {
   }
   if (value.testFile !== testFileFor(String(value.productionFile ?? ''))) issues.push(`${scenarioId} testFile`);
   if (!Array.isArray(value.cases) || value.cases.length === 0) return [...issues, `${scenarioId} cases`];
-  for (const item of value.cases) issues.push(...caseIssues(item, seen));
+  for (const item of value.cases) issues.push(...caseIssues(item, seen, v11));
   return issues;
 }
 
-function caseIssues(value: unknown, seen: Set<string>): string[] {
+function caseIssues(value: unknown, seen: Set<string>, v11: boolean): string[] {
   if (!isRecord(value)) return ['case must be an object'];
   const issues: string[] = [];
+  const allowed = v11 ? CASE_KEYS_V11 : CASE_KEYS;
   for (const key of Object.keys(value)) {
-    if (!(CASE_KEYS as readonly string[]).includes(key)) issues.push(`unknown case.${key}`);
+    if (!(allowed as readonly string[]).includes(key)) issues.push(`unknown case.${key}`);
   }
   const caseId = typeof value.caseId === 'string' ? value.caseId : '';
   if (!caseId) issues.push('caseId');
@@ -366,6 +387,25 @@ function caseIssues(value: unknown, seen: Set<string>): string[] {
   if (typeof value.mutating !== 'boolean') issues.push(`${caseId} mutating`);
   issues.push(...expectIssues(value.expect, caseId));
   issues.push(...failureIssues(value.expectedFailure, caseId, String(value.gate)));
+  issues.push(...runnerIssues(value, caseId, v11));
+  return issues;
+}
+
+function runnerIssues(value: Record<string, unknown>, caseId: string, v11: boolean): string[] {
+  if (!v11) return [];
+  const issues: string[] = [];
+  if (value.runner !== 'route' && value.runner !== 'module') issues.push(`${caseId} runner`);
+  if (value.runner === 'module') {
+    if ('caller' in value) issues.push(`${caseId} caller`);
+    return issues;
+  }
+  if (value.runner !== 'route') return issues;
+  if (!isRecord(value.caller)) return [...issues, `${caseId} caller`];
+  for (const key of Object.keys(value.caller)) {
+    if (!(CALLER_KEYS as readonly string[]).includes(key)) issues.push(`${caseId} caller.${key}`);
+  }
+  if (value.caller.source !== 'http') issues.push(`${caseId} caller.source`);
+  if (!stringList(value.caller.authorities)) issues.push(`${caseId} caller.authorities`);
   return issues;
 }
 
@@ -424,7 +464,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isCatalog(value: unknown): value is M1ScenarioCatalog {
-  return isRecord(value) && value.schemaVersion === M1_CATALOG_SCHEMA && value.store === 'memory';
+  return isRecord(value)
+    && (value.schemaVersion === M1_CATALOG_SCHEMA || value.schemaVersion === M1_CATALOG_SCHEMA_V11)
+    && value.store === 'memory';
 }
 
 function sortValue(value: unknown): unknown {

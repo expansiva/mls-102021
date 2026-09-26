@@ -192,6 +192,7 @@ function inputName(routine: string, source: string): string {
 }
 
 function authoritiesFor(item: M1ScenarioCase, grants: readonly StructureGrant[], grantIds: readonly string[], moduleName: string): string[] {
+  if (item.caller) return [...item.caller.authorities];
   const empty = item.actorId === '' || item.preconditions.some(entry => entry.includes('verifiedAuthorities is empty'));
   if (empty) return [];
   return grantIds.flatMap(grantId => {

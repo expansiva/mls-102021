@@ -132,9 +132,11 @@ export async function runRoute(
   const scopeDep = (await readDefinitionFile(projectDir, pageRef))?.dependencies.find(path => path.endsWith('/accessScope.defs.ts')) ?? '';
   const scope = scopeDep ? await importFile(projectDir, outputOf(scopeDep)) : { error: 'missing' };
   const pageDefinition = await readDefinitionFile(projectDir, pageRef);
-  const authorities = 'error' in scope || !pageDefinition
-    ? []
-    : authoritiesFor(item, pageDefinition, scope.module.grants);
+  const authorities = item.caller
+    ? item.caller.authorities
+    : 'error' in scope || !pageDefinition
+      ? []
+      : authoritiesFor(item, pageDefinition, scope.module.grants);
   rememberRoute(route.key, route.handler);
   try {
     await publishRoutes(projectId, moduleName);
@@ -145,7 +147,7 @@ export async function runRoute(
   const executed = await execBff({
     routine: item.routine,
     params: await paramsFor(projectDir, definition, item),
-    meta: { source: 'http', verifiedAuthorities: authorities },
+    meta: { source: item.caller?.source ?? 'http', verifiedAuthorities: authorities },
   }, createRequestContext(undefined, { sandbox: true, sessionContext: { actorId: item.actorId } }));
   const durationMs = Date.now() - started;
   const response = executed.response;
