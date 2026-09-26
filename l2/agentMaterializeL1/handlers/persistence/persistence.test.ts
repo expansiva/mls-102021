@@ -32,6 +32,7 @@ import { persistenceHandlerIds, persistenceRunners, runPersistence } from '/_102
 const EXTRA = new Map<string, string>();
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
+sweepRepoRootScratch();
 const CATALOG = readFileSync(join(HERE, '../../testing/catalogFixture.json'), 'utf8');
 const FIXTURES = loadFixtures(join(HERE, '../structure/fixtures'));
 
@@ -551,7 +552,8 @@ function readFile(ref: string): string | null {
 }
 
 function compile(rows: readonly (readonly [string, string])[]): string {
-  const dir = join(ROOT, `.m1-07-out-${process.pid}`);
+  sweepRepoRootScratch();
+  const dir = join(ROOT, '.generated', `.m1-07-out-${process.pid}`);
   const config = join(ROOT, `.tsconfig.m1-07-${process.pid}.json`);
   try {
     const files: string[] = [];
@@ -579,6 +581,13 @@ function compile(rows: readonly (readonly [string, string])[]): string {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(config, { force: true });
+    sweepRepoRootScratch();
+  }
+}
+
+function sweepRepoRootScratch(): void {
+  for (const name of readdirSync(ROOT)) {
+    if (name.startsWith('.m1-')) rmSync(join(ROOT, name), { recursive: true, force: true });
   }
 }
 

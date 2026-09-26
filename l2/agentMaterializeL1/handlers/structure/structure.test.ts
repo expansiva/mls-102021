@@ -23,6 +23,7 @@ import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agenda
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
+sweepRepoRootScratch();
 const CATALOG_REF = 'catalog.json';
 const CATALOG = readFileSync(join(HERE, '../../testing/catalogFixture.json'), 'utf8');
 const FIXTURES = loadFixtures(join(HERE, 'fixtures'));
@@ -251,7 +252,8 @@ function sourceOf(rows: readonly Emitted[], artifactId: string): string {
 }
 
 function compile(rows: readonly Emitted[]): string {
-  const dir = join(ROOT, `.m1-03-out-${process.pid}`);
+  sweepRepoRootScratch();
+  const dir = join(ROOT, '.generated', `.m1-03-out-${process.pid}`);
   const config = join(ROOT, `.tsconfig.m1-03-${process.pid}.json`);
   try {
     const files: string[] = [];
@@ -287,6 +289,13 @@ function compile(rows: readonly Emitted[]): string {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(config, { force: true });
+    sweepRepoRootScratch();
+  }
+}
+
+function sweepRepoRootScratch(): void {
+  for (const name of readdirSync(ROOT)) {
+    if (name.startsWith('.m1-')) rmSync(join(ROOT, name), { recursive: true, force: true });
   }
 }
 

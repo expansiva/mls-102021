@@ -2,7 +2,8 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -25,6 +26,7 @@ import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agenda
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
+sweepRepoRootScratch();
 const CATALOG_REF = 'catalog.json';
 const CATALOG = readFileSync(join(HERE, '../../testing/catalogFixture.json'), 'utf8');
 const FIXTURES = loadFixtures(join(HERE, '../structure/fixtures'));
@@ -168,7 +170,7 @@ void test('renamed fixture ids still enforce the storage constraint', async () =
   assert.equal(blockedList?.gap, 'ACCESS_ANCHOR');
   assert.equal(blockedOwn?.gap, 'APPLICABILITY_UNDECLARED');
 
-  const dir = join(ROOT, `.m1-06-rename-${process.pid}`);
+  const dir = mkdtempSync(join(tmpdir(), 'm1-06-rename-'));
   const usecaseFile = join(dir, 'createVisita.ts');
   const portFile = join(dir, 'visitaRepository.ts');
   mkdirSync(dir, { recursive: true });
@@ -272,8 +274,7 @@ void test('a transition enforces lifecycle and a required payload, and leaves th
   assert.equal(verdicts.get('registrarAtendimento.staleVersion'), 'blocked');
   assert.equal(reported.counts.failed, 0);
 
-  const dir = join(ROOT, `.m1-06-transition-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), 'm1-06-transition-'));
   const portFile = join(dir, 'consultaRepository.ts');
   const attendFile = join(dir, 'registrarAtendimento.ts');
   const confirmFile = join(dir, 'confirmarConsulta.ts');
@@ -434,8 +435,7 @@ void test('a transition enforces from/to and payload without picking one lifecyc
   assert.equal(renamedSource.includes('ruleAlpha'), false);
   assert.equal(renamedSource.includes('scheduled'), false);
 
-  const dir = join(ROOT, `.m1-11-transition-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), 'm1-11-transition-'));
   const portFile = join(dir, 'consultaRepository.ts');
   const attendFile = join(dir, 'registrarAtendimento.ts');
   writeFileSync(portFile, sourceOf(port));
@@ -513,8 +513,7 @@ void test('mdm create attaches an existing record and update rejects a stale ver
   assert.equal(openCreate.removed, 1);
   assert.equal(openUpdate.removed, 1);
 
-  const dir = join(ROOT, `.m1-06-mdm-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), 'm1-06-mdm-'));
   const createFile = join(dir, 'createPaciente.ts');
   const updateFile = join(dir, 'updateProfissional.ts');
   const openCreateFile = join(dir, 'createPacienteOpen.ts');
@@ -686,8 +685,7 @@ void test('a resolved scope path filters the list and an injected field does not
   assert.equal('code' in emitted || 'code' in port, false);
   if ('code' in emitted || 'code' in port) return;
   assert.equal(emitted.source.includes('attendanceNote'), false);
-  const dir = join(ROOT, `.m1-10-scope-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), 'm1-10-scope-'));
   writeFileSync(join(dir, 'listConsulta.ts'), emitted.source);
   writeFileSync(join(dir, 'consultaRepository.ts'), port.source);
   const loaded = await import(pathToFileURL(join(dir, 'listConsulta.ts')).href) as {
@@ -712,8 +710,7 @@ void test('a resolved scope path filters the list and an injected field does not
 });
 
 void test('a local table update is derived and proved on a copy of the client defs', async () => {
-  const dir = join(ROOT, `.m1-17-update-${process.pid}`);
-  mkdirSync(dir, { recursive: true });
+  const dir = mkdtempSync(join(tmpdir(), 'm1-17-update-'));
   const client = join(ROOT, `mls-${102047}`);
   const archived = spawnSync('git', ['-C', client, 'archive', '11301dd', '--', 'l1/agendaClinica', 'l2/agendaClinica/web/contracts/consultas.defs.ts', 'l4/agendaClinica/ontology/Consulta.defs.ts', 'l4/agendaClinica/rules.defs.ts'], { maxBuffer: 32 * 1024 * 1024 });
   assert.equal(archived.status, 0, archived.stderr?.toString());
@@ -957,7 +954,8 @@ function sourceOf(outcome: { files: Record<string, string> }): string {
 }
 
 function compile(rows: Array<[string, string]>): string {
-  const dir = join(ROOT, `.m1-06-out-${process.pid}`);
+  sweepRepoRootScratch();
+  const dir = join(ROOT, '.generated', `.m1-06-out-${process.pid}`);
   const config = join(ROOT, `.tsconfig.m1-06-${process.pid}.json`);
   try {
     const files: string[] = [];
@@ -993,6 +991,13 @@ function compile(rows: Array<[string, string]>): string {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(config, { force: true });
+    sweepRepoRootScratch();
+  }
+}
+
+function sweepRepoRootScratch(): void {
+  for (const name of readdirSync(ROOT)) {
+    if (name.startsWith('.m1-')) rmSync(join(ROOT, name), { recursive: true, force: true });
   }
 }
 
