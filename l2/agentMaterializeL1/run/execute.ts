@@ -50,6 +50,7 @@ import {
   type ProfileDecision,
   MaterializeCallError,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
+import { loadRegistrationFiles, reconcileL5Backend, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import {
@@ -152,6 +153,7 @@ export interface MaterializeRunResult {
   wrote: boolean;
   ended: string;
   catalog?: CatalogPrep;
+  registration?: L5ReconcileResult;
 }
 
 export interface CatalogPrep {
@@ -227,13 +229,14 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
   }
   if (catalogPrep) ledger.catalogInputHash = catalogPrep.inputHash;
   if (stage === 'simulate') {
+    const registration = await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
     return finish(request, profile, budget, snapshot, ledger, snapshot.units.map(unit => ({
       defPath: unit.defPath,
       code: unit.action.toUpperCase(),
       detail: unit.reason,
       promoted: false,
       modelCalls: 0,
-    })), [], 0, false, 'SIMULATED', stage, catalogPrep);
+    })), [], 0, false, 'SIMULATED', stage, catalogPrep, registration);
   }
 
   const holder = `${request.project}:${request.moduleName}:${Math.random().toString(16).slice(2)}`;
@@ -289,6 +292,11 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       await persist(host, book, ledger);
     }
     await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath));
+    const registration = await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
+    if (registration.action === 'patch' && registration.nextText !== null) {
+      await host.state.writeOwned(projectJsonRef(request.project), new TextEncoder().encode(registration.nextText));
+      wrote = true;
+    }
     return finish(
       request,
       profile,
@@ -302,6 +310,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       endedName,
       stage,
       catalogPrep,
+      registration,
     );
   } finally {
     if (host.writer) await host.writer.release(request.moduleName, holder);
@@ -969,6 +978,7 @@ function finish(
   ended: string,
   stage: M1EntryStage,
   catalog?: CatalogPrep | null,
+  registration?: L5ReconcileResult | null,
 ): MaterializeRunResult {
   return {
     schemaVersion: M1_RUN_SCHEMA,
@@ -986,7 +996,35 @@ function finish(
     wrote,
     ended,
     catalog: catalog ?? undefined,
+    registration: registration ?? undefined,
   };
+}
+
+function projectJsonRef(project: number): string {
+  return `_${project}_/l5/project.json`;
+}
+
+async function reconcileRegistration(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  snapshot: SimulationSnapshot,
+  allowStructureStub: boolean,
+): Promise<L5ReconcileResult> {
+  const files = await loadRegistrationFiles(request.project, request.moduleName, snapshot.units, ref => host.io.read(ref));
+  const catalogRef = host.catalogRef || null;
+  if (catalogRef && !files.some(file => file.ref === catalogRef)) {
+    files.push({ ref: catalogRef, source: await host.io.read(catalogRef), role: 'output' });
+  }
+  const phase = allowStructureStub ? 'structure' : 'verified';
+  return reconcileL5Backend({
+    project: request.project,
+    moduleName: request.moduleName,
+    allowStructureStub,
+    phase,
+    projectJson: await host.io.read(projectJsonRef(request.project)),
+    files,
+    catalogRef,
+  });
 }
 
 async function prepareCatalog(

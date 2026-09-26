@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-09-24-d1-calls-v1",
+  "kind": "prompt_assembled",
+  "usecaseId": "registrarAtendimento",
+  "planId": "usecases50-worker-registrarAtendimento",
+  "unitAttempts": 0,
+  "invocation": 1
+}

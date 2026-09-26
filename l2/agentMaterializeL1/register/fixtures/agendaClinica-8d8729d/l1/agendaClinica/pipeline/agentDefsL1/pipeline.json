@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "2026-09-21-d1-pipeline-v1",
+  "flowId": "agentDefsL1",
+  "flowVersion": "2026-09-21-d1-flow-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "status": "complete",
+  "command": "run",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:41:48.505Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/pipeline.json"
+      ]
+    },
+    "input20": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:41:48.697Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/input.json"
+      ]
+    },
+    "domain30": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:41:48.883Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/drafts/domain30.json"
+      ]
+    },
+    "persistence40": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:41:49.101Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/drafts/persistence40.json"
+      ]
+    },
+    "usecases50": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:42:07.989Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/drafts/usecases50.json"
+      ]
+    },
+    "controllers60": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:42:08.212Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/drafts/controllers60.json"
+      ]
+    },
+    "support70": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:42:08.421Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/drafts/support70.json"
+      ]
+    },
+    "finalize80": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T19:42:08.644Z",
+      "artifactPaths": [
+        "_102047_/l1/agendaClinica/pipeline/agentDefsL1/report.json"
+      ]
+    }
+  },
+  "updatedAt": "2026-09-25T19:42:08.644Z"
+}

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "support70",
+  "unitId": "support70",
+  "runId": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "draftHash": "sha256:0f61f9c8b9f7e025b6899912c3bddbea2ab54ebf623450066672b2e4df8f9f4f",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/integration/outbound.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/seeds.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/auth/authorityMap.ts",
+    "_102047_/l1/agendaClinica/layer_2_application/scope/accessScope.ts",
+    "l1/agendaClinica/layer_1_external/adapters/integration/outbound.ts",
+    "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.ts",
+    "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.ts",
+    "l1/agendaClinica/layer_1_external/auth/authorityMap.ts",
+    "l1/agendaClinica/layer_2_application/scope/accessScope.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:6862dee20cb30e3bc280dece20848038b9bf45bb781b8de24d4f84c6bd484f62",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/integration/outbound.ts",
+        "l1/agendaClinica/layer_1_external/adapters/integration/outbound.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:dfc5eaf7d5a0d2d7a4f547ed16739728ab9bf9f31f6e85592d25d4b7e5baa3c9",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.ts",
+        "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:3b50d5e89d8f9bdff78a1bae83e44d79a19fea98da2d392a2e30ee0ba5e15eb7",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/seeds.ts",
+        "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:f96d6f947cf12473feed815e01a66541a58b424c0d4f271c73901bf761bb089c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/auth/authorityMap.ts",
+        "l1/agendaClinica/layer_1_external/auth/authorityMap.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/scope/accessScope.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:cb7ae9689277e0d616e5f9b975980559332077cf739620653265d191910001ad",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_2_application/scope/accessScope.ts",
+        "l1/agendaClinica/layer_2_application/scope/accessScope.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

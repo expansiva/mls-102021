@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "controllers60",
+  "unitId": "controllers60",
+  "runId": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "draftHash": "sha256:528ffbb16404f4b206f961cce9c1a079f3fc4b3e163c4bbdc03c0fb0b99208ec",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.ts",
+    "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.ts",
+    "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:f527013d867f58900de207a6a5c977dabf932ee1930947a52c11199e7d614d3a",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:a1580bf026f3be51da5e5eeaa5f607028394d7e6c4d9557ab04c1fba61efe03c",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:ee96b0c5626ce4d3893e0188d98405dab0899f6fb4fc647b572473f4eb9db048",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+        "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

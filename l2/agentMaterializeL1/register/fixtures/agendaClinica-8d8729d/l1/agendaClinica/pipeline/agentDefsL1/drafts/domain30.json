@@ -1,0 +1,1429 @@
+{
+  "schemaVersion": "2026-09-21-d1-domain-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "llmCalls": 0,
+  "ok": true,
+  "entities": [
+    {
+      "entityId": "Consulta",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+      "storageTarget": "moduleDatabase",
+      "emitsLocalPersistence": false,
+      "derivedInitial": "scheduled",
+      "uniqueKeys": [
+        [
+          "profissionalId",
+          "scheduledAt"
+        ]
+      ],
+      "enumerations": [
+        {
+          "path": "status",
+          "values": [
+            "scheduled",
+            "noShow",
+            "attended"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "consultaHorarioProfissionalUnico",
+          "owner": "module",
+          "source": "l4/agendaClinica/rules.defs.ts",
+          "placement": "invariant"
+        },
+        {
+          "ruleId": "consultaSomenteAgendadaPodeRegistrarFalta",
+          "owner": "module",
+          "source": "l4/agendaClinica/rules.defs.ts",
+          "placement": "application"
+        },
+        {
+          "ruleId": "consultaSomenteAgendadaPodeRegistrarAtendimento",
+          "owner": "module",
+          "source": "l4/agendaClinica/rules.defs.ts",
+          "placement": "application"
+        },
+        {
+          "ruleId": "anotacaoObrigatoriaNoAtendimento",
+          "owner": "module",
+          "source": "l4/agendaClinica/rules.defs.ts",
+          "placement": "application"
+        },
+        {
+          "ruleId": "profissionalAtendeSomentePropriaConsulta",
+          "owner": "module",
+          "source": "l4/agendaClinica/rules.defs.ts",
+          "placement": "application"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Consulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Consulta",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "pacienteId",
+              "type": "record",
+              "ref": "Paciente"
+            },
+            {
+              "name": "profissionalId",
+              "type": "record",
+              "ref": "Profissional"
+            },
+            {
+              "name": "scheduledAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "status",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.telephoneConfirmation",
+              "type": "object"
+            },
+            {
+              "name": "details.telephoneConfirmation.confirmedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.attendanceNote",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [
+              {
+                "state": "scheduled",
+                "reachedBy": "actor"
+              },
+              {
+                "state": "noShow",
+                "reachedBy": "actor"
+              },
+              {
+                "state": "attended",
+                "reachedBy": "actor"
+              }
+            ],
+            "transitions": [
+              {
+                "transitionId": "registrarFalta",
+                "from": [
+                  "scheduled"
+                ],
+                "to": "noShow",
+                "by": [
+                  "recepcionista"
+                ],
+                "ruleRefs": [
+                  "consultaSomenteAgendadaPodeRegistrarFalta"
+                ]
+              },
+              {
+                "transitionId": "registrarAtendimento",
+                "from": [
+                  "scheduled"
+                ],
+                "to": "attended",
+                "by": [
+                  "profissional"
+                ],
+                "ruleRefs": [
+                  "consultaSomenteAgendadaPodeRegistrarAtendimento",
+                  "anotacaoObrigatoriaNoAtendimento",
+                  "profissionalAtendeSomentePropriaConsulta"
+                ]
+              }
+            ]
+          },
+          "invariants": [
+            "consultaHorarioProfissionalUnico"
+          ],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+      "storageTarget": "mdm",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "details.identification.subtype",
+          "values": [
+            "ContactChannel"
+          ]
+        },
+        {
+          "path": "details.identification.status",
+          "values": [
+            "Active",
+            "Inactive",
+            "Merged",
+            "Blocked"
+          ]
+        },
+        {
+          "path": "details.contactChannel.contactType",
+          "values": [
+            "Phone"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "rule-foreign-namespace-refused",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-identity-never-in-namespace",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-contact-value-unique-per-type",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-document-shape-validated",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "ContatoPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ContatoPaciente",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.contactChannel",
+              "type": "object"
+            },
+            {
+              "name": "details.contactChannel.contactType",
+              "type": "enum"
+            },
+            {
+              "name": "details.contactChannel.value",
+              "type": "string"
+            },
+            {
+              "name": "details.contactChannel.isVerified",
+              "type": "boolean"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "Paciente",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+      "storageTarget": "mdm",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "details.identification.subtype",
+          "values": [
+            "Person"
+          ]
+        },
+        {
+          "path": "details.identification.docType",
+          "values": [
+            "CPF",
+            "NationalId",
+            "Passport",
+            "Other"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "rule-foreign-namespace-refused",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-document-shape-validated",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-identity-never-in-namespace",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-person-privacy-consent-required-br-eu",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Paciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Paciente",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.docType",
+              "type": "enum"
+            },
+            {
+              "name": "details.identification.docId",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.person.birthDate",
+              "type": "date"
+            },
+            {
+              "name": "details.person.privacyConsent",
+              "type": "object"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      }
+    },
+    {
+      "entityId": "Profissional",
+      "action": "create",
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+      "storageTarget": "mdm",
+      "emitsLocalPersistence": false,
+      "derivedInitial": null,
+      "uniqueKeys": [],
+      "enumerations": [
+        {
+          "path": "details.identification.subtype",
+          "values": [
+            "Person"
+          ]
+        },
+        {
+          "path": "details.identification.status",
+          "values": [
+            "Active",
+            "Inactive",
+            "Merged",
+            "Blocked"
+          ]
+        },
+        {
+          "path": "details.identification.docType",
+          "values": [
+            "CPF",
+            "Passport",
+            "NationalId",
+            "Other"
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "ruleId": "rule-foreign-namespace-refused",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-document-shape-validated",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-identity-never-in-namespace",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        },
+        {
+          "ruleId": "rule-person-privacy-consent-required-br-eu",
+          "owner": "platform",
+          "source": "/_102034_/l4/ontology/mdm.defs.ts",
+          "placement": "platform"
+        }
+      ],
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Profissional",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Profissional",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.docType",
+              "type": "enum"
+            },
+            {
+              "name": "details.identification.docId",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.person.occupation",
+              "type": "string"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      }
+    }
+  ],
+  "valueObjects": [],
+  "problems": [],
+  "normalizations": [
+    {
+      "code": "NESTED_KEPT",
+      "path": "agendaClinica",
+      "detail": "No nested object is the target of a record reference. Nested fields stay on the entity."
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.details.attendanceNote",
+      "detail": "description,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.details.attendanceNote",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.details.telephoneConfirmation.confirmedAt",
+      "detail": "description,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.details.telephoneConfirmation.confirmedAt",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.details.telephoneConfirmation",
+      "detail": "description,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.details.telephoneConfirmation",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.details",
+      "detail": "description,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.details",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.id",
+      "detail": "indexed,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.pacienteId",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.pacienteId",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.profissionalId",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.profissionalId",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.scheduledAt",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.scheduledAt",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.status",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Consulta.record.fields.status",
+      "detail": "Address"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Consulta.record.fields.version",
+      "detail": "required"
+    },
+    {
+      "code": "TRANSITION_KEYS_OMITTED",
+      "path": "Consulta.transitions.0",
+      "detail": "description,payload"
+    },
+    {
+      "code": "TRANSITION_KEYS_OMITTED",
+      "path": "Consulta.transitions.1",
+      "detail": "description,payload"
+    },
+    {
+      "code": "INITIAL_STATE_DERIVED",
+      "path": "Consulta",
+      "detail": "scheduled"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.agendaClinica",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.base",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.contactChannel.contactType",
+      "detail": "description,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.contactChannel.isVerified",
+      "detail": "description,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.contactChannel.value",
+      "detail": "description,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.contactChannel",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.general",
+      "detail": "description,open,owner"
+    },
+    {
+      "code": "OBJECT_LEAF",
+      "path": "ContatoPaciente.record.fields.details.general",
+      "detail": "no nested field map"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.identification.countryCode",
+      "detail": "default,description,indexed,max,maxLength,min,pattern,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.identification.name",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.identification.status",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.identification.subtype",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details.identification",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.details",
+      "detail": "description,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.id",
+      "detail": "description,indexed,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "ContatoPaciente.record.fields.version",
+      "detail": "description,required,writePrecondition"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "ContatoPaciente",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "ROLE_STORAGE_MDM",
+      "path": "ContatoPaciente",
+      "detail": "kind role has no storage target"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.agendaClinica",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.base",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.general",
+      "detail": "description,open,owner"
+    },
+    {
+      "code": "OBJECT_LEAF",
+      "path": "Paciente.record.fields.details.general",
+      "detail": "no nested field map"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification.countryCode",
+      "detail": "default,description,indexed,max,maxLength,min,pattern,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification.docId",
+      "detail": "description,indexed,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification.docType",
+      "detail": "description,indexed,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification.name",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification.subtype",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.identification",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.person.birthDate",
+      "detail": "description,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.person.privacyConsent",
+      "detail": "description,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_OF_NOT_REFERENCE",
+      "path": "Paciente.record.fields.details.person.privacyConsent",
+      "detail": "PrivacyConsent"
+    },
+    {
+      "code": "OBJECT_LEAF",
+      "path": "Paciente.record.fields.details.person.privacyConsent",
+      "detail": "no nested field map"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details.person",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.details",
+      "detail": "description,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.id",
+      "detail": "description,indexed,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Paciente.record.fields.version",
+      "detail": "description,required,writePrecondition"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "Paciente",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "ROLE_STORAGE_MDM",
+      "path": "Paciente",
+      "detail": "kind role has no storage target"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.agendaClinica",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.base",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.general",
+      "detail": "description,open,owner"
+    },
+    {
+      "code": "OBJECT_LEAF",
+      "path": "Profissional.record.fields.details.general",
+      "detail": "no nested field map"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.countryCode",
+      "detail": "default,description,indexed,max,maxLength,min,pattern,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.docId",
+      "detail": "description,indexed,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.docType",
+      "detail": "description,indexed,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.name",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.status",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification.subtype",
+      "detail": "description,indexed,max,maxLength,min,required,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.identification",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.person.occupation",
+      "detail": "description,max,maxLength,min,title"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details.person",
+      "detail": "description,owner"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.details",
+      "detail": "description,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.id",
+      "detail": "description,indexed,required"
+    },
+    {
+      "code": "FIELD_KEYS_OMITTED",
+      "path": "Profissional.record.fields.version",
+      "detail": "description,required,writePrecondition"
+    },
+    {
+      "code": "NO_LIFECYCLE",
+      "path": "Profissional",
+      "detail": "no lifecycleStates and no transitions"
+    },
+    {
+      "code": "ROLE_STORAGE_MDM",
+      "path": "Profissional",
+      "detail": "kind role has no storage target"
+    }
+  ],
+  "preserved": [],
+  "removed": [],
+  "emit": [
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Consulta",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts"
+        ],
+        "data": {
+          "entityId": "Consulta",
+          "storageTarget": "moduleDatabase",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "pacienteId",
+              "type": "record",
+              "ref": "Paciente"
+            },
+            {
+              "name": "profissionalId",
+              "type": "record",
+              "ref": "Profissional"
+            },
+            {
+              "name": "scheduledAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "status",
+              "type": "enum"
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.telephoneConfirmation",
+              "type": "object"
+            },
+            {
+              "name": "details.telephoneConfirmation.confirmedAt",
+              "type": "timestamp"
+            },
+            {
+              "name": "details.attendanceNote",
+              "type": "text"
+            }
+          ],
+          "lifecycle": {
+            "states": [
+              {
+                "state": "scheduled",
+                "reachedBy": "actor"
+              },
+              {
+                "state": "noShow",
+                "reachedBy": "actor"
+              },
+              {
+                "state": "attended",
+                "reachedBy": "actor"
+              }
+            ],
+            "transitions": [
+              {
+                "transitionId": "registrarFalta",
+                "from": [
+                  "scheduled"
+                ],
+                "to": "noShow",
+                "by": [
+                  "recepcionista"
+                ],
+                "ruleRefs": [
+                  "consultaSomenteAgendadaPodeRegistrarFalta"
+                ]
+              },
+              {
+                "transitionId": "registrarAtendimento",
+                "from": [
+                  "scheduled"
+                ],
+                "to": "attended",
+                "by": [
+                  "profissional"
+                ],
+                "ruleRefs": [
+                  "consultaSomenteAgendadaPodeRegistrarAtendimento",
+                  "anotacaoObrigatoriaNoAtendimento",
+                  "profissionalAtendeSomentePropriaConsulta"
+                ]
+              }
+            ]
+          },
+          "invariants": [
+            "consultaHorarioProfissionalUnico"
+          ],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/domainEntity/Consulta",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+            "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts"
+          ],
+          "dependsOn": [
+            "102047/agendaClinica/domainEntity/Paciente",
+            "102047/agendaClinica/domainEntity/Profissional"
+          ],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "ContatoPaciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "ContatoPaciente",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.contactChannel",
+              "type": "object"
+            },
+            {
+              "name": "details.contactChannel.contactType",
+              "type": "enum"
+            },
+            {
+              "name": "details.contactChannel.value",
+              "type": "string"
+            },
+            {
+              "name": "details.contactChannel.isVerified",
+              "type": "boolean"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/domainEntity/ContatoPaciente",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Paciente",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Paciente",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.docType",
+              "type": "enum"
+            },
+            {
+              "name": "details.identification.docId",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.person.birthDate",
+              "type": "date"
+            },
+            {
+              "name": "details.person.privacyConsent",
+              "type": "object"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/domainEntity/Paciente",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    },
+    {
+      "definition": {
+        "schemaVersion": "2026-09-24-d1-definition-v2",
+        "artifactType": "domainEntity",
+        "artifactId": "Profissional",
+        "moduleName": "agendaClinica",
+        "status": "pending",
+        "dependencies": [],
+        "data": {
+          "entityId": "Profissional",
+          "storageTarget": "mdm",
+          "fields": [
+            {
+              "name": "id",
+              "type": "uuid",
+              "derived": true
+            },
+            {
+              "name": "version",
+              "type": "integer",
+              "derived": true
+            },
+            {
+              "name": "details",
+              "type": "object"
+            },
+            {
+              "name": "details.identification",
+              "type": "object"
+            },
+            {
+              "name": "details.identification.subtype",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.name",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.status",
+              "type": "enum",
+              "derived": true
+            },
+            {
+              "name": "details.identification.docType",
+              "type": "enum"
+            },
+            {
+              "name": "details.identification.docId",
+              "type": "string"
+            },
+            {
+              "name": "details.identification.countryCode",
+              "type": "string"
+            },
+            {
+              "name": "details.base",
+              "type": "object"
+            },
+            {
+              "name": "details.person",
+              "type": "object"
+            },
+            {
+              "name": "details.person.occupation",
+              "type": "string"
+            },
+            {
+              "name": "details.general",
+              "type": "object"
+            },
+            {
+              "name": "details.agendaClinica",
+              "type": "object"
+            }
+          ],
+          "lifecycle": {
+            "states": [],
+            "transitions": []
+          },
+          "invariants": [],
+          "imports": []
+        }
+      },
+      "pipeline": [
+        {
+          "id": "102047/agendaClinica/domainEntity/Profissional",
+          "type": "domainEntity",
+          "defPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+          "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+          "outputAvailability": "future",
+          "dependsFiles": [],
+          "dependsOn": [],
+          "skills": [
+            "_102021_/l2/agentDefsL1/skills/architecture.md",
+            "_102021_/l2/agentDefsL1/skills/domainEntity.md"
+          ]
+        }
+      ]
+    }
+  ]
+}

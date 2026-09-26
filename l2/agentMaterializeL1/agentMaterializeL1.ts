@@ -76,7 +76,7 @@ async function afterPromptStep(
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'agentMaterializeL1 finished this step without a model call.')];
 }
 
-function summarize(result: { moduleName: string; project: number; stage: string; ended: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }>; catalog?: { action: string; ref: string; inputHash: string; detail: string; gaps: Array<{ artifactId: string; origin: string; reason: string }> } }): string {
+function summarize(result: { moduleName: string; project: number; stage: string; ended: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }>; catalog?: { action: string; ref: string; inputHash: string; detail: string; gaps: Array<{ artifactId: string; origin: string; reason: string }> }; registration?: { action: string; detail: string; pendings: Array<{ origin: string; reason: string }> } }): string {
   const lines = [
     `agentMaterializeL1 ${result.moduleName} in project ${result.project}.`,
     `Stage ${result.stage}. ${result.ended}.`,
@@ -88,6 +88,11 @@ function summarize(result: { moduleName: string; project: number; stage: string;
     lines.push(`catalogHash: ${result.catalog.inputHash}`);
     lines.push(result.catalog.detail);
     for (const gap of result.catalog.gaps) lines.push(`gap: ${gap.artifactId} ${gap.origin} ${gap.reason}`);
+  }
+  if (result.registration) {
+    lines.push(`registration: ${result.registration.action}`);
+    if (result.registration.detail) lines.push(result.registration.detail);
+    for (const item of result.registration.pendings) lines.push(`registrationPending: ${item.reason} ${item.origin}`);
   }
   return lines.join('\n');
 }

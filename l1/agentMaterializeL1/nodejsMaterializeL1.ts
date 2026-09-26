@@ -78,6 +78,11 @@ export function renderResult(result: MaterializeRunResult): string {
     lines.push(`catalogDetail: ${result.catalog.detail}`);
     for (const gap of result.catalog.gaps) lines.push(`gap: ${gap.artifactId} ${gap.origin} ${gap.reason}`);
   }
+  if (result.registration) {
+    lines.push(`registration: ${result.registration.action}`);
+    if (result.registration.detail) lines.push(result.registration.detail);
+    for (const item of result.registration.pendings) lines.push(`registrationPending: ${item.reason} ${item.origin}`);
+  }
   return lines.join('\n');
 }
 

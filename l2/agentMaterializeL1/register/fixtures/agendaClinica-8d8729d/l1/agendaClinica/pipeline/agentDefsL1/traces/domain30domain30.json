@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "2026-09-22-d1-progress-v1",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "step": "domain30",
+  "unitId": "domain30",
+  "runId": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce",
+  "draftHash": "sha256:54e1b70028b24c6c34a566e87430409f3f3c42a592b885f5688ee6eb03cb0982",
+  "transaction": false,
+  "finalized": true,
+  "invalidated": false,
+  "reported": [
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+    "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+    "l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+    "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+    "l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+    "l1/agendaClinica/layer_3_domain/entities/profissional.ts"
+  ],
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:ab6d07a908e24ce161b976933483821e6d525df780715cd73f574d6a4d26a482",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+        "l1/agendaClinica/layer_3_domain/entities/consulta.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:10586140d76b6e772316d9663622e37e4fa221822ad7b21f282a8f99f02fe05a",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+        "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:29e3e712bc7819f6a1d38fd3a16a2134ad4c0fd806a171c7e179da5255195e70",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+        "l1/agendaClinica/layer_3_domain/entities/paciente.ts"
+      ]
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+      "action": "write",
+      "previousHash": "",
+      "desiredHash": "sha256:b8d692f183fec37937d54cee01b6d689e103820f5e1bd96ff6fb14369d55d013",
+      "status": "done",
+      "outputTs": [
+        "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+        "l1/agendaClinica/layer_3_domain/entities/profissional.ts"
+      ]
+    }
+  ],
+  "issues": []
+}

@@ -1,0 +1,1389 @@
+{
+  "schemaVersion": "2026-09-24-d1-report-v3",
+  "project": 102047,
+  "moduleName": "agendaClinica",
+  "calls": {
+    "finalizeCalledModel": false,
+    "finalizeOpenedRepair": false,
+    "repliesDelivered": 8,
+    "repliesUnknown": "",
+    "promptsAssembled": 8,
+    "repairsScheduled": 0,
+    "invocationReplies": 8,
+    "invocationUnknown": ""
+  },
+  "executableBackend": false,
+  "inventoryNote": "Inventory recognition is not certification of an executable backend.",
+  "defsStatus": "complete",
+  "materialization": "pending",
+  "outcome": "complete",
+  "blocking": "",
+  "phases": [
+    {
+      "stepId": "entry10",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "input20",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "domain30",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "persistence40",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "usecases50",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "controllers60",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "support70",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    },
+    {
+      "stepId": "finalize80",
+      "executed": true,
+      "status": "approved",
+      "error": ""
+    }
+  ],
+  "findings": [
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum ContatoPaciente details.contactChannel.contactType names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "ContatoPaciente details.contactChannel.contactType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum ContatoPaciente details.identification.status names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "ContatoPaciente details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum ContatoPaciente details.identification.subtype names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "ContatoPaciente details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum Paciente details.identification.docType names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "Paciente details.identification.docType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum Paciente details.identification.subtype names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "Paciente details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum Profissional details.identification.docType names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "Profissional details.identification.docType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum Profissional details.identification.status names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "Profissional details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATION_SOURCE_ABSENT",
+      "path": "/_102034_/l4/ontology/mdm.defs.ts",
+      "message": "Enum Profissional details.identification.subtype names catalog /_102034_/l4/ontology/mdm.defs.ts, and that snapshot was not opened. It was not treated as platform.",
+      "ownerRef": "Profissional details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "status",
+      "message": "Consumed by the seed plan: Consulta status. Values were not copied into rows.",
+      "ownerRef": "Consulta status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "details.identification.docType",
+      "message": "Covered use of Paciente details.identification.docType: routeContract agendaClinica.consultas.qryListPaciente, routeContract agendaClinica.pacientes.cmdCreatePaciente, routeContract agendaClinica.pacientes.qryListPaciente, usecaseDef createPaciente#input, usecaseDef createPaciente#output, usecaseDef listPaciente#input, usecaseDef listPaciente#output. A type union is not runtime enforcement.",
+      "ownerRef": "Paciente details.identification.docType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "details.identification.subtype",
+      "message": "Covered use of Paciente details.identification.subtype: routeContract agendaClinica.consultas.qryListPaciente, routeContract agendaClinica.pacientes.cmdCreatePaciente, routeContract agendaClinica.pacientes.qryListPaciente, usecaseDef createPaciente#output, usecaseDef listPaciente#input, usecaseDef listPaciente#output. A type union is not runtime enforcement.",
+      "ownerRef": "Paciente details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "details.identification.docType",
+      "message": "Covered use of Profissional details.identification.docType: routeContract agendaClinica.consultas.qryListProfissional, usecaseDef listProfissional#input, usecaseDef listProfissional#output. A type union is not runtime enforcement.",
+      "ownerRef": "Profissional details.identification.docType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "details.identification.status",
+      "message": "Covered use of Profissional details.identification.status: routeContract agendaClinica.consultas.qryListProfissional, usecaseDef listProfissional#input, usecaseDef listProfissional#output. A type union is not runtime enforcement.",
+      "ownerRef": "Profissional details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_CONSUMED",
+      "path": "details.identification.subtype",
+      "message": "Covered use of Profissional details.identification.subtype: routeContract agendaClinica.consultas.qryListProfissional, usecaseDef listProfissional#input, usecaseDef listProfissional#output. A type union is not runtime enforcement.",
+      "ownerRef": "Profissional details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.contactChannel.contactType",
+      "message": "No consumer: ContatoPaciente details.contactChannel.contactType. Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "ContatoPaciente details.contactChannel.contactType"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.identification.status",
+      "message": "No consumer: ContatoPaciente details.identification.status. Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "ContatoPaciente details.identification.status"
+    },
+    {
+      "severity": "review",
+      "code": "ENUMERATIONS_NOT_CONSUMED",
+      "path": "details.identification.subtype",
+      "message": "No consumer: ContatoPaciente details.identification.subtype. Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.",
+      "ownerRef": "ContatoPaciente details.identification.subtype"
+    },
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "l4/agendaClinica/integration.defs.ts",
+      "message": "Outbound registrarAtendimento is preserved. No runtime mechanism is named on the integration artifact.",
+      "ownerRef": "registrarAtendimento"
+    },
+    {
+      "severity": "review",
+      "code": "INTEGRATION_UNBOUND",
+      "path": "l4/agendaClinica/integration.defs.ts",
+      "message": "Outbound registrarFalta is preserved. No runtime mechanism is named on the integration artifact.",
+      "ownerRef": "registrarFalta"
+    }
+  ],
+  "declaredNotConsumedBy": [
+    "persistence40",
+    "usecases50",
+    "controllers60",
+    "support70"
+  ],
+  "enumerations": {
+    "consumed": [
+      {
+        "entityId": "Consulta",
+        "path": "status",
+        "values": [
+          "scheduled",
+          "noShow",
+          "attended"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "module",
+          "writer": "module",
+          "derived": false,
+          "restriction": "own",
+          "catalogValues": [],
+          "catalogSource": "",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.agenda.cmdRegistrarAtendimento",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.agenda.qryListConsulta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.cmdCreateConsulta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.cmdRegistrarFalta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.cmdUpdateConsulta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListConsulta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "seedScenario",
+            "consumer": "agendarConsulta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "seedScenario",
+            "consumer": "registrarAtendimento",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "seedScenario",
+            "consumer": "registrarFalta",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "noShow"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "createConsulta#input",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "createConsulta#output",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listConsulta#input",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listConsulta#output",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "registrarAtendimento#output",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "registrarFalta#output",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "updateConsulta#input",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "updateConsulta#output",
+            "entityId": "Consulta",
+            "path": "status",
+            "values": [
+              "scheduled",
+              "noShow",
+              "attended"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Paciente",
+        "path": "details.identification.docType",
+        "values": [
+          "CPF",
+          "NationalId",
+          "Passport",
+          "Other"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListPaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.pacientes.cmdCreatePaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.pacientes.qryListPaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "createPaciente#input",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "createPaciente#output",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listPaciente#input",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listPaciente#output",
+            "entityId": "Paciente",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "NationalId",
+              "Passport",
+              "Other"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Paciente",
+        "path": "details.identification.subtype",
+        "values": [
+          "Person"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListPaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.pacientes.cmdCreatePaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.pacientes.qryListPaciente",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "createPaciente#output",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": false
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listPaciente#input",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listPaciente#output",
+            "entityId": "Paciente",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Profissional",
+        "path": "details.identification.docType",
+        "values": [
+          "CPF",
+          "Passport",
+          "NationalId",
+          "Other"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListProfissional",
+            "entityId": "Profissional",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "Passport",
+              "NationalId",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#input",
+            "entityId": "Profissional",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "Passport",
+              "NationalId",
+              "Other"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#output",
+            "entityId": "Profissional",
+            "path": "details.identification.docType",
+            "values": [
+              "CPF",
+              "Passport",
+              "NationalId",
+              "Other"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Profissional",
+        "path": "details.identification.status",
+        "values": [
+          "Active",
+          "Inactive",
+          "Merged",
+          "Blocked"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListProfissional",
+            "entityId": "Profissional",
+            "path": "details.identification.status",
+            "values": [
+              "Active",
+              "Inactive",
+              "Merged",
+              "Blocked"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#input",
+            "entityId": "Profissional",
+            "path": "details.identification.status",
+            "values": [
+              "Active",
+              "Inactive",
+              "Merged",
+              "Blocked"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#output",
+            "entityId": "Profissional",
+            "path": "details.identification.status",
+            "values": [
+              "Active",
+              "Inactive",
+              "Merged",
+              "Blocked"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "Profissional",
+        "path": "details.identification.subtype",
+        "values": [
+          "Person"
+        ],
+        "consumed": true,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [
+          {
+            "purpose": "routeContract",
+            "consumer": "agendaClinica.consultas.qryListProfissional",
+            "entityId": "Profissional",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#input",
+            "entityId": "Profissional",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": true
+          },
+          {
+            "purpose": "usecaseDef",
+            "consumer": "listProfissional#output",
+            "entityId": "Profissional",
+            "path": "details.identification.subtype",
+            "values": [
+              "Person"
+            ],
+            "editable": false
+          }
+        ],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      }
+    ],
+    "notConsumed": [
+      {
+        "entityId": "ContatoPaciente",
+        "path": "details.contactChannel.contactType",
+        "values": [
+          "Phone"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "ContatoPaciente",
+        "path": "details.identification.status",
+        "values": [
+          "Active",
+          "Inactive",
+          "Merged",
+          "Blocked"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      },
+      {
+        "entityId": "ContatoPaciente",
+        "path": "details.identification.subtype",
+        "values": [
+          "ContactChannel"
+        ],
+        "consumed": false,
+        "origin": {
+          "owner": "unresolved",
+          "writer": "unresolved",
+          "derived": false,
+          "restriction": "unresolved",
+          "catalogValues": [],
+          "catalogSource": "/_102034_/l4/ontology/mdm.defs.ts",
+          "roleBinding": false
+        },
+        "uses": [],
+        "limits": "Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here."
+      }
+    ]
+  },
+  "files": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agendaClinica.agenda.cmdRegistrarAtendimento",
+        "endpoint:agendaClinica.agenda.qryListConsulta"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agendaClinica.consultas.cmdCreateConsulta",
+        "endpoint:agendaClinica.consultas.cmdRegistrarFalta",
+        "endpoint:agendaClinica.consultas.cmdUpdateConsulta",
+        "endpoint:agendaClinica.consultas.qryListConsulta",
+        "endpoint:agendaClinica.consultas.qryListPaciente",
+        "endpoint:agendaClinica.consultas.qryListProfissional"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "endpoint:agendaClinica.pacientes.cmdCreatePaciente",
+        "endpoint:agendaClinica.pacientes.qryListPaciente"
+      ],
+      "sourceHash": "",
+      "phase": "controllers60"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "event:registrarFalta",
+        "event:registrarAtendimento"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:consulta"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ConsultaRepository",
+        "table:consulta"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "adapter:ConsultaRepository"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "table:consulta"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/auth/authorityMap.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:profissionalAgendaPropria",
+        "grant:profissionalPacientesDaAgenda",
+        "grant:recepcionistaGestaoAgenda"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "port:ConsultaRepository"
+      ],
+      "sourceHash": "",
+      "phase": "persistence40"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/scope/accessScope.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "grant:profissionalAgendaPropria",
+        "grant:profissionalPacientesDaAgenda",
+        "grant:recepcionistaGestaoAgenda"
+      ],
+      "sourceHash": "",
+      "phase": "support70"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createConsulta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createConsulta",
+        "endpoint:agendaClinica.consultas.cmdCreateConsulta"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createPaciente.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createPaciente",
+        "endpoint:agendaClinica.pacientes.cmdCreatePaciente"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listConsulta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listConsulta",
+        "endpoint:agendaClinica.agenda.qryListConsulta",
+        "endpoint:agendaClinica.consultas.qryListConsulta"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listPaciente.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listPaciente",
+        "endpoint:agendaClinica.consultas.qryListPaciente",
+        "endpoint:agendaClinica.pacientes.qryListPaciente"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listProfissional.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listProfissional",
+        "endpoint:agendaClinica.consultas.qryListProfissional"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:registrarAtendimento",
+        "endpoint:agendaClinica.agenda.cmdRegistrarAtendimento"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarFalta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:registrarFalta",
+        "endpoint:agendaClinica.consultas.cmdRegistrarFalta"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:updateConsulta",
+        "endpoint:agendaClinica.consultas.cmdUpdateConsulta"
+      ],
+      "sourceHash": "",
+      "phase": "usecases50"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createConsulta",
+        "usecase:listConsulta",
+        "usecase:registrarAtendimento",
+        "usecase:registrarFalta",
+        "usecase:updateConsulta"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "relationship:pacienteHasContact",
+        "usecase:createPaciente",
+        "usecase:listPaciente"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:createPaciente",
+        "usecase:listPaciente"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+      "action": "generated",
+      "ownerRefs": [
+        "usecase:listProfissional"
+      ],
+      "sourceHash": "",
+      "phase": "domain30"
+    }
+  ],
+  "sources": [
+    {
+      "path": "l1/agendaClinica/pipeline/pipeline.json",
+      "sha256": "sha256:05603d793fab85802d7a60f9f2f6652adc9bff1bc13bb16f0724cde139db7613",
+      "state": "present"
+    },
+    {
+      "path": "l2/agendaClinica/web/contracts/agenda.defs.ts",
+      "sha256": "sha256:35278ef9c4f9f9cc88f99c4a35178dcc0d89e849f7d7f1b226b3069b03631ae9",
+      "state": "present"
+    },
+    {
+      "path": "l2/agendaClinica/web/contracts/consultas.defs.ts",
+      "sha256": "sha256:a9d335bdb8b3b5ad429ad4f5b6e49946f5bf2d51d4443300bd2cbf46c9b8a039",
+      "state": "present"
+    },
+    {
+      "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+      "sha256": "sha256:a4654022e98fa98cddce2f142359a8517de80e4cfe62f792eb19fc112c09c0b3",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/access.defs.ts",
+      "sha256": "sha256:22288ce4e7d7522f28879cad28e2582697aebe9124a685a7fc172db1a6e4e65b",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/integration.defs.ts",
+      "sha256": "sha256:0713a7834d4dcb094f5ed6e01b48ce3eaa6e11348705bc9024c548af3a900963",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/agendarConsulta.defs.ts",
+      "sha256": "sha256:863076673e14c7e7790a944533d03b821034d2c214a392837b2add780e50e190",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/cadastrarPaciente.defs.ts",
+      "sha256": "sha256:6952b5227af6f7984027673984e6307efb220177d6d652f021335af9db186c74",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/confirmarConsultaPorTelefone.defs.ts",
+      "sha256": "sha256:05e19ede666cffec8343b31911cce2d9f9699af65d16921b26c49921f63d52a0",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/consultarAgendaDiaria.defs.ts",
+      "sha256": "sha256:381b2e5fa7b523612761475c4d678055dc8b940e7dcc1c002a5e95adf4dcd1bc",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/index.defs.ts",
+      "sha256": "sha256:091aa47aa2ec45a7258034790de79eabad34ed486d2196749dce9203fabebee8",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/registrarAtendimento.defs.ts",
+      "sha256": "sha256:fcbc6b210647998d90292fa71d7b83fcbfa95eca0af10dc75b79ee82df1f8407",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/journeys/registrarFalta.defs.ts",
+      "sha256": "sha256:044eda5040f80a5f833f7ac1527e698e33cd9f35967ee880370deafe0f841c71",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/module.defs.ts",
+      "sha256": "sha256:3d694b9c52c2facf3f96289dca686a97efc52948c30fbf90e6d41774897d626d",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/Consulta.defs.ts",
+      "sha256": "sha256:d288780083aeb12e484740db46702ac341de938194d3380533c93b28200c9552",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/ContatoPaciente.defs.ts",
+      "sha256": "sha256:a5b787818373deaffdc9cc4944646dea78abc004c95f189602eeb6edbd1df3cb",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/index.defs.ts",
+      "sha256": "sha256:b987481d3092e30d0aced4f51c1b4aca7cdb71d1390ac91409dff4948e755256",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/Paciente.defs.ts",
+      "sha256": "sha256:4f63b16a12262913c0f54fdec0bed255de36d8db3e11cf2708c5dcbe6748b2bd",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/Profissional.defs.ts",
+      "sha256": "sha256:38b591caa01dec68d410202198270cb41fcee4314477fac8c5b1bc07b46d5f32",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/ontology/Recepcionista.defs.ts",
+      "sha256": "sha256:57f64752d9a9f134c2ef29704ca86219d9ff2ab128e045a7fb4d31f6435f7cb1",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/pool/l1/web/needs.json",
+      "sha256": "sha256:d4628ab1a779f77abead481a10a4db8abb887431b4e7ca7f02988b806076e953",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/pool/l2/web/backend.json",
+      "sha256": "sha256:2e8a2e06054695e395820150f9db473781adf2d0c51074c75f3685117f70850e",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/pool/l2/web/effort.json",
+      "sha256": "sha256:49a502020a2b424f5fe3d7e3bab5f7ee2b5fccece043f10a20aa8e9ac7d861c6",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/pool/l2/web/menu.json",
+      "sha256": "sha256:37505c4b5c385a8107f0cccbfdf99684c01866460c3c4e1d51829a0984a650d5",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/rules.defs.ts",
+      "sha256": "sha256:b5516ac3568e374c7215a3424c381be7ba7485cde1c3d25d611ace61ecffdafe",
+      "state": "present"
+    },
+    {
+      "path": "l4/agendaClinica/workflows.defs.ts",
+      "sha256": "sha256:dc6d3aaa4211be272abdbb8302e64dcaa9236df78e1ff82f99b8ea779af66964",
+      "state": "present"
+    }
+  ],
+  "materializationPending": [
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/agenda.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/pacientes.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/integration/outbound.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/integration/outbound.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/registerRepositories.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/adapters/persistence/seeds.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/seeds.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_1_external/auth/authorityMap.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_1_external/auth/authorityMap.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/scope/accessScope.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/scope/accessScope.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createConsulta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/createPaciente.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/createPaciente.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listConsulta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listPaciente.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listPaciente.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/listProfissional.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/listProfissional.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/registrarFalta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarFalta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_2_application/usecases/updateConsulta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/paciente.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/paciente.ts",
+      "present": false
+    },
+    {
+      "defPath": "l1/agendaClinica/layer_3_domain/entities/profissional.defs.ts",
+      "outputPath": "_102047_/l1/agendaClinica/layer_3_domain/entities/profissional.ts",
+      "present": false
+    }
+  ],
+  "coverage": {
+    "checked": true,
+    "gaps": []
+  },
+  "inventory": {
+    "usecaseIds": [
+      "createConsulta",
+      "createPaciente",
+      "listConsulta",
+      "listPaciente",
+      "listProfissional",
+      "registrarAtendimento",
+      "registrarFalta",
+      "updateConsulta"
+    ],
+    "routes": [
+      "agendaClinica.agenda.cmdRegistrarAtendimento",
+      "agendaClinica.agenda.qryListConsulta",
+      "agendaClinica.consultas.cmdCreateConsulta",
+      "agendaClinica.consultas.cmdRegistrarFalta",
+      "agendaClinica.consultas.cmdUpdateConsulta",
+      "agendaClinica.consultas.qryListConsulta",
+      "agendaClinica.consultas.qryListPaciente",
+      "agendaClinica.consultas.qryListProfissional",
+      "agendaClinica.pacientes.cmdCreatePaciente",
+      "agendaClinica.pacientes.qryListPaciente"
+    ],
+    "portIds": [
+      "ConsultaRepository"
+    ],
+    "tableIds": [
+      "consulta"
+    ]
+  },
+  "snapshotHash": "sha256:938f7639209588ba12121336dd7e10f681369d87ee65b9127f311a9d5be32dce"
+}
