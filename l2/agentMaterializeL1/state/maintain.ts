@@ -59,6 +59,10 @@ export interface OwnedManifest {
   schemaVersion: typeof M1_OWNED_SCHEMA;
   moduleName: string;
   units: OwnedEntry[];
+  /** Catalog path M1 last wrote. Absent on manifests from before that record existed. */
+  catalogRef?: string;
+  /** Canonical hash of that catalog. A different file is a hand edit, not a stale ledger. */
+  catalogHash?: string;
 }
 
 export interface WriterRecord {
@@ -84,6 +88,10 @@ export interface MaintenanceInput {
   unresolved: readonly string[];
   testPath: string;
   testHash: string | null;
+  /** Hash of the catalog recorded on the previous M1 run. Null when there is no receipt. */
+  recordedCatalogHash?: string | null;
+  /** Hash of the catalog derived for this run. Null when the run has no catalog. */
+  catalogHash?: string | null;
   verifyOnly: boolean;
 }
 
@@ -150,6 +158,12 @@ export async function decideMaintenance(input: MaintenanceInput): Promise<Mainte
   const recorded = receipt && input.outputPath ? receipt.outputHashes[input.outputPath] : undefined;
   const hasRecord = typeof recorded === 'string' && recorded.length > 0;
   const outputDrift = input.outputPresent && hasRecord && input.outputHash !== recorded;
+  if (status === 'failed' && receipt && failureNeedsReverify(receipt, input.testPath, input.testHash, input.recordedCatalogHash ?? null, input.catalogHash ?? null)) {
+    if (input.stage === 'implement' && receipt.stage === 'compile' && receipt.reason === 'scaffold') {
+      return { action: 'generate', reason: 'GENERATE: catalog or test changed; the output is still a structure scaffold.' };
+    }
+    return { action: 'verify', reason: 'VERIFY: catalog or test changed; the failed attempt is checked again.' };
+  }
   if (status === 'failed' && receipt && !releasedFailure(input, receipt)) {
     const detail = receipt.failures.map(item => item.code).join(', ') || 'definition status is failed.';
     return { action: 'blocked', reason: `STATUS_FAILED: ${detail}` };
@@ -263,6 +277,25 @@ function releasedFailure(input: MaintenanceInput, receipt: MaterializationReceip
   return staleFailureRecipe(input, receipt);
 }
 
+/**
+ * A failed receipt is checked again when the catalog or the test hash moved.
+ * The same catalog and the same test stay failed. This does not clear another unit's budget.
+ */
+export function failureNeedsReverify(
+  receipt: MaterializationReceipt,
+  testPath: string,
+  testHash: string | null,
+  recordedCatalogHash: string | null,
+  catalogHash: string | null,
+): boolean {
+  if (receipt.failures.length === 0) return false;
+  if (testPath && testHash) {
+    const recorded = receipt.sourceHashes[testPath];
+    if (typeof recorded === 'string' && recorded.length > 0 && recorded !== testHash) return true;
+  }
+  return !!recordedCatalogHash && !!catalogHash && recordedCatalogHash !== catalogHash;
+}
+
 /** A failed or model-unavailable receipt of an older handler recipe is pending again. The same recipe stays failed. */
 function staleFailureRecipe(input: MaintenanceInput, receipt: MaterializationReceipt): boolean {
   if (input.recipeVersion === null || receipt.recipeVersion === input.recipeVersion) return false;
@@ -296,6 +329,8 @@ export function parseOwnedManifest(text: string, moduleName: string): OwnedManif
   try {
     const parsed = JSON.parse(text) as OwnedManifest;
     if (parsed.schemaVersion !== M1_OWNED_SCHEMA || parsed.moduleName !== moduleName || !Array.isArray(parsed.units)) return null;
+    if (parsed.catalogHash !== undefined && typeof parsed.catalogHash !== 'string') return null;
+    if (parsed.catalogRef !== undefined && typeof parsed.catalogRef !== 'string') return null;
     return parsed;
   } catch {
     return null;

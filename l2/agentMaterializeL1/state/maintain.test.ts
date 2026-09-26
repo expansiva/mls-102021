@@ -133,6 +133,45 @@ void test('a resolved block is released and a failed resume is not', async () =>
   failed.recipeVersion = M1_RECIPE_VERSION;
   const retry = await decideMaintenance(await input(note('failed'), failed, { recipe: current }));
   assert.equal(retry.action, 'generate');
+
+  const testPath = outputPathFromDefPath(DEF).replace(/\.ts$/, '.test.ts');
+  failed.recipeVersion = current;
+  failed.sourceHashes[testPath] = 'sha256:old-test';
+  const movedTest = await decideMaintenance(await input(note('failed'), failed, { recipe: current, testPath, testHash: 'sha256:new-test' }));
+  assert.equal(movedTest.action, 'verify');
+  const sameTest = await decideMaintenance(await input(note('failed'), failed, { recipe: current, testPath, testHash: 'sha256:old-test' }));
+  assert.equal(sameTest.action, 'blocked');
+  const movedCatalog = await decideMaintenance(await input(note('failed'), failed, {
+    recipe: current,
+    testPath,
+    testHash: 'sha256:old-test',
+    recordedCatalogHash: 'sha256:old-catalog',
+    catalogHash: 'sha256:new-catalog',
+  }));
+  assert.equal(movedCatalog.action, 'verify');
+  const sameCatalog = await decideMaintenance(await input(note('failed'), failed, {
+    recipe: current,
+    testPath,
+    testHash: 'sha256:old-test',
+    recordedCatalogHash: 'sha256:same',
+    catalogHash: 'sha256:same',
+  }));
+  assert.equal(sameCatalog.action, 'blocked');
+
+  const scaffold = await receiptFor(note('failed'));
+  scaffold.stage = 'compile';
+  scaffold.reason = 'scaffold';
+  scaffold.failures = [{ code: 'COMPILE', detail: 'stub' }];
+  const emit = await decideMaintenance(await input(note('failed'), scaffold, {
+    recipe: current,
+    stage: 'implement',
+    testPath,
+    testHash: 'sha256:old-test',
+    recordedCatalogHash: 'sha256:old-catalog',
+    catalogHash: 'sha256:new-catalog',
+  }));
+  assert.equal(emit.action, 'generate');
+  assert.match(emit.reason, /structure scaffold/);
 });
 
 void test('recipe and test changes do not rewrite an unrelated output', async () => {
@@ -184,6 +223,9 @@ async function input(
     recipe?: string | null;
     testPath?: string;
     testHash?: string | null;
+    recordedCatalogHash?: string | null;
+    catalogHash?: string | null;
+    stage?: 'structure' | 'implement';
   } = {},
 ): Promise<MaintenanceInput> {
   return {
@@ -195,11 +237,13 @@ async function input(
     outputPresent: patch.present ?? false,
     outputHash: patch.hash ?? null,
     recipeVersion: patch.recipe === undefined ? M1_RECIPE_VERSION : patch.recipe,
-    stage: 'structure',
+    stage: patch.stage ?? 'structure',
     hasImplementHandler: true,
     unresolved: patch.unresolved ?? [],
     testPath: patch.testPath ?? '',
     testHash: patch.testHash ?? null,
+    recordedCatalogHash: patch.recordedCatalogHash ?? null,
+    catalogHash: patch.catalogHash ?? null,
     verifyOnly: false,
   };
 }

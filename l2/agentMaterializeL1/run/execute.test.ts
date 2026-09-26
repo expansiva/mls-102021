@@ -7,11 +7,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   M1_CEILING,
@@ -33,7 +35,7 @@ import {
   type MaterializeRunRequest,
 } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { invokeModel, shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
-import { recipeForStage } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
+import { M1_OWNED_SCHEMA, ownedManifestRef, recipeForStage, renderOwnedManifest } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
@@ -274,7 +276,7 @@ void test('interruption leaves the finished unit and resume continues the other'
   assert.deepEqual(calls, ['Note']);
   const continued = await runMaterialize(baseRequest([note, slot], { resume: true, stage: null }), host(store, runners, undefined, catalog([note, slot], 'pass')));
   assert.equal(continued.units.find(unit => unit.defPath === note.defPath)?.code, 'REUSE');
-  assert.equal(continued.units.find(unit => unit.defPath === slot.defPath)?.code, 'PROMOTED');
+  assert.equal(continued.units.find(unit => unit.defPath === slot.defPath)?.code, 'PROMOTED', continued.units.map(unit => `${unit.code} ${unit.detail}`).join('\n'));
   assert.deepEqual(calls, ['Note', 'Slot']);
 });
 
@@ -502,6 +504,143 @@ void test('an old failure recipe works again and the same recipe keeps the budge
   assert.equal(nextLedger?.units[other]?.ended, 'PROMOTED');
   assert.ok((nextLedger?.calls ?? 0) >= 3);
   assert.ok((nextLedger?.repairs ?? 0) >= 2);
+});
+
+void test('a catalog that matches the M1 receipt is rewritten; a hand edit is a conflict', async () => {
+  const note = entity('Note');
+  const derived = deriveCatalog(MODULE, [note], {});
+  assert.equal(derived.recipeVersion, M1_CATALOG_RECIPE);
+  const owned = JSON.parse(catalogBytes(derived.catalog)) as M1ScenarioCatalog;
+  owned.scenarios[0].cases[0].expectation = 'previous M1 output';
+  const recorded = await contentHash(catalogBytes(owned));
+  const ref = 'catalog.json';
+  const store = world({ [ref]: renderMonitorCatalog(owned, ref) });
+  const ledger = emptyLedger(PROJECT, MODULE, tightenBudget({ timeoutMs: 2000 }, null), 'structure');
+  ledger.catalogInputHash = recorded;
+  store.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+  const rewritten = await runMaterialize(baseRequest([note], { stage: 'simulate' }), host(store, {}, undefined, store.map.get(ref)));
+  assert.equal(rewritten.catalog?.action, 'simulated');
+  assert.equal(rewritten.catalog?.recipeVersion, M1_CATALOG_RECIPE);
+  assert.equal(store.map.get(ref), renderMonitorCatalog(owned, ref));
+
+  const writing = world({ [ref]: renderMonitorCatalog(owned, ref) });
+  writing.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+  const wrote = await runMaterialize(baseRequest([note], { stage: 'structure' }), host(writing, {
+    'structure.domainEntity': async () => passOutcome(outputPathFromDefPath(note.defPath)),
+  }, undefined, writing.map.get(ref)));
+  assert.equal(wrote.catalog?.action, 'written');
+  const next = parseCatalog(writing.map.get(ref) ?? '');
+  assert.ok(next.catalog);
+  assert.equal(catalogBytes(next.catalog), catalogBytes(derived.catalog));
+
+  const hand = JSON.parse(catalogBytes(derived.catalog)) as M1ScenarioCatalog;
+  hand.scenarios[0].cases[0].expectation = 'hand edit';
+  const handText = renderMonitorCatalog(hand, ref);
+  const conflicted = world({ [ref]: handText });
+  const stale = emptyLedger(PROJECT, MODULE, tightenBudget({ timeoutMs: 2000 }, null), 'structure');
+  stale.catalogInputHash = await contentHash(catalogBytes(derived.catalog));
+  conflicted.map.set(ledgerPath(MODULE), encodeLedger(stale));
+  conflicted.map.set(ownedManifestRef(MODULE), renderOwnedManifest({
+    schemaVersion: M1_OWNED_SCHEMA,
+    moduleName: MODULE,
+    units: [],
+    catalogRef: ref,
+    catalogHash: await contentHash(catalogBytes(derived.catalog)),
+  }));
+  const conflict = await runMaterialize(baseRequest([note], { stage: 'structure' }), host(conflicted, {}, undefined, handText));
+  assert.equal(conflict.catalog?.action, 'conflict');
+  assert.equal(conflicted.map.get(ref), handText);
+});
+
+void test('a misaligned ledger still rewrites an emitted catalog and records the new hash', async () => {
+  const note = entity('Note');
+  const derived = deriveCatalog(MODULE, [note], {});
+  const previous = JSON.parse(catalogBytes(derived.catalog)) as M1ScenarioCatalog;
+  previous.scenarios[0].cases[0].expectation = 'previous M1 output';
+  const ref = 'catalog.json';
+  const text = renderMonitorCatalog(previous, ref);
+  const store = world({ [ref]: text });
+  const ledger = emptyLedger(PROJECT, MODULE, tightenBudget({ timeoutMs: 2000 }, null), 'structure');
+  ledger.catalogInputHash = await contentHash(catalogBytes(derived.catalog));
+  store.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+  store.map.set(ownedManifestRef(MODULE), renderOwnedManifest({
+    schemaVersion: M1_OWNED_SCHEMA,
+    moduleName: MODULE,
+    units: [{ defPath: note.defPath, outputs: [] }],
+  }));
+  const wrote = await runMaterialize(baseRequest([note], { stage: 'structure' }), host(store, {
+    'structure.domainEntity': async () => passOutcome(outputPathFromDefPath(note.defPath)),
+  }, undefined, text));
+  assert.equal(wrote.catalog?.action, 'written');
+  const next = parseCatalog(store.map.get(ref) ?? '');
+  assert.ok(next.catalog);
+  assert.equal(catalogBytes(next.catalog), catalogBytes(derived.catalog));
+  const aligned = parseLedger(store.map.get(ledgerPath(MODULE)) ?? '', PROJECT, MODULE);
+  assert.equal(aligned?.catalogInputHash, await contentHash(catalogBytes(derived.catalog)));
+  const owned = JSON.parse(store.map.get(ownedManifestRef(MODULE)) ?? '{}') as { catalogHash?: string };
+  assert.equal(owned.catalogHash, aligned?.catalogInputHash);
+});
+
+void test('a failed receipt with a new test is checked again and another unit keeps its budget', async () => {
+  const note = entity('Note');
+  const failedNote = { ...note, definition: { ...(note.definition as M1Definition), status: 'failed' as const } };
+  const other = '_102047_/l1/agendaClinica/layer_3_domain/entities/other.defs.ts';
+  const rendered = renderDefinition(failedNote.definition, failedNote.defPath);
+  assert.ok('source' in rendered);
+  const output = outputPathFromDefPath(note.defPath);
+  const testPath = testFileFor(output);
+  const testBody = 'export const probe = 1;\n';
+  const store = world({ [note.defPath]: rendered.source, [testPath]: testBody });
+  const hash = await semanticHash(note.definition as M1Definition);
+  const receipt: MaterializationReceipt = {
+    schemaVersion: M1_RECEIPT_SCHEMA,
+    runId: '102047:agendaClinica',
+    candidateId: '',
+    defPath: note.defPath,
+    artifactType: 'domainEntity',
+    artifactId: 'Note',
+    recipeVersion: recipeForStage('implement'),
+    semanticHash: hash,
+    dependencyHashes: {},
+    sourceHashes: { [note.defPath]: hash, [testPath]: 'sha256:old-test' },
+    outputHashes: {},
+    stage: 'plan',
+    verifications: [],
+    failures: [{ code: 'CHECKPOINT_FAILED', detail: 'red' }],
+    attempts: 1,
+    reason: 'CHECKPOINT_FAILED: red',
+  };
+  const receiptPath = receiptPathFor(note.defPath);
+  assert.ok(receiptPath);
+  store.map.set(receiptPath, JSON.stringify(receipt));
+  const ledger = emptyLedger(PROJECT, MODULE, tightenBudget({ timeoutMs: 2000 }, null), 'implement');
+  ledger.calls = 3;
+  ledger.repairs = 2;
+  ledger.units[note.defPath] = { repairs: 1, calls: 1, signature: 'CHECKPOINT_FAILED', ended: 'CHECKPOINT_FAILED', stage: 'implement' };
+  ledger.units[other] = { repairs: 4, calls: 2, signature: '', ended: 'PROMOTED', stage: 'implement' };
+  store.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+
+  const moved = await runMaterialize(baseRequest([failedNote], { stage: 'implement', resume: true }), host(store, {
+    'implement.domainEntity': async () => passOutcome(output),
+  }));
+  assert.doesNotMatch(moved.units[0].detail, /budget was not reset/);
+  const movedLedger = parseLedger(store.map.get(ledgerPath(MODULE)) ?? '', PROJECT, MODULE);
+  assert.equal(movedLedger?.repairs, 2);
+  assert.equal(movedLedger?.units[other]?.repairs, 4);
+  assert.equal(movedLedger?.units[other]?.ended, 'PROMOTED');
+  assert.match(store.map.get(note.defPath) ?? '', /"status": "pending"/);
+
+  receipt.sourceHashes[testPath] = await contentHash(testBody);
+  store.map.set(receiptPath, JSON.stringify(receipt));
+  store.map.set(note.defPath, rendered.source);
+  store.map.set(ledgerPath(MODULE), encodeLedger(ledger));
+  const same = await runMaterialize(baseRequest([note], { stage: 'implement', resume: true }), host(store, {
+    'implement.domainEntity': async () => passOutcome(output),
+  }));
+  assert.equal(same.units[0].code, 'CHECKPOINT_FAILED');
+  assert.match(same.units[0].detail, /budget was not reset/);
+  const sameLedger = parseLedger(store.map.get(ledgerPath(MODULE)) ?? '', PROJECT, MODULE);
+  assert.equal(sameLedger?.units[other]?.repairs, 4);
 });
 
 void test('help names the studio command and the l2 entry does not import node', () => {

@@ -82,6 +82,8 @@ export interface PlannedUnit {
   unresolved: string[];
   contextRefs: string[];
   blockedBy: string[];
+  /** Action before a dependency block. Restored when that dependency passes in the same run. */
+  heldAction?: M1PlanAction;
 }
 
 export interface MaterializationPlan {
@@ -328,6 +330,7 @@ function propagate(planned: Map<string, PlannedUnit>, incoming: Map<string, Set<
         .filter(path => planned.get(path)?.action === 'blocked')
         .sort();
       if (blockedBy.length === 0) continue;
+      unit.heldAction = unit.action;
       unit.action = 'blocked';
       unit.needsLlm = false;
       unit.blockedBy = blockedBy;

@@ -68,7 +68,7 @@ async function observe(call: HandlerCall, definition: M1Definition): Promise<M1O
     .flatMap(item => item.cases);
   const observations: M1Observation[] = [];
   for (const item of cases) {
-    if (item.routine && !contractRoutes(definition).includes(item.routine)) continue;
+    if (item.gate !== 'compile' && item.routine && !contractRoutes(definition).includes(item.routine)) continue;
     observations.push(await observationFor(call, definition, item));
   }
   return observations;

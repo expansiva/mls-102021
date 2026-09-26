@@ -26,6 +26,7 @@ import { simulate, type SimulationSnapshot, type SimulatedUnit } from '/_102021_
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import {
   canonicalJson,
+  M1_STUB_ERROR,
   parseCatalog,
   renderMonitorCatalog,
   renderNodeTest,
@@ -54,6 +55,7 @@ import { commitL5Registration, loadRegistrationFiles, reconcileL5Backend, type L
 import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import {
+  failureNeedsReverify,
   hashEvidence,
   M1_OWNED_SCHEMA,
   M1_RECIPE_VERSION,
@@ -221,7 +223,11 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     recipeVersion: recipeForStage(planStage),
     removals,
   });
-  const catalogPrep = host.catalogRef ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate') : null;
+  const recordedCatalog = ledger.catalogInputHash ?? null;
+  const catalogPrep = host.catalogRef
+    ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate', recordedCatalog)
+    : null;
+  const currentCatalog = catalogPrep?.inputHash ?? null;
   if (catalogPrep?.action === 'invalid') {
     return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'CATALOG_INVALID', stage, catalogPrep);
   }
@@ -275,6 +281,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
         if (!unit) return;
         const outcome = await runUnit(
           request, host, stage, profile, budget, ledger, unit, definitions.get(path), depsOf.get(path) ?? [], checkpoints, modelCalls, openedAs,
+          recordedCatalog, currentCatalog,
         );
         outcomes.push(outcome);
         if (outcome.promoted) wrote = true;
@@ -296,7 +303,10 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       ledger.stage = stage;
       await persist(host, book, ledger);
     }
-    await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath));
+    const catalogRecord = catalogPrep && catalogPrep.action !== 'conflict'
+      ? { ref: catalogPrep.ref, hash: catalogPrep.inputHash }
+      : null;
+    await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath), catalogRecord);
     const registration = host.l5
       ? await commitL5Registration(await registrationInput(request, host, snapshot, profile.allowsStubRun), host.l5, holder)
       : await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
@@ -341,18 +351,44 @@ async function runUnit(
   checkpoints: M1Checkpoint[],
   modelCalls: { count: number },
   openedAs: MaterializeLedger['stage'],
+  recordedCatalog: string | null,
+  currentCatalog: string | null,
 ): Promise<UnitOutcome> {
   const prior = ledger.units[unit.defPath];
   const finishedAs = prior?.stage ?? openedAs;
+  const reopen = await failedEvidenceMoved(host, unit, recordedCatalog, currentCatalog);
   if (prior?.ended && prior.ended !== 'INTERRUPTED' && finishedAs === stage) {
     const success = prior.ended === 'PROMOTED' || prior.ended === 'REUSE' || prior.ended === 'VERIFIED';
     if (success && (unit.action === 'reuse' || unit.action === 'verify')) {
       const code = unit.action === 'verify' ? 'VERIFIED' : 'REUSE';
       return outcome(unit.defPath, code, unit.reason, false, 0);
     }
-    if (!success && await sameSemantic(host, unit.defPath, definition) && !releasedBlock(definition, unit.action) && !await failureRecipeChanged(host, unit.defPath, stage)) {
+    if (!success && await sameSemantic(host, unit.defPath, definition) && !releasedBlock(definition, unit.action) && !await failureRecipeChanged(host, unit.defPath, stage) && !reopen) {
       return outcome(unit.defPath, prior.ended, 'Resume kept the failed attempt. The budget was not reset.', false, 0);
     }
+  }
+  if (reopen) {
+    await writeDefStatus(host, unit.defPath, 'pending');
+    if (unit.action === 'blocked' && unit.reason.startsWith('STATUS_FAILED')) {
+      unit.action = 'verify';
+      unit.reason = 'VERIFY: catalog or test changed; the failed attempt is checked again.';
+    }
+  }
+  if (
+    unit.action === 'blocked'
+    && unit.heldAction
+    && unit.blockedBy.length > 0
+    && unit.blockedBy.every(path => dependencyOk(ledger.units[path]?.ended || ''))
+  ) {
+    const restored = unit.heldAction;
+    unit.action = restored;
+    const label = restored === 'reuse' ? 'REUSE' : restored === 'verify' ? 'VERIFY' : 'GENERATE';
+    unit.reason = `${label}: a dependency that blocked this unit passed in this run.`;
+  }
+  // Importing the structure stub before emit leaves that module loaded for the new catalog.
+  if (stage === 'implement' && unit.action === 'verify' && await structureScaffoldOnDisk(host, unit.defPath)) {
+    unit.action = 'generate';
+    unit.reason = 'GENERATE: catalog or test changed; the output is still a structure scaffold.';
   }
   if (unit.action === 'conflict') {
     await writeConflictReceipt(request, host, unit, definition, codeOf(unit.reason, 'LOCAL_EDIT'), unit.reason);
@@ -382,16 +418,21 @@ async function runUnit(
     if (unit.action === 'generate') {
       return remember(ledger, unit.defPath, outcome(unit.defPath, 'NOT_READY', 'Verify does not generate. The output is not an accepted implementation.', false, 0));
     }
-    const checkpoint = await checkUnit(request, host, unit, []);
-    checkpoints.push(checkpoint);
+    const observations = await verifyObservations(request, host, stage, unit, definition);
+    const checkpoint = await checkUnit(request, host, unit, observations);
     const failed = !checkpoint.accepted;
-    return remember(ledger, unit.defPath, outcome(
-      unit.defPath,
-      failed ? 'CHECKPOINT_FAILED' : 'VERIFIED',
-      checkpoint.nextAction,
-      false,
-      0,
-    ));
+    // The file on disk still fails the new catalog. Emit again; do not keep the stub.
+    if (!(failed && reopen && stage === 'implement' && observations.length > 0)) {
+      checkpoints.push(checkpoint);
+      return remember(ledger, unit.defPath, outcome(
+        unit.defPath,
+        failed ? 'CHECKPOINT_FAILED' : 'VERIFIED',
+        checkpoint.nextAction,
+        false,
+        0,
+      ));
+    }
+    unit.action = 'generate';
   }
   if (stage === 'implement' && unit.action !== 'generate') {
     return remember(ledger, unit.defPath, outcome(unit.defPath, codeOf(unit.reason, 'BLOCKED'), unit.reason, false, 0));
@@ -578,6 +619,28 @@ async function attempt(
     kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint,
     modelCalls: usedModel, runsStub: produced.runsStub, evidences: produced.evidences,
   };
+}
+
+/** Verify reads the file already on disk and runs its catalog cases, including compile. */
+async function verifyObservations(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  stage: M1EntryStage,
+  unit: SimulatedUnit,
+  definition: unknown,
+): Promise<readonly M1Observation[]> {
+  const output = outputPathFromDefPath(unit.defPath);
+  if (!output) return [];
+  const body = await host.io.read(output);
+  if (body === null) return [];
+  return implementObservations(request, host, stage, unit, definition, {
+    files: { [output]: body },
+    observations: [],
+    failure: null,
+    seeds: false,
+    resets: false,
+    runsStub: false,
+  });
 }
 
 async function implementObservations(
@@ -873,6 +936,32 @@ function releasedBlock(definition: unknown, action: string): boolean {
   return !('issues' in parsed) && parsed.status === 'blocked';
 }
 
+/** The bytes on disk are still the structure stub, even when a later failed receipt replaced the compile receipt. */
+async function structureScaffoldOnDisk(host: MaterializeRunHost, defPath: string): Promise<boolean> {
+  const receipt = await host.state.readReceipt(defPath);
+  if (receipt?.stage === 'compile' && receipt.reason === 'scaffold') return true;
+  const output = outputPathFromDefPath(defPath);
+  if (!output) return false;
+  const body = await host.io.read(output);
+  return !!body && body.includes(`'${M1_STUB_ERROR}'`);
+}
+
+/** Catalog or test drift releases this failed receipt only. Other ledger rows and the budget stay. */
+async function failedEvidenceMoved(
+  host: MaterializeRunHost,
+  unit: SimulatedUnit,
+  recordedCatalog: string | null,
+  currentCatalog: string | null,
+): Promise<boolean> {
+  const receipt = await host.state.readReceipt(unit.defPath);
+  if (!receipt) return false;
+  const output = outputPathFromDefPath(unit.defPath);
+  const testPath = output ? testFileFor(output) : '';
+  const testText = testPath ? await host.io.read(testPath) : null;
+  const testHash = testText === null ? null : await contentHash(testText);
+  return failureNeedsReverify(receipt, testPath, testHash, recordedCatalog, currentCatalog);
+}
+
 /** An older handler recipe releases this unit only. Other ledger rows and the budget stay. */
 async function failureRecipeChanged(host: MaterializeRunHost, defPath: string, stage: M1EntryStage): Promise<boolean> {
   const receipt = await host.state.readReceipt(defPath);
@@ -899,15 +988,37 @@ async function ownedRemovals(host: MaterializeRunHost, moduleName: string, units
   return manifest.units.map(unit => unit.defPath).filter(path => !present.has(path));
 }
 
-async function persistOwned(host: MaterializeRunHost, moduleName: string, defPaths: readonly string[]): Promise<void> {
+async function ownedCatalogHash(host: MaterializeRunHost, moduleName: string, ref: string): Promise<string | null> {
+  const bytes = await host.state.readOwned(ownedManifestRef(moduleName));
+  if (!bytes || bytes.byteLength === 0) return null;
+  const manifest = parseOwnedManifest(new TextDecoder().decode(bytes), moduleName);
+  if (!manifest?.catalogHash || manifest.catalogRef !== ref) return null;
+  return manifest.catalogHash;
+}
+
+async function persistOwned(
+  host: MaterializeRunHost,
+  moduleName: string,
+  defPaths: readonly string[],
+  catalog: { ref: string; hash: string } | null,
+): Promise<void> {
+  const previousBytes = await host.state.readOwned(ownedManifestRef(moduleName));
+  const previous = previousBytes && previousBytes.byteLength > 0
+    ? parseOwnedManifest(new TextDecoder().decode(previousBytes), moduleName)
+    : null;
   const units = defPaths.map(defPath => {
     const output = outputPathFromDefPath(defPath);
     return { defPath, outputs: output ? [output] : [] };
   });
+  const kept = !catalog && previous?.catalogHash
+    ? { catalogRef: previous.catalogRef, catalogHash: previous.catalogHash }
+    : {};
+  const recorded = catalog ? { catalogRef: catalog.ref, catalogHash: catalog.hash } : kept;
   await host.state.writeOwned(ownedManifestRef(moduleName), new TextEncoder().encode(renderOwnedManifest({
     schemaVersion: M1_OWNED_SCHEMA,
     moduleName,
     units,
+    ...recorded,
   })));
 }
 
@@ -1112,6 +1223,7 @@ async function prepareCatalog(
   snapshot: SimulationSnapshot,
   units: readonly PlanUnitInput[],
   write: boolean,
+  recordedHash: string | null,
 ): Promise<CatalogPrep> {
   const ref = host.catalogRef || '';
   const texts: Record<string, string> = {};
@@ -1156,6 +1268,29 @@ async function prepareCatalog(
     };
   }
   if (canonicalJson(parsed.catalog) !== catalogBytes(derived.catalog)) {
+    const existingHash = await contentHash(catalogBytes(parsed.catalog));
+    const ownedHash = await ownedCatalogHash(host, request.moduleName, ref);
+    const known = new Set<string>();
+    if (recordedHash) known.add(recordedHash);
+    if (ownedHash) known.add(ownedHash);
+    const emitted = existing.startsWith(`/// <mls fileReference="${ref}"`);
+    // A ledger hash that already equals the derived catalog was stored without rewriting the file.
+    // Only an emitted catalog is M1 output. A fixture or a hand file with the same ledger hash stays a conflict.
+    const ledgerAhead = !!recordedHash && recordedHash === inputHash && !ownedHash && emitted;
+    const unrecordedEmission = emitted && !ownedHash;
+    if (known.has(existingHash) || ledgerAhead || unrecordedEmission) {
+      if (write) await writeDerived(host, ref, derived.catalog, valueExports);
+      return {
+        ref,
+        action: write ? 'written' : 'simulated',
+        inputHash,
+        recipeVersion: derived.recipeVersion,
+        gaps: derived.gaps,
+        detail: write
+          ? 'catalog matched the M1 receipt and was rewritten'
+          : 'catalog matches the M1 receipt; rewrite planned, nothing written',
+      };
+    }
     return {
       ref,
       action: 'conflict',

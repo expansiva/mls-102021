@@ -28,7 +28,7 @@ import {
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 
-export const M1_CATALOG_RECIPE = '2026-09-25-m1-catalog-derive-v1' as const;
+export const M1_CATALOG_RECIPE = '2026-09-26-m1-catalog-derive-v2' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',

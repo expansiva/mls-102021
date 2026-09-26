@@ -196,7 +196,7 @@ export async function observeImplement(input: {
     installRuntime(input.projectDir, input.projectId, input.definition.moduleName);
     const observations: M1Observation[] = [];
     for (const item of cases) {
-      if (item.routine && input.definition.artifactType === 'usecase') {
+      if (item.gate !== 'compile' && item.routine && input.definition.artifactType === 'usecase') {
         const declared = declaredRoutes(input.definition);
         if (declared.length > 0 && !declared.includes(item.routine)) continue;
       }
