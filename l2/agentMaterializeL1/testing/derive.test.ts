@@ -82,7 +82,8 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
   const moduleCases = cases.filter(item => item.runner === 'module');
   const routeCases = cases.filter(item => item.runner === 'route');
   assert.equal(moduleCases.length, 28);
-  assert.equal(routeCases.length, 20);
+  assert.equal(routeCases.length, 15);
+  assert.equal(derived.gaps.some(gap => gap.origin.includes('.qry') && gap.reason === 'contract required field was not read'), false);
   assert.equal(moduleCases.every(item => item.caller === undefined), true);
   const denied = routeCases.filter(item => item.gate === 'auth');
   assert.equal(denied.length, 10);
@@ -97,7 +98,7 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
     }
   }
   const positive = routeCases.filter(entry => entry.gate === 'contract');
-  assert.equal(positive.length, 10);
+  assert.equal(positive.length, 5);
   for (const item of positive) {
     assert.equal(item.caller?.source, 'http');
     const controller = derived.catalog.scenarios.find(scenario => item.caseId.startsWith(`${scenario.artifactId}.`));

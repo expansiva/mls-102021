@@ -16,7 +16,7 @@ import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { classifyCase, verifyBatch, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideRoute } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { runStructure, structureHandlerIds, structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
@@ -54,6 +54,23 @@ void test('structure runners cover the registry ids and stay free of node', () =
   assert.equal(readFileSync(join(HERE, '../../core/registry.ts'), 'utf8').includes('structure.usecase'), true);
 });
 
+void test('contract reader separates permitted root keys from nested required payload paths', () => {
+  const members = contractMembers(`export interface UpdateInput {
+  id: string;
+  details: {
+    confirmation: {
+      confirmedAt: string;
+    };
+  };
+  note?: string;
+}`, 'UpdateInput');
+  assert.deepEqual(members, {
+    requiredFields: ['id', 'details', 'details.confirmation', 'details.confirmation.confirmedAt'],
+    allowedFields: ['id', 'details', 'note'],
+    allowedPaths: ['id', 'details', 'details.confirmation', 'details.confirmation.confirmedAt', 'note'],
+  });
+});
+
 void test('create and list Consulta compile, and the usecase does not pretend to succeed', async () => {
   const ids = ['Consulta', 'ConsultaRepository', 'createConsulta', 'listConsulta'];
   const emitted = await emitAll(ids);
@@ -84,6 +101,7 @@ void test('the remaining structure files compile after the first pair', async ()
   assert.ok(handler.indexOf('validateInput(') < handler.indexOf('await createConsulta('));
   assert.match(handler, /if \(denied\) throw denied;/);
   assert.match(handler, /if \(invalid\) throw invalid;/);
+  assert.match(handler, /validateInput\(input\.request\.params, \[.*\], \[.*\]\)/);
   assert.equal(handler.includes('return fail('), false);
   assert.equal(handler.includes('catch ('), false);
   const access = sourceOf(emitted, 'accessScope');

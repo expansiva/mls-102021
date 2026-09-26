@@ -727,6 +727,9 @@ void test('a local table update is derived and proved on a copy of the client de
     '_102047_/l4/agendaClinica/rules.defs.ts',
   ];
   const copy = new Map(refs.map(ref => [ref, readFileSync(join(project, ref.slice('_102047_/'.length)), 'utf8')]));
+  const contractRef = refs[3];
+  copy.set(contractRef, copy.get(contractRef)!.replace(/export interface UpdateConsultaInput[\s\S]*?(?=\nexport)/,
+    'export interface UpdateConsultaInput {\n  "id": string;\n  "details": {\n    "telephoneConfirmation": {\n      "confirmedAt": string;\n    };\n  };\n}\n'));
   const loaded = definitionAt(copy, 'updateConsulta');
   assert.ok(loaded);
   assert.equal(behaviorNeedsLlm(loaded.definition), false);
@@ -734,10 +737,9 @@ void test('a local table update is derived and proved on a copy of the client de
   const emitted = await emitBehavior('implement.usecase', loaded.definition, 'l1/agendaClinica/updateConsulta.ts', readCopy);
   assert.equal('code' in emitted, false, 'code' in emitted ? emitted.detail : '');
   if ('code' in emitted) return;
-  assert.match(emitted.source, /enforce:storage/);
+  assert.equal(emitted.source.includes('enforce:storage'), false);
   assert.equal(emitted.source.includes('enforce:version'), false);
   assert.equal(emitted.source.includes('RULE_UNBOUND'), false);
-  assert.equal(emitted.source.includes('consultaHorarioProfissionalUnico') === false || emitted.source.includes('ruleId: "consultaHorarioProfissionalUnico"'), true);
   const versionGap = await caseBlock(loaded.definition, loaded.defPath, {
     routine: '',
     expect: { ruleId: 'expectedVersion' },
@@ -760,28 +762,32 @@ void test('a local table update is derived and proved on a copy of the client de
   const ctx = {};
   const inputFor = (row: Record<string, unknown>, patch: Record<string, unknown>) => ({ ...row, ...patch });
   memory.resetMemory([first, second]);
-  const saved = await usecase.updateConsulta(inputFor(first, { pacienteId: 'p9' }), ctx, ports);
+  const saved = await usecase.updateConsulta(inputFor(first, { details: { telephoneConfirmation: { confirmedAt: '2026-09-26T12:00:00.000Z' } } }), ctx, ports);
   assert.equal(saved.id, 'row-1');
-  assert.equal(saved.pacienteId, 'p9');
+  assert.equal(saved.pacienteId, 'p1');
+  assert.equal(saved.details.telephoneConfirmation.confirmedAt, '2026-09-26T12:00:00.000Z');
+  assert.equal(saved.details.attendanceNote, first.details.attendanceNote);
+  assert.equal(first.details.telephoneConfirmation.confirmedAt, '');
   assert.equal(saved.version, 1);
+  memory.resetMemory([first]);
+  const omitted = await usecase.updateConsulta({ id: first.id }, ctx, ports);
+  assert.deepEqual(omitted.details, first.details, 'an absent patch value is not written as undefined');
   memory.resetMemory([first, second]);
-  await assert.rejects(
-    () => usecase.updateConsulta(inputFor(first, { scheduledAt: second.scheduledAt }), ctx, ports),
-    (error: { code?: string; statusCode?: number; details?: { ruleId?: string } }) => error.code === 'CONFLICT' && error.details?.ruleId === 'consultaHorarioProfissionalUnico',
-  );
+  const unchanged = await usecase.updateConsulta(inputFor(first, { details: { telephoneConfirmation: { confirmedAt: '2026-09-26T12:00:00.000Z' } }, scheduledAt: second.scheduledAt }), ctx, ports);
+  assert.equal(unchanged.scheduledAt, first.scheduledAt);
   memory.resetMemory([first]);
   await assert.rejects(
     () => usecase.updateConsulta(inputFor(first, { id: 'missing' }), ctx, ports),
     (error: { code?: string }) => error.code === 'NOT_FOUND',
   );
   const opened = withoutStorageChecks(emitted.source);
-  assert.equal(opened.removed, 1);
+  assert.equal(opened.removed, 0);
   const openFile = join(dir, 'updateConsultaOpen.ts');
   writeFileSync(openFile, opened.source);
   const openUsecase = await import(pathToFileURL(openFile).href) as typeof usecase;
   memory.resetMemory([first, second]);
-  const collided = await openUsecase.updateConsulta(inputFor(first, { scheduledAt: second.scheduledAt }), ctx, ports);
-  assert.equal(collided.scheduledAt, second.scheduledAt);
+  const collided = await openUsecase.updateConsulta(inputFor(first, { details: { telephoneConfirmation: { confirmedAt: '2026-09-26T12:00:00.000Z' } }, scheduledAt: second.scheduledAt }), ctx, ports);
+  assert.equal(collided.scheduledAt, first.scheduledAt);
 
   const marked = new Map(copy);
   const ontology = '_102047_/l4/agendaClinica/ontology/Consulta.defs.ts';
@@ -847,10 +853,10 @@ void test('a local table update is derived and proved on a copy of the client de
   delete (visitaRow as { profissionalId?: string }).profissionalId;
   delete (visitaOther as { profissionalId?: string }).profissionalId;
   visitaMemory.resetMemory([visitaRow, visitaOther]);
-  await assert.rejects(
-    () => visita.updateVisita({ ...visitaRow, scheduledAt: visitaOther.scheduledAt }, ctx, visitaPorts),
-    (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'CONFLICT' && error.details?.ruleId === 'r1',
-  );
+  const visitaSaved = await visita.updateVisita({ ...visitaRow, details: { telephoneConfirmation: { confirmedAt: '2026-09-26T12:00:00.000Z' } }, scheduledAt: visitaOther.scheduledAt }, ctx, visitaPorts);
+  assert.equal(visitaSaved.scheduledAt, visitaRow.scheduledAt);
+  assert.equal((visitaSaved.details as { attendanceNote: string }).attendanceNote, visitaRow.details.attendanceNote);
+  assert.equal((visitaSaved.details as { telephoneConfirmation: { confirmedAt: string } }).telephoneConfirmation.confirmedAt, '2026-09-26T12:00:00.000Z');
   rmSync(dir, { recursive: true, force: true });
 });
 

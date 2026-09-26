@@ -28,7 +28,7 @@ import {
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 
-export const M1_CATALOG_RECIPE = '2026-09-26-m1-catalog-derive-v2' as const;
+export const M1_CATALOG_RECIPE = '2026-09-26-m1-catalog-derive-v3' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',
@@ -287,7 +287,7 @@ function routeCases(
       caller: { source: 'http', authorities: [] },
     }));
     const field = requiredField(route.usecaseId, route.route, defs, texts);
-    if (!field) {
+    if (field === null) {
       gaps.push({
         artifactId: definition.artifactId,
         artifactType: 'httpController',
@@ -296,6 +296,7 @@ function routeCases(
       });
       continue;
     }
+    if (!field) continue; // A valid input with no required fields has no omitted-field negative case.
     const open = route.grantIds.every(id => {
       const grant = grants.find(item => item.grantId === id);
       return grant && !('code' in resolveGrant(grants, id));
@@ -333,19 +334,19 @@ function requiredField(
   route: string,
   defs: ReadonlyMap<string, M1Definition>,
   texts: Readonly<Record<string, string>>,
-): string {
+): string | null {
   const usecase = [...defs.values()].find(item => item.artifactType === 'usecase' && item.artifactId === usecaseId);
-  if (!usecase) return '';
+  if (!usecase) return null;
   const projections = Array.isArray(usecase.data.routeProjections) ? usecase.data.routeProjections.filter(isRecord) : [];
   const projection = projections.find(item => item.route === route);
   const contractPath = typeof projection?.contractPath === 'string' ? projection.contractPath : '';
-  if (!contractPath) return '';
+  if (!contractPath) return null;
   const text = textFor(contractPath, usecase.dependencies, texts);
-  if (!text) return '';
+  if (!text) return null;
   const input = inputName(route, text);
-  if (!input) return '';
+  if (!input) return null;
   const required = requiredMembers(text, input);
-  return required && required.length > 0 ? required[0] : '';
+  return required === null ? null : required[0] ?? '';
 }
 
 function textFor(contractPath: string, dependencies: readonly string[], texts: Readonly<Record<string, string>>): string {

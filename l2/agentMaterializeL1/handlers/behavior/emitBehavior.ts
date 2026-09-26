@@ -25,6 +25,7 @@ import {
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
+  contractMembers,
   emitAccess,
   emitAuthority,
   emitDomain,
@@ -38,7 +39,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-26-implement-handler-v2';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-26-implement-handler-v3';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -246,23 +247,48 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   if ('code' in entity) return entity;
   const entityName = text(entity.data.entityId) || 'Entity';
   const entityDep = definition.dependencies.find(path => path.includes('/entities/')) ?? '';
+  const contractRefs = firstFunction(definition);
+  if (!contractRefs) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function contract.` };
+  const contractRoute = contractRefs.contractRefs.find(item => item.symbol.endsWith('Output'))?.route ?? '';
+  const contract = await resolveContract(definition, contractRefs, read, contractRoute);
+  if ('code' in contract) return contract;
+  const pageFilterPaths = operation === 'list' ? await resolvePageListInputs(definition, read) : [];
   const keys = operation === 'create' || operation === 'update' ? await readUniqueKeys(definition, read) : [];
   if ('code' in keys) return keys;
+  const applicableKeys = operation === 'update' ? keys.filter(columns => columns.every(column => contract.allowedInputPaths.includes(column))) : keys;
   const ruleId = constraintRuleId(definition);
-  if (keys.length > 0 && !ruleId) {
+  if (applicableKeys.length > 0 && !ruleId) {
     return { code: 'UNIQUE_RULE_UNNAMED', detail: `${definition.artifactId} enforces a storage constraint with no rule id.` };
   }
-  const inputs = new Set(inputNames(definition));
+  const usecaseInputPaths = firstFunction(definition)?.name
+    ? inputNames(definition).flatMap(name => {
+      const fn = Array.isArray(definition.data.functions) && isRecord(definition.data.functions[0]) ? definition.data.functions[0] : {};
+      const fields = Array.isArray(fn.input) ? fn.input.filter(isRecord) : [];
+      const field = fields.find(item => text(item.name) === name);
+      const ref = text(field?.fieldRef);
+      return ref ? expandInputType(name, text(field?.type)) : [name];
+    })
+    : [];
+  const operationInputPaths = operation === 'update'
+    ? await resolveOntologyWritablePaths(definition, read)
+    : [];
+  const inputs = new Set(operationInputPaths.length
+    ? operationInputPaths
+    : contract.allowedInputPaths.length ? contract.allowedInputPaths : usecaseInputPaths);
+  const updateInputs = operation === 'update' ? new Set([...inputs].filter(path => {
+    const leaf = path.split('.').pop() ?? path;
+    return leaf !== selectorField(definition) && !['id', 'version'].includes(leaf);
+  })) : inputs;
   const transition = operation === 'transition' ? await planTransition(definition, read) : null;
   if (transition && 'code' in transition) return transition;
   const precondition = operation === 'update' ? await localPrecondition(definition, read) : '';
   const body = operation === 'create'
     ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs)
     : operation === 'update'
-      ? updateBody(entity, entityName, camel(portName), keys, ruleId, inputs, selectorField(definition), precondition)
+      ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition)
       : transition
         ? transitionBody(entityName, camel(portName), transition)
-        : listBody(entity, entityName, camel(portName), inputs);
+        : listBody(entity, entityName, camel(portName), new Set(pageFilterPaths.length ? pageFilterPaths : [...inputs]));
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,
@@ -277,6 +303,19 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
   return { runsStub: false, imports, source: finish(source) };
+}
+
+async function resolveOntologyWritablePaths(definition: M1Definition, read: StructureRead): Promise<string[]> {
+  const operation = text(definition.data.operation);
+  const entityId = text(definition.data.entityId);
+  if (!operation || !entityId) return [];
+  const ontologyRef = definition.dependencies.find(ref => ref.includes('/ontology/'));
+  if (!ontologyRef) return [];
+  const ontology = await loadDefinition(ontologyRef, read);
+  if ('code' in ontology) return [];
+  const operations = isRecord(ontology.data.operations) ? ontology.data.operations : {};
+  const spec = isRecord(operations[operation]) ? operations[operation] : {};
+  return stringList(spec.writable).map(path => path.startsWith(`${entityId}.`) ? path.slice(entityId.length + 1) : path);
 }
 
 async function memoryPort(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
@@ -766,9 +805,14 @@ function updateBody(
 ): string {
   const tree = fieldTree(entity);
   const platform = platformRoots(entity);
-  const writable = [...inputs].filter(name => {
-    const node = tree.children.get(name);
-    return Boolean(node && !node.derived && !platform.has(name) && isIdent(name));
+  const writable = [...inputs].filter(path => {
+    const node = nodeAt(tree, path);
+    const root = path.split('.')[0] ?? '';
+    const hasBoundChildren = [...inputs].some(candidate => candidate.startsWith(`${path}.`));
+    const identity = path === selector || path === identityField(entity);
+    const isPrecondition = precondition && (path === precondition || path.endsWith(`.${precondition}`) || precondition.endsWith(`.${path}`));
+    return Boolean(node && !node.derived && !platform.has(root) && !identity && !isPrecondition
+      && (!node.children.size || !hasBoundChildren));
   });
   const versionName = versionField(entity, identityField(entity));
   const compared = versionName && (precondition === versionName || precondition.endsWith(`.${versionName}`)) ? versionName : '';
@@ -787,7 +831,30 @@ function updateBody(
       `  if (Number(current.${compared} ?? 0) !== expectedVersion) throw new AppError('CONCURRENCY_CONFLICT', 'Version is stale.', 409);`,
     ]
     : [];
-  const assigns = writable.map(name => `  next.${name} = body.${name};`);
+  const nestedWrites = writable.some(path => path.includes('.'));
+  const assigns = writable.map(path => path.includes('.')
+    ? `  { const value = readPath(body, ${JSON.stringify(path)}); if (value !== undefined) writePath(next as unknown as Record<string, unknown>, ${JSON.stringify(path)}, value); }`
+    : `  if (body.${path} !== undefined) next.${path} = body.${path};`);
+  const patchPaths = nestedWrites ? [
+    ...(!compared ? [
+      '  const readPath = (source: unknown, path: string): unknown => {',
+      '    let value: unknown = source;',
+      '    for (const part of path.split(\'.\')) value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
+      '    return value;',
+      '  };',
+    ] : []),
+    '  const writePath = (source: Record<string, unknown>, path: string, value: unknown): void => {',
+    '    const parts = path.split(\'.\');',
+    '    let node = source;',
+    '    for (let index = 0; index < parts.length - 1; index += 1) {',
+    '      const part = parts[index];',
+    '      const child = node[part];',
+    '      node[part] = child && typeof child === \'object\' && !Array.isArray(child) ? { ...child } : {};',
+    '      node = node[part] as Record<string, unknown>;',
+    '    }',
+    '    node[parts[parts.length - 1]] = value;',
+    '  };',
+  ] : [];
   const bump = compared ? [`  next.${compared} = Number(current.${compared} ?? 0) + 1;`] : [];
   const checks = keys.map(columns => [
     '  {',
@@ -803,11 +870,17 @@ function updateBody(
     '  if (!current) throw new AppError(\'NOT_FOUND\', \'Record not found.\', 404);',
     ...readPath,
     `  const next: ${entityName} = { ...current };`,
+    ...patchPaths,
     ...assigns,
     ...bump,
     ...checks,
     `  return ports.${binding}.update(next);`,
   ].join('\n');
+}
+
+function expandInputType(root: string, type: string): string[] {
+  const matches = [...type.matchAll(/([A-Za-z_$][\w$]*)\??\s*:/g)].map(match => `${root}.${match[1]}`);
+  return matches.length ? matches : [root];
 }
 
 function platformRoots(entity: M1Definition): Set<string> {
@@ -1019,10 +1092,16 @@ function invariantsOf(entity: M1Definition): string[] {
 }
 
 function listBody(entity: M1Definition, entityName: string, binding: string, inputs: ReadonlySet<string>): string {
-  const names = [...inputs].filter(name => fieldTree(entity).children.has(name));
-  const filters = names.map(name => `  if (filled(body.${name})) where.${name} = body.${name};`);
+  const names = [...inputs].filter(name => nodeAt(fieldTree(entity), name));
+  const filters = names.map(name => name.includes('.')
+    ? `  if (filled(readPath(body, ${JSON.stringify(name)}))) writePath(where, ${JSON.stringify(name)}, readPath(body, ${JSON.stringify(name)}));`
+    : `  if (filled(body.${name})) where.${name} = body.${name};`);
   return [
     '  const filled = (value: unknown): boolean => value !== undefined && value !== null && value !== \'\';',
+    ...(names.some(name => name.includes('.')) ? [
+      '  const readPath = (source: unknown, path: string): unknown => { let value: unknown = source; for (const part of path.split(\'.\')) value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined; return value; };',
+      '  const writePath = (source: Record<string, unknown>, path: string, value: unknown): void => { const parts = path.split(\'.\'); let node = source; for (const part of parts.slice(0, -1)) node = (node[part] ??= {}) as Record<string, unknown>; node[parts[parts.length - 1]] = value; };',
+    ] : []),
     `  const body = input as ${entityName};`,
     '  const where: Record<string, unknown> = {};',
     ...filters,
@@ -1031,20 +1110,121 @@ function listBody(entity: M1Definition, entityName: string, binding: string, inp
   ].join('\n');
 }
 
+async function resolvePageListInputs(definition: M1Definition, read: StructureRead): Promise<string[]> {
+  const route = firstFunction(definition)?.contractRefs.find(item => item.symbol.endsWith('Output'))?.route;
+  const pageDef = definition.dependencies.filter(ref => ref.endsWith('/web.defs.ts')).map(async ref => ({ loaded: await loadDefinition(ref, read) }));
+  const pages = await Promise.all(pageDef);
+  for (const { loaded } of pages) {
+    if ('code' in loaded || !Array.isArray(loaded.data.operationBindings)) continue;
+    const binding = loaded.data.operationBindings.filter(isRecord).find(item => text(item.route) === route && text(item.operation) === 'list');
+    if (!binding || !Array.isArray(binding.inputFields)) continue;
+    return binding.inputFields.filter(isRecord).map(item => text(item.path)).filter(Boolean);
+  }
+  // Older snapshots have no operation bindings; fall back to structurally
+  // disclosed indexed fields while keeping filters optional.
+  const entity = await loadEntity(definition, read);
+  if ('code' in entity) return [];
+  const tree = fieldTree(entity);
+  const ontologyRef = definition.dependencies.find(ref => ref.includes('/ontology/'));
+  const ontology = ontologyRef ? await loadDefinition(ontologyRef, read) : null;
+  const indexed = new Set<string>();
+  if (ontology && !('code' in ontology)) {
+    for (const [field, metadata] of Object.entries(isRecord(ontology.data.indexes) ? ontology.data.indexes : {})) {
+      if (metadata === true || isRecord(metadata) && metadata.indexed === true) indexed.add(field);
+    }
+    if (Array.isArray(ontology.data.fields)) for (const row of ontology.data.fields.filter(isRecord)) {
+      if (row.indexed === true) indexed.add(text(row.name));
+    }
+  }
+  return [...indexed].filter(path => nodeAt(tree, path));
+}
+
 function inputNames(definition: M1Definition): string[] {
   const functions = definition.data.functions;
   if (!Array.isArray(functions) || !isRecord(functions[0]) || !Array.isArray(functions[0].input)) return [];
   return functions[0].input.filter(isRecord).map(field => text(field.name)).filter(Boolean);
 }
 
+async function resolveContract(
+  definition: M1Definition,
+  fn: { contractRefs: { route: string; symbol: string }[] },
+  read: StructureRead,
+  route = '',
+): Promise<{ allowedInputPaths: string[] } | EmitFailure> {
+  const outputRef = fn.contractRefs.find(item => item.symbol.endsWith('Output') && (!route || item.route === route))
+    ?? fn.contractRefs.find(item => item.symbol.endsWith('Output'));
+  if (!outputRef) return { code: 'CONTRACT_UNREAD', detail: `${definition.artifactId} has no output contract.` };
+  const projections = Array.isArray(definition.data.routeProjections) ? definition.data.routeProjections.filter(isRecord) : [];
+  const projection = projections.find(item => text(item.route) === outputRef.route);
+  const contractPath = text(projection?.contractPath);
+  let dependency = contractPath
+    ? definition.dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`)) ?? ''
+    : '';
+  if (!dependency) {
+    const page = outputRef.route.split('.')[1] ?? '';
+    dependency = definition.dependencies.find(path => page && path.endsWith(`/${page}.defs.ts`)) ?? '';
+  }
+  if (!dependency) return { code: 'CONTRACT_UNREAD', detail: `${outputRef.route} is not a dependency.` };
+  const source = await read(dependency);
+  if (source === null) return { code: 'CONTRACT_UNREAD', detail: `${dependency} could not be read.` };
+  const inputType = outputRef.symbol.replace(/Output$/, 'Input');
+  if (!source.includes(`export interface ${inputType} `) && !source.includes(`export interface ${inputType}{`)
+    || !source.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${inputType}.` };
+  const members = readContractMembers(source, inputType);
+  if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
+  return { allowedInputPaths: members.allowedPaths };
+}
+
+function readContractMembers(source: string, name: string): { allowedPaths: string[] } | null {
+  const start = source.indexOf(`export interface ${name}`);
+  if (start < 0) return null;
+  const open = source.indexOf('{', start);
+  if (open < 0) return null;
+  let depth = 1;
+  let end = open + 1;
+  for (; end < source.length && depth > 0; end++) {
+    if (source[end] === '{') depth++;
+    else if (source[end] === '}') depth--;
+  }
+  if (depth !== 0) return null;
+  const body = source.slice(open + 1, end - 1);
+  const allowedPaths: string[] = [];
+  const addMembers = (text: string, prefix = '') => {
+    for (const line of text.split(/[;\n,]/)) {
+      const match = line.trim().match(/^([A-Za-z_$][\w$]*)(\?)?\s*:\s*(.+)$/);
+      if (!match) continue;
+      const path = prefix ? `${prefix}.${match[1]}` : match[1];
+      allowedPaths.push(path);
+      const nested = match[3].match(/^\{([\s\S]*)\}$/);
+      if (nested) addMembers(nested[1], path);
+    }
+  };
+  addMembers(body);
+  return { allowedPaths: [...new Set([...allowedPaths, ...(contractMembers(source, name)?.allowedPaths ?? [])])] };
+}
+
+function firstFunction(definition: M1Definition): { name: string; contractRefs: { route: string; symbol: string }[] } | null {
+  const functions = definition.data.functions;
+  if (!Array.isArray(functions) || !isRecord(functions[0])) return null;
+  const fn = functions[0];
+  const name = text(fn.functionName);
+  if (!name) return null;
+  const contractRefs = Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord).map(item => ({
+    route: text(item.route),
+    symbol: text(item.symbol),
+  })).filter(item => item.route && item.symbol) : [];
+  return { name, contractRefs };
+}
+
 function literalFor(node: FieldNode, inputs: ReadonlySet<string>, states: readonly string[]): string {
-  if (node.children.size > 0) {
+  const hasBoundChildren = [...inputs].some(path => path.startsWith(`${node.path}.`));
+  if (node.children.size > 0 && (hasBoundChildren || !inputs.has(node.path))) {
     const parts = [...node.children].map(([name, child]) => `${name}: ${literalFor(child, inputs, states)}`);
     return `{ ${parts.join(', ')} }`;
   }
+  if (inputs.has(node.path)) return `body.${node.path}`;
   if (node.derived && node.name === 'id') return 'ctx.idGenerator.newId()';
   if (node.derived && (node.name === 'version' || node.type === 'integer' || node.type === 'number')) return '1';
-  if (inputs.has(node.path)) return `body.${node.path}`;
   if ((node.type === 'enum' || node.name === 'status') && states.length > 0) return `'${states[0]}'`;
   if (node.type === 'integer' || node.type === 'number') return '0';
   if (node.type === 'boolean') return 'false';
@@ -1190,6 +1370,12 @@ function fieldTree(definition: M1Definition): FieldNode {
     });
   }
   return root;
+}
+
+function nodeAt(root: FieldNode, path: string): FieldNode | undefined {
+  let node: FieldNode | undefined = root;
+  for (const part of path.split('.').filter(Boolean)) node = node?.children.get(part);
+  return node;
 }
 
 function statesOf(definition: M1Definition): string[] {

@@ -285,6 +285,8 @@ interface ResolvedContract {
   inputType: string;
   outputType: string;
   requiredFields: string[];
+  allowedInputFields: string[];
+  allowedInputPaths: string[];
   outputFields: string[];
 }
 
@@ -305,6 +307,8 @@ interface ResolvedRoute {
   inputType: string;
   inputSpecifier: string;
   requiredFields: string[];
+  allowedInputFields: string[];
+  allowedInputPaths: string[];
   outputFields: string[];
   ports: PortBinding[];
 }
@@ -338,13 +342,15 @@ async function resolveContract(definition: M1Definition, fn: { contractRefs: { r
     return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${inputType}.` };
   }
   if (!text.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${outputRef.symbol}.` };
-  const required = requiredMembers(text, inputType);
-  if (!required) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
+  const members = contractMembers(text, inputType);
+  if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
   return {
     specifier: importSpecifier(dependency, 'defs'),
     inputType,
     outputType: outputRef.symbol,
-    requiredFields: required,
+    requiredFields: members.requiredFields,
+    allowedInputFields: members.allowedFields,
+    allowedInputPaths: members.allowedPaths,
     outputFields: projection?.outputFields ?? [],
   };
 }
@@ -387,6 +393,8 @@ async function resolveRoute(
     inputType: contract.inputType,
     inputSpecifier: contract.specifier,
     requiredFields: contract.requiredFields,
+    allowedInputFields: contract.allowedInputFields,
+    allowedInputPaths: contract.allowedInputPaths,
     outputFields: projection.outputFields,
     ports,
   };
@@ -395,12 +403,13 @@ async function resolveRoute(
 function renderHandler(route: ResolvedRoute): string {
   const grants = route.grantIds.map(item => `'${item}'`).join(', ');
   const required = route.requiredFields.map(item => `'${item}'`).join(', ');
+  const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
   const projected = route.outputFields.map(item => `'${item}'`).join(', ');
   return [
     `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse> {`,
     `  const denied = authorize(input.request, [${grants}]);`,
     '  if (denied) throw denied;',
-    `  const invalid = validateInput(input.request.params, [${required}]);`,
+    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}]);`,
     '  if (invalid) throw invalid;',
     `  const data = await ${route.usecaseId}(${argsOf(route)});`,
     `  return { ok: true, data: projectOutput(data, [${projected}]), error: null };`,
@@ -456,10 +465,24 @@ function authorizeSource(): string {
 
 function validateSource(): string {
   return [
-    'function validateInput(params: unknown, fields: readonly string[]): AppError | null {',
+    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[]): AppError | null {',
     '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? params as Record<string, unknown> : null;',
+    `  if (!body) return new AppError('${VALIDATION_ERROR}', 'Request body must be an object.', 400);`,
+    '  const invalidPath = (value: unknown, prefix: string): string => {',
+    '    if (Array.isArray(value)) { for (const item of value) { const invalid = invalidPath(item, prefix); if (invalid) return invalid; } return \'\'; }',
+    '    if (!value || typeof value !== \'object\') return \'\';',
+    '    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {',
+    "      const path = prefix ? prefix + '.' + key : key;",
+    '      if (!allowed.includes(path)) return path;',
+    '      const invalid = invalidPath(child, path); if (invalid) return invalid;',
+    '    }',
+    '    return \'\';',
+    '  };',
+    `  const invalid = invalidPath(body, ''); if (invalid) return new AppError('${VALIDATION_ERROR}', invalid + ' is not permitted.', 400);`,
     '  for (const field of fields) {',
-    '    if (!body || body[field] === undefined || body[field] === null || body[field] === \'\') {',
+    '    let value: unknown = body;',
+    '    for (const part of field.split(\'.\')) value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
+    '    if (value === undefined || value === null || value === \'\') {',
     `      return new AppError('${VALIDATION_ERROR}', \`\${field} is required.\`, 400);`,
     '    }',
     '  }',
@@ -618,7 +641,7 @@ function recordHops(grant: Record<string, unknown>): Array<Record<string, unknow
   return (chains[0].steps as unknown[]).filter(isRecord);
 }
 
-export function requiredMembers(source: string, name: string): string[] | null {
+export function contractMembers(source: string, name: string): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[] } | null {
   const tokenText = `export interface ${name} `;
   const at = source.indexOf(tokenText);
   if (at < 0) return null;
@@ -639,19 +662,31 @@ export function requiredMembers(source: string, name: string): string[] | null {
   }
   if (end < 0) return null;
   const body = source.slice(open + 1, end);
-  const fields: string[] = [];
+  const requiredFields: string[] = [];
+  const allowedFields: string[] = [];
+  const allowedPaths: string[] = [];
+  const parents: string[] = [];
   depth = 1;
   const lines = body.split('\n');
   for (const line of lines) {
     const opens = (line.match(/\{/g) ?? []).length;
     const closes = (line.match(/\}/g) ?? []).length;
-    if (depth === 1) {
-      const match = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?(\??)\s*:/.exec(line);
-      if (match && match[2] !== '?') fields.push(match[1]);
+    const match = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?(\??)\s*:/.exec(line);
+    if (match && depth >= 1) {
+      if (depth === 1) allowedFields.push(match[1]);
+      allowedPaths.push([...parents, match[1]].join('.'));
+      if (match[2] !== '?') requiredFields.push([...parents, match[1]].join('.'));
+      if (opens > closes) parents.push(match[1]);
+    } else if (closes > opens) {
+      for (let count = 0; count < closes - opens; count += 1) parents.pop();
     }
     depth += opens - closes;
   }
-  return fields;
+  return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)] };
+}
+
+export function requiredMembers(source: string, name: string): string[] | null {
+  return contractMembers(source, name)?.requiredFields ?? null;
 }
 
 function parseDefinitionExport(source: string): M1Definition | null {
