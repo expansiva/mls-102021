@@ -7,7 +7,7 @@ import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import { planMaterialization } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
@@ -708,6 +708,151 @@ void test('a resolved scope path filters the list and an injected field does not
   memory.resetMemory(rows);
   const foreign = await loaded.listConsulta(widened, {}, ports);
   assert.deepEqual(foreign.map(row => row.id), ['consulta-2']);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+void test('a local table update is derived and proved on a copy of the client defs', async () => {
+  const dir = join(ROOT, `.m1-17-update-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const client = join(ROOT, `mls-${102047}`);
+  const archived = spawnSync('git', ['-C', client, 'archive', '11301dd', '--', 'l1/agendaClinica', 'l2/agendaClinica/web/contracts/consultas.defs.ts', 'l4/agendaClinica/ontology/Consulta.defs.ts', 'l4/agendaClinica/rules.defs.ts'], { maxBuffer: 32 * 1024 * 1024 });
+  assert.equal(archived.status, 0, archived.stderr?.toString());
+  const extracted = spawnSync('tar', ['-x', '-C', dir], { input: archived.stdout });
+  assert.equal(extracted.status, 0, extracted.stderr?.toString());
+  const project = dir;
+  const refs = [
+    '_102047_/l1/agendaClinica/layer_2_application/usecases/updateConsulta.defs.ts',
+    '_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts',
+    '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts',
+    '_102047_/l2/agendaClinica/web/contracts/consultas.defs.ts',
+    '_102047_/l4/agendaClinica/ontology/Consulta.defs.ts',
+    '_102047_/l4/agendaClinica/rules.defs.ts',
+  ];
+  const copy = new Map(refs.map(ref => [ref, readFileSync(join(project, ref.slice('_102047_/'.length)), 'utf8')]));
+  const loaded = definitionAt(copy, 'updateConsulta');
+  assert.ok(loaded);
+  assert.equal(behaviorNeedsLlm(loaded.definition), false);
+  const readCopy = async (ref: string) => copy.get(ref) ?? null;
+  const emitted = await emitBehavior('implement.usecase', loaded.definition, 'l1/agendaClinica/updateConsulta.ts', readCopy);
+  assert.equal('code' in emitted, false, 'code' in emitted ? emitted.detail : '');
+  if ('code' in emitted) return;
+  assert.match(emitted.source, /enforce:storage/);
+  assert.equal(emitted.source.includes('enforce:version'), false);
+  assert.equal(emitted.source.includes('RULE_UNBOUND'), false);
+  assert.equal(emitted.source.includes('consultaHorarioProfissionalUnico') === false || emitted.source.includes('ruleId: "consultaHorarioProfissionalUnico"'), true);
+  const versionGap = await caseBlock(loaded.definition, loaded.defPath, {
+    routine: '',
+    expect: { ruleId: 'expectedVersion' },
+  }, readCopy);
+  assert.equal(versionGap?.gap, 'PRECONDITION_UNDECLARED');
+
+  const file = join(dir, 'updateConsulta.ts');
+  writeFileSync(file, emitted.source);
+  const usecase = await import(pathToFileURL(file).href) as {
+    updateConsulta: (input: Record<string, unknown>, ctx: unknown, ports: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  };
+  const memory = await import(pathToFileURL(join(project, 'l1/agendaClinica/layer_2_application/ports/consultaRepository.ts')).href) as {
+    resetMemory: (seed?: Record<string, unknown>[]) => void;
+    pendingConsultaRepository: unknown;
+  };
+  const details = { telephoneConfirmation: { confirmedAt: '' }, attendanceNote: '' };
+  const first = { id: 'row-1', version: 1, pacienteId: 'p1', profissionalId: 'pro-1', scheduledAt: '2026-09-26T13:00:00.000Z', status: 'scheduled', details };
+  const second = { id: 'row-2', version: 1, pacienteId: 'p2', profissionalId: 'pro-1', scheduledAt: '2026-09-26T15:00:00.000Z', status: 'scheduled', details };
+  const ports = { consultaRepository: memory.pendingConsultaRepository };
+  const ctx = {};
+  const inputFor = (row: Record<string, unknown>, patch: Record<string, unknown>) => ({ ...row, ...patch });
+  memory.resetMemory([first, second]);
+  const saved = await usecase.updateConsulta(inputFor(first, { pacienteId: 'p9' }), ctx, ports);
+  assert.equal(saved.id, 'row-1');
+  assert.equal(saved.pacienteId, 'p9');
+  assert.equal(saved.version, 1);
+  memory.resetMemory([first, second]);
+  await assert.rejects(
+    () => usecase.updateConsulta(inputFor(first, { scheduledAt: second.scheduledAt }), ctx, ports),
+    (error: { code?: string; statusCode?: number; details?: { ruleId?: string } }) => error.code === 'CONFLICT' && error.details?.ruleId === 'consultaHorarioProfissionalUnico',
+  );
+  memory.resetMemory([first]);
+  await assert.rejects(
+    () => usecase.updateConsulta(inputFor(first, { id: 'missing' }), ctx, ports),
+    (error: { code?: string }) => error.code === 'NOT_FOUND',
+  );
+  const opened = withoutStorageChecks(emitted.source);
+  assert.equal(opened.removed, 1);
+  const openFile = join(dir, 'updateConsultaOpen.ts');
+  writeFileSync(openFile, opened.source);
+  const openUsecase = await import(pathToFileURL(openFile).href) as typeof usecase;
+  memory.resetMemory([first, second]);
+  const collided = await openUsecase.updateConsulta(inputFor(first, { scheduledAt: second.scheduledAt }), ctx, ports);
+  assert.equal(collided.scheduledAt, second.scheduledAt);
+
+  const marked = new Map(copy);
+  const ontology = '_102047_/l4/agendaClinica/ontology/Consulta.defs.ts';
+  marked.set(ontology, (marked.get(ontology) ?? '').replace('"version": {', '"version": { "writePrecondition": true,'));
+  const withVersion = structuredClone(loaded.definition);
+  const fn = withVersion.data.functions;
+  if (Array.isArray(fn) && isRecord(fn[0]) && Array.isArray(fn[0].input)) {
+    fn[0].input.push({ name: 'version', type: 'number', fieldRef: 'Consulta.version' });
+  }
+  const readMarked = async (ref: string) => marked.get(ref) ?? null;
+  const versioned = await emitBehavior('implement.usecase', withVersion, 'l1/agendaClinica/updateConsulta.ts', readMarked);
+  assert.equal('code' in versioned, false, 'code' in versioned ? versioned.detail : '');
+  if ('code' in versioned) return;
+  assert.match(versioned.source, /enforce:version/);
+  const versionFile = join(dir, 'updateConsultaVersion.ts');
+  writeFileSync(versionFile, versioned.source);
+  const versionUsecase = await import(pathToFileURL(versionFile).href) as typeof usecase;
+  memory.resetMemory([{ ...first, version: 2 }, second]);
+  const bumped = await versionUsecase.updateConsulta(inputFor(first, { version: 2, pacienteId: 'p8' }), ctx, ports);
+  assert.equal(bumped.version, 3);
+  memory.resetMemory([{ ...first, version: 2 }, second]);
+  await assert.rejects(
+    () => versionUsecase.updateConsulta(inputFor(first, { version: 1 }), ctx, ports),
+    (error: { code?: string; statusCode?: number }) => error.code === 'CONCURRENCY_CONFLICT',
+  );
+
+  const renamed = new Map<string, string>();
+  for (const [ref, text] of copy) {
+    const nextText = text
+      .replaceAll('consultaHorarioProfissionalUnico', 'r1')
+      .replaceAll('profissionalId', 'agentId')
+      .replaceAll('Consulta', 'Visita')
+      .replaceAll('agendaClinica', 'visitaBook');
+    const nextRef = ref
+      .replaceAll('consultaHorarioProfissionalUnico', 'r1')
+      .replaceAll('profissionalId', 'agentId')
+      .replaceAll('Consulta', 'Visita')
+      .replaceAll('agendaClinica', 'visitaBook');
+    renamed.set(nextRef, nextText);
+  }
+  const renamedUpdate = definitionAt(renamed, 'updateVisita');
+  const renamedPort = definitionAt(renamed, 'VisitaRepository');
+  assert.ok(renamedUpdate && renamedPort);
+  const readRenamed = async (ref: string) => renamed.get(ref) ?? null;
+  const renamedUse = await emitBehavior('implement.usecase', renamedUpdate.definition, 'l1/visitaBook/updateVisita.ts', readRenamed);
+  const renamedRepo = await emitBehavior('implement.repositoryPort', renamedPort.definition, 'l1/visitaBook/visitaRepository.ts', readRenamed);
+  assert.equal('code' in renamedUse, false, 'code' in renamedUse ? renamedUse.detail : '');
+  assert.equal('code' in renamedRepo, false, 'code' in renamedRepo ? renamedRepo.detail : '');
+  if ('code' in renamedUse || 'code' in renamedRepo) return;
+  assert.equal(/agendaClinica|Consulta|profissionalId|consultaHorarioProfissionalUnico/.test(renamedUse.source), false);
+  writeFileSync(join(dir, 'updateVisita.ts'), renamedUse.source);
+  writeFileSync(join(dir, 'visitaRepository.ts'), renamedRepo.source);
+  const visita = await import(pathToFileURL(join(dir, 'updateVisita.ts')).href) as {
+    updateVisita: (input: Record<string, unknown>, ctx: unknown, ports: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  };
+  const visitaMemory = await import(pathToFileURL(join(dir, 'visitaRepository.ts')).href) as {
+    resetMemory: (seed?: Record<string, unknown>[]) => void;
+    pendingVisitaRepository: unknown;
+  };
+  const visitaPorts = { visitaRepository: visitaMemory.pendingVisitaRepository };
+  const visitaRow = { ...first, agentId: 'pro-1' };
+  const visitaOther = { ...second, agentId: 'pro-1' };
+  delete (visitaRow as { profissionalId?: string }).profissionalId;
+  delete (visitaOther as { profissionalId?: string }).profissionalId;
+  visitaMemory.resetMemory([visitaRow, visitaOther]);
+  await assert.rejects(
+    () => visita.updateVisita({ ...visitaRow, scheduledAt: visitaOther.scheduledAt }, ctx, visitaPorts),
+    (error: { code?: string; details?: { ruleId?: string } }) => error.code === 'CONFLICT' && error.details?.ruleId === 'r1',
+  );
   rmSync(dir, { recursive: true, force: true });
 });
 

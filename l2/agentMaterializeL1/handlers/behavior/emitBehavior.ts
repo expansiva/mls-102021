@@ -40,7 +40,7 @@ import {
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
-const DERIVED_OPERATIONS = new Set(['create', 'list', 'get', 'read']);
+const DERIVED_OPERATIONS = new Set(['create', 'list', 'get', 'read', 'update']);
 const BLOCKING_RULE_GAPS = new Set(['APPLICABILITY_UNDECLARED']);
 
 const GAP_OWNER: Record<string, string> = {
@@ -104,6 +104,7 @@ export function behaviorNeedsLlm(definition: M1Definition): boolean {
   }
   if (!DERIVED_OPERATIONS.has(operation)) return true;
   if (stringList(definition.data.ports).length !== 1) return true;
+  if (operation === 'update' && (!selectorField(definition) || stringList(definition.data.portCalls).find(isIdent) !== 'update')) return true;
   return ruleRows(definition).some(row => row.enforcement === 'local' && !isStorageRow(row));
 }
 
@@ -179,10 +180,15 @@ export async function caseBlock(
   if (ruleId && !ruleRows(definition).some(row => row.ruleId === ruleId)) {
     return { gap: 'PRECONDITION_UNDECLARED', owner: GAP_OWNER.PRECONDITION_UNDECLARED, ruleId, unread: false };
   }
-  if (text(definition.data.operation) === 'update' && isDerivedMdm(definition)) {
-    const precondition = await confirmedPrecondition(definition, read);
-    if (!precondition) return { gap: 'PRECONDITION_UNDECLARED', owner: GAP_OWNER.PRECONDITION_UNDECLARED, ruleId: ruleId || 'writePrecondition', unread: false };
-    if (ruleId === 'writePrecondition' || ruleId === 'expectedVersion') return null;
+  if (text(definition.data.operation) === 'update') {
+    const precondition = isDerivedMdm(definition)
+      ? await confirmedPrecondition(definition, read)
+      : await localPrecondition(definition, read);
+    const asksVersion = ruleId === 'writePrecondition' || ruleId === 'expectedVersion';
+    if (!precondition && (isDerivedMdm(definition) || asksVersion)) {
+      return { gap: 'PRECONDITION_UNDECLARED', owner: GAP_OWNER.PRECONDITION_UNDECLARED, ruleId: ruleId || 'writePrecondition', unread: false };
+    }
+    if (precondition && asksVersion) return null;
   }
   if (text(definition.data.operation) === 'transition' && ruleId) {
     const plan = await planTransition(definition, read);
@@ -237,7 +243,7 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   if ('code' in entity) return entity;
   const entityName = text(entity.data.entityId) || 'Entity';
   const entityDep = definition.dependencies.find(path => path.includes('/entities/')) ?? '';
-  const keys = operation === 'create' ? await readUniqueKeys(definition, read) : [];
+  const keys = operation === 'create' || operation === 'update' ? await readUniqueKeys(definition, read) : [];
   if ('code' in keys) return keys;
   const ruleId = constraintRuleId(definition);
   if (keys.length > 0 && !ruleId) {
@@ -246,11 +252,14 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const inputs = new Set(inputNames(definition));
   const transition = operation === 'transition' ? await planTransition(definition, read) : null;
   if (transition && 'code' in transition) return transition;
+  const precondition = operation === 'update' ? await localPrecondition(definition, read) : '';
   const body = operation === 'create'
     ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs)
-    : transition
-      ? transitionBody(entityName, camel(portName), transition)
-      : listBody(entity, entityName, camel(portName), inputs);
+    : operation === 'update'
+      ? updateBody(entity, entityName, camel(portName), keys, ruleId, inputs, selectorField(definition), precondition)
+      : transition
+        ? transitionBody(entityName, camel(portName), transition)
+        : listBody(entity, entityName, camel(portName), inputs);
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,
@@ -592,13 +601,14 @@ function requiredExpr(call: MdmCall, precondition: string): string {
   return paths.map(path => `present(readPath(body, ${JSON.stringify(path)}))`).join(' && ');
 }
 
-async function confirmedPrecondition(definition: M1Definition, read: StructureRead): Promise<string> {
-  const update = mdmCalls(definition).find(call => call.method === 'update');
-  const arg = update?.args.find(item => item.name === 'expectedVersion' && item.evidence === 'writePrecondition' && item.originKind === 'contract');
-  if (!arg?.path) return '';
-  const leaf = arg.path.split('.').pop() ?? '';
+async function localPrecondition(definition: M1Definition, read: StructureRead): Promise<string> {
   const inputs = new Set(inputNames(definition));
-  if (!leaf || (!inputs.has(arg.path) && !inputs.has(leaf))) return '';
+  const marked = await markedPreconditions(definition, read);
+  const hits = [...marked].filter(name => inputs.has(name) && isIdent(name));
+  return hits.length === 1 ? hits[0] : '';
+}
+
+async function markedPreconditions(definition: M1Definition, read: StructureRead): Promise<Set<string>> {
   const marked = new Set<string>();
   for (const dep of definition.dependencies) {
     const source = await read(dep);
@@ -607,6 +617,17 @@ async function confirmedPrecondition(definition: M1Definition, read: StructureRe
       marked.add(match[1] ?? '');
     }
   }
+  return marked;
+}
+
+async function confirmedPrecondition(definition: M1Definition, read: StructureRead): Promise<string> {
+  const update = mdmCalls(definition).find(call => call.method === 'update');
+  const arg = update?.args.find(item => item.name === 'expectedVersion' && item.evidence === 'writePrecondition' && item.originKind === 'contract');
+  if (!arg?.path) return '';
+  const leaf = arg.path.split('.').pop() ?? '';
+  const inputs = new Set(inputNames(definition));
+  if (!leaf || (!inputs.has(arg.path) && !inputs.has(leaf))) return '';
+  const marked = await markedPreconditions(definition, read);
   return marked.has(leaf) ? arg.path : '';
 }
 
@@ -728,6 +749,71 @@ function createBody(
     ...checks,
     `  return ports.${binding}.create(record);`,
   ].join('\n');
+}
+
+function updateBody(
+  entity: M1Definition,
+  entityName: string,
+  binding: string,
+  keys: readonly (readonly string[])[],
+  ruleId: string,
+  inputs: ReadonlySet<string>,
+  selector: string,
+  precondition: string,
+): string {
+  const tree = fieldTree(entity);
+  const platform = platformRoots(entity);
+  const writable = [...inputs].filter(name => {
+    const node = tree.children.get(name);
+    return Boolean(node && !node.derived && !platform.has(name) && isIdent(name));
+  });
+  const versionName = versionField(entity, identityField(entity));
+  const compared = versionName && (precondition === versionName || precondition.endsWith(`.${versionName}`)) ? versionName : '';
+  const readPath = compared
+    ? [
+      '  const readPath = (source: unknown, path: string): unknown => {',
+      '    let node: unknown = source;',
+      '    for (const part of path.split(\'.\')) {',
+      '      if (!node || typeof node !== \'object\') return undefined;',
+      '      node = (node as Record<string, unknown>)[part];',
+      '    }',
+      '    return node;',
+      '  };',
+      `  ${VERSION_MARK}`,
+      `  const expectedVersion = Number(readPath(body, ${JSON.stringify(precondition)}));`,
+      `  if (Number(current.${compared} ?? 0) !== expectedVersion) throw new AppError('CONCURRENCY_CONFLICT', 'Version is stale.', 409);`,
+    ]
+    : [];
+  const assigns = writable.map(name => `  next.${name} = body.${name};`);
+  const bump = compared ? [`  next.${compared} = Number(current.${compared} ?? 0) + 1;`] : [];
+  const checks = keys.map(columns => [
+    '  {',
+    `    const taken = (await ports.${binding}.list({ ${columns.map(column => `${column}: body.${column}`).join(', ')} })).filter(row => row.${selector} !== current.${selector});`,
+    `    ${STORAGE_MARK}`,
+    `    if (taken.length > 0) throw new AppError('CONFLICT', 'Unique key already stored.', 409, { ruleId: ${JSON.stringify(ruleId)} });`,
+    '  }',
+  ].join('\n'));
+  return [
+    `  const body = input as ${entityName};`,
+    `  const found = await ports.${binding}.list({ ${selector}: body.${selector} });`,
+    '  const current = found[0];',
+    '  if (!current) throw new AppError(\'NOT_FOUND\', \'Record not found.\', 404);',
+    ...readPath,
+    `  const next: ${entityName} = { ...current };`,
+    ...assigns,
+    ...bump,
+    ...checks,
+    `  return ports.${binding}.update(next);`,
+  ].join('\n');
+}
+
+function platformRoots(entity: M1Definition): Set<string> {
+  const fields = Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
+  const names = fields
+    .filter(field => text(field.owner) === 'platform')
+    .map(field => text(field.name).split('.')[0] ?? '')
+    .filter(isIdent);
+  return new Set(names);
 }
 
 interface TransitionPlan {
