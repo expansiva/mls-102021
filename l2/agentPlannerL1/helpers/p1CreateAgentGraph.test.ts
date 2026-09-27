@@ -18,9 +18,6 @@ const ALLOWED_102035 = new Set([
   '/_102035_/l2/solution/fs.js',
   '/_102035_/l2/solution/types.js',
 ]);
-const ALLOWED_102021 = new Set([
-  '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js',
-]);
 
 type Offence = { file: string; reason: string };
 
@@ -59,7 +56,7 @@ function forbiddenImportReason(spec: string): string | null {
   if (/(?:^|\/)widgets\//.test(spec)) return `static import of widgets (${spec})`;
   if (spec.includes('collabMessagesHelper')) return `static import of collabMessagesHelper (${spec})`;
   if (spec.includes('mls.editor')) return `static import of mls.editor (${spec})`;
-  if (spec.includes('agentChangeBackend') && !ALLOWED_102021.has(spec)) {
+  if (spec.includes('agentChangeBackend')) {
     return `static import of agentChangeBackend (${spec})`;
   }
   if (spec.startsWith('/_102035_/') && !ALLOWED_102035.has(spec)) {

@@ -1,10 +1,10 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/helpers/l1Inventory.ts" enhancement="_blank"/>
 
-import { parseDefsSource } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
-import type { OwnerStatus } from '/_102021_/l2/agentChangeBackend/helpers/cbShared.js';
+import { parseDefsSource } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
 import { diskFileInfo, hostListFolder, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
-/** Same enum as `cbShared.ALL_STATUSES`. Listed here so this module does not import cbShared at runtime. */
+/** agentChangeBackend was deleted (p4_15); this is now the single source for the owner status enum. */
+export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 const OWNER_STATUSES: readonly OwnerStatus[] = ['toCreate', 'toUpdate', 'toRemove', 'inProgress', 'done'];
 
 export interface L1InventoryField {

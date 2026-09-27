@@ -7,12 +7,6 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
-  CONTRACTS_102034,
-  expandContextRef,
-  layerRank,
-  orderItems,
-} from '/_102021_/l2/agentChangeBackend/helpers/cbMaterializeCore.js';
-import {
   M1_ARTIFACT_TYPES,
   M1_DEFINITION_SCHEMA,
   outputPathFromDefPath,
@@ -51,6 +45,63 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PRODUCT = resolve(HERE, '..');
 const PLATFORM = Object.values(PLATFORM_FILES);
+
+/**
+ * Frozen from the deleted `agentChangeBackend/helpers/cbMaterializeCore.ts` (p4_15). M1's own
+ * `context.ts`/`plan.ts` never called these — the tests below use them only as the legacy oracle
+ * to prove `platformFilesFor`/`planMaterialization` produce equivalent output. Copied verbatim.
+ */
+const LEGACY_LAYER_RANK: Record<string, number> = {
+  domainEntity: 0,
+  repositoryPort: 1,
+  persistenceTable: 2,
+  repositoryAdapter: 3,
+  applicationUsecase: 4,
+  httpController: 5,
+  persistenceSeeds: 6,
+};
+function layerRank(type: string): number {
+  return type in LEGACY_LAYER_RANK ? LEGACY_LAYER_RANK[type] : 99;
+}
+function orderItems<T extends { id: string; type: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => layerRank(a.type) - layerRank(b.type) || a.id.localeCompare(b.id));
+}
+const LEGACY_C_CONTRACTS = '_102034_/l1/server/layer_2_controllers/contracts.ts';
+const LEGACY_C_MDM_FACADE = '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts';
+const LEGACY_C_RUNTIME = '_102034_/l1/server/layer_1_external/data/runtime.ts';
+const LEGACY_C_PERSISTENCE = '_102034_/l1/server/layer_1_external/persistence/contracts.ts';
+const LEGACY_C_REGISTRY = '_102034_/l1/server/layer_2_application/repositoryRegistry.ts';
+const CONTRACTS_102034: readonly string[] = [
+  LEGACY_C_CONTRACTS, LEGACY_C_MDM_FACADE, LEGACY_C_RUNTIME, LEGACY_C_PERSISTENCE, LEGACY_C_REGISTRY,
+];
+function legacyContracts102034ForType(artifactType: string | undefined, hasMdmRefs: boolean): string[] {
+  switch (artifactType) {
+    case 'domainEntity':
+    case 'valueObject':
+    case 'domainService':
+    case 'domainRule':
+    case 'domainEvent':
+    case 'repositoryPort':
+      return [];
+    case 'persistenceTable':
+    case 'persistenceMetricTable':
+    case 'persistenceSeeds':
+      return [LEGACY_C_PERSISTENCE];
+    case 'repositoryAdapter':
+      return [LEGACY_C_CONTRACTS, LEGACY_C_RUNTIME, LEGACY_C_PERSISTENCE, LEGACY_C_REGISTRY];
+    case 'applicationUsecase':
+    case 'applicationService':
+      return hasMdmRefs ? [LEGACY_C_CONTRACTS, LEGACY_C_REGISTRY, LEGACY_C_MDM_FACADE] : [LEGACY_C_CONTRACTS, LEGACY_C_REGISTRY];
+    case 'httpController':
+    case 'httpRoute':
+      return [LEGACY_C_CONTRACTS];
+    default:
+      return [...CONTRACTS_102034];
+  }
+}
+function expandContextRef(ref: string, artifactType?: string, hasMdmRefs = false): string[] {
+  return ref === '_102034_.d.ts' ? legacyContracts102034ForType(artifactType, hasMdmRefs) : [ref];
+}
 
 void test('closed registry names every contract type and no implement fallback', () => {
   assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'structure')), [...M1_ARTIFACT_TYPES]);

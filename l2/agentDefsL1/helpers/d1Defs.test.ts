@@ -7,8 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-import { parseDefsSource } from '/_102021_/l2/agentChangeBackend/helpers/cbDefsSource.js';
-import { createPlannerToolSchema } from '/_102021_/l2/agentChangeBackend/helpers/cbPlanner.js';
+import { parseDefsSource } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { fileKey, installStudio } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
@@ -57,6 +56,34 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const SCHEMA_FILES = ['definition-v1.schema.json', 'pipeline-item-v1.schema.json', 'catalog-v1.schema.json'];
+
+/**
+ * Inlined from the deleted `agentChangeBackend/helpers/cbPlanner.ts` (p4_15): this test is the only
+ * surviving caller, just to lint the assembled tool schema below. The status/result/questions/trace
+ * envelope and the strict-provider $defs hoisting are copied verbatim.
+ */
+function createPlannerToolSchema(toolName: string, description: string, resultSchema: Record<string, unknown>): mls.msg.LLMTool {
+  const resultBody: Record<string, unknown> = { ...resultSchema };
+  const hoistedDefs = resultBody.$defs;
+  delete resultBody.$defs;
+  delete resultBody.$id;
+  const parameters: Record<string, unknown> = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['status', 'result', 'questions', 'trace'],
+    properties: {
+      status: { type: 'string', enum: ['ok', 'needs_input', 'failed'] },
+      result: resultBody,
+      questions: { type: 'array', items: { type: 'string' } },
+      trace: { type: 'array', items: { type: 'string' } },
+    },
+  };
+  if (hoistedDefs && typeof hoistedDefs === 'object') parameters.$defs = hoistedDefs;
+  return {
+    type: 'function',
+    function: { name: toolName, description, parameters },
+  } as unknown as mls.msg.LLMTool;
+}
 
 function loadAgendaPlan(): D1MeasuredPlan {
   return JSON.parse(readFileSync(path.join(ROOT, 'examples/agendaClinicaPlan.json'), 'utf8')) as D1MeasuredPlan;

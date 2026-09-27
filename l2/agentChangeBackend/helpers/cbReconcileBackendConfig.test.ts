@@ -110,13 +110,11 @@ test('pruneOrphanL5BackendModules drops a backend whose persistence dir is gone'
   assert.deepEqual(result.discarded, ['petShop']);
 });
 
-test('backend config writers call reconcile instead of appending', () => {
+// cbShared.ts and steps/register/agentCbRegister.ts were deleted (p4_15): agentMaterializeL1 now
+// owns registration (reconcileL5.ts) and does not call these helpers at all (measured, zero hits).
+// The composer (nodejsSaveConfigJson.ts) is the only surviving caller.
+test('backend config writer calls reconcile instead of appending', () => {
   const composer = readFileSync(path.join(HERE, '..', 'nodejsSaveConfigJson.ts'), 'utf8');
-  const shared = readFileSync(path.join(HERE, 'cbShared.ts'), 'utf8');
-  const register = readFileSync(path.join(HERE, '..', 'steps', 'register', 'agentCbRegister.ts'), 'utf8');
   assert.match(composer, /reconcileClientBackendRegistration/);
-  assert.match(shared, /reconcileClientBackendRegistration/);
-  assert.match(register, /pruneOrphanL5BackendModules/);
   assert.match(composer, /emitMlsDepJson/);
-  assert.match(shared, /emitMlsDepJsonIfHostDisk/);
 });
