@@ -85,8 +85,8 @@ export const pipeline = [
     "dependsFiles": [],
     "dependsOn": [],
     "skills": [
-      "_102021_/l2/agentChangeBackend/skills/architecture.md",
-      "_102021_/l2/agentChangeBackend/skills/domainEntity.md",
+      "_102021_/l2/agentDefsL1/skills/architecture.md",
+      "_102021_/l2/agentDefsL1/skills/domainEntity.md",
       "_102034_.d.ts"
     ],
     "agent": "agentCbMaterialize"
