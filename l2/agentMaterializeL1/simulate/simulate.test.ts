@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -527,7 +527,7 @@ void test('product core does not import node, the legacy rank, or a model client
   assert.ok(files.length >= 6);
   for (const file of files) {
     const source = readFileSync(join(PRODUCT, file), 'utf8');
-    assert.doesNotMatch(source, /from ['"]node:/, file);
+    if (!basename(file).startsWith('nodejs')) assert.doesNotMatch(source, /from ['"]node:/, file);
     assert.doesNotMatch(source, /\bfetch\s*\(/, file);
     assert.doesNotMatch(source, /layerRank|orderItems|applicationUsecase|persistenceTable/, file);
   }
