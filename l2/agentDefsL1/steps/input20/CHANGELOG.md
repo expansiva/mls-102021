@@ -1,5 +1,9 @@
 # input20
 
+## 2026-09-28 (p4_16)
+
+- The integration outbound def (`l1/<mod>/layer_1_external/adapters/integration/outbound.defs.ts`) is now inventoried whenever there is an outbound event, an inbound item, a process, or a plugin — the same condition support70's `emitEffects`/`laterOf` use to decide whether it writes that def. Before, a module with only an inbound item and no outbound event had support70 write the file while input20's inventory stayed silent about it, so finalize80 refused it as `EXTRA_FILE`.
+
 ## 2026-09-28 (d1_40)
 
 - `regenerateCurrent` also runs agentDefsL2 input20 (`buildD2InputSnapshot`) and contracts30 (`generateD2Contracts`) over the regenerated needs/backend/effort, so the seed page contracts come from the same plan revision. They are outputs, not copies of the bench; `regenHead.test` compares them byte for byte and checks that every backend route has one binding, a declared input and one input symbol in its page contract.

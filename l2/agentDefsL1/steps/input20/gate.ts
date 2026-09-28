@@ -264,6 +264,7 @@ export function buildD1InputSnapshot(
   const removed = collectRemoved(problems, paths, backend, effort, selectedRoutes, selectedUsecases);
   const entityClosure = closeEntities(selectedUsecases, relationships, new Set(entityIds));
   const outbound = outboundEvents(integration);
+  const hasEffects = outbound.length > 0 || hasEffectOperations(integration, workflows);
   noteStale(problems, moduleName, sources, previous);
   noteChanges(problems, paths, backend, effort);
   notePayload(problems, moduleName, selectedUsecases, artifacts.entities);
@@ -281,6 +282,7 @@ export function buildD1InputSnapshot(
     tables: selectedTables,
     entities: entityClosure,
     outbound,
+    hasEffects,
     grants: qualifyingGrants(access, entityClosure.ids),
     present,
     previous,
@@ -335,6 +337,7 @@ function planFiles(input: {
   tables: D1SelectedTable[];
   entities: { ids: string[]; owners: Map<string, string[]> };
   outbound: Array<{ id: string; on: string }>;
+  hasEffects: boolean;
   grants: string[];
   present: Map<string, string>;
   previous: D1InputSnapshot | null;
@@ -510,7 +513,7 @@ function planFiles(input: {
     });
     break;
   }
-  if (input.outbound.length) {
+  if (input.hasEffects) {
     const defPath = `l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`;
     const dependsOn = unique(input.outbound.map(event => {
       const transitionId = event.on.split('.')[1] || '';
@@ -913,6 +916,14 @@ function outboundEvents(integration: Record<string, unknown>): Array<{ id: strin
   return rows(integration.outbound)
     .map(row => ({ id: text(row.id), on: text(row.on) }))
     .filter(row => row.id);
+}
+
+// Same condition support70's emitEffects/laterOf use to decide whether the
+// integration outbound def is written: an outbound event, a process, an
+// inbound item or a plugin. Mirrors it here so input20 inventories the path
+// finalize80 will find, instead of only reacting to outbound events.
+function hasEffectOperations(integration: Record<string, unknown>, workflows: Record<string, unknown>): boolean {
+  return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0 || rows(workflows.processes).length > 0;
 }
 
 function comparePageSets(problems: D1InputProblem[], paths: ReturnType<typeof inputPaths>, menu: Set<string>, needs: Set<string>, effort: Set<string>): void {

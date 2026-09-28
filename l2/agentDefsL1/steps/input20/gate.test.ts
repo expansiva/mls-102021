@@ -186,6 +186,25 @@ void test('frozen agendaClinica snapshot is cut by id', async () => {
   }
 });
 
+void test('integration outbound def is inventoried from an inbound item, with no outbound events', async () => {
+  const artifacts = clone(await loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [{ id: 'chamadaRecebida', kind: 'inbound', transitionRef: 'registrarFalta', mechanism: 'queue' }];
+  const snapshot = build(artifacts);
+  assert.ok(fileOf(snapshot, 'integrationOutbound', 'outbound'));
+});
+
+void test('integration outbound def is absent with no outbound event, process, inbound or plugin', async () => {
+  const artifacts = clone(await loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [];
+  integration.plugins = [];
+  const snapshot = build(artifacts);
+  assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound'), undefined);
+});
+
 void test('removing one route keeps a usecase another page still uses', async () => {
   const artifacts = clone(await loadHead());
   const route = 'agendaClinica.agenda.qryListConsulta';
