@@ -28,7 +28,8 @@ const PROJECT = '102047';
 const MODULE = 'agendaClinica';
 
 void test('structure output of the clinic fixture typechecks on the official configs', async () => {
-  const texts = loadDefs(FIXTURE);
+  // The frozen fixture predates d1_36: controllers60 now adds the authority map to a controller with grants.
+  const texts = withAuthorityDependency(loadDefs(FIXTURE));
   assert.ok(texts.has(`_${PROJECT}_/l2/${MODULE}/web/contracts/agenda.defs.ts`));
   const units: PlanUnitInput[] = [];
   const definitions = new Map<string, M1Definition>();
@@ -44,11 +45,10 @@ void test('structure output of the clinic fixture typechecks on the official con
   const withheld = catalogWithheld(snapshot.units, new Set(structureHandlerIds()));
   const authority = snapshot.units.find(unit => unit.artifactType === 'authorityMap');
   assert.ok(authority);
-  assert.match(authority.reason, /^NO_CONSUMER:/);
-  assert.equal(withheld.get(authority.defPath), authority.reason);
+  assert.doesNotMatch(authority.reason, /NO_CONSUMER/);
+  assert.equal(withheld.has(authority.defPath), false);
   const derived = deriveCatalog(MODULE, units, Object.fromEntries(texts), withheld);
-  assert.equal(derived.catalog.scenarios.some(item => item.artifactId === 'authorityMap'), false);
-  assert.equal(derived.gaps.some(gap => gap.artifactId === 'authorityMap' && gap.reason.startsWith('NO_CONSUMER:')), true);
+  assert.equal(derived.gaps.some(gap => gap.artifactId === 'authorityMap'), false);
   const catalogRef = `_${PROJECT}_/${receiptFolder(MODULE)}/scenarioCatalog.ts`;
   const catalogSource = renderMonitorCatalog(derived.catalog, catalogRef);
   const read = async (ref: string): Promise<string | null> => ref === catalogRef ? catalogSource : texts.get(ref) ?? null;
@@ -72,7 +72,8 @@ void test('structure output of the clinic fixture typechecks on the official con
     tests += 1;
   }
   assert.ok(tests > 0);
-  assert.equal([...files.keys()].some(path => path.endsWith('/authorityMap.test.ts')), false);
+  assert.equal([...files.keys()].some(path => path.endsWith('/authorityMap.ts')), true);
+  assert.equal([...files].some(([path, source]) => path.includes('/controllers/') && source.includes('actorRefFor(grantId)')), true);
 
   const sandbox = mkdtempSync(join(tmpdir(), 'm1-15-'));
   try {
@@ -128,6 +129,17 @@ void test('a qualified output path keeps the leading slash and a bare name is re
   assert.equal(moduleSpecifier('/_102047_/l1/agendaClinica/scope/accessScope.js'), '/_102047_/l1/agendaClinica/scope/accessScope.js');
   assert.equal(moduleSpecifier('./accessScope.ts'), '');
 });
+
+function withAuthorityDependency(texts: Map<string, string>): Map<string, string> {
+  const authority = [...texts.keys()].find(path => path.endsWith('/authorityMap.defs.ts'));
+  assert.ok(authority);
+  const out = new Map<string, string>();
+  for (const [path, text] of texts) {
+    const isController = text.includes('"artifactType": "httpController"') && text.includes('"grantIds"');
+    out.set(path, isController ? text.replace('"dependencies": [', `"dependencies": [\n    "${authority}",`) : text);
+  }
+  return out;
+}
 
 function compile(root: string, name: string, config: { extends: string; include: string[]; exclude?: string[] }): string {
   const configPath = join(root, `.tsconfig.m1-15-${name}.json`);

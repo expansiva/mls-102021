@@ -48,7 +48,8 @@ export const M1_WRITER_SCHEMA = '2026-09-25-m1-writer-v1' as const;
 export const WRITE_BOUNDARIES = ['before-promote', 'staging', 'output', 'receipt', 'status'] as const;
 export type WriteBoundary = typeof WRITE_BOUNDARIES[number];
 
-const FILE_GAP = new Set(['MISSING_REF', 'CONTEXT_UNREAD', 'MECHANISM_UNBOUND', 'NO_NAMED_HANDLER', 'BLOCKED_BY']);
+// NO_CONSUMER is re-checked by the planner before maintenance; reaching here means a consumer exists now.
+const FILE_GAP = new Set(['MISSING_REF', 'CONTEXT_UNREAD', 'MECHANISM_UNBOUND', 'NO_NAMED_HANDLER', 'BLOCKED_BY', 'NO_CONSUMER']);
 
 export interface OwnedEntry {
   defPath: string;

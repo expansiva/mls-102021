@@ -14,6 +14,10 @@ export const GRANT_ABSENT = 'GRANT_ABSENT';
 export const SESSION_UNVERIFIED = 'SESSION_UNVERIFIED';
 export const SCOPE_UNBOUND = 'SCOPE_UNBOUND';
 export const REPOSITORY_NOT_IMPLEMENTED = 'REPOSITORY_NOT_IMPLEMENTED';
+/** A controller with grants and no readable authority map is not emitted. */
+export const AUTHORITY_UNREAD = 'AUTHORITY_UNREAD';
+/** A grant the authority map does not name has no actor: the route is refused. */
+export const AUTHORITY_UNMAPPED = 'AUTHORITY_UNMAPPED';
 
 export interface StructureGrant {
   grantId: string;
@@ -31,6 +35,8 @@ export interface GateInput {
   authorities: readonly string[];
   grantIds: readonly string[];
   grants: readonly StructureGrant[];
+  /** Authority map entries. The actor of a grant comes from here, not from the scope. */
+  authority: readonly { grantId: string; actorRef: string }[];
   params: unknown;
   requiredFields: readonly string[];
 }
@@ -72,8 +78,10 @@ export function decideRoute(input: GateInput): GateDecision {
     if (!('grantId' in resolved)) {
       return { ok: false, status: 403, errorCode: resolved.code, reachedUsecase: false };
     }
+    const actorRef = input.authority.find(entry => entry.grantId === grantId)?.actorRef ?? '';
+    if (!actorRef) return { ok: false, status: 403, errorCode: AUTHORITY_UNMAPPED, reachedUsecase: false };
     const authorities = input.authorities;
-    if (authorities.length > 0 && resolved.actorRef && !authorities.some(item => item === resolved.actorRef || item.endsWith(`:${resolved.actorRef}`))) {
+    if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(`:${actorRef}`))) {
       return { ok: false, status: 403, errorCode: FORBIDDEN_ACTOR, reachedUsecase: false };
     }
   }

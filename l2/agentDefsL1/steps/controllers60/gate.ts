@@ -585,6 +585,12 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
   const scopeLogical = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;
   dependsOn.push(pipelineId(request.project, request.moduleName, 'accessScope', 'accessScope'));
   dependsFiles.push(qualifyDefPath(request.project, scopeLogical));
+  // A route with grants resolves its actor through the authority map (support70 writes it).
+  if (item.handlers.some(handler => handler.grantIds.length > 0)) {
+    const authorityLogical = `l1/${request.moduleName}/layer_1_external/auth/authorityMap.defs.ts`;
+    dependsOn.push(pipelineId(request.project, request.moduleName, 'authorityMap', 'authorityMap'));
+    dependsFiles.push(qualifyDefPath(request.project, authorityLogical));
+  }
   return {
     id: pipelineId(request.project, request.moduleName, 'httpController', item.pageId),
     type: 'httpController',

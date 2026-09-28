@@ -187,6 +187,7 @@ void test('a pending grant stays closed and is not replaced by the stub', () => 
     authorities: ['agendaClinica:profissional'],
     grantIds: ['profissionalAgendaDiaria'],
     grants,
+    authority: [{ grantId: 'profissionalAgendaDiaria', actorRef: 'profissional' }],
     params: { id: 'consulta-1' },
     requiredFields: ['id'],
   });
@@ -198,6 +199,7 @@ void test('a pending grant stays closed and is not replaced by the stub', () => 
     authorities: [],
     grantIds: ['profissionalAgendaDiaria'],
     grants,
+    authority: [{ grantId: 'profissionalAgendaDiaria', actorRef: 'profissional' }],
     params: {},
     requiredFields: ['id'],
   });

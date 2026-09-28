@@ -43,9 +43,11 @@ void test('the frozen head is 5 controllers and 22 routes, one def per page', ()
     const files = item.pipeline[0]?.dependsFiles || [];
     return files.some(file => file.includes('/usecases/'))
       && files.filter(file => file.includes('/scope/accessScope.defs.ts')).length === 1
-      && files.every(file => !file.includes('/l2/') && (file.includes('/usecases/') || file.includes('/scope/accessScope.defs.ts')));
+      && files.filter(file => file.includes('/auth/authorityMap.defs.ts')).length === 1
+      && files.every(file => !file.includes('/l2/') && (file.includes('/usecases/') || file.includes('/scope/accessScope.defs.ts') || file.includes('/auth/authorityMap.defs.ts')));
   }), true);
   assert.equal(build.emit.every(item => (item.pipeline[0]?.dependsOn || []).some(dep => dep.endsWith('/accessScope/accessScope'))), true);
+  assert.equal(build.emit.every(item => (item.pipeline[0]?.dependsOn || []).some(dep => dep.endsWith('/authorityMap/authorityMap'))), true);
   assert.equal(build.emit.every(item => !(item.pipeline[0]?.dependsOn || []).some(dep => dep.includes('repositoryAdapter'))), true);
   assert.equal(JSON.stringify(build.emit).includes('ctx.mdm'), false);
   assert.equal(build.enumerations.every(item => item.consumed === false && item.source === 'domain30.enumerations'), true);

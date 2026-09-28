@@ -7,6 +7,7 @@ import { emitController } from '/_102021_/l2/agentMaterializeL1/handlers/structu
 
 const PORT = 'WidgetRepository';
 const SCOPE = '_102099_/l1/sampleModule/layer_2_application/scope/accessScope.defs.ts';
+const AUTHORITY = '_102099_/l1/sampleModule/layer_1_external/auth/authorityMap.defs.ts';
 const USECASE = '_102099_/l1/sampleModule/layer_2_application/usecases/listWidget.defs.ts';
 const PORT_DEF = '_102099_/l1/sampleModule/layer_2_application/ports/widgetRepository.defs.ts';
 const CONTRACT = '_102099_/l2/sampleModule/web/contracts/widgets.defs.ts';
@@ -14,6 +15,7 @@ const ROUTE = 'sampleModule.widgets.qryListWidget';
 
 const files = new Map<string, string>([
   [SCOPE, 'export const definition = { "dependencies": [], "data": {} } as const;\n'],
+  [AUTHORITY, 'export const definition = { "dependencies": [], "data": { "entries": [{ "grantId": "readWidget", "actorRef": "reader" }] } } as const;\n'],
   [USECASE, `export const definition = ${JSON.stringify({
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'usecase',
@@ -43,7 +45,7 @@ const controller = {
   artifactId: 'widgets',
   moduleName: 'sampleModule',
   status: 'pending' as const,
-  dependencies: [SCOPE, USECASE],
+  dependencies: [AUTHORITY, SCOPE, USECASE],
   data: {
     pageId: 'widgets',
     handlers: [{ route: ROUTE, kind: 'query', usecaseId: 'listWidget', grantIds: ['readWidget'] }],

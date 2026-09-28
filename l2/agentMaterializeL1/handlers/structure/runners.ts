@@ -31,7 +31,7 @@ import {
   type EmitFailure,
   type EmitResult,
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
-import { decideRoute, stubDecision, type StructureGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
+import { AUTHORITY_UNREAD, decideRoute, stubDecision, type StructureGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 export const structureRunners: Readonly<Record<string, MaterializeHandlerRunner>> = {
   'structure.domainEntity': call => runStructure(call),
@@ -94,6 +94,8 @@ async function observe(call: HandlerCall, definition: M1Definition, source: stri
   if (call.handler.id === 'structure.usecase') return cases.map(item => usecaseRow(item));
   const grants = await loadGrants(definition, call.read);
   if ('code' in grants) return grants;
+  const authority = await loadAuthority(definition, call.read);
+  if ('code' in authority) return authority;
   const rows: M1Observation[] = [];
   for (const item of cases) {
     if (item.gate === 'compile' || !item.routine) {
@@ -104,9 +106,10 @@ async function observe(call: HandlerCall, definition: M1Definition, source: stri
     if ('code' in route) return route;
     const decision = decideRoute({
       source: 'http',
-      authorities: authoritiesFor(item, grants, route.grantIds, definition.moduleName),
+      authorities: authoritiesFor(item, authority, route.grantIds, definition.moduleName),
       grantIds: route.grantIds,
       grants,
+      authority,
       params: paramsFor(item, route.requiredFields),
       requiredFields: route.requiredFields,
     });
@@ -147,6 +150,25 @@ async function loadGrants(definition: M1Definition, read: HandlerCall['read']): 
     return grantsOf(value.data);
   } catch {
     return { code: 'GRANT_UNREAD', detail: `${scope} is not JSON.` };
+  }
+}
+
+/** Entries of the authority map the controller depends on. No dependency is no entry. */
+async function loadAuthority(definition: M1Definition, read: HandlerCall['read']): Promise<Array<{ grantId: string; actorRef: string }> | EmitFailure> {
+  const ref = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
+  if (!ref) return [];
+  const text = await read(ref);
+  if (text === null) return { code: AUTHORITY_UNREAD, detail: `${ref} could not be read.` };
+  try {
+    const value = JSON.parse(sliceJson(text) || 'null') as { data?: { entries?: unknown } } | null;
+    const raw = value?.data?.entries;
+    const entries: unknown[] = Array.isArray(raw) ? raw : [];
+    return entries
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+      .map(entry => ({ grantId: String(entry.grantId ?? ''), actorRef: String(entry.actorRef ?? '') }))
+      .filter(entry => entry.grantId);
+  } catch {
+    return { code: AUTHORITY_UNREAD, detail: `${ref} is not JSON.` };
   }
 }
 
@@ -191,13 +213,13 @@ function inputName(routine: string, source: string): string {
   return '';
 }
 
-function authoritiesFor(item: M1ScenarioCase, grants: readonly StructureGrant[], grantIds: readonly string[], moduleName: string): string[] {
+function authoritiesFor(item: M1ScenarioCase, authority: readonly { grantId: string; actorRef: string }[], grantIds: readonly string[], moduleName: string): string[] {
   if (item.caller) return [...item.caller.authorities];
   const empty = item.actorId === '' || item.preconditions.some(entry => entry.includes('verifiedAuthorities is empty'));
   if (empty) return [];
   return grantIds.flatMap(grantId => {
-    const grant = grants.find(entry => entry.grantId === grantId);
-    return grant?.actorRef ? [`${moduleName}:${grant.actorRef}`] : [];
+    const entry = authority.find(row => row.grantId === grantId);
+    return entry?.actorRef ? [`${moduleName}:${entry.actorRef}`] : [];
   });
 }
 

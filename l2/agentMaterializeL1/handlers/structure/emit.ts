@@ -14,6 +14,8 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import {
+  AUTHORITY_UNMAPPED,
+  AUTHORITY_UNREAD,
   FORBIDDEN_ACTOR,
   GRANT_ABSENT,
   REPOSITORY_NOT_IMPLEMENTED,
@@ -24,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-26-structure-handler-v3';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-27-structure-handler-v4';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -229,6 +231,15 @@ export async function emitController(
   if (scopeText === null) return { code: 'GRANT_UNREAD', detail: `${scopeDep} could not be read.` };
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers.filter(isRecord) : [];
   if (handlers.length === 0) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} declares no route.` };
+  // A route with grants takes its actor from the authority map. Without the map it is not emitted.
+  const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
+  const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
+  if (needsAuthority && !authorityDep) {
+    return { code: AUTHORITY_UNREAD, detail: `${definition.artifactId} has grants and no authority map dependency.` };
+  }
+  if (authorityDep && await read(authorityDep) === null) {
+    return { code: AUTHORITY_UNREAD, detail: `${authorityDep} could not be read.` };
+  }
   const registered = registeredPortNames(moduleDefinitions);
   const routes: ResolvedRoute[] = [];
   for (const handler of handlers) {
@@ -245,9 +256,13 @@ export async function emitController(
     ? [`import { resolveRepository } from '${REPOSITORY_REGISTRY}';`]
     : [];
   const functions = routes.map(renderHandler);
+  const authorityImport = authorityDep
+    ? [`import { actorRefFor } from '${importSpecifier(authorityDep, 'output')}';`]
+    : [];
   const imports = [
     PLATFORM_CONTRACTS,
     importSpecifier(scopeDep, 'output'),
+    ...(authorityDep ? [importSpecifier(authorityDep, 'output')] : []),
     ...routes.map(route => route.usecaseSpecifier),
     ...routes.map(route => route.inputSpecifier),
     ...routes.flatMap(route => route.ports.map(port => port.specifier)),
@@ -260,6 +275,7 @@ export async function emitController(
       header(output),
       `import { AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope } from '${PLATFORM_CONTRACTS}';`,
       `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
+      ...authorityImport,
       ...usecaseImports,
       ...typeImports,
       ...registryImport,
@@ -272,7 +288,7 @@ export async function emitController(
       '',
       ...functions,
       scopeSource(),
-      authorizeSource(),
+      authorizeSource(!!authorityDep),
       validateSource(),
       projectSource(),
       '',
@@ -441,7 +457,11 @@ function scopeSource(): string {
   ].join('\n');
 }
 
-function authorizeSource(): string {
+function authorizeSource(mapped: boolean): string {
+  // Without grants there is no map; the loop below never runs, so the actor line is never reached.
+  const actorLine = mapped
+    ? '    const actorRef = actorRefFor(grantId);'
+    : '    const actorRef = null as string | null;';
   return [
     'function authorize(request: BffRequest, grantIds: readonly string[]): AppError | null {',
     '  const source = request.meta?.source ?? \'http\';',
@@ -453,7 +473,9 @@ function authorizeSource(): string {
     '    const resolved = resolveGrant(grantId);',
     '    if (!(\'grantId\' in resolved)) return new AppError(resolved.code, resolved.detail, 403);',
     '    if (resolved.pending) return new AppError(resolved.pending, `Grant ${grantId} is pending ${resolved.pending}.`, 403);',
-    '    if (authorities.length > 0 && resolved.actorRef && !authorities.some(item => item === resolved.actorRef || item.endsWith(\':\' + resolved.actorRef))) {',
+    actorLine,
+    `    if (!actorRef) return new AppError('${AUTHORITY_UNMAPPED}', \`Grant \${grantId} has no actor in the authority map.\`, 403);`,
+    '    if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(\':\' + actorRef))) {',
     `      return new AppError('${FORBIDDEN_ACTOR}', 'You have no authority to call this routine.', 403);`,
     '    }',
     '  }',
