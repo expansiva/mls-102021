@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { P1_BACKEND_SCHEMA_VERSION } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 import { P2_EFFORT_SCHEMA_VERSION } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import {
+  D1_BACKEND_SCHEMAS,
   D1_SOURCE_SCHEMAS,
   type D1InputArtifacts,
   type D1InputSnapshot,
@@ -91,6 +92,13 @@ async function loadHead(): Promise<D1InputArtifacts> {
   };
 }
 
+/** sha256 of the unsealed snapshot of the frozen v1.1 plan, measured on fc8ad7f before v1.2 was accepted. */
+const V11_SNAPSHOT_SHA = 'sha256:3f00d3556a8cfc1592555a653a683d5b8df1fad0b43ecd44b4d31145740405c8';
+
+function rec(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -110,6 +118,23 @@ function fileOf(snapshot: D1InputSnapshot, artifactType: string, identity: strin
 void test('supported plan schemas are the producers versions', () => {
   assert.equal(D1_SOURCE_SCHEMAS.backend, P1_BACKEND_SCHEMA_VERSION);
   assert.equal(D1_SOURCE_SCHEMAS.effort, P2_EFFORT_SCHEMA_VERSION);
+});
+
+void test('backend v1.1 and v1.2 read the same; v1.1 output is unchanged', async () => {
+  const head = await loadHead();
+  const v11 = build(head);
+  assert.equal(rec(head.backend).schemaVersion, D1_BACKEND_SCHEMAS[0]);
+  assert.equal(await sha256Text(JSON.stringify(v11)), V11_SNAPSHOT_SHA);
+  const upgraded = clone(head);
+  const backend = upgraded.backend as Record<string, unknown>;
+  backend.schemaVersion = P1_BACKEND_SCHEMA_VERSION;
+  backend.testSupport = [{ id: 'data:X', actorRefs: [], entityRefs: ['X'], sourceRefs: [], status: 'toCreate', owner: 'L1', executorRef: '', cleanupRef: '', gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' }];
+  const v12 = build(upgraded);
+  assert.deepEqual(codes(v12, 'error'), codes(v11, 'error'));
+  assert.deepEqual(v12.selection, v11.selection);
+  assert.deepEqual(v12.files, v11.files);
+  backend.schemaVersion = '2026-09-21-p1-backend-v9';
+  assert.equal(codes(build(upgraded), 'error').includes('SCHEMA_DIVERGENT'), true);
 });
 
 void test('frozen agendaClinica snapshot is cut by id', async () => {

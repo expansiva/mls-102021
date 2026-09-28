@@ -6,12 +6,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, seedScenarioIssues, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { readFixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
@@ -630,6 +631,64 @@ function seedFixture(rewrite: (rel: string, text: string) => string): void {
 function entryOf(grants: SerializedGrant[], grantId: string, entityId: string): SerializedGrant['path'][number] | undefined {
   return grants.find(item => item.grantId === grantId)?.path.find(item => item.entityId === entityId);
 }
+
+/** p1_12 testSupport for the frozen module, as the planner derives it (plan20 testSupport.test). */
+const FROZEN_TEST_SUPPORT = [
+  { id: 'data:Consulta', actorRefs: ['profissional', 'recepcionista'], entityRefs: ['Consulta', 'Paciente', 'Profissional'], sourceRefs: ['ontology:Consulta/lifecycleStates/scheduled'], status: 'toCreate', owner: 'L1', executorRef: '', cleanupRef: '', gap: 'FIXTURE_EXECUTOR_UNREFERENCED: no executor' },
+  { id: 'identity:profissional', actorRefs: ['profissional'], entityRefs: ['Profissional'], sourceRefs: ['access:actors/profissional'], status: 'toCreate', owner: 'runtime', executorRef: '', cleanupRef: '', gap: 'RUNTIME_TEST_IDENTITY_UNREFERENCED: no runtime API' },
+  { id: 'mdm:Paciente', actorRefs: ['recepcionista'], entityRefs: ['Paciente'], sourceRefs: ['ontology:Consulta/relationships'], status: 'toCreate', owner: 'runtime', executorRef: '', cleanupRef: '', gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: no runtime API' },
+];
+
+void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def; v1.1 leaves the def as it was', async () => {
+  const seedsOf = async () => {
+    const built = await assembleD1Support(102047, 'agendaClinica');
+    assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');
+    if (!('build' in built)) throw new Error('refused');
+    return built.build.emit.find(item => item.definition.artifactType === 'persistenceSeeds')?.definition.data as Record<string, unknown> | undefined;
+  };
+  seedFixture((_rel, text) => text);
+  const plain = await seedsOf();
+  assert.ok(plain);
+  assert.equal('fixture' in plain, false);
+
+  const backendPath = 'l4/agendaClinica/pool/l2/web/backend.json';
+  const original = readFileSync(path.join(FIXTURE_3F4F677, backendPath), 'utf8');
+  const upgraded = JSON.stringify({ ...JSON.parse(original) as Record<string, unknown>, schemaVersion: '2026-09-21-p1-backend-v1.2', testSupport: FROZEN_TEST_SUPPORT }, null, 2);
+  const digest = await sha256Text(upgraded);
+  const bytes = new TextEncoder().encode(upgraded).length;
+  seedFixture((rel, text) => {
+    if (rel === backendPath) return upgraded;
+    if (!rel.endsWith('pipeline/agentDefsL1/input.json')) return text;
+    const snapshot = JSON.parse(text) as { sources: Array<{ path: string; sha256: string; bytes: number; schemaVersion: string }> };
+    for (const source of snapshot.sources) {
+      if (source.path !== backendPath) continue;
+      Object.assign(source, { sha256: digest, bytes, schemaVersion: '2026-09-21-p1-backend-v1.2' });
+    }
+    return JSON.stringify(snapshot);
+  });
+  const withFixture = await seedsOf();
+  assert.ok(withFixture);
+  const fixture = readFixturePlan(withFixture.fixture);
+  assert.equal('issues' in fixture, false, JSON.stringify(fixture));
+  if ('issues' in fixture) return;
+  assert.deepEqual(fixture.datasets.map(item => [item.supportId, item.tableId, item.dependsOn]), [['data:Consulta', 'consulta', []]]);
+  assert.deepEqual(fixture.runtime.map(item => [item.supportId, item.kind, item.entityId]), [['identity:profissional', 'identity', 'Profissional'], ['mdm:Paciente', 'mdm', 'Paciente']]);
+  // Everything else on the def is byte-identical to the v1.1 output.
+  const { fixture: _dropped, ...rest } = withFixture;
+  assert.equal(JSON.stringify(rest), JSON.stringify(plain));
+  assert.deepEqual(seedScenarioIssues(withFixture), []);
+
+  // Backend bytes changed after input20: no fixture, and a review names the file.
+  seedFixture((rel, text) => rel === backendPath ? upgraded : text);
+  const stale = await assembleD1Support(102047, 'agendaClinica');
+  assert.equal('build' in stale, true);
+  if (!('build' in stale)) return;
+  const seeds = stale.build.emit.find(item => item.definition.artifactType === 'persistenceSeeds')?.definition.data as Record<string, unknown> | undefined;
+  assert.equal(seeds && 'fixture' in seeds, false);
+  const unread = stale.build.problems.find(item => item.code === 'TEST_SUPPORT_UNREAD');
+  assert.equal(unread?.severity, 'review');
+  assert.match(unread?.message ?? '', new RegExp(`^${backendPath.replace(/[.]/g, '\\.')} changed after input20`));
+});
 
 void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', async () => {
   seedFixture((_rel, text) => text);

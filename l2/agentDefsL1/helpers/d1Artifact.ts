@@ -8,6 +8,7 @@ import {
   type M1ArtifactType,
   type M1Status,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
 
 export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
 export type { M1Status, M1Status as D1DefinitionStatus };
@@ -301,6 +302,8 @@ export interface D1SeedsData {
   }>;
   dependencies?: D1SeedDependencyData[];
   datasets?: D1SeedDatasetData[];
+  /** Temporary certification data (m1_28), apart from the product seeds. No rows. */
+  fixture?: M1FixturePlan;
 }
 
 export interface D1IntegrationData {
@@ -1384,6 +1387,10 @@ export function seedScenarioIssues(data: unknown): string[] {
   else data.scenarios.forEach((scenario, index) => seedScenarioItem(scenario, index, issues));
   if (data.dependencies !== undefined) seedDependencies(data.dependencies, issues);
   if (data.datasets !== undefined) seedDatasets(data.datasets, issues);
+  if (data.fixture !== undefined) {
+    const fixture = readFixturePlan(data.fixture);
+    if ('issues' in fixture) issues.push(...fixture.issues.map(issue => `data.fixture: ${issue}.`));
+  }
   return issues;
 }
 

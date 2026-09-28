@@ -19,6 +19,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { planFixture } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
 import type { D1ControllerGrant, D1ControllerRelationship } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import {
   D1_SUPPORT_VERSION,
@@ -284,12 +285,17 @@ export function emitSeeds(
   if (!writable(request, 'persistenceSeeds', problems, true)) return { emit: [], plan: planOf(scenarios, datasets, request, localEntities), citations };
 
   const dependencies = dependenciesOf(request, localEntities);
+  const liveTables = request.tables.filter(table => LIVE_ACTIONS.has(table.action) && localEntities.has(table.entityId));
+  // Temporary certification data, apart from the product seed plan (m1_28). Same shape M1 reads.
+  if (request.testSupportUnread) review(problems, 'TEST_SUPPORT_UNREAD', 'seeds', request.testSupportUnread);
+  const fixture = planFixture(request.testSupport, liveTables);
   const data = {
     seedId: 'seeds',
     phase: 'plan',
     scenarios,
     dependencies,
     datasets,
+    ...(fixture ? { fixture } : {}),
   };
   const defPath = filePath(request, 'persistenceSeeds', SEEDS_PATH(request.moduleName));
   const definition = definitionFor(request, 'persistenceSeeds', 'seeds', data);

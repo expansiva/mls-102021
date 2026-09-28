@@ -35,6 +35,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { obligationSourceHashes } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
@@ -173,6 +174,11 @@ export interface CatalogPrep {
   recipeVersion: string;
   gaps: CatalogGap[];
   detail: string;
+  /**
+   * Content hash of every source the authenticated-case oracle read (m1_27/m1_28), `absent`
+   * when unreadable. Kept out of the catalog bytes, so it does not move `inputHash`.
+   */
+  oracleSources: Record<string, string>;
 }
 
 export async function runMaterialize(request: MaterializeRunRequest, host: MaterializeRunHost): Promise<MaterializeRunResult> {
@@ -1247,6 +1253,7 @@ async function prepareCatalog(
   const derived = deriveCatalog(request.moduleName, units, texts, withheld);
   const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));
+  const oracleSources = await obligationSourceHashes(derived.obligations, texts);
   const existing = await host.io.read(ref);
   if (existing === null) {
     if (write) await writeDerived(host, ref, derived.catalog, valueExports, null);
@@ -1256,6 +1263,7 @@ async function prepareCatalog(
       inputHash,
       recipeVersion: derived.recipeVersion,
       gaps: derived.gaps,
+      oracleSources,
       detail: write ? 'catalog written from defs' : 'catalog planned; nothing written',
     };
   }
@@ -1267,6 +1275,7 @@ async function prepareCatalog(
       inputHash,
       recipeVersion: derived.recipeVersion,
       gaps: derived.gaps,
+      oracleSources,
       detail: parsed.issues.join('; ') || 'catalog unreadable',
     };
   }
@@ -1289,6 +1298,7 @@ async function prepareCatalog(
         inputHash,
         recipeVersion: derived.recipeVersion,
         gaps: derived.gaps,
+        oracleSources,
         detail: write
           ? 'catalog matched the M1 receipt and was rewritten'
           : 'catalog matches the M1 receipt; rewrite planned, nothing written',
@@ -1300,6 +1310,7 @@ async function prepareCatalog(
       inputHash,
       recipeVersion: derived.recipeVersion,
       gaps: derived.gaps,
+      oracleSources,
       detail: 'existing catalog differs from the derived catalog; it was not overwritten',
     };
   }
@@ -1309,6 +1320,7 @@ async function prepareCatalog(
     inputHash,
     recipeVersion: derived.recipeVersion,
     gaps: derived.gaps,
+    oracleSources,
     detail: 'catalog already matches the defs',
   };
 }

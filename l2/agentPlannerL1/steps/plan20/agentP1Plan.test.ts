@@ -225,7 +225,7 @@ void test('estimate writes backend.json and one l1→l2 message, traces, then de
   assert.equal('refusal' in entry, false);
   const result = await executeP1Plan(MODULE, AT);
   const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
-  assert.equal(written.schemaVersion, '2026-09-21-p1-backend-v1.1');
+  assert.equal(written.schemaVersion, '2026-09-21-p1-backend-v1.2');
   assert.equal(written.meta.llmCalled, false);
   assert.ok(written.usecases.every(item => item.status === 'toCreate'));
   assert.deepEqual(written.changes, []);
@@ -254,6 +254,27 @@ void test('estimate writes backend.json and one l1→l2 message, traces, then de
   const pipeline = JSON.parse(host.files[keyOf(p1PipelineFile(MODULE))].content) as { status: string };
   assert.equal(pipeline.status, 'complete');
   assert.notEqual(poolFile(host, 'l1', 'pipeline')?.status, 'deleted');
+  assert.equal(l1l2Snapshot(host), before);
+});
+
+void test('estimate reads access.defs.ts actors into testSupport and still writes nothing under l1 or l2', async () => {
+  const host = installHost();
+  seedReady(host);
+  seed(host, {
+    folder: MODULE, shortName: 'access', extension: '.defs.ts',
+    content: `export const access = ${JSON.stringify({ schemaVersion: '2026-09-12-ns5-access-v3', moduleName: MODULE, actors: [{ actorId: 'recepcao', personEntity: '' }], grants: [] }, null, 2)} as const;\n`,
+  });
+  const before = l1l2Snapshot(host);
+  const entry = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in entry, false);
+  await executeP1Plan(MODULE, AT);
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  const identity = written.testSupport.find(item => item.id === 'identity:recepcao');
+  assert.ok(identity);
+  assert.ok(identity.sourceRefs.includes('access:actors/recepcao'));
+  assert.match(identity.gap, /^PERSON_ENTITY_UNDECLARED: /);
+  assert.ok(written.testSupport.every(item => item.executorRef === '' && item.gap));
+  assert.deepEqual(written.testSupport.filter(item => item.owner === 'L1').map(item => item.id), written.tables.map(table => `data:${table.entity}`));
   assert.equal(l1l2Snapshot(host), before);
 });
 

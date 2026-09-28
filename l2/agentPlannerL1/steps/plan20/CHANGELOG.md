@@ -1,5 +1,13 @@
 # plan20
 
+## 2026-09-27 (p1_12)
+
+- Schema `2026-09-21-p1-backend-v1.2`: `testSupport[]` (`id`, `actorRefs`,
+  `entityRefs`, `sourceRefs`, `status`, `owner` L1|runtime, `executorRef`,
+  `cleanupRef`, `gap`). Deterministic, sorted, recomputed on normalize/repair;
+  never read from the LLM payload. Gate checks shape only: no executor and no gap,
+  `done` without executor, unknown refs or owner fail. A gap is not an error.
+
 ## 2026-09-27 (p1_11)
 
 - After the delivered trace and complete, traces `processed` and deletes the

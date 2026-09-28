@@ -11,6 +11,8 @@ import {
   isP1PlanStatus,
   p1PortId,
   stampP1Backend,
+  P1_TEST_SUPPORT_OWNERS,
+  type P1ActorView,
   type P1BackendFile,
   type P1EntityView,
   type P1L4DiffFile,
@@ -177,7 +179,50 @@ export function validateP1Backend(
     });
   }
 
+  checkTestSupport(issues, file, needs, entityIds);
+
   return { ok: issues.every(issue => issue.severity !== 'error'), issues };
+}
+
+/** Shape only. A gap is not an error; a missing executor without a gap is. */
+function checkTestSupport(
+  issues: P1BackendGateIssue[],
+  file: P1BackendFile,
+  needs: P1NeedsFile,
+  entityIds: Set<string>,
+): void {
+  if (!Array.isArray(file.testSupport)) {
+    error(issues, 'P1_BACKEND_TEST_SUPPORT', 'testSupport[] is required.', '$.testSupport');
+    return;
+  }
+  const actors = new Set(needs.pages.flatMap(page => page.actors));
+  const ids = new Set<string>();
+  file.testSupport.forEach((item, index) => {
+    const at = `$.testSupport[${index}]`;
+    if (!item.id) error(issues, 'P1_BACKEND_TEST_SUPPORT', 'id is required.', `${at}.id`);
+    if (ids.has(item.id)) error(issues, 'P1_BACKEND_TEST_SUPPORT', `Duplicate testSupport id ${item.id}.`, `${at}.id`);
+    ids.add(item.id);
+    if (!(P1_TEST_SUPPORT_OWNERS as readonly string[]).includes(item.owner)) {
+      error(issues, 'P1_BACKEND_TEST_SUPPORT', 'owner must be L1|runtime.', `${at}.owner`);
+    }
+    if (!isP1PlanStatus(item.status)) {
+      error(issues, 'P1_BACKEND_STATUS', 'testSupport status must be toCreate|toUpdate|toRemove|done.', `${at}.status`);
+    }
+    for (const actorRef of item.actorRefs ?? []) {
+      if (!actors.has(actorRef)) error(issues, 'P1_BACKEND_TEST_SUPPORT_REF', `actorRef ${actorRef} is not a needs actor.`, `${at}.actorRefs`);
+    }
+    for (const entityRef of item.entityRefs ?? []) {
+      if (entityIds.size && !entityIds.has(entityRef)) {
+        error(issues, 'P1_BACKEND_ENTITY_UNKNOWN', `Unknown entity ${entityRef}.`, `${at}.entityRefs`);
+      }
+    }
+    if ((!item.executorRef || !item.cleanupRef) && !item.gap) {
+      error(issues, 'P1_BACKEND_TEST_SUPPORT_GAP', `${item.id} has no executor or cleanup and names no gap.`, `${at}.gap`);
+    }
+    if (item.status === 'done' && (!item.executorRef || !item.cleanupRef)) {
+      error(issues, 'P1_BACKEND_TEST_SUPPORT_GAP', `${item.id} is done without executorRef and cleanupRef.`, `${at}.status`);
+    }
+  });
 }
 
 export function repairP1Backend(
@@ -186,6 +231,7 @@ export function repairP1Backend(
   ontology: readonly P1EntityView[],
   inventory: L1Inventory = { routes: [], usecases: [], ports: [], tables: [], present: false },
   l4diff: P1L4DiffFile | null = null,
+  actors: readonly P1ActorView[] = [],
 ): P1BackendFile {
   const mdm = new Set(ontology.filter(entity => entity.family === 'mdm' || entity.storageTarget === 'mdm').map(entity => entity.entityId));
   const usecases = file.usecases.map(usecase => ({
@@ -221,6 +267,7 @@ export function repairP1Backend(
     inventory,
     needs,
     l4diff,
+    actors,
   });
 }
 

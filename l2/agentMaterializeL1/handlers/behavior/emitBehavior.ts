@@ -39,7 +39,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-27-implement-handler-v4';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-27-implement-handler-v5';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -330,7 +330,7 @@ async function memoryPort(definition: M1Definition, output: string, read: Struct
   if (!saved.includes('await table().insert') || !saved.includes('table().findMany')) {
     return { code: 'STUB_SHAPE', detail: `${definition.artifactId} port methods were not recognized.` };
   }
-  const source = saved.replace('export const pending', `${storeSource(entity)}\nexport const pending`);
+  const source = saved.replace('export const pending', `${storeSource(entity, key)}\nexport const pending`);
   const renamed = renamePortArgs(source);
   const imports = [...stub.imports, MEMORY_RUNTIME];
   const bad = auditImports(renamed, imports);
@@ -373,12 +373,19 @@ function renamePortArgs(source: string): string {
     .replace(/async list\(([^:)]+):/g, 'async list(filter:');
 }
 
-function storeSource(entity: string): string {
+function storeSource(entity: string, key: string): string {
   return [
     `let rows = createMemoryTableRepository<${entity}>([]);`,
     'function table() { return rows; }',
     `export function resetMemory(seed: ${entity}[] = []): void {`,
     '  rows = createMemoryTableRepository(seed.map(row => ({ ...row })));',
+    '}',
+    // Fixture cleanup (m1_28): one record by its exact key; false when it is already gone.
+    `export async function removeMemory(${key}: string): Promise<boolean> {`,
+    `  const where = { ${key} } as unknown as Partial<${entity}>;`,
+    '  if (!await table().findOne({ where })) return false;',
+    '  await table().delete({ where });',
+    '  return true;',
     '}',
     '',
   ].join('\n');
@@ -1410,7 +1417,7 @@ function nodeAt(root: FieldNode, path: string): FieldNode | undefined {
  * The lifecycle field is the single top-level enum of an entity that declares transitions.
  * Its initial state is the one declared state no transition reaches; otherwise it is ''.
  */
-function lifecycleStart(definition: M1Definition): { field: string; initial: string } {
+export function lifecycleStart(definition: M1Definition): { field: string; initial: string } {
   const lifecycle = definition.data.lifecycle;
   if (!isRecord(lifecycle) || !Array.isArray(lifecycle.transitions) || lifecycle.transitions.length === 0) return { field: '', initial: '' };
   const field = enumField(definition);

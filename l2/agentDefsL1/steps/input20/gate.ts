@@ -5,6 +5,7 @@ import {
   D1_EFFORT_BACKEND_REF,
   D1_INPUT_VERSION,
   D1_PLANNER_FLOW,
+  D1_BACKEND_SCHEMAS,
   D1_SOURCE_SCHEMAS,
   contractPath,
   entityPath,
@@ -60,7 +61,7 @@ export function buildD1InputSnapshot(
   checkSource(problems, sources, paths.integration, integration, D1_SOURCE_SCHEMAS.integration, moduleName);
   checkSource(problems, sources, paths.menu, menu, D1_SOURCE_SCHEMAS.menu, moduleName);
   checkSource(problems, sources, paths.needs, needs, D1_SOURCE_SCHEMAS.needs, moduleName);
-  checkSource(problems, sources, paths.backend, backend, D1_SOURCE_SCHEMAS.backend, moduleName);
+  checkSource(problems, sources, paths.backend, backend, D1_BACKEND_SCHEMAS, moduleName);
   checkSource(problems, sources, paths.effort, effort, D1_SOURCE_SCHEMAS.effort, moduleName);
   checkSource(problems, sources, paths.planner, planner, D1_SOURCE_SCHEMAS.planner, moduleName);
 
@@ -952,7 +953,7 @@ function checkSource(
   sources: D1SourceDigest[],
   path: string,
   value: unknown,
-  schema: string,
+  schema: string | readonly string[],
   moduleName: string,
 ): void {
   const digest = sources.find(source => source.path === path);
@@ -965,8 +966,9 @@ function checkSource(
     return;
   }
   const doc = rec(value);
-  if (text(doc.schemaVersion) !== schema) {
-    error(problems, 'SCHEMA_DIVERGENT', path, `Schema is '${text(doc.schemaVersion) || '(missing)'}', expected ${schema}.`);
+  const accepted = typeof schema === 'string' ? [schema] : schema;
+  if (!accepted.includes(text(doc.schemaVersion))) {
+    error(problems, 'SCHEMA_DIVERGENT', path, `Schema is '${text(doc.schemaVersion) || '(missing)'}', expected ${accepted.join(' or ')}.`);
   }
   const name = text(doc.moduleName) || text(doc.module);
   if (name && name !== moduleName) {

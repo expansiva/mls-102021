@@ -4,7 +4,7 @@ import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 
-export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.1' as const;
+export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
 export const P1_BACKEND_ARTIFACT = 'pool/l2/web/backend.json' as const;
 export const P1_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
 export const P1_KINDS = ['qry', 'cmd'] as const;
@@ -25,6 +25,8 @@ export const P1_CHANGE_KINDS = ['field', 'rule', 'grant', 'transition', 'process
 export type P1ChangeKind = typeof P1_CHANGE_KINDS[number];
 export const P1_CHANGE_OPS = ['added', 'changed', 'removed'] as const;
 export type P1ChangeOp = typeof P1_CHANGE_OPS[number];
+export const P1_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
+export type P1TestSupportOwner = typeof P1_TEST_SUPPORT_OWNERS[number];
 
 const NAMED_OPS = ['list', 'get', 'create', 'update', 'delete'] as const;
 const LIST_FROM = /\b(list|summary|highlights|locate)\b/;
@@ -67,6 +69,33 @@ export interface P1EntityView {
   storageTarget: string;
   transitions: string[];
   rules: string[];
+  /** Entities this one points to by its own fk column (`relationships[].via` = `<self>.<field>`). */
+  fkTargets?: string[];
+  /** `transitions[].from` by transitionId. */
+  transitionFrom?: Record<string, string[]>;
+}
+
+/** access.defs.ts actor; `personEntity` is `''` when the actor declares none. */
+export interface P1ActorView {
+  actorId: string;
+  personEntity: string;
+}
+
+/**
+ * One unit of test preparation (data, identity, cleanup). Not a grant nor a rule.
+ * `executorRef` / `cleanupRef` stay `''` until an owner references a verified capability;
+ * then `gap` names what is missing.
+ */
+export interface P1TestSupportItem {
+  id: string;
+  actorRefs: string[];
+  entityRefs: string[];
+  sourceRefs: string[];
+  status: P1PlanStatus;
+  owner: P1TestSupportOwner;
+  executorRef: string;
+  cleanupRef: string;
+  gap: string;
 }
 
 export interface P1Endpoint {
@@ -165,6 +194,7 @@ export interface P1BackendFile {
   tables: P1Table[];
   removed: P1Removed[];
   changes: P1Change[];
+  testSupport: P1TestSupportItem[];
   meta: {
     pages: Record<string, string[]>;
     generatedAt: string;
@@ -208,6 +238,8 @@ export interface P1PlanBackendInput {
   now: Date;
   resolution?: P1BackendResolution | null;
   l4diff?: P1L4DiffFile | null;
+  /** access.defs.ts actors; absent ⇒ every needs actor becomes a named gap. */
+  actors?: readonly P1ActorView[];
 }
 
 export interface P1PlanBackendResult {
@@ -331,7 +363,39 @@ export function parseP1Entity(value: unknown, indexRow?: unknown): P1EntityView 
     storageTarget,
     transitions: list(file.transitions).map(item => text(record(item).transitionId)).filter(Boolean),
     rules: list(file.rules).filter((item): item is string => typeof item === 'string' && item.length > 0),
+    fkTargets: fkTargetsOf(entityId, file.relationships),
+    transitionFrom: transitionFromOf(file.transitions),
   };
+}
+
+export function parseP1Actors(value: unknown): P1ActorView[] {
+  const raw = record(value);
+  const out = new Map<string, P1ActorView>();
+  for (const item of list(raw.actors)) {
+    const row = record(item);
+    const actorId = text(row.actorId);
+    if (actorId && !out.has(actorId)) out.set(actorId, { actorId, personEntity: text(row.personEntity) });
+  }
+  return sortBy([...out.values()], item => item.actorId);
+}
+
+function fkTargetsOf(entityId: string, relationships: unknown): string[] {
+  const rows = isRecord(relationships) ? Object.values(relationships) : list(relationships);
+  const own = `${entityId}.`;
+  const targets = rows.map(item => record(item))
+    .filter(row => text(row.mode) === 'fk' && text(row.via).startsWith(own))
+    .map(row => text(row.to));
+  return unique(targets).sort();
+}
+
+function transitionFromOf(transitions: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const item of list(transitions)) {
+    const row = record(item);
+    const id = text(row.transitionId);
+    if (id) out[id] = unique(list(row.from).map(value => text(value))).sort();
+  }
+  return out;
 }
 
 export function parseP1OntologyIndex(value: unknown): string[] {
@@ -413,6 +477,7 @@ export function planP1Backend(input: P1PlanBackendInput): P1PlanBackendResult {
     now: input.now,
     llmCalled: !!input.resolution,
     l4diff: input.l4diff ?? null,
+    actors: input.actors ?? [],
   });
   return { file, unresolved };
 }
@@ -446,6 +511,8 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
     tables: sortBy(tables.filter(table => !isMdmEntity(ontology.get(table.entity))), item => item.tableId),
     removed: sortBy(removed, item => `${item.kind}:${item.id}`),
     changes: [],
+    // Never read from the payload: stampP1Backend derives it again.
+    testSupport: [],
     meta: {
       pages,
       generatedAt: text(meta.generatedAt) || fallback.now.toISOString(),
@@ -458,6 +525,7 @@ export function normalizeP1Backend(value: unknown, fallback: P1PlanBackendInput)
     inventory,
     needs,
     l4diff: fallback.l4diff ?? null,
+    actors: fallback.actors ?? [],
   });
 }
 
@@ -733,6 +801,7 @@ function assembleFile(input: {
   now: Date;
   llmCalled: boolean;
   l4diff: P1L4DiffFile | null;
+  actors: readonly P1ActorView[];
 }): P1BackendFile {
   const { needs, inventory, ontology, now, llmCalled } = input;
   const usecases = sortBy(input.usecases.map(item => stripDraft(item)), item => item.usecaseId);
@@ -832,6 +901,7 @@ function assembleFile(input: {
     tables,
     removed: sortBy(removed, item => `${item.kind}:${item.id}`),
     changes: [],
+    testSupport: [],
     meta: {
       pages,
       generatedAt: now.toISOString(),
@@ -843,6 +913,7 @@ function assembleFile(input: {
     inventory,
     needs,
     l4diff: input.l4diff,
+    actors: input.actors,
   });
 }
 
@@ -1147,6 +1218,7 @@ export function stampP1Backend(file: P1BackendFile, ctx: {
   inventory: L1Inventory;
   needs: P1NeedsFile;
   l4diff: P1L4DiffFile | null;
+  actors: readonly P1ActorView[];
 }): P1BackendFile {
   const tables = file.tables.map(table => ({
     ...table,
@@ -1189,6 +1261,7 @@ export function stampP1Backend(file: P1BackendFile, ctx: {
       ontology: ctx.ontology,
       byEntity,
     }),
+    testSupport: planP1TestSupport({ needs: ctx.needs, ontology: ctx.ontology, actors: ctx.actors, tables }),
     meta: {
       ...file.meta,
       unmappedChanges: ctx.l4diff ? [...ctx.l4diff.unmapped] : [],
@@ -1370,6 +1443,137 @@ function changeReason(item: P1L4DiffItem): string {
   const label = item.kind === 'field' && field ? field : fromId;
   if (item.entity) return `${item.op} ${item.kind} ${label} on ${item.entity}`;
   return `${item.op} ${item.kind} ${label}`;
+}
+
+/**
+ * Test preparation derived from needs (journey refs, page actors), access actors
+ * (personEntity) and the ontology (own fk targets, lifecycle `from` of needed transitions).
+ * No runtime capability is referenced here, so every item is `toCreate` with a named gap.
+ */
+export function planP1TestSupport(input: {
+  needs: P1NeedsFile;
+  ontology: Map<string, P1EntityView>;
+  actors: readonly P1ActorView[];
+  tables: readonly P1Table[];
+}): P1TestSupportItem[] {
+  const { needs, ontology } = input;
+  const declared = new Map(input.actors.map(actor => [actor.actorId, actor]));
+  const usage = new Map<string, { actors: Set<string>; refs: Set<string>; transitions: Set<string> }>();
+  const actorRefs = new Map<string, Set<string>>();
+  const use = (entity: string) => {
+    const found = usage.get(entity) ?? { actors: new Set<string>(), refs: new Set<string>(), transitions: new Set<string>() };
+    usage.set(entity, found);
+    return found;
+  };
+  for (const page of needs.pages) {
+    const pageRefs = [...page.reads.flatMap(read => read.from), ...page.writes.flatMap(write => write.from)];
+    for (const actorId of page.actors) {
+      const refs = actorRefs.get(actorId) ?? new Set<string>();
+      pageRefs.forEach(ref => refs.add(ref));
+      actorRefs.set(actorId, refs);
+    }
+    for (const item of [...page.reads, ...page.writes]) {
+      if (!item.entity) continue;
+      const entry = use(item.entity);
+      page.actors.forEach(actorId => entry.actors.add(actorId));
+      item.from.forEach(ref => entry.refs.add(ref));
+    }
+    for (const write of page.writes) {
+      if (write.entity && write.operation === 'transition' && write.transitionRef) use(write.entity).transitions.add(write.transitionRef);
+    }
+  }
+
+  const items: P1TestSupportItem[] = [];
+  const persons = new Set<string>();
+  for (const [actorId, refs] of actorRefs) {
+    const actor = declared.get(actorId);
+    const person = actor?.personEntity ?? '';
+    const known = !!person && ontology.has(person);
+    if (known) persons.add(person);
+    items.push(testSupportItem({
+      id: `identity:${actorId}`,
+      actorRefs: [actorId],
+      entityRefs: known ? [person] : [],
+      sourceRefs: [...(actor ? [`access:actors/${actorId}`] : []), ...refs],
+      owner: 'runtime',
+      gap: identityGap(actorId, actor, person, known),
+    }));
+  }
+
+  const mdmFrom = new Map<string, Set<string>>();
+  for (const table of input.tables) {
+    const view = ontology.get(table.entity);
+    const entry = use(table.entity);
+    const targets = (view?.fkTargets ?? []).filter(target => ontology.has(target));
+    const states = [...entry.transitions].flatMap(transitionId => view?.transitionFrom?.[transitionId] ?? []);
+    for (const target of targets) {
+      if (!isMdmEntity(ontology.get(target))) continue;
+      const sources = mdmFrom.get(target) ?? new Set<string>();
+      sources.add(`ontology:${table.entity}/relationships`);
+      mdmFrom.set(target, sources);
+    }
+    items.push(testSupportItem({
+      id: `data:${table.entity}`,
+      actorRefs: [...entry.actors],
+      entityRefs: [table.entity, ...targets],
+      sourceRefs: [...entry.refs, ...states.map(state => `ontology:${table.entity}/lifecycleStates/${state}`)],
+      owner: 'L1',
+      gap: `FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes ${table.tableId} rows by execution id`,
+    }));
+  }
+
+  const mdmNeeded = unique([
+    ...[...usage.keys()].filter(entity => isMdmEntity(ontology.get(entity))),
+    ...mdmFrom.keys(),
+  ]).filter(entity => !persons.has(entity));
+  for (const entity of mdmNeeded) {
+    const entry = usage.get(entity);
+    items.push(testSupportItem({
+      id: `mdm:${entity}`,
+      actorRefs: entry ? [...entry.actors] : [],
+      entityRefs: [entity],
+      sourceRefs: [...(entry ? entry.refs : []), ...(mdmFrom.get(entity) ?? [])],
+      owner: 'runtime',
+      gap: `RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes ${entity} records by execution id`,
+    }));
+  }
+  return items.sort((left, right) => compareText(left.id, right.id));
+}
+
+function identityGap(actorId: string, actor: P1ActorView | undefined, person: string, known: boolean): string {
+  if (!actor) return `ACTOR_UNDECLARED: actor ${actorId} is used by needs but not declared in access`;
+  if (!person) return `PERSON_ENTITY_UNDECLARED: actor ${actorId} declares no personEntity; the test identity cannot be bound`;
+  if (!known) return `PERSON_ENTITY_UNKNOWN: personEntity ${person} of actor ${actorId} is not in the ontology`;
+  return `RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for ${actorId} bound to ${person}`;
+}
+
+function testSupportItem(input: {
+  id: string;
+  actorRefs: string[];
+  entityRefs: string[];
+  sourceRefs: string[];
+  owner: P1TestSupportOwner;
+  gap: string;
+}): P1TestSupportItem {
+  return {
+    id: input.id,
+    actorRefs: sortedUnique(input.actorRefs),
+    entityRefs: sortedUnique(input.entityRefs),
+    sourceRefs: sortedUnique(input.sourceRefs),
+    status: 'toCreate',
+    owner: input.owner,
+    executorRef: '',
+    cleanupRef: '',
+    gap: input.gap,
+  };
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return unique(values).sort(compareText);
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function unique(values: readonly string[]): string[] {

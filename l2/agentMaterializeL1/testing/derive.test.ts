@@ -102,7 +102,7 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
   assert.equal(cases.some(item => item.gate === 'contract'), false);
   const positive = derived.obligations.filter(entry => entry.kind === 'contract');
   assert.equal(positive.length, 5);
-  assert.equal(derived.obligations.every(entry => entry.blocker === 'ACTOR_FIXTURE_PENDING' && entry.expect.ruleId === null), true);
+  assert.equal(derived.obligations.every(entry => entry.blocker === 'RUNTIME_IDENTITY_PENDING' && entry.expect.ruleId === null), true);
   assert.equal(derived.obligations.every(entry => derived.gaps.some(gap => gap.reason.includes(`${entry.caseId} is declared, not executed`))), true);
   const kinds = new Map<string, number>();
   for (const entry of derived.obligations) kinds.set(entry.kind, (kinds.get(entry.kind) ?? 0) + 1);

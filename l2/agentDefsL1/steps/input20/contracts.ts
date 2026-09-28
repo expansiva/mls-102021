@@ -14,10 +14,16 @@ export const D1_SOURCE_SCHEMAS = {
   integration: '2026-09-12-ns5-integration-v2',
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
-  backend: '2026-09-21-p1-backend-v1.1',
+  backend: '2026-09-21-p1-backend-v1.2',
   effort: '2026-09-21-p2-effort-v1.1',
   planner: '2026-09-20-p1-pipeline-v1',
 } as const;
+
+/**
+ * Backend plan versions this reader accepts. v1.2 only adds `testSupport[]` (p1_12); a v1.1
+ * plan reads as before and yields the same snapshot. The fixture reader is support70.
+ */
+export const D1_BACKEND_SCHEMAS = ['2026-09-21-p1-backend-v1.1', D1_SOURCE_SCHEMAS.backend] as const;
 
 export const D1_PLANNER_FLOW = 'agentPlannerL1' as const;
 export const D1_EFFORT_BACKEND_REF = 'pool/l2/web/backend.json' as const;

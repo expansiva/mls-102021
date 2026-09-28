@@ -93,6 +93,12 @@ export async function assembleD1Support(
     operations: linked.operations,
     enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };
+  const testSupport = await testSupportOf(project, snapshot, paths.backend);
+  if ('items' in testSupport) {
+    if (testSupport.items) request.testSupport = testSupport.items;
+  } else {
+    request.testSupportUnread = testSupport.unread;
+  }
   return { build: buildD1Support(request), files };
 }
 
@@ -242,6 +248,21 @@ async function enumSnapshotOf(
     contracts,
     tables: snapshot.selection.tables.map(table => ({ tableId: table.tableId, entityId: table.entity })),
   };
+}
+
+/**
+ * `testSupport[]` of the backend plan input20 accepted. Read only when the bytes still match
+ * the digest of the snapshot; a v1.1 plan (no array) gives no items. Changed bytes are named.
+ */
+async function testSupportOf(project: number, snapshot: D1InputSnapshot, backendPath: string): Promise<{ items: unknown[] | undefined } | { unread: string }> {
+  const listed = snapshot.sources.find(source => source.path === backendPath);
+  if (!listed || listed.state !== 'present') return { items: undefined };
+  const text = await readLogical(project, backendPath);
+  if (text == null || await sha256Text(text) !== listed.sha256) {
+    return { unread: `${backendPath} changed after input20 (digest differs); its testSupport was not read and the seeds def carries no certification fixture. Run input20 again.` };
+  }
+  const parsed = parseD1Source(text, 'json');
+  return { items: isRecord(parsed) && Array.isArray(parsed.testSupport) ? parsed.testSupport : undefined };
 }
 
 async function readLogical(project: number, logical: string): Promise<string | null> {

@@ -83,7 +83,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   accessScope: { required: ['scopeId', 'grants'], optional: [], nonempty: ['grants'] },
   authorityMap: { required: ['mapId', 'entries'], optional: [], nonempty: ['entries'] },
   repositoryRegistration: { required: ['registrationId', 'adapters'], optional: [], nonempty: ['adapters'] },
-  persistenceSeeds: { required: ['seedId', 'scenarios'], optional: ['phase', 'dependencies', 'datasets'], nonempty: ['scenarios'] },
+  persistenceSeeds: { required: ['seedId', 'scenarios'], optional: ['phase', 'dependencies', 'datasets', 'fixture'], nonempty: ['scenarios'] },
   integrationOutbound: { required: ['integrationId', 'events'], optional: ['processes', 'inbound', 'plugins', 'gaps'], nonempty: [] },
 };
 

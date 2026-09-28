@@ -31,8 +31,10 @@ import {
   routeObligations,
   type M1Obligation,
 } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
+import { readFixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { classifyObligation, fixtureModel, runtimeGap, type M1FixtureModel } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 
-export const M1_CATALOG_RECIPE = '2026-09-27-m1-catalog-derive-v4' as const;
+export const M1_CATALOG_RECIPE = '2026-09-27-m1-catalog-derive-v5' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',
@@ -300,17 +302,34 @@ function routeCases(
       gaps.push({ artifactId: definition.artifactId, artifactType: 'httpController', origin: `${defPath}#${route.route}`, reason: derived.gap });
       continue;
     }
+    const model = fixtureModelOf(defs);
     for (const item of derived.obligations) {
       obligations.push(item);
       gaps.push({
         artifactId: definition.artifactId,
         artifactType: 'httpController',
         origin: `${defPath}#${route.route}`,
-        reason: `${M1_OBLIGATION_BLOCKER} (${M1_OBLIGATION_OWNER}): ${item.caseId} is declared, not executed`,
+        reason: `${memoryReason(model, item)}; runtime proof ${M1_OBLIGATION_BLOCKER} (${M1_OBLIGATION_OWNER})${model ? `: ${runtimeGap(model.plan, item)}` : ''}`,
       });
     }
   }
   return cases;
+}
+
+/** The certification fixture the seeds def carries (m1_28); null without one. */
+function fixtureModelOf(defs: ReadonlyMap<string, M1Definition>): M1FixtureModel | null {
+  const seeds = [...defs.values()].find(item => item.artifactType === 'persistenceSeeds' && item.data.fixture !== undefined);
+  if (!seeds) return null;
+  const plan = readFixturePlan(seeds.data.fixture);
+  return 'issues' in plan ? null : fixtureModel(plan, defs);
+}
+
+/** Memory status of one obligation, with its owner. The run itself executes none of them. */
+function memoryReason(model: M1FixtureModel | null, item: M1Obligation): string {
+  if (!model) return `FIXTURE_PLAN_ABSENT (L1): ${item.caseId} is declared, not executed; the seeds def carries no certification fixture`;
+  const blocked = classifyObligation(model, item);
+  if (blocked) return `${blocked.gap} (${blocked.owner}): ${item.caseId} is declared, not executed`;
+  return `FIXTURE_HARNESS_UNWIRED (L1): ${item.caseId} is declared, not executed in this run; the memory harness runs it, the implement stage does not yet`;
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

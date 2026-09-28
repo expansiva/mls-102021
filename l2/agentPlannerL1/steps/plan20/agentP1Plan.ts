@@ -2,6 +2,7 @@
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
+  accessFile,
   displayPath,
   ontologyEntityFile,
   ontologyIndexFile,
@@ -43,6 +44,7 @@ import {
   buildP1BackendTool,
   buildP1ResolutionSchema,
   normalizeP1Backend,
+  parseP1Actors,
   parseP1Entity,
   parseP1L4Diff,
   parseP1Needs,
@@ -50,6 +52,7 @@ import {
   parseP1Resolution,
   planP1Backend,
   unwrapP1ArtifactPayload,
+  type P1ActorView,
   type P1BackendFile,
   type P1BackendResolution,
   type P1EntityView,
@@ -80,6 +83,7 @@ export interface P1PlanSources {
   ontology: P1EntityView[];
   pipeline: P1PipelineState;
   l4diff: P1L4DiffFile | null;
+  actors: P1ActorView[];
 }
 
 export interface P1DeliverPlanResult {
@@ -159,12 +163,15 @@ export async function loadP1PlanSources(moduleName: string): Promise<P1PlanSourc
   const needs = parseP1Needs(rawNeeds);
   const ontology = await loadP1Ontology(moduleName);
   const rawDiff = await readJson<unknown>(p1L4DiffFile(moduleName, pipelineDevice(pipeline)));
+  // Missing access ⇒ no actors; each needs actor then carries ACTOR_UNDECLARED in testSupport.
+  const access = await readDefsJson<unknown>(accessFile(moduleName));
   return {
     needs,
     inventory: pipeline.inventory,
     ontology,
     pipeline,
     l4diff: rawDiff === null ? null : parseP1L4Diff(rawDiff),
+    actors: access === null ? [] : parseP1Actors(access),
   };
 }
 
@@ -181,8 +188,9 @@ export async function executeP1Plan(
     now,
     resolution,
     l4diff: sources.l4diff,
+    actors: sources.actors,
   });
-  const repaired = repairP1Backend(planned.file, sources.needs, sources.ontology, sources.inventory, sources.l4diff);
+  const repaired = repairP1Backend(planned.file, sources.needs, sources.ontology, sources.inventory, sources.l4diff, sources.actors);
   const gate = validateP1Backend(repaired, sources.needs, sources.ontology);
   if (!gate.ok) throw new Error(formatP1BackendGate(gate.issues));
   return commitP1Plan(sources, repaired, now);
@@ -208,6 +216,7 @@ export async function beforeP1PlanPromptStep(
       ontology: sources.ontology,
       now: new Date(),
       l4diff: sources.l4diff,
+      actors: sources.actors,
     });
     if (!planned.unresolved.length && !parsed.gateFeedback) {
       const mutationParent = findMutableParent(context, parentStep);
@@ -292,6 +301,7 @@ export async function afterP1PlanPromptStep(
       now,
       resolution,
       l4diff: sources.l4diff,
+      actors: sources.actors,
     });
     let draft = normalizeP1Backend(payload, {
       needs: sources.needs,
@@ -300,9 +310,10 @@ export async function afterP1PlanPromptStep(
       now,
       resolution,
       l4diff: sources.l4diff,
+      actors: sources.actors,
     });
     if (!draft.endpoints.length) draft = planned.file;
-    draft = repairP1Backend(draft, sources.needs, sources.ontology, sources.inventory, sources.l4diff);
+    draft = repairP1Backend(draft, sources.needs, sources.ontology, sources.inventory, sources.l4diff, sources.actors);
     let pipeline = await requirePipeline(moduleName);
     pipeline = await writeStepState(pipeline, {
       status: 'running',

@@ -1,5 +1,9 @@
 # input20
 
+## 2026-09-27 (m1_28)
+
+- The backend plan is accepted as v1.1 or v1.2 (`D1_BACKEND_SCHEMAS`). A v1.1 plan gives the same snapshot (pinned in gate.test).
+
 ## 2026-09-23 (d1_20)
 
 - A present `toCreate` def is accepted when the progress file of the step that wrote it has that `defPath`, `status: done` and a `desiredHash` equal to the bytes on disk. The steps read are `domain30`, `persistence40`, `usecases50`, `controllers60` and `support70` (`traces/<step><step>.json`, schema `2026-09-22-d1-progress-v1`).

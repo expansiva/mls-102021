@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -18,6 +18,7 @@ import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderM
 import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
+import { BASE, derive, fixture } from '/_102021_/l2/agentMaterializeL1/testing/oracleModule.js';
 import {
   M1_CEILING,
   MaterializeCallError,
@@ -146,6 +147,57 @@ void test('structure calls only its handler and implement does not fall back to 
   assert.equal(implement.units[0].promoted, false);
   assert.equal(implementStore.map.has(output), false);
   assert.match(implement.units[0].detail, /catalog/);
+});
+
+void test('the run report hashes every source the authenticated oracle read, apart from the catalog hash (m1_28)', async () => {
+  const fx = fixture(BASE);
+  // The MDM targets the neutral module references, so the planner resolves every ref.
+  const mdm = [fx.n.Anchor, fx.n.Mdm].map(entityId => {
+    const defPath = `${fx.n.project}/l1/${fx.n.mod}/layer_3_domain/entities/${entityId.charAt(0).toLowerCase()}${entityId.slice(1)}.defs.ts`;
+    const definition = {
+      schemaVersion: M1_DEFINITION_SCHEMA, artifactType: 'domainEntity', artifactId: entityId, moduleName: fx.n.mod, status: 'pending', dependencies: [],
+      data: { entityId, storageTarget: 'mdm', fields: [{ name: 'id', type: 'uuid', derived: true }], lifecycle: { states: [], transitions: [] }, invariants: [], imports: [] },
+    } as M1Definition;
+    return { defPath, definition };
+  });
+  const units: PlanUnitInput[] = [...fx.defs.map(([, defPath, definition]) => ({ defPath, definition })), ...fx.controllers.map(([defPath, definition]) => ({ defPath, definition })), ...mdm];
+  const base = join(HERE, '../../../..');
+  const texts: Record<string, string> = { ...fx.texts };
+  for (const unit of mdm) {
+    const rendered = renderDefinition(unit.definition, unit.defPath);
+    assert.equal('source' in rendered, true, JSON.stringify(rendered));
+    if ('source' in rendered) texts[unit.defPath] = rendered.source;
+  }
+  const io = {
+    async read(ref: string) {
+      // Platform files come from their own project on disk; module files from the fixture.
+      const match = /^_(102034)_\/(.*)$/.exec(ref);
+      if (!texts[ref] && match) {
+        const full = join(base, `mls-${match[1]}`, match[2]);
+        if (existsSync(full)) texts[ref] = readFileSync(full, 'utf8');
+      }
+      return texts[ref] ?? null;
+    },
+  };
+  const catalogRef = `${fx.n.project}/l1/${fx.n.mod}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+  const request = baseRequest(units, { stage: 'simulate', moduleName: fx.n.mod, project: Number(fx.n.project.replace(/_/g, '')) });
+  // Simulate calls no runner; binding one per unit keeps the units out of the withheld set.
+  const bound: Record<string, MaterializeHandlerRunner> = Object.fromEntries(units.map(unit => [
+    handlerFor((unit.definition as M1Definition).artifactType, 'structure')?.id ?? '',
+    () => Promise.reject(new Error('simulate must not run a handler')),
+  ]));
+  const first = await runMaterialize(request, { ...host(world(texts), bound), io, catalogRef });
+  const oracle = first.catalog?.oracleSources ?? {};
+  const refs = [...new Set(derive(fx).obligations.flatMap(item => item.sources.map(source => source.split('#')[0] ?? source)))].sort();
+  assert.equal(refs.length > 0, true);
+  assert.deepEqual(Object.keys(oracle), refs, JSON.stringify(first.units.map(unit => `${unit.code} ${unit.detail}`)));
+  assert.deepEqual(Object.entries(oracle).filter(([, hash]) => !hash.startsWith('sha256:')), []);
+  // A changed contract moves its hash and not the catalog input hash.
+  texts[fx.refs.office] = `${texts[fx.refs.office]}\n// edited\n`;
+  const second = await runMaterialize(request, { ...host(world(texts), bound), io, catalogRef });
+  assert.equal(second.catalog?.inputHash, first.catalog?.inputHash);
+  assert.notEqual(second.catalog?.oracleSources[fx.refs.office], oracle[fx.refs.office]);
+  assert.equal(second.catalog?.oracleSources[fx.refs.scope], oracle[fx.refs.scope]);
 });
 
 void test('implement on the clinic fixture does not emit a test for a unit with no output', async () => {

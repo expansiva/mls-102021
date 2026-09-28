@@ -16,6 +16,7 @@ import {
   type M1Verification,
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
+import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
 import { auditImports, importSpecifier, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
@@ -256,6 +257,12 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
   return { source, imports, runsStub: rows.some(row => row.stub), seeds: false, evidences: [] };
 }
 
+/**
+ * Product seeds and the certification fixture are two exports. D1 plans datasets as
+ * `{ datasetId, tableId, owners }` with no rows, so `applicableSeeds` stays empty and the
+ * receipt says planned, not materialized. Rows a def carries (`seedFor`/`rows`) are product
+ * seeds and keep the profile guard. The fixture (contracts/fixture.ts) is never a seed row.
+ */
 function emitSeeds(definition: M1Definition, output: string): PersistenceEmit | EmitFailure {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No seed file was written.` };
@@ -263,10 +270,34 @@ function emitSeeds(definition: M1Definition, output: string): PersistenceEmit | 
   const targets = [...new Set(scenarios.map(item => text(item.tableId)).filter(Boolean))];
   const datasets = Array.isArray(definition.data.datasets) ? definition.data.datasets.filter(isRecord) : [];
   const rows = datasets.filter(item => targets.includes(text(item.seedFor)) && Array.isArray(item.rows));
-  const source = renderSeeds(output, text(definition.data.phase) || 'plan', scenarios, rows);
+  const planned = datasets.filter(item => targets.includes(text(item.tableId)) && !Array.isArray(item.rows)).map(item => text(item.tableId));
+  let fixture: M1FixturePlan | null = null;
+  if (definition.data.fixture !== undefined) {
+    const read = readFixturePlan(definition.data.fixture);
+    if ('issues' in read) return { code: 'FIXTURE_INVALID', detail: `${definition.artifactId}: ${read.issues.join('; ')}. No seed file was written.` };
+    fixture = read;
+  }
+  const source = renderSeeds(output, text(definition.data.phase) || 'plan', scenarios, rows, fixture);
   const bad = auditImports(source, [CONTRACTS]);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
-  return { source, imports: [CONTRACTS], runsStub: false, seeds: rows.length > 0, evidences: [] };
+  // What the file holds, true as written. Phase is in the id and the detail: applied and tested are never claimed here.
+  const evidences: M1Verification[] = [{
+    id: rows.length > 0 ? 'seedRowsMaterialized' : 'seedPlanned',
+    kind: 'schema',
+    passed: true,
+    detail: rows.length > 0
+      ? `${rows.length} product seed dataset(s) materialized in the file; not applied by this receipt.`
+      : `Planned only (${planned.length ? planned.sort().join(', ') : 'no dataset'}). No row was materialized or applied.`,
+  }];
+  if (fixture) {
+    evidences.push({
+      id: 'certificationFixturePlanned',
+      kind: 'schema',
+      passed: true,
+      detail: `Fixture plan written: ${fixture.datasets.length} dataset(s), ${fixture.runtime.length} runtime need(s). Not applied or tested by this receipt.`,
+    });
+  }
+  return { source, imports: [CONTRACTS], runsStub: false, seeds: rows.length > 0, evidences };
 }
 
 function emitOutbound(definition: M1Definition): EmitFailure {
@@ -699,6 +730,7 @@ function renderSeeds(
   phase: string,
   scenarios: readonly Record<string, unknown>[],
   datasets: readonly Record<string, unknown>[],
+  fixture: M1FixturePlan | null,
 ): string {
   const exports = datasets.map((item, index) => `export const seedRows${index} = ${JSON.stringify({ seedFor: text(item.seedFor), rows: item.rows })} satisfies TableSeedRows;`);
   return [
@@ -709,6 +741,8 @@ function renderSeeds(
     '',
     ...exports,
     exports.length ? '' : '',
+    // Certification fixture plan: read by the memory harness, never by the seed bootstrap.
+    ...(fixture ? [`export const certificationFixture = ${JSON.stringify(fixture, null, 2)} as const;`, ''] : []),
     'export function applicableSeeds(mode: string): TableSeedRows[] {',
     "  if (mode !== 'development' && mode !== 'presentation') return [];",
     `  return [${datasets.map((_, index) => `seedRows${index}`).join(', ')}];`,

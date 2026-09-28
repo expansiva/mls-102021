@@ -28,6 +28,7 @@ import {
   withoutUniqueChecks,
 } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/emitPersistence.js';
 import { persistenceHandlerIds, persistenceRunners, runPersistence } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
+import { planFixture } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
 
 const EXTRA = new Map<string, string>();
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -180,6 +181,30 @@ void test('adapter, registration and seeds follow the def, and outbound does not
   assert.equal(synthetic.seeds, true);
   assert.match(sourceOf(synthetic), /"seedFor":"consulta"/);
 
+  // m1_28: the D1 shape (datasets without rows) plus the certification fixture.
+  const planned = seedsDef(false);
+  const fixture = planFixture([
+    { id: 'data:Consulta', owner: 'L1', entityRefs: ['Consulta'], actorRefs: [], sourceRefs: [], gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' },
+    { id: 'mdm:Paciente', owner: 'runtime', entityRefs: ['Paciente'], actorRefs: [], sourceRefs: [], gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: x' },
+  ], [{ tableId: 'consulta', entityId: 'Consulta' }]);
+  planned.data = { ...planned.data, datasets: [{ datasetId: 'consulta', tableId: 'consulta', owners: ['book'] }], fixture };
+  const withFixture = await runPersistence(callFor(planned));
+  assert.equal(withFixture.failure, null, withFixture.failure?.detail);
+  assert.equal(withFixture.seeds, false);
+  const plannedSource = sourceOf(withFixture);
+  assert.match(plannedSource, /export const certificationFixture = /);
+  // The fixture never reaches the seed bootstrap.
+  assert.match(plannedSource, /return \[\];\n\}/);
+  assert.equal(plannedSource.includes('seedRows0'), false);
+  const evidences = Object.fromEntries((withFixture.evidences ?? []).map(item => [item.id, item]));
+  assert.deepEqual(Object.keys(evidences).sort(), ['certificationFixturePlanned', 'seedPlanned']);
+  assert.match(evidences.seedPlanned?.detail ?? '', /^Planned only \(consulta\)\. No row was materialized or applied\.$/);
+  assert.match(evidences.certificationFixturePlanned?.detail ?? '', /1 dataset\(s\), 1 runtime need\(s\)\. Not applied or tested/);
+  assert.equal((withFixture.evidences ?? []).some(item => /applied|tested/.test(item.id)), false);
+  const broken = seedsDef(false);
+  broken.data = { ...broken.data, fixture: { schemaVersion: 'other' } };
+  assert.equal((await runPersistence(callFor(broken))).failure?.code, 'FIXTURE_INVALID');
+
   const outbound = await runPersistence(callFor(outboundDef()));
   assert.equal(outbound.failure?.code, 'MECHANISM_UNBOUND');
   assert.deepEqual(outbound.files, {});
@@ -227,6 +252,46 @@ void test('renamed ids still map columns, and production refuses synthetic seeds
   assert.equal(parsed.verifications.some(item => item.id === 'tableFile' && item.passed), true);
   assert.equal(parsed.verifications.some(item => item.id === 'migration' && item.passed === false), true);
   assert.equal([...store.map.keys()].some(path => path.endsWith('/seeds.ts')), false);
+});
+
+void test('m1_28: a seeds def with the certification fixture is promoted like one without it', async () => {
+  const note = noteEntity();
+  const noteTable = noteTableDef(note);
+  EXTRA.set(pathFor(note), defSource(pathFor(note), note));
+  const seedsFor = (withFixture: boolean): M1Definition => {
+    const def = seedsDef(false);
+    def.moduleName = 'sample';
+    def.dependencies = [pathFor(noteTable)];
+    const fixture = planFixture([{ id: 'data:Note', owner: 'L1', entityRefs: ['Note'], actorRefs: [], sourceRefs: [], gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' }], [{ tableId: 'note', entityId: 'Note' }]);
+    def.data = {
+      ...def.data,
+      scenarios: [{ scenarioId: 'book', tableId: 'note', source: 'journey:book' }],
+      datasets: [{ datasetId: 'note', tableId: 'note', owners: ['book'] }],
+      ...(withFixture ? { fixture } : {}),
+    };
+    return def;
+  };
+  const outcome = async (withFixture: boolean) => {
+    const seeds = seedsFor(withFixture);
+    const store = world();
+    const result = await runMaterialize({
+      project: 102047, moduleName: 'sample', stage: 'structure', flow: '', resume: false,
+      units: [unit(note), unit(noteTable), unit(seeds)], profileMode: 'development', profileDeclared: true, budget: { timeoutMs: 5000 },
+    }, host(store));
+    const row = result.units.find(item => item.defPath === pathFor(seeds));
+    const receipt = JSON.parse(store.map.get(receiptPathFor(pathFor(seeds))) ?? '{}') as { verifications?: Array<{ id: string; passed: boolean }> };
+    const output = [...store.map.entries()].find(([path]) => path.endsWith('/seeds.ts'))?.[1] ?? '';
+    return { code: row?.code, detail: row?.detail, ids: (receipt.verifications ?? []).map(item => `${item.id}:${item.passed}`), output };
+  };
+  const plain = await outcome(false);
+  const withFixture = await outcome(true);
+  assert.equal(plain.code, 'PROMOTED', plain.detail);
+  assert.equal(withFixture.code, 'PROMOTED', withFixture.detail);
+  assert.equal(withFixture.ids.every(item => item.endsWith(':true')), true, withFixture.ids.join());
+  assert.equal(withFixture.ids.includes('certificationFixturePlanned:true') && withFixture.ids.includes('seedPlanned:true'), true);
+  assert.equal(plain.ids.includes('certificationFixturePlanned:true'), false);
+  assert.match(withFixture.output, /export const certificationFixture = /);
+  assert.equal(plain.output.includes('certificationFixture'), false);
 });
 
 void test('emitted persistence files compile', async () => {

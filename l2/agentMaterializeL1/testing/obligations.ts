@@ -3,8 +3,9 @@
 /**
  * Authenticated route cases (m1_27). The oracle is read from the L2 contract of the
  * route, the access grants and the authority map; never from the emitted handler. A
- * case with authorities needs a concrete actor of the fixture (m1_28), so it is declared
- * here with its blocker. It is not a catalog case and it is never reported as executed.
+ * case with authorities needs a test identity the runtime provisions, so it is declared
+ * here with that blocker. It is not a catalog case and the run never reports it executed;
+ * the memory harness (testing/fixture.ts, m1_28) runs it against the emitted code.
  * A grant proves behaviour; it is not a rule id (d1_26 r2, m1_10), so `ruleId` stays null.
  */
 
@@ -14,8 +15,9 @@ import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handl
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 
-export const M1_OBLIGATION_BLOCKER = 'ACTOR_FIXTURE_PENDING' as const;
-export const M1_OBLIGATION_OWNER = 'm1_28' as const;
+/** Runtime proof: credential -> actor -> personEntity and the test identities are the runtime's. */
+export const M1_OBLIGATION_BLOCKER = 'RUNTIME_IDENTITY_PENDING' as const;
+export const M1_OBLIGATION_OWNER = 'runtime 102034' as const;
 
 export type M1ObligationKind = 'contract' | 'minimalInput' | 'noIdentity' | 'own' | 'other' | 'disclosure';
 /**

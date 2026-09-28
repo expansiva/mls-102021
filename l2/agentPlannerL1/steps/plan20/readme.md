@@ -4,7 +4,7 @@ Candidates and inventory matching are deterministic. One reasoning call only for
 
 ## Input
 
-`pool/l1/web/needs.json` (from entry10), optional `pool/l1/web/l4diff.json` (from L4 p4_09; absent ⇒ `changes: []`), the l1 inventory on `pipeline.json`, and the module l4 ontology (entity family / `storage.kind`).
+`pool/l1/web/needs.json` (from entry10), optional `pool/l1/web/l4diff.json` (from L4 p4_09; absent ⇒ `changes: []`), the l1 inventory on `pipeline.json`, the module l4 ontology (entity family / `storage.kind`, fk, lifecycle) and `access.defs.ts` actors.
 
 ## Output
 
@@ -22,4 +22,5 @@ The reply keeps the received `round` and is `estimate`. Draft:
 - `changes[]` copies `l4diff.json` items with `reason` (English, one line) and `source`. Shared across tables = one `changeId`, several `tableRefs`.
 - Status `toCreate|toUpdate|toRemove|done`. Never `inProgress`. `existing` is the `.defs.ts` path when `done|toUpdate`, `""` when `toCreate`. `reason` always, English.
 - Every needs page has ≥ 1 endpoint.
+- `testSupport[]`: `identity:<actor>` (runtime; `personEntity` from `access.defs.ts`), `data:<entity>` per `tables[]` (L1; own fk targets, lifecycle `from` of needed transitions), `mdm:<entity>` for related MDM not bound to an actor (runtime). `executorRef`/`cleanupRef` empty ⇒ `gap` names the missing capability. Never grants, rows, hours or cost.
 - Bounded repair (2) and one transport retry, NS5 pattern. No judgment gate.

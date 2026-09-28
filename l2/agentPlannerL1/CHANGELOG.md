@@ -1,5 +1,13 @@
 # agentPlannerL1
 
+## 2026-09-27 (p1_12)
+
+- `backend.json` v1.2 adds `testSupport[]`: units of test preparation (identity,
+  module data, related MDM) derived from needs, `access.defs.ts` actors
+  (`personEntity`) and the ontology (own fk, lifecycle `from`). Every item is
+  `toCreate` with empty `executorRef`/`cleanupRef` and a named `gap` until an owner
+  references a verified capability. Other fields unchanged.
+
 ## 2026-09-27 (p1_11)
 
 - Estimate only, pool only (27/09 contract). Pipeline and draft move to

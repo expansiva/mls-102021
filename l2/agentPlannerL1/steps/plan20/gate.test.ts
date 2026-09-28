@@ -82,7 +82,7 @@ void test('v1.1 grouping: unknown tableRef and noTable mismatch fail; repair res
   assert.ok(validateP1Backend(mismatch, NEEDS, ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_NO_TABLE'));
 
   const repaired = repairP1Backend(mismatch, NEEDS, ONTOLOGY);
-  assert.equal(repaired.schemaVersion, '2026-09-21-p1-backend-v1.1');
+  assert.equal(repaired.schemaVersion, '2026-09-21-p1-backend-v1.2');
   assert.ok(repaired.usecases.every(item => (item.tableRefs.length === 0) === (item.noTable !== 'ok')));
   const gate = validateP1Backend(repaired, NEEDS, ONTOLOGY);
   assert.equal(gate.ok, true, gate.issues.map(item => item.message).join('\n'));

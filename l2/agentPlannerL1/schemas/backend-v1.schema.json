@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentPlannerL1/backend/2026-09-21-p1-backend-v1.1",
+  "$id": "https://collab.codes/schemas/agentPlannerL1/backend/2026-09-21-p1-backend-v1.2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -15,10 +15,11 @@
     "tables",
     "removed",
     "changes",
+    "testSupport",
     "meta"
   ],
   "properties": {
-    "schemaVersion": { "type": "string", "const": "2026-09-21-p1-backend-v1.1" },
+    "schemaVersion": { "type": "string", "const": "2026-09-21-p1-backend-v1.2" },
     "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "device": { "type": "string", "const": "web" },
     "sourceNeeds": { "type": "string", "minLength": 1 },
@@ -46,6 +47,10 @@
     "changes": {
       "type": "array",
       "items": { "$ref": "#/$defs/change" }
+    },
+    "testSupport": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/testSupportItem" }
     },
     "meta": { "$ref": "#/$defs/meta" }
   },
@@ -155,6 +160,22 @@
         },
         "reason": { "type": "string", "minLength": 1 },
         "source": { "type": "string", "minLength": 1 }
+      }
+    },
+    "testSupportItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "actorRefs", "entityRefs", "sourceRefs", "status", "owner", "executorRef", "cleanupRef", "gap"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "actorRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "entityRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "sourceRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "status": { "$ref": "#/$defs/status" },
+        "owner": { "type": "string", "enum": ["L1", "runtime"] },
+        "executorRef": { "type": "string" },
+        "cleanupRef": { "type": "string" },
+        "gap": { "type": "string" }
       }
     },
     "meta": {

@@ -1,0 +1,283 @@
+{
+  "source": "mls-102047 l4/agendaClinica (HEAD 6c020bb), trimmed to the fields agentPlannerL1 reads",
+  "needs": {
+    "schemaVersion": "2026-09-21-p2-needs-v1",
+    "moduleName": "agendaClinica",
+    "device": "web",
+    "pages": [
+      {
+        "pageId": "consultas",
+        "actors": [
+          "recepcionista"
+        ],
+        "reads": [
+          {
+            "entity": "Consulta",
+            "family": "tdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "journey:agendarConsulta/criarConsulta",
+              "journey:confirmarConsultaPorTelefone/inspecionarConsulta",
+              "journey:confirmarConsultaPorTelefone/localizarConsulta",
+              "journey:confirmarConsultaPorTelefone/registrarConfirmacaoTelefonica",
+              "journey:registrarFalta/localizarConsultaParaFalta",
+              "journey:registrarFalta/registrarFaltaDoPaciente"
+            ]
+          },
+          {
+            "entity": "Paciente",
+            "family": "mdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "journey:agendarConsulta/localizarPaciente"
+            ]
+          },
+          {
+            "entity": "Profissional",
+            "family": "mdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "journey:agendarConsulta/localizarProfissional"
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "entity": "Consulta",
+            "operation": "create",
+            "transitionRef": "",
+            "from": [
+              "journey:agendarConsulta/criarConsulta"
+            ]
+          },
+          {
+            "entity": "Consulta",
+            "operation": "transition",
+            "transitionRef": "registrarFalta",
+            "from": [
+              "journey:registrarFalta/registrarFaltaDoPaciente"
+            ]
+          },
+          {
+            "entity": "Consulta",
+            "operation": "update",
+            "transitionRef": "",
+            "from": [
+              "journey:confirmarConsultaPorTelefone/registrarConfirmacaoTelefonica"
+            ]
+          }
+        ]
+      },
+      {
+        "pageId": "pacientes",
+        "actors": [
+          "recepcionista"
+        ],
+        "reads": [
+          {
+            "entity": "Paciente",
+            "family": "mdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "journey:cadastrarPaciente/registrarPaciente"
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "entity": "Paciente",
+            "operation": "create",
+            "transitionRef": "",
+            "from": [
+              "journey:cadastrarPaciente/registrarPaciente"
+            ]
+          }
+        ]
+      },
+      {
+        "pageId": "agenda",
+        "actors": [
+          "profissional"
+        ],
+        "reads": [
+          {
+            "entity": "Consulta",
+            "family": "tdm",
+            "scope": "own",
+            "derived": [],
+            "from": [
+              "journey:consultarAgendaDiaria/inspecionarAgendaDiaria",
+              "journey:consultarAgendaDiaria/localizarConsultasDoDia",
+              "journey:registrarAtendimento/inspecionarConsultaPropria",
+              "journey:registrarAtendimento/localizarConsultaPropria",
+              "journey:registrarAtendimento/registrarConsultaAtendida"
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "entity": "Consulta",
+            "operation": "transition",
+            "transitionRef": "registrarAtendimento",
+            "from": [
+              "journey:registrarAtendimento/registrarConsultaAtendida"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "access": {
+    "actors": [
+      {
+        "actorId": "recepcionista",
+        "personEntity": "Recepcionista"
+      },
+      {
+        "actorId": "profissional",
+        "personEntity": "Profissional"
+      }
+    ]
+  },
+  "ontology": [
+    {
+      "entityId": "Consulta",
+      "kind": "entity",
+      "storage": {
+        "target": "moduleDatabase",
+        "table": "agendaClinica_consulta",
+        "kind": "relational"
+      },
+      "relationships": {
+        "paciente": {
+          "relationshipId": "consultaPaciente",
+          "to": "Paciente",
+          "via": "Consulta.pacienteId",
+          "mode": "fk"
+        },
+        "profissional": {
+          "relationshipId": "consultaProfissional",
+          "to": "Profissional",
+          "via": "Consulta.profissionalId",
+          "mode": "fk"
+        }
+      },
+      "rules": [
+        "consultaHorarioProfissionalUnico",
+        "consultaSomenteAgendadaPodeRegistrarFalta",
+        "consultaSomenteAgendadaPodeRegistrarAtendimento",
+        "anotacaoObrigatoriaNoAtendimento",
+        "profissionalAtendeSomentePropriaConsulta"
+      ],
+      "lifecycleStates": [
+        {
+          "state": "scheduled",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "noShow",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "attended",
+          "reachedBy": "actor"
+        }
+      ],
+      "transitions": [
+        {
+          "transitionId": "registrarFalta",
+          "from": [
+            "scheduled"
+          ],
+          "to": "noShow",
+          "by": [
+            "recepcionista"
+          ]
+        },
+        {
+          "transitionId": "registrarAtendimento",
+          "from": [
+            "scheduled"
+          ],
+          "to": "attended",
+          "by": [
+            "profissional"
+          ]
+        }
+      ]
+    },
+    {
+      "entityId": "ContatoPaciente",
+      "kind": "role",
+      "relationships": {
+        "paciente": {
+          "relationshipId": "pacienteHasContact",
+          "to": "Paciente",
+          "via": "HasContact"
+        }
+      },
+      "rules": [
+        "rule-foreign-namespace-refused",
+        "rule-identity-never-in-namespace",
+        "rule-contact-value-unique-per-type",
+        "rule-document-shape-validated"
+      ]
+    },
+    {
+      "entityId": "Paciente",
+      "kind": "role",
+      "relationships": {
+        "consultas": {
+          "relationshipId": "consultaPaciente",
+          "to": "Consulta",
+          "via": "Consulta.pacienteId",
+          "mode": "fk"
+        },
+        "contatos": {
+          "relationshipId": "pacienteHasContact",
+          "to": "ContatoPaciente",
+          "via": "HasContact"
+        }
+      },
+      "rules": [
+        "rule-foreign-namespace-refused",
+        "rule-document-shape-validated",
+        "rule-identity-never-in-namespace",
+        "rule-person-privacy-consent-required-br-eu"
+      ]
+    },
+    {
+      "entityId": "Profissional",
+      "kind": "role",
+      "relationships": {
+        "consultas": {
+          "relationshipId": "consultaProfissional",
+          "to": "Consulta",
+          "via": "Consulta.profissionalId",
+          "mode": "fk"
+        }
+      },
+      "rules": [
+        "rule-foreign-namespace-refused",
+        "rule-document-shape-validated",
+        "rule-identity-never-in-namespace",
+        "rule-person-privacy-consent-required-br-eu"
+      ]
+    },
+    {
+      "entityId": "Recepcionista",
+      "kind": "role",
+      "relationships": {},
+      "rules": [
+        "rule-foreign-namespace-refused",
+        "rule-document-shape-validated",
+        "rule-identity-never-in-namespace",
+        "rule-person-privacy-consent-required-br-eu"
+      ]
+    }
+  ]
+}
