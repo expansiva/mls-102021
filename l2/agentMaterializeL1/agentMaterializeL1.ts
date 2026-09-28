@@ -129,6 +129,8 @@ function statusTask(
     result: message,
     planning: { planId: 'status', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
   } as mls.msg.AIResultStep;
+  // The root step (stepId 1) is closed so the task leaves `in progress`. A refusal or a stop is `completed`: the agent answered.
+  const root = { stepId: 1 } as mls.msg.AIPayload;
   return [addMessage, {
     type: 'add-step',
     messageId: '',
@@ -136,7 +138,7 @@ function statusTask(
     taskId: '',
     parentStepId: 1,
     step: result,
-  }];
+  }, updateStatus(context, root, root, 0, 'completed', message)];
 }
 
 function updateStatus(

@@ -3,11 +3,14 @@
 /**
  * Studio IO. Reads and writes go through the host stor. No node, fs or typescript import.
  * The project mode is the appEnv field of l5/project.json, the same field the server reads.
+ * Ref policy (core/refs.ts, shared with the CLI): reads reach the target or a platform project,
+ * writes and removals only the target project.
  */
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { parseDefinitionSource, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
+import { parseRef, readable, writable } from '/_102021_/l2/agentMaterializeL1/core/refs.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
@@ -60,27 +63,39 @@ export async function loadStudioUnits(project: number, moduleName: string): Prom
   return units;
 }
 
+/** Stor key of l5 files: `level: 5, folder: ''`. */
 export async function readStudioProfile(project: number): Promise<{ mode: unknown; declared: boolean }> {
-  for (const stored of Object.values(files())) {
-    if (stored.project !== project || stored.folder !== 'l5' || stored.shortName !== 'project' || stored.extension !== '.json') continue;
-    const text = await readStored(stored);
-    if (!text) return { mode: undefined, declared: false };
-    try {
-      const parsed = JSON.parse(text) as { appEnv?: unknown };
-      if (typeof parsed.appEnv === 'string' && parsed.appEnv) return { mode: parsed.appEnv, declared: true };
-    } catch {
-      return { mode: undefined, declared: false };
-    }
+  const text = await readStored(lookup({ project, level: 5, folder: '', shortName: 'project', extension: '.json' }));
+  if (!text) return { mode: undefined, declared: false };
+  try {
+    const parsed = JSON.parse(text) as { appEnv?: unknown };
+    if (typeof parsed.appEnv === 'string' && parsed.appEnv) return { mode: parsed.appEnv, declared: true };
+  } catch {
+    return { mode: undefined, declared: false };
   }
   return { mode: undefined, declared: false };
 }
 
 export function createStudioHost(project: number): MaterializeRunHost {
+  const loads = new Map<number, Promise<string>>();
   const io: MaterializeReadIo = {
     async read(ref: string): Promise<string | null> {
-      const file = fileFromRef(project, ref);
+      const file = readTarget(project, ref);
       if (!file) return null;
-      return readStored(lookup(file));
+      if (file.project === project) return readStored(lookup(file));
+      let loaded = loads.get(file.project);
+      if (!loaded) {
+        loaded = loadProject(file.project);
+        loads.set(file.project, loaded);
+      }
+      const failure = await loaded;
+      if (failure) {
+        console.warn(`agentMaterializeL1: cannot read ${ref}; ${failure}`);
+        return null;
+      }
+      const text = await readStored(lookup(file));
+      if (text === null) console.warn(`agentMaterializeL1: ${ref} is absent in project ${file.project} after loading its context.`);
+      return text;
     },
   };
   const state: MaterializeStateStore = {
@@ -112,7 +127,7 @@ export function createStudioHost(project: number): MaterializeRunHost {
       const removed: string[] = [];
       const kept = [...plan.keep];
       for (const path of plan.remove) {
-        const file = fileFromRef(project, path);
+        const file = writeTarget(project, path);
         const stored = file ? lookup(file) : null;
         if (!file || !stored || stored.status === 'deleted') {
           kept.push(path);
@@ -187,6 +202,18 @@ function studioWriter(project: number): MaterializeWriter {
   };
 }
 
+/** Loads the stor index of another project (once per host). Returns '' or the failure the reader warns. */
+async function loadProject(projectId: number): Promise<string> {
+  const server = (mls.stor as { server?: { loadProjectInfoIfNeeded?: (project: number) => Promise<unknown> } }).server;
+  if (typeof server?.loadProjectInfoIfNeeded !== 'function') return `the stor cannot load project ${projectId}.`;
+  try {
+    await server.loadProjectInfoIfNeeded(projectId);
+    return '';
+  } catch (error) {
+    return `loading project ${projectId} failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function files(): Record<string, StorFile> {
   const stor = mls.stor as { files?: Record<string, StorFile> };
   return stor.files || {};
@@ -213,7 +240,7 @@ async function readStored(stored: StorFile | null): Promise<string | null> {
 }
 
 async function writeRef(project: number, ref: string, body: string): Promise<void> {
-  const file = fileFromRef(project, ref);
+  const file = writeTarget(project, ref);
   if (!file) throw new Error(`Refused a write outside the module tree: ${ref}`);
   if (file.shortName.includes('.') && file.shortName !== 'runtime.project') throw new Error(`Refused a file name with an extra dot: ${file.shortName}`);
   const stored = lookup(file);
@@ -224,25 +251,27 @@ async function writeRef(project: number, ref: string, body: string): Promise<voi
   await mls.stor.localStor.setContent(stored as mls.stor.IFileInfo, { contentType: 'string', content: body });
 }
 
+function readTarget(project: number, ref: string): FileRef | null {
+  return readable(ref, project) ? fileFromRef(project, ref) : null;
+}
+
+function writeTarget(project: number, ref: string): FileRef | null {
+  return writable(ref, project) ? fileFromRef(project, ref) : null;
+}
+
+/** Stor key of a ref. A file at the root of a level is `folder: ''`. The policy is applied by the callers. */
 function fileFromRef(project: number, ref: string): FileRef | null {
-  if (!ref || ref.includes('..') || ref.includes('\\') || ref.startsWith('/')) return null;
-  const qualified = /^_(\d+)_\/l([1-7])\/(.+)$/.exec(ref);
-  const local = /^l([1-7])\/(.+)$/.exec(ref);
-  const projectId = qualified ? Number(qualified[1]) : project;
-  const level = qualified ? Number(qualified[2]) : local ? Number(local[1]) : 0;
-  const rest = qualified ? qualified[3] : local ? local[2] : '';
-  if (!rest || projectId !== project || !level) return null;
-  const slash = rest.lastIndexOf('/');
-  const folder = slash >= 0 ? rest.slice(0, slash) : '';
-  const filename = slash >= 0 ? rest.slice(slash + 1) : rest;
-  if (folder === 'l5' && filename === 'runtime.project.json') {
-    return { project: projectId, level, folder, shortName: 'runtime.project', extension: '.json' };
-  }
+  const parsed = parseRef(ref, project);
+  if (!parsed) return null;
+  const slash = parsed.rest.lastIndexOf('/');
+  const folder = slash >= 0 ? parsed.rest.slice(0, slash) : '';
+  const filename = slash >= 0 ? parsed.rest.slice(slash + 1) : parsed.rest;
   const doubled = ['.defs.ts', '.test.ts', '.d.ts'].find(item => filename.endsWith(item));
   const dot = doubled ? filename.length - doubled.length : filename.lastIndexOf('.');
   if (dot <= 0) return null;
   const shortName = filename.slice(0, dot);
   const extension = doubled || filename.slice(dot);
-  if (!shortName || shortName.includes('.') || folder.split('/').some(part => !part || part === '.' || part === '..')) return null;
-  return { project, level, folder, shortName, extension };
+  const runtimeProject = parsed.level === 5 && folder === '' && shortName === 'runtime.project';
+  if (!shortName || (shortName.includes('.') && !runtimeProject)) return null;
+  return { project: Number(parsed.projectId), level: parsed.level, folder, shortName, extension };
 }

@@ -109,3 +109,35 @@ void test('technical causes still answer: no defs, defs of another project, a mi
   assert.match(await studio(`@@agentMaterializeL1 ${MODULE} /resume`), /NOTHING_TO_RESUME/);
   assert.equal(host.writes.length, 0);
 });
+
+async function intentsOf(prompt: string): Promise<mls.msg.AgentIntent[]> {
+  return createAgent().beforePromptImplicit!(meta(), context(prompt), prompt);
+}
+
+function assertClosesTask(intents: mls.msg.AgentIntent[], label: string): void {
+  const status = intents.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
+  assert.ok(status, `${label}: statusTask must emit update-status so the task leaves in progress`);
+  assert.equal(status.status, 'completed', label);
+  assert.equal(status.stepId, 1, label);
+  assert.equal(status.parentStepId, 1, label);
+  const message = intents[0] as mls.msg.AgentIntentAddMessageAI;
+  assert.equal(status.traceMsg, String(message.request.inputAI[1]?.content), label);
+}
+
+void test('m1_31: every status answer (run, refused, stopped) closes the root step with update-status completed', async () => {
+  const host = installStudio(PROJECT);
+  seedDefs(host, PROJECT);
+  assertClosesTask(await intentsOf(`@@agentMaterializeL1 ${MODULE} /simulate`), 'run');
+  assertClosesTask(await intentsOf('@@agentMaterializeL1 /help'), 'help');
+
+  installStudio(PROJECT);
+  const refused = await intentsOf(`@@agentMaterializeL1 ${MODULE} /naoexiste`);
+  assert.equal((refused[0] as mls.msg.AgentIntentAddMessageAI).request.longTermMemory?.command, 'refused');
+  assertClosesTask(refused, 'refused');
+
+  installStudio(PROJECT);
+  Object.defineProperty(mls.stor, 'files', { get() { throw new Error('stor offline'); } });
+  const stopped = await intentsOf(`@@agentMaterializeL1 ${MODULE} /simulate`);
+  assert.match(String((stopped[0] as mls.msg.AgentIntentAddMessageAI).request.inputAI[1]?.content), /agentMaterializeL1 stopped: stor offline/);
+  assertClosesTask(stopped, 'stopped');
+});

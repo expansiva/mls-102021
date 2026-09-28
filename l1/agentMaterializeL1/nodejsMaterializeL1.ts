@@ -20,6 +20,7 @@ import { helpText, parseCliArgs } from '/_102021_/l2/agentMaterializeL1/run/comm
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import { isPlatformRef, PLATFORM_PROJECTS } from '/_102021_/l2/agentMaterializeL1/core/refs.js';
 import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { fixtureLines } from '/_102021_/l2/agentMaterializeL1/run/fixtureRun.js';
@@ -89,9 +90,6 @@ export function renderResult(result: MaterializeRunResult): string {
   return lines.join('\n');
 }
 
-/** Platform projects stay on the repository root when a sandbox is the read root. */
-export const PLATFORM_PROJECTS = new Set(['102034', '102027']);
-
 /** Qualified `_NNNNN_/lN/...` or a receipt `l1/<module>/...` under one project. `..` is refused. */
 export function mapOwnedPath(root: string, project: number, ref: string, also: ReadonlySet<string> | null = null): string | null {
   if (!ref || ref.includes('..') || ref.includes('\\') || ref.startsWith('/') || ref.includes('DATABASE_URL')) return null;
@@ -118,6 +116,7 @@ export function createDiskHost(
 ): MaterializeRunHost {
   const io: MaterializeReadIo = {
     async read(ref: string): Promise<string | null> {
+      // Platform projects (core/refs.ts, shared with Studio) stay on the repository root when a sandbox is the read root.
       if (platformRoot && isPlatformRef(ref)) {
         const platform = mapOwnedPath(platformRoot, project, ref, PLATFORM_PROJECTS);
         return platform ? readText(platform) : null;
@@ -210,11 +209,6 @@ export function resolveRunRoots(repoRoot: string, outputDir: string, sourceRoot:
     writeRoot: outputDir ? resolve(outputDir) : repoRoot,
     platformRoot: repoRoot,
   };
-}
-
-function isPlatformRef(ref: string): boolean {
-  const match = /^_(\d+)_\/l[1-7]\//.exec(ref);
-  return !!match && PLATFORM_PROJECTS.has(match[1]);
 }
 
 async function readText(path: string): Promise<string | null> {
