@@ -4,8 +4,9 @@ L1 planner. Reads a finished l4 module and the oldest `l2→l1` message in
 `pool/l1` whose artifact is `needs.json`, inventories the existing l1 (if any),
 and writes `pool/l2/web/backend.json` v1.2 (endpoints, usecases, ports, tables with
 `OwnerStatus`, `tableRefs`/`noTable` on every item, `changes[]` from optional
-`l4diff.json`, and `testSupport[]`). Unique name `agentPlannerL1`. Lives in `mls-102021` next to
-`agentChangeBackend`.
+`l4diff.json`, and `testSupport[]`). Unique name `agentPlannerL1`. Lives in `mls-102021`
+(`agentChangeBackend` was deleted, p4_15, 27/09; its `defsSource.ts` and `OwnerStatus`
+moved here, see below).
 
 Estimate only (27/09): nothing is written or deleted under `l1/<mod>` or `l2/<mod>`.
 The trace lives in `pool/l1/pipeline.json`. After the plan is delivered each
@@ -62,5 +63,5 @@ deletes, entry10 finishes them instead of planning again. It never touches l1
 or l2.
 
 Types reused from `/_102035_/l2/solution/{pool,fs,types}.js`. `parseDefsSource`
-from `agentChangeBackend/helpers/cbDefsSource.ts` reads `.defs.ts` without eval.
-`OwnerStatus` is the CB enum.
+from `helpers/defsSource.ts` (moved from the deleted `agentChangeBackend/helpers/cbDefsSource.ts`,
+p4_15) reads `.defs.ts` without eval. `OwnerStatus` is declared in `helpers/l1Inventory.ts`.
