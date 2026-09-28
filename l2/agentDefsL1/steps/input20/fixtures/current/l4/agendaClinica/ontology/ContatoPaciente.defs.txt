@@ -1,0 +1,214 @@
+/// <mls fileReference="_102047_/l4/agendaClinica/ontology/ContatoPaciente.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3 } from '/_102035_/l2/solution/types.js';
+
+export const agendaClinicaEntityContatoPaciente = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "agendaClinica",
+  "entityId": "ContatoPaciente",
+  "title": "Contato do paciente",
+  "description": "Canal de contato mestre vinculado ao paciente, utilizado para a confirmação telefônica de consultas.",
+  "displayField": "details.identification.name",
+  "relationships": {
+    "paciente": {
+      "relationshipId": "pacienteHasContact",
+      "to": "Paciente",
+      "via": "HasContact",
+      "cardinality": "N:1",
+      "title": "Paciente vinculado",
+      "description": "Paciente ao qual este telefone mestre está vinculado para confirmação de consultas.",
+      "direction": "to",
+      "role": "canal de contato"
+    }
+  },
+  "capabilities": {
+    "read.byId": "Consulta um canal de contato pelo identificador mestre para exibir o telefone do paciente vinculado, usada pela recepcionista e pelas telas da agenda.",
+    "locate.byName": "Localiza canais de contato pelo nome reconhecível no cadastro mestre, usada pela recepcionista ao conferir um telefone.",
+    "locate.byContact": "Localiza o canal mestre que possui um telefone informado, usado pela recepcionista durante a confirmação de consultas.",
+    "register.createOrAttach": "Cria ou vincula o telefone mestre já existente ao papel de contato de paciente da agenda clínica, usado pela recepcionista ao cadastrar ou atualizar o paciente.",
+    "edit.platformFields": "Atualiza o nome e os dados de plataforma do telefone mestre, usado pela recepcionista quando o paciente informa alteração do contato.",
+    "inactivate": "Inativa ou reativa um telefone mestre sem apagá-lo, usado pela recepcionista quando o canal deixa de servir para contato.",
+    "link": "Vincula este canal mestre ao paciente pela relação HasContact, usado pela recepcionista para disponibilizar o telefone na confirmação de consultas.",
+    "unlink": "Encerra o vínculo deste canal com o paciente mantendo seu histórico, usado pela recepcionista quando o telefone não pertence mais ao paciente.",
+    "listLinks": "Lista os pacientes vinculados a este canal de contato e a vigência dos vínculos, usado pela recepcionista para conferir a titularidade do telefone.",
+    "audit": "Mostra quem alterou ou vinculou o canal de contato e quando, usado para auditoria administrativa da clínica."
+  },
+  "rules": [
+    "rule-foreign-namespace-refused",
+    "rule-identity-never-in-namespace",
+    "rule-contact-value-unique-per-type",
+    "rule-document-shape-validated"
+  ],
+  "kind": "role",
+  "subtype": "ContactChannel",
+  "roleTag": "agendaClinica.ContatoPaciente",
+  "source": "/_102034_/l4/ontology/mdm.defs.ts",
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "description": "mdmId; stable through promotion and merge."
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true,
+        "writePrecondition": true,
+        "description": "Bumped by the engine on every write; optimistic concurrency."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "description": "Documento mestre do canal de contato utilizado pela clínica para confirmar consultas.",
+        "fields": {
+          "identification": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "subtype": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "ContactChannel",
+                    "title": "Canal de contato",
+                    "description": "Registro mestre de telefone, e-mail ou outro canal."
+                  }
+                ],
+                "description": "Indica que este registro mestre é um canal de contato.",
+                "title": "Subtipo",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "name": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "maxLength": 0,
+                "description": "Nome pelo qual a recepcionista reconhece o telefone do paciente ao confirmar uma consulta.",
+                "title": "Nome do contato",
+                "min": 0,
+                "max": 0
+              },
+              "status": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Active",
+                    "title": "Ativo",
+                    "description": "Canal disponível para contato."
+                  },
+                  {
+                    "value": "Inactive",
+                    "title": "Inativo",
+                    "description": "Canal não utilizado para contato."
+                  },
+                  {
+                    "value": "Merged",
+                    "title": "Mesclado",
+                    "description": "Canal incorporado a outro registro mestre."
+                  },
+                  {
+                    "value": "Blocked",
+                    "title": "Bloqueado",
+                    "description": "Canal impedido de uso."
+                  }
+                ],
+                "title": "Situação",
+                "description": "Situação mestre do canal de contato para indicar se ele pode continuar sendo utilizado.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "countryCode": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "pattern": "^BR$",
+                "maxLength": 0,
+                "default": "US",
+                "description": "Código do país aplicável ao telefone usado pela clínica.",
+                "title": "País",
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Identificação do canal de contato no cadastro mestre."
+          },
+          "base": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {},
+            "description": "Dados comuns do registro mestre de contato."
+          },
+          "contactChannel": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "contactType": {
+                "type": "enum",
+                "required": true,
+                "values": [
+                  {
+                    "value": "Phone",
+                    "title": "Telefone",
+                    "description": "Telefone usado para confirmar consultas."
+                  }
+                ],
+                "title": "Tipo de contato",
+                "description": "Tipo do canal utilizado pela recepcionista para confirmação telefônica.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "value": {
+                "type": "string",
+                "required": true,
+                "description": "Número de telefone do paciente utilizado na confirmação de consultas.",
+                "title": "Telefone",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "isVerified": {
+                "type": "boolean",
+                "required": true,
+                "title": "Telefone verificado",
+                "description": "Indica se o telefone foi verificado como canal válido do paciente.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Telefone mestre vinculado ao paciente para confirmação de consultas."
+          },
+          "general": {
+            "type": "object",
+            "owner": "organization",
+            "open": true,
+            "description": "Dados promovidos pela organização, somente para leitura neste módulo."
+          },
+          "agendaClinica": {
+            "type": "object",
+            "owner": "module",
+            "fields": {},
+            "description": "Module namespace; the prompt asked for no data of this module about the record."
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Ns5OntologyEntityV3;
+
+export type AgendaClinicaEntityContatoPacienteType = typeof agendaClinicaEntityContatoPaciente;
+
+export default agendaClinicaEntityContatoPaciente;

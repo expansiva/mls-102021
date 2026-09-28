@@ -7,9 +7,10 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
-import { regenerateHead } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
+import { regenerateCurrent, regenerateHead } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HEAD = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'head');
+const CURRENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'current');
 
 function readHead(dir = HEAD, prefix = '', out: Record<string, string> = {}): Record<string, string> {
   for (const name of readdirSync(dir)) {
@@ -34,4 +35,17 @@ void test('regenerating head is refused by the L1 plan gate on the two pages wit
     ].join('\n'));
     return true;
   });
+});
+
+/** d1_39: the current seed's needs, backend, effort and planner pipeline are the producers' bytes. */
+void test('the current seed outputs are what the producers write over its inputs, byte for byte', async () => {
+  const stored = readHead(CURRENT);
+  const produced = await regenerateCurrent(stored);
+  assert.deepEqual(Object.keys(produced).sort(), [
+    'l4/agendaClinica/pool/l1/pipeline.json',
+    'l4/agendaClinica/pool/l1/web/needs.json',
+    'l4/agendaClinica/pool/l2/web/backend.json',
+    'l4/agendaClinica/pool/l2/web/effort.json',
+  ]);
+  for (const [logical, text] of Object.entries(produced)) assert.equal(stored[logical], text, logical);
 });

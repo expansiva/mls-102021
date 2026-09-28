@@ -252,7 +252,7 @@ async function enumSnapshotOf(
 
 /**
  * `testSupport[]` of the backend plan input20 accepted. Read only when the bytes still match
- * the digest of the snapshot; a v1.1 plan (no array) gives no items. Changed bytes are named.
+ * the digest of the snapshot; input20 refuses a plan without the array (d1_39). Changed bytes are named.
  */
 async function testSupportOf(project: number, snapshot: D1InputSnapshot, backendPath: string): Promise<{ items: unknown[] | undefined } | { unread: string }> {
   const listed = snapshot.sources.find(source => source.path === backendPath);

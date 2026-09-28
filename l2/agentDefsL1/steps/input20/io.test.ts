@@ -20,11 +20,18 @@ const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
 
-/** The frozen head carries effort v1.1. D1 reads only the v1.2 the L2 producer writes (d1_37), so it is refused by path. */
+/**
+ * The frozen head carries backend v1.1 and effort v1.1. D1 reads only the v1.2 plans the producers
+ * write (d1_37 effort, d1_39 backend), so both are refused by path and nothing else is reported on them.
+ */
 function assertEffortRefused(snapshot: { consumersReleased: boolean; problems: Array<{ severity: string; code: string; path: string; message: string }> }): void {
   const errors = snapshot.problems.filter(problem => problem.severity === 'error');
-  assert.deepEqual(errors.map(problem => `${problem.code} ${problem.path}`), [`SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`]);
-  assert.match(errors[0].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.deepEqual(errors.map(problem => `${problem.code} ${problem.path}`), [
+    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/backend.json`,
+    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`,
+  ]);
+  assert.match(errors[0].message, /'2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
+  assert.match(errors[1].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2\. Regenerate/);
   assert.equal(snapshot.consumersReleased, false);
 }
 
@@ -257,4 +264,150 @@ void test('an unfinished writer receipt does not authorize a present def', async
   const resume = await assembleD1Input(PROJECT, MODULE);
   assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT' && problem.path === target.defPath), true);
   assert.equal(resume.consumersReleased, false);
+});
+
+// d1_39: the current seed. Inputs copied from mls-102047; needs, backend, effort and the planner
+// pipeline are the producers' bytes (regenHead.test proves it). This is the real reader over them.
+const CURRENT = path.join(HERE, 'fixtures', 'current');
+const BACKEND = `l4/${MODULE}/pool/l2/web/backend.json`;
+const EFFORT = `l4/${MODULE}/pool/l2/web/effort.json`;
+
+type Json = Record<string, unknown> & { testSupport: Array<Record<string, unknown>> };
+
+async function readCurrent(edit?: (plans: { backend: Json; effort: Json }) => void, rename: Array<[string, string]> = []) {
+  const host = installStudio(PROJECT);
+  const texts = new Map<string, string>();
+  const renamed = (value: string) => rename.reduce((out, [from, to]) => out.split(from).join(to), value);
+  for (const rel of walk(CURRENT, '')) {
+    const file = rel.endsWith('.defs.txt') ? `${rel.slice(0, -4)}.ts` : rel;
+    texts.set(renamed(file), renamed(readFileSync(path.join(CURRENT, rel), 'utf8')));
+  }
+  if (edit) {
+    const plans = { backend: JSON.parse(texts.get(BACKEND)!) as Json, effort: JSON.parse(texts.get(EFFORT)!) as Json };
+    edit(plans);
+    texts.set(BACKEND, `${JSON.stringify(plans.backend, null, 2)}\n`);
+    texts.set(EFFORT, `${JSON.stringify(plans.effort, null, 2)}\n`);
+  }
+  for (const [file, text] of texts) seed(host, fileInfoFromDisplay(PROJECT, file)!, text, 'current');
+  return assembleD1Input(PROJECT, MODULE);
+}
+
+function errorsOf(snapshot: { problems: Array<{ severity: string; code: string; path: string; message: string }> }): string[] {
+  return snapshot.problems.filter(problem => problem.severity === 'error').map(problem => `${problem.code} ${problem.path}`);
+}
+
+void test('the current producer outputs are read as they are and release the consumers', async () => {
+  const snapshot = await readCurrent();
+  assert.deepEqual(errorsOf(snapshot), []);
+  assert.equal(snapshot.consumersReleased, true);
+  const backend = JSON.parse(readFileSync(path.join(CURRENT, BACKEND), 'utf8')) as { schemaVersion: string; endpoints: Array<{ route: string }>; testSupport: unknown[] };
+  assert.equal(snapshot.sources.find(source => source.path === BACKEND)?.schemaVersion, '2026-09-21-p1-backend-v1.2');
+  assert.equal(snapshot.sources.find(source => source.path === EFFORT)?.schemaVersion, '2026-09-21-p2-effort-v1.2');
+  assert.deepEqual(snapshot.selection.routes.map(route => route.route), backend.endpoints.map(endpoint => endpoint.route).sort());
+  assert.ok(backend.testSupport.length > 0);
+  assert.equal(snapshot.problems.some(problem => problem.code.startsWith('TEST_SUPPORT')), false);
+});
+
+void test('an empty testSupport is valid; an absent one is refused on the backend', async () => {
+  const empty = await readCurrent(plans => {
+    plans.backend.testSupport = [];
+    plans.effort.testSupport = [];
+  });
+  assert.deepEqual(errorsOf(empty), []);
+  const absent = await readCurrent(plans => {
+    delete (plans.backend as Partial<Json>).testSupport;
+  });
+  assert.deepEqual(errorsOf(absent), [`TEST_SUPPORT_INVALID ${BACKEND}`]);
+  assert.match(absent.problems.find(problem => problem.code === 'TEST_SUPPORT_INVALID')!.message, /required \(an empty array is valid\)/);
+  assert.equal(absent.consumersReleased, false);
+});
+
+void test('an invalid testSupport item is refused by field; D1 does not fill it', async () => {
+  const snapshot = await readCurrent(plans => {
+    const [first, second] = plans.backend.testSupport;
+    Object.assign(first, { owner: 'D1', status: 'ready', actorRefs: ['ghost'], entityRefs: ['Ghost'], gap: '' });
+    delete second.sourceRefs;
+    second.id = first.id;
+    plans.effort.testSupport = plans.backend.testSupport.map(item => ({ ...item }));
+  });
+  const invalid = snapshot.problems.filter(problem => problem.code === 'TEST_SUPPORT_INVALID').map(problem => problem.message.replace(/^testSupport\[\d+\] \([^)]*\): /, ''));
+  for (const expected of [
+    'status must be toCreate|toUpdate|toRemove|done.',
+    'owner must be L1|runtime.',
+    'actorRef ghost is not a needs actor.',
+    'entityRef Ghost is not an ontology entity.',
+    'no executorRef or cleanupRef and no gap.',
+    'duplicate id.',
+    'sourceRefs must be an array of refs.',
+  ]) assert.ok(invalid.includes(expected), expected);
+  assert.equal(snapshot.consumersReleased, false);
+  const input = JSON.parse(readFileSync(path.join(CURRENT, BACKEND), 'utf8')) as Json;
+  assert.equal(input.testSupport.every(item => item.executorRef === '' && item.cleanupRef === '' && String(item.gap) !== ''), true);
+});
+
+void test('a done testSupport item needs both refs', async () => {
+  const snapshot = await readCurrent(plans => {
+    plans.backend.testSupport[0].status = 'done';
+    plans.effort.testSupport[0].status = 'done';
+  });
+  assert.ok(snapshot.problems.some(problem => problem.code === 'TEST_SUPPORT_INVALID' && /done without executorRef and cleanupRef/.test(problem.message)));
+});
+
+void test('effort must mirror the backend testSupport and version', async () => {
+  const snapshot = await readCurrent(plans => {
+    plans.effort.testSupport = plans.effort.testSupport.slice(1);
+    (plans.effort.meta as Record<string, unknown>).sourceVersion = '2026-09-21-p1-backend-v1.1';
+  });
+  assert.deepEqual(errorsOf(snapshot), [`DIVERGENT_SOURCE ${EFFORT}`, `DIVERGENT_SOURCE ${EFFORT}`]);
+  assert.deepEqual(snapshot.problems.filter(problem => problem.path === EFFORT).map(problem => problem.message).sort(), [
+    "meta.sourceVersion is '2026-09-21-p1-backend-v1.1', expected 2026-09-21-p1-backend-v1.2.",
+    'testSupport[] is not the copy of the backend plan. Regenerate effort from this backend.',
+  ]);
+});
+
+void test('an old backend plan is refused for regeneration and not converted', async () => {
+  const snapshot = await readCurrent(plans => {
+    plans.backend.schemaVersion = '2026-09-21-p1-backend-v1.1';
+    delete (plans.backend as Partial<Json>).testSupport;
+  });
+  assert.deepEqual(errorsOf(snapshot), [`SCHEMA_DIVERGENT ${BACKEND}`]);
+  assert.match(snapshot.problems.find(problem => problem.code === 'SCHEMA_DIVERGENT')!.message, /expected 2026-09-21-p1-backend-v1\.2\. Regenerate l4\/agendaClinica\/pool\/l2\/web\/backend\.json with its producer; other versions are not converted\./);
+  assert.equal(snapshot.consumersReleased, false);
+});
+
+void test('divergent refs and totals between the two plans are refused', async () => {
+  const snapshot = await readCurrent(plans => {
+    const endpoints = plans.effort.endpoints as Array<Record<string, unknown>>;
+    endpoints[0].usecaseRef = 'otherUsecase';
+    ((plans.effort.totals as Record<string, Record<string, number>>).tables).toCreate += 1;
+  });
+  const codes = errorsOf(snapshot);
+  assert.ok(codes.includes(`DIVERGENT_SOURCE ${BACKEND}`), codes.join());
+  assert.ok(codes.includes(`TOTALS_DIVERGENT ${EFFORT}`), codes.join());
+  assert.equal(snapshot.consumersReleased, false);
+});
+
+void test('the current seed with an entity renamed everywhere reads the same way', async () => {
+  const before = await readCurrent();
+  const after = await readCurrent(undefined, [['ContatoPaciente', 'VinculoX'], ['contatoPaciente', 'vinculoX']]);
+  assert.deepEqual(errorsOf(after), []);
+  assert.equal(after.consumersReleased, true);
+  assert.equal(after.selection.routes.length, before.selection.routes.length);
+  assert.equal(after.selection.usecases.length, before.selection.usecases.length);
+  assert.ok(after.selection.entities.includes('VinculoX'));
+  assert.equal(JSON.stringify(after.selection).includes('ContatoPaciente'), false);
+});
+
+void test('a testSupport-only change moves the hash and leaves the functional plan alone', async () => {
+  const before = await readCurrent();
+  assert.equal((await readCurrent(() => {})).snapshotHash, before.snapshotHash);
+  const after = await readCurrent(plans => {
+    plans.backend.testSupport[0].gap = `${String(plans.backend.testSupport[0].gap)} (edited)`;
+    plans.effort.testSupport[0].gap = plans.backend.testSupport[0].gap;
+  });
+  assert.deepEqual(errorsOf(after), []);
+  assert.notEqual(after.snapshotHash, before.snapshotHash);
+  assert.notEqual(after.sources.find(source => source.path === BACKEND)?.sha256, before.sources.find(source => source.path === BACKEND)?.sha256);
+  assert.deepEqual(after.selection, before.selection);
+  assert.deepEqual(after.files, before.files);
 });

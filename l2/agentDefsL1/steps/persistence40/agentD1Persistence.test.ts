@@ -18,13 +18,12 @@ import {
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, '../input20/fixtures/head');
+const FIXTURE = path.join(HERE, '../input20/fixtures/current');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
-const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
+const PAGES = ['agenda', 'consultas', 'pacientes'];
 
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
@@ -83,7 +82,7 @@ async function readyHost() {
   return host;
 }
 
-void test('persistence40 writes the consulta port, table and adapter once', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('persistence40 writes the consulta port, table and adapter once', async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

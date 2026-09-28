@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "agendaClinica",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T11:40:00.000Z",
+      "artifactPaths": [
+        "l4/agendaClinica/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-09-25T11:40:00.000Z",
+      "artifactPaths": [
+        "l4/agendaClinica/pool/l2/web/backend.json",
+        "l4/agendaClinica/pool/l2/20260925114000_agendaClinica-20260925113404_1.json"
+      ]
+    }
+  },
+  "thread": "agendaClinica-20260925113404",
+  "round": 1,
+  "messageFile": "l4/agendaClinica/pool/l1/20260925114000_agendaClinica-20260925113404_1.json",
+  "sourceMessages": [
+    "20260925114000_agendaClinica-20260925113404_1.json"
+  ],
+  "needsFile": "l4/agendaClinica/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-09-25T11:40:00.000Z",
+  "pool": [
+    {
+      "at": "2026-09-25T11:40:00.000Z",
+      "file": "l4/agendaClinica/pool/l2/20260925114000_agendaClinica-20260925113404_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "agendaClinica-20260925113404",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-09-25T11:40:00.000Z",
+      "file": "l4/agendaClinica/pool/l1/20260925114000_agendaClinica-20260925113404_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "agendaClinica-20260925113404",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

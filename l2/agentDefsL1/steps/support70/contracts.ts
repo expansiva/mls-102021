@@ -326,8 +326,8 @@ export interface D1SupportRequest {
   /** Datasets already shared. Dropping one owner does not drop the dataset. */
   existingDatasets: D1SeedDataset[];
   /**
-   * `backend.json.testSupport[]` (p1_12, backend v1.2). Absent on a v1.1 plan: the seeds def
-   * then carries no certification fixture and stays as before.
+   * `backend.json.testSupport[]` (p1_12, backend v1.2), already checked by input20 (d1_39). Empty or
+   * absent: the seeds def carries no certification fixture.
    */
   testSupport?: unknown[];
   /** Set when the backend plan changed after input20: its testSupport was not read. */

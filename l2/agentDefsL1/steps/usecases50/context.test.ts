@@ -109,7 +109,7 @@ void test('the real hook on a v1.1 effort stops at input20 and usecases50 writes
       .map(item => item.traceMsg)
       .join(' ');
   };
-  assert.match(await trace('input20', 2), /Consumer phases are not released\. SCHEMA_DIVERGENT:1/);
+  assert.match(await trace('input20', 2), /Consumer phases are not released\. SCHEMA_DIVERGENT:2/);
   await trace('domain30', 3);
   await trace('persistence40', 4);
   const writesBefore = host.writes.length;

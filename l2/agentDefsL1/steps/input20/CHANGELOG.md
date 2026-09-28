@@ -1,5 +1,12 @@
 # input20
 
+## 2026-09-28 (d1_39)
+
+- The backend plan is accepted only as v1.2 (`2026-09-21-p1-backend-v1.2`). `D1_BACKEND_SCHEMAS` is gone. Another version is `SCHEMA_DIVERGENT` on its path, and the message says to regenerate it with its producer. Nothing is converted.
+- `backend.testSupport[]` is checked when both plans are current: the array is required (empty is valid); each item has the nine fields, a unique id, status `toCreate|toUpdate|toRemove|done`, owner `L1|runtime`, needs actors and ontology entities as refs, and a gap when an executor or cleanup ref is empty; `done` needs both refs. Code `TEST_SUPPORT_INVALID` on the backend path. D1 does not fill any field.
+- `effort.testSupport[]` must be the copy of the backend array and `effort.meta.sourceVersion` the backend schema; otherwise `DIVERGENT_SOURCE` on the effort path.
+- New seed `fixtures/current`: inputs copied from mls-102047, needs/backend/effort/planner pipeline written by the producers (`regenHead.ts` `regenerateCurrent`, byte-for-byte test). `fixtures/head` stays as the v1.1 refusal proof.
+
 ## 2026-09-28 (d1_37)
 
 - The effort plan is accepted only as v1.2 (`2026-09-21-p2-effort-v1.2`), the version the L2 producer writes. A v1.1 effort is `SCHEMA_DIVERGENT` on its path and holds consumer phases. No v1.1 reader. The mirrored `testSupport[]` and `meta.sourceVersion` are not read by D1.

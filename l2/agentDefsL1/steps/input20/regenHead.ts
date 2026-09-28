@@ -6,9 +6,14 @@
 // agentPlannerL2 effort40 over that backend and the recorded menu. Test support only: it installs
 // the in-memory host. regenHead.test.ts reads the fixture from disk and calls it.
 
-import { installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { loadP1PlanSources } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
+import { executeP1Entry } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
+import { executeP1Plan, loadP1PlanSources } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
+import { writePoolMessage } from '/_102035_/l2/solution/pool.js';
+import { loadP2MenuSources } from '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
+import { buildP2NeedsFile, buildP2NeedsMessage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import { formatP2NeedsGate, validateP2Needs } from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.js';
 import type { P1BackendFile } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 import { formatP1BackendGate, repairP1Backend, validateP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/gate.js';
 import { buildP2EffortFile, parseP2BackendFile } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
@@ -16,7 +21,14 @@ import { formatP2EffortGate, validateP2Effort } from '/_102020_/l2/agentPlannerL
 import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 
 /** Skip reason for the step agent tests seeded by the head fixture (node:test `{ skip }`). */
-export const HEAD_SEED_V11_SKIP = 'd1_37: input20/fixtures/head is a v1.1 snapshot the current producers refuse (P1_BACKEND_PAGE); re-enable after regenerating head with input20/regenHead.ts';
+export const HEAD_SEED_V11_SKIP = 'd1_37: input20/fixtures/head is a v1.1 snapshot the current producers refuse (P1_BACKEND_PAGE); head cannot be regenerated (d1_39); re-enable by porting the test to input20/fixtures/current';
+
+/**
+ * Skip reason for the usecases50 tests that answer every other unit with `fixturePlan` (d1_39). Over the
+ * current seed the MDM usecase listContatoPaciente is bound by two routes and its generic plan is refused
+ * ("binding not unique"), so a second repair appears. Not a D1 change of this spec.
+ */
+export const CURRENT_SEED_MDM_BINDING_SKIP = 'd1_39: over input20/fixtures/current the shared MDM usecase listContatoPaciente is refused (binding not unique) for the fixturePlan reply; supervisor decides';
 
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
@@ -58,4 +70,55 @@ export async function regenerateHead(files: Readonly<Record<string, string>>): P
   const effortGate = validateP2Effort(effort, menu, { screenStatusFromAction: true });
   if (!effortGate.ok) throw new Error(formatP2EffortGate(effortGate.issues));
   return { backend: json(backend), effort: json(effort) };
+}
+
+/**
+ * The current seed (d1_39): `input20/fixtures/current`. Its inputs are copied byte for byte from
+ * `mls-102047` git HEAD (`l4/agendaClinica` defs, `pipeline/pipeline.json`, `pool/l2/web/menu.json`,
+ * `pool/l1/web/l4diff.json`, `l2/agendaClinica/web/contracts`, last change `97ad95e`). Its outputs come
+ * only from the producers, run in this order over those inputs, with no model call:
+ * needs30 (build + gate + the l2→l1 message) → agentPlannerL1 entry10 → plan20 (`executeP1Plan`)
+ * → effort40 (build + gate). `now` and the thread are fixed so the bytes repeat.
+ */
+export const CURRENT_NOW = '2026-09-25T11:40:00.000Z';
+/** Thread and round of the recorded l4 message of that run; mode is the one needs30/entry10 process. */
+export const CURRENT_RECEIVED = { thread: 'agendaClinica-20260925113404', round: 1, mode: 'estimate' } as const;
+export const CURRENT_NEEDS = `l4/${MODULE}/pool/l1/web/needs.json`;
+export const CURRENT_PLANNER = `l4/${MODULE}/pool/l1/pipeline.json`;
+
+/** Outputs of the producers over the current seed inputs, as `writeJson` writes them. */
+export async function regenerateCurrent(files: Readonly<Record<string, string>>): Promise<Record<string, string>> {
+  const host = installStudio(PROJECT);
+  for (const [logical, text] of Object.entries(files)) {
+    if (logical === CURRENT_NEEDS || logical === HEAD_BACKEND || logical === HEAD_EFFORT || logical === CURRENT_PLANNER) continue;
+    const info = fileInfoFromDisplay(PROJECT, logical);
+    if (info) seed(host, info, text, 'current');
+  }
+  const now = new Date(CURRENT_NOW);
+  const menu = JSON.parse(required(files, HEAD_MENU)) as P2MenuFile;
+  const menuSources = await loadP2MenuSources(MODULE);
+  const needs = buildP2NeedsFile({ menu, sources: menuSources.sources, grants: menuSources.grants, processes: menuSources.processes, now });
+  const needsGate = validateP2Needs(needs, menu, menuSources.sources, menuSources.grants);
+  if (!needsGate.ok) throw new Error(formatP2NeedsGate(needsGate.issues));
+  seed(host, fileInfoFromDisplay(PROJECT, CURRENT_NEEDS)!, json(needs), 'current');
+  await writePoolMessage(MODULE, buildP2NeedsMessage({ file: needs, received: CURRENT_RECEIVED }), now);
+
+  const entry = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, now);
+  if ('refusal' in entry) throw new Error(entry.refusal);
+  const plan = await executeP1Plan(MODULE, now);
+  const effort = buildP2EffortFile({ menu, backend: parseP2BackendFile(JSON.parse(json(plan.backend))), now });
+  const effortGate = validateP2Effort(effort, menu, { screenStatusFromAction: true });
+  if (!effortGate.ok) throw new Error(formatP2EffortGate(effortGate.issues));
+
+  const written = (logical: string): string => {
+    const content = host.files[fileKey(fileInfoFromDisplay(PROJECT, logical)!)]?.content;
+    if (typeof content !== 'string') throw new Error(`producers wrote no ${logical}.`);
+    return content;
+  };
+  return {
+    [CURRENT_NEEDS]: json(needs),
+    [HEAD_BACKEND]: written(HEAD_BACKEND),
+    [HEAD_EFFORT]: json(effort),
+    [CURRENT_PLANNER]: written(CURRENT_PLANNER),
+  };
 }

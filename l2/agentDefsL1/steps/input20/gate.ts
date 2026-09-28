@@ -5,8 +5,9 @@ import {
   D1_EFFORT_BACKEND_REF,
   D1_INPUT_VERSION,
   D1_PLANNER_FLOW,
-  D1_BACKEND_SCHEMAS,
   D1_SOURCE_SCHEMAS,
+  D1_TEST_SUPPORT_OWNERS,
+  D1_TEST_SUPPORT_STATUSES,
   contractPath,
   entityPath,
   inputPaths,
@@ -61,7 +62,7 @@ export function buildD1InputSnapshot(
   checkSource(problems, sources, paths.integration, integration, D1_SOURCE_SCHEMAS.integration, moduleName);
   checkSource(problems, sources, paths.menu, menu, D1_SOURCE_SCHEMAS.menu, moduleName);
   checkSource(problems, sources, paths.needs, needs, D1_SOURCE_SCHEMAS.needs, moduleName);
-  checkSource(problems, sources, paths.backend, backend, D1_BACKEND_SCHEMAS, moduleName);
+  checkSource(problems, sources, paths.backend, backend, D1_SOURCE_SCHEMAS.backend, moduleName);
   checkSource(problems, sources, paths.effort, effort, D1_SOURCE_SCHEMAS.effort, moduleName);
   checkSource(problems, sources, paths.planner, planner, D1_SOURCE_SCHEMAS.planner, moduleName);
 
@@ -117,6 +118,7 @@ export function buildD1InputSnapshot(
   const effortTables = indexBy(rows(effort.tables), 'tableId');
   const backendPorts = rows(backend.ports);
 
+  checkTestSupport(problems, paths, backend, effort, new Set(rows(needs.pages).flatMap(page => strings(page.actors))), new Set(entityIds));
   comparePageSets(problems, paths, menuPages, new Set(needPages.keys()), new Set(effortScreens.keys()));
   checkTotals(problems, paths.effort, effort);
   rejectLiveRemoval(problems, paths.backend, backendEndpoints, 'route');
@@ -968,12 +970,75 @@ function checkSource(
   const doc = rec(value);
   const accepted = typeof schema === 'string' ? [schema] : schema;
   if (!accepted.includes(text(doc.schemaVersion))) {
-    error(problems, 'SCHEMA_DIVERGENT', path, `Schema is '${text(doc.schemaVersion) || '(missing)'}', expected ${accepted.join(' or ')}.`);
+    error(problems, 'SCHEMA_DIVERGENT', path, `Schema is '${text(doc.schemaVersion) || '(missing)'}', expected ${accepted.join(' or ')}. Regenerate ${path} with its producer; other versions are not converted.`);
   }
   const name = text(doc.moduleName) || text(doc.module);
   if (name && name !== moduleName) {
     error(problems, 'MODULE_DIVERGENT', path, `Module is '${name}', expected ${moduleName}.`);
   }
+}
+
+/**
+ * `backend.json.testSupport[]` as agentPlannerL1 plan20 writes it, and the copy effort40 mirrors.
+ * Checked only when both plans are the current schema (an old document already has its refusal).
+ * Shape and refs only: D1 does not fill an executor nor read a declaration as a test that ran.
+ */
+function checkTestSupport(
+  problems: D1InputProblem[],
+  paths: ReturnType<typeof inputPaths>,
+  backend: Record<string, unknown>,
+  effort: Record<string, unknown>,
+  actors: Set<string>,
+  entities: Set<string>,
+): void {
+  if (text(backend.schemaVersion) !== D1_SOURCE_SCHEMAS.backend || text(effort.schemaVersion) !== D1_SOURCE_SCHEMAS.effort) return;
+  const path = paths.backend;
+  if (!Array.isArray(backend.testSupport)) {
+    error(problems, 'TEST_SUPPORT_INVALID', path, 'testSupport[] is required (an empty array is valid). Regenerate the backend plan.');
+    return;
+  }
+  const ids = new Set<string>();
+  backend.testSupport.forEach((value: unknown, index: number) => {
+    const at = `testSupport[${index}]`;
+    const item = rec(value);
+    const id = text(item.id);
+    const bad = (message: string) => error(problems, 'TEST_SUPPORT_INVALID', path, `${at}${id ? ` (${id})` : ''}: ${message}`, id);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return bad('must be an object.');
+    if (!id) bad('id is required.');
+    else if (ids.has(id)) bad('duplicate id.');
+    ids.add(id);
+    for (const key of ['actorRefs', 'entityRefs', 'sourceRefs'] as const) {
+      if (!Array.isArray(item[key]) || !(item[key] as unknown[]).every(ref => typeof ref === 'string' && ref.trim())) bad(`${key} must be an array of refs.`);
+    }
+    for (const key of ['executorRef', 'cleanupRef', 'gap'] as const) {
+      if (typeof item[key] !== 'string') bad(`${key} must be a string (empty when not referenced).`);
+    }
+    const status = text(item.status);
+    if (!(D1_TEST_SUPPORT_STATUSES as readonly string[]).includes(status)) bad(`status must be ${D1_TEST_SUPPORT_STATUSES.join('|')}.`);
+    if (!(D1_TEST_SUPPORT_OWNERS as readonly string[]).includes(text(item.owner))) bad(`owner must be ${D1_TEST_SUPPORT_OWNERS.join('|')}.`);
+    for (const ref of strings(item.actorRefs)) if (!actors.has(ref)) bad(`actorRef ${ref} is not a needs actor.`);
+    for (const ref of strings(item.entityRefs)) if (!entities.has(ref)) bad(`entityRef ${ref} is not an ontology entity.`);
+    const executor = text(item.executorRef);
+    const cleanup = text(item.cleanupRef);
+    if ((!executor || !cleanup) && !text(item.gap)) bad('no executorRef or cleanupRef and no gap.');
+    if (status === 'done' && (!executor || !cleanup)) bad('done without executorRef and cleanupRef.');
+  });
+  if (!Array.isArray(effort.testSupport) || stableJson(effort.testSupport) !== stableJson(backend.testSupport)) {
+    error(problems, 'DIVERGENT_SOURCE', paths.effort, 'testSupport[] is not the copy of the backend plan. Regenerate effort from this backend.');
+  }
+  const sourceVersion = text(rec(effort.meta).sourceVersion);
+  if (sourceVersion !== D1_SOURCE_SCHEMAS.backend) {
+    error(problems, 'DIVERGENT_SOURCE', paths.effort, `meta.sourceVersion is '${sourceVersion || '(missing)'}', expected ${D1_SOURCE_SCHEMAS.backend}.`);
+  }
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj).sort().map(key => `${JSON.stringify(key)}:${stableJson(obj[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 function rejectLiveRemoval(problems: D1InputProblem[], path: string, rowsOf: Array<Record<string, unknown>>, key: string): void {

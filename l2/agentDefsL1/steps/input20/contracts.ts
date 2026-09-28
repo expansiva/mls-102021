@@ -19,11 +19,9 @@ export const D1_SOURCE_SCHEMAS = {
   planner: '2026-09-20-p1-pipeline-v1',
 } as const;
 
-/**
- * Backend plan versions this reader accepts. v1.2 only adds `testSupport[]` (p1_12); a v1.1
- * plan reads as before and yields the same snapshot. The fixture reader is support70.
- */
-export const D1_BACKEND_SCHEMAS = ['2026-09-21-p1-backend-v1.1', D1_SOURCE_SCHEMAS.backend] as const;
+/** `backend.json.testSupport[]` (p1_12). Same enums as agentPlannerL1 plan20; D1 checks, never fills. */
+export const D1_TEST_SUPPORT_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'done'] as const;
+export const D1_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
 
 export const D1_PLANNER_FLOW = 'agentPlannerL1' as const;
 export const D1_EFFORT_BACKEND_REF = 'pool/l2/web/backend.json' as const;

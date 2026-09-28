@@ -6,11 +6,12 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { P1_BACKEND_SCHEMA_VERSION } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import { P1_BACKEND_SCHEMA_VERSION, P1_PLAN_STATUSES, P1_TEST_SUPPORT_OWNERS } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 import { P2_EFFORT_SCHEMA_VERSION } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import {
-  D1_BACKEND_SCHEMAS,
   D1_SOURCE_SCHEMAS,
+  D1_TEST_SUPPORT_OWNERS,
+  D1_TEST_SUPPORT_STATUSES,
   type D1InputArtifacts,
   type D1InputSnapshot,
   type D1SourceDigest,
@@ -95,12 +96,18 @@ async function loadHead(): Promise<D1InputArtifacts> {
 const EFFORT_PATH = `l4/${MODULE}/pool/l2/web/effort.json`;
 const BACKEND_PATH = `l4/${MODULE}/pool/l2/web/backend.json`;
 
-/** The frozen head carries effort v1.1. D1 reads only the v1.2 the L2 producer writes (d1_37), so it is refused by path. */
+/**
+ * The frozen head carries backend v1.1 and effort v1.1. D1 reads only the v1.2 plans the producers
+ * write (d1_37 effort, d1_39 backend), so both are refused by path.
+ */
 function assertEffortRefused(snapshot: D1InputSnapshot, others: string[] = []): void {
   assert.deepEqual([...new Set(codes(snapshot, 'error'))].sort(), [...others, 'SCHEMA_DIVERGENT'].sort());
   const refused = snapshot.problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT');
-  assert.deepEqual(refused.map(problem => problem.path), [EFFORT_PATH]);
-  assert.match(refused[0].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.deepEqual(refused.map(problem => problem.path).sort(), [BACKEND_PATH, EFFORT_PATH]);
+  const message = (file: string) => refused.find(problem => problem.path === file)!.message;
+  assert.match(message(BACKEND_PATH), /'2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
+  assert.match(message(EFFORT_PATH), /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2\. Regenerate/);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'TEST_SUPPORT_INVALID'), false);
   assert.equal(snapshot.consumersReleased, false);
 }
 
@@ -125,24 +132,19 @@ function fileOf(snapshot: D1InputSnapshot, artifactType: string, identity: strin
 }
 
 void test('supported plan schemas are the producers versions', () => {
+  assert.deepEqual([...D1_TEST_SUPPORT_OWNERS], [...P1_TEST_SUPPORT_OWNERS]);
+  assert.deepEqual([...D1_TEST_SUPPORT_STATUSES], [...P1_PLAN_STATUSES]);
   assert.equal(D1_SOURCE_SCHEMAS.backend, P1_BACKEND_SCHEMA_VERSION);
   assert.equal(D1_SOURCE_SCHEMAS.effort, P2_EFFORT_SCHEMA_VERSION);
 });
 
-void test('backend v1.1 and v1.2 read the same; v1.1 output is unchanged', async () => {
-  const head = await loadHead();
-  const v11 = build(head);
-  assert.equal(rec(head.backend).schemaVersion, D1_BACKEND_SCHEMAS[0]);
-  const upgraded = clone(head);
+void test('only the current backend plan is read; another version is refused by path', async () => {
+  const upgraded = clone(await loadHead());
   const backend = upgraded.backend as Record<string, unknown>;
-  backend.schemaVersion = P1_BACKEND_SCHEMA_VERSION;
-  backend.testSupport = [{ id: 'data:X', actorRefs: [], entityRefs: ['X'], sourceRefs: [], status: 'toCreate', owner: 'L1', executorRef: '', cleanupRef: '', gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' }];
-  const v12 = build(upgraded);
-  assert.deepEqual(codes(v12, 'error'), codes(v11, 'error'));
-  assert.deepEqual(v12.selection, v11.selection);
-  assert.deepEqual(v12.files, v11.files);
   backend.schemaVersion = '2026-09-21-p1-backend-v9';
-  assert.equal(build(upgraded).problems.some(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === BACKEND_PATH), true);
+  const refused = build(upgraded).problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === BACKEND_PATH);
+  assert.equal(refused.length, 1);
+  assert.match(refused[0].message, /'2026-09-21-p1-backend-v9', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
 });
 
 void test('frozen agendaClinica snapshot is cut by id', async () => {

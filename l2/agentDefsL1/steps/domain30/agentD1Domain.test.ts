@@ -22,13 +22,12 @@ import { catalogInfo, commitD1Domain } from '/_102021_/l2/agentDefsL1/steps/doma
 import { buildD1Domain } from '/_102021_/l2/agentDefsL1/steps/domain30/gate.js';
 import { nestedEnumEntity } from '/_102021_/l2/agentDefsL1/steps/domain30/fixtures/cases.js';
 import { lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, '../input20/fixtures/head');
+const FIXTURE = path.join(HERE, '../input20/fixtures/current');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
-const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
+const PAGES = ['agenda', 'consultas', 'pacientes'];
 
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
@@ -87,7 +86,7 @@ async function readyHost() {
   return host;
 }
 
-void test('domain30 writes the five domain defs once and leaves done bytes and neighbors alone', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('domain30 writes the planned domain defs once and leaves done bytes and neighbors alone', async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -117,7 +116,8 @@ void test('domain30 writes the five domain defs once and leaves done bytes and n
   assert.match(trace?.traceMsg || '', /No model was called/);
 
   const defs = Object.values(host.files).filter(file => file.folder.includes('layer_3_domain') && file.extension === '.defs.ts');
-  assert.equal(defs.length, 5);
+  // current seed: the four entities the backend plan closes over (Recepcionista is not reached).
+  assert.equal(defs.length, 4);
   assert.equal(defs.every(file => file.content.includes('export const definition = ')), true);
   assert.equal(host.files[fileKey(neighbor)]?.content, 'NEIGHBOR');
   assert.equal(host.files[fileKey(neighbor)]?.updatedAt, 'frozen');

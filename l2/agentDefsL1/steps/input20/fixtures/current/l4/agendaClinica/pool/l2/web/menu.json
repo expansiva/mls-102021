@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "consultas",
+      "kind": "page",
+      "label": "Consultas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo as consultas da clínica e localizo pelo paciente, pelo profissional ou pelo horário."
+        },
+        {
+          "kind": "detail",
+          "text": "Vejo os dados da consulta, o paciente, o profissional e o telefone de contato."
+        },
+        {
+          "kind": "form",
+          "text": "Agendo a consulta escolhendo o paciente, o profissional e um horário disponível."
+        },
+        {
+          "kind": "actions",
+          "text": "Confirmo a consulta por telefone ou registro a falta do paciente."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pacientes",
+      "kind": "page",
+      "label": "Pacientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizo o paciente pelo nome."
+        },
+        {
+          "kind": "detail",
+          "text": "Vejo os dados e os telefones de contato do paciente."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastro o paciente para viabilizar os agendamentos na clínica."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissional",
+      "kind": "hub",
+      "label": "Profissional",
+      "context": "Profissional",
+      "text": "A agenda abre já com você selecionado para consultar e registrar os seus atendimentos.",
+      "children": [
+        {
+          "id": "agenda",
+          "kind": "page",
+          "label": "Agenda",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Vejo as minhas consultas do dia."
+            },
+            {
+              "kind": "detail",
+              "text": "Vejo o horário e o paciente da consulta."
+            },
+            {
+              "kind": "form",
+              "text": "Marco a consulta como atendida e registro a anotação do atendimento."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcionista": [
+      "consultas",
+      "pacientes"
+    ],
+    "actor:profissional": [
+      "profissional",
+      "agenda"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "consultas"
+      ],
+      "confirmarConsultaPorTelefone": [
+        "consultas"
+      ],
+      "registrarFalta": [
+        "consultas"
+      ],
+      "consultarAgendaDiaria": [
+        "agenda"
+      ],
+      "registrarAtendimento": [
+        "agenda"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

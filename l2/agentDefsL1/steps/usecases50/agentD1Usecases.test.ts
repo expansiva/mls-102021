@@ -23,17 +23,16 @@ import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
-import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { CURRENT_SEED_MDM_BINDING_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
-import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, '../input20/fixtures/head');
+const FIXTURE = path.join(HERE, '../input20/fixtures/current');
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
-const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
 
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
@@ -87,19 +86,14 @@ async function readyHost() {
     }
     seed(host, info, text, 'frozen');
   }
-  const contracts = coreUsecaseRequest().contracts;
-  for (const pageId of PAGES) {
-    const prepared = contracts.find(item => item.pageId === pageId);
-    const body = prepared?.source || `export const ${pageId}Contract = { "moduleName": "${MODULE}", "pageId": "${pageId}" } as const;\n`;
-    seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, body, 'contract');
-  }
+  // The current seed carries the real L2 contracts of its pages (input20/fixtures/current/l2).
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/steps/usecases50', shortName: 'prompt', extension: '.md' }, readFileSync(path.join(HERE, 'prompt.md'), 'utf8'), 'prompt');
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/skills', shortName: 'usecase', extension: '.md' }, readFileSync(path.join(HERE, '../../skills/usecase.md'), 'utf8'), 'skill');
   await writeJson(pipelineFile(PROJECT, MODULE), createEntryPipeline(PROJECT, MODULE, new Date('2026-09-21T12:00:00.000Z')));
   return host;
 }
 
-void test('usecases50 dispatches one worker per selected usecase and a worker does not add a step', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('usecases50 dispatches one worker per selected usecase and a worker does not add a step', async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -121,13 +115,13 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(fanout?.executionMode?.type, 'parallel');
   assert.equal(fanout?.executionMode?.maxParallel, 5);
-  assert.equal(fanout?.executionMode?.args.length, 13);
+  assert.equal(fanout?.executionMode?.args.length, 9);
   assert.equal(fanout?.step.planning?.executionMode, 'parallel_dynamic');
   assert.equal(fanout?.step.planning?.planId, 'usecases50-fanout');
-  assertFanoutParent(fanout?.step, 13);
+  assertFanoutParent(fanout?.step, 9);
   assert.equal(intents.some(intent => intent.type === 'prompt_ready'), false);
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
-  assert.match(trace?.traceMsg || '', /dispatched 13 workers/);
+  assert.match(trace?.traceMsg || '', /dispatched 9 workers/);
 
   const workerPrompt = fanout?.executionMode?.args[0] || '';
   const arg = parseWorkerArg(workerPrompt);
@@ -177,7 +171,7 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.equal(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))], undefined);
 });
 
-void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -199,9 +193,9 @@ void test('resume after persistence40 dispatches the same fan-out and does not r
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 4);
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(fanout?.executionMode?.type, 'parallel');
-  assert.equal(fanout?.executionMode?.args.length, 13);
-  assertFanoutParent(fanout?.step, 13);
-  assert.equal(intents.some(intent => intent.type === 'update-status' && /dispatched 13 workers/.test((intent as mls.msg.AgentIntentUpdateStatus).traceMsg || '')), true);
+  assert.equal(fanout?.executionMode?.args.length, 9);
+  assertFanoutParent(fanout?.step, 9);
+  assert.equal(intents.some(intent => intent.type === 'update-status' && /dispatched 9 workers/.test((intent as mls.msg.AgentIntentUpdateStatus).traceMsg || '')), true);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as { steps?: { persistence40?: { status?: string } } };
   assert.equal(pipeline.steps?.persistence40?.status, 'approved');
   assert.deepEqual(keptFiles(host), kept);
@@ -339,7 +333,7 @@ async function openUsecases(): Promise<{
   return { host, agent, ctx, parent, intents };
 }
 
-void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
   const target = 'listConsulta';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -400,7 +394,7 @@ void test('a key outside the kind is INVENTED_FIELD and the barrier fires one re
   assert.equal(closedUsecase?.status, 'completed');
 });
 
-void test('a repair that still names a foreign key stays repairable at the ceiling', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a repair that still names a foreign key stays repairable at the ceiling', async () => {
   const target = 'createPaciente';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -429,7 +423,7 @@ void test('a repair that still names a foreign key stays repairable at the ceili
   assert.match(trace, /Repair request:/);
 });
 
-void test('one unresolved unit closes the step, counts the error, and keeps the other defs', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('one unresolved unit closes the step, counts the error, and keeps the other defs', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
   const target = 'listPaciente';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -502,7 +496,7 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
   }
 });
 
-void test('a delivered reply counts once, a redelivery does not, and cost is not the count', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a delivered reply counts once, a redelivery does not, and cost is not the count', async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -529,7 +523,7 @@ void test('a delivered reply counts once, a redelivery does not, and cost is not
   assert.equal(account.invocationReplies, 1);
 });
 
-void test('an invalid payload is one delivered reply and not yet a repair', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('an invalid payload is one delivered reply and not yet a repair', async () => {
   const target = 'listConsulta';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -543,7 +537,7 @@ void test('an invalid payload is one delivered reply and not yet a repair', { sk
   assert.equal(saved.status, 'repairable');
 });
 
-void test('a prompt with no payload is not a delivered reply', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a prompt with no payload is not a delivered reply', async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -558,7 +552,7 @@ void test('a prompt with no payload is not a delivered reply', { skip: HEAD_SEED
   assert.equal(log?.events.some(event => event.kind === 'reply_delivered'), false);
 });
 
-void test('a source block is not dispatched and is not a reply', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a source block is not dispatched and is not a reply', async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -581,7 +575,7 @@ void test('a source block is not dispatched and is not a reply', { skip: HEAD_SE
   assert.equal(log?.events.some(event => event.kind === 'not_dispatched' && event.usecaseId === target), true);
 });
 
-void test('one repair is a second reply, and the attempt index is not the total', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('one repair is a second reply, and the attempt index is not the total', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
