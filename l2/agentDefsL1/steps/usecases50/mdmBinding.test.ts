@@ -58,6 +58,33 @@ void test('update of a professional is entity.update with platform fields and ex
   assert.equal('tags' in (seen[0]?.patch || {}), false);
 });
 
+void test('platform branches come from the ontology subtypes, not a fixed list: product and company resolve, a made-up branch stays a gap', () => {
+  const platformFields = [
+    'details.product.sku',
+    'details.company.legalName',
+    'details.person.birthDate',
+    'details.notASubtype.x',
+  ];
+  const mdm = bindMdm({
+    entityId: 'Item',
+    namespace: 'estoqueFicticio',
+    capabilities: ['edit.platformFields'],
+    selected: ['edit.platformFields'],
+    platformFields,
+    inputFields: platformFields.map(path => ({ path, optional: false, writePrecondition: false })),
+  });
+  const patch = patchKeys(mdm.calls[0]);
+  assert.deepEqual(patch, ['birthDate', 'legalName', 'sku']);
+  assert.equal(
+    mdm.gaps.some(gap => gap.evidence.startsWith('details.notASubtype.x is not a platform branch')),
+    true,
+    mdm.gaps.map(gap => gap.evidence).join('; '),
+  );
+  assert.equal(mdm.gaps.some(gap => gap.evidence.includes('details.product.sku')), false);
+  assert.equal(mdm.gaps.some(gap => gap.evidence.includes('details.company.legalName')), false);
+  assert.equal(mdm.gaps.some(gap => gap.evidence.includes('details.person.birthDate')), false);
+});
+
 void test('update of a receptionist writes platform fields and the caller namespace in one versioned update', () => {
   const build = buildD1Usecases(one('updateRecepcionista'));
   assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));

@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.ts" enhancement="_blank"/>
 
+import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 import {
   D1_MDM_CALLS,
   type D1MdmArgument,
@@ -36,6 +37,20 @@ const FACADE_PLATFORM_KEYS = new Set<string>([
 const ENGINE_KEYS = new Set<string>([
   'mdmId', 'subtype', 'status', 'moduleTypes', 'tags', 'relationshipRefs',
   'mergedInto', 'createdAt', 'updatedAt', 'namespaces',
+]);
+
+/**
+ * Every `details` branch `platformPatchKey` accepts: `identification` and `base` (every record
+ * has them), plus one `<subtype>` branch per entry in the ontology's `subtypes` (`mdm.defs.ts`),
+ * keyed by the subtype name with its first letter lowercased ("Person" -> "person", "Product" ->
+ * "product"...), matching how the engine names the branch on the stored document (mdm.defs.ts
+ * "record" comment). No subtype name is hardcoded here: a subtype added to the ontology is a
+ * platform branch automatically.
+ */
+const PLATFORM_BRANCHES = new Set<string>([
+  'identification',
+  'base',
+  ...Object.keys(mdm.subtypes).map(name => name.charAt(0).toLowerCase() + name.slice(1)),
 ]);
 
 const READ_CAPABILITIES = [
@@ -389,7 +404,7 @@ function platformPatchKey(path: string): { key: string } | { gap: string } {
   }
   const branch = parts[1];
   const leaf = parts[parts.length - 1];
-  if (branch !== 'identification' && branch !== 'person' && branch !== 'base') {
+  if (!PLATFORM_BRANCHES.has(branch)) {
     return { gap: `${path} is not a platform branch. Module data is the caller namespace key, not a platform patch.` };
   }
   if (ENGINE_KEYS.has(leaf)) {
