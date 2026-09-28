@@ -37,7 +37,7 @@ interface FlowDoc {
 }
 
 const EXPECTED_ARTIFACTS: Record<string, string> = {
-  pipeline: 'l1/{module}/pipeline/pipeline.json',
+  pipeline: 'l4/{module}/pool/l1/pipeline.json',
   needs: 'l4/{module}/pool/l1/web/needs.json',
   backend: 'l4/{module}/pool/l2/web/backend.json',
 };

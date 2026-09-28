@@ -239,12 +239,15 @@ export function pipelineFile(project: number, moduleName: string): D1FileInfo {
   };
 }
 
-/** Planner checkpoint. This agent never writes or removes it. */
+/**
+ * Planner checkpoint, `l4/<module>/pool/l1/pipeline.json` since 27/09 (planning only writes
+ * the pool). This agent never writes or removes it.
+ */
 export function plannerPipelineFile(project: number, moduleName: string): D1FileInfo {
   return {
     project,
-    level: 1,
-    folder: `${moduleName}/pipeline`,
+    level: 4,
+    folder: `${moduleName}/pool/l1`,
     shortName: 'pipeline',
     extension: '.json',
   };

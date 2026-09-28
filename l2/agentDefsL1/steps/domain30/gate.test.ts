@@ -102,7 +102,7 @@ async function loadHead(): Promise<D1InputArtifacts> {
     needs: parsed.get(`${root}/pool/l1/web/needs.json`) ?? null,
     backend: parsed.get(`${root}/pool/l2/web/backend.json`) ?? null,
     effort: parsed.get(`${root}/pool/l2/web/effort.json`) ?? null,
-    planner: parsed.get(`l1/${MODULE}/pipeline/pipeline.json`) ?? null,
+    planner: parsed.get(`l4/${MODULE}/pool/l1/pipeline.json`) ?? null,
     contracts: {},
     presentDefs: [],
   };

@@ -182,7 +182,7 @@ export function inputPaths(moduleName: string): {
     needs: `${root}/pool/l1/web/needs.json`,
     backend: `${root}/pool/l2/web/backend.json`,
     effort: `${root}/pool/l2/web/effort.json`,
-    planner: `l1/${moduleName}/pipeline/pipeline.json`,
+    planner: `${root}/pool/l1/pipeline.json`,
   };
 }
 

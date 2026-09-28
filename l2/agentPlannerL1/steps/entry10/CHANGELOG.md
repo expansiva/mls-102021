@@ -1,5 +1,10 @@
 # entry10
 
+## 2026-09-27 (p1_11)
+
+- No l1 wipe: rewrites `pool/l1/pipeline.json`, drops the `pool/l1` draft.
+  Filters `mode: estimate`. Resume finishes the deletes of an approved run.
+
 ## 2026-09-20 (p1_01)
 
 - Deterministic gate: parse, read `pool/l1` (from l2, artifact `needs.json`),

@@ -12,6 +12,7 @@ import {
   P1_DEFAULT_CANDIDATE_REL,
   P1_FLOW_STEP_IDS,
   P1_NEEDS_SCHEMA,
+  P1_ONLY_IMPLEMENT,
   P1_STEP_DEPENDS_ON,
   buildP1PlannedSteps,
   executeP1Entry,
@@ -233,7 +234,7 @@ void test('fixture of the pool/l1 message is a valid PoolMessage from l2 with ne
   assert.equal(message.to, 'l1');
   assert.equal(message.thread, 'mensalidadesAcademia-20260920103000');
   assert.equal(message.round, 1);
-  assert.equal(message.mode, 'implement');
+  assert.equal(message.mode, 'estimate');
   assert.deepEqual(message.artifacts, ['pool/l1/web/needs.json']);
   assert.equal(NEEDS.schemaVersion, P1_NEEDS_SCHEMA);
 });
@@ -325,7 +326,7 @@ void test('identical pool/l1 messages are one request and sourceMessages lists b
 void test('two different pool/l1 requests refuse with a clear message', async () => {
   const host = installHost();
   seedReady(host);
-  const other = { ...FIXTURE, mode: 'estimate' };
+  const other = { ...FIXTURE, artifacts: ['pool/l1/web/needs.json', 'pool/l1/web/l4diff.json'] };
   seed(host, `${MODULE}/pool/l1`, '20260920120000_mensalidadesAcademia-20260920103000_1', `${JSON.stringify(other, null, 2)}\n`);
   const loaded = await loadP1Entry({ kind: 'hand', moduleName: MODULE });
   assert.equal('refusal' in loaded && loaded.refusal, p1DifferentRequestsRefusal(2));
@@ -370,23 +371,27 @@ void test('p1L4DiffFile is pool/l1/web/l4diff.json', () => {
   });
 });
 
-void test('re-execution wipes l1 pipeline drafts, keeps pool messages and l1 defs, rewrites pipeline.json', async () => {
+void test('re-execution drops only the pool/l1 draft; every l1 and l2 file (D1 checkpoints included) stays byte-identical', async () => {
   const host = installHost();
   seedReady(host);
-  seed(host, `${MODULE}/pipeline`, 'plan20-draft', '{}\n', 1);
+  seed(host, `${MODULE}/pool/l1`, 'plan20-draft', '{}\n');
+  seed(host, `${MODULE}/pipeline`, 'plan20-draft', '"old-l1-draft"\n', 1);
+  seed(host, `${MODULE}/pipeline/agentDefsL1`, 'input20', '"d1-checkpoint"\n', 1);
   seed(host, `${MODULE}/layer_2_application/usecases`, 'createMatricula', 'export const x = {};\n', 1, '.defs.ts');
+  seed(host, `${MODULE}/web`, 'page', '"l2-page"\n', 2, '.defs.ts');
   const poolKey = keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`, shortName: SHORT, extension: '.json' });
   const beforePool = host.files[poolKey].content;
+  const before = hostSnapshot(host);
   const first = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in first, false);
   if ('refusal' in first) return;
-  const draftKey = keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'plan20-draft', extension: '.json' });
+  const draftKey = keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`, shortName: 'plan20-draft', extension: '.json' });
   assert.equal(host.files[draftKey].status, 'deleted');
-  const defsKey = keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/layer_2_application/usecases`, shortName: 'createMatricula', extension: '.defs.ts' });
-  assert.equal(host.files[defsKey].status, 'changed');
   assert.equal(host.files[poolKey].content, beforePool);
   assert.equal(host.files[poolKey].status, 'changed');
   assert.equal(first.pipeline.inventory.present, false);
+  assert.deepEqual(changedOutside(diffTrees(before, hostSnapshot(host)), [`l4/${MODULE}/pool/l1`]), []);
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l1/plan20-draft`]);
 
   const later = new Date(Date.UTC(2026, 8, 21, 10, 0, 0));
   const second = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, later);
@@ -401,6 +406,30 @@ void test('re-execution wipes l1 pipeline drafts, keeps pool messages and l1 def
   assert.equal(pipeline.status, 'inProgress');
   assert.equal(pipeline.inventory.present, false);
   assert.equal(host.files[poolKey].content, beforePool);
+  assert.deepEqual(changedOutside(diffTrees(before, hostSnapshot(host)), [`l4/${MODULE}/pool/l1`]), []);
+});
+
+void test('implement messages are not the planner\'s: ignored in the group, never deleted, alone they refuse', async () => {
+  const host = installHost();
+  seedReady(host);
+  const implementShort = '20260920120000_mensalidadesAcademia-20260920103000_1';
+  seed(host, `${MODULE}/pool/l1`, implementShort, `${JSON.stringify({ ...FIXTURE, mode: 'implement' }, null, 2)}\n`);
+  const loaded = await loadP1Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in loaded, false);
+  if ('refusal' in loaded) return;
+  assert.deepEqual(loaded.sourceMessages, [`${SHORT}.json`]);
+
+  const onlyImplement = installHost();
+  seed(onlyImplement, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(onlyImplement, `${MODULE}/pool/l1`, implementShort, `${JSON.stringify({ ...FIXTURE, mode: 'implement' }, null, 2)}\n`);
+  seed(onlyImplement, `${MODULE}/pool/l1/web`, 'needs', `${JSON.stringify(NEEDS, null, 2)}\n`);
+  const refused = await loadP1Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in refused && refused.refusal, P1_ONLY_IMPLEMENT);
+  const stepRefused = await loadP1Entry({
+    kind: 'step', moduleName: MODULE, thread: 'mensalidadesAcademia-20260920103000', file: `l4/${MODULE}/pool/l1/${implementShort}.json`,
+  });
+  assert.equal('refusal' in stepRefused && stepRefused.refusal, P1_ONLY_IMPLEMENT);
+  assert.deepEqual(onlyImplement.deleted, []);
 });
 
 void test('step entry refuses a thread that does not match the file', async () => {
@@ -452,8 +481,8 @@ void test('without /candidate moduleFolder is the canonical name and the pipelin
   assert.equal('refusal' in result, false);
   if ('refusal' in result) return;
   assert.equal(moduleFolder(MODULE), MODULE);
-  assert.deepEqual(p1PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
-  assert.equal(p1PipelineFile(MODULE).level, 1);
+  assert.deepEqual(p1PipelineFile(MODULE).folder, `${MODULE}/pool/l1`);
+  assert.equal(p1PipelineFile(MODULE).level, 4);
   assert.ok(host.files[keyOf(p1PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL1"'));
   assert.equal(
     host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content,
@@ -464,7 +493,7 @@ void test('without /candidate moduleFolder is the canonical name and the pipelin
     '"canonical-l2-pipeline"\n',
   );
   const after = hostSnapshot(host);
-  assert.deepEqual(changedOutside(diffTrees(before, after), [`l1/${MODULE}/pipeline`]), []);
+  assert.deepEqual(changedOutside(diffTrees(before, after), [`l4/${MODULE}/pool/l1`]), []);
 });
 
 void test('with /candidate pipeline and pool/l2 paths fall in the override; canonical l1/l2/l4 are untouched', async () => {
@@ -479,7 +508,7 @@ void test('with /candidate pipeline and pool/l2 paths fall in the override; cano
   assert.equal('refusal' in result, false);
   if ('refusal' in result) return;
   assert.equal(moduleFolder(MODULE), CANDIDATE);
-  assert.equal(p1PipelineFile(MODULE).folder, `${CANDIDATE}/pipeline`);
+  assert.equal(p1PipelineFile(MODULE).folder, `${CANDIDATE}/pool/l1`);
   assert.equal(p1BackendFile(MODULE).folder, `${CANDIDATE}/pool/l2/web`);
   assert.ok(host.files[keyOf(p1PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL1"'));
   assert.equal(
@@ -548,7 +577,7 @@ void test('a later task without /candidate does not inherit the previous module 
   assert.equal('refusal' in second, false);
   if ('refusal' in second) return;
   assert.equal(moduleFolder(MODULE), MODULE);
-  assert.equal(p1PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
+  assert.equal(p1PipelineFile(MODULE).folder, `${MODULE}/pool/l1`);
   assert.ok(host.files[keyOf(p1PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL1"'));
 });
 

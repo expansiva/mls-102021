@@ -10,10 +10,12 @@ Deterministic. No LLM.
 
 ## Output
 
-`l1/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`,
+`l4/<mod>/pool/l1/pipeline.json` with `thread`, `round`, `messageFile`,
 `sourceMessages`, `needsFile`, `inventory`, `steps.entry10.status: approved`.
-Wipes `l1/<mod>/pipeline/` first. Does not touch generated l1 source. Does not
-delete the pool. Done-anchor `entry10-done` unlocks `plan20`.
+Drops the previous `pool/l1/plan20-draft.json` first. Writes and deletes nothing
+under l1/ or l2/. If the previous run approved plan20 and some of its
+`sourceMessages` are still in the box, finishes their deletes (resume) instead of
+planning them again. Done-anchor `entry10-done` unlocks `plan20`.
 
 ## Invariants
 
@@ -23,4 +25,6 @@ delete the pool. Done-anchor `entry10-done` unlocks `plan20`.
 - Same `moduleName` + `mode` + `artifacts` → one request. Two different requests
   refuse in English for the l2 planner.
 - `inventory.present` is false when the module has no l1.
-- Does not write `.defs.ts`/`.ts` of l1. Does not delete pool messages.
+- Only `mode: estimate`. `implement` is ignored and never deleted; a box with
+  only `implement` refuses.
+- Does not write or delete anything under l1/ or l2/.

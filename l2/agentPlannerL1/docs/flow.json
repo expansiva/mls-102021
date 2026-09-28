@@ -2,7 +2,7 @@
   "flowId": "agentPlannerL1",
   "schemaVersion": "2026-09-20-p1-flow-v1",
   "status": "entry10",
-  "description": "L1 planner: read pool/l1 of a finished l4 module, inventory the existing l1, then write pool/l2/web/backend.json. Does not delete the pool, does not write .defs.ts/.ts of l1.",
+  "description": "L1 planner (estimate only): read the estimate messages of pool/l1 of a finished l4 module, inventory the existing l1, write pool/l2/web/backend.json, trace, then delete the consumed messages. Writes and deletes nothing in l1/ or l2/.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -12,13 +12,16 @@
   ],
   "principles": [
     "Sequence is declared in this file via dependsOn and done-anchors. Steps do not enqueue their successor by name.",
-    "Pipeline state lives on disk at l1/{module}/pipeline/pipeline.json. The task record is orchestration, not truth.",
+    "Pipeline state lives on disk at l4/{module}/pool/l1/pipeline.json (planning only writes the pool, 27/09). It is not a pool message. The task record is orchestration, not truth.",
     "A step declared here and not implemented stops the run with pipeline.status awaitingStep naming that step. The task completes without failed.",
     "Two entries, one path: a step created with prompt { moduleName, thread, file }, or @@agentPlannerL1 <lowerCamel> which reads every pool/l1 message from l2 whose artifact is needs.json. Both write the same pipeline.json.",
-    "Reads only the module l4, pool/l1, and the l1/l5 of the module. Writes l1/{module}/pipeline/ and pool/l2/web/backend.json. Never writes l1 .defs.ts/.ts. Never deletes pool messages in this phase.",
+    "Reads only the module l4, pool/l1, and the l1/l5 of the module. Writes only pool/l1/pipeline.json, pool/l1/plan20-draft.json, pool/l2/web/backend.json and one l1->l2 message. Never writes or deletes anything under l1/ or l2/.",
     "Deterministic first. entry10 has no LLM. plan20 spends one reasoning call only on the unmatched remainder; no remainder means no LLM.",
     "User-facing refusals are English.",
-    "listPoolBox may list needs.json; entry10 keeps only files named <stamp>_<thread>_<round> whose from is l2."
+    "listPoolBox may list needs.json; entry10 keeps only files named <stamp>_<thread>_<round> whose from is l2.",
+    "Only mode estimate is the planner's. implement messages belong to agentDefsL1: ignored, never deleted; a box with only implement refuses.",
+    "Consumption: after backend.json, the l1->l2 message and the delivered trace, each message read at entry (sourceMessages) gets a processed trace and is then deleted with deletePoolMessageAt. Duplicates are listed in supersededMessages (the pool enum has no superseded outcome yet). A message that arrived after entry stays. A failure before the trace keeps the message; a re-entry after an approved plan20 only finishes the deletes.",
+    "The reply keeps the received round; the planner never increments it and never asks a human, so the three-round limit of the pool is owned by L2/L4."
   ],
   "invocation": {
     "hand": "@@agentPlannerL1 <lowerCamel>",
@@ -30,7 +33,7 @@
     "dedupeRule": "Messages with the same moduleName, mode and artifacts are one request. Two different requests refuse: 'pool/l1 has N different requests; resolve with the l2 planner'."
   },
   "artifacts": {
-    "pipeline": "l1/{module}/pipeline/pipeline.json",
+    "pipeline": "l4/{module}/pool/l1/pipeline.json",
     "needs": "l4/{module}/pool/l1/web/needs.json",
     "backend": "l4/{module}/pool/l2/web/backend.json"
   },
@@ -40,8 +43,8 @@
       "kind": "deterministic",
       "dependsOn": [],
       "doneAnchor": "entry10-done",
-      "artifact": "l1/{module}/pipeline/pipeline.json",
-      "goal": "Read every pool/l1 message from l2 (oldest first), group identical requests, refuse if they differ, read needs.json, inventory the existing l1, wipe l1/{module}/pipeline, write pipeline.json with sourceMessages and inventory. Never delete the pool. Never write l1 .defs.ts/.ts."
+      "artifact": "l4/{module}/pool/l1/pipeline.json",
+      "goal": "Read every pool/l1 message from l2 (oldest first), group identical requests, refuse if they differ, read needs.json, inventory the existing l1, drop the previous pool/l1 draft, write pool/l1/pipeline.json with sourceMessages and inventory. Finishes the deletes of an approved previous run first. Never writes or deletes l1/ or l2/."
     },
     {
       "id": "plan20",
@@ -50,7 +53,7 @@
       "doneAnchor": "plan20-done",
       "modelAlias": "reasoning",
       "artifact": "l4/{module}/pool/l2/web/backend.json",
-      "goal": "Endpoints, usecases, ports and tables with OwnerStatus against the l1 inventory. One reasoning call only for what deterministic matching cannot resolve. No remainder means no LLM. Writes pool/l2/web/backend.json and an l1→l2 message. Closes the pipeline."
+      "goal": "Endpoints, usecases, ports and tables with OwnerStatus against the l1 inventory. One reasoning call only for what deterministic matching cannot resolve. No remainder means no LLM. Writes pool/l2/web/backend.json and an l1→l2 estimate message, closes the pipeline, then traces processed and deletes the consumed pool/l1 messages."
     }
   ]
 }

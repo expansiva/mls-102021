@@ -555,7 +555,7 @@ void test('pool message is l1→l2 with backend.json and the thread round', () =
   const planned = planP1Backend({ needs, inventory: EMPTY_INVENTORY, ontology: ACADEMIA_ONTOLOGY, now: AT });
   const message = buildP1BackendMessage({
     file: planned.file,
-    received: { thread: 'mensalidadesAcademia-20260920103000', round: 1, mode: 'implement' },
+    received: { thread: 'mensalidadesAcademia-20260920103000', round: 1, mode: 'estimate' },
   });
   assert.equal(message.from, 'l1');
   assert.equal(message.to, 'l2');

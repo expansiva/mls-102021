@@ -83,6 +83,7 @@ function seedReady(host: Host): void {
   seed(host, `${MODULE}/pool/l1`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
   seed(host, `${MODULE}/pool/l1/web`, 'needs', `${JSON.stringify(NEEDS, null, 2)}\n`);
   seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 1);
+  seed(host, `${MODULE}/pool/l1`, 'pipeline', '{}\n');
 }
 
 function agentMeta(): IAgentMeta {
@@ -156,7 +157,7 @@ void test('hand invocation and pool step write the same pipeline.json with inven
   };
 
   delete host.files[keyOf(p1PipelineFile(MODULE))];
-  seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 1);
+  seed(host, `${MODULE}/pool/l1`, 'pipeline', '{}\n');
 
   const poolStep: mls.msg.AIAgentStep = {
     type: 'agent',

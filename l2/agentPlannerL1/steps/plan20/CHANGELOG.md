@@ -1,5 +1,10 @@
 # plan20
 
+## 2026-09-27 (p1_11)
+
+- After the delivered trace and complete, traces `processed` and deletes the
+  `sourceMessages` still in `pool/l1`. Fallback mode is `estimate`.
+
 ## 2026-09-21 (p1_09)
 
 - Rule changes without an inventory hit look up the entity `rules[]` on

@@ -8,7 +8,11 @@ Candidates and inventory matching are deterministic. One reasoning call only for
 
 ## Output
 
-`l4/<mod>/pool/l2/web/backend.json` plus an `l1→l2` pool message (`subject: backend plan of <mod> (web)`). Trace `delivered` on the l1 pipeline. Done-anchor `plan20-done` closes the flow.
+`l4/<mod>/pool/l2/web/backend.json` plus an `l1→l2` pool message (`subject: backend plan of <mod> (web)`). Trace `delivered` on `pool/l1/pipeline.json`, close the pipeline, then trace
+`processed` for every message read at entry and delete it (`deletePoolMessageAt`).
+Duplicates go to `supersededMessages`. A message that arrived after entry stays.
+The reply keeps the received `round` and is `estimate`. Draft:
+`pool/l1/plan20-draft.json`. Done-anchor `plan20-done` closes the flow.
 
 ## Invariants
 

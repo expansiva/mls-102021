@@ -3,7 +3,6 @@
 import {
   diskFileInfo,
   displayPath,
-  hostListFolder,
   moduleFile,
   moduleFolder,
   normalizeModuleName,
@@ -13,7 +12,15 @@ import {
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
-import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } from '/_102035_/l2/solution/pool.js';
+import {
+  deletePoolMessageAt,
+  listPoolBox,
+  readPoolMessage,
+  readPoolTraceAt,
+  tracePoolAt,
+  type PoolMessage,
+  type PoolTraceLine,
+} from '/_102035_/l2/solution/pool.js';
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 import { readL1Inventory, type L1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 
@@ -89,6 +96,11 @@ export interface P1PipelineState {
   needsFile: string;
   inventory: L1Inventory;
   pool?: PoolTraceLine[];
+  /**
+   * Display paths of the duplicates consumed with `messageFile`. The pool enum has no
+   * `superseded` outcome yet, so their trace line is `processed` and this list names them.
+   */
+  supersededMessages?: string[];
   updatedAt: string;
 }
 
@@ -223,13 +235,16 @@ export function parseP1StepPrompt(prompt: string): P1StepPrompt {
   return { kind: 'refusal', refusal: 'step prompt needs moduleName.' };
 }
 
-/** `l1/<module>/pipeline/pipeline.json` in the project of the run. */
+/**
+ * `l4/<module>/pool/l1/pipeline.json` — the planner trace lives in its own box (27/09:
+ * planning only writes the pool). Not a pool message: `listPoolBox` ignores the name.
+ */
 export function p1PipelineFile(moduleName: string): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
-    level: 1,
-    folder: `${base.folder}/pipeline`,
+    level: 4,
+    folder: `${base.folder}/pool/l1`,
     shortName: 'pipeline',
     extension: '.json',
   };
@@ -290,7 +305,7 @@ export function createP1Pipeline(
       entry10: {
         status: 'approved',
         updatedAt,
-        artifactPaths: [`l1/${moduleFolder(moduleName)}/pipeline/pipeline.json`],
+        artifactPaths: [`l4/${moduleFolder(moduleName)}/pool/l1/pipeline.json`],
       },
     },
     thread: message.thread,
@@ -351,6 +366,8 @@ function requestKey(moduleName: string, message: PoolMessage): string {
   return `${threadModule}\0${message.mode}\0${artifacts}`;
 }
 
+export const P1_ONLY_IMPLEMENT = 'pool/l1 has no estimate message; implement belongs to agentDefsL1, not to the planner';
+
 export function p1DifferentRequestsRefusal(count: number): string {
   return `pool/l1 has ${count} different requests; resolve with the l2 planner`;
 }
@@ -405,7 +422,10 @@ export async function loadP1Entry(source: P1EntrySource): Promise<P1LoadResult> 
     return { refusal: `Module "${moduleName}" has no complete l4.` };
   }
 
-  const box = listPoolBox(moduleName, 'l1').filter(file => isP1PoolMessageFile(file.shortName));
+  const resumed = await resumeP1Consumption(moduleName);
+  const box = listPoolBox(moduleName, 'l1')
+    .filter(file => isP1PoolMessageFile(file.shortName))
+    .filter(file => !resumed.includes(displayPath(file)));
   if (!box.length) return { refusal: `nothing pending for ${moduleName} in pool/l1` };
 
   const loaded: Array<{ file: Ns5FileInfo; message: PoolMessage }> = [];
@@ -413,7 +433,11 @@ export async function loadP1Entry(source: P1EntrySource): Promise<P1LoadResult> 
     loaded.push({ file, message: await readPoolMessage(file) });
   }
 
-  const needsRequests = loaded.filter(entry => isL2NeedsMessage(entry.message));
+  // The planner only estimates. `implement` belongs to agentDefsL1 and stays in the box.
+  const estimates = loaded.filter(entry => entry.message.mode === 'estimate');
+  if (!estimates.length) return { refusal: P1_ONLY_IMPLEMENT };
+
+  const needsRequests = estimates.filter(entry => isL2NeedsMessage(entry.message));
   if (!needsRequests.length) return { refusal: 'needs.json is missing' };
 
   const groups = new Map<string, typeof needsRequests>();
@@ -431,7 +455,11 @@ export async function loadP1Entry(source: P1EntrySource): Promise<P1LoadResult> 
 
   if (source.kind === 'step') {
     const specified = group.find(entry => matchPoolFile(entry.file, source.file));
-    if (!specified) return { refusal: `pool/l1 message not found: ${source.file}` };
+    if (!specified) {
+      const other = loaded.find(entry => matchPoolFile(entry.file, source.file));
+      if (other && other.message.mode !== 'estimate') return { refusal: P1_ONLY_IMPLEMENT };
+      return { refusal: `pool/l1 message not found: ${source.file}` };
+    }
     if (specified.message.thread !== source.thread) {
       return { refusal: `message thread does not match '${source.thread}'.` };
     }
@@ -451,7 +479,7 @@ export async function loadP1Entry(source: P1EntrySource): Promise<P1LoadResult> 
 }
 
 export async function writeP1Entry(loaded: P1LoadedEntry, now: Date): Promise<P1PipelineState> {
-  await clearP1Scratch(loaded.moduleName);
+  await clearP1Draft(loaded.moduleName);
   const messageFile = displayPath(loaded.file);
   const inventory = await readL1Inventory(moduleFile(loaded.moduleName).project, loaded.moduleName);
   const pipeline = createP1Pipeline(
@@ -467,61 +495,69 @@ export async function writeP1Entry(loaded: P1LoadedEntry, now: Date): Promise<P1
   return pipeline;
 }
 
-function isP1ScratchFolder(folder: string, moduleName: string): boolean {
-  const root = moduleFolder(moduleName);
-  return folder === `${root}/pipeline` || folder.startsWith(`${root}/pipeline/`);
+/** The previous run's draft is this box's scratch, not l1: drop it so it cannot leak into the prompt. */
+async function clearP1Draft(moduleName: string): Promise<void> {
+  const draft = p1DraftFile(moduleName, 'plan20');
+  const indexed = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[mls.stor.getKeyToFile(draft)];
+  if (!indexed || indexed.status === 'deleted') return;
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  await deleteFile(diskFileInfo(draft));
 }
 
-function listP1ScratchFiles(moduleName: string): Ns5FileInfo[] {
-  const base = moduleFile(moduleName);
-  const files = mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>;
-  const found = new Map<string, Ns5FileInfo>();
-  const remember = (info: Ns5FileInfo) => {
-    found.set(`${info.folder}/${info.shortName}${info.extension}`, info);
-  };
-  for (const file of Object.values(files)) {
-    if (!file || file.project !== base.project || Number(file.level) !== 1 || file.status === 'deleted') continue;
-    const folder = String(file.folder || '');
-    if (!isP1ScratchFolder(folder, moduleName) || !file.shortName) continue;
-    remember({
-      project: base.project,
-      level: 1,
-      folder,
-      shortName: String(file.shortName),
-      extension: String(file.extension || ''),
-    });
-  }
-  const listFolder = hostListFolder();
-  if (listFolder) {
-    const folders = new Set<string>([`${moduleFolder(moduleName)}/pipeline`]);
-    for (const info of found.values()) folders.add(info.folder);
-    for (const folder of folders) {
-      for (const info of listFolder(base.project, 1, folder)) {
-        if (!info.shortName) continue;
-        const key = mls.stor.getKeyToFile(info);
-        const indexed = files[key];
-        if (indexed?.status === 'deleted') continue;
-        if (!indexed) files[key] = diskFileInfo(info);
-        remember({
-          project: base.project,
-          level: 1,
-          folder,
-          shortName: String(info.shortName),
-          extension: String(info.extension || ''),
-        });
-      }
+/**
+ * Consume the messages this run read at entry (`sourceMessages`), never a fresh listing:
+ * a message that arrived during the run stays. Trace first, then delete — a failure before
+ * the trace keeps the message. `messageFile` is `processed`; the others are duplicates
+ * listed in `supersededMessages`. Returns the display paths deleted.
+ */
+export async function consumeP1Messages(moduleName: string, now: Date): Promise<string[]> {
+  const pipelineInfo = p1PipelineFile(moduleName);
+  const pipeline = await readJson<P1PipelineState>(pipelineInfo);
+  if (!pipeline || pipeline.steps?.plan20?.status !== 'approved') return [];
+  const wanted = new Set(pipeline.sourceMessages || []);
+  const box = listPoolBox(moduleName, 'l1').filter(file => wanted.has(poolMessageFileName(file)));
+  if (!box.length) return [];
+  const superseded = box.map(file => displayPath(file)).filter(path => path !== pipeline.messageFile);
+  if (superseded.length) {
+    const known = new Set(pipeline.supersededMessages || []);
+    if (superseded.some(path => !known.has(path))) {
+      await writeJson(pipelineInfo, {
+        ...pipeline,
+        supersededMessages: [...new Set([...(pipeline.supersededMessages || []), ...superseded])],
+      });
     }
   }
-  return [...found.values()];
+  const traced = new Set((await readPoolTraceAt(pipelineInfo))
+    .filter(line => line.outcome === 'processed')
+    .map(line => line.file));
+  const deleted: string[] = [];
+  for (const file of box) {
+    const path = displayPath(file);
+    let traceId = path;
+    if (!traced.has(path)) {
+      const message = await readPoolMessage(file);
+      traceId = await tracePoolAt(pipelineInfo, {
+        at: now.toISOString(),
+        file: path,
+        from: message.from,
+        to: message.to,
+        thread: message.thread,
+        round: message.round,
+        mode: message.mode,
+        outcome: 'processed',
+      });
+    }
+    deleted.push(await deletePoolMessageAt(pipelineInfo, file, traceId));
+  }
+  return deleted;
 }
 
-async function clearP1Scratch(moduleName: string): Promise<void> {
-  const files = listP1ScratchFiles(moduleName);
-  if (!files.length) return;
-  const { deleteFile } = await import('/_102027_/l2/libStor.js');
-  for (const file of files) {
-    await deleteFile(diskFileInfo(file));
-  }
+/**
+ * Resume: a previous run approved plan20 but stopped before deleting what it consumed.
+ * Finish the deletion instead of planning again (a second l1→l2 message would be a duplicate).
+ */
+async function resumeP1Consumption(moduleName: string): Promise<string[]> {
+  return consumeP1Messages(moduleName, new Date());
 }
 
 export async function executeP1Entry(source: P1EntrySource, now: Date): Promise<P1ExecuteResult> {
@@ -535,13 +571,13 @@ export async function readP1Pipeline(moduleName: string): Promise<P1PipelineStat
   return readJson<P1PipelineState>(p1PipelineFile(moduleName));
 }
 
-/** `l1/<module>/pipeline/<stepId>-draft.json` in the project of the run. */
+/** `l4/<module>/pool/l1/<stepId>-draft.json` — scratch of this box, not a pool message. */
 export function p1DraftFile(moduleName: string, stepId: P1StepId): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
-    level: 1,
-    folder: `${base.folder}/pipeline`,
+    level: 4,
+    folder: `${base.folder}/pool/l1`,
     shortName: `${stepId}-draft`,
     extension: '.json',
   };

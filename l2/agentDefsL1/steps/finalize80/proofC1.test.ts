@@ -358,7 +358,7 @@ function seedClinic(host: TestHost): string[] {
   };
   walk(path.join(CLINIC, 'l4/agendaClinica'), 'l4/agendaClinica');
   walk(path.join(CLINIC, 'l2/agendaClinica/web/contracts'), 'l2/agendaClinica/web/contracts');
-  add(path.join(CLINIC, 'l1/agendaClinica/pipeline/pipeline.json'), 'l1/agendaClinica/pipeline/pipeline.json');
+  add(path.join(CLINIC, 'l1/agendaClinica/pipeline/pipeline.json'), 'l4/agendaClinica/pool/l1/pipeline.json');
   for (let pass = 0; pass < 3; pass += 1) {
     const text = Object.values(host.files).map(file => file.content).join('\n');
     for (const match of text.matchAll(/_(\d+)_\/(l\d+\/[A-Za-z0-9_./-]+\.defs\.ts)/g)) {

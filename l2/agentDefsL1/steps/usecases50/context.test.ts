@@ -89,7 +89,7 @@ async function openLive(edit?: (logical: string, text: string) => string) {
   const catalog = fileInfoFromDisplay(102034, 'l4/ontology/mdm.defs.ts');
   assert.ok(catalog);
   seed(host, catalog, readFileSync(MDM, 'utf8'), 'catalog');
-  seed(host, fileInfoFromDisplay(PROJECT, `l1/${MODULE}/pipeline/pipeline.json`)!, `${JSON.stringify({
+  seed(host, fileInfoFromDisplay(PROJECT, `l4/${MODULE}/pool/l1/pipeline.json`)!, `${JSON.stringify({
     schemaVersion: '2026-09-20-p1-pipeline-v1',
     flowId: 'agentPlannerL1',
     moduleName: MODULE,

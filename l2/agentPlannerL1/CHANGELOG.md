@@ -1,5 +1,13 @@
 # agentPlannerL1
 
+## 2026-09-27 (p1_11)
+
+- Estimate only, pool only (27/09 contract). Pipeline and draft move to
+  `l4/<mod>/pool/l1/`; the `l1/<mod>/pipeline/` wipe is gone. `implement` is
+  ignored. Consumed messages are traced `processed` and deleted after the plan
+  is delivered; duplicates listed in `supersededMessages`. agentDefsL1 reads
+  the planner at the new path.
+
 ## 2026-09-21 (p1_09)
 
 - `kind: rule` in `changes[]` falls back to the ontology entity whose

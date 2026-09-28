@@ -19,6 +19,7 @@ import {
 import {
   P1_DEVICE,
   P1_FLOW_STEP_IDS,
+  consumeP1Messages,
   createP1RetryStep,
   markP1Complete,
   markP1Step,
@@ -370,6 +371,8 @@ async function commitP1Plan(
     artifactPaths: [backendPath, messagePath],
   });
   await writeJson(pipelineInfo, markP1Complete(updated, now.toISOString()));
+  // Result and trace are on disk; only now the consumed pool/l1 messages go away.
+  await consumeP1Messages(sources.needs.moduleName, now);
   return {
     backend,
     backendPath,
@@ -387,12 +390,13 @@ async function readReceived(pipeline: P1PipelineState): Promise<Pick<PoolMessage
       return { thread: message.thread, round: message.round, mode: message.mode };
     } catch { /* fall through */ }
   }
-  return { thread: pipeline.thread, round: pipeline.round, mode: 'implement' };
+  // The planner only reads estimate, so the reply is estimate too. It never writes implement.
+  return { thread: pipeline.thread, round: pipeline.round, mode: 'estimate' };
 }
 
 async function requirePipeline(moduleName: string): Promise<P1PipelineState> {
   const pipeline = await readP1Pipeline(moduleName);
-  if (!pipeline) throw new Error(`l1 pipeline.json is missing for ${moduleName}; entry10 must run first.`);
+  if (!pipeline) throw new Error(`pool/l1 pipeline.json is missing for ${moduleName}; entry10 must run first.`);
   return pipeline;
 }
 
