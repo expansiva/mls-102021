@@ -35,7 +35,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
-import { obligationSourceHashes } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
+import { obligationSourceHashes, type M1Obligation } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
@@ -55,6 +55,18 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
 import { commitL5Registration, loadRegistrationFiles, reconcileL5Backend, type L5CommitIo, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { unitsForFlow, type M1EntryStage } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import {
+  fixtureCheckpoint,
+  fixturePass,
+  fixtureReportRef,
+  fixtureVerification,
+  M1_FIXTURE_CHECK,
+  M1_FIXTURE_REPORT_SCHEMA,
+  parseFixtureReport,
+  renderFixtureReport,
+  type M1FixtureExecutor,
+  type M1RunFixture,
+} from '/_102021_/l2/agentMaterializeL1/run/fixtureRun.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import {
   failureNeedsReverify,
@@ -165,6 +177,8 @@ export interface MaterializeRunResult {
   ended: string;
   catalog?: CatalogPrep;
   registration?: L5ReconcileResult;
+  /** Certification fixture of the implement stage, one entry per controller with obligations (m1_30). */
+  fixtures?: M1RunFixture[];
 }
 
 export interface CatalogPrep {
@@ -233,8 +247,9 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     removals,
   });
   const recordedCatalog = ledger.catalogInputHash ?? null;
+  const derivedObligations: { obligations: M1Obligation[] } = { obligations: [] };
   const catalogPrep = host.catalogRef
-    ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate', recordedCatalog)
+    ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate', recordedCatalog, derivedObligations)
     : null;
   const currentCatalog = catalogPrep?.inputHash ?? null;
   if (catalogPrep?.action === 'invalid') {
@@ -300,6 +315,10 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       await persist(host, book, ledger);
     }
 
+    const fixtures = stage === 'implement' && catalogPrep && derivedObligations.obligations.length > 0
+      ? await runFixtureStage(request, host, ledger, request.flow ? await preferDiskDefinitions(host, request.units) : merged, derivedObligations.obligations, catalogPrep, checkpoints)
+      : undefined;
+
     const endedName = ledger.callsExhausted && outcomes.some(item => item.code === 'BUDGET_CALLS')
       ? 'BUDGET_CALLS'
       : 'COMPLETED';
@@ -341,6 +360,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
       stage,
       catalogPrep,
       registration,
+      fixtures,
     );
   } finally {
     if (host.writer) await host.writer.release(request.moduleName, holder);
@@ -689,11 +709,85 @@ async function implementObservations(
     });
     return observed.length > 0 ? observed : produced.observations;
   } catch (error) {
+    // The runner did not load: no case ran, so none of the emitter's observations counts as passed.
     const message = error instanceof Error ? error.message : String(error);
-    return produced.observations.map(item => item.caseId.endsWith('.compile')
-      ? { ...item, inconclusive: true, ok: false, reason: message }
-      : item);
+    return produced.observations.map(item => ({ ...item, inconclusive: true, ok: false, reason: `CASE_RUNNER_UNAVAILABLE: ${message}` }));
   }
+}
+
+/** '' when the unit's output is the accepted one: intact against a receipt with no failure, implemented when the type has an implement handler. */
+async function unitUnready(host: MaterializeRunHost, defPath: string): Promise<string> {
+  const receipt = await host.state.readReceipt(defPath);
+  if (!receipt) return 'has no receipt';
+  if (receipt.failures.length > 0) return `failed (${receipt.failures.map(item => item.code).join(', ')})`;
+  const output = outputPathFromDefPath(defPath);
+  const body = output ? await host.io.read(output) : null;
+  if (body === null) return 'has no output';
+  if (receipt.outputHashes[output] !== await contentHash(body)) return 'output does not match its receipt';
+  const implemented = handlerFor(receipt.artifactType, 'implement') ? receipt.stage === 'verify' : receipt.stage !== 'plan';
+  return implemented ? '' : `is not implemented (receipt stage ${receipt.stage})`;
+}
+
+/**
+ * Runs the certification fixture after the units (run/fixtureRun.ts), persists the report,
+ * adds one checkpoint per controller that ran and keeps the controller receipt's fixture row
+ * equal to the latest verdict. Unit outcomes, ledger and def status are not changed here.
+ */
+async function runFixtureStage(
+  request: MaterializeRunRequest,
+  host: MaterializeRunHost,
+  ledger: MaterializeLedger,
+  units: readonly PlanUnitInput[],
+  obligations: readonly M1Obligation[],
+  catalogPrep: CatalogPrep,
+  checkpoints: M1Checkpoint[],
+): Promise<M1RunFixture[]> {
+  const ref = fixtureReportRef(request.moduleName);
+  const stored = await host.state.readOwned(ref);
+  const previous = parseFixtureReport(stored && stored.byteLength > 0 ? new TextDecoder().decode(stored) : null, request.moduleName);
+  const execute: M1FixtureExecutor | null = host.workspace
+    ? async input => {
+      let runner: { runEmittedFixture: M1FixtureExecutor };
+      try {
+        runner = await import('/_102021_/l1/agentMaterializeL1/testing/memoryLoad.js') as { runEmittedFixture: M1FixtureExecutor };
+      } catch (error) {
+        return { receipt: null, error: `FIXTURE_RUNNER_UNAVAILABLE: ${error instanceof Error ? error.message : String(error)}` };
+      }
+      return runner.runEmittedFixture(input);
+    }
+    : null;
+  const entries = await fixturePass({
+    moduleName: request.moduleName,
+    units,
+    obligations,
+    oracleSources: catalogPrep.oracleSources,
+    unready: path => unitUnready(host, path),
+    read: path => host.io.read(path),
+    previous,
+    execute,
+    hostGap: 'FIXTURE_HOST_UNAVAILABLE: this host offers no code execution (no workspace); the memory proof did not run.',
+    mode: request.profileMode,
+    runStamp: `${request.project}.${Date.now().toString(36)}${Math.random().toString(16).slice(2, 8)}`,
+  });
+  const now = host.now ? host.now() : new Date().toISOString();
+  for (const entry of entries) {
+    const checkpoint = fixtureCheckpoint(entry, `${request.project}:${request.moduleName}`, host.commit || '', now);
+    if (checkpoint) checkpoints.push(checkpoint);
+    const receipt = await host.state.readReceipt(entry.controller);
+    if (!receipt) continue;
+    const row = fixtureVerification(entry);
+    const kept = receipt.verifications.filter(item => item.id !== M1_FIXTURE_CHECK);
+    const verifications = row ? [...kept, row] : kept;
+    if (canonicalJson(verifications) === canonicalJson(receipt.verifications)) continue;
+    await host.state.writeReceipt({ ...receipt, verifications });
+  }
+  const next = renderFixtureReport({
+    schemaVersion: M1_FIXTURE_REPORT_SCHEMA,
+    moduleName: request.moduleName,
+    entries: { ...(previous?.entries ?? {}), ...Object.fromEntries(entries.map(entry => [entry.controller, entry])) },
+  });
+  if (!stored || new TextDecoder().decode(stored) !== next) await host.state.writeOwned(ref, new TextEncoder().encode(next));
+  return entries;
 }
 
 /** Passed cases plus an external block or a case that could not run. The output is kept. */
@@ -1164,6 +1258,7 @@ function finish(
   stage: M1EntryStage,
   catalog?: CatalogPrep | null,
   registration?: L5ReconcileResult | null,
+  fixtures?: M1RunFixture[],
 ): MaterializeRunResult {
   return {
     schemaVersion: M1_RUN_SCHEMA,
@@ -1182,6 +1277,7 @@ function finish(
     ended,
     catalog: catalog ?? undefined,
     registration: registration ?? undefined,
+    ...(fixtures ? { fixtures } : {}),
   };
 }
 
@@ -1235,6 +1331,7 @@ async function prepareCatalog(
   units: readonly PlanUnitInput[],
   write: boolean,
   recordedHash: string | null,
+  derivedOut: { obligations: M1Obligation[] },
 ): Promise<CatalogPrep> {
   const ref = host.catalogRef || '';
   const texts: Record<string, string> = {};
@@ -1254,6 +1351,7 @@ async function prepareCatalog(
   const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));
   const oracleSources = await obligationSourceHashes(derived.obligations, texts);
+  derivedOut.obligations = derived.obligations;
   const existing = await host.io.read(ref);
   if (existing === null) {
     if (write) await writeDerived(host, ref, derived.catalog, valueExports, null);

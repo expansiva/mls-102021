@@ -288,7 +288,7 @@ void test('the run report names the memory status and the runtime owner of every
   const withPlan = deriveCatalog(fx.n.mod, [...units, { defPath: seedsPath, definition: seeds }], fx.texts);
   const reasons = withPlan.gaps.filter(gap => gap.reason.includes(' is declared, not executed')).map(gap => gap.reason);
   assert.equal(reasons.length, withPlan.obligations.length);
-  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_HARNESS_UNWIRED (L1): ')).length, 13);
+  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_MEMORY_AT_IMPLEMENT (L1): ')).length, 13);
   assert.equal(reasons.filter(reason => reason.startsWith(`mdm:${fx.n.Mdm}: `) && reason.includes(`(${M1_RUNTIME_OWNER})`)).length, 3);
   assert.equal(reasons.every(reason => reason.includes(`runtime proof RUNTIME_IDENTITY_PENDING (${M1_RUNTIME_OWNER}): identity:`)), true);
   // The gaps are not catalog bytes: the catalog stays the same.

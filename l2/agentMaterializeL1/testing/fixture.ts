@@ -45,7 +45,7 @@ export interface M1FixtureHost {
   stores: Readonly<Record<string, M1FixtureStore>>;
   routes: ReadonlyMap<string, M1RouteHandler>;
   /** A fresh request context; the harness sets `sessionContext.actorId`. */
-  context: () => { sessionContext: { actorId: string } };
+  context: () => { sessionContext: { actorId?: string } };
 }
 
 export interface M1FixtureRecordRef {

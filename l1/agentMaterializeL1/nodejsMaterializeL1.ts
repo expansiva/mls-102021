@@ -22,6 +22,7 @@ import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/per
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { fixtureLines } from '/_102021_/l2/agentMaterializeL1/run/fixtureRun.js';
 
 export interface CliHooks {
   host: MaterializeRunHost;
@@ -79,6 +80,7 @@ export function renderResult(result: MaterializeRunResult): string {
     lines.push(`catalogDetail: ${result.catalog.detail}`);
     for (const gap of result.catalog.gaps) lines.push(`gap: ${gap.artifactId} ${gap.origin} ${gap.reason}`);
   }
+  if (result.fixtures) lines.push(...fixtureLines(result.fixtures));
   if (result.registration) {
     lines.push(`registration: ${result.registration.action}`);
     if (result.registration.detail) lines.push(result.registration.detail);

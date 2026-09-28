@@ -317,19 +317,19 @@ function routeCases(
 }
 
 /** The certification fixture the seeds def carries (m1_28); null without one. */
-function fixtureModelOf(defs: ReadonlyMap<string, M1Definition>): M1FixtureModel | null {
+export function fixtureModelOf(defs: ReadonlyMap<string, M1Definition>): M1FixtureModel | null {
   const seeds = [...defs.values()].find(item => item.artifactType === 'persistenceSeeds' && item.data.fixture !== undefined);
   if (!seeds) return null;
   const plan = readFixturePlan(seeds.data.fixture);
   return 'issues' in plan ? null : fixtureModel(plan, defs);
 }
 
-/** Memory status of one obligation, with its owner. The run itself executes none of them. */
+/** Memory status of one obligation, with its owner. The implement stage executes the local ones (run/fixtureRun.ts, m1_30). */
 function memoryReason(model: M1FixtureModel | null, item: M1Obligation): string {
   if (!model) return `FIXTURE_PLAN_ABSENT (L1): ${item.caseId} is declared, not executed; the seeds def carries no certification fixture`;
   const blocked = classifyObligation(model, item);
   if (blocked) return `${blocked.gap} (${blocked.owner}): ${item.caseId} is declared, not executed`;
-  return `FIXTURE_HARNESS_UNWIRED (L1): ${item.caseId} is declared, not executed in this run; the memory harness runs it, the implement stage does not yet`;
+  return `FIXTURE_MEMORY_AT_IMPLEMENT (L1): ${item.caseId} is declared, not executed by the catalog; the implement stage runs it in memory against the emitted code (fixture report)`;
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

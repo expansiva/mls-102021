@@ -9,7 +9,7 @@
  * A grant proves behaviour; it is not a rule id (d1_26 r2, m1_10), so `ruleId` stays null.
  */
 
-import { isRecord, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
@@ -256,11 +256,24 @@ function leafPaths(value: unknown, prefix = ''): string[] {
   return keys.flatMap(key => leafPaths(value[key], prefix ? `${prefix}.${key}` : key));
 }
 
-/** Content hash of every source ref; an unreadable ref is `absent` and invalidates its cases. */
+/**
+ * Hash of every source ref; an unreadable ref is `absent` and invalidates its cases. A def is
+ * hashed by its semantic hash, so the run rewriting its status does not move the oracle; any
+ * other source (an L2 contract) by its content.
+ */
 export async function obligationSourceHashes(obligations: readonly M1Obligation[], texts: Readonly<Record<string, string>>): Promise<Record<string, string>> {
   const refs = sorted([...new Set(obligations.flatMap(item => item.sources.map(source => source.split('#')[0] ?? source)))]);
   const hashes: Record<string, string> = {};
-  for (const ref of refs) hashes[ref] = texts[ref] === undefined ? 'absent' : await contentHash(texts[ref]);
+  for (const ref of refs) {
+    const text = texts[ref];
+    if (text === undefined) {
+      hashes[ref] = 'absent';
+      continue;
+    }
+    const parsed = ref.includes('/l1/') ? parseDefinitionSource(text) : null;
+    const definition = parsed && 'definition' in parsed ? readDefinition(parsed.definition) : null;
+    hashes[ref] = definition && !('issues' in definition) ? await semanticHash(definition) : await contentHash(text);
+  }
   return hashes;
 }
 
