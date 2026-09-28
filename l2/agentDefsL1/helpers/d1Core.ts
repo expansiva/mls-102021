@@ -55,7 +55,7 @@ export const D1_CHILDREN_MAY_CREATE_TASK = false;
 export const D1_NEVER_DISPATCH = [
   'agentCbMaterialize',
   'agentChangeBackend',
-  'agentChangeFrontend',
+  'agentMaterializeL2',
 ] as const;
 
 /**

@@ -2,7 +2,7 @@
   "flowId": "agentDefsL1",
   "schemaVersion": "2026-09-21-d1-flow-v1",
   "status": "finalize80",
-  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 plans one operation per selected usecase. controllers60 writes one controller per page. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle. This flow never dispatches materialization, agentChangeBackend or agentChangeFrontend.",
+  "description": "L1 defs. entry10 records project and module identity and an intact checkpoint. input20 records the inventory. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 plans one operation per selected usecase. controllers60 writes one controller per page. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle. This flow never dispatches materialization, agentChangeBackend or agentMaterializeL2.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -32,7 +32,7 @@
     "candidateRule": "/candidate uses the same spelling as the L1 planner and is refused. A candidate path that contains '..' is refused. No tobe root is applied.",
     "rebuildAllRule": "/rebuild all uses the same spelling as agentNewSolution5 and is refused. Nothing is deleted.",
     "helpRule": "/help writes nothing.",
-    "noHandoff": "This flow never dispatches agentCbMaterialize, agentChangeBackend or agentChangeFrontend."
+    "noHandoff": "This flow never dispatches agentCbMaterialize, agentChangeBackend or agentMaterializeL2."
   },
   "dynamicPlanIds": {
     "doneAnchor": "{stepId}-done",
@@ -77,7 +77,7 @@
   "neverDispatch": [
     "agentCbMaterialize",
     "agentChangeBackend",
-    "agentChangeFrontend"
+    "agentMaterializeL2"
   ],
   "resume": {
     "metadata": [

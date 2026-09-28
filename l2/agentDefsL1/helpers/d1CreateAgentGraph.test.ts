@@ -56,7 +56,7 @@ function forbiddenImportReason(spec: string): string | null {
   if (spec === 'lit' || spec.startsWith('lit/')) return `static import of lit (${spec})`;
   if (/(?:^|\/)widgets\//.test(spec)) return `static import of widgets (${spec})`;
   if (spec.includes('collabMessagesHelper')) return `static import of collabMessagesHelper (${spec})`;
-  if (spec.includes('agentChangeBackend') || spec.includes('agentChangeFrontend') || spec.includes('agentPlannerL1') || spec.includes('agentCbMaterialize')) {
+  if (spec.includes('agentChangeBackend') || spec.includes('agentMaterializeL2') || spec.includes('agentPlannerL1') || spec.includes('agentCbMaterialize')) {
     return `static import of another agent (${spec})`;
   }
   if (spec.startsWith('/_102035_/') || spec.startsWith('/_102020_/')) return `static import outside this agent (${spec})`;

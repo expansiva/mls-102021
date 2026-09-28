@@ -184,4 +184,4 @@ hooks do not create a task and do not add steps. `update-status` cleans with
 `input_output`.
 
 This flow never dispatches `agentCbMaterialize`, `agentChangeBackend` or
-`agentChangeFrontend`.
+`agentMaterializeL2`.

@@ -134,7 +134,7 @@ void test('implemented steps are registered, and only usecases50 calls a model',
     assert.equal(source.includes('add-message-ai'), false, id);
     assert.equal(source.includes('prompt_ready'), llmSteps.has(id), id);
     assert.equal(source.includes('agentChangeBackend'), false, id);
-    assert.equal(source.includes('agentChangeFrontend'), false, id);
+    assert.equal(source.includes('agentMaterializeL2'), false, id);
     assert.equal(source.includes('agentCbMaterialize'), false, id);
   }
 });

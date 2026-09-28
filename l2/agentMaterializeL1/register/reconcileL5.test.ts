@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { composeBackendRuntimeConfig } from '/_102021_/l2/agentChangeBackend/nodejsSaveConfigJson.js';
+import { composeBackendRuntimeConfig } from '/_102021_/l2/agentMaterializeL1/nodejsSaveConfigJson.js';
 import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import {
   commitL5Registration,
@@ -184,7 +184,7 @@ test('the real composer reads the patched registration and the controller route 
     fs.mkdirSync(path.join(clientRoot, 'l5'), { recursive: true });
     fs.mkdirSync(persistence, { recursive: true });
     const project = JSON.parse(reconciled.nextText!) as { masters?: unknown };
-    project.masters = { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentChangeBackend' } };
+    project.masters = { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentMaterializeL1' } };
     fs.writeFileSync(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify(project, null, 2)}\n`);
     fs.writeFileSync(path.join(clientRoot, 'l5', 'config.json'), '{}\n');
     fs.writeFileSync(path.join(persistence, 'boardRow.js'), 'export const tableName = "board";\n');
@@ -245,7 +245,7 @@ function keysOf(source: string): string[] {
 test('the materialized client copy registers from promoted outputs, not a folder name', async () => {
   const moduleName = 'agendaClinica';
   const project = 102047;
-  assert.match(fs.readFileSync(path.join(FROZEN, 'SOURCE'), 'utf8'), /^8d8729d /);
+  assert.match(fs.readFileSync(path.join(FROZEN, 'SOURCE.txt'), 'utf8'), /^8d8729d /);
   const units = frozenDefs(moduleName).map(rel => {
     const artifactType = /"artifactType": "([^"]+)"/.exec(frozenText(rel) ?? '')?.[1] ?? '';
     return { defPath: `_${project}_/${rel}`, artifactType };
@@ -294,7 +294,7 @@ test('the materialized client copy registers from promoted outputs, not a folder
     }
     fs.mkdirSync(path.join(clientRoot, 'l5'), { recursive: true });
     const projectJson = JSON.parse(reconciled.nextText!) as { masters?: unknown };
-    projectJson.masters = { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentChangeBackend' } };
+    projectJson.masters = { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentMaterializeL1' } };
     fs.writeFileSync(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify(projectJson, null, 2)}\n`);
     fs.writeFileSync(path.join(clientRoot, 'l5', 'config.json'), '{}\n');
     const composed = composeBackendRuntimeConfig(root, String(project));
@@ -314,17 +314,17 @@ test('the materialized client copy registers from promoted outputs, not a folder
 test('a compatible masters.backend signature is preserved and an incompatible one blocks the patch', () => {
   const kept = ready();
   const parsed = JSON.parse(kept.projectJson!) as { masters?: unknown };
-  parsed.masters = { frontend: { masterProject: 102020 }, backend: { masterProject: 102021, runtimeProject: 102034, agentFolder: 'agentChangeBackend' } };
+  parsed.masters = { frontend: { masterProject: 102020 }, backend: { masterProject: 102021, runtimeProject: 102034, agentFolder: 'agentMaterializeL1' } };
   kept.projectJson = `${JSON.stringify(parsed, null, 2)}\n`;
   const result = reconcileL5Backend(kept);
   assert.equal(result.action, 'patch');
   const next = JSON.parse(result.nextText!) as { masters: { frontend: { masterProject: number }; backend: { agentFolder: string } } };
-  assert.equal(next.masters.backend.agentFolder, 'agentChangeBackend');
+  assert.equal(next.masters.backend.agentFolder, 'agentMaterializeL1');
   assert.equal(next.masters.frontend.masterProject, 102020);
 
   const broken = ready();
   const bad = JSON.parse(broken.projectJson!) as { masters?: unknown };
-  bad.masters = { backend: { masterProject: 102021, agentFolder: 'agentChangeBackend' } };
+  bad.masters = { backend: { masterProject: 102021, agentFolder: 'agentMaterializeL1' } };
   broken.projectJson = `${JSON.stringify(bad, null, 2)}\n`;
   const refused = reconcileL5Backend(broken);
   assert.equal(refused.action, 'pending');
@@ -333,7 +333,7 @@ test('a compatible masters.backend signature is preserved and an incompatible on
   assert.equal(refused.backend, null);
 });
 
-test('a missing signature is not attributed to agentChangeBackend, and a reader-ready config is copied', () => {
+test('a missing signature is not attributed to agentMaterializeL1, and a reader-ready config is copied', () => {
   const bare = reconcileL5Backend(ready());
   assert.equal(bare.action, 'patch');
   assert.equal((JSON.parse(bare.nextText!) as { masters?: unknown }).masters, undefined);
@@ -392,7 +392,7 @@ test('the composer follows runtime.project.json when that file exists', () => {
     fs.mkdirSync(persistence, { recursive: true });
     fs.writeFileSync(path.join(persistence, 'boardRow.js'), 'export const tableName = "board";\n');
     fs.writeFileSync(path.join(controllers, 'board.js'), 'export const routes = [];\n');
-    const signature = { masters: { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentChangeBackend' } } };
+    const signature = { masters: { backend: { runtimeProject: 102034, masterProject: 102021, agentFolder: 'agentMaterializeL1' } } };
     fs.writeFileSync(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({ ...signature, modules: [] }, null, 2)}\n`);
     const runtime = JSON.parse(reconciled.nextText!) as Record<string, unknown>;
     runtime.masters = signature.masters;

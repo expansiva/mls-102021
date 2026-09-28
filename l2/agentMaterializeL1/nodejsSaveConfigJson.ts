@@ -1,8 +1,8 @@
-/// <mls fileReference="_102021_/l2/agentChangeBackend/nodejsSaveConfigJson.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/agentMaterializeL1/nodejsSaveConfigJson.ts" enhancement="_blank"/>
 
 // Publish-time composer (backend side). Runs on the dev machine via tsx, BEFORE rsync:
-//   tsx mls-102021/l2/agentChangeBackend/nodejsSaveConfigJson.ts <clientId>
-// Reads the client-owned mls-<clientId>/l5/project.json (written by agentChangeBackend)
+//   tsx mls-102021/l2/agentMaterializeL1/nodejsSaveConfigJson.ts <clientId>
+// Reads the client-owned mls-<clientId>/l5/project.json (written by agentMaterializeL1)
 // and reconciles the backend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // projects (client + master backend + 102029 lib), modules[].backendControllers and
 // persistenceModules[].tableDefsDir. Leftover modules whose dirs are gone are dropped (named in the
@@ -18,7 +18,7 @@ import {
   formatDiscardedOrphans,
   liveBackendModulesFromL5,
   reconcileClientBackendRegistration,
-} from './helpers/cbReconcileBackendConfig.js';
+} from './register/cbReconcileBackendConfig.js';
 import { emitMlsDepJson } from '../../../mls-102029/l2/mlsDepManifest.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
@@ -51,7 +51,7 @@ export function composeBackendRuntimeConfig(root: string, clientId: string): { c
   if (!l5) throw new Error(`cannot read ${l5Path}`);
 
   const signature = l5.masters?.backend;
-  if (!signature) throw new Error('l5/project.json has no masters.backend signature (run agentChangeBackend or add it)');
+  if (!signature) throw new Error('l5/project.json has no masters.backend signature (run agentMaterializeL1 or add it)');
   const runtimeId = String(signature.runtimeProject);
 
   // Single source of truth: l5/config.json (read by the Studio apps, the publish and the runtime).

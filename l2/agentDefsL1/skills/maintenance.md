@@ -27,7 +27,7 @@ Rules:
 10. `update-status` uses cleaner `input_output`. Do not clean a clarification
     that is still pending.
 11. Do not dispatch `agentCbMaterialize`, `agentChangeBackend` or
-    `agentChangeFrontend`.
+    `agentMaterializeL2`.
 12. User-facing text is English. No `todo/` path in source. A filename has no
     dot except its extension.
 13. The stor adapter is the only I/O. Call `diskPath` as a method when the host
