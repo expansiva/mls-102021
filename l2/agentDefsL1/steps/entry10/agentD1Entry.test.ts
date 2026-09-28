@@ -20,13 +20,14 @@ import {
   plannerPipelineFile,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { fileKey, installStudio, seed, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { fileKey, installStudio, seed, seedAcceptedPlan, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const OTHER = 102046;
-const PLANNER = '{"planner":true}\n';
+/** Bytes of the planner trace `plannerOf` seeds; the same for every project. */
+let PLANNER = '';
 const DRAFT = '{"draft":true}\n';
 
 function meta(): IAgentMeta {
@@ -71,8 +72,11 @@ function mount(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]
   return steps as mls.msg.AIAgentStep[];
 }
 
+/** An accepted plan: planner trace, accepted web files and one implement in pool/l1 (d1_35). */
 function plannerOf(host: TestHost, project: number): StoredFile {
-  return seed(host, plannerPipelineFile(project, MODULE), PLANNER, `planner-${project}`);
+  const planner = seedAcceptedPlan(host, project, MODULE).planner;
+  PLANNER = planner.content;
+  return planner;
 }
 
 void test('entry10 has no prompt.md', () => {
@@ -276,6 +280,7 @@ void test('resume of a held input20 checkpoint does not rewrite it or approve th
 
 void test('a duplicate entry hook does not write a second checkpoint', async () => {
   const host = installStudio(PROJECT);
+  plannerOf(host, PROJECT);
   const agent = createAgent();
   const ctx = contextWith(`@@agentDefsL1 ${MODULE} /run`);
   const intents = await agent.beforePromptImplicit!(meta(), ctx, `@@agentDefsL1 ${MODULE} /run`);

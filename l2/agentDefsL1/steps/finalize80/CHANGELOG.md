@@ -1,5 +1,10 @@
 # finalize80
 
+## 2026-09-27 (d1_35)
+
+- A complete report consumes the accepted implement: `processed` trace in `approval.json`
+  first, then `deletePoolMessageAt`. Any other outcome keeps the message.
+
 ## 2026-09-24 (d1_27)
 
 - Report schema `2026-09-24-d1-report-v3`. `calls` is the usecases50 receipt. A missing or unreadable log is null with a reason, not zero. `finalizeCalledModel` and `finalizeOpenedRepair` are this step. The usecase draft count is not copied.

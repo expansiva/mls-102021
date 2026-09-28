@@ -28,3 +28,9 @@ Defaults: stage `simulate`, 2 workers, 120s call timeout, 1 repair per artifact,
 Status on a def is `pending`, `generated`, `blocked` or `failed`. There is no running status. D1 writes `pending` when the semantics change. M1 writes `generated` only after the output, the receipt and the passing checks are durable, `blocked` when a source is missing, and `failed` when the repair budget ends. Resume does not zero that budget.
 
 One writer at a time for a module. A second run is refused. Promoting a file compares the revision first. A hand-edited output is kept. A local rename is atomic for one file only. The output, the receipt and the status are three files. Studio storage has no compare-and-swap across them.
+
+## Accepted chain (d1_35)
+
+Every stage except `/help` first checks `run/approval.ts`: agentDefsL1 complete, its
+`approval.json` shows the implement consumed, the planner thread is the same and the accepted
+bytes are unchanged. Otherwise it refuses and writes nothing. No second acceptance.

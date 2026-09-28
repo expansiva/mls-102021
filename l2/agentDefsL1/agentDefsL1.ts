@@ -31,6 +31,7 @@ import {
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
+import { loadApproval } from '/_102021_/l2/agentDefsL1/helpers/d1ApprovalIo.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import '/_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.js';
@@ -78,6 +79,14 @@ async function beforePromptImplicit(
   const decision = decideEntry(command, project, invocation.module, raw, new Date());
   if (decision.kind === 'refusal') {
     return statusTask(agent, context, decision.refusal, {
+      moduleName: invocation.module,
+      project: String(project),
+      command,
+    });
+  }
+  const approval = await loadApproval(project, invocation.module, command);
+  if (approval.kind === 'refusal') {
+    return statusTask(agent, context, approval.refusal, {
       moduleName: invocation.module,
       project: String(project),
       command,

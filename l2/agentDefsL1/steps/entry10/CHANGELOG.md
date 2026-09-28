@@ -1,5 +1,12 @@
 # entry10
 
+## 2026-09-27 (d1_35)
+
+- `/run` and `/resume` refuse without the accepted `implement` in pool/l1 (or, on resume, its
+  recorded and consumed approval). Estimate, duplicate, historical or replaced-plan messages
+  and a pending pool/l2 are refused without writing.
+- Entry writes `approval.json` with the message and the hash of each accepted artifact.
+
 ## 2026-09-21 (d1_01)
 
 - Deterministic CLI: `/run`, `/resume`, `/help`. No model.

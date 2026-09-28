@@ -5,6 +5,7 @@ import { helpText, parseStudioPrompt, M1_AGENT_NAME } from '/_102021_/l2/agentMa
 import { runMaterialize } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { receiptFolder } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { createStudioHost, loadStudioUnits, readStudioProfile } from '/_102021_/l2/agentMaterializeL1/studioHost.js';
+import { checkM1Approval } from '/_102021_/l2/agentMaterializeL1/run/approval.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -29,11 +30,13 @@ async function beforePromptImplicit(
   if (command.help) return statusTask(agent, context, helpText(project), { command: 'help' });
   if (command.refusal) return statusTask(agent, context, command.refusal, { command: 'refused' });
   try {
+    const host = createStudioHost(command.project);
+    const approval = await checkM1Approval(host.io, command.project, command.moduleName);
+    if (!approval.ok) return statusTask(agent, context, approval.refusal, { command: 'refused', moduleName: command.moduleName });
     const [units, profile] = await Promise.all([
       loadStudioUnits(command.project, command.moduleName),
       readStudioProfile(command.project),
     ]);
-    const host = createStudioHost(command.project);
     host.catalogRef = `_${command.project}_/${receiptFolder(command.moduleName)}/scenarioCatalog.ts`;
     const result = await runMaterialize({
       project: command.project,

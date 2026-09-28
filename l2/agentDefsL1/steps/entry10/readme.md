@@ -20,6 +20,18 @@ It does not carry a draft.
 writes nothing. The planner file `l1/<module>/pipeline/pipeline.json` is never
 touched.
 
+## Accepted plan (d1_35)
+
+`/run` needs exactly one `mode: implement` message in `l4/<module>/pool/l1`, written by the
+newRelease when the user accepts the effort. It must be for the thread of the approved L1
+planner trace (`pool/l1/pipeline.json`), that thread must have been planned in `estimate`,
+and it must name the accepted `menu`, `needs`, `backend` and `effort` files. `pool/l2` must be
+empty (agentDefsL2 consumed its own implement first). Otherwise: refusal, nothing written.
+Entry records the provenance in `l1/<module>/pipeline/agentDefsL1/approval.json` (message and
+sha256 of every accepted artifact). finalize80, when the defs are complete, traces the
+implement `processed` there and then deletes it. `/resume` without the message is allowed
+only with that trace, the same planner thread and the same accepted bytes.
+
 ## Invariants
 
 - `/candidate` and `/rebuild all` are refused. No candidate root is applied.

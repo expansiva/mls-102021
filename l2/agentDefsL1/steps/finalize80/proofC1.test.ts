@@ -33,6 +33,7 @@ import {
 import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { readApprovalRecord, writeApproval } from '/_102021_/l2/agentDefsL1/helpers/d1ApprovalIo.js';
 import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
@@ -109,8 +110,23 @@ void test('controlled agendaClinica replay writes v2 defs without touching the b
   const supportTrace = await runStep(agent, ctx, parent, 'support70', 70);
   assert.match(supportTrace, /No model was called/, supportTrace);
   assert.doesNotMatch(supportTrace, /wrote nothing|refused/i, supportTrace);
+  // d1_35: the approval entry10 recorded is consumed only when the defs are complete.
+  const implementShort = '20260927100059_replay-20260927100000_1';
+  const implementFile = `l4/${MODULE}/pool/l1/${implementShort}.json`;
+  const implement = seed(host, { project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`, shortName: implementShort, extension: '.json' },
+    `${JSON.stringify({ from: 'l4', to: 'l1', thread: 'replay-20260927100000', round: 1, mode: 'implement', subject: 'accepted', artifacts: [], body: '' })}\n`);
+  await writeApproval({
+    schemaVersion: '2026-09-27-d1-approval-v1',
+    project: PROJECT,
+    moduleName: MODULE,
+    message: { file: implementFile, from: 'l4', to: 'l1', thread: 'replay-20260927100000', round: 1, mode: 'implement', artifacts: [] },
+    inputs: [],
+    pool: [],
+  });
   const finalizeTrace = await runStep(agent, ctx, parent, 'finalize80', 80);
   assert.match(finalizeTrace, /No model was called/, finalizeTrace);
+  assert.equal(implement.status, 'deleted', finalizeTrace);
+  assert.deepEqual((await readApprovalRecord(PROJECT, MODULE))?.pool.map(line => [line.file, line.outcome]), [[implementFile, 'processed']]);
   const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
   assert.ok(report, finalizeTrace);
   if (!report) return;

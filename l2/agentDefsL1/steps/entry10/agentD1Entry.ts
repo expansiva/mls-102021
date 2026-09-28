@@ -17,6 +17,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
 import { writeJson, readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
+import { loadApproval, writeApproval } from '/_102021_/l2/agentDefsL1/helpers/d1ApprovalIo.js';
 
 export async function beforeD1EntryPromptStep(
   _agent: IAgentMeta,
@@ -43,7 +44,10 @@ export async function beforeD1EntryPromptStep(
   const raw = await readText(file);
   const decision = decideEntry(prompt.command, prompt.project, prompt.moduleName, raw, new Date());
   if (decision.kind === 'refusal') return refuse(context, parentStep, step, hookSequential, decision.refusal);
+  const approval = await loadApproval(prompt.project, prompt.moduleName, prompt.command);
+  if (approval.kind === 'refusal') return refuse(context, parentStep, step, hookSequential, approval.refusal);
 
+  if (approval.kind === 'record') await writeApproval(approval.record);
   if (decision.kind === 'record') await writeJson(file, decision.state);
 
   const trace = decision.kind === 'record'

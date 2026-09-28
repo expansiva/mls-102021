@@ -138,6 +138,21 @@ export async function removeDefFile(file: D1FileInfo): Promise<void> {
   await deleteOne(file);
 }
 
+/**
+ * Removes the accepted implement from `l4/<module>/pool/l1` once it is traced. Any other
+ * folder, level or name is refused.
+ */
+export async function removePoolMessage(file: D1FileInfo): Promise<void> {
+  const moduleName = file.folder.split('/')[0] || '';
+  const ok = file.level === 4
+    && !!moduleName
+    && file.folder === `${moduleName}/pool/l1`
+    && file.extension === '.json'
+    && /^\d{14}_.+_\d+$/u.test(file.shortName);
+  if (!ok) throw new Error(`agentDefsL1 refuses to remove ${displayPath(file)}`);
+  await deleteOne(file);
+}
+
 async function deleteOne(file: D1FileInfo): Promise<void> {
   const stored = mls.stor.files[mls.stor.getKeyToFile(file)];
   if (!stored || stored.status === 'deleted') return;
