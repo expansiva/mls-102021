@@ -26,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-27-structure-handler-v4';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-27-structure-handler-v5';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -241,9 +241,10 @@ export async function emitController(
     return { code: AUTHORITY_UNREAD, detail: `${authorityDep} could not be read.` };
   }
   const registered = registeredPortNames(moduleDefinitions);
+  const scopeGrants = scopeGrantRows(scopeText);
   const routes: ResolvedRoute[] = [];
   for (const handler of handlers) {
-    const resolved = await resolveRoute(definition, handler, read, registered);
+    const resolved = await resolveRoute(definition, handler, read, registered, scopeGrants);
     if ('code' in resolved) return resolved;
     routes.push(resolved);
   }
@@ -304,6 +305,7 @@ interface ResolvedContract {
   allowedInputFields: string[];
   allowedInputPaths: string[];
   outputFields: string[];
+  outputPaths: string[];
 }
 
 interface PortBinding {
@@ -326,6 +328,7 @@ interface ResolvedRoute {
   allowedInputFields: string[];
   allowedInputPaths: string[];
   outputFields: string[];
+  disclosedPaths: string[];
   ports: PortBinding[];
 }
 
@@ -360,6 +363,8 @@ async function resolveContract(definition: M1Definition, fn: { contractRefs: { r
   if (!text.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${outputRef.symbol}.` };
   const members = contractMembers(text, inputType);
   if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
+  const outputPaths = contractOutputPaths(text, outputRef.symbol);
+  if (!outputPaths) return { code: 'CONTRACT_SYMBOL', detail: `${outputRef.symbol} could not be read.` };
   return {
     specifier: importSpecifier(dependency, 'defs'),
     inputType,
@@ -368,7 +373,39 @@ async function resolveContract(definition: M1Definition, fn: { contractRefs: { r
     allowedInputFields: members.allowedFields,
     allowedInputPaths: members.allowedPaths,
     outputFields: projection?.outputFields ?? [],
+    outputPaths,
   };
+}
+
+/** Member paths of an output interface, or of the item interface of `export type X = Item[];`. */
+function contractOutputPaths(source: string, symbol: string): string[] | null {
+  const alias = new RegExp(`export type ${symbol}\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\[\\];`).exec(source);
+  return contractMembers(source, alias ? alias[1] : symbol)?.allowedPaths ?? null;
+}
+
+function scopeGrantRows(scopeText: string): Record<string, unknown>[] {
+  const parsed = parseDefinitionExport(scopeText);
+  return parsed && Array.isArray(parsed.data.grants) ? parsed.data.grants.filter(isRecord) : [];
+}
+
+/**
+ * Output paths the route may return: declared by the contract, in the route projection, and
+ * disclosed by every route grant (`fullRecord` all; `fieldsOnly`/`summaryOnly` the
+ * `<entityId>.` allowed fields; any other mode or an undeclared grant nothing). Only paths that
+ * are copied whole are returned; their ancestors are walked.
+ */
+function disclosedOutputPaths(contract: ResolvedContract, outputFields: readonly string[], grants: readonly Record<string, unknown>[], entityId: string): string[] {
+  const declared = contract.outputPaths.filter(path => outputFields.includes(path.split('.')[0] ?? ''));
+  const prefix = `${entityId}.`;
+  const allows = (grant: Record<string, unknown>, path: string, whole: boolean): boolean => {
+    const mode = String(grant.disclosure ?? '');
+    if (mode === 'fullRecord') return true;
+    if (mode !== 'fieldsOnly' && mode !== 'summaryOnly') return false;
+    const allowed = stringList(grant.allowedFields).filter(field => entityId && field.startsWith(prefix)).map(field => field.slice(prefix.length));
+    return allowed.some(field => path === field || path.startsWith(`${field}.`) || (!whole && field.startsWith(`${path}.`)));
+  };
+  return declared.filter(path => !declared.some(other => other.startsWith(`${path}.`))
+    && grants.every(grant => allows(grant, path, true)));
 }
 
 async function resolveRoute(
@@ -376,6 +413,7 @@ async function resolveRoute(
   handler: Record<string, unknown>,
   read: StructureRead,
   registered: ReadonlySet<string>,
+  scopeGrants: readonly Record<string, unknown>[],
 ): Promise<ResolvedRoute | EmitFailure> {
   const route = typeof handler.route === 'string' ? handler.route : '';
   const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
@@ -396,10 +434,9 @@ async function resolveRoute(
     return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
   }
   const ports = portBindings(parsed, registered);
-  const args = [`input.request.params as ${contract.inputType}`, 'input.ctx'];
-  if (ports.length > 0) {
-    args.push(`{ ${ports.map(portExpression).join(', ')} }`);
-  }
+  // An undeclared grant discloses nothing; several grants disclose what all of them allow.
+  const routeGrants = grantIds.map(grantId => scopeGrants.find(grant => grant.grantId === grantId) ?? {});
+  const entityId = typeof parsed.data.entityId === 'string' ? parsed.data.entityId : '';
   return {
     route,
     usecaseId,
@@ -412,6 +449,7 @@ async function resolveRoute(
     allowedInputFields: contract.allowedInputFields,
     allowedInputPaths: contract.allowedInputPaths,
     outputFields: projection.outputFields,
+    disclosedPaths: disclosedOutputPaths(contract, projection.outputFields, routeGrants, entityId),
     ports,
   };
 }
@@ -420,7 +458,7 @@ function renderHandler(route: ResolvedRoute): string {
   const grants = route.grantIds.map(item => `'${item}'`).join(', ');
   const required = route.requiredFields.map(item => `'${item}'`).join(', ');
   const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
-  const projected = route.outputFields.map(item => `'${item}'`).join(', ');
+  const projected = route.disclosedPaths.map(item => `'${item}'`).join(', ');
   return [
     `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse> {`,
     `  const denied = authorize(input.request, [${grants}]);`,
@@ -448,6 +486,7 @@ function scopeSource(): string {
     '    const resolved = resolveGrant(grantId);',
     '    if (!(\'grantId\' in resolved) || resolved.scopeMode !== \'own\' || !resolved.recordField) continue;',
     '    const actorId = ctx.sessionContext?.actorId ?? \'\';',
+    `    if (!actorId) throw new AppError('${FORBIDDEN_ACTOR}', 'You have no identity for this scope.', 403);`,
     '    // enforce:scope',
     '    body[resolved.recordField] = actorId;',
     '  }',
@@ -502,8 +541,15 @@ function validateSource(): string {
     '  };',
     `  const invalid = invalidPath(body, ''); if (invalid) return new AppError('${VALIDATION_ERROR}', invalid + ' is not permitted.', 400);`,
     '  for (const field of fields) {',
+    '    // A required member of an absent optional parent is not required; a required parent has its own entry.',
+    '    const parts = field.split(\'.\');',
     '    let value: unknown = body;',
-    '    for (const part of field.split(\'.\')) value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
+    '    let parentAbsent = false;',
+    '    for (const [index, part] of parts.entries()) {',
+    '      if (index > 0 && (value === undefined || value === null)) { parentAbsent = true; break; }',
+    '      value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
+    '    }',
+    '    if (parentAbsent) continue;',
     '    if (value === undefined || value === null || value === \'\') {',
     `      return new AppError('${VALIDATION_ERROR}', \`\${field} is required.\`, 400);`,
     '    }',
@@ -516,11 +562,16 @@ function validateSource(): string {
 
 function projectSource(): string {
   return [
-    'function projectOutput(data: unknown, fields: readonly string[]): unknown {',
-    '  if (Array.isArray(data)) return data.map(item => projectOutput(item, fields));',
+    '// A path in `fields` is copied whole; an ancestor of one is walked; anything else is dropped.',
+    'function projectOutput(data: unknown, fields: readonly string[], prefix = \'\'): unknown {',
+    '  if (Array.isArray(data)) return data.map(item => projectOutput(item, fields, prefix));',
     '  const source = data && typeof data === \'object\' ? data as Record<string, unknown> : {};',
     '  const projected: Record<string, unknown> = {};',
-    '  for (const field of fields) if (field in source) projected[field] = source[field];',
+    '  for (const [key, child] of Object.entries(source)) {',
+    "    const path = prefix ? prefix + '.' + key : key;",
+    '    if (fields.includes(path)) projected[key] = child;',
+    "    else if (child && typeof child === 'object' && fields.some(field => field.startsWith(path + '.'))) projected[key] = projectOutput(child, fields, path);",
+    '  }',
     '  return projected;',
     '}',
   ].join('\n');

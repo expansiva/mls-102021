@@ -39,7 +39,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-26-implement-handler-v3';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-27-implement-handler-v4';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -58,6 +58,7 @@ export const PAYLOAD_MARK = '// enforce:payload';
 export const VERSION_MARK = '// enforce:version';
 export const CREATE_MARK = '// enforce:create';
 const LIFECYCLE_MARK = '// enforce:lifecycle';
+export const OWN_MARK = '// enforce:own';
 const CREATE_END = '// enforce:create end';
 const MDM_METHODS = new Set([
   'entity.findByDocument',
@@ -269,12 +270,8 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
       return ref ? expandInputType(name, text(field?.type)) : [name];
     })
     : [];
-  const operationInputPaths = operation === 'update'
-    ? await resolveOntologyWritablePaths(definition, read)
-    : [];
-  const inputs = new Set(operationInputPaths.length
-    ? operationInputPaths
-    : contract.allowedInputPaths.length ? contract.allowedInputPaths : usecaseInputPaths);
+  // Writable paths come from the contract input; updateBody drops derived, platform and lifecycle fields.
+  const inputs = new Set(contract.allowedInputPaths.length ? contract.allowedInputPaths : usecaseInputPaths);
   const updateInputs = operation === 'update' ? new Set([...inputs].filter(path => {
     const leaf = path.split('.').pop() ?? path;
     return leaf !== selectorField(definition) && !['id', 'version'].includes(leaf);
@@ -282,8 +279,12 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const transition = operation === 'transition' ? await planTransition(definition, read) : null;
   if (transition && 'code' in transition) return transition;
   const precondition = operation === 'update' ? await localPrecondition(definition, read) : '';
+  const lifecycle = lifecycleStart(entity);
+  if (operation === 'create' && lifecycle.field && !lifecycle.initial) {
+    return { code: 'LIFECYCLE_INITIAL', detail: `${definition.artifactId}: the lifecycle has no single state that no transition reaches.` };
+  }
   const body = operation === 'create'
-    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs)
+    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, lifecycle)
     : operation === 'update'
       ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition)
       : transition
@@ -303,19 +304,6 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
   return { runsStub: false, imports, source: finish(source) };
-}
-
-async function resolveOntologyWritablePaths(definition: M1Definition, read: StructureRead): Promise<string[]> {
-  const operation = text(definition.data.operation);
-  const entityId = text(definition.data.entityId);
-  if (!operation || !entityId) return [];
-  const ontologyRef = definition.dependencies.find(ref => ref.includes('/ontology/'));
-  if (!ontologyRef) return [];
-  const ontology = await loadDefinition(ontologyRef, read);
-  if ('code' in ontology) return [];
-  const operations = isRecord(ontology.data.operations) ? ontology.data.operations : {};
-  const spec = isRecord(operations[operation]) ? operations[operation] : {};
-  return stringList(spec.writable).map(path => path.startsWith(`${entityId}.`) ? path.slice(entityId.length + 1) : path);
 }
 
 async function memoryPort(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
@@ -773,9 +761,10 @@ function createBody(
   keys: readonly (readonly string[])[],
   ruleId: string,
   inputs: ReadonlySet<string>,
+  lifecycle: { field: string; initial: string },
 ): string {
   const tree = fieldTree(entity);
-  const fields = [...tree.children].map(([name, node]) => `    ${name}: ${literalFor(node, inputs, statesOf(entity))},`);
+  const fields = [...tree.children].map(([name, node]) => `    ${name}: ${literalFor(node, inputs, lifecycle)},`);
   const checks = keys.map(columns => [
     '  {',
     `    const taken = await ports.${binding}.list({ ${columns.map(column => `${column}: body.${column}`).join(', ')} });`,
@@ -805,13 +794,16 @@ function updateBody(
 ): string {
   const tree = fieldTree(entity);
   const platform = platformRoots(entity);
+  const lifecycleField = lifecycleStart(entity).field;
   const writable = [...inputs].filter(path => {
     const node = nodeAt(tree, path);
     const root = path.split('.')[0] ?? '';
     const hasBoundChildren = [...inputs].some(candidate => candidate.startsWith(`${path}.`));
     const identity = path === selector || path === identityField(entity);
     const isPrecondition = precondition && (path === precondition || path.endsWith(`.${precondition}`) || precondition.endsWith(`.${path}`));
-    return Boolean(node && !node.derived && !platform.has(root) && !identity && !isPrecondition
+    // State changes only through a declared transition.
+    const lifecycle = Boolean(lifecycleField) && path === lifecycleField;
+    return Boolean(node && !node.derived && !platform.has(root) && !identity && !isPrecondition && !lifecycle
       && (!node.children.size || !hasBoundChildren));
   });
   const versionName = versionField(entity, identityField(entity));
@@ -905,6 +897,8 @@ interface TransitionPlan {
   versionField: string;
   method: string;
   effects: string[];
+  /** Record field an own-scope route grant binds to the caller; `always` when every route is own-scoped. */
+  own: { field: string; always: boolean };
 }
 
 function transitionBody(entityName: string, binding: string, plan: TransitionPlan): string {
@@ -956,6 +950,7 @@ function transitionBody(entityName: string, binding: string, plan: TransitionPla
     '  const current = found[0];',
     '  if (!current) throw new AppError(\'NOT_FOUND\', \'Record not found.\', 404);',
     '  const row = current as unknown as Record<string, unknown>;',
+    ...ownCheck(plan.own),
     `  ${LIFECYCLE_MARK}`,
     `  if (!${JSON.stringify(plan.from)}.includes(String(row[${JSON.stringify(plan.statusField)}]))) throw new AppError('VALIDATION_ERROR', 'Transition is not allowed.', 400, { ruleId: ${JSON.stringify(plan.flowRule)} });`,
     ...payloadCheck,
@@ -966,6 +961,34 @@ function transitionBody(entityName: string, binding: string, plan: TransitionPla
     ...effects,
     `  return ports.${binding}.${plan.method}(next as unknown as ${entityName}, ${JSON.stringify(plan.transitionId)});`,
   ].join('\n');
+}
+
+/** The row must belong to the caller the controller bound into the own-scope field. */
+function ownCheck(own: { field: string; always: boolean }): string[] {
+  if (!own.field) return [];
+  const key = JSON.stringify(own.field);
+  const foreign = `String(row[${key}] ?? '') === '' || row[${key}] !== body[${key}]`;
+  return [
+    `  ${OWN_MARK}`,
+    `  if (${own.always ? foreign : `${key} in body && (${foreign})`}) throw new AppError('NOT_FOUND', 'Record not found.', 404);`,
+  ];
+}
+
+/** Own-scope field of the routes that reach this usecase, read from each route grant. */
+async function ownScope(definition: M1Definition, read: StructureRead): Promise<{ field: string; always: boolean } | EmitFailure> {
+  const routes = contractRoutes(definition);
+  const fields = new Set<string>();
+  let own = 0;
+  for (const route of routes) {
+    const grant = await grantPending(definition, definition.dependencies[0] ?? '', route, read);
+    if (grant.unread) return { code: 'GRANT_UNREAD', detail: `${route} grant was not read.` };
+    if (grant.scopeMode !== 'own') continue;
+    own += 1;
+    if (grant.recordField) fields.add(grant.recordField);
+  }
+  if (fields.size > 1) return { code: 'ACCESS_ANCHOR', detail: `${definition.artifactId} routes bind different own-scope fields.` };
+  const [field = ''] = [...fields];
+  return { field, always: own > 0 && own === routes.length };
 }
 
 async function planTransition(definition: M1Definition, read: StructureRead): Promise<TransitionPlan | EmitFailure> {
@@ -996,6 +1019,8 @@ async function planTransition(definition: M1Definition, read: StructureRead): Pr
   const leftover = local.map(row => row.ruleId).filter(ruleId => !claimed.has(ruleId));
   const anchor = leftover.length > 0 ? await ownScopePending(definition, read) : false;
   if (typeof anchor !== 'boolean') return anchor;
+  const own = await ownScope(definition, read);
+  if ('code' in own) return own;
   return {
     flowRule,
     payloadRule,
@@ -1009,6 +1034,7 @@ async function planTransition(definition: M1Definition, read: StructureRead): Pr
     versionField: versionField(entity, identityField(entity)),
     method,
     effects: effectIds(definition),
+    own,
   };
 }
 
@@ -1216,16 +1242,18 @@ function firstFunction(definition: M1Definition): { name: string; contractRefs: 
   return { name, contractRefs };
 }
 
-function literalFor(node: FieldNode, inputs: ReadonlySet<string>, states: readonly string[]): string {
+function literalFor(node: FieldNode, inputs: ReadonlySet<string>, lifecycle: { field: string; initial: string }): string {
+  // The server assigns the initial lifecycle state; a client value is never read for it.
+  if (lifecycle.field && node.path === lifecycle.field) return `'${lifecycle.initial}'`;
   const hasBoundChildren = [...inputs].some(path => path.startsWith(`${node.path}.`));
   if (node.children.size > 0 && (hasBoundChildren || !inputs.has(node.path))) {
-    const parts = [...node.children].map(([name, child]) => `${name}: ${literalFor(child, inputs, states)}`);
+    const parts = [...node.children].map(([name, child]) => `${name}: ${literalFor(child, inputs, lifecycle)}`);
     return `{ ${parts.join(', ')} }`;
   }
-  if (inputs.has(node.path)) return `body.${node.path}`;
+  // An optional parent may be absent from the input.
+  if (inputs.has(node.path)) return `body.${node.path.split('.').join('?.')}`;
   if (node.derived && node.name === 'id') return 'ctx.idGenerator.newId()';
   if (node.derived && (node.name === 'version' || node.type === 'integer' || node.type === 'number')) return '1';
-  if ((node.type === 'enum' || node.name === 'status') && states.length > 0) return `'${states[0]}'`;
   if (node.type === 'integer' || node.type === 'number') return '0';
   if (node.type === 'boolean') return 'false';
   return "''";
@@ -1293,30 +1321,30 @@ async function grantPending(
   defPath: string,
   routine: string,
   read: StructureRead,
-): Promise<{ pending: string; scopeMode: string; unread: boolean }> {
+): Promise<{ pending: string; scopeMode: string; unread: boolean; recordField: string }> {
   const page = routine.split('.')[1] ?? '';
   const project = /^_(\d+)_/.exec(defPath)?.[1] ?? '';
   const moduleName = definition.moduleName;
-  if (!page || !project || !moduleName) return { pending: '', scopeMode: '', unread: true };
+  if (!page || !project || !moduleName) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   const controllerRef = `_${project}_/l1/${moduleName}/layer_1_external/adapters/http/controllers/${page}.defs.ts`;
   const controller = await loadDefinition(controllerRef, read);
-  if ('code' in controller) return { pending: '', scopeMode: '', unread: true };
+  if ('code' in controller) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
   const handler = handlers.find(entry => entry.route === routine);
   const grantIds = handler ? stringList(handler.grantIds) : [];
-  if (!handler || grantIds.length === 0) return { pending: '', scopeMode: '', unread: true };
+  if (!handler || grantIds.length === 0) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   const scopeDep = controller.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
-  if (!scopeDep) return { pending: '', scopeMode: '', unread: true };
+  if (!scopeDep) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   const scope = await loadDefinition(scopeDep, read);
-  if ('code' in scope) return { pending: '', scopeMode: '', unread: true };
+  if ('code' in scope) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   const grants = Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];
   const matched = grants.filter(grant => grantIds.includes(text(grant.grantId)));
-  if (matched.length !== grantIds.length) return { pending: '', scopeMode: '', unread: true };
+  if (matched.length !== grantIds.length) return { pending: '', scopeMode: '', unread: true, recordField: '' };
   let pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
   const scopeMode = text(matched.find(grant => text(grant.pending) === pending)?.scopeMode);
   const field = matched.length === 1 ? recordFieldFromGrant(matched[0]) : '';
   if (!pending && scopeMode === 'own' && !field) pending = 'ACCESS_ANCHOR';
-  return { pending, scopeMode, unread: false };
+  return { pending, scopeMode, unread: false, recordField: scopeMode === 'own' && !pending ? field : '' };
 }
 
 async function loadDefinition(ref: string, read: StructureRead): Promise<M1Definition | EmitFailure> {
@@ -1378,10 +1406,21 @@ function nodeAt(root: FieldNode, path: string): FieldNode | undefined {
   return node;
 }
 
-function statesOf(definition: M1Definition): string[] {
+/**
+ * The lifecycle field is the single top-level enum of an entity that declares transitions.
+ * Its initial state is the one declared state no transition reaches; otherwise it is ''.
+ */
+function lifecycleStart(definition: M1Definition): { field: string; initial: string } {
   const lifecycle = definition.data.lifecycle;
-  if (!isRecord(lifecycle) || !Array.isArray(lifecycle.states)) return [];
-  return lifecycle.states.flatMap(item => isRecord(item) ? [text(item.state)] : []).filter(Boolean);
+  if (!isRecord(lifecycle) || !Array.isArray(lifecycle.transitions) || lifecycle.transitions.length === 0) return { field: '', initial: '' };
+  const field = enumField(definition);
+  if (!field) return { field: '', initial: '' };
+  const states = Array.isArray(lifecycle.states)
+    ? lifecycle.states.flatMap(item => isRecord(item) ? [text(item.state)] : []).filter(Boolean)
+    : [];
+  const reached = new Set(lifecycle.transitions.flatMap(item => isRecord(item) ? [text(item.to)] : []));
+  const initial = states.filter(state => !reached.has(state));
+  return { field, initial: initial.length === 1 && isIdent(initial[0]) ? initial[0] : '' };
 }
 
 function done(result: EmitResult): EmitResult {
