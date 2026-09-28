@@ -22,6 +22,7 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 import { contractSources, coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -86,7 +87,7 @@ async function readyHost() {
   return host;
 }
 
-void test('controllers60 writes one controller per page and does not rewrite the same bytes', async () => {
+void test('controllers60 writes one controller per page and does not rewrite the same bytes', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

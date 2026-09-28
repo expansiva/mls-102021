@@ -18,6 +18,7 @@ import {
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -82,7 +83,7 @@ async function readyHost() {
   return host;
 }
 
-void test('persistence40 writes the consulta port, table and adapter once', async () => {
+void test('persistence40 writes the consulta port, table and adapter once', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

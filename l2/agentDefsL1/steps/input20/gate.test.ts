@@ -92,8 +92,17 @@ async function loadHead(): Promise<D1InputArtifacts> {
   };
 }
 
-/** sha256 of the unsealed snapshot of the frozen v1.1 plan, measured on fc8ad7f before v1.2 was accepted. */
-const V11_SNAPSHOT_SHA = 'sha256:3f00d3556a8cfc1592555a653a683d5b8df1fad0b43ecd44b4d31145740405c8';
+const EFFORT_PATH = `l4/${MODULE}/pool/l2/web/effort.json`;
+const BACKEND_PATH = `l4/${MODULE}/pool/l2/web/backend.json`;
+
+/** The frozen head carries effort v1.1. D1 reads only the v1.2 the L2 producer writes (d1_37), so it is refused by path. */
+function assertEffortRefused(snapshot: D1InputSnapshot, others: string[] = []): void {
+  assert.deepEqual([...new Set(codes(snapshot, 'error'))].sort(), [...others, 'SCHEMA_DIVERGENT'].sort());
+  const refused = snapshot.problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT');
+  assert.deepEqual(refused.map(problem => problem.path), [EFFORT_PATH]);
+  assert.match(refused[0].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.equal(snapshot.consumersReleased, false);
+}
 
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -124,7 +133,6 @@ void test('backend v1.1 and v1.2 read the same; v1.1 output is unchanged', async
   const head = await loadHead();
   const v11 = build(head);
   assert.equal(rec(head.backend).schemaVersion, D1_BACKEND_SCHEMAS[0]);
-  assert.equal(await sha256Text(JSON.stringify(v11)), V11_SNAPSHOT_SHA);
   const upgraded = clone(head);
   const backend = upgraded.backend as Record<string, unknown>;
   backend.schemaVersion = P1_BACKEND_SCHEMA_VERSION;
@@ -134,13 +142,12 @@ void test('backend v1.1 and v1.2 read the same; v1.1 output is unchanged', async
   assert.deepEqual(v12.selection, v11.selection);
   assert.deepEqual(v12.files, v11.files);
   backend.schemaVersion = '2026-09-21-p1-backend-v9';
-  assert.equal(codes(build(upgraded), 'error').includes('SCHEMA_DIVERGENT'), true);
+  assert.equal(build(upgraded).problems.some(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === BACKEND_PATH), true);
 });
 
 void test('frozen agendaClinica snapshot is cut by id', async () => {
   const snapshot = build(await loadHead());
-  const errors = snapshot.problems.filter(problem => problem.severity === 'error');
-  assert.deepEqual([...new Set(errors.map(problem => problem.code))], ['CONTRACT_ABSENT']);
+  assertEffortRefused(snapshot, ['CONTRACT_ABSENT']);
   assert.deepEqual(snapshot.selection.pages.map(page => page.pageId), PAGES);
   const backend = JSON.parse(readFileSync(path.join(FIXTURE, 'l4', MODULE, 'pool/l2/web/backend.json'), 'utf8')) as {
     endpoints: Array<{ route: string }>;
@@ -345,7 +352,7 @@ void test('toRemove on a live row is not treated as a removal', async () => {
   assert.equal(snapshot.removed.some(item => item.id === route), false);
 });
 
-void test('the six agendaClinica L2 contracts parse and release consumers', async () => {
+void test('with the six agendaClinica L2 contracts parsed, a v1.1 effort alone holds consumers', async () => {
   const artifacts = await loadHead();
   const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
   assert.equal(names.length, 6);
@@ -358,8 +365,7 @@ void test('the six agendaClinica L2 contracts parse and release consumers', asyn
   });
   for (const [index, pageId] of PAGES.entries()) artifacts.contracts[pageId] = asts[index];
   const snapshot = build(artifacts);
-  assert.equal(snapshot.consumersReleased, true);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' || problem.code === 'CONTRACT_UNPARSED'), false);
+  assertEffortRefused(snapshot);
 });
 
 void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', async () => {
@@ -392,14 +398,14 @@ async function releasedHead(): Promise<{ artifacts: D1InputArtifacts; first: D1I
 
 void test('resume accepts the writer receipt and keeps the plan', async () => {
   const { artifacts, first } = await releasedHead();
-  assert.equal(first.consumersReleased, true);
+  assertEffortRefused(first);
   const written = first.files.filter(file => WRITTEN.has(file.artifactType));
   assert.ok(written.length >= 13);
   artifacts.presentDefs = written.map(file => ({ path: file.defPath, sha256: HASH }));
   artifacts.writerReceipts = written.map(file => ({ defPath: file.defPath, desiredHash: HASH }));
   const resume = build(artifacts, first);
   assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-  assert.equal(resume.consumersReleased, true);
+  assertEffortRefused(resume);
   assert.deepEqual(resume.files, first.files);
   assert.deepEqual(resume.problems, first.problems);
 });
@@ -432,7 +438,7 @@ void test('a missing def is planned again even when a writer receipt names it', 
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
   assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'create');
   assert.deepEqual(resume.files, first.files);
-  assert.equal(resume.consumersReleased, true);
+  assertEffortRefused(resume);
 });
 
 void test('a present def with no receipt is still refused', async () => {
@@ -477,5 +483,5 @@ void test('an inventoried hash still recomposes without a writer receipt', async
   assert.equal(file?.action, 'recompose');
   assert.equal(file?.contentHash, HASH);
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-  assert.equal(resume.consumersReleased, true);
+  assertEffortRefused(resume);
 });

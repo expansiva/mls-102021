@@ -113,7 +113,7 @@ void test('input20 without contracts records the inventory and does not unlock t
     problems?: Array<{ severity?: string; code?: string; path?: string }>;
   };
   const reason = blockingCodes(inventory.problems || []);
-  assert.match(reason, /^CONTRACT_ABSENT:\d+$/);
+  assert.match(reason, /^CONTRACT_ABSENT:\d+,SCHEMA_DIVERGENT:1$/);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status?: string;
     awaitingStep?: string;
@@ -142,7 +142,8 @@ void test('input20 without contracts records the inventory and does not unlock t
   assert.equal(host.writes.filter(key => key === pipelineKey).length, 1);
 });
 
-void test('input20 releases the next phase only when contracts parse, and still writes no defs', async () => {
+/** The frozen head carries effort v1.1; D1 reads only the v1.2 the L2 producer writes (d1_37). */
+void test('input20 refuses a v1.1 effort even when contracts parse, and writes no defs', async () => {
   const host = await readyHost(true);
   const contractKey = fileKey(fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/pacientes.defs.ts`)!);
   const contractMtime = host.files[contractKey]?.updatedAt;
@@ -152,20 +153,28 @@ void test('input20 releases the next phase only when contracts parse, and still 
   step.stepId = 20;
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
-  const anchor = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
-  assert.equal(anchor?.step.planning?.planId, 'input20-done');
-  const handoff = JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)) as { nextStep: string; artifact: string };
-  assert.equal(handoff.nextStep, 'domain30');
-  assert.equal(handoff.artifact.includes('/input.json'), true);
+  assert.equal(intents.some(intent => intent.type === 'add-step'), false);
+  const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  assert.match(trace?.traceMsg || '', /Consumer phases are not released/);
+  const inventory = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as {
+    consumersReleased?: boolean;
+    problems?: Array<{ severity?: string; code?: string; path?: string; message?: string }>;
+  };
+  assert.equal(inventory.consumersReleased, false);
+  assert.equal(blockingCodes(inventory.problems || []), 'SCHEMA_DIVERGENT:1');
+  const refusal = (inventory.problems || []).find(problem => problem.code === 'SCHEMA_DIVERGENT');
+  assert.equal(refusal?.path, `l4/${MODULE}/pool/l2/web/effort.json`);
+  assert.match(refusal?.message || '', /2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status?: string;
     awaitingStep?: string;
-    steps: { input20?: { status: string; error?: string } };
+    steps: { input20?: { status: string; error?: string }; domain30?: unknown };
   };
-  assert.equal(pipeline.steps.input20?.status, 'approved');
-  assert.equal(pipeline.steps.input20?.error, undefined);
-  assert.equal(pipeline.status, 'inProgress');
-  assert.equal(pipeline.awaitingStep, undefined);
+  assert.equal(pipeline.status, 'awaitingStep');
+  assert.equal(pipeline.awaitingStep, 'input20');
+  assert.equal(pipeline.steps.input20?.status, 'failed');
+  assert.equal(pipeline.steps.input20?.error, 'SCHEMA_DIVERGENT:1');
+  assert.equal(pipeline.steps.domain30, undefined);
   assert.equal(host.files[contractKey]?.updatedAt, contractMtime);
   assert.equal(Object.keys(host.files).some(key => key.includes('layer_')), false);
   assert.equal(host.writes.some(key => key.includes('_4_') || key.includes('_5_') || key.includes('_2_')), false);

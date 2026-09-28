@@ -1,5 +1,10 @@
 # input20
 
+## 2026-09-28 (d1_37)
+
+- The effort plan is accepted only as v1.2 (`2026-09-21-p2-effort-v1.2`), the version the L2 producer writes. A v1.1 effort is `SCHEMA_DIVERGENT` on its path and holds consumer phases. No v1.1 reader. The mirrored `testSupport[]` and `meta.sourceVersion` are not read by D1.
+- The frozen fixtures still carry effort v1.1 and are not converted; the tests that replay them now prove the refusal.
+
 ## 2026-09-27 (m1_28)
 
 - The backend plan is accepted as v1.1 or v1.2 (`D1_BACKEND_SCHEMAS`). A v1.1 plan gives the same snapshot (pinned in gate.test).

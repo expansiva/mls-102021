@@ -20,6 +20,14 @@ const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
 
+/** The frozen head carries effort v1.1. D1 reads only the v1.2 the L2 producer writes (d1_37), so it is refused by path. */
+function assertEffortRefused(snapshot: { consumersReleased: boolean; problems: Array<{ severity: string; code: string; path: string; message: string }> }): void {
+  const errors = snapshot.problems.filter(problem => problem.severity === 'error');
+  assert.deepEqual(errors.map(problem => `${problem.code} ${problem.path}`), [`SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`]);
+  assert.match(errors[0].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.equal(snapshot.consumersReleased, false);
+}
+
 function walk(dir: string, prefix: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -86,7 +94,7 @@ function realContractFiles(): string[] {
   return readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
 }
 
-void test('the six agendaClinica L2 contracts parse and release consumers', async () => {
+void test('with the six agendaClinica L2 contracts parsed, a v1.1 effort alone holds consumers', async () => {
   const names = realContractFiles();
   assert.equal(names.length, 6);
   const host = installStudio(PROJECT);
@@ -100,8 +108,7 @@ void test('the six agendaClinica L2 contracts parse and release consumers', asyn
     seed(host, fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/${pageId}.defs.ts`)!, source, `contract-${pageId}`);
   }
   const snapshot = await assembleD1Input(PROJECT, MODULE);
-  assert.equal(snapshot.consumersReleased, true);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' || problem.code === 'CONTRACT_UNPARSED'), false);
+  assertEffortRefused(snapshot);
   const pacientes = snapshot.sources.find(source => source.path === `l2/${MODULE}/web/contracts/pacientes.defs.ts`);
   assert.equal(pacientes?.state, 'present');
 });
@@ -172,7 +179,7 @@ void test('resume reads the writer receipt, keeps the snapshot, and still refuse
   seedFixture(host);
   seedContracts(host);
   const first = await assembleD1Input(PROJECT, MODULE);
-  assert.equal(first.consumersReleased, true);
+  assertEffortRefused(first);
   await persistD1Input(PROJECT, MODULE, first);
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
@@ -185,7 +192,7 @@ void test('resume reads the writer receipt, keeps the snapshot, and still refuse
 
   const resume = await assembleD1Input(PROJECT, MODULE);
   assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-  assert.equal(resume.consumersReleased, true);
+  assertEffortRefused(resume);
   assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'create');
   assert.equal(resume.snapshotHash, first.snapshotHash);
   const again = await persistD1Input(PROJECT, MODULE, resume);
@@ -202,7 +209,7 @@ void test('resume reads the writer receipt, keeps the snapshot, and still refuse
   const missing = await assembleD1Input(PROJECT, MODULE);
   assert.equal(missing.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
   assert.equal(missing.files.find(file => file.defPath === target.defPath)?.action, 'create');
-  assert.equal(missing.consumersReleased, true);
+  assertEffortRefused(missing);
   assert.equal(missing.snapshotHash, first.snapshotHash);
 });
 

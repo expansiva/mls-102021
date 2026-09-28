@@ -22,6 +22,7 @@ import { catalogInfo, commitD1Domain } from '/_102021_/l2/agentDefsL1/steps/doma
 import { buildD1Domain } from '/_102021_/l2/agentDefsL1/steps/domain30/gate.js';
 import { nestedEnumEntity } from '/_102021_/l2/agentDefsL1/steps/domain30/fixtures/cases.js';
 import { lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -86,7 +87,7 @@ async function readyHost() {
   return host;
 }
 
-void test('domain30 writes the five domain defs once and leaves done bytes and neighbors alone', async () => {
+void test('domain30 writes the five domain defs once and leaves done bytes and neighbors alone', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

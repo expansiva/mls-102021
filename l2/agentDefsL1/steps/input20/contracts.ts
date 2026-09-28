@@ -15,7 +15,7 @@ export const D1_SOURCE_SCHEMAS = {
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',
-  effort: '2026-09-21-p2-effort-v1.1',
+  effort: '2026-09-21-p2-effort-v1.2',
   planner: '2026-09-20-p1-pipeline-v1',
 } as const;
 

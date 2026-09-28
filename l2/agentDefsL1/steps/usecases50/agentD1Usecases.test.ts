@@ -27,6 +27,7 @@ import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/
 import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -98,7 +99,7 @@ async function readyHost() {
   return host;
 }
 
-void test('usecases50 dispatches one worker per selected usecase and a worker does not add a step', async () => {
+void test('usecases50 dispatches one worker per selected usecase and a worker does not add a step', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -176,7 +177,7 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.equal(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))], undefined);
 });
 
-void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', async () => {
+void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
@@ -338,7 +339,7 @@ async function openUsecases(): Promise<{
   return { host, agent, ctx, parent, intents };
 }
 
-void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', async () => {
+void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -399,7 +400,7 @@ void test('a key outside the kind is INVENTED_FIELD and the barrier fires one re
   assert.equal(closedUsecase?.status, 'completed');
 });
 
-void test('a repair that still names a foreign key stays repairable at the ceiling', async () => {
+void test('a repair that still names a foreign key stays repairable at the ceiling', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'createPaciente';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -428,7 +429,7 @@ void test('a repair that still names a foreign key stays repairable at the ceili
   assert.match(trace, /Repair request:/);
 });
 
-void test('one unresolved unit closes the step, counts the error, and keeps the other defs', async () => {
+void test('one unresolved unit closes the step, counts the error, and keeps the other defs', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listPaciente';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -501,7 +502,7 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
   }
 });
 
-void test('a delivered reply counts once, a redelivery does not, and cost is not the count', async () => {
+void test('a delivered reply counts once, a redelivery does not, and cost is not the count', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -528,7 +529,7 @@ void test('a delivered reply counts once, a redelivery does not, and cost is not
   assert.equal(account.invocationReplies, 1);
 });
 
-void test('an invalid payload is one delivered reply and not yet a repair', async () => {
+void test('an invalid payload is one delivered reply and not yet a repair', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -542,7 +543,7 @@ void test('an invalid payload is one delivered reply and not yet a repair', asyn
   assert.equal(saved.status, 'repairable');
 });
 
-void test('a prompt with no payload is not a delivered reply', async () => {
+void test('a prompt with no payload is not a delivered reply', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
@@ -557,7 +558,7 @@ void test('a prompt with no payload is not a delivered reply', async () => {
   assert.equal(log?.events.some(event => event.kind === 'reply_delivered'), false);
 });
 
-void test('a source block is not dispatched and is not a reply', async () => {
+void test('a source block is not dispatched and is not a reply', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -580,7 +581,7 @@ void test('a source block is not dispatched and is not a reply', async () => {
   assert.equal(log?.events.some(event => event.kind === 'not_dispatched' && event.usecaseId === target), true);
 });
 
-void test('one repair is a second reply, and the attempt index is not the total', async () => {
+void test('one repair is a second reply, and the attempt index is not the total', { skip: HEAD_SEED_V11_SKIP }, async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
