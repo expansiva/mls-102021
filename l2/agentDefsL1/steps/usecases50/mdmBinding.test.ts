@@ -476,7 +476,7 @@ void test('an unread route contract names the missing contract, binding, or symb
     [],
   );
   assert.equal(unbound.fields, null);
-  assert.match(unbound.unread.join('; '), /binding not unique/);
+  assert.match(unbound.unread.join('; '), /binding absent in pacientes\.defs\.ts/);
 
   const missing = mdmInputFields(
     [{
@@ -491,7 +491,96 @@ void test('an unread route contract names the missing contract, binding, or symb
     [],
   );
   assert.equal(missing.fields, null);
-  assert.match(missing.unread.join('; '), /symbol absent/);
+  assert.match(missing.unread.join('; '), /input symbol Missing absent/);
+
+  const ambiguous = mdmInputFields(
+    [{
+      pageId: 'pacientes',
+      path: 'pacientes.defs.ts',
+      source: `
+        export interface CreatePacienteInput { name: string }
+        export interface CreatePacienteOutput { id: string }
+        export interface AgainInput { name: string }
+        export interface AgainOutput { id: string }
+        export const createPacienteRoute = "agendaClinica.pacientes.cmdCreatePaciente" as const;
+        export const againRoute = "agendaClinica.pacientes.cmdCreatePaciente" as const;
+      `,
+    }],
+    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
+    [],
+  );
+  assert.equal(ambiguous.fields, null);
+  assert.match(ambiguous.unread.join('; '), /binding ambiguous in pacientes\.defs\.ts \(2 bindings\)/);
+
+  const noInput = mdmInputFields(
+    [{
+      pageId: 'pacientes',
+      path: 'pacientes.defs.ts',
+      source: 'export interface Out { id: string }\nexport const routes = { "agendaClinica.pacientes.cmdCreatePaciente": { output: "Out" } } as const;\n',
+    }],
+    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
+    [],
+  );
+  assert.equal(noInput.fields, null);
+  assert.match(noInput.unread.join('; '), /input not declared in pacientes\.defs\.ts/);
+
+  const twice = mdmInputFields(
+    [{
+      pageId: 'pacientes',
+      path: 'pacientes.defs.ts',
+      source: `
+        export interface In { name: string }
+        export interface In { name: string }
+        export interface Out { id: string }
+        export const routes = { "agendaClinica.pacientes.cmdCreatePaciente": { input: "In", output: "Out" } } as const;
+      `,
+    }],
+    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
+    [],
+  );
+  assert.equal(twice.fields, null);
+  assert.match(twice.unread.join('; '), /input symbol In duplicated \(2\)/);
+});
+
+/** d1_40: one MDM usecase reused by two routes on two pages, each read from its own contract. */
+void test('one MDM usecase bound by two routes resolves both; a missing or duplicated binding refuses', () => {
+  const second = 'agendaClinica.recepcao.cmdCreatePaciente';
+  const withSecond = (source: string): D1UsecaseRequest => {
+    const request = replay('createPaciente', 'Paciente', 'create', ['pacientes']);
+    request.contracts.push({ pageId: 'recepcao', path: 'l2/agendaClinica/web/contracts/recepcao.defs.ts', source });
+    request.routes.push({ route: second, page: 'recepcao', kind: 'cmd', usecaseRef: 'createPaciente' });
+    request.usecases[0].routes.push(second);
+    return request;
+  };
+  const pacientes = replay('createPaciente', 'Paciente', 'create', ['pacientes']).contracts[0].source;
+  // The second page names its own DTOs: reuse does not rely on equal type names.
+  const recepcao = pacientes
+    .replace(/export const createPacienteRoute = "[^"]+"/, `export const registerPatientRoute = "${second}"`)
+    .replace(/\bCreatePacienteInput\b/g, 'RegisterPatientInput')
+    .replace(/\bCreatePacienteOutput\b/g, 'RegisterPatientOutput');
+  assert.notEqual(recepcao, pacientes);
+
+  const both = withSecond(recepcao);
+  const read = mdmInputFields(both.contracts, both.routes, []);
+  assert.deepEqual(read.unread, []);
+  assert.ok(read.fields?.length);
+  const ok = buildD1Usecases(both);
+  assert.equal(ok.ok, true, ok.problems.map(item => item.message).join('; '));
+
+  // The second page lost its route: the first page's contract does not lend its fields.
+  const absent = withSecond(recepcao.replace(`export const registerPatientRoute = "${second}" as const;`, ''));
+  assert.equal(mdmInputFields(absent.contracts, absent.routes, []).fields, null);
+  const refused = buildD1Usecases(absent);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes(`Route ${second}: binding absent`)), true,
+    refused.problems.map(item => `${item.code} ${item.message}`).join('; '));
+
+  // The same route bound twice on its page is ambiguous; the first binding is not taken.
+  const doubled = withSecond(`${recepcao}\nexport const registerPatientAgainRoute = "${second}" as const;\n`);
+  const ambiguous = buildD1Usecases(doubled);
+  assert.equal(ambiguous.ok, false);
+  assert.equal(ambiguous.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes(`Route ${second}: binding ambiguous`)), true,
+    ambiguous.problems.map(item => `${item.code} ${item.message}`).join('; '));
 });
 
 function one(usecaseId: string): D1UsecaseRequest {

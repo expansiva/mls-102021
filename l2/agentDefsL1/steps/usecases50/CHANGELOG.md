@@ -1,5 +1,11 @@
 # usecases50
 
+## 2026-09-28 (d1_40)
+
+- `mdmInputFields` names each route failure: contract absent, binding absent, binding ambiguous (count), input not declared, input symbol absent or duplicated. Still `MDM_CONTRACT_UNREAD`.
+- Fail closed: when any route of the usecase is unread, `fields` is null. One route no longer lends its contract fields to another route of the same usecase.
+- `routesFor` says when a route has more than one binding (ambiguous) instead of "no contract binding". The first binding is never taken.
+
 ## 2026-09-25 (d1_34)
 
 - Context, worker schema and the gate take MDM calls from `mdmForOperation` (`bindMdm` after the same capability filter). A `list` that cannot feed `locate.byContact` does not offer `findByContact`. Putting that pair back on the catalog makes the schema accept it and the gate refuse it.

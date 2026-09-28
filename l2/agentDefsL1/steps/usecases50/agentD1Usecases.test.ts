@@ -24,10 +24,11 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { CURRENT_SEED_MDM_BINDING_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
 import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { mdmInputFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/current');
@@ -87,6 +88,8 @@ async function readyHost() {
     seed(host, info, text, 'frozen');
   }
   // The current seed carries the real L2 contracts of its pages (input20/fixtures/current/l2).
+  // The MDM rule texts the ontology cites live in the platform catalog (mls-102034), not in the seed.
+  seed(host, fileInfoFromDisplay(102034, 'l4/ontology/mdm.defs.ts')!, readFileSync(path.join(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts'), 'utf8'), 'catalog');
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/steps/usecases50', shortName: 'prompt', extension: '.md' }, readFileSync(path.join(HERE, 'prompt.md'), 'utf8'), 'prompt');
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/skills', shortName: 'usecase', extension: '.md' }, readFileSync(path.join(HERE, '../../skills/usecase.md'), 'utf8'), 'skill');
   await writeJson(pipelineFile(PROJECT, MODULE), createEntryPipeline(PROJECT, MODULE, new Date('2026-09-21T12:00:00.000Z')));
@@ -333,7 +336,7 @@ async function openUsecases(): Promise<{
   return { host, agent, ctx, parent, intents };
 }
 
-void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
+void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', async () => {
   const target = 'listConsulta';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -423,7 +426,7 @@ void test('a repair that still names a foreign key stays repairable at the ceili
   assert.match(trace, /Repair request:/);
 });
 
-void test('one unresolved unit closes the step, counts the error, and keeps the other defs', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
+void test('one unresolved unit closes the step, counts the error, and keeps the other defs', async () => {
   const target = 'listPaciente';
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -575,7 +578,7 @@ void test('a source block is not dispatched and is not a reply', async () => {
   assert.equal(log?.events.some(event => event.kind === 'not_dispatched' && event.usecaseId === target), true);
 });
 
-void test('one repair is a second reply, and the attempt index is not the total', { skip: CURRENT_SEED_MDM_BINDING_SKIP }, async () => {
+void test('one repair is a second reply, and the attempt index is not the total', async () => {
   const target = 'listConsulta';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
@@ -687,6 +690,43 @@ function workerStep(prompt: string, stepId: number): mls.msg.AIAgentStep {
     planning: { planId: '', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
   };
 }
+
+/** d1_40: the MDM usecase reused by two pages reads each route from its own page contract, over the current seed. */
+void test('the shared MDM usecase reads each route from its own contract, reaches the worker and builds', async () => {
+  const target = 'listContatoPaciente';
+  const { agent, ctx, parent, intents } = await openUsecases();
+  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  assert.ok(work);
+  const usecase = work.request.usecases.find(item => item.usecaseId === target);
+  assert.ok(usecase);
+  const routes = work.request.routes.filter(item => usecase.routes.includes(item.route));
+  assert.deepEqual(routes.map(item => item.page).sort(), ['consultas', 'pacientes']);
+  const read = mdmInputFields(work.request.contracts, routes, []);
+  assert.deepEqual(read.unread, []);
+  assert.ok(read.fields);
+  const packet = work.request.contexts?.find(item => item.usecaseId === target);
+  assert.ok(packet);
+  assert.deepEqual(packet.findings, []);
+  assert.deepEqual(packet.routes.map(route => [route.page, route.contractPath, route.unbound]).sort(), routes.map(route =>
+    [route.page, `l2/${MODULE}/web/contracts/${route.page}.defs.ts`, '']).sort());
+  for (const route of packet.routes) {
+    assert.ok(route.inputSymbol && route.inputFields.length, route.route);
+    assert.ok(route.access.length, route.route);
+  }
+
+  const workerPrompt = firstPrompt(intents, target);
+  const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
+  const ready = prepared.find((intent): intent is mls.msg.AgentIntentPromptReady => intent.type === 'prompt_ready');
+  assert.ok(ready, prepared.filter(intent => intent.type === 'update-status').map(intent => (intent as mls.msg.AgentIntentUpdateStatus).traceMsg).join(' | '));
+  for (const route of routes) {
+    assert.match(ready.humanPrompt, new RegExp(`Route ${route.route.replace(/\./g, '\\.')}\nContract: l2/${MODULE}/web/contracts/${route.page}\.defs\.ts\n`));
+  }
+  assert.doesNotMatch(ready.humanPrompt, /no contract binding|ambiguous|MDM_CONTRACT_UNREAD/);
+
+  const request = { ...work.request, usecases: [usecase], routes, plans: [fixturePlan(work.request, usecase)] };
+  const build = buildD1Usecases(request);
+  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD'), false, build.problems.map(item => `${item.code} ${item.message}`).join('; '));
+});
 
 function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>

@@ -7,7 +7,7 @@ export interface CreateConsultaInput {
   "profissionalId": string;
   "scheduledAt": string;
   "details": {
-    "telephoneConfirmation": {
+    "telephoneConfirmation"?: {
       "confirmedAt": string;
     };
   };
@@ -87,7 +87,7 @@ export interface UpdateConsultaInput {
   "profissionalId": string;
   "scheduledAt": string;
   "details": {
-    "telephoneConfirmation": {
+    "telephoneConfirmation"?: {
       "confirmedAt": string;
     };
   };
@@ -165,6 +165,43 @@ export interface ListConsultaItem {
 }
 
 export type ListConsultaOutput = ListConsultaItem[];
+
+export const listContatoPacienteRoute = "agendaClinica.consultas.qryListContatoPaciente" as const;
+
+export interface ListContatoPacienteInput {
+  "id"?: string;
+  "details"?: {
+    "identification"?: {
+      "subtype"?: "ContactChannel";
+      "name"?: string;
+      "status"?: "Active" | "Inactive" | "Merged" | "Blocked";
+      "countryCode"?: string;
+    };
+  };
+  "page"?: number;
+}
+
+export interface ListContatoPacienteItem {
+  "id": string;
+  "version": number;
+  "details": {
+    "identification"?: {
+      "subtype": "ContactChannel";
+      "name": string;
+      "status": "Active" | "Inactive" | "Merged" | "Blocked";
+      "countryCode": string;
+    };
+    "contactChannel"?: {
+      "contactType": "Phone";
+      "value": string;
+      "isVerified": boolean;
+    };
+    "general"?: object;
+    "agendaClinica"?: object;
+  };
+}
+
+export type ListContatoPacienteOutput = ListContatoPacienteItem[];
 
 export const listPacienteRoute = "agendaClinica.consultas.qryListPaciente" as const;
 

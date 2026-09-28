@@ -7,7 +7,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
-import { regenerateCurrent, regenerateHead } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
+import { HEAD_BACKEND, regenerateCurrent, regenerateHead } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
+import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const HEAD = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'head');
 const CURRENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'current');
@@ -37,15 +38,37 @@ void test('regenerating head is refused by the L1 plan gate on the two pages wit
   });
 });
 
-/** d1_39: the current seed's needs, backend, effort and planner pipeline are the producers' bytes. */
+/** d1_39/d1_40: the current seed's needs, backend, effort, planner pipeline and page contracts are the producers' bytes. */
 void test('the current seed outputs are what the producers write over its inputs, byte for byte', async () => {
   const stored = readHead(CURRENT);
   const produced = await regenerateCurrent(stored);
   assert.deepEqual(Object.keys(produced).sort(), [
+    'l2/agendaClinica/web/contracts/agenda.defs.ts',
+    'l2/agendaClinica/web/contracts/consultas.defs.ts',
+    'l2/agendaClinica/web/contracts/pacientes.defs.ts',
     'l4/agendaClinica/pool/l1/pipeline.json',
     'l4/agendaClinica/pool/l1/web/needs.json',
     'l4/agendaClinica/pool/l2/web/backend.json',
     'l4/agendaClinica/pool/l2/web/effort.json',
   ]);
   for (const [logical, text] of Object.entries(produced)) assert.equal(stored[logical], text, logical);
+});
+
+/** d1_40: every backend route of the seed has exactly one binding, a declared input and one input symbol in its page contract. */
+void test('every backend route of the current seed resolves in its page contract', () => {
+  const stored = readHead(CURRENT);
+  const backend = JSON.parse(stored[HEAD_BACKEND]) as { moduleName: string; endpoints: { route: string; page: string }[] };
+  assert.ok(backend.endpoints.length > 0);
+  const broken: string[] = [];
+  for (const endpoint of backend.endpoints) {
+    const logical = `l2/${backend.moduleName}/web/contracts/${endpoint.page}.defs.ts`;
+    const source = stored[logical];
+    if (source === undefined) { broken.push(`${endpoint.route}: contract absent`); continue; }
+    const ast = readContractAst(source, logical);
+    assert.deepEqual(ast.unparsed, [], logical);
+    const bindings = ast.bindings.filter(item => item.route === endpoint.route);
+    if (bindings.length !== 1 || !bindings[0].input) { broken.push(`${endpoint.route}: ${bindings.length} binding(s)`); continue; }
+    if (ast.symbols.filter(item => item.name === bindings[0].input).length !== 1) broken.push(`${endpoint.route}: symbol ${bindings[0].input}`);
+  }
+  assert.deepEqual(broken, []);
 });

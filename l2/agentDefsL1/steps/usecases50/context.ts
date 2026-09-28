@@ -555,7 +555,9 @@ function routesFor(
     const ast = readContractAst(contract.source, contract.path);
     const found = ast.bindings.filter(item => item.route === routeId);
     if (found.length !== 1) {
-      out.push(emptyRoute(routeId, page, contract.path, access, `Route ${routeId} has no contract binding in ${contract.path}.`));
+      out.push(emptyRoute(routeId, page, contract.path, access, found.length
+        ? `Route ${routeId} has ${found.length} contract bindings in ${contract.path} (ambiguous).`
+        : `Route ${routeId} has no contract binding in ${contract.path}.`));
       continue;
     }
     if (ast.unparsed.length) {
@@ -762,15 +764,18 @@ export function preconditionsFor(
 
 /** One route whose contract could not be read, and why. */
 export interface MdmContractRead {
-  /** Shared fields. `null` when no route contract was read. */
+  /** Shared fields. `null` when any route contract was not read: one route never borrows another's fields. */
   fields: readonly MdmInputField[] | null;
-  /** One reason per route that did not resolve: contract absent, binding not unique, or symbol absent. */
+  /**
+   * One reason per route that did not resolve: contract absent, binding absent, binding ambiguous,
+   * input not declared, input symbol absent, or input symbol duplicated.
+   */
   unread: readonly string[];
 }
 
 /**
- * Input fields shared by every resolved route.
- * A route that does not resolve is named in `unread`. `fields` is null when none resolve.
+ * Input fields shared by every route. Each route is read from its own page contract.
+ * A route that does not resolve is named in `unread`, and then `fields` is null (fail closed).
  * An empty field list means the contracts were read and declare no shared field.
  */
 export function mdmInputFields(
@@ -787,15 +792,24 @@ export function mdmInputFields(
       unread.push(`Route ${route.route}: contract absent`);
       continue;
     }
-    const ast = readContractAst(contract.source, contract.path || `${route.page}.defs.ts`);
+    const file = contract.path || `${route.page}.defs.ts`;
+    const ast = readContractAst(contract.source, file);
     const binding = ast.bindings.filter(item => item.route === route.route);
-    if (binding.length !== 1 || !binding[0].input) {
-      unread.push(`Route ${route.route}: binding not unique`);
+    if (!binding.length) {
+      unread.push(`Route ${route.route}: binding absent in ${file}`);
+      continue;
+    }
+    if (binding.length > 1) {
+      unread.push(`Route ${route.route}: binding ambiguous in ${file} (${binding.length} bindings)`);
+      continue;
+    }
+    if (!binding[0].input) {
+      unread.push(`Route ${route.route}: input not declared in ${file}`);
       continue;
     }
     const symbols = ast.symbols.filter(item => item.name === binding[0].input);
     if (symbols.length !== 1) {
-      unread.push(`Route ${route.route}: symbol absent`);
+      unread.push(`Route ${route.route}: input symbol ${binding[0].input} ${symbols.length ? `duplicated (${symbols.length})` : 'absent'} in ${file}`);
       continue;
     }
     perRoute.push(flattenContractFields(symbols[0].fields).map(field => ({
@@ -804,7 +818,7 @@ export function mdmInputFields(
       writePrecondition: false,
     })));
   }
-  if (!perRoute.length) return { fields: null, unread };
+  if (unread.length) return { fields: null, unread };
   const [first, ...rest] = perRoute;
   const shared = first.filter(field => rest.every(list => list.some(item => item.path === field.path)));
   const marked = new Set(preconditions);

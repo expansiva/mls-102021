@@ -1,5 +1,10 @@
 # input20
 
+## 2026-09-28 (d1_40)
+
+- `regenerateCurrent` also runs agentDefsL2 input20 (`buildD2InputSnapshot`) and contracts30 (`generateD2Contracts`) over the regenerated needs/backend/effort, so the seed page contracts come from the same plan revision. They are outputs, not copies of the bench; `regenHead.test` compares them byte for byte and checks that every backend route has one binding, a declared input and one input symbol in its page contract.
+- `CURRENT_SEED_MDM_BINDING_SKIP` is gone: the contracts copied from the bench were older than the plan (six routes had no binding).
+
 ## 2026-09-28 (d1_39)
 
 - The backend plan is accepted only as v1.2 (`2026-09-21-p1-backend-v1.2`). `D1_BACKEND_SCHEMAS` is gone. Another version is `SCHEMA_DIVERGENT` on its path, and the message says to regenerate it with its producer. Nothing is converted.
