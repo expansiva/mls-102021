@@ -2,7 +2,8 @@
 
 /**
  * Replaces a structure stub with behavior derived from the defs.
- * Create and list copy the operation, the port and the entity fields.
+ * List copies the operation, the port and the entity fields. Create stores only the
+ * server assignments and the input members the caller sent (absence is kept).
  * A transition copies lifecycle from/to, the selector and the payload paths.
  * A local storage row is the unique-key check. A payload path is required
  * when one local rule names that path. A leftover local rule is not emitted
@@ -26,6 +27,7 @@ import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.
 import {
   auditImports,
   contractMembers,
+  contractNullablePaths,
   emitAccess,
   emitAuthority,
   emitDomain,
@@ -39,7 +41,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-27-implement-handler-v5';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-28-implement-handler-v7';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -227,7 +229,7 @@ export async function emitBehavior(
   output: string,
   read: StructureRead,
 ): Promise<EmitResult | EmitFailure> {
-  if (id === 'implement.domainEntity') return done(emitDomain(definition, output));
+  if (id === 'implement.domainEntity') return behaviorDomain(definition, output, read);
   if (id === 'implement.authorityMap') return done(emitAuthority(definition, output));
   if (id === 'implement.accessScope') return behaviorAccess(definition, output);
   if (id === 'implement.repositoryPort') return memoryPort(definition, output, read);
@@ -283,8 +285,11 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   if (operation === 'create' && lifecycle.field && !lifecycle.initial) {
     return { code: 'LIFECYCLE_INITIAL', detail: `${definition.artifactId}: the lifecycle has no single state that no transition reaches.` };
   }
+  const sources = operation === 'create' ? await createSources(definition, entity, inputs, lifecycle, read) : { missing: '', containers: new Set<string>() };
+  if ('code' in sources) return sources;
+  if (sources.missing) return { code: 'CREATE_SOURCE_MISSING', detail: `${definition.artifactId}: ${sources.missing} is required by the entity and has no input nor server assignment.` };
   const body = operation === 'create'
-    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, lifecycle)
+    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle)
     : operation === 'update'
       ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition)
       : transition
@@ -761,6 +766,12 @@ function argOriginOk(arg: MdmArg): boolean {
   return false;
 }
 
+/**
+ * The stored record holds the server assignments (identity, version, initial state) and the
+ * input leaves the contract permits and the caller sent. An absent optional member stays absent;
+ * a present leaf (0, false, '', null) is copied as sent. `null` reaches here only where the contract
+ * declares it (the controller refuses it elsewhere); a nullable object sent as null is stored as null.
+ */
 function createBody(
   entity: M1Definition,
   entityName: string,
@@ -768,10 +779,12 @@ function createBody(
   keys: readonly (readonly string[])[],
   ruleId: string,
   inputs: ReadonlySet<string>,
+  declared: { required: ReadonlySet<string>; nullable: ReadonlySet<string> },
+  containers: ReadonlySet<string>,
   lifecycle: { field: string; initial: string },
 ): string {
   const tree = fieldTree(entity);
-  const fields = [...tree.children].map(([name, node]) => `    ${name}: ${literalFor(node, inputs, lifecycle)},`);
+  const fields = createMembers(tree, { inputs, ...declared, containers, assigned: serverAssigned(entity, lifecycle) }, '    ');
   const checks = keys.map(columns => [
     '  {',
     `    const taken = await ports.${binding}.list({ ${columns.map(column => `${column}: body.${column}`).join(', ')} });`,
@@ -787,6 +800,138 @@ function createBody(
     ...checks,
     `  return ports.${binding}.create(record);`,
   ].join('\n');
+}
+
+/** Server-assigned values of a new record: the identity, the version and the initial lifecycle state. */
+function serverAssigned(entity: M1Definition, lifecycle: { field: string; initial: string }): Map<string, string> {
+  const assigned = new Map<string, string>();
+  const identity = identityField(entity);
+  if (identity) assigned.set(identity, 'ctx.idGenerator.newId()');
+  const version = versionField(entity, identity);
+  if (version) assigned.set(version, '1');
+  // The server assigns the initial lifecycle state; a client value is never read for it.
+  if (lifecycle.field) assigned.set(lifecycle.field, `'${lifecycle.initial}'`);
+  return assigned;
+}
+
+interface CreateSources {
+  /** Contract input paths. */
+  inputs: ReadonlySet<string>;
+  /** Contract input paths without `?`. */
+  required: ReadonlySet<string>;
+  /** Contract input paths whose type admits `null`; the controller refuses `null` anywhere else. */
+  nullable: ReadonlySet<string>;
+  /** Entity objects the l4 requires under required parents: present even when nothing inside is sent. */
+  containers: ReadonlySet<string>;
+  assigned: ReadonlyMap<string, string>;
+}
+
+/** Object members for the children of `node`. A member with no input, assignment or required container is not written. */
+function createMembers(node: FieldNode, sources: CreateSources, indent: string): string[] {
+  const lines: string[] = [];
+  for (const [name, child] of node.children) {
+    const value = sources.assigned.get(child.path);
+    if (value) {
+      lines.push(`${indent}${name}: ${value},`);
+      continue;
+    }
+    const bound = sources.inputs.has(child.path);
+    const boundBelow = [...sources.inputs].some(path => path.startsWith(`${child.path}.`));
+    const container = sources.containers.has(child.path);
+    if (!bound && !boundBelow && !container) continue;
+    const access = `input.${child.path}`;
+    const members = `{\n${createMembers(child, sources, `${indent}  `).join('\n')}\n${indent}}`;
+    const inner = child.children.size > 0 && (boundBelow || !bound)
+      ? bound && sources.nullable.has(child.path) ? `${access} === null ? null : ${members}` : members
+      : access;
+    lines.push((bound && sources.required.has(child.path)) || (!bound && container)
+      ? `${indent}${name}: ${inner},`
+      : `${indent}...(${access} !== undefined ? { ${name}: ${inner} } : {}),`);
+  }
+  return lines;
+}
+
+/**
+ * What the depended l4 entity requires of a new record. `missing` is the first required leaf (under
+ * required parents) the create neither reads nor assigns; `containers` are the required objects.
+ */
+async function createSources(
+  definition: M1Definition,
+  entity: M1Definition,
+  inputs: ReadonlySet<string>,
+  lifecycle: { field: string; initial: string },
+  read: StructureRead,
+): Promise<{ missing: string; containers: Set<string> } | EmitFailure> {
+  const containers = new Set<string>();
+  const ref = definition.dependencies.find(dep => dep.includes('/ontology/') && !dep.endsWith('/mdm.defs.ts'));
+  if (!ref) return { missing: '', containers };
+  const source = await read(ref);
+  if (source === null) return { code: 'CONTEXT_UNREAD', detail: `${ref} could not be read.` };
+  const requiredFields = ontologyRequired(source);
+  if (!requiredFields) return { code: 'ONTOLOGY_UNREAD', detail: `${ref} has no readable record fields.` };
+  const tree = fieldTree(entity);
+  const assigned = serverAssigned(entity, lifecycle);
+  const wholeCopy = (path: string) => inputs.has(path) && ![...inputs].some(other => other.startsWith(`${path}.`));
+  let missing = '';
+  for (const path of [...requiredFields].sort()) {
+    const node = nodeAt(tree, path);
+    const parts = path.split('.');
+    const ancestors = parts.slice(0, -1).map((_part, index) => parts.slice(0, index + 1).join('.'));
+    if (!node || ancestors.some(ancestor => !requiredFields.has(ancestor))) continue;
+    if (node.children.size > 0) {
+      containers.add(path);
+      continue;
+    }
+    if (missing || assigned.has(path) || inputs.has(path) || ancestors.some(wholeCopy)) continue;
+    missing = path;
+  }
+  return { missing, containers };
+}
+
+/** Field paths the canonical l4 entity marks `required`, walking nested `fields`; null when unreadable. */
+function ontologyRequired(source: string): Set<string> | null {
+  const match = /=\s*(\{[\s\S]*\})\s*as const/.exec(source);
+  if (!match) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(match[1]);
+  } catch (error) {
+    console.warn(`ontology record is not JSON: ${String(error)}`);
+    return null;
+  }
+  const record = isRecord(value) && isRecord(value.record) ? value.record : null;
+  if (!record || !isRecord(record.fields)) return null;
+  const paths = new Set<string>();
+  const walk = (fields: Record<string, unknown>, prefix: string): void => {
+    for (const [name, meta] of Object.entries(fields)) {
+      if (!isRecord(meta)) continue;
+      const path = prefix ? `${prefix}.${name}` : name;
+      if (meta.required === true) paths.add(path);
+      if (isRecord(meta.fields)) walk(meta.fields, path);
+    }
+  };
+  walk(record.fields, '');
+  return paths;
+}
+
+/**
+ * A module-database entity types as optional every field its l4 entity does not require and the
+ * server does not assign on create, so a stored record may lack it. Without an l4 entity nothing changes.
+ */
+async function behaviorDomain(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
+  if (text(definition.data.storageTarget) !== 'moduleDatabase') return done(emitDomain(definition, output));
+  const entityId = text(definition.data.entityId);
+  const project = output.split('/')[0] ?? '';
+  const ref = definition.dependencies.find(dep => dep.includes('/ontology/') && !dep.endsWith('/mdm.defs.ts'))
+    ?? `${project}/l4/${definition.moduleName}/ontology/${entityId}.defs.ts`;
+  const source = await read(ref);
+  if (source === null) return done(emitDomain(definition, output));
+  const requiredFields = ontologyRequired(source);
+  if (!requiredFields) return { code: 'ONTOLOGY_UNREAD', detail: `${ref} has no readable record fields.` };
+  const assigned = serverAssigned(definition, lifecycleStart(definition));
+  const paths = (Array.isArray(definition.data.fields) ? definition.data.fields.filter(isRecord) : []).map(field => text(field.name)).filter(Boolean);
+  const optional = new Set(paths.filter(path => !requiredFields.has(path) && !assigned.has(path)));
+  return done(emitDomain(definition, output, optional));
 }
 
 function updateBody(
@@ -1183,7 +1328,7 @@ async function resolveContract(
   fn: { contractRefs: { route: string; symbol: string }[] },
   read: StructureRead,
   route = '',
-): Promise<{ allowedInputPaths: string[] } | EmitFailure> {
+): Promise<{ allowedInputPaths: string[]; requiredInputPaths: string[]; nullableInputPaths: string[] } | EmitFailure> {
   const outputRef = fn.contractRefs.find(item => item.symbol.endsWith('Output') && (!route || item.route === route))
     ?? fn.contractRefs.find(item => item.symbol.endsWith('Output'));
   if (!outputRef) return { code: 'CONTRACT_UNREAD', detail: `${definition.artifactId} has no output contract.` };
@@ -1205,7 +1350,8 @@ async function resolveContract(
     || !source.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${inputType}.` };
   const members = readContractMembers(source, inputType);
   if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
-  return { allowedInputPaths: members.allowedPaths };
+  const declared = contractMembers(source, inputType);
+  return { allowedInputPaths: members.allowedPaths, requiredInputPaths: declared?.requiredFields ?? [], nullableInputPaths: contractNullablePaths(source, inputType) ?? [] };
 }
 
 function readContractMembers(source: string, name: string): { allowedPaths: string[] } | null {
@@ -1247,23 +1393,6 @@ function firstFunction(definition: M1Definition): { name: string; contractRefs: 
     symbol: text(item.symbol),
   })).filter(item => item.route && item.symbol) : [];
   return { name, contractRefs };
-}
-
-function literalFor(node: FieldNode, inputs: ReadonlySet<string>, lifecycle: { field: string; initial: string }): string {
-  // The server assigns the initial lifecycle state; a client value is never read for it.
-  if (lifecycle.field && node.path === lifecycle.field) return `'${lifecycle.initial}'`;
-  const hasBoundChildren = [...inputs].some(path => path.startsWith(`${node.path}.`));
-  if (node.children.size > 0 && (hasBoundChildren || !inputs.has(node.path))) {
-    const parts = [...node.children].map(([name, child]) => `${name}: ${literalFor(child, inputs, lifecycle)}`);
-    return `{ ${parts.join(', ')} }`;
-  }
-  // An optional parent may be absent from the input.
-  if (inputs.has(node.path)) return `body.${node.path.split('.').join('?.')}`;
-  if (node.derived && node.name === 'id') return 'ctx.idGenerator.newId()';
-  if (node.derived && (node.name === 'version' || node.type === 'integer' || node.type === 'number')) return '1';
-  if (node.type === 'integer' || node.type === 'number') return '0';
-  if (node.type === 'boolean') return 'false';
-  return "''";
 }
 
 async function loadEntity(definition: M1Definition, read: StructureRead): Promise<M1Definition | EmitFailure> {

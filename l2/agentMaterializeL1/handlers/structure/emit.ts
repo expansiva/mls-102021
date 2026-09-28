@@ -26,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-27-structure-handler-v6';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-28-structure-handler-v7';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -52,13 +52,15 @@ interface FieldRow {
 interface Tree {
   ts: string;
   children: Map<string, Tree>;
+  optional?: boolean;
 }
 
-export function emitDomain(definition: M1Definition, output: string): EmitResult {
+/** `optional` names the field paths a stored record may lack; without it every field is required. */
+export function emitDomain(definition: M1Definition, output: string, optional: ReadonlySet<string> = new Set()): EmitResult {
   const name = token(definition.data.entityId, definition.artifactId);
   const fields = fieldRows(definition.data.fields);
   const states = lifecycleStates(definition.data.lifecycle);
-  const body = renderType(nest(fields, states), '');
+  const body = renderType(nest(fields, states, optional), '');
   return { runsStub: false, imports: [], source: `${header(output)}\nexport interface ${name} ${body}\n` };
 }
 
@@ -304,6 +306,8 @@ interface ResolvedContract {
   requiredFields: string[];
   allowedInputFields: string[];
   allowedInputPaths: string[];
+  /** Input paths whose declared type admits `null`. */
+  nullableInputPaths: string[];
   outputFields: string[];
   outputPaths: string[];
 }
@@ -327,6 +331,7 @@ interface ResolvedRoute {
   requiredFields: string[];
   allowedInputFields: string[];
   allowedInputPaths: string[];
+  nullableInputPaths: string[];
   outputFields: string[];
   disclosedPaths: string[];
   ports: PortBinding[];
@@ -372,6 +377,7 @@ async function resolveContract(definition: M1Definition, fn: { contractRefs: { r
     requiredFields: members.requiredFields,
     allowedInputFields: members.allowedFields,
     allowedInputPaths: members.allowedPaths,
+    nullableInputPaths: contractNullablePaths(text, inputType) ?? [],
     outputFields: projection?.outputFields ?? [],
     outputPaths,
   };
@@ -448,6 +454,7 @@ async function resolveRoute(
     requiredFields: contract.requiredFields,
     allowedInputFields: contract.allowedInputFields,
     allowedInputPaths: contract.allowedInputPaths,
+    nullableInputPaths: contract.nullableInputPaths,
     outputFields: projection.outputFields,
     disclosedPaths: disclosedOutputPaths(contract, projection.outputFields, routeGrants, entityId),
     ports,
@@ -458,12 +465,13 @@ function renderHandler(route: ResolvedRoute): string {
   const grants = route.grantIds.map(item => `'${item}'`).join(', ');
   const required = route.requiredFields.map(item => `'${item}'`).join(', ');
   const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
+  const nullable = route.nullableInputPaths.map(item => `'${item}'`).join(', ');
   const projected = route.disclosedPaths.map(item => `'${item}'`).join(', ');
   return [
     `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse> {`,
     `  const denied = authorize(input.request, [${grants}]);`,
     '  if (denied) throw denied;',
-    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}]);`,
+    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}], [${nullable}]);`,
     '  if (invalid) throw invalid;',
     `  const data = await ${route.usecaseId}(${argsOf(route)});`,
     `  return { ok: true, data: projectOutput(data, [${projected}]), error: null };`,
@@ -526,7 +534,8 @@ function authorizeSource(mapped: boolean): string {
 
 function validateSource(): string {
   return [
-    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[]): AppError | null {',
+    '// `null` is accepted only where the contract type declares it; elsewhere it is refused, never read as absent.',
+    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = []): AppError | null {',
     '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? params as Record<string, unknown> : null;',
     `  if (!body) return new AppError('${VALIDATION_ERROR}', 'Request body must be an object.', 400);`,
     '  const invalidPath = (value: unknown, prefix: string): string => {',
@@ -534,12 +543,13 @@ function validateSource(): string {
     '    if (!value || typeof value !== \'object\') return \'\';',
     '    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {',
     "      const path = prefix ? prefix + '.' + key : key;",
-    '      if (!allowed.includes(path)) return path;',
+    "      if (!allowed.includes(path)) return path + ' is not permitted.';",
+    "      if (child === null && !nullable.includes(path)) return path + ' must not be null.';",
     '      const invalid = invalidPath(child, path); if (invalid) return invalid;',
     '    }',
     '    return \'\';',
     '  };',
-    `  const invalid = invalidPath(body, ''); if (invalid) return new AppError('${VALIDATION_ERROR}', invalid + ' is not permitted.', 400);`,
+    `  const invalid = invalidPath(body, ''); if (invalid) return new AppError('${VALIDATION_ERROR}', invalid, 400);`,
     '  for (const field of fields) {',
     '    // A required member of an absent optional parent is not required; a required parent has its own entry.',
     '    const parts = field.split(\'.\');',
@@ -550,7 +560,7 @@ function validateSource(): string {
     '      value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
     '    }',
     '    if (parentAbsent) continue;',
-    '    if (value === undefined || value === null || value === \'\') {',
+    '    if (value === undefined || (value === null && !nullable.includes(field)) || value === \'\') {',
     `      return new AppError('${VALIDATION_ERROR}', \`\${field} is required.\`, 400);`,
     '    }',
     '  }',
@@ -715,6 +725,18 @@ function recordHops(grant: Record<string, unknown>): Array<Record<string, unknow
 }
 
 export function contractMembers(source: string, name: string): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[] } | null {
+  const members = readMembers(source, name);
+  if (!members) return null;
+  const { requiredFields, allowedFields, allowedPaths } = members;
+  return { requiredFields, allowedFields, allowedPaths };
+}
+
+/** Member paths of `name` whose declared type admits `null`. */
+export function contractNullablePaths(source: string, name: string): string[] | null {
+  return readMembers(source, name)?.nullablePaths ?? null;
+}
+
+function readMembers(source: string, name: string): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[]; nullablePaths: string[] } | null {
   const tokenText = `export interface ${name} `;
   const at = source.indexOf(tokenText);
   if (at < 0) return null;
@@ -738,6 +760,7 @@ export function contractMembers(source: string, name: string): { requiredFields:
   const requiredFields: string[] = [];
   const allowedFields: string[] = [];
   const allowedPaths: string[] = [];
+  const nullablePaths: string[] = [];
   const parents: string[] = [];
   depth = 1;
   const lines = body.split('\n');
@@ -748,14 +771,20 @@ export function contractMembers(source: string, name: string): { requiredFields:
     if (match && depth >= 1) {
       if (depth === 1) allowedFields.push(match[1]);
       allowedPaths.push([...parents, match[1]].join('.'));
-      if (match[2] !== '?') requiredFields.push([...parents, match[1]].join('.'));
+      const path = [...parents, match[1]].join('.');
+      if (match[2] !== '?') requiredFields.push(path);
+      // `x: T | null` on one line, or `x: null | {` opening an object.
+      const declared = line.slice(line.indexOf(':') + 1);
+      if (/\bnull\b/.test(opens > closes ? declared.slice(0, declared.indexOf('{')) : declared)) nullablePaths.push(path);
       if (opens > closes) parents.push(match[1]);
     } else if (closes > opens) {
+      // `} | null;` closes an object whose type admits null.
+      if (/\}\s*\|\s*null\b/.test(line) && parents.length > 0) nullablePaths.push(parents.join('.'));
       for (let count = 0; count < closes - opens; count += 1) parents.pop();
     }
     depth += opens - closes;
   }
-  return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)] };
+  return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)], nullablePaths: [...new Set(nullablePaths)] };
 }
 
 export function requiredMembers(source: string, name: string): string[] | null {
@@ -822,7 +851,7 @@ function lifecycleStates(value: unknown): string[] {
   return value.states.flatMap(item => isRecord(item) && typeof item.state === 'string' && item.state ? [item.state] : []);
 }
 
-function nest(fields: readonly FieldRow[], states: readonly string[]): Tree {
+function nest(fields: readonly FieldRow[], states: readonly string[], optional: ReadonlySet<string> = new Set()): Tree {
   const root: Tree = { ts: 'Record<string, never>', children: new Map() };
   for (const field of fields) {
     const parts = field.name.split('.').filter(Boolean);
@@ -834,6 +863,7 @@ function nest(fields: readonly FieldRow[], states: readonly string[]): Tree {
         node.children.set(part, child);
       }
       if (index === parts.length - 1) child.ts = fieldTs(field.type, part, states);
+      if (optional.has(parts.slice(0, index + 1).join('.'))) child.optional = true;
       node = child;
     });
   }
@@ -853,7 +883,7 @@ function fieldTs(type: string, name: string, states: readonly string[]): string 
 
 function renderType(node: Tree, indent: string): string {
   if (node.children.size === 0) return node.ts;
-  const lines = [...node.children].map(([key, child]) => `${indent}  ${key}: ${renderType(child, `${indent}  `)};`);
+  const lines = [...node.children].map(([key, child]) => `${indent}  ${key}${child.optional ? '?' : ''}: ${renderType(child, `${indent}  `)};`);
   return `{\n${lines.join('\n')}\n${indent}}`;
 }
 
