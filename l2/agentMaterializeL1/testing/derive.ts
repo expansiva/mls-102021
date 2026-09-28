@@ -14,8 +14,6 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { grantsOf, requiredMembers } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
-import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import {
   M1_CATALOG_SCHEMA_V11,
   M1_EXISTING_RECORD,
@@ -27,8 +25,14 @@ import {
   type M1ScenarioCase,
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import {
+  M1_OBLIGATION_BLOCKER,
+  M1_OBLIGATION_OWNER,
+  routeObligations,
+  type M1Obligation,
+} from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 
-export const M1_CATALOG_RECIPE = '2026-09-26-m1-catalog-derive-v3' as const;
+export const M1_CATALOG_RECIPE = '2026-09-27-m1-catalog-derive-v4' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',
@@ -50,6 +54,8 @@ export interface CatalogGap {
 export interface DerivedCatalog {
   catalog: M1ScenarioCatalog;
   gaps: CatalogGap[];
+  /** Authenticated route cases, declared with their blocker. Not in the catalog and not executed. */
+  obligations: M1Obligation[];
   recipeVersion: typeof M1_CATALOG_RECIPE;
 }
 
@@ -87,6 +93,7 @@ export function deriveCatalog(
     defs.set(unit.defPath, parsed);
   }
   const gaps: CatalogGap[] = [];
+  const obligations: M1Obligation[] = [];
   const scenarios: M1Scenario[] = [];
   const ordered = [...defs.entries()].sort((left, right) => left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0);
   for (const [defPath, definition] of ordered) {
@@ -104,7 +111,7 @@ export function deriveCatalog(
     if (!handler) continue;
     const productionFile = outputPathFromDefPath(defPath);
     if (!productionFile) continue;
-    const cases = casesFor(definition, defPath, defs, texts, gaps);
+    const cases = casesFor(definition, defPath, defs, texts, gaps, obligations);
     if (cases.length === 0) continue;
     cases.sort((left, right) => left.caseId < right.caseId ? -1 : left.caseId > right.caseId ? 1 : 0);
     scenarios.push({
@@ -123,6 +130,7 @@ export function deriveCatalog(
   return {
     catalog: { schemaVersion: M1_CATALOG_SCHEMA_V11, moduleName, store: 'memory', scenarios },
     gaps,
+    obligations: obligations.sort((left, right) => left.caseId < right.caseId ? -1 : left.caseId > right.caseId ? 1 : 0),
     recipeVersion: M1_CATALOG_RECIPE,
   };
 }
@@ -133,6 +141,7 @@ function casesFor(
   defs: ReadonlyMap<string, M1Definition>,
   texts: Readonly<Record<string, string>>,
   gaps: CatalogGap[],
+  obligations: M1Obligation[],
 ): M1ScenarioCase[] {
   const cases: M1ScenarioCase[] = [];
   if (STRUCTURE_COMPILE.has(definition.artifactType)) {
@@ -143,7 +152,7 @@ function casesFor(
     noteRuleGaps(definition, defPath, gaps);
   }
   if (definition.artifactType === 'httpController') {
-    cases.push(...routeCases(definition, defPath, defs, texts, gaps));
+    cases.push(...routeCases(definition, defPath, defs, texts, gaps, obligations));
   }
   return cases;
 }
@@ -257,15 +266,15 @@ function routeCases(
   defs: ReadonlyMap<string, M1Definition>,
   texts: Readonly<Record<string, string>>,
   gaps: CatalogGap[],
+  obligations: M1Obligation[],
 ): M1ScenarioCase[] {
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers.filter(isRecord) : [];
-  const scope = [...defs.values()].find(item => item.artifactType === 'accessScope' && item.moduleName === definition.moduleName);
-  const grants = scope ? grantsOf(scope.data) : [];
   const cases: M1ScenarioCase[] = [];
   const routes = handlers
     .map(item => ({
       route: typeof item.route === 'string' ? item.route : '',
       usecaseId: typeof item.usecaseId === 'string' ? item.usecaseId : '',
+      kind: typeof item.kind === 'string' ? item.kind : '',
       grantIds: Array.isArray(item.grantIds) ? item.grantIds.filter((id): id is string => typeof id === 'string') : [],
     }))
     .filter(item => item.route)
@@ -286,90 +295,22 @@ function routeCases(
       runner: 'route',
       caller: { source: 'http', authorities: [] },
     }));
-    const field = requiredField(route.usecaseId, route.route, defs, texts);
-    if (field === null) {
+    const derived = routeObligations({ ...route, controller: definition, defPath }, defs, texts);
+    if ('gap' in derived) {
+      gaps.push({ artifactId: definition.artifactId, artifactType: 'httpController', origin: `${defPath}#${route.route}`, reason: derived.gap });
+      continue;
+    }
+    for (const item of derived.obligations) {
+      obligations.push(item);
       gaps.push({
         artifactId: definition.artifactId,
         artifactType: 'httpController',
         origin: `${defPath}#${route.route}`,
-        reason: 'contract required field was not read',
+        reason: `${M1_OBLIGATION_BLOCKER} (${M1_OBLIGATION_OWNER}): ${item.caseId} is declared, not executed`,
       });
-      continue;
     }
-    if (!field) continue; // A valid input with no required fields has no omitted-field negative case.
-    const open = route.grantIds.every(id => {
-      const grant = grants.find(item => item.grantId === id);
-      return grant && !('code' in resolveGrant(grants, id));
-    });
-    if (!open || route.grantIds.length === 0) {
-      gaps.push({
-        artifactId: definition.artifactId,
-        artifactType: 'httpController',
-        origin: `${defPath}#${route.route}`,
-        reason: 'grant is not resolved, so a contract case would fail for another cause',
-      });
-      continue;
-    }
-    const actor = grants.find(item => item.grantId === route.grantIds[0])?.actorRef || '';
-    cases.push(base(definition, {
-      caseId: `${definition.artifactId}.contract.${tail}.${field}`,
-      gate: 'contract',
-      source: `${defPath}#${route.route}`,
-      expectation: `A body without ${field} is VALIDATION_ERROR before the usecase runs.`,
-      preconditions: [`${field} omitted`],
-      actorId: actor,
-      routine: route.route,
-      mutating: false,
-      expect: { ok: false, status: 400, errorCode: 'VALIDATION_ERROR', ruleId: null, forbiddenFields: [], isolatedActorField: null },
-      expectedFailure: null,
-      runner: 'route',
-      caller: { source: 'http', authorities: authoritiesOf(route.grantIds, grants, definition.moduleName) },
-    }));
   }
   return cases;
-}
-
-function requiredField(
-  usecaseId: string,
-  route: string,
-  defs: ReadonlyMap<string, M1Definition>,
-  texts: Readonly<Record<string, string>>,
-): string | null {
-  const usecase = [...defs.values()].find(item => item.artifactType === 'usecase' && item.artifactId === usecaseId);
-  if (!usecase) return null;
-  const projections = Array.isArray(usecase.data.routeProjections) ? usecase.data.routeProjections.filter(isRecord) : [];
-  const projection = projections.find(item => item.route === route);
-  const contractPath = typeof projection?.contractPath === 'string' ? projection.contractPath : '';
-  if (!contractPath) return null;
-  const text = textFor(contractPath, usecase.dependencies, texts);
-  if (!text) return null;
-  const input = inputName(route, text);
-  if (!input) return null;
-  const required = requiredMembers(text, input);
-  return required === null ? null : required[0] ?? '';
-}
-
-function textFor(contractPath: string, dependencies: readonly string[], texts: Readonly<Record<string, string>>): string {
-  const ref = dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`)) || contractPath;
-  return texts[ref] || texts[contractPath] || '';
-}
-
-function inputName(routine: string, source: string): string {
-  const tail = routine.split('.').pop() ?? '';
-  const stem = tail.replace(/^(cmd|qry)/, '');
-  const name = stem.charAt(0).toUpperCase() + stem.slice(1);
-  const candidate = name.endsWith('Input') ? name : `${name}Input`;
-  if (source.includes(`export interface ${candidate} `)) return candidate;
-  return '';
-}
-
-/** Actor authorities of the route grants. The case id is not a source. */
-function authoritiesOf(grantIds: readonly string[], grants: ReturnType<typeof grantsOf>, moduleName: string): string[] {
-  const values = grantIds.flatMap(grantId => {
-    const grant = grants.find(item => item.grantId === grantId);
-    return grant?.actorRef ? [`${moduleName}:${grant.actorRef}`] : [];
-  });
-  return [...new Set(values)].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

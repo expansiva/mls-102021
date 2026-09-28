@@ -1,0 +1,277 @@
+/// <mls fileReference="_102021_/l2/agentMaterializeL1/testing/obligations.ts" enhancement="_blank"/>
+
+/**
+ * Authenticated route cases (m1_27). The oracle is read from the L2 contract of the
+ * route, the access grants and the authority map; never from the emitted handler. A
+ * case with authorities needs a concrete actor of the fixture (m1_28), so it is declared
+ * here with its blocker. It is not a catalog case and it is never reported as executed.
+ * A grant proves behaviour; it is not a rule id (d1_26 r2, m1_10), so `ruleId` stays null.
+ */
+
+import { isRecord, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
+import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
+import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+
+export const M1_OBLIGATION_BLOCKER = 'ACTOR_FIXTURE_PENDING' as const;
+export const M1_OBLIGATION_OWNER = 'm1_28' as const;
+
+export type M1ObligationKind = 'contract' | 'minimalInput' | 'noIdentity' | 'own' | 'other' | 'disclosure';
+/**
+ * Actor the fixture binds: `member` holds the role, `owner` owns the addressed rows,
+ * `other` holds the same role and owns none of them, `none` has the authority and no identity.
+ */
+export type M1ObligationIdentity = 'member' | 'owner' | 'other' | 'none';
+
+export interface M1ObligationExpect {
+  ok: boolean;
+  status: number;
+  errorCode: string | null;
+  ruleId: null;
+  /** Contract leaves no route grant discloses. */
+  forbiddenPaths: string[];
+  /** Contract paths every route grant discloses. A returned leaf outside them is a leak. Empty: not checked. */
+  allowedPaths: string[];
+  /** Every returned row carries the bound actor id in this field. */
+  isolatedActorField: string | null;
+}
+
+export interface M1Obligation {
+  caseId: string;
+  kind: M1ObligationKind;
+  routine: string;
+  grantIds: string[];
+  actorRef: string;
+  identity: M1ObligationIdentity;
+  caller: M1CaseCaller;
+  /** Contract input members. The body holds the required ones, minus `omitted`. */
+  input: { required: string[]; optional: string[]; omitted: string[] };
+  mutating: boolean;
+  expect: M1ObligationExpect;
+  /** Refs the oracle was read from. A change in any of them invalidates the case. */
+  sources: string[];
+  blocker: typeof M1_OBLIGATION_BLOCKER;
+  owner: typeof M1_OBLIGATION_OWNER;
+}
+
+export interface M1ObligationObservation {
+  ok: boolean;
+  status: number;
+  errorCode: string | null;
+  data: unknown;
+  /** Identity the runner bound for this case; '' for `none`. */
+  actorId: string;
+}
+
+export interface RouteRef {
+  controller: M1Definition;
+  defPath: string;
+  route: string;
+  kind: string;
+  usecaseId: string;
+  grantIds: string[];
+}
+
+export type RouteObligations = { obligations: M1Obligation[] } | { gap: string };
+
+export function routeObligations(
+  ref: RouteRef,
+  defs: ReadonlyMap<string, M1Definition>,
+  texts: Readonly<Record<string, string>>,
+): RouteObligations {
+  const found = [...defs.entries()].find(([, item]) => item.artifactType === 'usecase' && item.artifactId === ref.usecaseId);
+  if (!found) return { gap: 'contract required field was not read' };
+  const [usecasePath, usecase] = found;
+  const contract = contractOf(usecase, ref.route, texts);
+  if (!contract) return { gap: 'contract required field was not read' };
+  const scopeEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'accessScope' && item.moduleName === ref.controller.moduleName);
+  const rows = scopeEntry && Array.isArray(scopeEntry[1].data.grants) ? scopeEntry[1].data.grants.filter(isRecord) : [];
+  const grants = scopeEntry ? grantsOf(scopeEntry[1].data) : [];
+  const resolved = ref.grantIds.every(id => !('code' in resolveGrant(grants, id)));
+  if (!resolved || ref.grantIds.length === 0) return { gap: 'grant is not resolved, so a contract case would fail for another cause' };
+  const authorityEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'authorityMap' && item.moduleName === ref.controller.moduleName);
+  if (!authorityEntry) return { gap: 'AUTHORITY_UNREAD: no authority map, so every authenticated case is refused' };
+  const entries = Array.isArray(authorityEntry[1].data.entries) ? authorityEntry[1].data.entries.filter(isRecord) : [];
+  const actorRefs = ref.grantIds.map(id => String(entries.find(entry => entry.grantId === id)?.actorRef ?? ''));
+  if (actorRefs.some(actor => !actor)) return { gap: 'AUTHORITY_UNMAPPED: a route grant has no actor in the authority map' };
+  const ownFields = [...new Set(ref.grantIds.flatMap(id => {
+    const grant = grants.find(item => item.grantId === id);
+    return grant && grant.scopeMode === 'own' && grant.recordField ? [grant.recordField] : [];
+  }))];
+  if (ownFields.length > 1) return { gap: 'own grants of the route name different record fields' };
+  const ownField = ownFields[0] ?? '';
+  const entityId = typeof usecase.data.entityId === 'string' ? usecase.data.entityId : '';
+  const routeGrants = ref.grantIds.map(id => rows.find(row => row.grantId === id) ?? {});
+  const disclosed = contract.outputPaths ? disclosure(contract.outputPaths, routeGrants, entityId) : null;
+  const moduleName = ref.controller.moduleName;
+  const caller: M1CaseCaller = { source: 'http', authorities: sorted([...new Set(actorRefs.map(actor => `${moduleName}:${actor}`))]) };
+  const tail = ref.route.split('.').pop() || ref.route;
+  const optional = contract.allowedPaths.filter(path => !contract.required.includes(path));
+  const operation = typeof usecase.data.operation === 'string' ? usecase.data.operation : '';
+  const command = ref.kind === 'command';
+  const positive: M1ObligationIdentity = ownField ? 'owner' : 'member';
+  const sources = sorted([`${ref.defPath}#${ref.route}`, usecasePath, contract.ref, ...(scopeEntry ? [scopeEntry[0]] : []), authorityEntry[0]]);
+  const make = (
+    kind: M1ObligationKind,
+    caseId: string,
+    identity: M1ObligationIdentity,
+    expect: Partial<M1ObligationExpect> & Pick<M1ObligationExpect, 'ok' | 'status' | 'errorCode'>,
+    omitted: string[] = [],
+    mutating = false,
+  ): M1Obligation => ({
+    caseId: `${ref.controller.artifactId}.${caseId}`,
+    kind,
+    routine: ref.route,
+    grantIds: [...ref.grantIds],
+    actorRef: actorRefs[0] ?? '',
+    identity,
+    caller: { source: caller.source, authorities: [...caller.authorities] },
+    input: { required: [...contract.required], optional: [...optional], omitted },
+    mutating,
+    expect: { ruleId: null, forbiddenPaths: [], allowedPaths: [], isolatedActorField: null, ...expect },
+    sources: [...sources],
+    blocker: M1_OBLIGATION_BLOCKER,
+    owner: M1_OBLIGATION_OWNER,
+  });
+  const obligations: M1Obligation[] = [];
+  const field = contract.required[0];
+  if (field) {
+    obligations.push(make('contract', `contract.${tail}.${field}`, positive, { ok: false, status: 400, errorCode: 'VALIDATION_ERROR' }, [field]));
+  }
+  // An optional member made mandatory by the handler refuses this body.
+  if (optional.length > 0) obligations.push(make('minimalInput', `minimal.${tail}`, positive, { ok: true, status: 200, errorCode: null }, [], command));
+  if (ownField) {
+    obligations.push(make('noIdentity', `noIdentity.${tail}`, 'none', { ok: false, status: 403, errorCode: 'FORBIDDEN_ACTOR' }));
+    if (operation === 'list') {
+      obligations.push(make('own', `own.${tail}`, 'owner', { ok: true, status: 200, errorCode: null, isolatedActorField: ownField }));
+    }
+    // Another actor addressing a row of the owner: the own scope makes it a missing row.
+    if (hasSelector(usecase)) obligations.push(make('other', `other.${tail}`, 'other', { ok: false, status: 404, errorCode: 'NOT_FOUND' }, [], command));
+  }
+  if (disclosed) {
+    obligations.push(make('disclosure', `disclosure.${tail}`, positive, {
+      ok: true, status: 200, errorCode: null, forbiddenPaths: disclosed.forbidden, allowedPaths: disclosed.allowed,
+    }, [], command));
+  }
+  return { obligations };
+}
+
+interface RouteContract {
+  ref: string;
+  required: string[];
+  allowedPaths: string[];
+  outputPaths: string[] | null;
+}
+
+function contractOf(usecase: M1Definition, route: string, texts: Readonly<Record<string, string>>): RouteContract | null {
+  const projections = Array.isArray(usecase.data.routeProjections) ? usecase.data.routeProjections.filter(isRecord) : [];
+  const contractPath = String(projections.find(item => item.route === route)?.contractPath ?? '');
+  if (!contractPath) return null;
+  const ref = usecase.dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`)) || contractPath;
+  const text = texts[ref] || texts[contractPath] || '';
+  if (!text) return null;
+  const inputName = inputNameOf(route, text);
+  const input = inputName ? contractMembers(text, inputName) : null;
+  if (!input) return null;
+  const symbol = outputSymbol(usecase, route);
+  const alias = symbol ? new RegExp(`export type ${symbol}\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\[\\];`).exec(text) : null;
+  const output = symbol ? contractMembers(text, alias ? alias[1] : symbol) : null;
+  return { ref, required: input.requiredFields, allowedPaths: input.allowedPaths, outputPaths: output ? output.allowedPaths : null };
+}
+
+function inputNameOf(route: string, source: string): string {
+  const tail = route.split('.').pop() ?? '';
+  const stem = tail.replace(/^(cmd|qry)/, '');
+  const name = stem.charAt(0).toUpperCase() + stem.slice(1);
+  const candidate = name.endsWith('Input') ? name : `${name}Input`;
+  return source.includes(`export interface ${candidate} `) ? candidate : '';
+}
+
+function outputSymbol(usecase: M1Definition, route: string): string {
+  const functions = Array.isArray(usecase.data.functions) ? usecase.data.functions.filter(isRecord) : [];
+  for (const fn of functions) {
+    const refs = Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
+    const found = refs.find(item => item.route === route);
+    if (found && typeof found.symbol === 'string') return found.symbol;
+  }
+  return '';
+}
+
+function hasSelector(usecase: M1Definition): boolean {
+  const uses = Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [];
+  return uses.some(item => item.role === 'selector' && item.source === 'input');
+}
+
+/**
+ * Written apart from the controller emitter on purpose. `fullRecord` discloses every
+ * contract path; `fieldsOnly`/`summaryOnly` the `<entityId>.` allowed fields and what is
+ * under them; any other mode, or a grant that is not declared, discloses nothing.
+ */
+export function disclosure(outputPaths: readonly string[], grants: readonly Record<string, unknown>[], entityId: string): { allowed: string[]; forbidden: string[] } {
+  const discloses = (grant: Record<string, unknown>, path: string): boolean => {
+    const mode = String(grant.disclosure ?? '');
+    if (mode === 'fullRecord') return true;
+    if (mode !== 'fieldsOnly' && mode !== 'summaryOnly' || !entityId) return false;
+    const fields = Array.isArray(grant.allowedFields) ? grant.allowedFields.filter((item): item is string => typeof item === 'string') : [];
+    return fields.some(field => field.startsWith(`${entityId}.`) && (path === field.slice(entityId.length + 1) || path.startsWith(`${field.slice(entityId.length + 1)}.`)));
+  };
+  const allowed = outputPaths.filter(path => grants.length > 0 && grants.every(grant => discloses(grant, path)));
+  const leaves = outputPaths.filter(path => !outputPaths.some(other => other.startsWith(`${path}.`)));
+  return { allowed: sorted(allowed), forbidden: sorted(leaves.filter(path => !allowed.includes(path))) };
+}
+
+/** '' when the observation meets the obligation; otherwise the first difference. */
+export function obligationMiss(obligation: M1Obligation, observation: M1ObligationObservation): string {
+  const expect = obligation.expect;
+  if (observation.ok !== expect.ok || observation.status !== expect.status || observation.errorCode !== expect.errorCode) {
+    return `different outcome: expected ${expect.ok ? 'ok' : expect.errorCode} ${expect.status}, got ${observation.ok ? 'ok' : observation.errorCode} ${observation.status}`;
+  }
+  if (!observation.ok) return '';
+  for (const leaf of leafPaths(observation.data)) {
+    const forbidden = expect.forbiddenPaths.find(path => leaf === path || leaf.startsWith(`${path}.`) || path.startsWith(`${leaf}.`));
+    if (forbidden) return `forbidden path returned: ${forbidden}`;
+    if (expect.allowedPaths.length > 0 && !expect.allowedPaths.some(path => leaf === path || leaf.startsWith(`${path}.`))) {
+      return `undisclosed path returned: ${leaf}`;
+    }
+  }
+  const field = expect.isolatedActorField;
+  if (!field) return '';
+  const rows = Array.isArray(observation.data) ? observation.data : [observation.data];
+  if (!observation.actorId) return 'actor filter has no bound actor';
+  if (rows.length === 0) return 'actor filter had no rows';
+  const stray = rows.find(row => !isRecord(row) || row[field] !== observation.actorId);
+  return stray ? 'actor filter missed' : '';
+}
+
+function leafPaths(value: unknown, prefix = ''): string[] {
+  if (Array.isArray(value)) {
+    if (value.some(item => isRecord(item) || Array.isArray(item))) return [...new Set(value.flatMap(item => leafPaths(item, prefix)))];
+    return prefix ? [prefix] : [];
+  }
+  if (!isRecord(value)) return prefix ? [prefix] : [];
+  const keys = Object.keys(value);
+  return keys.flatMap(key => leafPaths(value[key], prefix ? `${prefix}.${key}` : key));
+}
+
+/** Content hash of every source ref; an unreadable ref is `absent` and invalidates its cases. */
+export async function obligationSourceHashes(obligations: readonly M1Obligation[], texts: Readonly<Record<string, string>>): Promise<Record<string, string>> {
+  const refs = sorted([...new Set(obligations.flatMap(item => item.sources.map(source => source.split('#')[0] ?? source)))]);
+  const hashes: Record<string, string> = {};
+  for (const ref of refs) hashes[ref] = texts[ref] === undefined ? 'absent' : await contentHash(texts[ref]);
+  return hashes;
+}
+
+/** Cases whose oracle read a source that changed or went missing. The others keep their proof. */
+export function staleObligations(obligations: readonly M1Obligation[], before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): string[] {
+  return obligations
+    .filter(item => item.sources.some(source => {
+      const ref = source.split('#')[0] ?? source;
+      return !before[ref] || before[ref] === 'absent' || before[ref] !== after[ref];
+    }))
+    .map(item => item.caseId);
+}
+
+function sorted(values: readonly string[]): string[] {
+  return [...values].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+}

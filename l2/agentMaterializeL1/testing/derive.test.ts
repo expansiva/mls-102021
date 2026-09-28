@@ -82,7 +82,8 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
   const moduleCases = cases.filter(item => item.runner === 'module');
   const routeCases = cases.filter(item => item.runner === 'route');
   assert.equal(moduleCases.length, 28);
-  assert.equal(routeCases.length, 15);
+  // m1_27: only the denials without authority stay executable; the authenticated cases are obligations.
+  assert.equal(routeCases.length, 10);
   assert.equal(derived.gaps.some(gap => gap.origin.includes('.qry') && gap.reason === 'contract required field was not read'), false);
   assert.equal(moduleCases.every(item => item.caller === undefined), true);
   const denied = routeCases.filter(item => item.gate === 'auth');
@@ -97,10 +98,18 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
       actorByGrant.set((grant as { grantId: string }).grantId, String((grant as { actorRef?: string }).actorRef ?? ''));
     }
   }
-  const positive = routeCases.filter(entry => entry.gate === 'contract');
+  assert.equal(cases.every(item => item.actorId === '' && (item.runner === 'module' || item.caller?.authorities.length === 0)), true);
+  assert.equal(cases.some(item => item.gate === 'contract'), false);
+  const positive = derived.obligations.filter(entry => entry.kind === 'contract');
   assert.equal(positive.length, 5);
+  assert.equal(derived.obligations.every(entry => entry.blocker === 'ACTOR_FIXTURE_PENDING' && entry.expect.ruleId === null), true);
+  assert.equal(derived.obligations.every(entry => derived.gaps.some(gap => gap.reason.includes(`${entry.caseId} is declared, not executed`))), true);
+  const kinds = new Map<string, number>();
+  for (const entry of derived.obligations) kinds.set(entry.kind, (kinds.get(entry.kind) ?? 0) + 1);
+  console.log(`m1_27 agendaClinica: catalog ${cases.length} (module ${moduleCases.length}, route denials ${denied.length}); obligations ${derived.obligations.length} ${JSON.stringify(Object.fromEntries(kinds))}`);
   for (const item of positive) {
     assert.equal(item.caller?.source, 'http');
+    assert.equal(item.identity === 'member' || item.identity === 'owner', true);
     const controller = derived.catalog.scenarios.find(scenario => item.caseId.startsWith(`${scenario.artifactId}.`));
     const unit = loaded.units.find(entry => entry.definition.artifactId === controller?.artifactId);
     const handlers = Array.isArray(unit?.definition.data.handlers) ? unit.definition.data.handlers : [];
