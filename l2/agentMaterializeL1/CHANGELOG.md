@@ -1,5 +1,12 @@
 # agentMaterializeL1
 
+## 2026-09-28
+
+- Fix: `emitPersistence.ts` emitted `UNIQUE_KEYS` with an inferred `as const` type, so a table
+  with no unique keys produced `readonly []` and `rejectDuplicate`'s `key.every(...)` failed
+  TS2339/TS7006 on generated `repositoryAdapter` files. `UNIQUE_KEYS` is now emitted with an
+  explicit `readonly (readonly string[])[]` annotation, valid for both the empty and non-empty case.
+
 ## 2026-09-28 (m1_31)
 
 - New `core/refs.ts`: ref parser and the ref policy shared by both hosts. `PLATFORM_PROJECTS`

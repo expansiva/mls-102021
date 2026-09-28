@@ -526,7 +526,7 @@ function renderAdapter(
     '',
     `const REPOSITORY = ${JSON.stringify(built.definition.repositoryName)};`,
     `const PRIMARY_KEY = ${JSON.stringify(built.definition.primaryKey)} as const;`,
-    `const UNIQUE_KEYS = ${JSON.stringify(uniqueKeys)} as const;`,
+    `const UNIQUE_KEYS: readonly (readonly string[])[] = ${JSON.stringify(uniqueKeys)};`,
     `const BINDINGS = ${JSON.stringify(built.bindings.map(binding => ({ field: binding.field, column: binding.column, placement: binding.placement })))} as const;`,
     `const JSON_COLUMN = ${JSON.stringify(JSON_COLUMN)};`,
     `const VERSION_FIELD = ${JSON.stringify(versionField)};`,

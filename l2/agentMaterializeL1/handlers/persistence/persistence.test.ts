@@ -308,6 +308,21 @@ void test('emitted persistence files compile', async () => {
   assert.equal(problems, '', problems);
 });
 
+void test('emitted persistence file with no unique keys compiles', async () => {
+  const noUniqueTable = tableDef({ uniqueKeys: [] });
+  const port = await runStructure(callFor(definitionFor('ConsultaRepository')));
+  const entity = await runStructure(callFor(definitionFor('Consulta')));
+  const table = await runPersistence(callFor(noUniqueTable));
+  const known = new Map<string, string>([[defPathOf('consulta'), defSource(defPathOf('consulta'), noUniqueTable)]]);
+  const adapter = await runPersistence(callFor(adapterDef(noUniqueTable), known));
+  const rows = [entity, port, table, adapter];
+  assert.deepEqual(rows.filter(item => item.failure).map(item => item.failure?.detail), []);
+  const adapterSource = sourceOf(adapter);
+  assert.match(adapterSource, /const UNIQUE_KEYS: readonly \(readonly string\[\]\)\[\] = \[\];/);
+  const problems = compile(rows.map(item => [outputOf(item), sourceOf(item)] as const).filter(([, source]) => source));
+  assert.equal(problems, '', problems);
+});
+
 function defSource(path: string, definition: M1Definition): string {
   return `/// <mls fileReference="${path}" enhancement="_blank"/>\n\nexport const definition = ${JSON.stringify(definition, null, 2)} as const;\n`;
 }
@@ -339,12 +354,13 @@ function defPathOf(artifactId: string): string {
   return found.defPath;
 }
 
-function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: string }): M1Definition {
+function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: string; uniqueKeys?: string[][] }): M1Definition {
   const entity = input?.entity ?? definitionFor('Consulta');
   const entityPath = [...FIXTURES.values()].find(item => item.definition.artifactId === entity.artifactId)?.defPath
     ?? '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts';
   const tableId = input?.tableId ?? 'consulta';
   const physical = input?.physical ?? 'agendaClinica_consulta';
+  const uniqueKeys = input?.uniqueKeys ?? [['professionalId', 'scheduledAt']];
   return {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'table',
@@ -357,18 +373,23 @@ function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: 
       entityId: entity.data.entityId,
       physicalName: physical,
       primaryKey: ['id'],
-      uniqueKeys: [['professionalId', 'scheduledAt']],
-      indexes: [
-        { name: `${physical}_professionalId_scheduledAt`, columns: ['professionalId', 'scheduledAt'], unique: true },
-        { name: `${physical}_patientId`, columns: ['patientId'], unique: false },
-        { name: `${physical}_status`, columns: ['status'], unique: false },
-      ],
+      uniqueKeys,
+      indexes: uniqueKeys.length
+        ? [
+          { name: `${physical}_professionalId_scheduledAt`, columns: ['professionalId', 'scheduledAt'], unique: true },
+          { name: `${physical}_patientId`, columns: ['patientId'], unique: false },
+          { name: `${physical}_status`, columns: ['status'], unique: false },
+        ]
+        : [
+          { name: `${physical}_patientId`, columns: ['patientId'], unique: false },
+          { name: `${physical}_status`, columns: ['status'], unique: false },
+        ],
     },
   };
 }
 
-function adapterDef(): M1Definition {
-  const built = buildLocalTable(tableDef(), definitionFor('Consulta'));
+function adapterDef(table?: M1Definition): M1Definition {
+  const built = buildLocalTable(table ?? tableDef(), definitionFor('Consulta'));
   if ('code' in built) throw new Error(built.detail);
   return {
     schemaVersion: '2026-09-24-d1-definition-v2',
