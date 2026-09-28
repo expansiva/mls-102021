@@ -20,17 +20,15 @@ It does not carry a draft.
 writes nothing. The planner file `l1/<module>/pipeline/pipeline.json` is never
 touched.
 
-## Accepted plan (d1_35)
+## Command authorizes (d1_38)
 
-`/run` needs exactly one `mode: implement` message in `l4/<module>/pool/l1`, written by the
-newRelease when the user accepts the effort. It must be for the thread of the approved L1
-planner trace (`pool/l1/pipeline.json`), that thread must have been planned in `estimate`,
-and it must name the accepted `menu`, `needs`, `backend` and `effort` files. `pool/l2` must be
-empty (agentDefsL2 consumed its own implement first). Otherwise: refusal, nothing written.
-Entry records the provenance in `l1/<module>/pipeline/agentDefsL1/approval.json` (message and
-sha256 of every accepted artifact). finalize80, when the defs are complete, traces the
-implement `processed` there and then deletes it. `/resume` without the message is allowed
-only with that trace, the same planner thread and the same accepted bytes.
+`/run` and `/resume` run on the command, from the newRelease or a direct invocation. No
+`implement` message, `approval.json`, planner thread or other proof is read to decide. The
+checks are technical: prompt, project, module, checkpoint, and input20's sources and contracts.
+An `implement` addressed to l1 in `l4/<module>/pool/l1` is optional transport: entry10 lists the
+ones present now in its `entry10-done` result (`dispatch`), and finalize80, when the defs are
+complete, traces each one `processed` in `report.json` (`pool`) and only then deletes it.
+Estimate messages and later arrivals are not touched. Without a message nothing is fabricated.
 
 ## Invariants
 

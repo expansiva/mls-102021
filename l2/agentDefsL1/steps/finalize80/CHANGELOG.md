@@ -1,5 +1,11 @@
 # finalize80
 
+## 2026-09-28 (d1_38)
+
+- `approval.json` is gone. A complete report traces each dispatch entry10 listed and still in
+  pool/l1 as a `processed` line in `report.pool`, reads it back from disk, then deletes the
+  message. Held or not run: nothing is traced or deleted. Earlier lines are carried over.
+
 ## 2026-09-27 (d1_35)
 
 - A complete report consumes the accepted implement: `processed` trace in `approval.json`

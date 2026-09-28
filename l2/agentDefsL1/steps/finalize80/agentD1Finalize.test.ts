@@ -180,9 +180,19 @@ void test('a held input20 run is reported as not generated', async () => {
   const before = host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content;
   host.writes.length = 0;
 
+  // d1_38: a dispatch entry10 listed stays while the defs are not complete, and no line is traced.
+  const thread = `${MODULE}-20260928100000`;
+  const dispatch = seed(host, { project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`, shortName: `20260928100001_${thread}_1`, extension: '.json' },
+    `${JSON.stringify({ from: 'l4', to: 'l1', thread, round: 1, mode: 'implement', subject: 's', artifacts: [], body: '' })}\n`);
+
   const agent = createAgent();
   const ctx = context();
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  parent.nextSteps!.push({
+    type: 'result', stepId: 11, interaction: null, nextSteps: [], stepTitle: 'Entry done', status: 'completed',
+    result: JSON.stringify({ dispatch: [`l4/${MODULE}/pool/l1/${dispatch.shortName}.json`] }),
+    planning: { planId: 'entry10-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+  } as mls.msg.AIResultStep);
   const step = createD1AgentStep('finalize80', MODULE, PROJECT, 'run');
   step.stepId = 80;
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
@@ -211,6 +221,8 @@ void test('a held input20 run is reported as not generated', async () => {
   assert.equal(report?.calls.finalizeOpenedRepair, false);
   assert.equal(report?.calls.repliesDelivered, null);
   assert.equal('llmCalls' in (report || {}), false);
+  assert.equal(dispatch.status, 'changed');
+  assert.equal(report?.pool, undefined);
 });
 
 void test('finalize80 reports the open gaps and does not run the earlier phases again', { skip: HEAD_SEED_V11_SKIP }, async () => {

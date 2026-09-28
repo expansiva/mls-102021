@@ -4,6 +4,7 @@ import type { D1PipelineState, D1StepId } from '/_102021_/l2/agentDefsL1/helpers
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import type { D1CallAccount, D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import type { D1EnumOrigin, D1EnumUse } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import type { PoolTraceLine } from '/_102035_/l2/solution/pool.js';
 
 /**
  * v2: `consumed` means a covered consumer was proved for this entity and path.
@@ -155,6 +156,11 @@ export interface D1FinalizeReport {
   coverage: { checked: boolean; gaps: string[] };
   inventory: D1FinalizeInventory;
   snapshotHash: string;
+  /**
+   * Pool trace of the l1 dispatches this agent consumed (optional transport, d1_38). Written
+   * before each delete; absent when no dispatch was ever consumed. Not an authorization.
+   */
+  pool?: PoolTraceLine[];
 }
 
 export function parseFinalizeReport(text: string): D1FinalizeReport | null {

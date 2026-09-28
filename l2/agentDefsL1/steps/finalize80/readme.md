@@ -24,3 +24,9 @@ When the defs are intact, `pipeline.status` becomes `complete` and
 `finalize80` is `approved`. An error sets `awaitingStep` to `finalize80`,
 `steps.finalize80.status` to `failed`, and `error` to `CODE:count`. The same
 report bytes are not rewritten.
+
+## Pool dispatch (d1_38)
+
+Only on a complete report: the l1 `implement` messages entry10 listed are traced
+`processed` in `report.pool` (earlier lines kept), and each is deleted after its line is
+read back from disk. Not an authorization; absent when nothing was consumed.

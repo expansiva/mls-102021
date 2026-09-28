@@ -29,11 +29,11 @@ const PROJECT = 102047;
 const MODULE = 'agendaClinica';
 
 /**
- * The frozen agendaClinica run (f35e28a) carries effort v1.1. D1 reads only the v1.2 the L2 producer
- * writes (d1_37), so the replay is refused at input20: nothing past it runs and the bench is untouched.
+ * The frozen agendaClinica run (f35e28a) carries backend and effort v1.1. D1 reads only the v1.2 the
+ * producers write (d1_37 effort, d1_39 backend), so the replay is refused at input20: nothing past it runs and the bench is untouched.
  * The full C1 replay comes back when the 102047 bench is regenerated with the current producers.
  */
-void test('controlled agendaClinica replay is refused at input20 on a v1.1 effort and touches nothing', async () => {
+void test('controlled agendaClinica replay is refused at input20 on a v1.1 backend and effort and touches nothing', async () => {
   const clinicBefore = clinicFingerprint();
   const host = installStudio(PROJECT);
   seedClinic(host);
@@ -49,12 +49,16 @@ void test('controlled agendaClinica replay is refused at input20 on a v1.1 effor
     problems?: Array<{ severity: string; code: string; path: string; message: string }>;
   };
   const inputErrors = (snapshot.problems || []).filter(problem => problem.severity === 'error');
-  assert.deepEqual(inputErrors.map(problem => `${problem.code} ${problem.path}`), [`SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`]);
-  assert.match(inputErrors[0].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.deepEqual(inputErrors.map(problem => `${problem.code} ${problem.path}`), [
+    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/backend.json`,
+    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`,
+  ]);
+  assert.match(inputErrors[0].message, /'2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2/);
+  assert.match(inputErrors[1].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
   assert.equal(snapshot.consumersReleased, false);
   const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
   assert.equal(state.steps.input20?.status, 'failed');
-  assert.equal(state.steps.input20?.error, 'SCHEMA_DIVERGENT:1');
+  assert.equal(state.steps.input20?.error, 'SCHEMA_DIVERGENT:2');
   assert.equal(state.steps.domain30, undefined);
 
   const domainTrace = await runStep(agent, ctx, parent, 'domain30', 30);

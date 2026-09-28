@@ -17,7 +17,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
 import { writeJson, readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
-import { loadApproval, writeApproval } from '/_102021_/l2/agentDefsL1/helpers/d1ApprovalIo.js';
+import { listDispatchMessages } from '/_102021_/l2/agentDefsL1/steps/entry10/dispatch.js';
 
 export async function beforeD1EntryPromptStep(
   _agent: IAgentMeta,
@@ -44,17 +44,16 @@ export async function beforeD1EntryPromptStep(
   const raw = await readText(file);
   const decision = decideEntry(prompt.command, prompt.project, prompt.moduleName, raw, new Date());
   if (decision.kind === 'refusal') return refuse(context, parentStep, step, hookSequential, decision.refusal);
-  const approval = await loadApproval(prompt.project, prompt.moduleName, prompt.command);
-  if (approval.kind === 'refusal') return refuse(context, parentStep, step, hookSequential, approval.refusal);
-
-  if (approval.kind === 'record') await writeApproval(approval.record);
   if (decision.kind === 'record') await writeJson(file, decision.state);
 
   const trace = decision.kind === 'record'
     ? `entry10 recorded ${prompt.moduleName} in project ${prompt.project}.`
     : `entry10 already recorded for ${prompt.moduleName} in project ${prompt.project}.`;
   const mutationParent = findOpenParent(context, parentStep);
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName)];
+  // The command authorizes the run (d1_38). A dispatch present now is listed for finalize80 to consume.
+  const anchor = anchorPresent(context)
+    ? []
+    : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, await listDispatchMessages(prompt.project, prompt.moduleName))];
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', trace),
@@ -89,6 +88,7 @@ function doneAnchor(
   parentStep: mls.msg.AIAgentStep,
   project: number,
   moduleName: string,
+  dispatch: string[],
 ): mls.msg.AgentIntentAddStep {
   const artifact = displayPath(pipelineFile(project, moduleName));
   const result = {
@@ -97,6 +97,8 @@ function doneAnchor(
     completedStep: 'entry10' as const,
     nextStep: 'input20' as const,
     artifact,
+    /** l1 dispatch messages present at this entry (optional transport, not an authorization). */
+    dispatch,
   };
   return addStep(context, parentStep, {
     type: 'result',

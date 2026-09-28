@@ -29,8 +29,9 @@ Status on a def is `pending`, `generated`, `blocked` or `failed`. There is no ru
 
 One writer at a time for a module. A second run is refused. Promoting a file compares the revision first. A hand-edited output is kept. A local rename is atomic for one file only. The output, the receipt and the status are three files. Studio storage has no compare-and-swap across them.
 
-## Accepted chain (d1_35)
+## Command authorizes (d1_38)
 
-Every stage except `/help` first checks `run/approval.ts`: agentDefsL1 complete, its
-`approval.json` shows the implement consumed, the planner thread is the same and the accepted
-bytes are unchanged. Otherwise it refuses and writes nothing. No second acceptance.
+Every stage runs on the command (Studio or CLI). No `approval.json`, `implement`, planner
+thread or accepted hash is read. The checks are technical: units found (`NO_UNITS`),
+dependencies (`MISSING_REF`), ledger (`NOTHING_TO_RESUME`, `LEDGER_UNREADABLE`), receipts
+and plan hashes. `implement` here is the M1 stage, not a pool message.

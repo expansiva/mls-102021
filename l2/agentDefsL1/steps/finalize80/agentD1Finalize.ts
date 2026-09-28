@@ -22,7 +22,9 @@ import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { earlierHold, buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import type { D1CallAccount } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { assembleD1Finalize, writeD1Report } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
-import { consumeApproval } from '/_102021_/l2/agentDefsL1/helpers/d1ApprovalIo.js';
+import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
+import type { PoolTraceLine } from '/_102035_/l2/solution/pool.js';
+import { deleteTraced, dispatchConsumption, type DispatchConsumption } from '/_102021_/l2/agentDefsL1/steps/entry10/dispatch.js';
 
 export async function beforeD1FinalizePromptStep(
   _agent: IAgentMeta,
@@ -53,7 +55,15 @@ export async function beforeD1FinalizePromptStep(
 
   const assembled = await assembleD1Finalize(prompt.project, prompt.moduleName);
   if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
-  const report = buildD1Finalize({ ...assembled.request, pipeline });
+  const built = buildD1Finalize({ ...assembled.request, pipeline });
+  // Optional pool transport (d1_38): the dispatches entry10 listed are traced in the report first.
+  const traced = reportPool(await readText(reportFile(prompt.project, prompt.moduleName)));
+  const completes = !earlierHold(pipeline) && built.defsStatus !== 'notRun' && built.outcome === 'complete';
+  const consumption: DispatchConsumption = completes
+    ? await dispatchConsumption(prompt.project, prompt.moduleName, entryDispatch(context), traced, new Date())
+    : { lines: [], files: [] };
+  const pool = [...traced, ...consumption.lines];
+  const report: D1FinalizeReport = pool.length ? { ...built, pool } : built;
   await writeD1Report(prompt.project, prompt.moduleName, report);
   const artifact = displayPath(reportFile(prompt.project, prompt.moduleName));
 
@@ -77,8 +87,7 @@ export async function beforeD1FinalizePromptStep(
 
   const approved = withFinalizeApproved(pipeline, artifact, new Date().toISOString());
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
-  // The defs of the accepted plan are complete: trace the implement, then delete it.
-  await consumeApproval(prompt.project, prompt.moduleName, new Date());
+  await deleteTracedDispatch(prompt.project, prompt.moduleName, consumption);
   const mutationParent = findOpenParent(context, parentStep);
   const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, report.calls)];
   return [
@@ -95,6 +104,28 @@ export async function afterD1FinalizePromptStep(
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'finalize80 already recorded.')];
+}
+
+/** l1 dispatches this execution's entry10 listed (its `entry10-done` result). Empty when none. */
+function entryDispatch(context: mls.msg.ExecutionContext): string[] {
+  const anchor = allSteps(context).find(item => planIdOf(item as mls.msg.AIAgentStep) === 'entry10-done') as mls.msg.AIResultStep | undefined;
+  try {
+    const result = JSON.parse(String(anchor?.result || '{}')) as { dispatch?: unknown };
+    return Array.isArray(result.dispatch) ? result.dispatch.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function reportPool(text: string | null): PoolTraceLine[] {
+  const pool = parseFinalizeReport(text || '')?.pool;
+  return Array.isArray(pool) ? pool : [];
+}
+
+/** Deletes each consumed dispatch only after its `processed` line is in the report on disk. */
+async function deleteTracedDispatch(project: number, moduleName: string, consumption: DispatchConsumption): Promise<void> {
+  if (!consumption.files.length) return;
+  await deleteTraced(consumption.files, reportPool(await readText(reportFile(project, moduleName))));
 }
 
 function stoppedTrace(moduleName: string, blocking: string): string {

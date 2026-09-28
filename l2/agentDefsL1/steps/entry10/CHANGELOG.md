@@ -1,5 +1,13 @@
 # entry10
 
+## 2026-09-28 (d1_38)
+
+- The command authorizes. `/run` and `/resume` no longer read or require an `implement`,
+  `approval.json`, planner thread or accepted hashes; `d1Approval*` is removed. Pool contents
+  never change the decision.
+- The `entry10-done` result lists the l1 `implement` messages present (`dispatch`), the
+  optional transport finalize80 consumes.
+
 ## 2026-09-27 (d1_35)
 
 - `/run` and `/resume` refuse without the accepted `implement` in pool/l1 (or, on resume, its

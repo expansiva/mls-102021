@@ -20,14 +20,13 @@ import {
   plannerPipelineFile,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { fileKey, installStudio, seed, seedAcceptedPlan, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { fileKey, installStudio, seed, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const OTHER = 102046;
-/** Bytes of the planner trace `plannerOf` seeds; the same for every project. */
-let PLANNER = '';
+const PLANNER = '{"planner":true}\n';
 const DRAFT = '{"draft":true}\n';
 
 function meta(): IAgentMeta {
@@ -72,11 +71,8 @@ function mount(context: mls.msg.ExecutionContext, intents: mls.msg.AgentIntent[]
   return steps as mls.msg.AIAgentStep[];
 }
 
-/** An accepted plan: planner trace, accepted web files and one implement in pool/l1 (d1_35). */
 function plannerOf(host: TestHost, project: number): StoredFile {
-  const planner = seedAcceptedPlan(host, project, MODULE).planner;
-  PLANNER = planner.content;
-  return planner;
+  return seed(host, plannerPipelineFile(project, MODULE), PLANNER, `planner-${project}`);
 }
 
 void test('entry10 has no prompt.md', () => {
@@ -324,4 +320,54 @@ void test('unknown flags, candidate, rebuild, an insecure path and a missing pro
   assert.equal(host.writes.length, 0);
   assert.equal(planner.content, PLANNER);
   assert.equal(planner.updatedAt, `planner-${PROJECT}`);
+});
+
+void test('d1_38: the command authorizes; pool leftovers and a historical approval neither block nor get touched', async () => {
+  // Case 1: no message, no approval — /run advances and fabricates no dispatch.
+  {
+    const host = installStudio(PROJECT);
+    plannerOf(host, PROJECT);
+    const agent = createAgent();
+    const ctx = contextWith(`@@agentDefsL1 ${MODULE} /run`);
+    const intents = await agent.beforePromptImplicit!(meta(), ctx, `@@agentDefsL1 ${MODULE} /run`);
+    const steps = mount(ctx, intents);
+    assert.deepEqual(steps.map(step => step.planning?.planId), [...D1_FLOW_STEP_IDS]);
+    const entry = await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[0], 1);
+    const anchor = entry.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+    assert.deepEqual((JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)) as { dispatch: string[] }).dispatch, []);
+    assert.ok(host.files[fileKey(pipelineFile(PROJECT, MODULE))]);
+    assert.equal(Object.values(host.files).some(file => file.folder.includes('/pool/') && file.status !== 'changed'), false);
+  }
+
+  // Case 2: implement + estimate in pool/l1, pending pool/l2, stale approval.json — same decision.
+  const host = installStudio(PROJECT);
+  plannerOf(host, PROJECT);
+  const thread = `${MODULE}-20260928100000`;
+  const msg = (box: string, shortName: string, mode: string) => seed(host, {
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/${box}`, shortName, extension: '.json',
+  }, `${JSON.stringify({ from: 'l4', to: box, thread, round: 1, mode, subject: 's', artifacts: [], body: '' })}\n`);
+  const implement = msg('l1', `20260928100001_${thread}_1`, 'implement');
+  const estimate = msg('l1', `20260928100002_${thread}_1`, 'estimate');
+  const pendingL2 = msg('l2', `20260928100003_${thread}_1`, 'implement');
+  const stale = seed(host, { project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'approval', extension: '.json' }, '{"schemaVersion":"2026-09-27-d1-approval-v1"}\n');
+  const before = Object.values(host.files).map(file => `${fileKey(file)}:${file.status}:${file.content}`);
+
+  const agent = createAgent();
+  for (const command of ['run', 'resume'] as const) {
+    const ctx = contextWith(`@@agentDefsL1 ${MODULE} /${command}`);
+    const intents = await agent.beforePromptImplicit!(meta(), ctx, `@@agentDefsL1 ${MODULE} /${command}`);
+    const steps = mount(ctx, intents);
+    assert.deepEqual(steps.map(step => step.planning?.planId), [...D1_FLOW_STEP_IDS], command);
+    const entry = await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[0], 1);
+    const status = entry.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === steps[0].stepId);
+    assert.match(status?.traceMsg || '', /entry10 (already )?recorded/, command);
+    const anchor = entry.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+    const handoff = JSON.parse(String((anchor?.step as mls.msg.AIResultStep).result)) as { dispatch: string[] };
+    assert.deepEqual(handoff.dispatch, [`l4/${MODULE}/pool/l1/${implement.shortName}.json`], command);
+  }
+  // Entry deletes nothing and leaves the historical receipt as it was.
+  for (const file of [implement, estimate, pendingL2, stale]) assert.equal(file.status, 'changed', file.shortName);
+  const after = Object.values(host.files).filter(file => fileKey(file) !== fileKey(pipelineFile(PROJECT, MODULE)))
+    .map(file => `${fileKey(file)}:${file.status}:${file.content}`);
+  assert.deepEqual(after, before);
 });
