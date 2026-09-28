@@ -26,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-28-structure-handler-v7';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-28-structure-handler-v8';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
