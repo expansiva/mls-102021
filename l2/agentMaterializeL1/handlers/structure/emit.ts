@@ -26,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-28-structure-handler-v8';
+export const STRUCTURE_HANDLER_RECIPE = '2026-09-29-structure-handler-v9';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -55,12 +55,24 @@ interface Tree {
   optional?: boolean;
 }
 
-/** `optional` names the field paths a stored record may lack; without it every field is required. */
-export function emitDomain(definition: M1Definition, output: string, optional: ReadonlySet<string> = new Set()): EmitResult {
+/**
+ * `optional` names the field paths a stored record may lack; without it every field is required.
+ * `enums` maps a field path to the values its source declares; an `enum` field without values stays `string`.
+ * The lifecycle states type the entity's single top-level `enum` field.
+ */
+export function emitDomain(
+  definition: M1Definition,
+  output: string,
+  optional: ReadonlySet<string> = new Set(),
+  enums: ReadonlyMap<string, readonly string[]> = new Map(),
+): EmitResult {
   const name = token(definition.data.entityId, definition.artifactId);
   const fields = fieldRows(definition.data.fields);
   const states = lifecycleStates(definition.data.lifecycle);
-  const body = renderType(nest(fields, states, optional), '');
+  const topEnums = fields.filter(field => field.type === 'enum' && !field.name.includes('.'));
+  const declared = new Map(enums);
+  if (states.length > 0 && topEnums.length === 1 && !declared.has(topEnums[0].name)) declared.set(topEnums[0].name, states);
+  const body = renderType(nest(fields, declared, optional), '');
   return { runsStub: false, imports: [], source: `${header(output)}\nexport interface ${name} ${body}\n` };
 }
 
@@ -69,7 +81,7 @@ export function emitValueObject(definition: M1Definition, output: string): EmitR
   const [referencedBy] = emittedValueExports(definition);
   const fields = fieldRows(definition.data.fields);
   const referenced = stringList(definition.data.referencedBy);
-  const body = renderType(nest(fields, []), '');
+  const body = renderType(nest(fields, new Map()), '');
   return {
     runsStub: false,
     imports: [],
@@ -851,7 +863,43 @@ function lifecycleStates(value: unknown): string[] {
   return value.states.flatMap(item => isRecord(item) && typeof item.state === 'string' && item.state ? [item.state] : []);
 }
 
-function nest(fields: readonly FieldRow[], states: readonly string[], optional: ReadonlySet<string> = new Set()): Tree {
+/** The l4 entity a domain def types against: its ontology dependency, else the module's ontology file. */
+export function ontologyRef(definition: M1Definition, output: string): string {
+  const project = output.split('/')[0] ?? '';
+  return definition.dependencies.find(dep => dep.includes('/ontology/') && !dep.endsWith('/mdm.defs.ts'))
+    ?? `${project}/l4/${definition.moduleName}/ontology/${token(definition.data.entityId, definition.artifactId)}.defs.ts`;
+}
+
+/** Enum values the l4 entity declares per field path, walking nested `fields`; empty when unreadable. */
+export function ontologyEnums(source: string | null): Map<string, string[]> {
+  const enums = new Map<string, string[]>();
+  const match = source ? /=\s*(\{[\s\S]*\})\s*as const/.exec(source) : null;
+  if (!match) return enums;
+  let value: unknown;
+  try {
+    value = JSON.parse(match[1]);
+  } catch (error) {
+    console.warn(`ontology record is not JSON: ${String(error)}`);
+    return enums;
+  }
+  const record = isRecord(value) && isRecord(value.record) ? value.record : null;
+  if (!record || !isRecord(record.fields)) return enums;
+  const walk = (fields: Record<string, unknown>, prefix: string): void => {
+    for (const [name, meta] of Object.entries(fields)) {
+      if (!isRecord(meta)) continue;
+      const path = prefix ? `${prefix}.${name}` : name;
+      const values = Array.isArray(meta.values)
+        ? meta.values.flatMap(item => typeof item === 'string' ? [item] : isRecord(item) && typeof item.value === 'string' ? [item.value] : [])
+        : [];
+      if (meta.type === 'enum' && values.length > 0) enums.set(path, values);
+      if (isRecord(meta.fields)) walk(meta.fields, path);
+    }
+  };
+  walk(record.fields, '');
+  return enums;
+}
+
+function nest(fields: readonly FieldRow[], enums: ReadonlyMap<string, readonly string[]>, optional: ReadonlySet<string> = new Set()): Tree {
   const root: Tree = { ts: 'Record<string, never>', children: new Map() };
   for (const field of fields) {
     const parts = field.name.split('.').filter(Boolean);
@@ -862,7 +910,7 @@ function nest(fields: readonly FieldRow[], states: readonly string[], optional: 
         child = { ts: 'Record<string, unknown>', children: new Map() };
         node.children.set(part, child);
       }
-      if (index === parts.length - 1) child.ts = fieldTs(field.type, part, states);
+      if (index === parts.length - 1) child.ts = fieldTs(field.type, enums.get(field.name) ?? []);
       if (optional.has(parts.slice(0, index + 1).join('.'))) child.optional = true;
       node = child;
     });
@@ -870,11 +918,9 @@ function nest(fields: readonly FieldRow[], states: readonly string[], optional: 
   return root;
 }
 
-function fieldTs(type: string, name: string, states: readonly string[]): string {
+function fieldTs(type: string, values: readonly string[]): string {
   if (type.includes('|') || type.includes('"')) return type.split('"').join("'");
-  if (name === 'status' && states.length > 0 && (type === 'enum' || type === 'string')) {
-    return states.map(state => `'${state}'`).join(' | ');
-  }
+  if (type === 'enum' && values.length > 0) return values.map(value => `'${value}'`).join(' | ');
   if (type === 'integer' || type === 'number') return 'number';
   if (type === 'boolean') return 'boolean';
   if (type === 'object') return 'Record<string, unknown>';

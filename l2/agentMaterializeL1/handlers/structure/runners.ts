@@ -23,6 +23,8 @@ import {
   emitAuthority,
   emitController,
   emitDomain,
+  ontologyEnums,
+  ontologyRef,
   emitPort,
   emitUsecase,
   emitValueObject,
@@ -68,7 +70,7 @@ export async function runStructure(call: HandlerCall): Promise<HandlerOutcome> {
 }
 
 async function produce(id: string, definition: M1Definition, output: string, read: HandlerCall['read'], call: HandlerCall): Promise<EmitResult | EmitFailure> {
-  if (id === 'structure.domainEntity') return emitDomain(definition, output);
+  if (id === 'structure.domainEntity') return emitDomain(definition, output, new Set(), ontologyEnums(await read(ontologyRef(definition, output))));
   if (id === 'structure.valueObject') return emitValueObject(definition, output);
   if (id === 'structure.repositoryPort') return emitPort(definition, output);
   if (id === 'structure.accessScope') return emitAccess(definition, output);

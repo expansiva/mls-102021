@@ -31,6 +31,8 @@ import {
   emitAccess,
   emitAuthority,
   emitDomain,
+  ontologyEnums,
+  ontologyRef,
   emitPort,
   emitUsecase,
   importSpecifier,
@@ -41,7 +43,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-28-implement-handler-v7';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-09-29-implement-handler-v8';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -919,19 +921,17 @@ function ontologyRequired(source: string): Set<string> | null {
  * server does not assign on create, so a stored record may lack it. Without an l4 entity nothing changes.
  */
 async function behaviorDomain(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
-  if (text(definition.data.storageTarget) !== 'moduleDatabase') return done(emitDomain(definition, output));
-  const entityId = text(definition.data.entityId);
-  const project = output.split('/')[0] ?? '';
-  const ref = definition.dependencies.find(dep => dep.includes('/ontology/') && !dep.endsWith('/mdm.defs.ts'))
-    ?? `${project}/l4/${definition.moduleName}/ontology/${entityId}.defs.ts`;
+  const ref = ontologyRef(definition, output);
   const source = await read(ref);
+  const enums = ontologyEnums(source);
+  if (text(definition.data.storageTarget) !== 'moduleDatabase') return done(emitDomain(definition, output, new Set(), enums));
   if (source === null) return done(emitDomain(definition, output));
   const requiredFields = ontologyRequired(source);
   if (!requiredFields) return { code: 'ONTOLOGY_UNREAD', detail: `${ref} has no readable record fields.` };
   const assigned = serverAssigned(definition, lifecycleStart(definition));
   const paths = (Array.isArray(definition.data.fields) ? definition.data.fields.filter(isRecord) : []).map(field => text(field.name)).filter(Boolean);
   const optional = new Set(paths.filter(path => !requiredFields.has(path) && !assigned.has(path)));
-  return done(emitDomain(definition, output, optional));
+  return done(emitDomain(definition, output, optional, enums));
 }
 
 function updateBody(
