@@ -124,6 +124,52 @@ void test('structure output of the clinic fixture typechecks on the official con
   }
 });
 
+void test('m1_32: the test of a unit promoted once and blocked now still compiles; withholding its scenario breaks it', async () => {
+  const texts = withAuthorityDependency(loadDefs(FIXTURE));
+  const units: PlanUnitInput[] = [];
+  const definitions = new Map<string, M1Definition>();
+  for (const [defPath, text] of texts) {
+    const parsed = parseDefinitionSource(text);
+    if (!('definition' in parsed)) continue;
+    const definition = readDefinition(parsed.definition);
+    if ('issues' in definition || definition.moduleName !== MODULE) continue;
+    units.push({ defPath, definition });
+    definitions.set(defPath, definition);
+  }
+  const bound = new Set(structureHandlerIds());
+  const snapshot = await simulate({ moduleName: MODULE, units, io: diskIo(texts) });
+  const sources = Object.fromEntries(texts);
+  // The /structure run: outputs and tests on disk.
+  const structured = deriveCatalog(MODULE, units, sources, catalogWithheld(snapshot.units, bound));
+  const catalogRef = `_${PROJECT}_/${receiptFolder(MODULE)}/scenarioCatalog.ts`;
+  const structureCatalog = renderMonitorCatalog(structured.catalog, catalogRef);
+  const read = async (ref: string): Promise<string | null> => ref === catalogRef ? structureCatalog : texts.get(ref) ?? null;
+  const files = new Map<string, string>();
+  for (const scenario of structured.catalog.scenarios) {
+    const definition = definitions.get(scenario.source);
+    if (!definition || definition.artifactType !== 'domainEntity') continue;
+    const outcome = await runStructure(callFor(scenario.source, definition, read));
+    assert.equal(outcome.failure, null, `${scenario.source} ${outcome.failure?.detail ?? ''}`);
+    for (const [path, source] of Object.entries(outcome.files)) files.set(path, source);
+    files.set(scenario.testFile, renderNodeTest(scenario, catalogRef, emittedValueExports(definition)));
+  }
+  const target = structured.catalog.scenarios.find(scenario => files.has(scenario.testFile));
+  assert.ok(target, 'the fixture has an entity scenario with a test');
+  // The next run plans that unit blocked (STATUS_BLOCKED, as a case that did not run leaves it).
+  const blocked = snapshot.units.map(unit => unit.defPath === target.source
+    ? { ...unit, action: 'blocked' as const, reason: 'STATUS_BLOCKED: BLOCKED: case did not run.' }
+    : unit);
+  const kept = deriveCatalog(MODULE, units, sources, catalogWithheld(blocked, bound, new Set([target.source])));
+  const dropped = deriveCatalog(MODULE, units, sources, catalogWithheld(blocked, bound));
+  assert.equal(kept.catalog.scenarios.some(item => item.scenarioId === target.scenarioId), true);
+  assert.equal(dropped.catalog.scenarios.some(item => item.scenarioId === target.scenarioId), false);
+
+  const keptErrors = compileRuntime(files, catalogRef, renderMonitorCatalog(kept.catalog, catalogRef));
+  assert.equal(keptErrors, '', keptErrors);
+  const droppedErrors = compileRuntime(files, catalogRef, renderMonitorCatalog(dropped.catalog, catalogRef));
+  assert.match(droppedErrors, new RegExp(target.testFile.split('/').pop()!.replace('.', '\\.')), 'control: without the scenario its test does not compile');
+});
+
 void test('a qualified output path keeps the leading slash and a bare name is refused', () => {
   assert.equal(moduleSpecifier('_102047_/l1/agendaClinica/scope/accessScope.ts'), '/_102047_/l1/agendaClinica/scope/accessScope.js');
   assert.equal(moduleSpecifier('/_102047_/l1/agendaClinica/scope/accessScope.js'), '/_102047_/l1/agendaClinica/scope/accessScope.js');
@@ -139,6 +185,34 @@ function withAuthorityDependency(texts: Map<string, string>): Map<string, string
     out.set(path, isController ? text.replace('"dependencies": [', `"dependencies": [\n    "${authority}",`) : text);
   }
   return out;
+}
+
+/** Runtime typecheck (tests and outputs) of `files` plus one catalog, in a sandbox that links the repo. */
+function compileRuntime(files: ReadonlyMap<string, string>, catalogRef: string, catalogSource: string): string {
+  const sandbox = mkdtempSync(join(tmpdir(), 'm1-32-'));
+  try {
+    writeFileSync(join(sandbox, 'tsconfig.base.json'), readFileSync(join(ROOT, 'tsconfig.base.json')));
+    mkdirSync(join(sandbox, 'test'));
+    writeFileSync(join(sandbox, 'test/tsconfig.runtime.json'), readFileSync(join(ROOT, 'test/tsconfig.runtime.json')));
+    symlinkSync(join(ROOT, 'node_modules'), join(sandbox, 'node_modules'));
+    for (const entry of readdirSync(ROOT)) {
+      if (!/^mls-\d+$/.test(entry) || entry === `mls-${PROJECT}`) continue;
+      symlinkSync(join(ROOT, entry), join(sandbox, entry));
+    }
+    mkdirSync(join(sandbox, `mls-${PROJECT}`));
+    symlinkSync(join(ROOT, `mls-${PROJECT}`, 'l2'), join(sandbox, `mls-${PROJECT}`, 'l2'));
+    const include: string[] = [];
+    for (const [qualified, source] of [...files, [catalogRef, catalogSource] as const]) {
+      const relativePath = qualified.replace(new RegExp(`^_${PROJECT}_/`), `mls-${PROJECT}/`);
+      const full = join(sandbox, relativePath);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, source);
+      include.push(relativePath);
+    }
+    return compile(sandbox, 'runtime', { extends: './test/tsconfig.runtime.json', include });
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
 }
 
 function compile(root: string, name: string, config: { extends: string; include: string[]; exclude?: string[] }): string {

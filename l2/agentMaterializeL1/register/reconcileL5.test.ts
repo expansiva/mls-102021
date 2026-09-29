@@ -13,6 +13,7 @@ import {
   commitL5Registration,
   L5_PUBLICATION_OWNER,
   loadRegistrationFiles,
+  projectLockRef,
   reconcileL5Backend,
   type L5CommitIo,
   type L5FileFact,
@@ -459,9 +460,14 @@ test('commit merges a concurrent edit once and stops when the file keeps changin
   const busy: L5CommitIo = {
     async claim() { return false; },
     async release() { throw new Error('release after a missed claim'); },
-    async read() { throw new Error('read after a missed claim'); },
+    // m1_32: only the lock file is read, to name its holder in the refusal.
+    async read(ref: string) {
+      if (ref === projectLockRef(PROJECT)) return '{"holder":"holder-other"}\n';
+      throw new Error('read after a missed claim');
+    },
     async compareAndSwap() { throw new Error('write after a missed claim'); },
   };
   const held = await commitL5Registration(input, busy, 'holder-c');
   assert.equal(held.pendings[0].reason, 'PROJECT_LOCK_BUSY');
+  assert.match(held.detail, new RegExp(`${projectLockRef(PROJECT)} is held by holder-other\\. If no run is active, remove ${projectLockRef(PROJECT)}`));
 });

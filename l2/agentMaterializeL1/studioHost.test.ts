@@ -7,14 +7,17 @@
  */
 
 import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import { createDiskHost } from '/_102021_/l1/agentMaterializeL1/nodejsMaterializeL1.js';
-import { installStudio, seed, fileKey, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { HostStor, installClassHost, installStudio, seed, fileKey, type StoredFile, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { commitL5Registration } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import type { MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { writerRef } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 import { createStudioHost, readStudioProfile } from '/_102021_/l2/agentMaterializeL1/studioHost.js';
 
 const PROJECT = 102047;
@@ -227,6 +230,139 @@ void test('parity: the same ref table gives the same read and write verdict in t
     const expected = TABLE.map(row => ({ ref: row.ref, read: row.read, write: row.write }));
     assert.deepEqual(cli, expected, 'CLI host');
     assert.deepEqual(studio.value, expected, 'Studio host');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/** collab-msg-like stor over a real folder: diskPath, setContent writes, deleteFile unlinks and drops the key. */
+function installDiskStor(root: string): { deleted: string[] } {
+  const files: Record<string, StoredFile> = {};
+  const deleted: string[] = [];
+  const pathOf = (info: Info): string => join(root, `mls-${info.project}`, `l${info.level}`, info.folder, `${info.shortName}${info.extension}`);
+  const entry = (info: Info): StoredFile => {
+    const file = {
+      ...info,
+      status: 'new',
+      versionRef: '0',
+      content: '',
+      updatedAt: 'disk',
+      getValueInfo: async () => ({ content: existsSync(pathOf(info)) ? readFileSync(pathOf(info), 'utf8') : '' }),
+      getContent: async () => readFileSync(pathOf(info), 'utf8'),
+    } as StoredFile;
+    return file;
+  };
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
+    stor: {
+      files,
+      getKeyToFile: fileKey,
+      diskPath: (info: Info) => pathOf(info),
+      addOrUpdateFile: async (params: Info) => {
+        const file = entry(params);
+        files[fileKey(file)] = file;
+        return file;
+      },
+      localStor: {
+        setContent: async (file: StoredFile, value: { content?: string | null }) => {
+          mkdirSync(dirname(pathOf(file)), { recursive: true });
+          writeFileSync(pathOf(file), value.content || '');
+          file.status = 'changed';
+          return true;
+        },
+        deleteFile: (file: StoredFile) => {
+          rmSync(pathOf(file), { force: true });
+          deleted.push(fileKey(file));
+          delete files[fileKey(file)];
+          return true;
+        },
+      },
+    },
+  };
+  return { deleted };
+}
+
+void test('m1_32: workspace comes from the stor diskPath capability; without it there is none', () => {
+  installClassHost(PROJECT, new HostStor());
+  assert.deepEqual(createStudioHost(PROJECT).workspace, {
+    repoRoot: '/data/mls-base',
+    projectDir: '/data/mls-base/mls-102047',
+    projectId: '102047',
+  });
+  installStudio(PROJECT);
+  assert.equal(createStudioHost(PROJECT).workspace, undefined);
+  assert.equal('workspace' in createStudioHost(PROJECT), false);
+});
+
+void test('m1_32: Studio claim and release remove the writer and the lock from disk; the CLI claims next; a foreign holder is refused', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'm1-32-'));
+  try {
+    const disk = installDiskStor(root);
+    const studio = createStudioHost(PROJECT);
+    const cli = createDiskHost(root, root, PROJECT, root);
+    const writerFile = join(root, `mls-${PROJECT}`, writerRef(MODULE));
+    const lockFile = join(root, `mls-${PROJECT}`, 'l5', 'm1-project-lock.json');
+
+    assert.equal(await studio.writer!.claim(MODULE, 'studio-a'), true);
+    assert.equal(JSON.parse(readFileSync(writerFile, 'utf8')).holder, 'studio-a');
+    assert.equal(await studio.writer!.claim(MODULE, 'studio-b'), false, 'a second Studio holder is refused');
+    assert.equal(await cli.writer!.claim(MODULE, 'cli-a'), false, 'the CLI sees the Studio writer');
+    await studio.writer!.release(MODULE, 'studio-b');
+    assert.equal(existsSync(writerFile), true, 'a foreign release does not remove the writer');
+    await studio.writer!.release(MODULE, 'studio-a');
+    assert.equal(existsSync(writerFile), false, 'release removes writer.json');
+    assert.ok(disk.deleted.some(key => key.endsWith('/writer.json')), 'removed through localStor.deleteFile');
+    assert.equal(await cli.writer!.claim(MODULE, 'cli-a'), true, 'the CLI claims after the Studio release');
+    await cli.writer!.release(MODULE, 'cli-a');
+    assert.equal(await studio.writer!.claim(MODULE, 'studio-c'), true, 'Studio claims after the CLI release');
+    await studio.writer!.release(MODULE, 'studio-c');
+    assert.equal(existsSync(writerFile), false);
+
+    assert.equal(await studio.l5!.claim(PROJECT, 'studio-a'), true);
+    assert.equal(await cli.l5!.claim(PROJECT, 'cli-a'), false);
+    const refused = await commitL5Registration({ project: PROJECT, moduleName: MODULE, allowStructureStub: false, phase: 'structure', files: [], catalogRef: null }, cli.l5!, 'cli-a');
+    assert.equal(refused.pendings[0].reason, 'PROJECT_LOCK_BUSY');
+    assert.match(refused.detail, /_102047_\/l5\/m1-project-lock\.json is held by studio-a\. If no run is active, remove _102047_\/l5\/m1-project-lock\.json/);
+    await studio.l5!.release(PROJECT, 'studio-a');
+    assert.equal(existsSync(lockFile), false, 'release removes m1-project-lock.json');
+    assert.equal(await cli.l5!.claim(PROJECT, 'cli-a'), true);
+    await cli.l5!.release(PROJECT, 'cli-a');
+    assert.equal(existsSync(lockFile), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test('m1_32: parity: the same claim/release sequence gives the same verdicts in the CLI and the Studio host', async () => {
+  const sequence = async (host: MaterializeRunHost, exists: () => boolean): Promise<unknown[]> => {
+    const out: unknown[] = [];
+    out.push(await host.writer!.claim(MODULE, 'a'), exists());
+    out.push(await host.writer!.claim(MODULE, 'b'));
+    await host.writer!.release(MODULE, 'b');
+    out.push(exists());
+    await host.writer!.release(MODULE, 'a');
+    out.push(exists());
+    out.push(await host.writer!.claim(MODULE, 'b'), exists());
+    out.push(await host.l5!.claim(PROJECT, 'a'), await host.l5!.claim(PROJECT, 'b'));
+    await host.l5!.release(PROJECT, 'a');
+    out.push(await host.l5!.claim(PROJECT, 'b'));
+    return out;
+  };
+  const root = await mkdtemp(join(tmpdir(), 'm1-32p-'));
+  try {
+    const writerFile = join(root, `mls-${PROJECT}`, writerRef(MODULE));
+    const cli = await sequence(createDiskHost(root, root, PROJECT, root), () => existsSync(writerFile));
+    const browser = installStudio(PROJECT);
+    const key = fileKey({ project: PROJECT, level: 1, folder: writerRef(MODULE).slice(3, writerRef(MODULE).lastIndexOf('/')), shortName: 'writer', extension: '.json' });
+    const studio = await sequence(createStudioHost(PROJECT), () => !!browser.files[key] && browser.files[key].status !== 'deleted');
+    // A stor with no localStor.deleteFile (browser): release marks the entry deleted.
+    const bare = installStudio(PROJECT);
+    delete (mls.stor.localStor as unknown as { deleteFile?: unknown }).deleteFile;
+    const trash = await sequence(createStudioHost(PROJECT), () => !!bare.files[key] && bare.files[key].status !== 'deleted');
+    assert.deepEqual(cli, [true, true, false, true, false, true, true, true, false, true]);
+    assert.deepEqual(studio, cli);
+    assert.deepEqual(trash, cli, 'without deleteFile');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

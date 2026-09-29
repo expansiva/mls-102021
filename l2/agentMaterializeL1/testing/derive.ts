@@ -61,13 +61,19 @@ export interface DerivedCatalog {
   recipeVersion: typeof M1_CATALOG_RECIPE;
 }
 
-/** A unit that will not write its `.ts` is a gap, not an executable scenario. */
+/**
+ * A unit that will not write its `.ts` is a gap, not an executable scenario.
+ * A unit whose output was already promoted (`promoted`, from its receipt) keeps its scenarios
+ * even when it is blocked now: its output and its test are on disk and read the catalog (m1_32).
+ */
 export function catalogWithheld(
   units: readonly PlannedUnit[],
   boundHandlers: ReadonlySet<string>,
+  promoted: ReadonlySet<string> = new Set(),
 ): Map<string, string> {
   const withheld = new Map<string, string>();
   for (const unit of units) {
+    if (promoted.has(unit.defPath)) continue;
     const action = unit.action === 'blocked' && unit.heldAction ? unit.heldAction : unit.action;
     if (action === 'reuse' || action === 'verify') continue;
     if (unit.action === 'blocked' && unit.reason.startsWith('STATUS_FAILED')) continue;

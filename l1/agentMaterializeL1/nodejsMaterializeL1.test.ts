@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l1/agentMaterializeL1/nodejsMaterializeL1.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -87,6 +87,27 @@ void test('disk writes stay inside the isolated output and a database url is not
     assert.match(ran.stdout, /databaseEnv: DATABASE_URL/);
     assert.match(ran.stdout, /wrote: no/);
     await assert.rejects(() => disk.state.writeOwned('../note.ts', new TextEncoder().encode('x')));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+void test('m1_32: an orphan writer.json ends WRITER_BUSY, the CLI prints the file and the holder, and the module is untouched', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'm1-32c-'));
+  try {
+    const writer = join(root, 'mls-102047', 'l1', 'agendaClinica', 'materialization', 'agentMaterializeL1', 'writer.json');
+    await mkdir(dirname(writer), { recursive: true });
+    await writeFile(writer, '{"schemaVersion":"2026-09-25-m1-writer-v1","moduleName":"agendaClinica","holder":"102047:agendaClinica:orphan"}\n');
+    const disk = createDiskHost(root, root, 102047, root);
+    disk.catalogRef = scenarioCatalogRef(102047, 'agendaClinica');
+    const ran = await executeCli(['--project', '102047', '--module', 'agendaClinica', '--stage', 'structure'], {
+      host: disk,
+      readProfile: async () => ({ mode: 'development', declared: true }),
+      loadUnits: async () => [noteUnit()],
+    });
+    assert.match(ran.stdout, /ended: WRITER_BUSY/);
+    assert.match(ran.stdout, /detail: l1\/agendaClinica\/materialization\/agentMaterializeL1\/writer\.json is held by 102047:agendaClinica:orphan\. If no run is active, remove l1\/agendaClinica\/materialization\/agentMaterializeL1\/writer\.json/);
+    assert.deepEqual(await readdir(dirname(writer)), ['writer.json'], 'no catalog, test or ledger written');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

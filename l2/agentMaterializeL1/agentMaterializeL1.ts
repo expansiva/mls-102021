@@ -76,10 +76,11 @@ async function afterPromptStep(
   return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'agentMaterializeL1 finished this step without a model call.')];
 }
 
-function summarize(result: { moduleName: string; project: number; stage: string; ended: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }>; catalog?: { action: string; ref: string; inputHash: string; detail: string; gaps: Array<{ artifactId: string; origin: string; reason: string }> }; registration?: { action: string; detail: string; pendings: Array<{ origin: string; reason: string }> } }): string {
+function summarize(result: { moduleName: string; project: number; stage: string; ended: string; detail?: string; llmCalls: number; wrote: boolean; units: Array<{ defPath: string; code: string }>; catalog?: { action: string; ref: string; inputHash: string; detail: string; gaps: Array<{ artifactId: string; origin: string; reason: string }> }; registration?: { action: string; detail: string; pendings: Array<{ origin: string; reason: string }> } }): string {
   const lines = [
     `agentMaterializeL1 ${result.moduleName} in project ${result.project}.`,
     `Stage ${result.stage}. ${result.ended}.`,
+    ...(result.detail ? [result.detail] : []),
     `Model calls: ${result.llmCalls}. Writes: ${result.wrote ? 'yes' : 'no'}.`,
     ...result.units.map(unit => `${unit.code} ${unit.defPath}`),
   ];

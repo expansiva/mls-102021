@@ -116,6 +116,23 @@ export function writerRef(moduleName: string): string {
   return `${receiptFolder(moduleName)}/writer.json`;
 }
 
+/** Holder written in a writer or project-lock file. '' when absent or unreadable. */
+export function lockHolder(text: string | null): string {
+  if (!text) return '';
+  try {
+    const parsed = JSON.parse(text) as { holder?: unknown };
+    return typeof parsed.holder === 'string' ? parsed.holder : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Refusal text of a held writer or lock: which file, which holder, what to remove when no run is active. */
+export function busyDetail(ref: string, text: string | null): string {
+  const holder = lockHolder(text);
+  return `${ref} is held by ${holder || '(unreadable holder)'}. If no run is active, remove ${ref} and run again.`;
+}
+
 /** Hash a dependency or source. A v2 def hashes the canonical body, so status alone does not cascade. */
 export async function hashEvidence(text: string): Promise<string> {
   const parsed = parseDefinitionSource(text);

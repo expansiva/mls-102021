@@ -8,21 +8,15 @@
  */
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import { parseDefinitionSource, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { parseRef, readable, writable } from '/_102021_/l2/agentMaterializeL1/core/refs.js';
-import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
-import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
-import type { MaterializeRunHost, MaterializeWriter } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
-import {
-  M1_WRITER_SCHEMA,
-  selectRemoval,
-  writerRef,
-} from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
+import type { MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { createLocalBindings, type LocalFiles } from '/_102021_/l2/agentMaterializeL1/state/localBindings.js';
 
 interface StorFile {
   project?: number;
@@ -98,106 +92,70 @@ export function createStudioHost(project: number): MaterializeRunHost {
       return text;
     },
   };
-  const state: MaterializeStateStore = {
-    async readReceipt(defPath: string): Promise<MaterializationReceipt | null> {
-      const path = receiptPathFor(defPath);
-      if (!path) return null;
-      const text = await io.read(path);
-      if (!text) return null;
-      try {
-        return JSON.parse(text) as MaterializationReceipt;
-      } catch {
-        return null;
-      }
-    },
-    async writeReceipt(receipt: MaterializationReceipt): Promise<void> {
-      const path = receiptPathFor(receipt.defPath);
-      if (!path) throw new Error('Receipt path is empty.');
-      await writeRef(project, path, `${JSON.stringify(receipt)}\n`);
-    },
-    async readOwned(outputPath: string): Promise<Uint8Array | null> {
-      const text = await io.read(outputPath);
-      return text === null ? null : new TextEncoder().encode(text);
-    },
-    async writeOwned(outputPath: string, body: Uint8Array): Promise<void> {
-      await writeRef(project, outputPath, new TextDecoder().decode(body));
-    },
-    async removeOwned(owned: readonly string[], requested: readonly string[]): Promise<MaterializeOwnedRemoval> {
-      const plan = selectRemoval(owned, requested);
-      const removed: string[] = [];
-      const kept = [...plan.keep];
-      for (const path of plan.remove) {
-        const file = writeTarget(project, path);
-        const stored = file ? lookup(file) : null;
-        if (!file || !stored || stored.status === 'deleted') {
-          kept.push(path);
-          continue;
-        }
-        stored.status = 'deleted';
-        removed.push(path);
-      }
-      return { removed, kept };
-    },
-    async readRevision(defPath: string): Promise<string | null> {
-      const receipt = await this.readReceipt(defPath);
-      return receipt?.semanticHash ?? null;
-    },
-  };
+  // Same writer, lock and state protocol as the CLI (state/localBindings.ts); only the file port is the stor.
+  const local = createLocalBindings(io, studioFiles(project, io));
+  const workspace = studioWorkspace(project);
   return {
     io,
-    state,
+    state: local.state,
     runners: { ...structureRunners, ...behaviorRunners, ...persistenceRunners },
-    writer: studioWriter(project),
-    l5: studioL5(project, io),
+    writer: local.writer,
+    l5: {
+      claim: local.projectLock.claim,
+      release: local.projectLock.release,
+      read: ref => io.read(ref),
+      async compareAndSwap(ref: string, expected: string | null, next: string): Promise<'ok' | 'conflict'> {
+        const current = await io.read(ref);
+        if (current !== expected) return 'conflict';
+        await writeRef(project, ref, next);
+        return 'ok';
+      },
+    },
+    ...(workspace ? { workspace } : {}),
   };
 }
 
 /**
- * One writer per module inside this page. Stor has no compare-and-swap, so two
- * browser processes are not serialized. The limit is the same one documented
- * on the local adapter.
+ * Workspace from the host capability `mls.stor.diskPath` (collab-msg has it, the browser does
+ * not). The path of the target's l5/project.json gives the repo root and the project folder;
+ * the file does not need to exist. Without the capability the host offers no code execution.
  */
-const studioHolders = new Map<string, string>();
-const studioProjectLocks = new Map<number, string>();
-
-function studioL5(project: number, io: MaterializeReadIo): NonNullable<MaterializeRunHost['l5']> {
-  return {
-    async claim(projectId: number, holder: string): Promise<boolean> {
-      if (projectId !== project) return false;
-      const current = studioProjectLocks.get(projectId);
-      if (current && current !== holder) return false;
-      await writeRef(project, projectLockRef(projectId), `${JSON.stringify({ holder })}\n`);
-      studioProjectLocks.set(projectId, holder);
-      return true;
-    },
-    async release(projectId: number, holder: string): Promise<void> {
-      if (studioProjectLocks.get(projectId) !== holder) return;
-      studioProjectLocks.delete(projectId);
-    },
-    read: ref => io.read(ref),
-    async compareAndSwap(ref: string, expected: string | null, next: string): Promise<'ok' | 'conflict'> {
-      const current = await io.read(ref);
-      if (current !== expected) return 'conflict';
-      await writeRef(project, ref, next);
-      return 'ok';
-    },
-  };
+function studioWorkspace(project: number): MaterializeRunHost['workspace'] {
+  const stor = mls.stor as unknown as { diskPath?: (info: FileRef) => string };
+  if (typeof stor.diskPath !== 'function') return undefined;
+  let path = '';
+  try {
+    path = stor.diskPath({ project, level: 5, folder: '', shortName: 'project', extension: '.json' });
+  } catch {
+    return undefined;
+  }
+  const match = new RegExp(`^(.+?)[\\\\/]mls-${project}[\\\\/]+l5[\\\\/]+project\\.json$`).exec(path);
+  if (!match) return undefined;
+  const separator = path.includes('\\') && !path.includes('/') ? '\\' : '/';
+  return { repoRoot: match[1], projectDir: `${match[1]}${separator}mls-${project}`, projectId: String(project) };
 }
 
-function studioWriter(project: number): MaterializeWriter {
+/** The `LocalFiles` port over the stor. Writes and removals stay in the target project. */
+function studioFiles(project: number, io: MaterializeReadIo): LocalFiles {
   return {
-    async claim(moduleName: string, holder: string): Promise<boolean> {
-      const key = `${project}:${moduleName}`;
-      const current = studioHolders.get(key);
-      if (current && current !== holder) return false;
-      await writeRef(project, writerRef(moduleName), `${JSON.stringify({ schemaVersion: M1_WRITER_SCHEMA, moduleName, holder })}\n`);
-      studioHolders.set(key, holder);
+    read: ref => io.read(ref),
+    write: (ref, body) => writeRef(project, ref, body),
+    async remove(ref: string): Promise<boolean> {
+      const file = writeTarget(project, ref);
+      const stored = file ? lookup(file) : null;
+      if (!stored || stored.status === 'deleted') return false;
+      // Host capability: collab-msg unlinks the file. Without it the stor keeps the entry as deleted.
+      const localStor = mls.stor.localStor as unknown as { deleteFile?: (file: StorFile) => unknown };
+      if (typeof localStor.deleteFile === 'function') await localStor.deleteFile(stored);
+      else stored.status = 'deleted';
       return true;
     },
-    async release(moduleName: string, holder: string): Promise<void> {
-      const key = `${project}:${moduleName}`;
-      if (studioHolders.get(key) !== holder) return;
-      studioHolders.delete(key);
+    async createExclusive(ref: string, body: string): Promise<boolean> {
+      const file = writeTarget(project, ref);
+      if (!file) return false;
+      if (await readStored(lookup(file)) !== null) return false;
+      await writeRef(project, ref, body);
+      return true;
     },
   };
 }

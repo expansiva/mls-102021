@@ -21,7 +21,6 @@ import { behaviorRunners } from '/_102021_/l2/agentMaterializeL1/handlers/behavi
 import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
 import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { isPlatformRef, PLATFORM_PROJECTS } from '/_102021_/l2/agentMaterializeL1/core/refs.js';
-import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
 import { runMaterialize, type MaterializeRunHost, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { fixtureLines } from '/_102021_/l2/agentMaterializeL1/run/fixtureRun.js';
 
@@ -63,6 +62,7 @@ export async function executeCli(argv: readonly string[], hooks: CliHooks): Prom
 export function renderResult(result: MaterializeRunResult): string {
   const lines = [
     `ended: ${result.ended}`,
+    ...(result.detail ? [`detail: ${result.detail}`] : []),
     `stage: ${result.stage}`,
     `llmCalls: ${result.llmCalls}`,
     `wrote: ${result.wrote ? 'yes' : 'no'}`,
@@ -150,18 +150,8 @@ export function createDiskHost(
     writer: local.writer,
     onBoundary: local.onBoundary,
     l5: {
-      claim: (projectId, holder) => files.createExclusive(projectLockRef(projectId), `${JSON.stringify({ holder })}\n`),
-      release: async (projectId, holder) => {
-        const text = await files.read(projectLockRef(projectId));
-        let record: { holder?: unknown } | null = null;
-        try {
-          record = text ? JSON.parse(text) as { holder?: unknown } : null;
-        } catch {
-          record = null;
-        }
-        if (!record || record.holder !== holder) return;
-        await files.remove(projectLockRef(projectId));
-      },
+      claim: local.projectLock.claim,
+      release: local.projectLock.release,
       read: ref => files.read(ref),
       compareAndSwap: (ref, expected, next) => compareAndSwap(writeRoot, project, ref, expected, next, files.read),
     },

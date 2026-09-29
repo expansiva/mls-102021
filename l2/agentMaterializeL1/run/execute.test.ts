@@ -39,7 +39,7 @@ import {
   type MaterializeRunRequest,
 } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { invokeModel, shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
-import { M1_OWNED_SCHEMA, ownedManifestRef, recipeForStage, renderOwnedManifest } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
+import { M1_OWNED_SCHEMA, ownedManifestRef, recipeForStage, renderOwnedManifest, writerRef } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 const MODULE = 'agendaClinica';
 const PROJECT = 102047;
@@ -628,6 +628,49 @@ void test('a catalog that matches the M1 receipt is rewritten; a hand edit is a 
   const conflict = await runMaterialize(baseRequest([note], { stage: 'structure' }), host(conflicted, {}, undefined, handText));
   assert.equal(conflict.catalog?.action, 'conflict');
   assert.equal(conflicted.map.get(ref), handText);
+});
+
+void test('m1_32: a refused writer leaves the module untouched and names the file and its holder', async () => {
+  const note = entity('Note');
+  const store = world({ [writerRef(MODULE)]: '{"schemaVersion":"x","moduleName":"agendaClinica","holder":"102047:agendaClinica:other"}\n' });
+  let calls = 0;
+  const run = await runMaterialize(baseRequest([note], { stage: 'structure' }), {
+    ...host(store, { 'structure.domainEntity': async () => { calls += 1; return passOutcome(outputPathFromDefPath(note.defPath)); } }),
+    catalogRef: 'catalog.json',
+    writer: { async claim() { return false; }, async release() { throw new Error('release after a refused claim'); } },
+  });
+  assert.equal(run.ended, 'WRITER_BUSY');
+  assert.deepEqual(store.writes, [], 'nothing of the module is written before the claim');
+  assert.equal(store.map.has('catalog.json'), false, 'the catalog is not written by a refused run');
+  assert.equal(calls, 0);
+  assert.equal(run.detail, `${writerRef(MODULE)} is held by 102047:agendaClinica:other. If no run is active, remove ${writerRef(MODULE)} and run again.`);
+});
+
+void test('m1_32: a unit promoted once and blocked now keeps its scenarios; one never emitted is a gap', async () => {
+  const note = entity('Note');
+  (note.definition as M1Definition).status = 'blocked';
+  const output = outputPathFromDefPath(note.defPath);
+  const blockedReceipt = async (outputHashes: Record<string, string>): Promise<MaterializationReceipt> => ({
+    ...await scaffoldReceipt(note, output, 'export {};\n'),
+    outputHashes,
+    stage: 'plan',
+    failures: [{ code: 'BLOCKED', detail: 'Fix Note.compile: case did not run.' }],
+    reason: 'BLOCKED: Fix Note.compile: case did not run.',
+  });
+  const runWith = async (receipt: MaterializationReceipt) => {
+    const store = world({ [receiptPathFor(note.defPath)]: JSON.stringify(receipt), [output]: 'export {};\n' });
+    const run = await runMaterialize(baseRequest([note], { stage: 'structure' }), { ...host(store, {}), catalogRef: 'catalog.json' });
+    return { run, catalog: parseCatalog(store.map.get('catalog.json') ?? '').catalog };
+  };
+  const promoted = await runWith(await blockedReceipt({ [output]: await contentHash('export {};\n') }));
+  assert.match(promoted.run.snapshot?.units[0].reason ?? '', /^STATUS_BLOCKED/);
+  assert.deepEqual(promoted.catalog?.scenarios.map(item => item.scenarioId), ['Note']);
+  assert.equal(promoted.run.catalog?.gaps.some(gap => gap.origin === note.defPath), false);
+
+  const never = await runWith(await blockedReceipt({}));
+  assert.match(never.run.snapshot?.units[0].reason ?? '', /^STATUS_BLOCKED/);
+  assert.deepEqual(never.catalog?.scenarios.map(item => item.scenarioId), []);
+  assert.equal(never.run.catalog?.gaps.some(gap => gap.origin === note.defPath), true);
 });
 
 void test('removing a controller route regenerates that test and leaves an untouched unit byte-identical', async () => {

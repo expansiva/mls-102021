@@ -80,6 +80,8 @@ import {
   replaceStatus,
   stagingRef,
   statusForPromotion,
+  busyDetail,
+  writerRef,
   type WriteBoundary,
 } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
@@ -133,7 +135,10 @@ export interface MaterializeRunHost {
   writer?: MaterializeWriter;
   /** Project lock and compare-and-swap for l5/project.json. Module claim does not cover this file. */
   l5?: L5CommitIo;
-  /** Set by the CLI. Implement cases compile and run only when this is present. */
+  /**
+   * Set by a host that can execute code: the CLI, and the Studio host when the stor offers
+   * `diskPath` (collab-msg). Implement cases compile and run only when this is present.
+   */
   workspace?: { repoRoot: string; projectDir: string; projectId: string };
   onBoundary?: (boundary: WriteBoundary) => Promise<void> | void;
 }
@@ -179,6 +184,8 @@ export interface MaterializeRunResult {
   registration?: L5ReconcileResult;
   /** Certification fixture of the implement stage, one entry per controller with obligations (m1_30). */
   fixtures?: M1RunFixture[];
+  /** What the ended code alone does not say: for WRITER_BUSY, the file and the holder. */
+  detail?: string;
 }
 
 export interface CatalogPrep {
@@ -248,11 +255,28 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
   });
   const recordedCatalog = ledger.catalogInputHash ?? null;
   const derivedObligations: { obligations: M1Obligation[] } = { obligations: [] };
-  const catalogPrep = host.catalogRef
-    ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate', recordedCatalog, derivedObligations)
-    : null;
+  // Nothing of the module is written before the writer claim: the catalog and its tests included (m1_32).
+  const holder = `${request.project}:${request.moduleName}:${Math.random().toString(16).slice(2)}`;
+  const claims = stage !== 'simulate' && !!host.writer;
+  if (claims && !await host.writer!.claim(request.moduleName, holder)) {
+    const ref = writerRef(request.moduleName);
+    return { ...finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'WRITER_BUSY', stage), detail: busyDetail(ref, await host.io.read(ref)) };
+  }
+  const releaseEarly = async (): Promise<void> => {
+    if (claims) await host.writer!.release(request.moduleName, holder);
+  };
+  let catalogPrep: CatalogPrep | null;
+  try {
+    catalogPrep = host.catalogRef
+      ? await prepareCatalog(request, host, snapshot, merged, stage !== 'simulate', recordedCatalog, derivedObligations)
+      : null;
+  } catch (error) {
+    await releaseEarly();
+    throw error;
+  }
   const currentCatalog = catalogPrep?.inputHash ?? null;
   if (catalogPrep?.action === 'invalid') {
+    await releaseEarly();
     return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'CATALOG_INVALID', stage, catalogPrep);
   }
   if (catalogPrep && ledger.catalogInputHash && ledger.catalogInputHash !== catalogPrep.inputHash) {
@@ -274,10 +298,6 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     })), [], 0, false, 'SIMULATED', stage, catalogPrep, registration);
   }
 
-  const holder = `${request.project}:${request.moduleName}:${Math.random().toString(16).slice(2)}`;
-  if (host.writer && !await host.writer.claim(request.moduleName, holder)) {
-    return finish(request, profile, budget, snapshot, ledger, [], [], 0, false, 'WRITER_BUSY', stage, catalogPrep);
-  }
   try {
     const openedAs = ledger.stage;
     ledger.stage = stage;
@@ -1346,7 +1366,7 @@ async function prepareCatalog(
       if (text) texts[dependency] = text;
     }
   }
-  const withheld = catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)));
+  const withheld = catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)), await promotedUnits(host, snapshot.units));
   const derived = deriveCatalog(request.moduleName, units, texts, withheld);
   const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));
@@ -1421,6 +1441,22 @@ async function prepareCatalog(
     oracleSources,
     detail: 'catalog already matches the defs',
   };
+}
+
+/**
+ * Units whose output was promoted once: the receipt lists the output hash. The output and the
+ * test of the structure stay on disk, so the catalog keeps their scenarios (m1_32). The receipt,
+ * not the owned manifest, because the receipt is written with the promotion of that unit.
+ */
+async function promotedUnits(host: MaterializeRunHost, units: readonly SimulatedUnit[]): Promise<Set<string>> {
+  const promoted = new Set<string>();
+  for (const unit of units) {
+    const output = outputPathFromDefPath(unit.defPath);
+    if (!output) continue;
+    const receipt = await host.state.readReceipt(unit.defPath);
+    if (receipt?.outputHashes && typeof receipt.outputHashes[output] === 'string') promoted.add(unit.defPath);
+  }
+  return promoted;
 }
 
 function valueExportsByDef(units: readonly PlanUnitInput[]): Map<string, readonly string[]> {

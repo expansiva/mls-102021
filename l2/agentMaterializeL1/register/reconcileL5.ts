@@ -8,6 +8,7 @@
 
 import { outputPathFromDefPath } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { M1_STUB_ERROR, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { busyDetail } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
 /** Role comes from the promoted def's artifactType. Paths are not a classification. */
 export type L5PromotedRole = 'httpController' | 'table' | 'repositoryRegistration' | 'output';
@@ -132,7 +133,8 @@ export async function commitL5Registration(
   holder: string,
 ): Promise<L5ReconcileResult> {
   if (!await io.claim(input.project, holder)) {
-    return pendingResult('l5 project lock is held. Registration was not written.', [
+    const lock = projectLockRef(input.project);
+    return pendingResult(`l5 project lock is held. Registration was not written. ${busyDetail(lock, await io.read(lock))}`, [
       { origin: projectLockRef(input.project), reason: 'PROJECT_LOCK_BUSY' },
     ]);
   }
