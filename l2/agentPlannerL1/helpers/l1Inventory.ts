@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/helpers/l1Inventory.ts" enhancement="_blank"/>
 
 import { parseDefsSource } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
-import { diskFileInfo, hostListFolder, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import type { Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
 /** agentChangeBackend was deleted (p4_15); this is now the single source for the owner status enum. */
 export type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
@@ -119,23 +119,6 @@ function listDefs(project: number, level: number, folder: string): Ns5FileInfo[]
       shortName: String(file.shortName),
       extension: '.defs.ts',
     });
-  }
-  const listFolder = hostListFolder();
-  if (listFolder) {
-    for (const info of listFolder(project, level, folder)) {
-      if (info.extension !== '.defs.ts' || !info.shortName) continue;
-      const key = mls.stor.getKeyToFile(info);
-      const indexed = files[key];
-      if (indexed?.status === 'deleted') continue;
-      if (!indexed) files[key] = diskFileInfo(info);
-      remember({
-        project,
-        level,
-        folder,
-        shortName: String(info.shortName),
-        extension: '.defs.ts',
-      });
-    }
   }
   return [...found.values()].sort((a, b) => a.shortName.localeCompare(b.shortName));
 }

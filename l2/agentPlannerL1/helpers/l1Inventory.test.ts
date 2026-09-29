@@ -44,18 +44,19 @@ function seed(
   return file;
 }
 
-function installHost(project: number): Host {
+function installHost(project: number, listFolder?: (...args: unknown[]) => unknown[]): Host {
   const host: Host = { files: {} };
+  const localStor: Record<string, unknown> = {
+    setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
+  };
+  if (listFolder) localStor.listFolder = listFolder;
   (globalThis as unknown as Record<string, unknown>).mls = {
     actualProject: project,
     events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
-      localStor: {
-        setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
-        listFolder: () => [],
-      },
+      localStor,
     },
   };
   return host;
@@ -139,4 +140,43 @@ void test('fixture 102039 controleChamados: 19 usecases, 25 routes, 2 tables, st
   }
   assert.ok(inventory.routes.includes('controleChamados.chamadoCatalogue.cmdCreateChamado'));
   assert.ok(inventory.routes.includes('controleChamados.registrarComentarioChamado.cmdRegisterComentario'));
+});
+
+void test('host-only defs from localStor.listFolder never enter the inventory nor the index', async () => {
+  const baseHost = installHost(102039);
+  seedControleChamados(baseHost);
+  const withoutListing = await readL1Inventory(102039, 'controleChamados');
+  const keysBefore = Object.keys(baseHost.files).sort();
+
+  let calls = 0;
+  const hostOnly = (project: unknown, level: unknown, folder: unknown) => {
+    calls++;
+    return ['hostOnlyUsecase', 'hostOnlyPort', 'hostOnlyTable'].map(shortName => ({
+      project, level, folder, shortName, extension: '.defs.ts',
+    }));
+  };
+  const listingHost = installHost(102039, hostOnly);
+  seedControleChamados(listingHost);
+  const withListing = await readL1Inventory(102039, 'controleChamados');
+
+  assert.equal(calls, 0);
+  assert.deepEqual(withListing, withoutListing);
+  assert.deepEqual(Object.keys(listingHost.files).sort(), keysBefore);
+  assert.equal(Object.keys(listingHost.files).some(key => key.includes('hostOnly')), false);
+});
+
+void test('deleted def, other project and other folder stay out of the listing', async () => {
+  const host = installHost(102039);
+  seedControleChamados(host);
+  const usecases = 'controleChamados/layer_2_application/usecases';
+  const source = host.files[keyOf({ project: 102039, level: 1, folder: usecases, shortName: 'createChamado', extension: '.defs.ts' })];
+  assert.ok(source);
+  seed(host, 102039, 1, usecases, 'deletedCopy', '.defs.ts', source.content).status = 'deleted';
+  seed(host, 102040, 1, usecases, 'otherProjectCopy', '.defs.ts', source.content);
+  seed(host, 102039, 1, 'controleChamados/layer_2_application/other', 'otherFolderCopy', '.defs.ts', source.content);
+  const inventory = await readL1Inventory(102039, 'controleChamados');
+  assert.equal(inventory.usecases.length, 19);
+  for (const name of ['deletedCopy', 'otherProjectCopy', 'otherFolderCopy']) {
+    assert.equal(inventory.usecases.some(item => item.file.includes(name)), false, name);
+  }
 });

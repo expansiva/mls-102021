@@ -1,7 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/helpers/p1Core.ts" enhancement="_blank"/>
 
 import {
-  diskFileInfo,
   displayPath,
   moduleFile,
   moduleFolder,
@@ -501,7 +500,7 @@ async function clearP1Draft(moduleName: string): Promise<void> {
   const indexed = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[mls.stor.getKeyToFile(draft)];
   if (!indexed || indexed.status === 'deleted') return;
   const { deleteFile } = await import('/_102027_/l2/libStor.js');
-  await deleteFile(diskFileInfo(draft));
+  await deleteFile(indexed);
 }
 
 /**

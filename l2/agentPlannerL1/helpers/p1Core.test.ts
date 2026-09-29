@@ -61,7 +61,7 @@ type Stored = {
   getContent: () => Promise<string>;
 };
 
-type Host = { files: Record<string, Stored>; deleted: string[] };
+type Host = { files: Record<string, Stored>; deleted: string[]; deletedObjects: Stored[] };
 
 function keyOf(info: { project: number | string; level: number | string; folder: string; shortName: string; extension: string }): string {
   return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
@@ -79,7 +79,7 @@ function seed(host: Host, folder: string, shortName: string, content = '', level
 }
 
 function installHost(): Host {
-  const host: Host = { files: {}, deleted: [] };
+  const host: Host = { files: {}, deleted: [], deletedObjects: [] };
   (globalThis as unknown as Record<string, unknown>).mls = {
     actualProject: PROJECT,
     events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
@@ -93,6 +93,7 @@ function installHost(): Host {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
         deleteFile: (file: Stored) => {
+          host.deletedObjects.push(file);
           host.deleted.push(`${file.folder}/${file.shortName}`);
           const stored = host.files[keyOf(file)];
           if (stored) stored.status = 'deleted';
@@ -369,6 +370,37 @@ void test('p1L4DiffFile is pool/l1/web/l4diff.json', () => {
     shortName: 'l4diff',
     extension: '.json',
   });
+});
+
+void test('draft deletion hands the indexed entry itself to the MLS API', async () => {
+  const host = installHost();
+  seedReady(host);
+  const draft = seed(host, `${MODULE}/pool/l1`, 'plan20-draft', '{}\n');
+  const result = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in result, false);
+  assert.equal(host.deletedObjects.length, 1);
+  assert.equal(host.deletedObjects[0], draft);
+});
+
+void test('absent or deleted draft is neither deleted nor rebuilt', async () => {
+  const draftKey = keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`, shortName: 'plan20-draft', extension: '.json' });
+  const absent = installHost();
+  seedReady(absent);
+  const first = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in first, false);
+  assert.deepEqual(absent.deletedObjects, []);
+  assert.equal(absent.files[draftKey], undefined);
+
+  const gone = installHost();
+  seedReady(gone);
+  const draft = seed(gone, `${MODULE}/pool/l1`, 'plan20-draft', '{}\n');
+  draft.status = 'deleted';
+  const second = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in second, false);
+  assert.deepEqual(gone.deletedObjects, []);
+  assert.equal(gone.files[draftKey], draft);
+  assert.equal(draft.status, 'deleted');
+  assert.equal(draft.content, '{}\n');
 });
 
 void test('re-execution drops only the pool/l1 draft; every l1 and l2 file (D1 checkpoints included) stays byte-identical', async () => {
