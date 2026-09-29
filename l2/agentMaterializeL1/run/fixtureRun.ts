@@ -4,8 +4,8 @@
  * Certification fixture in the implement run (m1_30). After the units of the run are done, the
  * authenticated obligations of each controller (testing/obligations.ts) run in memory against
  * the emitted bytes through testing/fixture.ts `runFixture`, once per controller whose inputs
- * changed. Browser-safe: execution is a port the node host supplies (the same `workspace`
- * capability as the implement cases); a host without it is inconclusive with an owner.
+ * changed. Browser-safe: execution is a port; the agent runs in the browser and passes none
+ * (m1_33), so the proof is inconclusive with an owner.
  * - An obligation runs only when every unit its route imports has an accepted, intact output
  *   (the caller reads the receipts); otherwise it stays pending with owner L1. A sibling route's
  *   usecase does not hold it back.
@@ -75,7 +75,7 @@ export interface M1FixtureExecution {
   mode: unknown;
 }
 
-/** Node host port (l1 testing/memoryLoad.ts `runEmittedFixture`). */
+/** Execution port. The agent passes none since m1_33 (it does not execute generated code). */
 export type M1FixtureExecutor = (input: M1FixtureExecution) => Promise<{ receipt: M1FixtureReceipt | null; error: string }>;
 
 export interface FixturePassInput {

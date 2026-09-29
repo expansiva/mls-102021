@@ -44,13 +44,11 @@ void test('structure runners cover the registry ids and stay free of node', () =
   assert.equal('persistence.table' in structureRunners, false);
   const runner = readFileSync(join(HERE, 'runners.ts'), 'utf8');
   const studio = readFileSync(join(HERE, '../../studioHost.ts'), 'utf8');
-  const cli = readFileSync(join(ROOT, 'mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts'), 'utf8');
   assert.equal(runner.includes('node:'), false);
   assert.equal(runner.includes('typescript'), false);
   assert.equal(runner.includes("from 'fs'"), false);
   assert.equal(studio.includes('node:'), false);
   assert.equal(studio.includes('structureRunners'), true);
-  assert.equal(cli.includes('structureRunners'), true);
   assert.equal(readFileSync(join(HERE, '../../core/registry.ts'), 'utf8').includes('structure.usecase'), true);
 });
 

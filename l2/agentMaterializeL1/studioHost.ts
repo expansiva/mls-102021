@@ -3,7 +3,7 @@
 /**
  * Studio IO. Reads and writes go through the host stor. No node, fs or typescript import.
  * The project mode is the appEnv field of l5/project.json, the same field the server reads.
- * Ref policy (core/refs.ts, shared with the CLI): reads reach the target or a platform project,
+ * Ref policy (core/refs.ts): reads reach the target or a platform project,
  * writes and removals only the target project.
  */
 
@@ -92,9 +92,8 @@ export function createStudioHost(project: number): MaterializeRunHost {
       return text;
     },
   };
-  // Same writer, lock and state protocol as the CLI (state/localBindings.ts); only the file port is the stor.
+  // Writer, lock and state protocol of state/localBindings.ts; the file port is the stor.
   const local = createLocalBindings(io, studioFiles(project, io));
-  const workspace = studioWorkspace(project);
   return {
     io,
     state: local.state,
@@ -111,28 +110,7 @@ export function createStudioHost(project: number): MaterializeRunHost {
         return 'ok';
       },
     },
-    ...(workspace ? { workspace } : {}),
   };
-}
-
-/**
- * Workspace from the host capability `mls.stor.diskPath` (collab-msg has it, the browser does
- * not). The path of the target's l5/project.json gives the repo root and the project folder;
- * the file does not need to exist. Without the capability the host offers no code execution.
- */
-function studioWorkspace(project: number): MaterializeRunHost['workspace'] {
-  const stor = mls.stor as unknown as { diskPath?: (info: FileRef) => string };
-  if (typeof stor.diskPath !== 'function') return undefined;
-  let path = '';
-  try {
-    path = stor.diskPath({ project, level: 5, folder: '', shortName: 'project', extension: '.json' });
-  } catch {
-    return undefined;
-  }
-  const match = new RegExp(`^(.+?)[\\\\/]mls-${project}[\\\\/]+l5[\\\\/]+project\\.json$`).exec(path);
-  if (!match) return undefined;
-  const separator = path.includes('\\') && !path.includes('/') ? '\\' : '/';
-  return { repoRoot: match[1], projectDir: `${match[1]}${separator}mls-${project}`, projectId: String(project) };
 }
 
 /** The `LocalFiles` port over the stor. Writes and removals stay in the target project. */

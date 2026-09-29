@@ -2,8 +2,7 @@
 
 /**
  * Neutral module for the memory tests of m1_27/m1_28: defs, contracts and the p1_12 testSupport.
- * Every id comes from `Names`, so a renamed copy must derive and run the same. Test support only;
- * the loader that emits and imports the code is `l1/agentMaterializeL1/testing/memoryLoad.ts`.
+ * Every id comes from `Names`, so a renamed copy must derive the same. Test support only.
  */
 
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';

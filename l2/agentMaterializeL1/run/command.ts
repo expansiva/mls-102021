@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/run/command.ts" enhancement="_blank"/>
 
 /**
- * One command shape for the CLI and the Studio entry.
+ * Command of the Studio entry.
  * Omitted stage means simulate: no model call and no write.
  * A flow that matches nothing is a refusal. The parser does not ask which file to open.
  */
@@ -24,9 +24,6 @@ export interface MaterializeCommand {
   stage: M1EntryStage | null;
   flow: string;
   resume: boolean;
-  outputDir: string;
-  /** Empty means the repository root. A set value is the read root for this project only. */
-  sourceRoot: string;
   budget: BudgetRequest | null;
 }
 
@@ -39,8 +36,6 @@ export function emptyCommand(): MaterializeCommand {
     stage: null,
     flow: '',
     resume: false,
-    outputDir: '',
-    sourceRoot: '',
     budget: null,
   };
 }
@@ -49,7 +44,7 @@ export function helpText(project: number): string {
   const projectNote = project > 0 ? `Current project: ${project}.` : 'Project comes from the host.';
   return [
     'agentMaterializeL1 materializes one module from its defs.',
-    'The Studio entry and the CLI share one plan, one snapshot and one receipt.',
+    'The agent runs in the Studio browser: one plan, one snapshot and one receipt.',
     projectNote,
     '',
     'Studio:',
@@ -61,10 +56,6 @@ export function helpText(project: number): string {
     '  @@agentMaterializeL1 <module> /resume',
     '  Add flow:<id> to select one flow and the defs it depends on. An unknown flow is refused. The agent does not ask which file to open.',
     '',
-    'CLI, from the mls-base root:',
-    '  tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --help',
-    '  tsx mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts --project <id> --module <lowerCamel> [--stage simulate|structure|implement|verify] [--flow <id>] [--resume] [--output <dir>] [--source-root <dir>] [--workers <n>] [--timeout-ms <n>] [--repairs <n>] [--calls <n>]',
-    '',
     'Defaults:',
     '  stage simulate — no model call and no write.',
     `  workers ${M1_CEILING.maxWorkers}, call timeout ${M1_CEILING.timeoutMs}ms, ${M1_CEILING.repairsPerArtifact} repair per artifact, ${M1_CEILING.repairsPerRun} repairs and ${M1_CEILING.callsPerRun} model calls per run.`,
@@ -72,122 +63,8 @@ export function helpText(project: number): string {
     '  Profile is appEnv in the project l5/project.json. Absent means presentation, not production.',
     '  development and presentation name DATABASE_URL_TEST and never fall back to DATABASE_URL.',
     '  production and homologation do not run stubs, synthetic seeds or a reset.',
-    '  Receipts go to l1/<module>/materialization/agentMaterializeL1. --output only relocates that tree.',
-    '  --source-root reads defs, l5/project.json and this project\'s sources from that directory. mls-102034 and mls-102027 stay on the repository root. Without it, every read stays on the repository root.',
-    '  With --source-root, the scenario catalog is l1/<module>/materialization/agentMaterializeL1/scenarioCatalog.ts under that directory.',
+    '  Receipts go to l1/<module>/materialization/agentMaterializeL1.',
   ].join('\n');
-}
-
-export function parseCliArgs(argv: readonly string[]): MaterializeCommand {
-  const command = emptyCommand();
-  const budget: BudgetRequest = {};
-  let sawBudget = false;
-  const flags = new Set(['--help', '--project', '--module', '--stage', '--flow', '--resume', '--output', '--source-root', '--workers', '--timeout-ms', '--repairs', '--calls']);
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === '--help') {
-      command.help = true;
-      continue;
-    }
-    if (token === '--resume') {
-      command.resume = true;
-      continue;
-    }
-    if (!token.startsWith('--')) {
-      command.refusal = `Unexpected argument: ${token}.`;
-      return command;
-    }
-    if (!flags.has(token)) {
-      command.refusal = `Unknown flag: ${token}.`;
-      return command;
-    }
-    const value = argv[index + 1];
-    if (!value || value.startsWith('--')) {
-      command.refusal = `Missing value for ${token}.`;
-      return command;
-    }
-    index += 1;
-    if (token === '--project') {
-      if (!/^\d+$/.test(value) || Number(value) <= 0) {
-        command.refusal = 'Project must be a positive id.';
-        return command;
-      }
-      command.project = Number(value);
-    } else if (token === '--module') {
-      if (!moduleTokenOk(value)) {
-        command.refusal = 'Module name must be lowerCamel (example: stockControl).';
-        return command;
-      }
-      command.moduleName = value;
-    } else if (token === '--stage') {
-      if (!isStage(value)) {
-        command.refusal = 'Stage must be simulate, structure, implement or verify.';
-        return command;
-      }
-      command.stage = value;
-    } else if (token === '--flow') {
-      if (!flowTokenOk(value)) {
-        command.refusal = 'Flow id must be a single token without a path.';
-        return command;
-      }
-      command.flow = value;
-    } else if (token === '--output') {
-      if (!value || value.includes('..') || value.startsWith('-')) {
-        command.refusal = 'Output directory must not contain .. .';
-        return command;
-      }
-      command.outputDir = value;
-    } else if (token === '--source-root') {
-      if (!value || value.includes('..') || value.startsWith('-')) {
-        command.refusal = 'Source root must not contain .. .';
-        return command;
-      }
-      command.sourceRoot = value;
-    } else if (token === '--workers') {
-      const parsed = positive(value);
-      if (parsed === null) {
-        command.refusal = 'Workers must be a positive integer.';
-        return command;
-      }
-      budget.maxWorkers = parsed;
-      sawBudget = true;
-    } else if (token === '--timeout-ms') {
-      const parsed = positive(value);
-      if (parsed === null) {
-        command.refusal = 'Timeout must be a positive number of milliseconds.';
-        return command;
-      }
-      budget.timeoutMs = parsed;
-      sawBudget = true;
-    } else if (token === '--repairs') {
-      const parsed = positive(value);
-      if (parsed === null) {
-        command.refusal = 'Repairs must be a positive integer.';
-        return command;
-      }
-      budget.repairsPerRun = parsed;
-      sawBudget = true;
-    } else if (token === '--calls') {
-      const parsed = positive(value);
-      if (parsed === null) {
-        command.refusal = 'Calls must be a positive integer.';
-        return command;
-      }
-      budget.callsPerRun = parsed;
-      sawBudget = true;
-    }
-  }
-  if (command.help) return command;
-  if (!command.project) {
-    command.refusal = 'Pass --project <id>.';
-    return command;
-  }
-  if (!command.moduleName) {
-    command.refusal = 'Pass --module <lowerCamel>.';
-    return command;
-  }
-  command.budget = sawBudget ? budget : null;
-  return command;
 }
 
 export function parseStudioPrompt(prompt: string, project: number): MaterializeCommand {
@@ -294,11 +171,4 @@ function flowTokenOk(value: string): boolean {
 
 function isStage(value: string): value is M1EntryStage {
   return (M1_ENTRY_STAGES as readonly string[]).includes(value);
-}
-
-function positive(value: string): number | null {
-  if (!/^\d+$/.test(value)) return null;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
-  return parsed;
 }

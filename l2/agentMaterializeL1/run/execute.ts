@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/run/execute.ts" enhancement="_blank"/>
 
 /**
- * Shared run for the CLI and the Studio entry.
+ * Run of the Studio entry (the agent runs in the browser; collab-msg simulates it).
  * simulate only reads. structure calls structure handlers. implement calls
  * only handlers registered for implement. A missing body is a named block,
  * not a generic file. A failed checkpoint is not promoted and does not start
@@ -64,7 +64,6 @@ import {
   M1_FIXTURE_REPORT_SCHEMA,
   parseFixtureReport,
   renderFixtureReport,
-  type M1FixtureExecutor,
   type M1RunFixture,
 } from '/_102021_/l2/agentMaterializeL1/run/fixtureRun.js';
 import { invokeModel, shouldCallModel, type ModelPort } from '/_102021_/l2/agentMaterializeL1/run/model.js';
@@ -135,11 +134,6 @@ export interface MaterializeRunHost {
   writer?: MaterializeWriter;
   /** Project lock and compare-and-swap for l5/project.json. Module claim does not cover this file. */
   l5?: L5CommitIo;
-  /**
-   * Set by a host that can execute code: the CLI, and the Studio host when the stor offers
-   * `diskPath` (collab-msg). Implement cases compile and run only when this is present.
-   */
-  workspace?: { repoRoot: string; projectDir: string; projectId: string };
   onBoundary?: (boundary: WriteBoundary) => Promise<void> | void;
 }
 
@@ -467,7 +461,8 @@ async function runUnit(
     if (unit.action === 'generate') {
       return remember(ledger, unit.defPath, outcome(unit.defPath, 'NOT_READY', 'Verify does not generate. The output is not an accepted implementation.', false, 0));
     }
-    const observations = await verifyObservations(request, host, stage, unit, definition);
+    // The agent runs in the browser and does not execute the file: no case is observed here (m1_33).
+    const observations: readonly M1Observation[] = [];
     const checkpoint = await checkUnit(request, host, unit, observations);
     const failed = !checkpoint.accepted;
     // The file on disk still fails the new catalog. Emit again; do not keep the stub.
@@ -647,7 +642,8 @@ async function attempt(
       runsStub: produced.runsStub,
     };
   }
-  const observations = await implementObservations(request, host, stage, unit, definition, produced);
+  // The agent does not execute generated code: the observations are the emitter's own (m1_33).
+  const observations = produced.observations;
   const checkpoint = await checkUnit(request, host, unit, observations);
   if (!checkpoint.accepted && heldBlock(checkpoint)) {
     const blocked = checkpoint.evidence.filter(item => item.verdict === 'blocked').map(item => item.caseId);
@@ -669,70 +665,6 @@ async function attempt(
     kind: 'promoted', code: 'PROMOTED', detail: checkpoint.nextAction, files: produced.files, checkpoint,
     modelCalls: usedModel, runsStub: produced.runsStub, evidences: produced.evidences,
   };
-}
-
-/** Verify reads the file already on disk and runs its catalog cases, including compile. */
-async function verifyObservations(
-  request: MaterializeRunRequest,
-  host: MaterializeRunHost,
-  stage: M1EntryStage,
-  unit: SimulatedUnit,
-  definition: unknown,
-): Promise<readonly M1Observation[]> {
-  const output = outputPathFromDefPath(unit.defPath);
-  if (!output) return [];
-  const body = await host.io.read(output);
-  if (body === null) return [];
-  return implementObservations(request, host, stage, unit, definition, {
-    files: { [output]: body },
-    observations: [],
-    failure: null,
-    seeds: false,
-    resets: false,
-    runsStub: false,
-  });
-}
-
-async function implementObservations(
-  request: MaterializeRunRequest,
-  host: MaterializeRunHost,
-  stage: M1EntryStage,
-  unit: SimulatedUnit,
-  definition: unknown,
-  produced: HandlerOutcome,
-): Promise<readonly M1Observation[]> {
-  if (stage !== 'implement' || !host.workspace || !host.catalogRef) return produced.observations;
-  const parsed = readDefinition(definition);
-  if ('issues' in parsed) return produced.observations;
-  const catalogText = await host.io.read(host.catalogRef);
-  if (!catalogText) return produced.observations;
-  try {
-    const runner = await import('/_102021_/l1/agentMaterializeL1/caseRun.js') as {
-      observeImplement: (input: {
-        repoRoot: string;
-        projectDir: string;
-        projectId: string;
-        catalogText: string;
-        definition: typeof parsed;
-        defPath: string;
-        files: Record<string, string>;
-      }) => Promise<M1Observation[]>;
-    };
-    const observed = await runner.observeImplement({
-      repoRoot: host.workspace.repoRoot,
-      projectDir: host.workspace.projectDir,
-      projectId: host.workspace.projectId,
-      catalogText,
-      definition: parsed,
-      defPath: unit.defPath,
-      files: produced.files,
-    });
-    return observed.length > 0 ? observed : produced.observations;
-  } catch (error) {
-    // The runner did not load: no case ran, so none of the emitter's observations counts as passed.
-    const message = error instanceof Error ? error.message : String(error);
-    return produced.observations.map(item => ({ ...item, inconclusive: true, ok: false, reason: `CASE_RUNNER_UNAVAILABLE: ${message}` }));
-  }
 }
 
 /** '' when the unit's output is the accepted one: intact against a receipt with no failure, implemented when the type has an implement handler. */
@@ -765,17 +697,6 @@ async function runFixtureStage(
   const ref = fixtureReportRef(request.moduleName);
   const stored = await host.state.readOwned(ref);
   const previous = parseFixtureReport(stored && stored.byteLength > 0 ? new TextDecoder().decode(stored) : null, request.moduleName);
-  const execute: M1FixtureExecutor | null = host.workspace
-    ? async input => {
-      let runner: { runEmittedFixture: M1FixtureExecutor };
-      try {
-        runner = await import('/_102021_/l1/agentMaterializeL1/testing/memoryLoad.js') as { runEmittedFixture: M1FixtureExecutor };
-      } catch (error) {
-        return { receipt: null, error: `FIXTURE_RUNNER_UNAVAILABLE: ${error instanceof Error ? error.message : String(error)}` };
-      }
-      return runner.runEmittedFixture(input);
-    }
-    : null;
   const entries = await fixturePass({
     moduleName: request.moduleName,
     units,
@@ -784,8 +705,8 @@ async function runFixtureStage(
     unready: path => unitUnready(host, path),
     read: path => host.io.read(path),
     previous,
-    execute,
-    hostGap: 'FIXTURE_HOST_UNAVAILABLE: this host offers no code execution (no workspace); the memory proof did not run.',
+    execute: null,
+    hostGap: 'FIXTURE_HOST_UNAVAILABLE: the agent runs in the browser and does not execute code; the memory proof did not run.',
     mode: request.profileMode,
     runStamp: `${request.project}.${Date.now().toString(36)}${Math.random().toString(16).slice(2, 8)}`,
   });

@@ -51,9 +51,7 @@ void test('persistence runners cover the registry and do not name the clinic fix
     assert.equal(banned.test(readFileSync(join(HERE, name), 'utf8')), false, name);
   }
   const studio = readFileSync(join(HERE, '../../studioHost.ts'), 'utf8');
-  const cli = readFileSync(join(ROOT, 'mls-102021/l1/agentMaterializeL1/nodejsMaterializeL1.ts'), 'utf8');
   assert.equal(studio.includes('persistenceRunners'), true);
-  assert.equal(cli.includes('persistenceRunners'), true);
   assert.equal(readFileSync(join(HERE, 'runners.ts'), 'utf8').includes('node:'), false);
 });
 

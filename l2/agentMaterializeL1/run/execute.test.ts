@@ -30,7 +30,7 @@ import {
   parseLedger,
   tightenBudget,
 } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
-import { helpText, parseCliArgs, parseStudioPrompt, unitsForFlow } from '/_102021_/l2/agentMaterializeL1/run/command.js';
+import { helpText, parseStudioPrompt, unitsForFlow } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import {
   runMaterialize,
   type HandlerOutcome,
@@ -45,16 +45,14 @@ const MODULE = 'agendaClinica';
 const PROJECT = 102047;
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-void test('cli and studio parse the same command and simulate does not call a model or write', async () => {
-  const cli = parseCliArgs(['--project', '102047', '--module', 'agendaClinica', '--stage', 'simulate', '--flow', 'Note']);
+void test('studio parses the command and simulate does not call a model or write', async () => {
   const studio = parseStudioPrompt('@@agentMaterializeL1 agendaClinica /simulate flow:Note', 102047);
-  assert.equal(cli.refusal, '');
   assert.equal(studio.refusal, '');
-  assert.equal(cli.project, studio.project);
-  assert.equal(cli.moduleName, studio.moduleName);
-  assert.equal(cli.stage, studio.stage);
-  assert.equal(cli.flow, studio.flow);
-  assert.equal(cli.resume, studio.resume);
+  assert.equal(studio.project, 102047);
+  assert.equal(studio.moduleName, 'agendaClinica');
+  assert.equal(studio.stage, 'simulate');
+  assert.equal(studio.flow, 'Note');
+  assert.equal(studio.resume, false);
 
   const note = entity('Note');
   const task = entity('Task');
@@ -846,7 +844,7 @@ void test('a failed receipt with a new test is checked again and another unit ke
 void test('help names the studio command and the l2 entry does not import node', () => {
   const help = helpText(102047);
   assert.match(help, /@@agentMaterializeL1 \/help/);
-  assert.match(help, /nodejsMaterializeL1\.ts --help/);
+  assert.doesNotMatch(help, /nodejsMaterializeL1|tsx /);
   assert.match(help, /stage simulate/);
   const root = dirname(HERE);
   const files: string[] = [];

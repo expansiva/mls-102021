@@ -1,5 +1,20 @@
 # agentMaterializeL1
 
+## 2026-09-29 (m1_33)
+
+- The agent runs only in the Studio browser (collab-msg simulates it) and executes no generated
+  code. `run/execute.ts` no longer imports `l1/.../caseRun.js` nor `testing/memoryLoad.js`:
+  implement keeps the emitter's observations, verify observes no case, and the fixture pass gets
+  no executor (`FIXTURE_HOST_UNAVAILABLE`). The case verdicts come from the monitor (m1_35).
+- `MaterializeRunHost.workspace` is gone; `studioHost.ts` no longer reads `mls.stor.diskPath`.
+- `mls-102021/l1/agentMaterializeL1/` is deleted: the node CLI (`nodejsMaterializeL1.ts`),
+  `caseRun.ts`, `testing/memoryLoad.ts`, `localState.ts`, `testing/nodeAdapter.ts`, the
+  `proofC*.ts` scripts and their tests. `run/command.ts` loses `parseCliArgs` and the CLI fields
+  and help lines.
+- New guard `agentRunsInBrowser.test.ts`: nothing reachable from `agentMaterializeL1.ts` imports
+  `node:*`, a node builtin, `/_NNNN_/l1/`, `pg`, `jose`, `redis` or `@aws-sdk/*` (top-level
+  `import type` exempt), with a positive control.
+
 ## 2026-09-28 (m1_32)
 
 - New `state/localBindings.ts` (l2, no node import): the state, writer and project-lock protocol

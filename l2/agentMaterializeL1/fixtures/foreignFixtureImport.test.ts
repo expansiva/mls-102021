@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/fixtures/foreignFixtureImport.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,7 @@ function stripTemplates(source: string): string {
 }
 
 function walk(dir: string, acc: string[]): void {
+  if (!existsSync(dir)) return; // mls-102021/l1 is absent since m1_33
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules') continue;
     const abs = path.join(dir, name);
