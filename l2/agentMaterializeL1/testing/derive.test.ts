@@ -124,6 +124,21 @@ void test('agendaClinica v1.1 names module cases and the route caller from the g
   assert.equal(again.catalog?.scenarios.flatMap(item => item.cases).filter(item => item.runner === 'module').length, 28);
 });
 
+void test('m1_35: route cases do not repeat what the L2 page test of the same routine covers', () => {
+  // The L2 page test emits `.ok`, `.<field>.required` (VALIDATION_ERROR), `.gone` (NOT_FOUND) and
+  // `.notDeletable` (CONFLICT) per routine (mls-102020 cfeCreateShared). The catalog only carries the
+  // unauthenticated refusal, which no page test declares.
+  const loaded = loadFixtures();
+  const derived = deriveCatalog('agendaClinica', loaded.units, loaded.texts);
+  const routes = derived.catalog.scenarios.flatMap(item => item.cases).filter(item => item.runner === 'route');
+  assert.ok(routes.length > 0);
+  for (const item of routes) {
+    assert.equal(item.gate, 'auth', item.caseId);
+    assert.equal(item.expect.errorCode, 'FORBIDDEN_ACTOR', item.caseId);
+    assert.deepEqual(item.caller?.authorities, [], item.caseId);
+  }
+});
+
 void test('update positive requires a stored record and the missing id expects 404', () => {
   const loaded = loadTree(AGENDA, '_102047_/');
   const derived = deriveCatalog('agendaClinica', loaded.units, loaded.texts);

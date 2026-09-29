@@ -18,7 +18,9 @@ import {
   M1_STUB_STATUS,
   parseCatalog,
   renderMonitorCatalog,
-  renderNodeTest,
+  isLegacyNodeTest,
+  M1_TEST_EXPORT,
+  renderScenarioTest,
   testFileFor,
   withoutRule,
   type M1ScenarioCase,
@@ -61,16 +63,13 @@ void test('fixture is the catalog both adapters read', () => {
     assert.equal(scenario.testFile, testFileFor(scenario.productionFile));
     assert.equal(scenario.testFile.endsWith('.test.ts'), true);
     assert.equal(scenario.productionFile.endsWith('.test.ts'), false);
-    const node = renderNodeTest(scenario, '/_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.js');
-    assert.equal(node.includes("from 'node:test'"), true);
-    assert.equal(node.includes(M1_CATALOG_EXPORT), true);
-    assert.equal(node.includes(M1_STUB_ERROR), false);
-    assert.equal(node.includes('node:fs'), false);
+    const node = renderScenarioTest(scenario);
+    assert.doesNotMatch(node, /from\s*['"]node:/);
+    assert.doesNotMatch(node, /^\s*import\b/m);
+    assert.equal(node.includes(`export const ${M1_TEST_EXPORT} = `), true);
+    assert.equal(isLegacyNodeTest(node, scenario.testFile), false);
     for (const item of scenario.cases) {
       assert.equal(node.includes(item.caseId), true);
-      if (item.expect.forbiddenFields.length > 0) {
-        assert.equal(node.includes(JSON.stringify(item.expect.forbiddenFields)), true);
-      }
       if (item.gate === 'business') {
         assert.equal(item.expectedFailure?.errorCode, M1_STUB_ERROR);
         assert.equal(item.expectedFailure?.status, M1_STUB_STATUS);
@@ -79,13 +78,8 @@ void test('fixture is the catalog both adapters read', () => {
         assert.equal(item.expectedFailure, null);
       }
     }
-    const production = `/${scenario.productionFile.replace(/\.ts$/, '.js')}`;
-    assert.equal(node.includes(`'${production}'`), true);
-    assert.equal(node.includes(`./${scenario.artifactId}.js`), false);
-    assert.equal(node.includes(`import { ${scenario.artifactId} }`), false);
-    if (scenario.artifactType === 'usecase') {
-      assert.equal(node.includes("from '/_102034_/l1/server/layer_2_controllers/contracts.js'"), true);
-    }
+    const data = JSON.parse(node.slice(node.indexOf('{'), node.lastIndexOf('}') + 1)) as { cases: M1ScenarioCase[] };
+    assert.deepEqual(data.cases, scenario.cases);
   }
 
   const usecase = handlerFor('usecase', 'structure');
@@ -340,6 +334,24 @@ void test('catalog module has no node importer', () => {
   const fixture = readFileSync(join(HERE, 'catalogFixture.json'), 'utf8');
   assert.equal(fixture.includes('node:test'), false);
   assert.equal(canonicalJson(mustCatalog()).includes('node:test'), false);
+});
+
+void test('m1_35: a pre-m1_35 node runner is recognised; the data test and a hand file are not', () => {
+  const catalog = mustCatalog();
+  const scenario = catalog.scenarios[0];
+  const legacy = [
+    `/// <mls fileReference="${scenario.testFile}" enhancement="_blank"/>`,
+    '',
+    `import assert from 'node:assert/strict';`,
+    `import test from 'node:test';`,
+    `import { ${M1_CATALOG_EXPORT} } from '/_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.js';`,
+    `const scenario = ${M1_CATALOG_EXPORT}.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');`,
+    `void test('x', () => { assert.ok(scenario); });`,
+  ].join('\n');
+  assert.equal(isLegacyNodeTest(legacy, scenario.testFile), true);
+  assert.equal(isLegacyNodeTest(legacy, 'other.test.ts'), false);
+  assert.equal(isLegacyNodeTest(renderScenarioTest(scenario), scenario.testFile), false);
+  assert.equal(isLegacyNodeTest(`import test from 'node:test';\n${M1_CATALOG_EXPORT}.scenarios.find(`, scenario.testFile), false);
 });
 
 function mustCatalog(): M1ScenarioCatalog {

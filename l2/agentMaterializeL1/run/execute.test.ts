@@ -1,9 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/run/execute.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +12,7 @@ import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l
 import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
-import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderNodeTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderScenarioTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
@@ -730,7 +728,7 @@ void test('removing a controller route regenerates that test and leaves an untou
   const boardTest = testFileFor(boardOutput);
   const boardScenario = derived.catalog.scenarios.find(item => item.artifactId === 'board');
   assert.ok(boardScenario);
-  const oldBoardTest = renderNodeTest(boardScenario, ref.replace(/\.ts$/, '.js'), ['routes']);
+  const oldBoardTest = renderScenarioTest(boardScenario);
   assert.match(oldBoardTest, /qryListBeta/);
   const kept = 'export const kept = 1;\n';
   const noteBody = 'export const note = 1;\n';
@@ -779,20 +777,57 @@ void test('removing a controller route regenerates that test and leaves an untou
   assert.equal(store.map.get(noteTest), kept);
   assert.equal(store.map.get(noteOutput), noteBody);
   assert.equal(store.map.get(note.defPath), noteRendered);
+  const nextBoard = nextDerived.catalog.scenarios.find(item => item.artifactId === 'board');
+  assert.ok(nextBoard);
+  assert.equal(regenerated, renderScenarioTest(nextBoard));
+  assert.doesNotMatch(regenerated, /^\s*import\b/m);
+});
 
-  const dir = mkdtempSync(join(tmpdir(), 'm1-22-'));
-  try {
-    writeFileSync(join(dir, 'catalog.ts'), store.map.get(ref) ?? '');
-    writeFileSync(join(dir, 'routes.ts'), store.map.get(boardOutput) ?? '');
-    const local = regenerated
-      .replace(/import \{ scenarioCatalog \} from '[^']+';/, "import { scenarioCatalog } from './catalog.ts';")
-      .replace(/import \{ routes \} from '[^']+';/, "import { routes } from './routes.ts';");
-    const testFile = join(dir, 'board.test.ts');
-    writeFileSync(testFile, local);
-    const ran = spawnSync(process.execPath, ['--experimental-strip-types', '--test', testFile], { encoding: 'utf8' });
-    assert.equal(ran.status, 0, `${ran.stdout}\n${ran.stderr}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+void test('m1_35: a pre-m1_35 node runner on disk is rewritten as data; a hand test stays', async () => {
+  const note = entity('Note');
+  const derived = deriveCatalog(MODULE, [note], {});
+  const scenario = derived.catalog.scenarios[0];
+  assert.ok(scenario);
+  const ref = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+  const output = outputPathFromDefPath(note.defPath);
+  const body = 'export const note = 1;\n';
+  const legacy = [
+    `/// <mls fileReference="${scenario.testFile}" enhancement="_blank"/>`,
+    '',
+    "import assert from 'node:assert/strict';",
+    "import test from 'node:test';",
+    `import { scenarioCatalog } from '/${ref.replace(/\.ts$/, '.js')}';`,
+    `const scenario = scenarioCatalog.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');`,
+    "void test('x', () => { assert.ok(scenario); });",
+    '',
+  ].join('\n');
+  const hand = 'export const kept = 1;\n';
+  // Receipt stages the bench holds today (generate, verify) plus the structure scaffold (compile).
+  for (const stage of ['compile', 'generate', 'verify'] as const)
+  for (const catalogOnDisk of [false, true]) {
+    for (const [testText, expected] of [[legacy, renderScenarioTest(scenario)], [hand, hand]] as const) {
+      const store = world({
+        [note.defPath]: definitionSource(note),
+        [output]: body,
+        [scenario.testFile]: testText,
+        ...(catalogOnDisk ? { [ref]: renderMonitorCatalog(derived.catalog, ref) } : {}),
+      });
+      const receiptPath = receiptPathFor(note.defPath);
+      assert.ok(receiptPath);
+      const receipt = await scaffoldReceipt(note, output, body);
+      // A real receipt records the hash of the test that was on disk: here, the node runner.
+      receipt.sourceHashes[scenario.testFile] = await contentHash(testText);
+      receipt.stage = stage;
+      store.map.set(receiptPath, JSON.stringify(receipt));
+      const result = await runMaterialize(baseRequest([note]), { ...host(store, {}), catalogRef: ref });
+      assert.equal(result.units[0]?.code, 'REUSE', result.units[0]?.detail);
+      assert.equal(result.catalog?.action, catalogOnDisk ? 'unchanged' : 'written');
+      assert.equal(store.map.get(scenario.testFile), expected, `catalog on disk: ${catalogOnDisk}`);
+      // The next run sees a test hash that moved: it must not regenerate, block or fail the unit.
+      const again = await runMaterialize(baseRequest([note]), { ...host(store, {}), catalogRef: ref });
+      assert.ok(['REUSE', 'VERIFIED'].includes(again.units[0]?.code ?? ''), again.units[0]?.detail);
+      assert.equal(store.map.get(scenario.testFile), expected);
+    }
   }
 });
 

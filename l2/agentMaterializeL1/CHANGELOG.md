@@ -1,5 +1,13 @@
 # agentMaterializeL1
 
+## 2026-09-29 (m1_35)
+
+- The per-unit `.test.ts` is data: `renderScenarioTest` emits `export const scenarioCases` (that
+  unit's scenario) with no import and no `node:*`; the monitor keeps running the cases from
+  `backend.scenarioCatalog`. `renderNodeTest` is gone. A test on disk that this agent rendered as a
+  node runner (`isLegacyNodeTest`) is rewritten on the next run, also when the catalog is unchanged;
+  a hand test stays. Authenticated route cases stay obligations (runtime identity binding pending).
+
 ## 2026-09-29 (m1_34)
 
 - A case the agent did not observe no longer blocks generating. The unit gate is `gateBatch`

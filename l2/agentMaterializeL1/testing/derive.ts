@@ -330,12 +330,12 @@ export function fixtureModelOf(defs: ReadonlyMap<string, M1Definition>): M1Fixtu
   return 'issues' in plan ? null : fixtureModel(plan, defs);
 }
 
-/** Memory status of one obligation, with its owner. The implement stage executes the local ones (run/fixtureRun.ts, m1_30). */
+/** Memory status of one obligation, with its owner. Nothing in the agent executes it (m1_33); the runtime blocker follows. */
 function memoryReason(model: M1FixtureModel | null, item: M1Obligation): string {
   if (!model) return `FIXTURE_PLAN_ABSENT (L1): ${item.caseId} is declared, not executed; the seeds def carries no certification fixture`;
   const blocked = classifyObligation(model, item);
   if (blocked) return `${blocked.gap} (${blocked.owner}): ${item.caseId} is declared, not executed`;
-  return `FIXTURE_MEMORY_AT_IMPLEMENT (L1): ${item.caseId} is declared, not executed by the catalog; the implement stage runs it in memory against the emitted code (fixture report)`;
+  return `FIXTURE_MEMORY_AT_IMPLEMENT (L1): ${item.caseId} is declared, not executed: an obligation, not a catalog case the monitor runs`;
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

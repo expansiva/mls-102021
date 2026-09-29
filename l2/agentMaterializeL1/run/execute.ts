@@ -29,11 +29,11 @@ import {
   M1_STUB_ERROR,
   parseCatalog,
   renderMonitorCatalog,
-  renderNodeTest,
+  isLegacyNodeTest,
+  renderScenarioTest,
   testFileFor,
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { obligationSourceHashes, type M1Obligation } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { gateBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
@@ -793,7 +793,7 @@ async function promote(
     };
   }
   await host.state.writeOwned(output, new TextEncoder().encode(body));
-  await writePromotedTest(host, unit.defPath, definition);
+  await writePromotedTest(host, unit.defPath);
   await boundary(host, 'output');
   const accepted = receiptCode === 'PROMOTED';
   await writeReceipt(
@@ -1291,13 +1291,12 @@ async function prepareCatalog(
   }
   const withheld = catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)), await promotedUnits(host, snapshot.units));
   const derived = deriveCatalog(request.moduleName, units, texts, withheld);
-  const valueExports = valueExportsByDef(units);
   const inputHash = await contentHash(catalogBytes(derived.catalog));
   const oracleSources = await obligationSourceHashes(derived.obligations, texts);
   derivedOut.obligations = derived.obligations;
   const existing = await host.io.read(ref);
   if (existing === null) {
-    if (write) await writeDerived(host, ref, derived.catalog, valueExports, null);
+    if (write) await writeDerived(host, ref, derived.catalog, null);
     return {
       ref,
       action: write ? 'written' : 'simulated',
@@ -1332,7 +1331,7 @@ async function prepareCatalog(
     const ledgerAhead = !!recordedHash && recordedHash === inputHash && !ownedHash && emitted;
     const unrecordedEmission = emitted && !ownedHash;
     if (known.has(existingHash) || ledgerAhead || unrecordedEmission) {
-      if (write) await writeDerived(host, ref, derived.catalog, valueExports, parsed.catalog);
+      if (write) await writeDerived(host, ref, derived.catalog, parsed.catalog);
       return {
         ref,
         action: write ? 'written' : 'simulated',
@@ -1355,6 +1354,7 @@ async function prepareCatalog(
       detail: 'existing catalog differs from the derived catalog; it was not overwritten',
     };
   }
+  if (write) await rewriteLegacyTests(host, parsed.catalog);
   return {
     ref,
     action: 'unchanged',
@@ -1382,21 +1382,10 @@ async function promotedUnits(host: MaterializeRunHost, units: readonly Simulated
   return promoted;
 }
 
-function valueExportsByDef(units: readonly PlanUnitInput[]): Map<string, readonly string[]> {
-  const map = new Map<string, readonly string[]>();
-  for (const unit of units) {
-    const parsed = readDefinition(unit.definition);
-    if ('issues' in parsed) continue;
-    map.set(unit.defPath, emittedValueExports(parsed));
-  }
-  return map;
-}
-
 async function writeDerived(
   host: MaterializeRunHost,
   ref: string,
   catalog: ReturnType<typeof deriveCatalog>['catalog'],
-  valueExports: ReadonlyMap<string, readonly string[]>,
   previous: M1ScenarioCatalog | null,
 ): Promise<void> {
   await host.state.writeOwned(ref, new TextEncoder().encode(renderMonitorCatalog(catalog, ref)));
@@ -1404,8 +1393,13 @@ async function writeDerived(
   for (const scenario of catalog.scenarios) {
     if (!scenario.testFile || scenario.cases.length === 0) continue;
     const current = await host.io.read(scenario.testFile);
-    const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'), valueExports.get(scenario.source) ?? []);
+    const next = renderScenarioTest(scenario);
     if (current === next) continue;
+    // A node runner this agent rendered before m1_35 is replaced whatever the rules below say.
+    if (current !== null && isLegacyNodeTest(current, scenario.testFile)) {
+      await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));
+      continue;
+    }
     // A first catalog does not clobber a test that is already on disk.
     if (current !== null && previous === null) continue;
     // Same cases and the unit was not promoted: leave the bytes alone.
@@ -1414,8 +1408,18 @@ async function writeDerived(
   }
 }
 
+/** The catalog did not move, but a test on disk may still be a pre-m1_35 node runner: only those are rewritten. */
+async function rewriteLegacyTests(host: MaterializeRunHost, catalog: M1ScenarioCatalog): Promise<void> {
+  for (const scenario of catalog.scenarios) {
+    if (!scenario.testFile || scenario.cases.length === 0) continue;
+    const current = await host.io.read(scenario.testFile);
+    if (current === null || !isLegacyNodeTest(current, scenario.testFile)) continue;
+    await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(renderScenarioTest(scenario)));
+  }
+}
+
 /** Promotion rewrites this unit's test from the catalog just written. Other tests stay put. */
-async function writePromotedTest(host: MaterializeRunHost, defPath: string, definition: unknown): Promise<void> {
+async function writePromotedTest(host: MaterializeRunHost, defPath: string): Promise<void> {
   const ref = host.catalogRef || '';
   if (!ref) return;
   const raw = await host.io.read(ref);
@@ -1423,9 +1427,7 @@ async function writePromotedTest(host: MaterializeRunHost, defPath: string, defi
   const parsed = parseCatalog(raw);
   const scenario = parsed.catalog?.scenarios.find(item => item.source === defPath);
   if (!scenario?.testFile || scenario.cases.length === 0) return;
-  const parsedDef = readDefinition(definition);
-  const names = 'issues' in parsedDef ? [] : emittedValueExports(parsedDef);
-  const next = renderNodeTest(scenario, ref.replace(/\.ts$/, '.js'), names);
+  const next = renderScenarioTest(scenario);
   const current = await host.io.read(scenario.testFile);
   if (current === next) return;
   await host.state.writeOwned(scenario.testFile, new TextEncoder().encode(next));

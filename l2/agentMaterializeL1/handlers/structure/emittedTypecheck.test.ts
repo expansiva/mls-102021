@@ -17,8 +17,7 @@ import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan
 import { simulate, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { runStructure, structureHandlerIds } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { catalogWithheld, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
-import { moduleSpecifier, renderMonitorCatalog, renderNodeTest } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { moduleSpecifier, renderMonitorCatalog, renderScenarioTest } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,9 +65,7 @@ void test('structure output of the clinic fixture typechecks on the official con
   let tests = 0;
   for (const scenario of derived.catalog.scenarios) {
     if (!files.has(scenario.productionFile)) continue;
-    const definition = definitions.get(scenario.source);
-    const values = definition ? emittedValueExports(definition) : [];
-    files.set(scenario.testFile, renderNodeTest(scenario, catalogRef, values));
+    files.set(scenario.testFile, renderScenarioTest(scenario));
     tests += 1;
   }
   assert.ok(tests > 0);
@@ -110,7 +107,7 @@ void test('structure output of the clinic fixture typechecks on the official con
     });
     assert.equal(runtime, '', runtime);
 
-    for (const relativePath of testFiles) {
+    for (const relativePath of [...testFiles, ...production]) {
       const full = join(sandbox, relativePath);
       writeFileSync(full, readFileSync(full, 'utf8').replaceAll("from '/_", "from '_"));
     }
@@ -124,7 +121,7 @@ void test('structure output of the clinic fixture typechecks on the official con
   }
 });
 
-void test('m1_32: the test of a unit promoted once and blocked now still compiles; withholding its scenario breaks it', async () => {
+void test('m1_32/m1_35: the test of a unit promoted once and blocked now compiles whether the catalog keeps its scenario or not', async () => {
   const texts = withAuthorityDependency(loadDefs(FIXTURE));
   const units: PlanUnitInput[] = [];
   const definitions = new Map<string, M1Definition>();
@@ -151,7 +148,7 @@ void test('m1_32: the test of a unit promoted once and blocked now still compile
     const outcome = await runStructure(callFor(scenario.source, definition, read));
     assert.equal(outcome.failure, null, `${scenario.source} ${outcome.failure?.detail ?? ''}`);
     for (const [path, source] of Object.entries(outcome.files)) files.set(path, source);
-    files.set(scenario.testFile, renderNodeTest(scenario, catalogRef, emittedValueExports(definition)));
+    files.set(scenario.testFile, renderScenarioTest(scenario));
   }
   const target = structured.catalog.scenarios.find(scenario => files.has(scenario.testFile));
   assert.ok(target, 'the fixture has an entity scenario with a test');
@@ -167,7 +164,8 @@ void test('m1_32: the test of a unit promoted once and blocked now still compile
   const keptErrors = compileRuntime(files, catalogRef, renderMonitorCatalog(kept.catalog, catalogRef));
   assert.equal(keptErrors, '', keptErrors);
   const droppedErrors = compileRuntime(files, catalogRef, renderMonitorCatalog(dropped.catalog, catalogRef));
-  assert.match(droppedErrors, new RegExp(target.testFile.split('/').pop()!.replace('.', '\\.')), 'control: without the scenario its test does not compile');
+  // m1_35: the test is data and imports nothing, so a withheld scenario no longer breaks it.
+  assert.equal(droppedErrors, '', droppedErrors);
 });
 
 void test('a qualified output path keeps the leading slash and a bare name is refused', () => {

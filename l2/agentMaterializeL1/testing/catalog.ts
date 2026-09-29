@@ -2,8 +2,8 @@
 
 /**
  * Scenario catalog for one module. The monitor imports the rendered module
- * (export `scenarioCatalog` only). The sibling test file is the one the
- * node runner executes. This module stays free of that runner.
+ * (export `scenarioCatalog` only). The sibling test file of each unit carries
+ * the same scenario as data (`renderScenarioTest`); nothing here runs a case.
  */
 
 import type { M1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
@@ -253,75 +253,35 @@ export function moduleSpecifier(file: string): string {
   return '';
 }
 
-export function renderNodeTest(scenario: M1Scenario, catalogImport: string, valueExports: readonly string[] = []): string {
-  const productionImport = moduleSpecifier(scenario.productionFile);
-  const body = renderBoundTest(scenario, moduleSpecifier(catalogImport), productionImport, valueExports);
-  return `/// <mls fileReference="${scenario.testFile}" enhancement="_blank"/>\n\n${body}`;
+/** Export of the per-unit `.test.ts`: that unit's scenario, as data. */
+export const M1_TEST_EXPORT = 'scenarioCases' as const;
+
+/**
+ * The per-unit `.test.ts` is data: the scenario the monitor runs from the module catalog
+ * (`backend.scenarioCatalog`). No import, no runner, nothing executes when it loads, so it
+ * compiles in the Studio like any other module (conduta 28/09, rule 4).
+ */
+export function renderScenarioTest(scenario: M1Scenario): string {
+  const data = { scenarioId: scenario.scenarioId, handlerId: scenario.handlerId, source: scenario.source, cases: scenario.cases };
+  return [
+    `/// <mls fileReference="${scenario.testFile}" enhancement="_blank"/>`,
+    '',
+    '// Behaviour cases of this unit, as data. The monitor runs them from the module scenario catalog.',
+    `export const ${M1_TEST_EXPORT} = ${JSON.stringify(data, null, 2)} as const;`,
+    '',
+  ].join('\n');
+}
+
+/** A test this agent rendered before m1_35: a node runner bound to the catalog. It is rewritten, never kept. */
+export function isLegacyNodeTest(text: string, testFile: string): boolean {
+  return text.startsWith(`/// <mls fileReference="${testFile}"`)
+    && /from\s*['"]node:/.test(text)
+    && text.includes(`${M1_CATALOG_EXPORT}.scenarios.find(`);
 }
 
 export function testFileFor(productionFile: string): string {
   if (!productionFile.endsWith('.ts') || productionFile.endsWith('.test.ts')) return '';
   return productionFile.replace(/\.ts$/, '.test.ts');
-}
-
-function renderBoundTest(
-  scenario: M1Scenario,
-  catalogImport: string,
-  productionImport: string,
-  valueExports: readonly string[],
-): string {
-  const locks = scenario.cases.map(item => lockLiteral(item)).join('\n');
-  const assertFrom = spec('assert/strict');
-  const testFrom = spec('test');
-  const appError = scenario.artifactType === 'usecase'
-    ? `import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';\n`
-    : '';
-  const catalogLine = catalogImport ? `import { ${M1_CATALOG_EXPORT} } from '${catalogImport}';\n` : '';
-  const productionLine = bindingImport(productionImport, valueExports);
-  const voids = valueExports.map(name => `  void ${name};`).join('\n');
-  const appVoid = scenario.artifactType === 'usecase' ? '  void AppError;\n' : '';
-  return `import assert ${assertFrom};
-import test ${testFrom};
-
-${appError}${catalogLine}${productionLine}
-const scenario = ${M1_CATALOG_EXPORT}.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');
-
-void test('${scenario.scenarioId} keeps the catalog assertion', () => {
-  if (!scenario) throw new Error('missing scenario ${scenario.scenarioId}');
-  assert.equal(${M1_CATALOG_EXPORT}.store, 'memory');
-${voids ? `${voids}\n` : ''}${appVoid}${locks}});
-`;
-}
-
-function bindingImport(specifier: string, names: readonly string[]): string {
-  if (!specifier) return '';
-  if (names.length === 0) return `import '${specifier}';\n`;
-  return `import { ${names.join(', ')} } from '${specifier}';\n`;
-}
-
-/** Built at runtime so this module's source does not import the runner. The emitted file does. */
-function spec(kind: string): string {
-  return `from '${['node', kind].join(':')}'`;
-}
-
-function lockLiteral(item: M1ScenarioCase): string {
-  const forbidden = JSON.stringify(item.expect.forbiddenFields);
-  const actor = JSON.stringify(item.expect.isolatedActorField);
-  const errorCode = JSON.stringify(item.expect.errorCode);
-  const ruleId = JSON.stringify(item.expect.ruleId);
-  return `  {
-    const item = scenario.cases.find(entry => entry.caseId === '${item.caseId}');
-    if (!item) throw new Error('missing case ${item.caseId}');
-    assert.equal(item.gate, '${item.gate}');
-    assert.equal(item.expect.ok, ${item.expect.ok});
-    assert.equal(item.expect.status, ${item.expect.status});
-    assert.equal(item.expect.errorCode, ${errorCode});
-    assert.equal(item.expect.ruleId, ${ruleId});
-    assert.deepEqual(item.expect.forbiddenFields, ${forbidden});
-    assert.equal(item.expect.isolatedActorField, ${actor});
-    assert.equal(item.routine, ${JSON.stringify(item.routine)});
-  }
-`;
 }
 
 function catalogIssues(value: unknown): string[] {
