@@ -116,7 +116,8 @@ export async function regenerateCurrent(files: Readonly<Record<string, string>>)
   const bundle = await readD2InputBundle(identity);
   const snapshot = await buildD2InputSnapshot(identity, bundle.artifacts, null);
   await writeAcceptedD2Input(identity, snapshot);
-  const contracts = await generateD2Contracts(identity, snapshot, bundle.artifacts);
+  // Same compile port the D2 contracts30 tests use: the Studio compiler does not exist in node (t1_07).
+  const contracts = await generateD2Contracts(identity, snapshot, bundle.artifacts, undefined, async () => {});
 
   const written = (logical: string): string => {
     const content = host.files[fileKey(fileInfoFromDisplay(PROJECT, logical)!)]?.content;
