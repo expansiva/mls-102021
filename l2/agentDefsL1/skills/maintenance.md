@@ -30,5 +30,5 @@ Rules:
     `agentMaterializeL2`.
 12. User-facing text is English. No `todo/` path in source. A filename has no
     dot except its extension.
-13. The stor adapter is the only I/O. Call `diskPath` as a method when the host
-    has it. Studio has no `diskPath`; that is a state, not an error.
+13. The stor adapter is the only I/O, the same browser stor the Studio uses.
+    No `diskPath`, `listFolder` or host `deleteFile`.

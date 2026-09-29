@@ -8,52 +8,11 @@ import {
   type D1FileInfo,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 
-export interface D1HostView {
-  /** Null when this host has no diskPath (Studio). Absence is a state, not an error. */
-  diskPath: string | null;
-  /** Short names from host listFolder. Null when the host has no listFolder. */
-  listed: readonly string[] | null;
-}
-
-type DiskPathHost = { diskPath?: (info: D1FileInfo) => string };
-type ListHost = {
-  listFolder?: (project: number, level: number, folder: string) => Array<Pick<D1FileInfo, 'shortName' | 'extension'>>;
-  deleteFile?: (file: mls.stor.IFileInfo) => unknown;
-};
-
 type ReadableFile = {
   status?: string;
   getValueInfo?: () => Promise<{ content?: unknown }>;
   getContent?: () => Promise<unknown>;
 };
-
-/**
- * Host disk path. Called as a method on `mls.stor` so a private field on the
- * host object stays bound. A missing method is Studio, not a failure.
- */
-export function hostDiskPath(file: D1FileInfo): string | null {
-  const stor = mls.stor as unknown as DiskPathHost;
-  if (typeof stor.diskPath !== 'function') return null;
-  try {
-    return stor.diskPath(file);
-  } catch {
-    return null;
-  }
-}
-
-export function hostView(file: D1FileInfo): D1HostView {
-  const diskPath = hostDiskPath(file);
-  const local = mls.stor.localStor as unknown as ListHost | undefined;
-  if (!local || typeof local.listFolder !== 'function') return { diskPath, listed: null };
-  try {
-    const listed = local.listFolder(file.project, file.level, file.folder)
-      .filter(item => item.extension === file.extension && !!item.shortName)
-      .map(item => item.shortName);
-    return { diskPath, listed };
-  } catch {
-    return { diskPath, listed: null };
-  }
-}
 
 export async function readText(file: D1FileInfo): Promise<string | null> {
   assertShortName(file.shortName);
@@ -153,13 +112,25 @@ export async function removePoolMessage(file: D1FileInfo): Promise<void> {
   await deleteOne(file);
 }
 
+/**
+ * Same browser path the Studio uses to remove a file (libStor): a new file leaves the
+ * stor; any other file keeps its trash content and is marked deleted.
+ */
 async function deleteOne(file: D1FileInfo): Promise<void> {
-  const stored = mls.stor.files[mls.stor.getKeyToFile(file)];
+  const key = mls.stor.getKeyToFile(file);
+  const stored = mls.stor.files[key];
   if (!stored || stored.status === 'deleted') return;
-  const local = mls.stor.localStor as unknown as ListHost;
-  if (typeof local.deleteFile === 'function') {
-    await local.deleteFile(stored);
+  if (stored.status === 'new') {
+    await mls.stor.localStor.setContent(stored, { contentType: 'string', content: null });
+    delete mls.stor.files[key];
     return;
   }
+  const content = await stored.getContent() as string;
+  await mls.stor.localStor.setContent(stored, {
+    content,
+    contentType: 'string',
+    originalShortName: stored.shortName,
+    originalProject: stored.project,
+  });
   stored.status = 'deleted';
 }
