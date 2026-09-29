@@ -378,7 +378,7 @@ void test('a write outside the output and a changed snapshot are not promoted', 
   assert.equal(drifted.map.get(output), 'OLD');
 });
 
-void test('a failed checkpoint is not promoted and does not start its dependent', async () => {
+void test('m1_34: a broken compile is not promoted and does not start its dependent', async () => {
   const note = entity('Note');
   const slot = value('Slot', note.defPath);
   const output = outputPathFromDefPath(note.defPath);
@@ -387,7 +387,7 @@ void test('a failed checkpoint is not promoted and does not start its dependent'
   const failed = await runMaterialize(baseRequest([note, slot], { budget: { repairsPerRun: 1 } }), host(store, {
     'structure.domainEntity': async () => {
       calls.push('Note');
-      return { ...passOutcome(output), observations: [observation('Note.check', false)] };
+      return { ...passOutcome(output), observations: [{ ...observation('Note.check', true), broken: 'compile' }] };
     },
     'structure.valueObject': async () => {
       calls.push('Slot');
@@ -399,6 +399,52 @@ void test('a failed checkpoint is not promoted and does not start its dependent'
   assert.deepEqual(calls, ['Note', 'Note']);
   assert.equal(store.map.has(output), false);
   assert.equal(failed.checkpoints.some(item => item.accepted), false);
+});
+
+void test('m1_34: a case the agent did not observe, or a predicted red, does not block generating', async () => {
+  const note = entity('Note');
+  const slot = value('Slot', note.defPath);
+  const output = outputPathFromDefPath(note.defPath);
+  for (const observations of [[], [observation('Note.check', false)]]) {
+    const store = world();
+    const result = await runMaterialize(baseRequest([note, slot]), host(store, {
+      'structure.domainEntity': async () => ({ ...passOutcome(output), observations }),
+      'structure.valueObject': async () => passOutcome(outputPathFromDefPath(slot.defPath)),
+    }, undefined, catalog([note], 'pass')));
+    assert.equal(result.units.find(unit => unit.defPath === note.defPath)?.code, 'PROMOTED');
+    assert.equal(result.units.find(unit => unit.defPath === slot.defPath)?.code, 'PROMOTED');
+    assert.equal(result.checkpoints.every(item => item.accepted && item.counts.inconclusive === 0), true);
+    assert.equal(store.map.get(output)?.includes('export const note'), true);
+  }
+});
+
+void test('m1_34: a def gap with an owner still holds the unit and its dependent', async () => {
+  const note = entity('Note');
+  const slot = value('Slot', note.defPath);
+  const output = outputPathFromDefPath(note.defPath);
+  const result = await runMaterialize(baseRequest([note, slot]), host(world(), {
+    'structure.domainEntity': async () => ({ ...passOutcome(output), observations: [{ ...observation('Note.check', true), blocked: true, blockOwner: 'L4' }] }),
+    'structure.valueObject': async () => passOutcome(outputPathFromDefPath(slot.defPath)),
+  }, undefined, catalog([note], 'pass')));
+  assert.equal(result.units.find(unit => unit.defPath === note.defPath)?.code, 'BLOCKED');
+  assert.equal(result.units.find(unit => unit.defPath === slot.defPath)?.code, 'BLOCKED_BY');
+});
+
+void test('m1_34: verify of an intact output is VERIFIED without running a case', async () => {
+  const note = entity('Note');
+  const output = outputPathFromDefPath(note.defPath);
+  const rendered = renderDefinition(note.definition, note.defPath);
+  assert.ok('source' in rendered);
+  const store = world({ [note.defPath]: rendered.source });
+  const first = await runMaterialize(baseRequest([note]), host(store, {
+    'structure.domainEntity': async () => passOutcome(output),
+  }, undefined, catalog([note], 'pass')));
+  assert.equal(first.units[0].code, 'PROMOTED');
+  // A test-only change asks verify; the agent does not run it.
+  store.map.set(testFileFor(output), `${store.map.get(testFileFor(output)) ?? ''}\n// changed\n`);
+  const again = await runMaterialize(baseRequest([note], { stage: 'verify' }), host(store, {}, undefined, catalog([note], 'pass')));
+  assert.equal(again.units[0].code, 'VERIFIED');
+  assert.equal(again.checkpoints.length, 0);
 });
 
 void test('an expected red structural checkpoint can be stored and does not start implement', async () => {

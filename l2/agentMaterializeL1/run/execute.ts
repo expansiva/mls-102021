@@ -36,7 +36,7 @@ import {
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { catalogBytes, catalogWithheld, deriveCatalog, type CatalogGap } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { obligationSourceHashes, type M1Obligation } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
-import { verifyBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
+import { gateBatch, type M1Checkpoint, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import {
   decideProfile,
   emptyLedger,
@@ -461,22 +461,16 @@ async function runUnit(
     if (unit.action === 'generate') {
       return remember(ledger, unit.defPath, outcome(unit.defPath, 'NOT_READY', 'Verify does not generate. The output is not an accepted implementation.', false, 0));
     }
-    // The agent runs in the browser and does not execute the file: no case is observed here (m1_33).
-    const observations: readonly M1Observation[] = [];
-    const checkpoint = await checkUnit(request, host, unit, observations);
-    const failed = !checkpoint.accepted;
-    // The file on disk still fails the new catalog. Emit again; do not keep the stub.
-    if (!(failed && reopen && stage === 'implement' && observations.length > 0)) {
-      checkpoints.push(checkpoint);
-      return remember(ledger, unit.defPath, outcome(
-        unit.defPath,
-        failed ? 'CHECKPOINT_FAILED' : 'VERIFIED',
-        checkpoint.nextAction,
-        false,
-        0,
-      ));
-    }
-    unit.action = 'generate';
+    // The agent runs in the browser and does not run a case (m1_33, m1_34): verify checks that the
+    // accepted output is intact. The case verdict is the monitor's and does not decide here.
+    const unready = await outputUnintact(host, unit.defPath);
+    return remember(ledger, unit.defPath, outcome(
+      unit.defPath,
+      unready ? 'CHECKPOINT_FAILED' : 'VERIFIED',
+      unready ? `${unit.defPath} ${unready}.` : 'Output intact against its receipt. Cases are verified by the monitor.',
+      false,
+      0,
+    ));
   }
   if (stage === 'implement' && unit.action !== 'generate') {
     return remember(ledger, unit.defPath, outcome(unit.defPath, codeOf(unit.reason, 'BLOCKED'), unit.reason, false, 0));
@@ -642,9 +636,9 @@ async function attempt(
       runsStub: produced.runsStub,
     };
   }
-  // The agent does not execute generated code: the observations are the emitter's own (m1_33).
-  const observations = produced.observations;
-  const checkpoint = await checkUnit(request, host, unit, observations);
+  // The agent does not execute generated code (m1_33). The gate reads only a broken compile/import,
+  // a throw or a def gap; a case not observed does not block (m1_34).
+  const checkpoint = await checkUnit(request, host, unit, produced.observations);
   if (!checkpoint.accepted && heldBlock(checkpoint)) {
     const blocked = checkpoint.evidence.filter(item => item.verdict === 'blocked').map(item => item.caseId);
     return {
@@ -669,6 +663,16 @@ async function attempt(
 
 /** '' when the unit's output is the accepted one: intact against a receipt with no failure, implemented when the type has an implement handler. */
 async function unitUnready(host: MaterializeRunHost, defPath: string): Promise<string> {
+  const intact = await outputUnintact(host, defPath);
+  if (intact) return intact;
+  const receipt = await host.state.readReceipt(defPath);
+  if (!receipt) return 'has no receipt';
+  const implemented = handlerFor(receipt.artifactType, 'implement') ? receipt.stage === 'verify' : receipt.stage !== 'plan';
+  return implemented ? '' : `is not implemented (receipt stage ${receipt.stage})`;
+}
+
+/** '' when the output is intact against a receipt with no failure, at any stage. */
+async function outputUnintact(host: MaterializeRunHost, defPath: string): Promise<string> {
   const receipt = await host.state.readReceipt(defPath);
   if (!receipt) return 'has no receipt';
   if (receipt.failures.length > 0) return `failed (${receipt.failures.map(item => item.code).join(', ')})`;
@@ -676,8 +680,7 @@ async function unitUnready(host: MaterializeRunHost, defPath: string): Promise<s
   const body = output ? await host.io.read(output) : null;
   if (body === null) return 'has no output';
   if (receipt.outputHashes[output] !== await contentHash(body)) return 'output does not match its receipt';
-  const implemented = handlerFor(receipt.artifactType, 'implement') ? receipt.stage === 'verify' : receipt.stage !== 'plan';
-  return implemented ? '' : `is not implemented (receipt stage ${receipt.stage})`;
+  return '';
 }
 
 /**
@@ -731,12 +734,11 @@ async function runFixtureStage(
   return entries;
 }
 
-/** Passed cases plus an external block or a case that could not run. The output is kept. */
+/** A def gap with an owner and nothing broken. The output is kept. A case that did not run is not a block (m1_34). */
 function heldBlock(checkpoint: M1Checkpoint): boolean {
   const counts = checkpoint.counts;
-  if (counts.failed > 0 || counts.skipped > 0) return false;
-  if (counts.blocked === 0 && counts.inconclusive === 0) return false;
-  return checkpoint.evidence.every(item => item.verdict === 'passed' || item.verdict === 'blocked' || item.verdict === 'inconclusive');
+  if (counts.failed > 0 || counts.skipped > 0 || counts.blocked === 0) return false;
+  return checkpoint.evidence.every(item => item.verdict === 'passed' || item.verdict === 'blocked');
 }
 
 async function promote(
@@ -826,7 +828,7 @@ async function checkUnit(
     capabilities: [],
   } as MaterializeHandler;
   const now = host.now ? host.now() : new Date().toISOString();
-  return verifyBatch({
+  return gateBatch({
     handler,
     io: host.io,
     catalogRef: host.catalogRef || '',

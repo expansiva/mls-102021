@@ -1,5 +1,15 @@
 # agentMaterializeL1
 
+## 2026-09-29 (m1_34)
+
+- A case the agent did not observe no longer blocks generating. The unit gate is `gateBatch`
+  (`testing/verify.ts`). Only a broken compile or import, a throw, or a def gap with an owner
+  (held) blocks. A predicted case ok/status decides nothing. `verifyBatch`/`classifyCase` stay
+  as the case classifier.
+- Verify is `VERIFIED` when the output is intact against a receipt with no failure. `heldBlock`
+  no longer counts `inconclusive`. An unread grant refuses the unit (`GRANT_UNREAD`).
+- There is no Studio compile gate yet: collab-msg has no `mls.l2.typescript`.
+
 ## 2026-09-29 (m1_33)
 
 - The agent runs only in the Studio browser (collab-msg simulates it) and executes no generated

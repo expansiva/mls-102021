@@ -155,24 +155,59 @@ export function classifyCase(
 }
 
 export async function verifyBatch(request: MaterializeVerificationRequest): Promise<M1Checkpoint> {
+  const loaded = await loadCases(request);
+  if ('report' in loaded) return loaded.report;
+  const byId = new Map(request.observations.map(item => [item.caseId, item]));
+  const evidenceRows = loaded.cases.map(item => classifyCase(loaded.stage, item, byId.get(item.caseId)));
+  return checkpoint(request, loaded.inputHash, evidenceRows);
+}
+
+/**
+ * The agent's own gate (m1_34). The agent runs in the browser and does not run a case, so a case
+ * with no observation and a predicted ok/status decide nothing: the case verdict is the monitor's
+ * (m1_35). What blocks is only what the agent sees without running: a broken compile or import, an
+ * unstructured exception, and a def gap with an owner (held). The catalog checks stay fail-closed.
+ */
+export async function gateBatch(request: MaterializeVerificationRequest): Promise<M1Checkpoint> {
+  const loaded = await loadCases(request);
+  if ('report' in loaded) return loaded.report;
+  const byId = new Map(request.observations.map(item => [item.caseId, item]));
+  const rows: M1Evidence[] = [];
+  for (const item of loaded.cases) {
+    const seen = byId.get(item.caseId);
+    if (!seen) continue;
+    const base = [seen.errorCode, seen.status, seen.durationMs] as const;
+    if (seen.thrown) rows.push(row(item.caseId, 'failed', ...base, 'unstructured exception is not an expected failure'));
+    else if (seen.broken !== 'none') rows.push(row(item.caseId, 'failed', ...base, `${seen.broken} broken${seen.reason ? `: ${seen.reason}` : ''}`));
+    else if (seen.blocked) rows.push(row(item.caseId, 'blocked', ...base, `blocked: ${seen.blockOwner || 'unassigned'}`));
+  }
+  if (rows.length === 0) {
+    rows.push(row(request.artifactId || request.handler.id, 'passed', null, 0, 0, 'generated; the cases are not run by the agent, the monitor verifies them'));
+  }
+  return checkpoint(request, loaded.inputHash, rows);
+}
+
+async function loadCases(
+  request: MaterializeVerificationRequest,
+): Promise<{ report: M1Checkpoint } | { stage: M1HandlerStage; inputHash: string; cases: M1ScenarioCase[] }> {
   const stage = request.handler.stage;
   const registered = handlerFor(request.handler.artifactType, stage);
   if (!registered || registered.id !== request.handler.id) {
-    return checkpoint(request, '', [row('handler', 'failed', null, null, 0, 'handler is not the registered one')]);
+    return { report: checkpoint(request, '', [row('handler', 'failed', null, null, 0, 'handler is not the registered one')]) };
   }
   let text: string | null;
   try {
     text = await request.io.read(request.catalogRef);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return checkpoint(request, '', [row('catalog', 'failed', null, null, 0, `catalog read failed: ${message}`)]);
+    return { report: checkpoint(request, '', [row('catalog', 'failed', null, null, 0, `catalog read failed: ${message}`)]) };
   }
   if (text === null) {
-    return checkpoint(request, '', [row('catalog', 'failed', null, null, 0, 'catalog unreadable')]);
+    return { report: checkpoint(request, '', [row('catalog', 'failed', null, null, 0, 'catalog unreadable')]) };
   }
   const parsed = parseCatalog(text);
   if (!parsed.catalog) {
-    return checkpoint(request, '', [row('catalog', 'failed', null, null, 0, parsed.issues.join('; '))]);
+    return { report: checkpoint(request, '', [row('catalog', 'failed', null, null, 0, parsed.issues.join('; '))]) };
   }
   const inputHash = await contentHash(canonicalJson(parsed.catalog));
   const staged = catalogForStage(parsed.catalog, stage);
@@ -180,16 +215,14 @@ export async function verifyBatch(request: MaterializeVerificationRequest): Prom
   if (cases.length === 0) {
     const runtime = request.handler.artifactType === 'usecase' || request.handler.artifactType === 'httpController';
     if (request.artifactId && runtime) {
-      return checkpoint(request, inputHash, [row(request.artifactId, 'failed', null, null, 0, 'no catalog case for this artifact')]);
+      return { report: checkpoint(request, inputHash, [row(request.artifactId, 'failed', null, null, 0, 'no catalog case for this artifact')]) };
     }
     if (request.artifactId) {
-      return checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no runtime scenario; structural file only')]);
+      return { report: checkpoint(request, inputHash, [row(request.artifactId, 'passed', null, 0, 0, 'no runtime scenario; structural file only')]) };
     }
-    return checkpoint(request, inputHash, [row('batch', 'failed', null, null, 0, `no scenario for handler ${request.handler.id}`)]);
+    return { report: checkpoint(request, inputHash, [row('batch', 'failed', null, null, 0, `no scenario for handler ${request.handler.id}`)]) };
   }
-  const byId = new Map(request.observations.map(item => [item.caseId, item]));
-  const evidenceRows = cases.map(item => classifyCase(stage, item, byId.get(item.caseId)));
-  return checkpoint(request, inputHash, evidenceRows);
+  return { stage, inputHash, cases };
 }
 
 export function noteMonitorFailure(report: M1Checkpoint, error: string): M1Checkpoint {
