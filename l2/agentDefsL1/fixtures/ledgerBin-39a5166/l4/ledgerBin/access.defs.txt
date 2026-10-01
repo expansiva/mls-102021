@@ -1,0 +1,42 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/access.defs.ts" enhancement="_blank"/>
+
+import type { Ns5AccessArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinAccess = {
+  "schemaVersion": "2026-09-12-ns5-access-v3",
+  "moduleName": "ledgerBin",
+  "actors": [
+    {
+      "actorId": "clerk",
+      "kind": "internal",
+      "origin": "named",
+      "title": "Estoquista",
+      "description": "Registra e acompanha as movimentações e os saldos do estoque.",
+      "personEntity": ""
+    }
+  ],
+  "grants": [
+    {
+      "grantId": "manageLedger",
+      "actorRef": "clerk",
+      "title": "Gerenciar estoque",
+      "description": "Permite ao clerk cadastrar widgets acompanhados, registrar movimentações de entrada e saída e consultar saldos, quantidades mínimas e avisos de saldo baixo de toda a organização.",
+      "entityRefs": [
+        "Widget",
+        "BinEvent"
+      ],
+      "dataScope": {
+        "mode": "organization",
+        "description": "Abrange os widgets e as movimentações de estoque de toda a organização."
+      },
+      "disclosure": {
+        "mode": "fullRecord",
+        "description": "Permite visualizar todos os dados dos widgets acompanhados e das movimentações de estoque, inclusive saldo atual, quantidade mínima e aviso de saldo abaixo do mínimo."
+      }
+    }
+  ]
+} as const satisfies Ns5Readonly<Ns5AccessArtifact>;
+
+export type LedgerBinAccessType = typeof ledgerBinAccess;
+
+export default ledgerBinAccess;

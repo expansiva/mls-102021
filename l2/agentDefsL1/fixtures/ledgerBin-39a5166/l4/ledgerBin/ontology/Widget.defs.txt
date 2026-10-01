@@ -1,0 +1,202 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/ontology/Widget.defs.ts" enhancement="_blank"/>
+
+import type { Ns5OntologyEntityV3, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinEntityWidget = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "ledgerBin",
+  "entityId": "Widget",
+  "title": "Widget",
+  "description": "Widget acompanhado pelo estoque, com quantidade mínima definida para sinalizar saldo abaixo do mínimo.",
+  "displayField": "details.identification.name",
+  "relationships": {
+    "binEventsEstoque": {
+      "relationshipId": "binEventWidget",
+      "to": "BinEvent",
+      "via": "BinEvent.widgetId",
+      "cardinality": "1:N",
+      "title": "Movimentações de estoque",
+      "description": "Movimentações de entrada ou saída registradas para este widget.",
+      "mode": "fk",
+      "direction": "to",
+      "required": true,
+      "role": "widget movimentado"
+    }
+  },
+  "capabilities": {
+    "read.byId": "Consulta um widget pelo identificador mestre; lê o registro pelo id no índice e documento; usado pelo clerk ao abrir um widget localizado ou referenciado por uma movimentação.",
+    "locate.byName": "Localiza widgets pelo nome; pesquisa o texto informado entre os widgets ativos no índice mestre; usado pelo clerk para cadastrar movimentações e acompanhar saldos.",
+    "register.createOrAttach": "Cadastra ou associa um widget ao controle de estoque; localiza o registro mestre e cria ou anexa a função do módulo, gravando a quantidade mínima; usado pelo clerk no cadastro de widget.",
+    "edit.platformFields": "Altera os dados de catálogo usados pelo estoque, como nome e unidade de medida; atualiza os campos da plataforma no registro mestre; usado pelo clerk na manutenção do widget.",
+    "edit.moduleNamespace": "Altera a quantidade mínima do widget; atualiza somente o espaço ledgerBin do registro mestre; usado pelo clerk para ajustar o acompanhamento do saldo.",
+    "inactivate": "Inativa ou reativa um widget sem removê-lo do cadastro mestre; altera a situação do registro; usado pelo clerk quando o widget deixa ou volta a ser controlado.",
+    "statusHistory.read": "Mostra as mudanças de situação do widget; consulta o histórico de status do registro mestre; usado pelo clerk ao verificar a disponibilidade do cadastro.",
+    "audit": "Mostra quem alterou dados do widget e quando; consulta a auditoria do registro mestre; usado pelo clerk para conferir a manutenção do cadastro."
+  },
+  "rules": [
+    "rule-foreign-namespace-refused",
+    "rule-document-shape-validated",
+    "rule-identity-never-in-namespace",
+    "floorQtyValida",
+    "onHandQtyWidget",
+    "avisoSaldoMinimoWidget"
+  ],
+  "kind": "role",
+  "subtype": "Product",
+  "roleTag": "ledgerBin.Widget",
+  "source": "/_102034_/l4/ontology/mdm.defs.ts",
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "description": "mdmId; stable through promotion and merge."
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true,
+        "writePrecondition": true,
+        "description": "Bumped by the engine on every write; optimistic concurrency."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "description": "Documento mestre do widget acompanhado pelo controle de estoque.",
+        "fields": {
+          "identification": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "subtype": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Product",
+                    "title": "Widget",
+                    "description": "Item de catálogo ou estoque."
+                  }
+                ],
+                "description": "Identifica este cadastro mestre como um widget.",
+                "title": "Tipo de cadastro",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "name": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "maxLength": 0,
+                "description": "Nome usado pelo clerk para localizar e reconhecer o widget controlado.",
+                "title": "Nome do widget",
+                "min": 0,
+                "max": 0
+              },
+              "status": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Active",
+                    "title": "Ativo",
+                    "description": "Cadastro disponível para uso."
+                  },
+                  {
+                    "value": "Inactive",
+                    "title": "Inativo",
+                    "description": "Cadastro fora de uso."
+                  },
+                  {
+                    "value": "Merged",
+                    "title": "Mesclado",
+                    "description": "Cadastro unido a outro registro mestre."
+                  },
+                  {
+                    "value": "Blocked",
+                    "title": "Bloqueado",
+                    "description": "Cadastro bloqueado pela plataforma."
+                  }
+                ],
+                "title": "Situação do cadastro",
+                "description": "Situação do widget no cadastro mestre, usada para indicar se ele está ativo para o controle de estoque.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Dados de identificação do widget no cadastro mestre."
+          },
+          "base": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {},
+            "description": "Dados básicos comuns do registro mestre; nenhum campo desta camada é necessário neste controle."
+          },
+          "product": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "unitOfMeasure": {
+                "type": "string",
+                "description": "Unidade em que o clerk registra entradas, saídas, saldo e quantidade mínima do widget.",
+                "title": "Unidade de medida",
+                "required": true,
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Dados de catálogo do widget utilizados para interpretar as quantidades movimentadas."
+          },
+          "general": {
+            "type": "object",
+            "owner": "organization",
+            "open": true,
+            "description": "Dados promovidos pela organização, somente para leitura neste módulo."
+          },
+          "ledgerBin": {
+            "type": "object",
+            "owner": "module",
+            "fields": {
+              "floorQty": {
+                "type": "number",
+                "required": true,
+                "of": "Address",
+                "title": "Quantidade mínima",
+                "description": "Quantidade mínima em estoque a partir da qual o widget deve ser acompanhado por aviso.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "onHandQty": {
+                "type": "number",
+                "derived": true,
+                "title": "Saldo atual",
+                "description": "Quantidade disponível do widget, calculada pelas entradas menos as saídas registradas para este widget."
+              },
+              "belowFloor": {
+                "type": "boolean",
+                "derived": true,
+                "title": "Saldo abaixo do mínimo",
+                "description": "Indica que o saldo atual do widget está menor que a quantidade mínima definida para seu acompanhamento."
+              }
+            },
+            "description": "Dados próprios deste módulo para acompanhar o nível mínimo do widget."
+          }
+        }
+      }
+    }
+  }
+} as const satisfies Ns5Readonly<Ns5OntologyEntityV3>;
+
+export type LedgerBinEntityWidgetType = typeof ledgerBinEntityWidget;
+
+export default ledgerBinEntityWidget;

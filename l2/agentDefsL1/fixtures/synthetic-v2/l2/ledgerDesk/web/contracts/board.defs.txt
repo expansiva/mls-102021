@@ -1,0 +1,12 @@
+export interface BoardContracts {
+  'ledgerDesk.board.load': {
+    kind: 'qry';
+    input: {};
+    output: { notes: NoteSave[] };
+    meta: { output: { notes: { entity: 'DeskNote'; many: true } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+}
+
+export interface NoteSave { id: string; version: number; }

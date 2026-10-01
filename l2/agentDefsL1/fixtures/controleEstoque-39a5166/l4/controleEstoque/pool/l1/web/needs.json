@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "controleEstoque",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "produtos",
+      "actors": [
+        "estoquista"
+      ],
+      "reads": [
+        {
+          "entity": "MovimentacaoEstoque",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:gerenciarEstoque",
+            "journey:acompanharSaldos/consultarSaldos",
+            "journey:acompanharSaldos/localizarProdutos",
+            "journey:cadastrarProduto/informarProduto",
+            "journey:registrarMovimentacaoEstoque/consultarSaldo",
+            "journey:registrarMovimentacaoEstoque/localizarProduto",
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+            "journey:tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+            "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+            "relationship:Produto/movimentacaoEstoqueProduto"
+          ]
+        },
+        {
+          "entity": "Produto",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.controleEstoque.saldoAbaixoDoMinimo",
+            "details.controleEstoque.saldoAtual"
+          ],
+          "from": [
+            "grant:gerenciarEstoque",
+            "journey:acompanharSaldos/consultarSaldos",
+            "journey:acompanharSaldos/localizarProdutos",
+            "journey:cadastrarProduto/informarProduto",
+            "journey:registrarMovimentacaoEstoque/consultarSaldo",
+            "journey:registrarMovimentacaoEstoque/localizarProduto",
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+            "journey:tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+            "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+            "relationship:Produto/movimentacaoEstoqueProduto"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "MovimentacaoEstoque",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao"
+          ]
+        },
+        {
+          "entity": "Produto",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:cadastrarProduto/informarProduto"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "movimentacoes",
+      "actors": [
+        "estoquista"
+      ],
+      "reads": [
+        {
+          "entity": "MovimentacaoEstoque",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:gerenciarEstoque",
+            "journey:registrarMovimentacaoEstoque/consultarSaldo",
+            "journey:registrarMovimentacaoEstoque/localizarProduto",
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+            "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+            "relationship:Produto/movimentacaoEstoqueProduto"
+          ]
+        },
+        {
+          "entity": "Produto",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.controleEstoque.saldoAbaixoDoMinimo",
+            "details.controleEstoque.saldoAtual"
+          ],
+          "from": [
+            "grant:gerenciarEstoque",
+            "journey:registrarMovimentacaoEstoque/consultarSaldo",
+            "journey:registrarMovimentacaoEstoque/localizarProduto",
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+            "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+            "relationship:Produto/movimentacaoEstoqueProduto"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "MovimentacaoEstoque",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarMovimentacaoEstoque/registrarMovimentacao"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-28T17:39:15.637Z"
+  }
+}

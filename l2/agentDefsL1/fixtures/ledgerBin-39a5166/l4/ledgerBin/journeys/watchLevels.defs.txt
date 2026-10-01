@@ -1,0 +1,44 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/journeys/watchLevels.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const watchLevelsJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "watchLevels",
+  "business": {
+    "actorRef": "clerk",
+    "title": "Acompanhar saldos do estoque",
+    "goal": "Consultar os saldos atuais dos widgets e identificar itens abaixo da quantidade mínima.",
+    "entry": {
+      "mode": "coldStart"
+    },
+    "steps": [
+      {
+        "stepId": "localizarWidgets",
+        "kind": "locate",
+        "entity": "Widget",
+        "title": "Localizar widgets",
+        "description": "Localiza os widgets cadastrados para acompanhamento do estoque."
+      },
+      {
+        "stepId": "consultarSaldos",
+        "kind": "inspect",
+        "entity": "Widget",
+        "title": "Consultar saldos atuais",
+        "description": "Consulta os saldos atuais, as quantidades mínimas e os avisos de widgets abaixo do mínimo."
+      }
+    ],
+    "outcome": {
+      "statement": "O clerk identifica os widgets que exigem reposição por estarem abaixo da quantidade mínima.",
+      "evidence": [
+        "Saldo atual exibido para cada widget.",
+        "Aviso exibido para widget com saldo abaixo do mínimo."
+      ]
+    }
+  },
+  "businessHash": "sha256:2e47a6d87a2619f21bdbb4539a1f2b08b83c3559019f1e195c2c62963e6c75a2"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type AcompanharSaldosJourneyType = typeof watchLevelsJourney;
+
+export default watchLevelsJourney;

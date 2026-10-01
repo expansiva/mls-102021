@@ -1,0 +1,1 @@
+export const ledgerDeskIntegration = { "schemaVersion": "2026-09-17-ns5-integration", "moduleName": "ledgerDesk", "outbound": [] } as const;

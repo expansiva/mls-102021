@@ -1,0 +1,37 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/journeys/handleLowLevel.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const handleLowLevelJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "handleLowLevel",
+  "business": {
+    "actorRef": "clerk",
+    "title": "Verificar aviso de saldo baixo",
+    "goal": "Verificar um aviso recebido sobre widget com saldo abaixo da quantidade mínima.",
+    "entry": {
+      "mode": "fromNotification"
+    },
+    "steps": [
+      {
+        "stepId": "consultarWidgetAvisado",
+        "kind": "inspect",
+        "entity": "Widget",
+        "title": "Consultar widget avisado",
+        "description": "Consulta o saldo atual e a quantidade mínima do widget indicado no aviso."
+      }
+    ],
+    "outcome": {
+      "statement": "O clerk confirma o widget com saldo abaixo do mínimo e pode providenciar sua reposição.",
+      "evidence": [
+        "Saldo atual e quantidade mínima do widget exibidos.",
+        "Aviso de saldo abaixo do mínimo associado ao widget."
+      ]
+    }
+  },
+  "businessHash": "sha256:a9891a7f6b13b69ed088e5322408fcd0787bc4038ae476e4e8305ee1eb1ff279"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type TratarAvisoSaldoBaixoJourneyType = typeof handleLowLevelJourney;
+
+export default handleLowLevelJourney;

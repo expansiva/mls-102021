@@ -1,0 +1,14 @@
+export const ledgerDeskOntologyIndex = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "ledgerDesk",
+  "businessDomain": "Ledger desk",
+  "platformOntology": "/_102034_/l4/ontology/mdm.defs.ts",
+  "moduleNamespace": { "key": "ledgerDesk", "description": "Branch details.ledgerDesk." },
+  "entities": [
+    { "entityId": "ItemCard", "kind": "role", "subtype": "Product" },
+    { "entityId": "DeskNote", "kind": "entity", "class": "event" }
+  ],
+  "relationships": []
+} as const;
+
+export default ledgerDeskOntologyIndex;

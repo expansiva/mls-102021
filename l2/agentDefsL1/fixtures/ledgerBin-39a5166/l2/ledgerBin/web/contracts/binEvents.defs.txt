@@ -1,0 +1,49 @@
+/// <mls fileReference="_102047_/l2/ledgerBin/web/contracts/binEvents.defs.ts" enhancement="_blank"/>
+
+export interface BinEventLoad {
+  id: string;
+  widgetId: string;
+  movimentadoEm: string;
+  details: {
+    tipo: 'entrada' | 'saida';
+    quantidade: number;
+  };
+}
+
+export interface WidgetLoad {
+  id: string;
+  details: {
+    identification: {
+      name: string;
+      readonly status: 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+    };
+    product: {
+      unitOfMeasure: string;
+    };
+    ledgerBin: {
+      floorQty: number;
+      readonly onHandQty: number;
+      readonly belowFloor: boolean;
+    };
+  };
+}
+
+export interface MovimentacoesContracts {
+  'ledgerBin.binEvents.load': {
+    kind: 'qry';
+    input: { widgetId?: string; page?: number; pageSize?: number };
+    output: { binEvents: BinEventLoad[]; widgets: WidgetLoad[]; pageHistoricoMovimentacoes: number; pageSizeHistoricoMovimentacoes: number; hasMoreHistoricoMovimentacoes: boolean };
+    meta: { output: { binEvents: { entity: 'BinEvent'; many: true }; widgets: { entity: 'Widget'; many: true } }; lists: { historicoMovimentacoes: { key: 'binEvents'; page: 'pageHistoricoMovimentacoes'; pageSize: 'pageSizeHistoricoMovimentacoes'; hasMore: 'hasMoreHistoricoMovimentacoes' } }; params: { widgetId: { filters: 'binEvents'; field: 'widgetId' }; page: { pages: 'historicoMovimentacoes' }; pageSize: { pages: 'historicoMovimentacoes' } } };
+    rules: ['binEventImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo', 'floorQtyValida', 'onHandQtyWidget', 'avisoSaldoMinimoWidget'];
+    access: { actors: ['clerk']; grants: ['manageLedger']; scope: 'organization' };
+  };
+  'ledgerBin.binEvents.registerBinEvent': {
+    kind: 'cmd';
+    writes: 'BinEvent.create';
+    input: { widgetId: string; movimentadoEm: string; details: { tipo: 'entrada' | 'saida'; quantidade: number } };
+    output: { binEvent: BinEventLoad };
+    meta: { output: { binEvent: { entity: 'BinEvent'; many: false } }; lists: {}; params: {} };
+    rules: ['binEventImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo'];
+    access: { actors: ['clerk']; grants: ['manageLedger']; scope: 'organization' };
+  };
+}

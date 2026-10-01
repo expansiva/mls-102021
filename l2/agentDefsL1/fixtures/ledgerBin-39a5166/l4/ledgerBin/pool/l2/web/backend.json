@@ -1,0 +1,257 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "ledgerBin",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "ledgerBin.binEvents.cmdCreateBinEvent",
+      "page": "binEvents",
+      "kind": "cmd",
+      "usecaseRef": "createBinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ledgerBin.binEvents.qryListBinEvent",
+      "page": "binEvents",
+      "kind": "qry",
+      "usecaseRef": "listBinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ledgerBin.binEvents.qryListWidget",
+      "page": "binEvents",
+      "kind": "qry",
+      "usecaseRef": "listWidget",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ledgerBin.widgets.cmdCreateBinEvent",
+      "page": "widgets",
+      "kind": "cmd",
+      "usecaseRef": "createBinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ledgerBin.widgets.cmdCreateWidget",
+      "page": "widgets",
+      "kind": "cmd",
+      "usecaseRef": "createWidget",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ledgerBin.widgets.qryListBinEvent",
+      "page": "widgets",
+      "kind": "qry",
+      "usecaseRef": "listBinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ledgerBin.widgets.qryListWidget",
+      "page": "widgets",
+      "kind": "qry",
+      "usecaseRef": "listWidget",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createBinEvent",
+      "entity": "BinEvent",
+      "operation": "create",
+      "ports": [
+        "BinEvent"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for BinEvent.create",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createWidget",
+      "entity": "Widget",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Widget.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listBinEvent",
+      "entity": "BinEvent",
+      "operation": "list",
+      "ports": [
+        "BinEvent"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for BinEvent.list",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listWidget",
+      "entity": "Widget",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Widget.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "BinEventRepository",
+      "entity": "BinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "binEvent",
+      "entity": "BinEvent",
+      "status": "toCreate",
+      "tableRefs": [
+        "binEvent"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:BinEvent",
+      "actorRefs": [
+        "clerk"
+      ],
+      "entityRefs": [
+        "BinEvent",
+        "Widget"
+      ],
+      "sourceRefs": [
+        "grant:manageLedger",
+        "journey:watchLevels/consultarSaldos",
+        "journey:watchLevels/localizarWidgets",
+        "journey:registerWidget/informarWidget",
+        "journey:registrarBinEvent/consultarSaldo",
+        "journey:registrarBinEvent/localizarWidget",
+        "journey:registrarBinEvent/registerBinEvent",
+        "journey:handleLowLevel/consultarWidgetAvisado",
+        "relationship:BinEvent/binEventWidget",
+        "relationship:Widget/binEventWidget"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes binEvent rows by execution id"
+    },
+    {
+      "id": "identity:clerk",
+      "actorRefs": [
+        "clerk"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/clerk",
+        "grant:manageLedger",
+        "journey:watchLevels/consultarSaldos",
+        "journey:watchLevels/localizarWidgets",
+        "journey:registerWidget/informarWidget",
+        "journey:registrarBinEvent/consultarSaldo",
+        "journey:registrarBinEvent/localizarWidget",
+        "journey:registrarBinEvent/registerBinEvent",
+        "journey:handleLowLevel/consultarWidgetAvisado",
+        "relationship:BinEvent/binEventWidget",
+        "relationship:Widget/binEventWidget"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor clerk declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "mdm:Widget",
+      "actorRefs": [
+        "clerk"
+      ],
+      "entityRefs": [
+        "Widget"
+      ],
+      "sourceRefs": [
+        "grant:manageLedger",
+        "journey:watchLevels/consultarSaldos",
+        "journey:watchLevels/localizarWidgets",
+        "journey:registerWidget/informarWidget",
+        "journey:registrarBinEvent/consultarSaldo",
+        "journey:registrarBinEvent/localizarWidget",
+        "journey:registrarBinEvent/registerBinEvent",
+        "journey:handleLowLevel/consultarWidgetAvisado",
+        "ontology:BinEvent/relationships",
+        "relationship:BinEvent/binEventWidget",
+        "relationship:Widget/binEventWidget"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Widget records by execution id"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "widgets": [
+        "ledgerBin.widgets.cmdCreateBinEvent",
+        "ledgerBin.widgets.cmdCreateWidget",
+        "ledgerBin.widgets.qryListBinEvent",
+        "ledgerBin.widgets.qryListWidget"
+      ],
+      "binEvents": [
+        "ledgerBin.binEvents.cmdCreateBinEvent",
+        "ledgerBin.binEvents.qryListBinEvent",
+        "ledgerBin.binEvents.qryListWidget"
+      ]
+    },
+    "generatedAt": "2026-09-28T17:39:16.221Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

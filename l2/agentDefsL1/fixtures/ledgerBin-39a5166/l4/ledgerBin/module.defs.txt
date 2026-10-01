@@ -1,0 +1,19 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/module.defs.ts" enhancement="_blank"/>
+
+import type { Ns5ModuleArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinModule = {
+  "schemaVersion": "2026-09-10-ns5-module-v2",
+  "moduleName": "ledgerBin",
+  "title": "Controle de estoque",
+  "userLanguage": "pt-BR",
+  "productLanguages": [
+    "pt-BR"
+  ],
+  "defaultLanguage": "pt-BR",
+  "sourcePrompt": "controle de estoque: widgets, entradas e saídas, saldo atual por widget e aviso quando o saldo ficar abaixo do mínimo. movimentação não pode ser alterada depois de registrada. um perfil: clerk."
+} as const satisfies Ns5Readonly<Ns5ModuleArtifact>;
+
+export type LedgerBinModuleType = typeof ledgerBinModule;
+
+export default ledgerBinModule;

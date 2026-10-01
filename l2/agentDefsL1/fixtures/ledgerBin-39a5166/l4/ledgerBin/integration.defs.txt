@@ -1,0 +1,28 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/integration.defs.ts" enhancement="_blank"/>
+
+import type { Ns5IntegrationArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinIntegration = {
+  "schemaVersion": "2026-09-12-ns5-integration-v2",
+  "moduleName": "ledgerBin",
+  "inbound": [
+    {
+      "id": "recebimentoRegistrado",
+      "kind": "event",
+      "from": "compras",
+      "event": "recebimentoRegistrado",
+      "writes": [
+        "BinEvent"
+      ],
+      "effect": "create",
+      "description": "Recebe o recebimento registrado em Compras e cria a movimentação de entrada correspondente no estoque.",
+      "entityRefs": []
+    }
+  ],
+  "outbound": [],
+  "plugins": []
+} as const satisfies Ns5Readonly<Ns5IntegrationArtifact>;
+
+export type LedgerBinIntegrationType = typeof ledgerBinIntegration;
+
+export default ledgerBinIntegration;

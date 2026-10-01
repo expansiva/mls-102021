@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "controleEstoque",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "produtos",
+      "kind": "page",
+      "label": "Produtos",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Vejo o saldo atual de cada produto do estoque."
+        },
+        {
+          "kind": "highlights",
+          "text": "Identifico os produtos com saldo abaixo da quantidade mínima."
+        },
+        {
+          "kind": "list",
+          "text": "Localizo os produtos cadastrados no estoque."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulto o produto, o saldo atual e a quantidade mínima."
+        },
+        {
+          "kind": "form",
+          "text": "Informo o produto e a quantidade mínima para acompanhamento do estoque."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastro o produto."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "movimentacoes",
+      "kind": "page",
+      "label": "Movimentações",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Acompanho as entradas e saídas já registradas."
+        },
+        {
+          "kind": "form",
+          "text": "Registro uma entrada ou saída de unidades de um produto."
+        },
+        {
+          "kind": "actions",
+          "text": "Registro a movimentação e atualizo o saldo."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:estoquista": [
+      "produtos",
+      "movimentacoes"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarProduto": [
+        "produtos"
+      ],
+      "registrarMovimentacaoEstoque": [
+        "produtos",
+        "movimentacoes"
+      ],
+      "acompanharSaldos": [
+        "produtos"
+      ],
+      "tratarAvisoSaldoBaixo": [
+        "produtos"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

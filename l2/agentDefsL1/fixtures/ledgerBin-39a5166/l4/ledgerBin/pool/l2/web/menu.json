@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "ledgerBin",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "widgets",
+      "kind": "page",
+      "label": "Widgets",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Vejo o saldo atual de cada widget do estoque."
+        },
+        {
+          "kind": "highlights",
+          "text": "Identifico os widgets com saldo abaixo da quantidade mínima."
+        },
+        {
+          "kind": "list",
+          "text": "Localizo os widgets cadastrados no estoque."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulto o widget, o saldo atual e a quantidade mínima."
+        },
+        {
+          "kind": "form",
+          "text": "Informo o widget e a quantidade mínima para acompanhamento do estoque."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastro o widget."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "binEvents",
+      "kind": "page",
+      "label": "Movimentações",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Acompanho as entradas e saídas já registradas."
+        },
+        {
+          "kind": "form",
+          "text": "Registro uma entrada ou saída de unidades de um widget."
+        },
+        {
+          "kind": "actions",
+          "text": "Registro a movimentação e atualizo o saldo."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:clerk": [
+      "widgets",
+      "binEvents"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registerWidget": [
+        "widgets"
+      ],
+      "registrarBinEvent": [
+        "widgets",
+        "binEvents"
+      ],
+      "watchLevels": [
+        "widgets"
+      ],
+      "handleLowLevel": [
+        "widgets"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

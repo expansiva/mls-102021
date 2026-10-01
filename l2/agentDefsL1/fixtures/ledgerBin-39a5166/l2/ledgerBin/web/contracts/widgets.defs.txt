@@ -1,0 +1,54 @@
+/// <mls fileReference="_102047_/l2/ledgerBin/web/contracts/widgets.defs.ts" enhancement="_blank"/>
+
+export interface WidgetLoad {
+  id: string;
+  details: {
+    identification: {
+      name: string;
+      readonly status: 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+    };
+    product: {
+      unitOfMeasure: string;
+    };
+    ledgerBin: {
+      readonly onHandQty: number;
+      floorQty: number;
+      readonly belowFloor: boolean;
+    };
+  };
+}
+
+export interface WidgetCadastrarWidget {
+  id: string;
+  details: {
+    identification: {
+      name: string;
+    };
+    product: {
+      unitOfMeasure: string;
+    };
+    ledgerBin: {
+      floorQty: number;
+    };
+  };
+}
+
+export interface WidgetsContracts {
+  'ledgerBin.widgets.load': {
+    kind: 'qry';
+    input: { search?: string; page?: number; pageSize?: number };
+    output: { widgets: WidgetLoad[]; pageListaWidgets: number; pageSizeListaWidgets: number; hasMoreListaWidgets: boolean };
+    meta: { output: { widgets: { entity: 'Widget'; many: true } }; lists: { listaWidgets: { key: 'widgets'; page: 'pageListaWidgets'; pageSize: 'pageSizeListaWidgets'; hasMore: 'hasMoreListaWidgets' } }; params: { search: { filters: 'widgets'; field: 'details.identification.name' }; page: { pages: 'listaWidgets' }; pageSize: { pages: 'listaWidgets' } } };
+    rules: ['floorQtyValida', 'onHandQtyWidget', 'avisoSaldoMinimoWidget'];
+    access: { actors: ['clerk']; grants: ['manageLedger']; scope: 'organization' };
+  };
+  'ledgerBin.widgets.registerWidget': {
+    kind: 'cmd';
+    writes: 'Widget.create';
+    input: { details: { identification: { name: string }; product: { unitOfMeasure: string }; ledgerBin: { floorQty: number } } };
+    output: { widget: WidgetCadastrarWidget };
+    meta: { output: { widget: { entity: 'Widget'; many: false } }; lists: {}; params: {} };
+    rules: ['floorQtyValida', 'onHandQtyWidget', 'avisoSaldoMinimoWidget'];
+    access: { actors: ['clerk']; grants: ['manageLedger']; scope: 'organization' };
+  };
+}

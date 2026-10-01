@@ -1,0 +1,1 @@
+export const definition = { "requests": { "load": { "kind": "qry" } } };

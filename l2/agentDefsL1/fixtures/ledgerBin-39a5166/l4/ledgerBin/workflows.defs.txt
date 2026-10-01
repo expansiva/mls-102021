@@ -1,0 +1,31 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/workflows.defs.ts" enhancement="_blank"/>
+
+import type { Ns5WorkflowsArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinWorkflows = {
+  "schemaVersion": "2026-09-17-ns5-workflows-v3",
+  "moduleName": "ledgerBin",
+  "processes": [],
+  "journeyDecisions": [
+    {
+      "journeyId": "registerWidget",
+      "inProcess": false
+    },
+    {
+      "journeyId": "registrarBinEvent",
+      "inProcess": false
+    },
+    {
+      "journeyId": "watchLevels",
+      "inProcess": false
+    },
+    {
+      "journeyId": "handleLowLevel",
+      "inProcess": false
+    }
+  ]
+} as const satisfies Ns5Readonly<Ns5WorkflowsArtifact>;
+
+export type LedgerBinWorkflowsType = typeof ledgerBinWorkflows;
+
+export default ledgerBinWorkflows;

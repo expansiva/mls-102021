@@ -1,0 +1,174 @@
+/// <mls fileReference="_102047_/l2/ledgerBin/web/shared/binEvents.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {
+      "widgetId": {
+        "type": "string",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "filter:historicoMovimentacoes",
+        "persist": true
+      },
+      "page": {
+        "type": "number",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "filter:historicoMovimentacoes",
+        "persist": true
+      }
+    }
+  },
+  "forms": {
+    "formularioMovimentacao": {
+      "organism": "formularioMovimentacao",
+      "submit": "registerBinEvent"
+    }
+  },
+  "requests": {
+    "load": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "binEvents",
+        "widgets"
+      ]
+    },
+    "registerBinEvent": {
+      "kind": "cmd",
+      "trigger": "registerBinEvent",
+      "returns": [
+        "binEvent"
+      ],
+      "writes": "BinEvent.create"
+    }
+  },
+  "states": {
+    "historicoMovimentacoes": {
+      "source": "load.binEvents",
+      "description": "Histórico de movimentações de estoque."
+    },
+    "widgets": {
+      "source": "load.widgets",
+      "description": "Widgets e saldos de estoque."
+    },
+    "widgetIdFiltro": {
+      "source": "entry.params.widgetId",
+      "description": "Widget selecionado para filtrar o histórico."
+    },
+    "paginaHistorico": {
+      "source": "entry.params.page",
+      "description": "Página atual do histórico."
+    },
+    "binEventFormulario": {
+      "source": "registerBinEvent.input",
+      "description": "Dados da movimentação em preenchimento."
+    },
+    "binEventRegistrada": {
+      "source": "registerBinEvent.binEvent",
+      "description": "Movimentação de estoque registrada."
+    }
+  },
+  "functions": {
+    "load": {
+      "description": "Carrega movimentações e widgets.",
+      "calls": "load",
+      "sets": "historicoMovimentacoes",
+      "updates": [
+        "widgets"
+      ]
+    },
+    "filterHistoricoMovimentacoes": {
+      "description": "Filtra o histórico por widget e página.",
+      "calls": "load",
+      "sets": "historicoMovimentacoes",
+      "updates": [
+        "widgetIdFiltro",
+        "paginaHistorico"
+      ],
+      "carries": {
+        "widgetId": "widgetIdFiltro.value",
+        "page": "paginaHistorico.value"
+      }
+    },
+    "loadMoreHistoricoMovimentacoes": {
+      "description": "Carrega mais movimentações do histórico.",
+      "calls": "load",
+      "sets": "historicoMovimentacoes",
+      "updates": [
+        "paginaHistorico"
+      ],
+      "carries": {
+        "widgetId": "widgetIdFiltro.value",
+        "page": "paginaHistorico.value"
+      }
+    },
+    "registerBinEvent": {
+      "description": "Registra uma movimentação de estoque.",
+      "calls": "registerBinEvent",
+      "sets": "binEventRegistrada",
+      "updates": [
+        "historicoMovimentacoes",
+        "widgets",
+        "binEventFormulario"
+      ]
+    }
+  },
+  "journeys": [
+    {
+      "step": "registrarBinEvent/consultarSaldo",
+      "organisms": [
+        "historicoMovimentacoes"
+      ],
+      "functions": [
+        "load"
+      ]
+    },
+    {
+      "step": "registrarBinEvent/localizarWidget",
+      "organisms": [
+        "formularioMovimentacao"
+      ],
+      "functions": [
+        "filterHistoricoMovimentacoes"
+      ]
+    },
+    {
+      "step": "registrarBinEvent/registerBinEvent",
+      "organisms": [
+        "formularioMovimentacao",
+        "acoesRegistro"
+      ],
+      "functions": [
+        "registerBinEvent"
+      ]
+    }
+  ],
+  "rules": {
+    "load": [
+      "binEventImutavel",
+      "quantidadeMovimentadaPositiva",
+      "registroMovimentacaoAtualizaSaldo",
+      "floorQtyValida",
+      "onHandQtyWidget",
+      "avisoSaldoMinimoWidget"
+    ],
+    "registerBinEvent": [
+      "binEventImutavel",
+      "quantidadeMovimentadaPositiva",
+      "registroMovimentacaoAtualizaSaldo"
+    ]
+  },
+  "access": {
+    "actors": [
+      "clerk"
+    ],
+    "grants": [
+      "manageLedger"
+    ]
+  }
+} as const;

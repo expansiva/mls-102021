@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "controleEstoque",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-09-28T17:39:16.045Z",
+      "artifactPaths": [
+        "l4/controleEstoque/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-09-28T17:39:16.223Z",
+      "artifactPaths": [
+        "l4/controleEstoque/pool/l2/web/backend.json",
+        "l4/controleEstoque/pool/l2/20260928173916_controleEstoque-20260928173657_1.json"
+      ]
+    }
+  },
+  "thread": "controleEstoque-20260928173657",
+  "round": 1,
+  "messageFile": "l4/controleEstoque/pool/l1/20260928173915_controleEstoque-20260928173657_1.json",
+  "sourceMessages": [
+    "20260928173915_controleEstoque-20260928173657_1.json"
+  ],
+  "needsFile": "l4/controleEstoque/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-09-28T17:39:16.223Z",
+  "pool": [
+    {
+      "at": "2026-09-28T17:39:16.223Z",
+      "file": "l4/controleEstoque/pool/l2/20260928173916_controleEstoque-20260928173657_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "controleEstoque-20260928173657",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-09-28T17:39:16.223Z",
+      "file": "l4/controleEstoque/pool/l1/20260928173915_controleEstoque-20260928173657_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "controleEstoque-20260928173657",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

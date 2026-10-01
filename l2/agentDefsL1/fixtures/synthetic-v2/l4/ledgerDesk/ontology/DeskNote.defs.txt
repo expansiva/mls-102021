@@ -1,0 +1,17 @@
+export const ledgerDeskEntityDeskNote = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "ledgerDesk",
+  "entityId": "DeskNote",
+  "kind": "entity",
+  "class": "event",
+  "storage": { "target": "moduleDatabase", "table": "ledgerDesk_desknote", "kind": "relational" },
+  "record": {
+    "fields": {
+      "id": { "type": "uuid", "required": true },
+      "version": { "type": "integer", "required": true, "writePrecondition": true },
+      "itemCardId": { "type": "record", "to": ["ItemCard"] },
+      "state": { "type": "enum", "values": ["open", "closed"] }
+    }
+  },
+  "transitions": [{ "id": "close", "from": "open", "to": "closed" }]
+} as const;

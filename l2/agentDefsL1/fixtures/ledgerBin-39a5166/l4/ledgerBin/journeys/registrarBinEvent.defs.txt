@@ -1,0 +1,52 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/journeys/registrarBinEvent.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const registrarBinEventJourney = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "journeyId": "registrarBinEvent",
+  "business": {
+    "actorRef": "clerk",
+    "title": "Registrar movimentação de estoque",
+    "goal": "Registrar uma entrada ou saída de unidades de um widget para atualizar seu saldo.",
+    "entry": {
+      "mode": "contextOrLookup"
+    },
+    "steps": [
+      {
+        "stepId": "localizarWidget",
+        "kind": "locate",
+        "entity": "Widget",
+        "title": "Localizar widget",
+        "description": "Localiza o widget que receberá uma entrada ou terá unidades retiradas do estoque."
+      },
+      {
+        "stepId": "consultarSaldo",
+        "kind": "inspect",
+        "entity": "Widget",
+        "title": "Consultar saldo atual",
+        "description": "Confere o saldo atual e a quantidade mínima definida para o widget."
+      },
+      {
+        "stepId": "registerBinEvent",
+        "kind": "act",
+        "entity": "BinEvent",
+        "effect": "create",
+        "title": "Registrar movimentação",
+        "description": "Registra a entrada ou saída e atualiza o saldo do widget; a movimentação permanece inalterável após o registro."
+      }
+    ],
+    "outcome": {
+      "statement": "A entrada ou saída fica registrada e o saldo atual do widget é atualizado.",
+      "evidence": [
+        "Movimentação de estoque registrada com o tipo de entrada ou saída.",
+        "Saldo atual do widget exibido."
+      ]
+    }
+  },
+  "businessHash": "sha256:b7f0e96ea364fe3f3df1763faa602b2ae37dc590e079131744ca93e3da4446e4"
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
+
+export type RegistrarBinEventJourneyType = typeof registrarBinEventJourney;
+
+export default registrarBinEventJourney;

@@ -1,0 +1,1 @@
+export const definition = { "requests": { "get": { "kind": "qry" }, "save": { "kind": "cmd", "writes": "ItemCard.update" }, "move": { "kind": "cmd", "writes": "DeskNote.transition" } } };

@@ -1,0 +1,13 @@
+/// <mls fileReference="_102021_/l2/agentDefsL1/fixtures/synthetic-v2/l4/ledgerDesk/module.defs.ts" enhancement="_blank"/>
+
+export const ledgerDeskModule = {
+  "schemaVersion": "2026-09-10-ns5-module-v2",
+  "moduleName": "ledgerDesk",
+  "title": "Ledger desk",
+  "userLanguage": "en",
+  "productLanguages": ["en"],
+  "defaultLanguage": "en",
+  "sourcePrompt": "synthetic fixture"
+} as const;
+
+export default ledgerDeskModule;

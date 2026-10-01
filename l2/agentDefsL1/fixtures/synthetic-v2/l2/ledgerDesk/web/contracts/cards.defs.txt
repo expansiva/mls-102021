@@ -1,0 +1,32 @@
+export interface ItemLoad { id: string; version: number; }
+export interface NoteSave { id: string; version: number; }
+
+export interface CardsContracts {
+  'ledgerDesk.cards.get': {
+    kind: 'qry';
+    input: { id: string };
+    output: { item: ItemLoad };
+    meta: { output: { item: { entity: 'ItemCard'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+  'ledgerDesk.cards.save': {
+    kind: 'cmd';
+    writes: 'ItemCard.update';
+    localWrites: 'DeskNote.create';
+    input: { id: string; version: number; label: string; note: string };
+    output: { item: ItemLoad; note: NoteSave };
+    meta: { output: { item: { entity: 'ItemCard'; many: false }; note: { entity: 'DeskNote'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+  'ledgerDesk.cards.move': {
+    kind: 'cmd';
+    writes: 'DeskNote.transition';
+    input: { id: string; version: number; to: 'closed' };
+    output: { note: NoteSave };
+    meta: { output: { note: { entity: 'DeskNote'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+}

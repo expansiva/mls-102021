@@ -1,0 +1,233 @@
+/// <mls fileReference="_102047_/l2/ledgerBin/web/shared/widgets.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "entry": {
+    "params": {
+      "widgetId": {
+        "type": "string",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "select:detalheWidget",
+        "persist": true
+      },
+      "search": {
+        "type": "string",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "filter:listaWidgets",
+        "persist": true
+      },
+      "page": {
+        "type": "number",
+        "sources": [
+          "url",
+          "localStorage"
+        ],
+        "effect": "filter:listaWidgets",
+        "persist": true
+      }
+    }
+  },
+  "forms": {
+    "formularioWidget": {
+      "organism": "formularioWidget",
+      "submit": "registerWidget"
+    }
+  },
+  "requests": {
+    "load": {
+      "kind": "qry",
+      "trigger": "onLoad",
+      "returns": [
+        "widgets"
+      ]
+    },
+    "registerWidget": {
+      "kind": "cmd",
+      "trigger": "registerWidget",
+      "returns": [
+        "widget"
+      ],
+      "writes": "Widget.create"
+    }
+  },
+  "states": {
+    "listaWidgets": {
+      "source": "load.widgets",
+      "description": "Widgets carregados"
+    },
+    "filtroBuscaWidgets": {
+      "source": "entry.params.search",
+      "description": "Busca de widgets"
+    },
+    "paginaWidgets": {
+      "source": "entry.params.page",
+      "description": "Página de widgets"
+    },
+    "widgetSelecionado": {
+      "source": "entry.params.widgetId",
+      "description": "Widget selecionado"
+    },
+    "widgetCadastro": {
+      "source": "registerWidget.input",
+      "description": "Dados do widget"
+    },
+    "widgetCadastrado": {
+      "source": "registerWidget.widget",
+      "description": "Widget cadastrado"
+    },
+    "binEventsWidget": {
+      "source": "abrirMovimentacoes",
+      "description": "Widget para movimentações"
+    }
+  },
+  "functions": {
+    "load": {
+      "description": "Carregar widgets",
+      "calls": "load",
+      "sets": "listaWidgets",
+      "updates": [
+        "widgetSelecionado"
+      ]
+    },
+    "filterListaWidgets": {
+      "description": "Filtrar widgets",
+      "calls": "load",
+      "sets": "listaWidgets",
+      "updates": [
+        "filtroBuscaWidgets",
+        "paginaWidgets",
+        "widgetSelecionado"
+      ]
+    },
+    "loadMoreListaWidgets": {
+      "description": "Carregar mais widgets",
+      "calls": "load",
+      "sets": "listaWidgets",
+      "updates": [
+        "paginaWidgets"
+      ]
+    },
+    "registerWidget": {
+      "description": "Cadastrar widget",
+      "calls": "registerWidget",
+      "sets": "widgetCadastrado",
+      "updates": [
+        "widgetCadastro",
+        "listaWidgets",
+        "widgetSelecionado"
+      ]
+    },
+    "selecionarWidget": {
+      "description": "Selecionar widget",
+      "sets": "widgetSelecionado"
+    },
+    "abrirMovimentacoes": {
+      "description": "Abrir movimentações",
+      "sets": "binEventsWidget",
+      "navigate": "binEvents",
+      "carries": {
+        "widgetId": "widgetSelecionado.id"
+      }
+    }
+  },
+  "journeys": [
+    {
+      "step": "watchLevels/consultarSaldos",
+      "organisms": [
+        "onHandQty",
+        "alertasSaldoBaixo"
+      ],
+      "functions": [
+        "load"
+      ]
+    },
+    {
+      "step": "watchLevels/localizarWidgets",
+      "organisms": [
+        "listaWidgets",
+        "detalheWidget"
+      ],
+      "functions": [
+        "filterListaWidgets",
+        "loadMoreListaWidgets",
+        "selecionarWidget"
+      ]
+    },
+    {
+      "step": "registerWidget/informarWidget",
+      "organisms": [
+        "formularioWidget",
+        "acoesCadastro"
+      ],
+      "functions": [
+        "registerWidget"
+      ]
+    },
+    {
+      "step": "registrarBinEvent/consultarSaldo",
+      "organisms": [
+        "onHandQty",
+        "detalheWidget"
+      ],
+      "functions": [
+        "selecionarWidget"
+      ]
+    },
+    {
+      "step": "registrarBinEvent/localizarWidget",
+      "organisms": [
+        "listaWidgets",
+        "detalheWidget"
+      ],
+      "functions": [
+        "filterListaWidgets",
+        "selecionarWidget"
+      ]
+    },
+    {
+      "step": "registrarBinEvent/registerBinEvent",
+      "organisms": [
+        "detalheWidget"
+      ],
+      "functions": [
+        "abrirMovimentacoes"
+      ],
+      "continuesIn": "binEvents"
+    },
+    {
+      "step": "handleLowLevel/consultarWidgetAvisado",
+      "organisms": [
+        "alertasSaldoBaixo",
+        "detalheWidget"
+      ],
+      "functions": [
+        "selecionarWidget"
+      ]
+    }
+  ],
+  "rules": {
+    "load": [
+      "floorQtyValida",
+      "onHandQtyWidget",
+      "avisoSaldoMinimoWidget"
+    ],
+    "registerWidget": [
+      "floorQtyValida",
+      "onHandQtyWidget",
+      "avisoSaldoMinimoWidget"
+    ]
+  },
+  "access": {
+    "actors": [
+      "clerk"
+    ],
+    "grants": [
+      "manageLedger"
+    ]
+  }
+} as const;

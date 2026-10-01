@@ -1,0 +1,35 @@
+/// <mls fileReference="_102047_/l4/ledgerBin/journeys/index.defs.ts" enhancement="_blank"/>
+
+import type { Ns5JourneyIndexArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
+
+export const ledgerBinJourneyIndex = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "moduleName": "ledgerBin",
+  "journeys": [
+    {
+      "journeyId": "registerWidget",
+      "actorRef": "clerk",
+      "title": "Cadastrar widget de estoque"
+    },
+    {
+      "journeyId": "registrarBinEvent",
+      "actorRef": "clerk",
+      "title": "Registrar movimentação de estoque"
+    },
+    {
+      "journeyId": "watchLevels",
+      "actorRef": "clerk",
+      "title": "Acompanhar saldos do estoque"
+    },
+    {
+      "journeyId": "handleLowLevel",
+      "actorRef": "clerk",
+      "title": "Verificar aviso de saldo baixo"
+    }
+  ],
+  "systemDecisions": []
+} as const satisfies Ns5Readonly<Ns5JourneyIndexArtifact>;
+
+export type LedgerBinJourneyIndexType = typeof ledgerBinJourneyIndex;
+
+export default ledgerBinJourneyIndex;

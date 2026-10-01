@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "ledgerBin",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "widgets",
+      "actors": [
+        "clerk"
+      ],
+      "reads": [
+        {
+          "entity": "BinEvent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:manageLedger",
+            "journey:watchLevels/consultarSaldos",
+            "journey:watchLevels/localizarWidgets",
+            "journey:registerWidget/informarWidget",
+            "journey:registrarBinEvent/consultarSaldo",
+            "journey:registrarBinEvent/localizarWidget",
+            "journey:registrarBinEvent/registerBinEvent",
+            "journey:handleLowLevel/consultarWidgetAvisado",
+            "relationship:BinEvent/binEventWidget",
+            "relationship:Widget/binEventWidget"
+          ]
+        },
+        {
+          "entity": "Widget",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.ledgerBin.belowFloor",
+            "details.ledgerBin.onHandQty"
+          ],
+          "from": [
+            "grant:manageLedger",
+            "journey:watchLevels/consultarSaldos",
+            "journey:watchLevels/localizarWidgets",
+            "journey:registerWidget/informarWidget",
+            "journey:registrarBinEvent/consultarSaldo",
+            "journey:registrarBinEvent/localizarWidget",
+            "journey:registrarBinEvent/registerBinEvent",
+            "journey:handleLowLevel/consultarWidgetAvisado",
+            "relationship:BinEvent/binEventWidget",
+            "relationship:Widget/binEventWidget"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "BinEvent",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarBinEvent/registerBinEvent"
+          ]
+        },
+        {
+          "entity": "Widget",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registerWidget/informarWidget"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "binEvents",
+      "actors": [
+        "clerk"
+      ],
+      "reads": [
+        {
+          "entity": "BinEvent",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:manageLedger",
+            "journey:registrarBinEvent/consultarSaldo",
+            "journey:registrarBinEvent/localizarWidget",
+            "journey:registrarBinEvent/registerBinEvent",
+            "relationship:BinEvent/binEventWidget",
+            "relationship:Widget/binEventWidget"
+          ]
+        },
+        {
+          "entity": "Widget",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [
+            "details.ledgerBin.belowFloor",
+            "details.ledgerBin.onHandQty"
+          ],
+          "from": [
+            "grant:manageLedger",
+            "journey:registrarBinEvent/consultarSaldo",
+            "journey:registrarBinEvent/localizarWidget",
+            "journey:registrarBinEvent/registerBinEvent",
+            "relationship:BinEvent/binEventWidget",
+            "relationship:Widget/binEventWidget"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "BinEvent",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarBinEvent/registerBinEvent"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-28T17:39:15.637Z"
+  }
+}

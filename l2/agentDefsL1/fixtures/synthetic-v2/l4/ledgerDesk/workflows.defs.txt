@@ -1,0 +1,1 @@
+export const ledgerDeskWorkflows = { "schemaVersion": "2026-09-17-ns5-workflows", "moduleName": "ledgerDesk", "workflows": [] } as const;
