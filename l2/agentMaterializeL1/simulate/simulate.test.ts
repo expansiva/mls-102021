@@ -226,6 +226,44 @@ void test('order follows references, not folder rank or the legacy layer rank', 
   assert.equal(domain?.contextRefs.includes(PLATFORM_FILES.mdmFacade), false);
 });
 
+void test('empty mechanism on inbound is MECHANISM_UNBOUND, not NO_CONSUMER', async () => {
+  const inboundOnly = '_102099_/l1/lab/layer_1_external/adapters/integration/inboundOnly.defs.ts';
+  const boundEvent = '_102099_/l1/lab/layer_1_external/adapters/integration/boundEvent.defs.ts';
+  const shell = (artifactId: string, data: Record<string, unknown>): M1Definition => ({
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'integrationOutbound',
+    artifactId,
+    moduleName: 'lab',
+    status: 'pending',
+    dependencies: [],
+    data,
+  });
+  const plan = await planMaterialization({
+    units: [
+      {
+        defPath: inboundOnly,
+        definition: shell('inboundOnly', {
+          integrationId: 'inboundOnly',
+          events: [],
+          inbound: [{ inboundId: 'rxK7', operations: [], mechanism: '', consumer: 'op' }],
+        }),
+      },
+      {
+        defPath: boundEvent,
+        definition: shell('boundEvent', {
+          integrationId: 'boundEvent',
+          events: [{ eventId: 'evQ3', on: 'Thing.done', entityId: 'Thing', mechanism: 'queue', consumer: 'sink' }],
+        }),
+      },
+    ],
+    readable: [],
+  });
+  const reason = (id: string) => plan.units.find(unit => unit.artifactId === id)?.reason ?? '';
+  assert.match(reason('inboundOnly'), /^MECHANISM_UNBOUND: rxK7/);
+  assert.doesNotMatch(reason('inboundOnly'), /NO_CONSUMER/);
+  assert.match(reason('boundEvent'), /^NO_CONSUMER:/);
+});
+
 void test('a cycle blocks its participants and their dependents only', async () => {
   const A = '_102047_/l1/agendaClinica/layer_3_domain/entities/a.defs.ts';
   const B = '_102047_/l1/agendaClinica/layer_3_domain/entities/b.defs.ts';

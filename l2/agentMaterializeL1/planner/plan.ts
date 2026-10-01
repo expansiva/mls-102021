@@ -310,12 +310,23 @@ function block(base: PlannedUnit, reason: string): PlannedUnit {
 }
 
 function unboundMechanisms(definition: M1Definition): string[] {
-  if (definition.artifactType !== 'integrationOutbound' || !Array.isArray(definition.data.events)) return [];
+  if (definition.artifactType !== 'integrationOutbound') return [];
+  const rows: ReadonlyArray<readonly [unknown, string]> = [
+    [definition.data.events, 'eventId'],
+    [definition.data.inbound, 'inboundId'],
+    [definition.data.processes, 'processId'],
+    [definition.data.plugins, 'pluginId'],
+  ];
   const ids: string[] = [];
-  for (const event of definition.data.events) {
-    if (!isRecord(event)) continue;
-    const mechanism = typeof event.mechanism === 'string' ? event.mechanism.trim() : '';
-    if (!mechanism) ids.push(typeof event.eventId === 'string' && event.eventId ? event.eventId : '(unnamed)');
+  for (const [list, idKey] of rows) {
+    if (!Array.isArray(list)) continue;
+    for (const row of list) {
+      if (!isRecord(row)) continue;
+      const mechanism = typeof row.mechanism === 'string' ? row.mechanism.trim() : '';
+      if (mechanism) continue;
+      const id = row[idKey];
+      ids.push(typeof id === 'string' && id ? id : '(unnamed)');
+    }
   }
   return ids;
 }
