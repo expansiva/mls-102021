@@ -6,7 +6,7 @@ import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agen
 import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { contractPath, entityPath, inputPaths, journeyPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { contractPath, entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -64,8 +64,9 @@ export async function assembleD1Support(
   const files = await receiptFiles(project, snapshot.files);
   const grants = grantsOf(access);
   const models = modelsOf(domain, index);
-  const usecaseIds = [...new Set(snapshot.selection.usecases.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
-  const linked = await effectsOf(project, moduleName, usecaseIds);
+  const selected = snapshot.selection.usecases;
+  const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
+  const linked = await effectsOf(project, moduleName, selected);
   const request: D1SupportRequest = {
     project,
     moduleName,
@@ -599,17 +600,42 @@ function datasetsOf(draft: Record<string, unknown> | null): D1SeedDataset[] {
   return out;
 }
 
+/** Inbound operations come from the L4 effect, never from a name built out of the entity. */
+export function inboundOperation(
+  row: Record<string, unknown>,
+  selected: readonly D1SelectedUsecase[],
+): D1EffectOperation | null {
+  if (typeof row.id !== 'string' || !row.id) return null;
+  const effect = typeof row.effect === 'string' ? row.effect : '';
+  const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
+  const operations: string[] = [];
+  if (effect === 'transition') {
+    const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
+    if (transitionRef) operations.push(transitionRef);
+  } else if (effect === 'create' || effect === 'update') {
+    for (const entity of stringList(row.writes)) {
+      const match = selected.find(item => item.entity === entity && item.operation === effect);
+      if (match?.usecaseId && !operations.includes(match.usecaseId)) operations.push(match.usecaseId);
+    }
+  }
+  const named = operations[0] || '';
+  const consumer = effect === 'transition'
+    ? (named && known.has(named) ? named : row.id)
+    : (named || row.id);
+  return { id: row.id, kind: 'inbound', operations, mechanism: '', consumer, scheduled: false };
+}
+
 async function effectsOf(
   project: number,
   moduleName: string,
-  usecaseIds: readonly string[],
+  selected: readonly D1SelectedUsecase[],
 ): Promise<{ outbound: D1EffectEvent[]; operations: D1EffectOperation[] }> {
   const paths = inputPaths(moduleName);
   const integrationText = await readLogical(project, paths.integration);
   const workflowText = await readLogical(project, paths.workflows);
   const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
   const workflows = workflowText ? parseD1Source(workflowText, 'defs') : null;
-  const known = new Set(usecaseIds);
+  const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
   const payloadCache = new Map<string, unknown>();
   const outbound: D1EffectEvent[] = [];
   if (isRecord(integration)) {
@@ -627,16 +653,9 @@ async function effectsOf(
   const operations: D1EffectOperation[] = [];
   if (isRecord(integration)) {
     for (const row of arrayOf(integration.inbound)) {
-      if (!isRecord(row) || typeof row.id !== 'string' || !row.id) continue;
-      const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
-      operations.push({
-        id: row.id,
-        kind: 'inbound',
-        operations: transitionRef ? [transitionRef] : [],
-        mechanism: typeof row.mechanism === 'string' ? row.mechanism : '',
-        consumer: known.has(transitionRef) ? transitionRef : row.id,
-        scheduled: false,
-      });
+      if (!isRecord(row)) continue;
+      const inbound = inboundOperation(row, selected);
+      if (inbound) operations.push(inbound);
     }
     for (const row of arrayOf(integration.plugins)) {
       if (!isRecord(row) || typeof row.pluginId !== 'string' || !row.pluginId) continue;

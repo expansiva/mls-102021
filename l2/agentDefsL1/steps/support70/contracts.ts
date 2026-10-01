@@ -8,7 +8,7 @@ import type {
   D1ScopeGrantPlan,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-export const D1_SUPPORT_VERSION = '2026-09-22-d1-support-v1' as const;
+export const D1_SUPPORT_VERSION = '2026-10-01-d1-support-v2' as const;
 
 /** Same trail as the earlier steps. Uncited values stay on the domain draft. */
 export const ENUMERATION_SOURCE = 'domain30.enumerations' as const;

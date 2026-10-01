@@ -12,9 +12,10 @@ import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
-import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
+import { assembleD1Support, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
@@ -579,6 +580,69 @@ void test('processes, inbound and plugins stay operations and a missing pool ite
   assert.equal(JSON.stringify(build.emit).includes('scheduler'), false);
   assert.equal(build.effectPlan.executed, false);
 });
+
+void test('inbound create and update follow writes and effect, not a name or transitionRef', () => {
+  const pool = [
+    usecase('qx7', 'Quark', 'create'),
+    usecase('createQuark', 'Nope', 'archive'),
+    usecase('flipZz', 'Quark', 'transition'),
+  ];
+  const created = inboundOperation({
+    id: 'alphaIn',
+    kind: 'event',
+    from: 'zeta',
+    writes: ['Quark'],
+    effect: 'create',
+    mechanism: 'moduleBus',
+    transitionRef: 'flipZz',
+  }, pool);
+  assert.deepEqual(created?.operations, ['qx7']);
+  assert.equal(created?.consumer, 'qx7');
+  assert.equal(created?.mechanism, '');
+
+  const namedOnly = inboundOperation({ id: 'alphaIn', writes: ['Quark'], effect: 'create' }, [usecase('createQuark', 'Nope', 'archive')]);
+  assert.deepEqual(namedOnly?.operations, []);
+  assert.equal(namedOnly?.consumer, 'alphaIn');
+
+  const absent = inboundOperation({ id: 'alphaIn', writes: ['Quark'], effect: 'create' }, []);
+  assert.deepEqual(absent?.operations, []);
+
+  const transition = inboundOperation({ id: 'betaIn', effect: 'transition', transitionRef: 'flipZz', writes: ['Quark'] }, pool);
+  assert.deepEqual(transition?.operations, ['flipZz']);
+  assert.equal(transition?.consumer, 'flipZz');
+  assert.equal(transition?.mechanism, '');
+
+  const present = agendaSeedRequest();
+  present.outbound = [];
+  present.selectedEventIds = [];
+  present.usecaseIds = pool.map(item => item.usecaseId);
+  present.operations = [created!];
+  const withUsecase = buildD1Support(present);
+  assert.equal(withUsecase.ok, true);
+  const filled = withUsecase.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
+    inbound: Array<{ inboundId: string; operations: string[]; mechanism: string; consumer: string }>;
+    gaps?: Array<{ itemId: string; code: string }>;
+  };
+  assert.deepEqual(filled.inbound, [{ inboundId: 'alphaIn', operations: ['qx7'], mechanism: '', consumer: 'qx7' }]);
+  assert.equal(filled.gaps, undefined);
+  assert.equal(withUsecase.problems.some(item => item.code === 'POOL_ABSENT'), false);
+  assert.equal(withUsecase.problems.some(item => item.code === 'INTEGRATION_UNBOUND' && item.path === 'alphaIn'), true);
+
+  const missing = agendaSeedRequest();
+  missing.outbound = [];
+  missing.selectedEventIds = [];
+  missing.usecaseIds = ['createQuark'];
+  missing.operations = [absent!];
+  const without = buildD1Support(missing);
+  const gaps = without.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
+    gaps: Array<{ itemId: string; kind: string; code: string }>;
+  };
+  assert.deepEqual(gaps.gaps, [{ itemId: 'alphaIn', kind: 'inbound', code: 'POOL_ABSENT' }]);
+});
+
+function usecase(usecaseId: string, entity: string, operation: string): D1SelectedUsecase {
+  return { usecaseId, entity, operation, status: 'toCreate', existing: '', identity: usecaseId, routes: [] };
+}
 
 const FIXTURE_3F4F677 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/agendaClinica-3f4f677');
 const REL = /\n\s*\{\n\s*"relationshipId": "consultaProfissional",[\s\S]*?\n\s*\},/;
