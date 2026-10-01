@@ -16,6 +16,7 @@
         "repositoryAdapter",
         "usecase",
         "httpController",
+        "requestService",
         "accessScope",
         "authorityMap",
         "repositoryRegistration",

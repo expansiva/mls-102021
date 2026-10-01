@@ -15,6 +15,13 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
+  fieldsByEntity,
+  readContractV2,
+  requestServiceProblems,
+  serviceRowsFor,
+  usecaseIdsWithDef,
+} from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import {
   readContractAst,
   type D1ContractAst,
   type D1ContractField,
@@ -36,6 +43,7 @@ import {
   type D1ControllerRequest,
   type D1ControllerRoute,
   type D1ExistingHandler,
+  type D1RequestServiceItem,
   type D1HandlerBinding,
   type D1ScopeGrantPlan,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -79,6 +87,7 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
     controllers.push(item);
   }
 
+  const services = requestServices(request, problems);
   const ok = !problems.some(problem => problem.severity === 'error');
   const before = problems.length;
   if (ok) {
@@ -86,8 +95,9 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   }
   const stillOk = ok && problems.length === before;
   const emit = stillOk ? emitItems(request, controllers, problems) : [];
+  if (stillOk) emit.push(...emitServices(request, services, problems));
   const emitted = stillOk && !problems.some(problem => problem.severity === 'error') ? emit : [];
-  return finish(request, emitted.length > 0 && !problems.some(problem => problem.severity === 'error'), enumerations, controllers, problems, normalizations, emitted);
+  return finish(request, emitted.length > 0 && !problems.some(problem => problem.severity === 'error'), enumerations, controllers, services, problems, normalizations, emitted);
 }
 
 /** A grant whose actor is not on this page is a union. The caller does not add it. */
@@ -522,6 +532,102 @@ function noteDuplicateRoutes(request: D1ControllerRequest, problems: D1Controlle
   }
 }
 
+function requestServices(request: D1ControllerRequest, problems: D1ControllerProblem[]): D1RequestServiceItem[] {
+  const selected = request.serviceRequests || [];
+  const knownFields = fieldsByEntity(request.ontology || {});
+  const usecaseIds = usecaseIdsWithDef(request);
+  const services: D1RequestServiceItem[] = [];
+  for (const contract of request.contracts) {
+    const parsed = readContractV2(contract.source);
+    if (!parsed || parsed.pageId !== contract.pageId) continue;
+    const pageSelected = selected.filter(item => item.pageId === contract.pageId);
+    const selectedCounts = new Map<string, number>();
+    for (const item of pageSelected) selectedCounts.set(item.route, (selectedCounts.get(item.route) || 0) + 1);
+    const built = serviceRowsFor(contract.pageId, parsed, pageSelected);
+    problems.push(...built.problems);
+    const pageProblems = requestServiceProblems({
+      pageId: contract.pageId,
+      contractRoutes: built.routes,
+      requests: built.rows,
+      usecaseIds,
+      fieldsByEntity: knownFields,
+      selectedCounts,
+    });
+    problems.push(...pageProblems);
+    const defPath = `l1/${request.moduleName}/layer_2_application/requests/${contract.pageId}.defs.ts`;
+    const item: D1RequestServiceItem = { pageId: contract.pageId, defPath, requests: built.rows, definition: null };
+    if (!isSafeToken(contract.pageId)) {
+      error(problems, 'PAGE_ID', contract.pageId, `Page ${contract.pageId} is not a safe token. No request service file was named.`);
+    }
+    const blocked = [...built.problems, ...pageProblems].some(problem => problem.severity === 'error') || !isSafeToken(contract.pageId);
+    if (!blocked) fillService(request, item, problems);
+    services.push(item);
+  }
+  return services;
+}
+
+function fillService(request: D1ControllerRequest, item: D1RequestServiceItem, problems: D1ControllerProblem[]): void {
+  const usecaseIds = [...new Set(item.requests.flatMap(row => row.uses))].sort();
+  const dependencies: string[] = [];
+  for (const usecaseId of usecaseIds) {
+    const usecase = request.usecases.find(entry => entry.usecaseId === usecaseId);
+    if (!usecase?.defPath) continue;
+    dependencies.push(qualifyDefPath(request.project, usecase.defPath));
+  }
+  dependencies.sort();
+  const definition = pendingDefinition('requestService', item.pageId, request.moduleName, {
+    pageId: item.pageId,
+    requests: item.requests,
+  }, dependencies);
+  const issues = definitionIssues(definition);
+  if (issues.length) {
+    error(problems, 'DEFINITION', item.pageId, issues[0]);
+    return;
+  }
+  item.definition = definition;
+}
+
+function emitServices(
+  request: D1ControllerRequest,
+  services: readonly D1RequestServiceItem[],
+  problems: D1ControllerProblem[],
+): D1ControllerBuild['emit'] {
+  const out: D1ControllerBuild['emit'] = [];
+  for (const item of services) {
+    if (!item.definition) continue;
+    const usecaseIds = [...new Set(item.requests.flatMap(row => row.uses))].sort();
+    const dependsOn: string[] = [];
+    const dependsFiles: string[] = [];
+    for (const usecaseId of usecaseIds) {
+      const usecase = request.usecases.find(entry => entry.usecaseId === usecaseId);
+      if (!usecase?.defPath) continue;
+      dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
+      dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
+    }
+    const qualified = qualifyDefPath(request.project, item.defPath);
+    const pipeline: D1PipelineItem = {
+      id: pipelineId(request.project, request.moduleName, 'requestService', item.pageId),
+      type: 'requestService',
+      defPath: qualified,
+      outputPath: futureOutputPath(qualified),
+      outputAvailability: 'future',
+      dependsFiles,
+      dependsOn,
+      skills: skillPaths('requestService'),
+      routes: item.requests.map(row => row.route),
+    };
+    item.definition = stampDefinition(item.definition, pipeline.defPath, pipeline.dependsFiles);
+    const rendered = renderDefinition(item.definition, pipeline.defPath);
+    if ('issues' in rendered) {
+      error(problems, 'DEFINITION', item.defPath, rendered.issues[0] || 'Definition did not render.');
+      item.definition = null;
+      continue;
+    }
+    out.push({ definition: item.definition, pipeline: [pipeline] });
+  }
+  return out;
+}
+
 function fillDefinition(request: D1ControllerRequest, item: D1ControllerItem, problems: D1ControllerProblem[]): void {
   if (item.handlers.some(handler => handler.grantIds.length === 0)) return;
   const data = {
@@ -650,6 +756,7 @@ function finish(
   ok: boolean,
   enumerations: D1ControllerEnumeration[],
   controllers: D1ControllerItem[],
+  services: D1RequestServiceItem[],
   problems: D1ControllerProblem[],
   normalizations: D1ControllerNormalization[],
   emit: D1ControllerBuild['emit'],
@@ -667,6 +774,7 @@ function finish(
   sortInPlace(problems, item => `${item.path}\u0000${item.code}\u0000${item.message}`);
   sortInPlace(normalizations, item => `${item.path}\u0000${item.code}`);
   controllers.sort((left, right) => left.pageId.localeCompare(right.pageId));
+  services.sort((left, right) => left.pageId.localeCompare(right.pageId));
   emit.sort((left, right) => (left.pipeline[0]?.defPath || '').localeCompare(right.pipeline[0]?.defPath || ''));
   const removals = controllerRemovals(request, controllers);
   return {
@@ -679,6 +787,7 @@ function finish(
     measuredPages: new Set(request.routes.map(route => route.page)).size,
     enumerations,
     controllers,
+    services,
     problems,
     normalizations,
     emit,

@@ -49,6 +49,7 @@ export const D1_CORE_TYPES = [
   'repositoryAdapter',
   'usecase',
   'httpController',
+  'requestService',
 ] as const;
 
 export const D1_AUXILIARY_TYPES = [
@@ -414,6 +415,7 @@ function dataIssues(artifactType: D1ArtifactType, data: Record<string, unknown>,
     case 'repositoryAdapter': return adapterBindingIssues(data);
     case 'usecase': return usecaseIssues(data);
     case 'httpController': return httpControllerIssues(data);
+    case 'requestService': return requestServiceIssues(data);
     case 'accessScope': return accessScopeIssues(data);
     case 'authorityMap': return authorityMapIssues(data);
     case 'repositoryRegistration': return registrationIssues(data);
@@ -1034,6 +1036,60 @@ function mdmBindingIssues(value: unknown, issues: string[]): void {
       originIssues(arg.origin, `${argPath}.origin`, issues);
     });
   });
+}
+
+export function requestServiceIssues(data: unknown): string[] {
+  if (!isRecord(data)) return ['Missing field data.'];
+  const issues: string[] = [];
+  unknownKeys(data, dataAllowList('requestService'), 'data', issues);
+  needString(data, 'pageId', 'data', issues);
+  if (!Array.isArray(data.requests) || data.requests.length === 0) {
+    issues.push('Missing field data.requests.');
+    return issues;
+  }
+  data.requests.forEach((row, index) => requestRowIssues(row, `data.requests.${index}`, issues));
+  return issues;
+}
+
+function requestRowIssues(row: unknown, path: string, issues: string[]): void {
+  if (!isRecord(row)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'outputs', 'params'], path, issues);
+  needString(row, 'route', path, issues);
+  const kind = needString(row, 'kind', path, issues);
+  oneOf(kind, ['qry', 'cmd'], `${path}.kind`, issues);
+  stringList(row.uses, `${path}.uses`, issues);
+  const transaction = needString(row, 'transaction', path, issues);
+  oneOf(transaction, ['single', 'none'], `${path}.transaction`, issues);
+  if (!Array.isArray(row.outputs)) issues.push(`Missing field ${path}.outputs.`);
+  else row.outputs.forEach((output, index) => outputIssues(output, `${path}.outputs.${index}`, issues));
+  if (!Array.isArray(row.params)) issues.push(`Missing field ${path}.params.`);
+  else row.params.forEach((param, index) => paramIssues(param, `${path}.params.${index}`, issues));
+}
+
+function outputIssues(output: unknown, path: string, issues: string[]): void {
+  if (!isRecord(output)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  unknownKeys(output, ['key', 'entity', 'fields'], path, issues);
+  needString(output, 'key', path, issues);
+  needString(output, 'entity', path, issues);
+  stringList(output.fields, `${path}.fields`, issues);
+}
+
+function paramIssues(param: unknown, path: string, issues: string[]): void {
+  if (!isRecord(param)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  unknownKeys(param, ['name', 'target', 'field', 'pages'], path, issues);
+  needString(param, 'name', path, issues);
+  needString(param, 'target', path, issues);
+  if (param.field !== undefined) needString(param, 'field', path, issues);
+  if (param.pages !== undefined) needString(param, 'pages', path, issues);
 }
 
 export function httpControllerIssues(data: unknown): string[] {

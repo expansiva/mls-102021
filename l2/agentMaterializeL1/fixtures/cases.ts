@@ -25,6 +25,7 @@ export function defPathOf(type: M1ArtifactType, artifactId: string): string {
     case 'repositoryAdapter': return `${P}/l1/${MODULE}/layer_1_external/adapters/persistence/${uncap(artifactId)}Adapter.defs.ts`;
     case 'usecase': return `${P}/l1/${MODULE}/layer_2_application/usecases/${artifactId}.defs.ts`;
     case 'httpController': return `${P}/l1/${MODULE}/layer_1_external/adapters/http/controllers/${artifactId}.defs.ts`;
+    case 'requestService': return `${P}/l1/${MODULE}/layer_2_application/requests/${artifactId}.defs.ts`;
     case 'accessScope': return `${P}/l1/${MODULE}/layer_1_external/access/${artifactId}.defs.ts`;
     case 'authorityMap': return `${P}/l1/${MODULE}/layer_1_external/access/${artifactId}.defs.ts`;
     case 'repositoryRegistration': return `${P}/l1/${MODULE}/layer_1_external/adapters/persistence/${artifactId}.defs.ts`;
@@ -196,6 +197,18 @@ export const listConsultaPending = envelope('usecase', 'listConsulta', 'pending'
   transaction: { boundary: 'none' },
 });
 
+export const consultasService = envelope('requestService', 'consultas_profissional', 'pending', [LIST], {
+  pageId: 'consultas_profissional',
+  requests: [{
+    route: 'agendaClinica.consultas_profissional.qryListConsulta',
+    kind: 'qry',
+    uses: ['listConsulta'],
+    transaction: 'none',
+    outputs: [{ key: 'consultas', entity: 'Consulta', fields: ['id', 'status'] }],
+    params: [],
+  }],
+});
+
 export const consultasController = envelope('httpController', 'consultas_profissional', 'pending', [LIST, SCOPE], {
   pageId: 'consultas_profissional',
   handlers: [{
@@ -255,6 +268,7 @@ export const definitionsByType: Record<M1ArtifactType, M1Definition> = {
   repositoryAdapter: consultaAdapter,
   usecase: listConsultaPending,
   httpController: consultasController,
+  requestService: consultasService,
   accessScope,
   authorityMap,
   repositoryRegistration: registration,

@@ -25,6 +25,7 @@ export const M1_ARTIFACT_TYPES = [
   'repositoryAdapter',
   'usecase',
   'httpController',
+  'requestService',
   'accessScope',
   'authorityMap',
   'repositoryRegistration',
@@ -80,6 +81,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
     nonempty: ['functions'],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
+  requestService: { required: ['pageId', 'requests'], optional: [], nonempty: ['requests'] },
   accessScope: { required: ['scopeId', 'grants'], optional: [], nonempty: ['grants'] },
   authorityMap: { required: ['mapId', 'entries'], optional: [], nonempty: ['entries'] },
   repositoryRegistration: { required: ['registrationId', 'adapters'], optional: [], nonempty: ['adapters'] },
@@ -584,6 +586,12 @@ function collectIdentityRefs(definition: M1Definition): Array<{ type: M1Artifact
   if (Array.isArray(data.handlers)) {
     data.handlers.forEach((handler, index) => {
       if (isRecord(handler)) push('usecase', handler.usecaseId, `data.handlers.${index}.usecaseId`);
+    });
+  }
+  if (Array.isArray(data.requests)) {
+    data.requests.forEach((row, index) => {
+      if (!isRecord(row) || !Array.isArray(row.uses)) return;
+      row.uses.forEach((id, useIndex) => push('usecase', id, `data.requests.${index}.uses.${useIndex}`));
     });
   }
   if (Array.isArray(data.adapters)) {

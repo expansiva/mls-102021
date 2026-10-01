@@ -37,6 +37,7 @@ void test('structure runners cover the registry ids and stay free of node', () =
     'structure.domainEntity',
     'structure.httpController',
     'structure.repositoryPort',
+    'structure.requestService',
     'structure.usecase',
     'structure.valueObject',
   ]);

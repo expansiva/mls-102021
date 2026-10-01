@@ -41,6 +41,7 @@ export const structureRunners: Readonly<Record<string, MaterializeHandlerRunner>
   'structure.repositoryPort': call => runStructure(call),
   'structure.usecase': call => runStructure(call),
   'structure.httpController': call => runStructure(call),
+  'structure.requestService': call => runStructure(call),
   'structure.accessScope': call => runStructure(call),
   'structure.authorityMap': call => runStructure(call),
 };
@@ -77,6 +78,7 @@ async function produce(id: string, definition: M1Definition, output: string, rea
   if (id === 'structure.authorityMap') return emitAuthority(definition, output);
   if (id === 'structure.usecase') return emitUsecase(definition, output, read);
   if (id === 'structure.httpController') return emitController(definition, output, read, call.moduleDefinitions ?? []);
+  if (id === 'structure.requestService') return { code: 'NO_NAMED_HANDLER', detail: 'requestService has no structure body yet.' };
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a structure body.` };
 }
 

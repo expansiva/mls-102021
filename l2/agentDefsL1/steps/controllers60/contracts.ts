@@ -3,7 +3,7 @@
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 
-export const D1_CONTROLLER_VERSION = '2026-09-22-d1-controllers-v1' as const;
+export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-v2' as const;
 
 /** Same trail as domain30 and usecases50. This step does not copy the values either. */
 export const ENUMERATION_SOURCE = 'domain30.enumerations' as const;
@@ -102,6 +102,45 @@ export interface D1EnumerationRef {
   values: string[];
 }
 
+/** One selected contract request. `uses` names usecase ids already in the pool. */
+export interface D1ServiceRequestSource {
+  route: string;
+  pageId: string;
+  kind: 'qry' | 'cmd';
+  uses: string[];
+  outputs: Array<{ key: string; entity: string }>;
+  params: Array<{ name: string; target: string; field?: string; pages?: string }>;
+}
+
+export interface D1ServiceOutput {
+  key: string;
+  entity: string;
+  fields: string[];
+}
+
+export interface D1ServiceParam {
+  name: string;
+  target: string;
+  field?: string;
+  pages?: string;
+}
+
+export interface D1ServiceRow {
+  route: string;
+  kind: 'qry' | 'cmd';
+  uses: string[];
+  transaction: 'single' | 'none';
+  outputs: D1ServiceOutput[];
+  params: D1ServiceParam[];
+}
+
+export interface D1RequestServiceItem {
+  pageId: string;
+  defPath: string;
+  requests: D1ServiceRow[];
+  definition: D1Definition | null;
+}
+
 export interface D1ControllerRequest {
   project: number;
   moduleName: string;
@@ -117,6 +156,10 @@ export interface D1ControllerRequest {
   actorsRead: boolean;
   /** Routes selected for removal. Absent means none. */
   removedRoutes?: readonly D1RemovedRoute[];
+  /** Contract v2 requests. Absent on a v1 plan. */
+  serviceRequests?: readonly D1ServiceRequestSource[];
+  /** Ontology entities keyed by entity id. Absent when the plan has no v2 request. */
+  ontology?: Readonly<Record<string, unknown>>;
 }
 
 export interface D1ScopeRelationship {
@@ -201,6 +244,7 @@ export interface D1ControllerBuild {
   measuredPages: number;
   enumerations: D1ControllerEnumeration[];
   controllers: D1ControllerItem[];
+  services: D1RequestServiceItem[];
   problems: D1ControllerProblem[];
   normalizations: D1ControllerNormalization[];
   emit: D1ControllerEmit[];

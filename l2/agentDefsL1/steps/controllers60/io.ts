@@ -6,7 +6,8 @@ import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { contractPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { contractPath, entityPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1SelectedRequest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import {
@@ -100,6 +101,7 @@ async function controllerRequest(
     selection: {
       pages: Array<{ pageId: string; routes: string[] }>;
       routes: Array<{ route: string; page: string; kind: string; usecaseRef: string; status: string }>;
+      requests?: readonly D1SelectedRequest[];
       usecases: Array<{ usecaseId: string; entity: string; operation: string; identity: string }>;
     };
     files: Array<{ artifactType: string; identity: string; defPath: string }>;
@@ -163,7 +165,33 @@ async function controllerRequest(
     accessRead: isRecord(access),
     actorsRead: isRecord(needs),
     removedRoutes: removedRoutesOf(snapshot.removed),
+    serviceRequests: (snapshot.selection.requests || []).map(item => ({
+      route: item.route,
+      pageId: item.pageId,
+      kind: item.kind,
+      uses: [...item.uses],
+      outputs: item.outputs.map(output => ({ key: output.key, entity: output.entity })),
+      params: item.params.map(param => ({
+        name: param.name,
+        target: param.target,
+        ...(param.field ? { field: param.field } : {}),
+        ...(param.pages ? { pages: param.pages } : {}),
+      })),
+    })),
+    ontology: await ontologyOf(project, moduleName, index),
   };
+}
+
+async function ontologyOf(project: number, moduleName: string, index: unknown): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  if (!isRecord(index) || !Array.isArray(index.entities)) return out;
+  for (const row of index.entities) {
+    if (!isRecord(row) || typeof row.entityId !== 'string' || !isSafeToken(row.entityId)) continue;
+    const text = await readLogical(project, entityPath(moduleName, row.entityId));
+    const parsed = text ? parseD1Source(text, 'defs') : null;
+    if (isRecord(parsed)) out[row.entityId] = parsed;
+  }
+  return out;
 }
 
 function removedRoutesOf(
