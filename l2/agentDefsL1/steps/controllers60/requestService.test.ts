@@ -8,7 +8,13 @@ import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
-import type { D1ControllerRequest, D1ServiceRequestSource, D1ServiceRow } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import type {
+  D1ControllerGrant,
+  D1ControllerRelationship,
+  D1ControllerRequest,
+  D1ServiceRequestSource,
+  D1ServiceRow,
+} from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { fieldsByEntity, requestServiceProblems } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
@@ -76,10 +82,16 @@ function serviceRequest(snapshot: D1InputSnapshot, artifacts: D1InputArtifacts, 
       ...(param.pages ? { pages: param.pages } : {}),
     })),
   }));
+  const actors = pageActors(artifacts.needs);
+  const pageIds = [...new Set(snapshot.selection.routes.map(route => route.page))].sort();
   return {
     project: 102047,
     moduleName,
-    pages: [],
+    pages: pageIds.map(pageId => ({
+      pageId,
+      actors: actors.get(pageId) || [],
+      defPath: `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
+    })),
     routes: snapshot.selection.routes.map(route => ({
       route: route.route,
       page: route.page,
@@ -94,8 +106,8 @@ function serviceRequest(snapshot: D1InputSnapshot, artifacts: D1InputArtifacts, 
       functionName: '',
       defPath: usecasePath.get(usecase.identity) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),
-    grants: [],
-    relationships: [],
+    grants: grantsFrom(artifacts.access),
+    relationships: relationshipsFrom(artifacts.ontologyIndex),
     contracts: Object.entries(artifacts.contractTexts).map(([pageId, source]) => ({
       pageId,
       path: `l2/${moduleName}/web/contracts/${pageId}.defs.ts`,
@@ -110,6 +122,63 @@ function serviceRequest(snapshot: D1InputSnapshot, artifacts: D1InputArtifacts, 
   };
 }
 
+function pageActors(needs: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  if (!isRecord(needs) || !Array.isArray(needs.pages)) return out;
+  for (const page of needs.pages) {
+    if (!isRecord(page) || typeof page.pageId !== 'string' || !Array.isArray(page.actors)) continue;
+    out.set(page.pageId, page.actors.filter((item): item is string => typeof item === 'string' && item.length > 0));
+  }
+  return out;
+}
+
+function grantsFrom(access: unknown): D1ControllerGrant[] {
+  if (!isRecord(access) || !Array.isArray(access.grants)) return [];
+  const out: D1ControllerGrant[] = [];
+  for (const grant of access.grants) {
+    if (!isRecord(grant) || typeof grant.grantId !== 'string' || typeof grant.actorRef !== 'string') continue;
+    const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
+    const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
+    const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
+    if (!mode) continue;
+    out.push({
+      grantId: grant.grantId,
+      actorRef: grant.actorRef,
+      entityRefs: stringList(grant.entityRefs),
+      disclosure: mode,
+      allowedFields: stringList(disclosure.allowedFields),
+      anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
+      scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
+    });
+  }
+  return out;
+}
+
+function relationshipsFrom(index: unknown): D1ControllerRelationship[] {
+  if (!isRecord(index) || !Array.isArray(index.relationships)) return [];
+  const out: D1ControllerRelationship[] = [];
+  for (const rel of index.relationships) {
+    if (!isRecord(rel) || typeof rel.relationshipId !== 'string') continue;
+    out.push({
+      relationshipId: rel.relationshipId,
+      from: typeof rel.from === 'string' ? rel.from : '',
+      to: typeof rel.to === 'string' ? rel.to : '',
+      field: typeof rel.field === 'string' ? rel.field : '',
+      required: rel.required === true,
+    });
+  }
+  return out;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+}
+
 void test('v1 controllers stay one usecase binding and gain no request service', () => {
   const build = buildD1Controllers(coreControllerRequest());
   assert.equal(build.schemaVersion, D1_CONTROLLER_VERSION);
@@ -117,15 +186,19 @@ void test('v1 controllers stay one usecase binding and gain no request service',
   assert.equal(build.services.length, 0);
   assert.equal(build.emit.length, 5);
   const handler = build.controllers.flatMap(item => item.handlers)[0];
-  assert.equal(typeof handler?.usecaseId, 'string');
   assert.equal(handler?.usecaseId.length > 0, true);
+  assert.equal(handler?.serviceFunction, '');
+  assert.equal(handler?.contractInterface, '');
 });
 
-void test('a contract v2 page gets one request service and the controller stays a v1 adapter', () => {
+void test('a contract v2 page controller is an adapter over one request service function', () => {
   for (const [id, moduleName] of [['controleEstoque-39a5166', 'controleEstoque'], ['ledgerBin-39a5166', 'ledgerBin']] as const) {
     const { snapshot, artifacts } = snapshotOf(id, moduleName);
-    const build = buildD1Controllers(serviceRequest(snapshot, artifacts, moduleName));
+    const request = serviceRequest(snapshot, artifacts, moduleName);
+    const build = buildD1Controllers(request);
     const pages = [...new Set(snapshot.selection.requests.map(item => item.pageId))].sort();
+    const errors = build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ');
+    assert.equal(build.ok, true, `${id} ${errors}`);
     assert.deepEqual(build.services.map(item => item.pageId), pages, id);
     assert.equal(build.services.every(item => item.definition?.artifactType === 'requestService'), true, id);
     for (const service of build.services) {
@@ -141,11 +214,28 @@ void test('a contract v2 page gets one request service and the controller stays 
       assert.equal(dependencies.every(path => path.includes('/usecases/')), true, dependencies.join(','));
       assert.equal(dependencies.some(path => path.includes('/scope/') || path.includes('/l2/')), false);
       assert.deepEqual(dependencies, [...dependencies].sort());
+      const controller = build.controllers.find(item => item.pageId === service.pageId);
+      const data = controller?.definition?.data as { handlers?: Array<Record<string, unknown>> } | undefined;
+      const handlers = data?.handlers || [];
+      assert.deepEqual(handlers.map(item => item.route).sort(), service.requests.map(item => item.route).sort(), id);
+      const contract = request.contracts.find(item => item.pageId === service.pageId);
+      for (const handler of handlers) {
+        assert.deepEqual(Object.keys(handler).sort(), ['contractInterface', 'contractPath', 'grantIds', 'kind', 'route', 'serviceFunction']);
+        assert.equal(handler.serviceFunction, handler.route, `${id} ${handler.route}`);
+        assert.equal(handler.contractPath, contract?.path);
+        assert.equal(typeof handler.contractInterface, 'string');
+        assert.match(String(handler.contractInterface), /Contracts$/);
+        assert.equal(contract?.source.includes(`export interface ${handler.contractInterface}`), true);
+        assert.equal(/Input$|Output$/.test(String(handler.contractInterface)), false);
+        assert.equal(JSON.stringify(handler).includes('usecaseId'), false);
+      }
+      const deps = controller?.definition?.dependencies || [];
+      assert.equal(deps.some(path => path.includes(`/requests/${service.pageId}.defs.ts`)), true, deps.join(','));
+      assert.equal(deps.some(path => path.includes('/scope/accessScope.defs.ts')), true, deps.join(','));
+      assert.equal(deps.some(path => path.includes('/auth/authorityMap.defs.ts')), true, deps.join(','));
+      assert.equal(deps.some(path => path.includes('/usecases/') || path.includes('/l2/')), false, deps.join(','));
     }
-    const handler = build.controllers.flatMap(item => item.handlers)[0];
-    assert.equal(Object.hasOwn(handler || {}, 'usecaseId'), true, id);
-    assert.equal(build.problems.some(item => item.code === 'CONTRACT_UNBOUND'), true, id);
-    assert.equal(build.ok, false, id);
+    assert.equal(build.problems.some(item => item.code === 'CONTRACT_UNBOUND'), false, id);
   }
 });
 

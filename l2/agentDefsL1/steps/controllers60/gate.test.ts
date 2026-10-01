@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { coreControllerRequest, frozenControllerCounts } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
+import { V1_ASSERTION_CONTRACT, V1_FORM_CONTRACT } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/v1Contracts.js';
 import { buildD1Controllers, grantUnionIssues } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import type { D1ControllerBuild, D1ControllerRequest, D1HandlerBinding } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
@@ -134,10 +135,7 @@ void test('negatives: assertion, form identity, duplicate route, invalid symbol,
   const assertion = coreControllerRequest();
   const consultas = assertion.contracts.find(item => item.pageId === 'consultas');
   assert.ok(consultas);
-  consultas.source = `
-    export interface Wide { id: string; attendanceNote: string; }
-    export const routes = { "agendaClinica.consultas.qryListConsulta": value as Wide } as const;
-  `;
+  consultas.source = V1_ASSERTION_CONTRACT;
   const asserted = buildD1Controllers(assertion);
   const assertedRow = handler(asserted.controllers.flatMap(item => item.handlers), 'agendaClinica.consultas.qryListConsulta');
   assert.equal(asserted.problems.some(item => item.code === 'TYPE_ASSERTION'), true);
@@ -147,11 +145,7 @@ void test('negatives: assertion, form identity, duplicate route, invalid symbol,
   const form = coreControllerRequest();
   const one = form.contracts.find(item => item.pageId === 'agenda');
   assert.ok(one);
-  one.source = `
-    export interface In { actorId: string; }
-    export interface Out { id: string; }
-    export const routes = { "agendaClinica.agenda.qryListConsulta": { input: "In", output: "Out" } } as const;
-  `;
+  one.source = V1_FORM_CONTRACT;
   const formed = buildD1Controllers(form);
   const formedRow = handler(formed.controllers.flatMap(item => item.handlers), 'agendaClinica.agenda.qryListConsulta');
   assert.equal(formed.problems.some(item => item.code === 'FORM_IDENTITY' && item.message.includes('actorId')), true);

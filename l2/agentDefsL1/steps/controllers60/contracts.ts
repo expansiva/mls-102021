@@ -3,7 +3,7 @@
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 
-export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-v2' as const;
+export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-adapter' as const;
 
 /** Same trail as domain30 and usecases50. This step does not copy the values either. */
 export const ENUMERATION_SOURCE = 'domain30.enumerations' as const;
@@ -85,6 +85,8 @@ export interface D1ExistingHandler {
   route: string;
   kind: 'query' | 'command';
   usecaseId: string;
+  /** Request route this handler calls. Absent on a v1 usecase handler. */
+  serviceFunction?: string;
   grantIds: string[];
 }
 
@@ -192,9 +194,14 @@ export interface D1HandlerBinding {
   route: string;
   pageId: string;
   kind: 'query' | 'command';
+  /** Empty when the handler calls the request service instead of a usecase. */
   usecaseId: string;
   functionName: string;
+  /** Request route of this page's service. Empty on a v1 binding. */
+  serviceFunction: string;
   contractPath: string;
+  /** `<Page>Contracts`. Empty on a v1 binding. Not an Input or Output symbol. */
+  contractInterface: string;
   inputSymbol: string;
   outputSymbol: string;
   status: string;

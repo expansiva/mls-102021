@@ -1,5 +1,10 @@
 # controllers60
 
+## 2026-10-01 (d1_45 r2)
+
+- A v2 page controller is an adapter: one request-service function per handler, contract path and `<Page>Contracts`, no usecase dependency.
+- Recipe `2026-10-01-d1-controllers-adapter`.
+
 ## 2026-09-23 (d1_21)
 
 - `fieldsOnly` matches a disclosure path, not the last segment of it. A container covered by a sub-path is narrowed to those sub-paths. It is not released whole, and it is not rejected on the container name.

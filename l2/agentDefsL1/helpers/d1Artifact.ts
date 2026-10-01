@@ -191,9 +191,26 @@ export interface D1UsecaseData {
   };
 }
 
+export interface D1HttpHandlerV1 {
+  route: string;
+  kind: 'query' | 'command';
+  usecaseId: string;
+  grantIds: string[];
+}
+
+/** Adapter. Types are `<contractInterface>['<route>']['input'|'output']`. */
+export interface D1HttpHandlerAdapter {
+  route: string;
+  kind: 'query' | 'command';
+  grantIds: string[];
+  serviceFunction: string;
+  contractPath: string;
+  contractInterface: string;
+}
+
 export interface D1HttpControllerData {
   pageId: string;
-  handlers: Array<{ route: string; kind: 'query' | 'command'; usecaseId: string; grantIds: string[] }>;
+  handlers: Array<D1HttpHandlerV1 | D1HttpHandlerAdapter>;
 }
 
 export interface D1AccessJoin {
@@ -1104,11 +1121,28 @@ export function httpControllerIssues(data: unknown): string[] {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(handler, ['route', 'kind', 'usecaseId', 'grantIds'], path, issues);
+    const adapter = typeof handler.serviceFunction === 'string';
+    unknownKeys(
+      handler,
+      adapter
+        ? ['route', 'kind', 'grantIds', 'serviceFunction', 'contractPath', 'contractInterface']
+        : ['route', 'kind', 'usecaseId', 'grantIds'],
+      path,
+      issues,
+    );
     needString(handler, 'route', path, issues);
     const kind = needString(handler, 'kind', path, issues);
     oneOf(kind, ['query', 'command'], `${path}.kind`, issues);
-    needString(handler, 'usecaseId', path, issues);
+    if (adapter) {
+      needString(handler, 'serviceFunction', path, issues);
+      needString(handler, 'contractPath', path, issues);
+      const contractInterface = needString(handler, 'contractInterface', path, issues);
+      if (contractInterface && (contractInterface.endsWith('Input') || contractInterface.endsWith('Output'))) {
+        issues.push(`${path}.contractInterface is a derived symbol.`);
+      }
+    } else {
+      needString(handler, 'usecaseId', path, issues);
+    }
     const grants = stringList(handler.grantIds, `${path}.grantIds`, issues);
     if (Array.isArray(handler.grantIds) && grants.length === 0) issues.push(`Missing field ${path}.grantIds.`);
   });

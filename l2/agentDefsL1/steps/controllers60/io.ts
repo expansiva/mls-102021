@@ -291,9 +291,11 @@ function existingController(pageId: string, source: string): D1ExistingControlle
   for (const handler of data.handlers) {
     if (!isRecord(handler) || typeof handler.route !== 'string') continue;
     const kind = handler.kind === 'command' || handler.kind === 'query' ? handler.kind : '';
-    if (!kind || typeof handler.usecaseId !== 'string') continue;
+    const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
+    const serviceFunction = typeof handler.serviceFunction === 'string' ? handler.serviceFunction : '';
+    if (!kind || (!usecaseId && !serviceFunction)) continue;
     if (!routes.includes(handler.route)) routes.push(handler.route);
-    handlers.push({ route: handler.route, kind, usecaseId: handler.usecaseId, grantIds: stringList(handler.grantIds) });
+    handlers.push({ route: handler.route, kind, usecaseId, serviceFunction, grantIds: stringList(handler.grantIds) });
   }
   return { pageId, routes, handlers, unreadable: false };
 }

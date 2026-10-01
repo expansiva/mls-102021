@@ -15,6 +15,7 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
+  contractInterfaceName,
   fieldsByEntity,
   readContractV2,
   requestServiceProblems,
@@ -46,6 +47,7 @@ import {
   type D1RequestServiceItem,
   type D1HandlerBinding,
   type D1ScopeGrantPlan,
+  type D1ServiceRow,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
 const FORM_IDENTITY = new Set(['actorId', 'userId', 'sessionId', 'scope']);
@@ -66,20 +68,39 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   }
   noteDuplicateRoutes(request, problems);
 
+  const services = requestServices(request, problems);
   const astByPage = new Map<string, D1ContractAst>();
   const byPage = new Map<string, D1HandlerBinding[]>();
   for (const route of request.routes) {
+    if (isV2Page(request, route.page)) continue;
     const binding = bindRoute(request, route, astFor(request, astByPage, route.page, problems), problems);
     const list = byPage.get(route.page) || [];
     list.push(binding);
     byPage.set(route.page, list);
+  }
+  for (const service of services) {
+    if (!isV2Page(request, service.pageId)) continue;
+    for (const row of service.requests) {
+      const selected = request.routes.find(item => item.route === row.route && item.page === service.pageId);
+      const route: D1ControllerRoute = {
+        route: row.route,
+        page: service.pageId,
+        kind: row.kind,
+        usecaseRef: selected?.usecaseRef || '',
+        status: selected?.status || 'toCreate',
+      };
+      const binding = bindAdapter(request, route, row, problems);
+      const list = byPage.get(service.pageId) || [];
+      list.push(binding);
+      byPage.set(service.pageId, list);
+    }
   }
 
   const controllers: D1ControllerItem[] = [];
   for (const [pageId, handlers] of byPage) {
     const page = pageFor(request, pageId);
     handlers.sort((left, right) => left.route.localeCompare(right.route));
-    const staleRoutes = staleOf(request, pageId, problems);
+    const staleRoutes = staleOf(request, pageId, liveRoutes(request, pageId, services), problems);
     const item: D1ControllerItem = { pageId, defPath: page.defPath, handlers, staleRoutes, definition: null };
     if (!isSafeToken(pageId)) {
       error(problems, 'PAGE_ID', pageId, `Page ${pageId} is not a safe token. No controller file was named.`);
@@ -87,7 +108,6 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
     controllers.push(item);
   }
 
-  const services = requestServices(request, problems);
   const ok = !problems.some(problem => problem.severity === 'error');
   const before = problems.length;
   if (ok) {
@@ -121,11 +141,11 @@ function bindRoute(
   ast: D1ContractAst,
   problems: D1ControllerProblem[],
 ): D1HandlerBinding {
+  const contract = request.contracts.find(item => item.pageId === route.page);
   const path = route.route;
   const page = pageFor(request, route.page);
   const usecase = request.usecases.find(item => item.usecaseId === route.usecaseRef);
   const kind = mapKind(route.kind);
-  const contract = request.contracts.find(item => item.pageId === route.page);
   const contractPath = contract?.path || `l2/${request.moduleName}/web/contracts/${route.page}.defs.ts`;
   let inputSymbol = '';
   let outputSymbol = '';
@@ -169,35 +189,10 @@ function bindRoute(
     }
   }
 
-  const matched = usecase ? matchingGrants(page.actors, usecase.entity, request.grants) : [];
-  let grantIds = matched.map(item => item.grantId);
-  let preserved = false;
-  if (route.status === 'done') {
-    const existing = existingHandler(request, route);
-    if (!existing) {
-      error(problems, 'HANDLER_MISSING', path, `Done route ${path} has no handler to keep.`);
-    } else if (existing.usecaseId !== route.usecaseRef || existing.kind !== (kind || 'query')) {
-      error(problems, 'STALE_ARTIFACT', path, `Done route ${path} does not match the handler on disk.`);
-    } else {
-      preserved = true;
-      grantIds = [...existing.grantIds];
-      const union = grantUnionIssues(page.actors, grantIds, request.grants);
-      if (union.length) {
-        error(problems, 'GRANT_UNION', path, `Done route ${path} keeps a grant of another page: ${union.join(', ')}.`);
-      }
-      for (const grantId of grantIds) {
-        if (!request.grants.some(item => item.grantId === grantId)) {
-          error(problems, 'INVALID_REF', path, `Grant ${grantId} on ${path} is not in the access artifact.`);
-        }
-      }
-    }
-  } else {
-    const union = grantUnionIssues(page.actors, grantIds, request.grants);
-    if (union.length) {
-      error(problems, 'GRANT_UNION', path, `Route ${path} would take a grant of another page: ${union.join(', ')}.`);
-    }
-  }
-
+  const matched = usecase ? matchingGrants(page.actors, usecase.entity, request.grants).map(item => item.grantId) : [];
+  const kept = finishGrants(request, route, kind, matched, existing => existing.usecaseId === route.usecaseRef, problems);
+  const grantIds = kept.grantIds;
+  const preserved = kept.preserved;
   if (usecase && grantIds.length === 0) {
     error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${route.usecaseRef} on ${path} has no authority. No permissive fallback was applied.`);
   }
@@ -219,7 +214,9 @@ function bindRoute(
     kind: kind || 'query',
     usecaseId: route.usecaseRef,
     functionName: usecase?.functionName || '',
+    serviceFunction: '',
     contractPath,
+    contractInterface: '',
     inputSymbol,
     outputSymbol,
     status: route.status,
@@ -230,6 +227,149 @@ function bindRoute(
     steps: HANDLER_STEPS,
     scopePlan: scopePlans(attached, request.relationships, problems, path),
   };
+}
+
+/** v2 page: the handler calls one request-service function. It does not name a usecase. */
+function bindAdapter(
+  request: D1ControllerRequest,
+  route: D1ControllerRoute,
+  row: D1ServiceRow,
+  problems: D1ControllerProblem[],
+): D1HandlerBinding {
+  const path = route.route;
+  const page = pageFor(request, route.page);
+  const kind = mapKind(route.kind);
+  const contract = request.contracts.find(item => item.pageId === route.page);
+  const contractPath = contract?.path || `l2/${request.moduleName}/web/contracts/${route.page}.defs.ts`;
+  const contractInterface = contract ? contractInterfaceName(contract.source) : '';
+  const serviceFunction = row.route;
+  if (!kind) error(problems, 'KIND', path, `Route ${path} kind ${route.kind} is not query or command.`);
+  if (!contractInterface) {
+    error(problems, 'INVALID_REF', path, `Route ${path} has no contract interface.`);
+  }
+  const entities: string[] = [];
+  for (const usecaseId of row.uses) {
+    const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
+    if (usecase && !entities.includes(usecase.entity)) entities.push(usecase.entity);
+  }
+  const matched: string[] = [];
+  for (const entity of entities) {
+    for (const grant of matchingGrants(page.actors, entity, request.grants)) {
+      if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
+    }
+  }
+  const kept = finishGrants(
+    request,
+    route,
+    kind,
+    matched,
+    existing => existing.serviceFunction === serviceFunction,
+    problems,
+  );
+  if (!kept.preserved) {
+    const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
+    const missing = entities.length === 0 ? [path] : uncovered;
+    for (const entity of missing) {
+      error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${entity} on ${path} has no authority. No permissive fallback was applied.`);
+    }
+  } else if (kept.grantIds.length === 0) {
+    error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${path} has no authority. No permissive fallback was applied.`);
+  }
+  const attached = grantsOnPage(page, kept.grantIds, request);
+  const projected: string[] = [];
+  for (const output of row.outputs) {
+    const fields = output.fields.map(name => ({ name, type: 'string', optional: false }));
+    const disclosed = discloseProjection(output.entity, fields, attached);
+    projected.push(...disclosed.fields);
+    if (disclosed.blocked.length || disclosed.opaque.length) {
+      error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
+    }
+  }
+  return {
+    route: route.route,
+    pageId: route.page,
+    kind: kind || 'query',
+    usecaseId: '',
+    functionName: '',
+    serviceFunction,
+    contractPath,
+    contractInterface,
+    inputSymbol: '',
+    outputSymbol: '',
+    status: route.status,
+    preserved: kept.preserved,
+    grantIds: kept.grantIds,
+    projection: { shape: projected.length ? 'object' : 'unresolved', fields: projected, envelope: 'passthrough' },
+    session: 'verified',
+    steps: HANDLER_STEPS,
+    scopePlan: scopePlans(attached, request.relationships, problems, path),
+  };
+}
+
+function grantsOnPage(
+  page: D1ControllerPage,
+  grantIds: readonly string[],
+  request: D1ControllerRequest,
+): D1ControllerGrant[] {
+  return grantIds.flatMap(grantId => {
+    const grant = request.grants.find(item => item.grantId === grantId);
+    return grant && page.actors.includes(grant.actorRef) ? [grant] : [];
+  });
+}
+
+function finishGrants(
+  request: D1ControllerRequest,
+  route: D1ControllerRoute,
+  kind: 'query' | 'command' | '',
+  matched: readonly string[],
+  sameHandler: (existing: D1ExistingHandler) => boolean,
+  problems: D1ControllerProblem[],
+): { grantIds: string[]; preserved: boolean } {
+  const path = route.route;
+  const page = pageFor(request, route.page);
+  let grantIds = [...matched];
+  let preserved = false;
+  if (route.status === 'done') {
+    const existing = existingHandler(request, route);
+    if (!existing) {
+      error(problems, 'HANDLER_MISSING', path, `Done route ${path} has no handler to keep.`);
+    } else if (!sameHandler(existing) || existing.kind !== (kind || 'query')) {
+      error(problems, 'STALE_ARTIFACT', path, `Done route ${path} does not match the handler on disk.`);
+    } else {
+      preserved = true;
+      grantIds = [...existing.grantIds];
+      const union = grantUnionIssues(page.actors, grantIds, request.grants);
+      if (union.length) {
+        error(problems, 'GRANT_UNION', path, `Done route ${path} keeps a grant of another page: ${union.join(', ')}.`);
+      }
+      for (const grantId of grantIds) {
+        if (!request.grants.some(item => item.grantId === grantId)) {
+          error(problems, 'INVALID_REF', path, `Grant ${grantId} on ${path} is not in the access artifact.`);
+        }
+      }
+    }
+  } else {
+    const union = grantUnionIssues(page.actors, grantIds, request.grants);
+    if (union.length) {
+      error(problems, 'GRANT_UNION', path, `Route ${path} would take a grant of another page: ${union.join(', ')}.`);
+    }
+  }
+  return { grantIds, preserved };
+}
+
+function isV2Page(request: D1ControllerRequest, pageId: string): boolean {
+  const contract = request.contracts.find(item => item.pageId === pageId);
+  if (!contract?.source) return false;
+  const parsed = readContractV2(contract.source);
+  return !!parsed && parsed.pageId === pageId;
+}
+
+function liveRoutes(request: D1ControllerRequest, pageId: string, services: readonly D1RequestServiceItem[]): Set<string> {
+  if (isV2Page(request, pageId)) {
+    const rows = services.find(item => item.pageId === pageId)?.requests || [];
+    return new Set(rows.map(row => row.route));
+  }
+  return new Set(request.routes.filter(route => route.page === pageId).map(route => route.route));
 }
 
 function matchingGrants(actors: readonly string[], entity: string, grants: readonly D1ControllerGrant[]): D1ControllerGrant[] {
@@ -508,14 +648,18 @@ function existingHandler(request: D1ControllerRequest, route: D1ControllerRoute)
   return page.handlers.find(item => item.route === route.route) || null;
 }
 
-function staleOf(request: D1ControllerRequest, pageId: string, problems: D1ControllerProblem[]): string[] {
+function staleOf(
+  request: D1ControllerRequest,
+  pageId: string,
+  selected: ReadonlySet<string>,
+  problems: D1ControllerProblem[],
+): string[] {
   const existing = request.existing.find(item => item.pageId === pageId);
   if (!existing) return [];
   if (existing.unreadable) {
     error(problems, 'STALE_ARTIFACT', pageId, `Controller ${pageId} did not parse. Nothing was overwritten.`);
     return [];
   }
-  const selected = new Set(request.routes.filter(route => route.page === pageId).map(route => route.route));
   const removed = new Set((request.removedRoutes || []).map(route => route.route));
   const extra = existing.routes.filter(route => !selected.has(route) && !removed.has(route));
   for (const route of extra) {
@@ -630,14 +774,24 @@ function emitServices(
 
 function fillDefinition(request: D1ControllerRequest, item: D1ControllerItem, problems: D1ControllerProblem[]): void {
   if (item.handlers.some(handler => handler.grantIds.length === 0)) return;
+  const adapter = item.handlers.some(handler => handler.serviceFunction);
   const data = {
     pageId: item.pageId,
-    handlers: item.handlers.map(handler => ({
-      route: handler.route,
-      kind: handler.kind,
-      usecaseId: handler.usecaseId,
-      grantIds: handler.grantIds,
-    })),
+    handlers: item.handlers.map(handler => adapter
+      ? {
+        route: handler.route,
+        kind: handler.kind,
+        grantIds: handler.grantIds,
+        serviceFunction: handler.serviceFunction,
+        contractPath: handler.contractPath,
+        contractInterface: handler.contractInterface,
+      }
+      : {
+        route: handler.route,
+        kind: handler.kind,
+        usecaseId: handler.usecaseId,
+        grantIds: handler.grantIds,
+      }),
   };
   const definition = pendingDefinition('httpController', item.pageId, request.moduleName, data);
   const issues = definitionIssues(definition);
@@ -679,14 +833,20 @@ function emitItems(
 
 function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1PipelineItem {
   const qualified = qualifyDefPath(request.project, item.defPath);
-  const usecaseIds = [...new Set(item.handlers.map(handler => handler.usecaseId).filter(Boolean))].sort();
   const dependsOn: string[] = [];
   const dependsFiles: string[] = [];
-  for (const usecaseId of usecaseIds) {
-    const usecase = request.usecases.find(entry => entry.usecaseId === usecaseId);
-    if (!usecase?.defPath) continue;
-    dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
-    dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
+  if (item.handlers.some(handler => handler.serviceFunction)) {
+    const serviceLogical = `l1/${request.moduleName}/layer_2_application/requests/${item.pageId}.defs.ts`;
+    dependsOn.push(pipelineId(request.project, request.moduleName, 'requestService', item.pageId));
+    dependsFiles.push(qualifyDefPath(request.project, serviceLogical));
+  } else {
+    const usecaseIds = [...new Set(item.handlers.map(handler => handler.usecaseId).filter(Boolean))].sort();
+    for (const usecaseId of usecaseIds) {
+      const usecase = request.usecases.find(entry => entry.usecaseId === usecaseId);
+      if (!usecase?.defPath) continue;
+      dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
+      dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
+    }
   }
   const scopeLogical = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;
   dependsOn.push(pipelineId(request.project, request.moduleName, 'accessScope', 'accessScope'));

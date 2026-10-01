@@ -143,6 +143,17 @@ export function readContractV2(source: string): D2ContractV2Definition | null {
   }
 }
 
+/** The one `export interface <Page>Contracts` in a v2 file. Empty when it is missing or repeated. */
+export function contractInterfaceName(source: string): string {
+  const found: string[] = [];
+  const pattern = /export interface ([A-Za-z_][A-Za-z0-9_]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(source))) {
+    if (match[1].endsWith('Contracts')) found.push(match[1]);
+  }
+  return found.length === 1 ? found[0] : '';
+}
+
 function outputTypeName(output: string, key: string): string {
   const pattern = new RegExp(`\\b${key}\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u');
   return pattern.exec(output)?.[1] || '';

@@ -20,9 +20,12 @@ the fields of that symbol. A list result keeps the array shape the contract
 declared. The transport envelope is `passthrough`.
 
 The def itself stays the closed httpController record: `pageId` and
-`handlers` of `route`, `kind`, `usecaseId`, `grantIds`. The route string is
-the one the pool published. The pipeline depends on the usecase defs. It
-does not import L2.
+`handlers`. A v1 handler is `route`, `kind`, `usecaseId`, `grantIds`, and the
+pipeline depends on the usecase defs. A v2 handler is `route`, `kind`,
+`grantIds`, one `serviceFunction`, `contractPath` and `contractInterface`
+(`<Page>Contracts`). That pipeline depends on the page request service, the
+access scope and the authority map. It does not depend on a usecase. The
+route string is the one the pool published. The pipeline does not import L2.
 
 The scope plan (anchor, disclosure, declared relationships) is on the draft
 for support70. An anchor that contradicts a required relationship stays
