@@ -3,7 +3,7 @@
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 
-export const D1_USECASE_VERSION = '2026-09-21-d1-usecases-v1' as const;
+export const D1_USECASE_VERSION = '2026-10-01-d1-usecases-v2' as const;
 
 /** Same trail as persistence40. This step does not copy the values either. */
 export const ENUMERATION_SOURCE = 'domain30.enumerations' as const;
@@ -66,6 +66,8 @@ export interface D1UsecaseField {
   derived: boolean;
   /** Copied from the ontology. Never inferred from the field name. */
   writePrecondition?: boolean;
+  /** True when the ontology field or an ancestor is not required. */
+  optional?: boolean;
 }
 
 export interface D1UsecaseTransition {

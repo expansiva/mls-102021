@@ -730,7 +730,7 @@ export function routeProjectionIssues(data: unknown): string[] {
       }
     }
   }
-  if (!Array.isArray(data.routeProjections)) return [...issues, 'Missing field data.routeProjections.'];
+  if (!Array.isArray(data.routeProjections)) return issues;
   data.routeProjections.forEach((projection, index) => {
     const path = `data.routeProjections.${index}`;
     if (!isRecord(projection)) {
@@ -787,7 +787,6 @@ export function usecaseIssues(data: unknown): string[] {
     }
     unknownKeys(fn, ['functionName', 'input', 'output', 'contractRefs'], path, issues);
     needString(fn, 'functionName', path, issues);
-    if (!Array.isArray(fn.contractRefs)) issues.push(`Missing field ${path}.contractRefs.`);
   });
   if (!Array.isArray(data.effects)) issues.push('Missing field data.effects.');
   else data.effects.forEach((effect, index) => {

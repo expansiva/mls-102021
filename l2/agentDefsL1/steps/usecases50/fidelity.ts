@@ -7,6 +7,7 @@ import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102
 import {
   capabilityApplies,
   capabilityNames,
+  declaredFieldsFor,
   mdmInputFields,
   namespaceOf,
   ontologyTransitions,
@@ -212,7 +213,7 @@ export function readUsecaseFidelity(
         namespace: '',
         storageTarget: '',
       },
-      routes: readPlanRoutes(data),
+      routes: [],
     });
     if (!samePlan(actualPlan, expected)) {
       fail(problems, 'RULE_COVERAGE', usecaseId, `Applicability of ${usecaseId} does not match its sources.`);
@@ -233,12 +234,9 @@ export function readUsecaseFidelity(
   if (ontology && isMdmOntology(ontology)) {
     const names = capabilityNames(ontology);
     const read = mdmInputFields(
-      contractFiles(files),
-      readPlanRoutes(data).map(route => ({
-        route: route.route,
-        page: pageIdOf(route.contractPath),
-      })),
+      functionInputPaths(data).map(name => ({ name })),
       preconditionsFor(files, moduleName, entityId, []),
+      declaredFieldsFor(files, moduleName, entityId, []),
     );
     const bound = mdmForOperation({
       entityId,
@@ -262,36 +260,6 @@ export function readUsecaseFidelity(
     }
   } else if (mdm) {
     fail(problems, 'MDM_NAMESPACE', usecaseId, `Usecase ${usecaseId} names MDM for ${entityId}, which is not an MDM role.`);
-  }
-
-  const routes = readRoutes(data);
-  const contractRefs = readContractRefs(data);
-  for (const ref of contractRefs) {
-    if (!routes.some(route => route.route === ref.route)) {
-      fail(problems, 'PROJECTION_MISSING', usecaseId, `Route ${ref.route} has no projection.`);
-    }
-  }
-  for (const route of routes) {
-    if (!hasDep(dependsFiles, route.contractPath)) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Contract ${route.contractPath} is not in dependencies.`);
-    }
-    if (route.projection !== 'declared') continue;
-    const ref = contractRefs.find(item => item.route === route.route);
-    if (!ref?.symbol) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Route ${route.route} has no typed symbol.`);
-      continue;
-    }
-    const text = fileText(files, route.contractPath);
-    if (text == null) {
-      fail(problems, 'SOURCE_ABSENT', usecaseId, `Contract ${route.contractPath} is absent.`);
-      continue;
-    }
-    const ast = readContractAst(text, route.contractPath);
-    const declared = contractedFields(ast, ref.symbol);
-    const names = declared?.map(field => field.name) || [];
-    if (!declared || !sameList(names, route.outputFields)) {
-      fail(problems, 'PROJECTION_MISMATCH', usecaseId, `Route ${route.route} projection does not match ${ref.symbol} in ${route.contractPath}.`);
-    }
   }
 
   const effects = readEffects(data);
@@ -335,12 +303,7 @@ export function readUsecaseFidelity(
         rules: ruleRefs,
         transaction,
         effects,
-        routes: routes.filter(route => route.projection === 'declared').map(route => ({
-          route: route.route,
-          contractPath: route.contractPath,
-          symbol: contractRefs.find(item => item.route === route.route)?.symbol || '',
-          outputFields: route.outputFields,
-        })),
+        routes: [],
       },
       problems,
     };

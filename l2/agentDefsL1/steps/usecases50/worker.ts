@@ -11,7 +11,7 @@ import {
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { authorizedPayloadNames, formatUsecaseContext, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { declaredFieldsFor, domainSignature, formatUsecaseContext, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation, mdmStepPairs } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 export const USECASE_TOOL_NAME = 'planUsecaseSteps';
@@ -159,15 +159,10 @@ export function closedFromRequest(
   const transitionId = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
     ? usecase.usecaseId
     : '';
-  const inputNames: string[] = [];
-  if (transitionId && packet) {
-    for (const route of packet.routes) {
-      for (const field of route.inputFields) inputNames.push(field.path);
-    }
-  }
-  const payloadNames = transitionId
-    ? writablePayload([...authorizedPayloadNames(request, usecase.usecaseId, inputNames)], entity)
+  const declaredPayload = transitionId
+    ? (entity?.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
     : [];
+  const payloadNames = writablePayload(declaredPayload, entity);
   const portMethods = packet
     ? packet.portMethods.map(method => method.name)
     : (storage === 'mdm' ? [] : port?.methods || []);
@@ -296,14 +291,13 @@ function pairsFor(
   usecase: D1UsecaseSelection,
 ): MdmStepPair[] {
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace || !entity.entityId) return [];
-  const routes = usecase.routes.flatMap(routeId => {
-    const route = request.routes.find(item => item.route === routeId);
-    return route ? [route] : [];
-  });
+  const payload = usecase.operation === 'transition'
+    ? (entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
+    : [];
   const read = mdmInputFields(
-    request.contracts,
-    routes,
+    domainSignature(entity, usecase.operation, payload).input,
     preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+    declaredFieldsFor(request.files, request.moduleName, entity.entityId, entity.fields),
   );
   return mdmStepPairs(mdmForOperation({
     entityId: entity.entityId,
@@ -500,7 +494,7 @@ export function usecaseHumanPrompt(input: {
   lines.push(
     '',
     'Plan steps only. Do not write TypeScript. Do not invent a field, a rule, an operation, a route or a type.',
-    'A transition payload may list only a path the contract or the lifecycle payload already lists.',
+    'A transition payload may list only a path the operation input or the lifecycle payload already lists.',
     'More than one repository write needs one local transaction boundary. Separate MDM facade calls are not one transaction. An external effect is not atomic.',
     'Authority is ctx.',
     '',

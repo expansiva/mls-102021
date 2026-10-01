@@ -15,7 +15,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
-import { authorizedPayloadNames, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { authorizedPayloadNames, declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { capabilityApplies, mdmForOperation, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
@@ -68,7 +68,7 @@ interface RouteOutput {
 export function buildD1Usecases(request: D1UsecaseRequest): D1UsecaseBuild {
   const problems: D1UsecaseProblem[] = [];
   const normalizations: D1UsecaseNormalization[] = [];
-  noteUnparsedContracts(request, problems);
+
   const enumerations = unconsumedEnumerations(request);
   const seen = new Set<string>();
   const items: D1UsecaseItem[] = [];
@@ -117,15 +117,11 @@ function planUsecase(
     error(problems, 'ENTITY_MISSING', path, `Usecase ${path} names ${usecase.entity}, which is not in the domain draft.`);
     return blank;
   }
-  if (!usecase.routes.length) {
-    error(problems, 'ROUTE_MISSING', path, `Usecase ${path} has no route.`);
-    return blank;
-  }
-
-  const routes = resolveRoutes(request, usecase, problems);
-  const outputs = routeOutputs(request, usecase, entity, routes, problems);
-  noteSameRouteConflicts(outputs, path, problems);
-  const input = sharedInput(request, usecase, entity, routes, problems);
+  const sourcePayload = usecase.operation === 'transition'
+    ? [...(entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])]
+    : [];
+  const signed = domainSignature(entity, usecase.operation, sourcePayload);
+  const input = signed.input;
   noteDerived(request, entity, usecase, input, steps, path, problems, normalizations);
   noteRequiredNotes(entity, usecase, input, path, problems);
   const transitionOk = noteTransition(request, entity, usecase, steps, input, path, problems);
@@ -135,7 +131,7 @@ function planUsecase(
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
   const portCalls = resolvePorts(entity, usecase, port, steps, path, problems);
-  const mdm = resolveMdm(request, entity, usecase, routes, steps, path, problems);
+  const mdm = resolveMdm(request, entity, usecase, input, steps, path, problems);
   noteAdapter(steps, path, problems);
   noteContext(steps, path, problems);
   const boundary = resolveBoundary(portCalls, mdm, steps, path, problems);
@@ -143,18 +139,6 @@ function planUsecase(
     return { ...blank, mdm, transactionBoundary: boundary, steps };
   }
 
-  const contractRefs = outputs
-    .filter(item => item.projection === 'declared')
-    .map(item => {
-      const binding = bindingFor(request, routes.find(route => route.route === item.route));
-      return { route: item.route, symbol: binding?.output || '' };
-    })
-    .filter(item => item.symbol);
-
-  const outputUnion = unionOutputs(outputs);
-  const sourcePayload = usecase.operation === 'transition'
-    ? [...(entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])]
-    : [];
   const ontologyPath = `l4/${request.moduleName}/ontology/${entity.entityId}.defs.ts`;
   const integrationPath = `l4/${request.moduleName}/integration.defs.ts`;
   const lifecycle = usecase.operation === 'transition'
@@ -174,15 +158,8 @@ function planUsecase(
     functions: [{
       functionName: usecase.usecaseId,
       input,
-      output: outputUnion,
-      contractRefs,
+      output: signed.output,
     }],
-    routeProjections: outputs.map(item => ({
-      route: item.route,
-      contractPath: item.contractPath,
-      projection: item.projection,
-      outputFields: item.projection === 'declared' ? item.outputFields : [],
-    })),
     portCalls,
     transactional: boundary === 'local',
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
@@ -192,7 +169,7 @@ function planUsecase(
     uses: fieldUses({
       operation: usecase.operation,
       fields: entity.fields,
-      inputPaths: [...contractInputPaths(request, usecase, input)],
+      inputPaths: input.map(field => field.name),
       payloadPaths: sourcePayload,
     }),
     rules: rules.map(ruleId => ({
@@ -430,7 +407,7 @@ function noteDerived(
   problems: D1UsecaseProblem[],
   normalizations: D1UsecaseNormalization[],
 ): void {
-  const inputPaths = contractInputPaths(request, usecase, input);
+  const inputPaths = new Set(input.map(field => field.name));
   const payloadPaths = new Set<string>();
   for (const step of steps) {
     if (step.kind === 'transition') step.payload.forEach(name => payloadPaths.add(name));
@@ -573,7 +550,7 @@ function noteRequiredNotes(
     if (!field) continue;
     const supplied = input.some(item => item.name === leaf || item.fieldRef === `${entity.entityId}.${field.name}`);
     if (!supplied) {
-      review(problems, 'NOTE_WITHOUT_INPUT', path, `Rule ${ruleId} requires ${field.name}, and no contract input supplies it.`);
+      review(problems, 'NOTE_WITHOUT_INPUT', path, `Rule ${ruleId} requires ${field.name}, and the operation input does not supply it.`);
     }
   }
 }
@@ -597,7 +574,7 @@ function noteTransition(
     }
     for (const name of step.payload) {
       if (!allowed.has(name)) {
-        error(problems, 'PAYLOAD_UNAUTHORIZED', path, `Payload ${name} is not an input of the contract.`);
+        error(problems, 'PAYLOAD_UNAUTHORIZED', path, `Payload ${name} is not an input of ${path}.`);
         ok = false;
       }
     }
@@ -623,7 +600,6 @@ function decideRules(
     ...entity.rules.map(rule => rule.ruleId),
     ...entity.transitions.flatMap(item => item.ruleRefs),
   ]);
-  const context = request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
   const plan = rulePlanForUsecase({
     moduleName: request.moduleName,
     entityId: entity.entityId,
@@ -644,20 +620,7 @@ function decideRules(
       storageTarget: entity.storageTarget,
       platformFields: entity.platformFields,
     },
-    routes: usecase.routes.map(routeId => {
-      const route = context?.routes.find(item => item.route === routeId);
-      const selected = request.routes.find(item => item.route === routeId);
-      const page = route?.page || selected?.page || '';
-      return {
-        route: routeId,
-        contractPath: route?.contractPath || contractPathFor(request.moduleName, page),
-        grants: (route?.access || []).map(grant => ({
-          grantId: grant.grantId,
-          actorRef: grant.actorRef,
-          scope: grant.scope,
-        })),
-      };
-    }),
+    routes: [],
   });
   for (const row of plan) known.add(row.ruleId);
   const prescribed = enforcedRuleIds(plan);
@@ -758,7 +721,7 @@ function resolveMdm(
   request: D1UsecaseRequest,
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
-  routes: D1UsecaseRequest['routes'],
+  input: readonly { name: string }[],
   steps: readonly D1WorkerStep[],
   path: string,
   problems: D1UsecaseProblem[],
@@ -775,9 +738,9 @@ function resolveMdm(
   }
   const selected = (entity.capabilities || []).filter(name => capabilityApplies(name, usecase.operation));
   const read = mdmInputFields(
-    request.contracts,
-    routes,
+    input,
     preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+    declaredFieldsFor(request.files, request.moduleName, entity.entityId, entity.fields),
   );
   const bound = mdmForOperation({
     entityId: entity.entityId,
@@ -978,13 +941,6 @@ function dependencyPaths(moduleName: string, item: D1UsecaseItem): string[] {
   const data = item.definition && isRecord(item.definition.data) ? item.definition.data : {};
   const paths = new Set<string>();
   paths.add(`l4/${moduleName}/ontology/${item.entityId}.defs.ts`);
-  if (Array.isArray(data.routeProjections)) {
-    for (const projection of data.routeProjections) {
-      if (isRecord(projection) && typeof projection.contractPath === 'string' && projection.contractPath) {
-        paths.add(projection.contractPath);
-      }
-    }
-  }
   if (Array.isArray(data.rules)) {
     for (const rule of data.rules) {
       if (isRecord(rule) && typeof rule.path === 'string' && rule.path) paths.add(rule.path);
@@ -1033,6 +989,11 @@ function emitItems(request: D1UsecaseRequest, items: readonly D1UsecaseItem[], p
     const adapter = applicationAdapterIssues(pipeline);
     if (adapter.length) {
       error(problems, 'ADAPTER_IMPORT', item.usecaseId, adapter[0]);
+      continue;
+    }
+    const l2 = pipeline.dependsFiles.find(file => /(^|\/)l2\//.test(file));
+    if (l2) {
+      error(problems, 'L2_DEPENDENCY', item.usecaseId, `Usecase dependency ${l2} is an L2 path.`);
       continue;
     }
     item.definition = stampDefinition(item.definition, pipeline.defPath, pipeline.dependsFiles);

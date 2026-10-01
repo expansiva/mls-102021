@@ -38,6 +38,7 @@ import type {
   D1SourceText,
   D1UsecaseContext,
   D1UsecaseEntity,
+  D1UsecaseField,
   D1UsecasePort,
   D1UsecaseRequest,
   D1UsecaseRoute,
@@ -269,7 +270,7 @@ export function formatUsecaseContext(context: D1UsecaseContext): string {
   return lines.join('\n');
 }
 
-/** Names the gate may accept on a transition payload. Contract inputs stay the authority. */
+/** Names the gate may accept on a transition payload. The domain signature is the authority. */
 export function authorizedPayloadNames(
   request: D1UsecaseRequest,
   usecaseId: string,
@@ -280,11 +281,117 @@ export function authorizedPayloadNames(
   const entity = request.entities.find(item => item.entityId === usecase?.entity);
   const transition = entity?.transitions.find(item => item.transitionId === usecaseId);
   for (const path of transition?.payload || []) allowed.add(path);
-  const context = request.contexts?.find(item => item.usecaseId === usecaseId);
-  for (const route of context?.routes || []) {
-    for (const field of route.inputFields) allowed.add(field.path);
+  if (entity && usecase) {
+    for (const field of domainSignature(entity, usecase.operation, transition?.payload || []).input) allowed.add(field.name);
   }
   return allowed;
+}
+
+export interface DomainField {
+  name: string;
+  type: string;
+  fieldRef?: string;
+}
+
+/** Application signature. Contract symbols are not an input or an output. */
+export function domainSignature(
+  entity: D1UsecaseEntity,
+  operation: string,
+  payload: readonly string[] = [],
+): { input: DomainField[]; output: DomainField[] } {
+  const fields = fieldUniverse(entity);
+  const ref = (name: string) => `${entity.entityId}.${name}`;
+  const asField = (name: string, type: string, linked: boolean): DomainField => (
+    linked ? { name, type, fieldRef: ref(name) } : { name, type }
+  );
+  const record = [...fields.entries()].map(([name, field]) => asField(name, field.type, true));
+  if (operation === 'list') {
+    // `version` is a concurrency token, not a list filter. Other derived fields stay so the gate can refuse them.
+    const filters = record.filter(field => field.name !== 'version' || !fields.get(field.name)?.derived);
+    return {
+      input: [
+        ...filters,
+        { name: 'page', type: 'number' },
+        { name: 'pageSize', type: 'number' },
+      ],
+      output: [
+        { name: 'items', type: entity.entityId },
+        { name: 'hasMore', type: 'boolean' },
+      ],
+    };
+  }
+  if (operation === 'get') {
+    return { input: [asField('id', fields.get('id')?.type || 'string', fields.has('id'))], output: record };
+  }
+  // An operation this layer does not classify still exposes its fields, so a derived one is refused.
+  if (operation !== 'create' && operation !== 'update' && operation !== 'transition' && operation !== 'delete') {
+    return { input: record, output: record };
+  }
+  const writable = [...fields.entries()].filter(([, field]) => !field.derived);
+  const input: DomainField[] = [];
+  // create and update write the entity. A transition names its payload, not every column.
+  if (operation === 'create' || operation === 'update') {
+    for (const [name] of writable) input.push(asField(name, fields.get(name)?.type || 'string', true));
+  }
+  if (operation === 'update' || operation === 'transition' || operation === 'delete') {
+    for (const name of ['id', 'version']) {
+      if (input.some(field => field.name === name)) continue;
+      const known = fields.get(name);
+      input.push(asField(name, known?.type || (name === 'version' ? 'integer' : 'string'), Boolean(known)));
+    }
+  }
+  for (const path of payload) {
+    if (input.some(field => field.name === path)) continue;
+    const known = fields.get(path);
+    input.push(asField(path, known?.type || 'string', Boolean(known)));
+  }
+  if ((operation === 'update' || operation === 'transition')
+    && entity.namespace
+    && (entity.capabilities || []).includes('edit.moduleNamespace')) {
+    const namespacePath = `details.${entity.namespace}`;
+    if (!input.some(field => field.name === namespacePath)) input.push(asField(namespacePath, 'object', true));
+  }
+  return { input, output: record };
+}
+
+function fieldUniverse(entity: D1UsecaseEntity): Map<string, { type: string; derived: boolean; optional: boolean }> {
+  const fields = new Map<string, { type: string; derived: boolean; optional: boolean }>();
+  for (const field of entity.fields) {
+    fields.set(field.name, { type: field.type, derived: field.derived, optional: field.optional === true });
+  }
+  for (const path of entity.platformFields || []) {
+    if (!fields.has(path)) fields.set(path, { type: 'string', derived: false, optional: false });
+  }
+  return fields;
+}
+
+/** Leaves of an ontology record. Optional when the field or an ancestor is not required. */
+export function ontologyLeaves(body: unknown): D1UsecaseField[] {
+  if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
+  const out: D1UsecaseField[] = [];
+  walkLeaves(body.record.fields, '', false, out);
+  return out;
+}
+
+function walkLeaves(fields: Record<string, unknown>, prefix: string, ancestorOptional: boolean, out: D1UsecaseField[]): void {
+  for (const [key, raw] of Object.entries(fields)) {
+    if (!isRecord(raw)) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    const optional = ancestorOptional || raw.required !== true;
+    const type = typeof raw.type === 'string' ? raw.type : 'string';
+    if (isRecord(raw.fields)) {
+      out.push({ name: path, type, derived: raw.derived === true, optional, writePrecondition: raw.writePrecondition === true });
+      walkLeaves(raw.fields, path, optional, out);
+      continue;
+    }
+    out.push({
+      name: path,
+      type,
+      derived: raw.derived === true,
+      optional,
+      writePrecondition: raw.writePrecondition === true,
+    });
+  }
 }
 
 export function blockingFinding(findings: readonly D1SourceFinding[]): D1SourceFinding | null {
@@ -341,34 +448,32 @@ function oneContext(
   const body = bundle.bodies[usecase.entity] ?? null;
   const transition = transitionFor(usecase, entity, body);
   const lifecycle = usecase.operation === 'transition' && Boolean(transition);
-  const routes = routesFor(usecase, input.routes, bundle);
-  const rules = rulesFor(usecase, entity, body, routes.routes, bundle);
+  const rules = rulesFor(usecase, entity, body, [], bundle);
   const port = input.ports.find(item => item.entityId === usecase.entity) || null;
   const portMethods = port && entity?.storageTarget !== 'mdm' ? methodsFor(port, usecase.operation) : [];
   const effects = bundle.outbound.filter(event => event.on === `${usecase.entity}.${usecase.usecaseId}`);
-  const journeys = journeysFor(usecase, routes.routes.map(route => route.page), bundle);
-  const bound = boundMdm(usecase, entity, body, routes.routes, bundle);
+  const bound = boundMdm(usecase, entity, body, bundle);
   const capabilities = capabilitiesFor(body, bound);
   const effectiveFields = entity?.storageTarget === 'mdm' && (usecase.operation === 'update' || usecase.operation === 'create')
     ? platformLeaves(body)
     : [];
-  const depended = dependedPaths(input.moduleName, usecase, entity, routes.routes, rules.rules, effects, journeys, capabilities, bundle);
+  const depended = dependedPaths(input.moduleName, usecase, entity, [], rules.rules, effects, [], capabilities, bundle);
   const sources = hashesFor(depended, bundle);
-  const findings = findingsFor(depended, rules.missing, routes.missing, bundle);
+  const findings = findingsFor(depended, rules.missing, [], bundle);
   return {
     usecaseId: usecase.usecaseId,
     lifecycle,
     transition: lifecycle ? transition : null,
     capabilities,
     effectiveFields,
-    routes: routes.routes,
+    routes: [],
     rules: rules.rules,
     rulePlan: rules.plan,
     pendingRules: rules.pending,
     portId: port && entity?.storageTarget !== 'mdm' ? port.portId : '',
     portMethods,
     effects,
-    journeys,
+    journeys: [],
     findings,
     sources,
   };
@@ -406,7 +511,7 @@ function rulesFor(
       grants: route.access.map(grant => ({ grantId: grant.grantId, actorRef: grant.actorRef, scope: grant.scope })),
     })),
     mdmMethods: (() => {
-      const bound = boundMdm(usecase, entity, body, routes, bundle);
+      const bound = boundMdm(usecase, entity, body, bundle);
       return bound ? mdmStepPairs(bound).map(pair => pair.call) : [];
     })(),
   });
@@ -479,15 +584,19 @@ function boundMdm(
   usecase: D1UsecaseSelection,
   entity: D1UsecaseEntity | null,
   body: unknown,
-  routes: readonly D1RouteContext[],
   bundle: VerifiedBundle,
 ) {
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace) return null;
   const capabilities = capabilityNames(body).length ? capabilityNames(body) : entity.capabilities || [];
+  const payload = usecase.operation === 'transition'
+    ? (ontologyTransitions(body).find(item => item.transitionId === usecase.usecaseId)?.payload
+      || entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload
+      || [])
+    : [];
   const read = mdmInputFields(
-    bundle.contracts,
-    routes.map(route => ({ route: route.route, page: route.page })),
+    domainSignature(entity, usecase.operation, payload).input,
     preconditionsFor(bundle.files, bundleModule(bundle, entity), entity.entityId, entity.fields),
+    declaredFieldsFor(bundle.files, bundleModule(bundle, entity), entity.entityId, entity.fields),
   );
   return mdmForOperation({
     entityId: entity.entityId,
@@ -762,6 +871,27 @@ export function preconditionsFor(
   return fallback.filter(field => field.writePrecondition === true).map(field => field.name);
 }
 
+/**
+ * Optionality and preconditions the ontology actually declares.
+ * The domain draft's field list is the fallback when that file is absent.
+ * The gate and the fidelity reader must use the same list, or a call the gate
+ * stored will not match the call fidelity recomputes.
+ */
+export function declaredFieldsFor(
+  files: readonly { path: string; text: string }[] | undefined,
+  moduleName: string,
+  entityId: string,
+  fallback: readonly { name: string; optional?: boolean }[],
+): readonly { name: string; optional?: boolean }[] {
+  const ontologyPath = `l4/${moduleName}/ontology/${entityId}.defs.ts`;
+  const text = files?.find(file => file.path === ontologyPath)?.text;
+  if (text != null) {
+    const body = parseD1Source(text, 'defs');
+    if (body) return ontologyLeaves(body);
+  }
+  return fallback;
+}
+
 /** One route whose contract could not be read, and why. */
 export interface MdmContractRead {
   /** Shared fields. `null` when any route contract was not read: one route never borrows another's fields. */
@@ -774,62 +904,35 @@ export interface MdmContractRead {
 }
 
 /**
- * Input fields shared by every route. Each route is read from its own page contract.
- * A route that does not resolve is named in `unread`, and then `fields` is null (fail closed).
- * An empty field list means the contracts were read and declare no shared field.
+ * Input fields of this operation, taken from the domain signature.
+ * `page` and `pageSize` are application paging, not MDM arguments.
+ * An empty list means the ontology declares nothing for this operation.
  */
 export function mdmInputFields(
-  contracts: readonly D1ContractSource[],
-  routes: readonly { route: string; page: string }[],
+  input: readonly { name: string }[],
   preconditions: readonly string[],
+  declared: readonly { name: string; optional?: boolean }[] = [],
 ): MdmContractRead {
-  const perRoute: MdmInputField[][] = [];
-  const unread: string[] = [];
-  if (!routes.length) return { fields: null, unread: ['No route contract was read.'] };
-  for (const route of routes) {
-    const contract = contracts.find(item => item.pageId === route.page);
-    if (!contract?.source) {
-      unread.push(`Route ${route.route}: contract absent`);
-      continue;
-    }
-    const file = contract.path || `${route.page}.defs.ts`;
-    const ast = readContractAst(contract.source, file);
-    const binding = ast.bindings.filter(item => item.route === route.route);
-    if (!binding.length) {
-      unread.push(`Route ${route.route}: binding absent in ${file}`);
-      continue;
-    }
-    if (binding.length > 1) {
-      unread.push(`Route ${route.route}: binding ambiguous in ${file} (${binding.length} bindings)`);
-      continue;
-    }
-    if (!binding[0].input) {
-      unread.push(`Route ${route.route}: input not declared in ${file}`);
-      continue;
-    }
-    const symbols = ast.symbols.filter(item => item.name === binding[0].input);
-    if (symbols.length !== 1) {
-      unread.push(`Route ${route.route}: input symbol ${binding[0].input} ${symbols.length ? `duplicated (${symbols.length})` : 'absent'} in ${file}`);
-      continue;
-    }
-    perRoute.push(flattenContractFields(symbols[0].fields).map(field => ({
-      path: field.path,
-      optional: field.optional,
-      writePrecondition: false,
-    })));
-  }
-  if (unread.length) return { fields: null, unread };
-  const [first, ...rest] = perRoute;
-  const shared = first.filter(field => rest.every(list => list.some(item => item.path === field.path)));
   const marked = new Set(preconditions);
-  return {
-    fields: shared.map(field => ({
-      path: field.path,
-      optional: perRoute.some(list => pathMayBeAbsent(list, field.path)),
-      writePrecondition: marked.has(field.path),
-    })),
-    unread,
-  };
+  const optional = new Set(declared.filter(field => field.optional).map(field => field.name));
+  const fields = input
+    .filter(field => field.name !== 'page' && field.name !== 'pageSize')
+    .map(field => ({
+      path: field.name,
+      optional: optional.has(field.name) || ancestorOptional(optional, field.name),
+      writePrecondition: marked.has(field.name),
+    }));
+  return { fields, unread: [] };
+}
+
+function ancestorOptional(optional: ReadonlySet<string>, path: string): boolean {
+  const parts = path.split('.');
+  let acc = '';
+  for (const part of parts) {
+    acc = acc ? `${acc}.${part}` : part;
+    if (optional.has(acc)) return true;
+  }
+  return false;
 }
 
 export function flattenContractFields(fields: readonly D1ContractField[]): D1ContractPath[] {

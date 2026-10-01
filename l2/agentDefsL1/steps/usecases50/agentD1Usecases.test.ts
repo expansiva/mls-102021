@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +27,7 @@ import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/
 import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
-import { mdmInputFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { domainSignature, mdmInputFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -472,6 +472,20 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
   assert.equal(pipeline.awaitingStep, 'usecases50');
   assert.equal(pipeline.steps?.usecases50?.status, 'failed');
   assert.notEqual(pipeline.steps?.usecases50?.status, 'approved');
+  const early = JSON.parse(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))]?.content || '{}') as {
+    problems?: Array<{ code?: string; path?: string; message?: string }>;
+    usecases?: Array<{ usecaseId?: string; definition?: { data?: { functions?: Array<{ input?: Array<{ name?: string }> }>; mdm?: { calls?: Array<{ method?: string; capabilities?: string[] }> } } } | null }>;
+  };
+  const lines = (early.problems || []).map(item => `${item.code} ${item.path}: ${item.message}`);
+  for (const item of early.usecases || []) {
+    if (!['createPaciente', 'listProfissional', 'listContatoPaciente'].includes(item.usecaseId || '')) continue;
+    const data = item.definition?.data;
+    const names = data?.functions?.[0]?.input?.map(field => field.name).join(',') || '';
+    const calls = data?.mdm?.calls?.map(call => `${call.method}:${(call.capabilities || []).join('+')}`).join(',') || '(none)';
+    lines.push(`DEF ${item.usecaseId} calls=${calls}`);
+    lines.push(`IN ${names}`);
+  }
+  writeFileSync('/tmp/d144-problems.txt', lines.join('\n'));
   assert.equal(pipeline.steps?.usecases50?.error, 'REPAIR_EXHAUSTED:1');
   assert.equal(pipeline.steps?.usecases50?.artifactPaths?.[0]?.endsWith('/usecases50.json'), true);
 
@@ -691,41 +705,33 @@ function workerStep(prompt: string, stepId: number): mls.msg.AIAgentStep {
   };
 }
 
-/** d1_40: the MDM usecase reused by two pages reads each route from its own page contract, over the current seed. */
-void test('the shared MDM usecase reads each route from its own contract, reaches the worker and builds', async () => {
+/** The usecase context does not read the page contract. The signature is the domain record. */
+void test('the shared MDM usecase does not take its input from a page contract', async () => {
   const target = 'listContatoPaciente';
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
   const usecase = work.request.usecases.find(item => item.usecaseId === target);
   assert.ok(usecase);
-  const routes = work.request.routes.filter(item => usecase.routes.includes(item.route));
-  assert.deepEqual(routes.map(item => item.page).sort(), ['consultas', 'pacientes']);
-  const read = mdmInputFields(work.request.contracts, routes, []);
+  const entity = work.request.entities.find(item => item.entityId === usecase.entity);
+  assert.ok(entity);
+  const read = mdmInputFields(domainSignature(entity, usecase.operation).input, []);
   assert.deepEqual(read.unread, []);
   assert.ok(read.fields);
   const packet = work.request.contexts?.find(item => item.usecaseId === target);
   assert.ok(packet);
-  assert.deepEqual(packet.findings, []);
-  assert.deepEqual(packet.routes.map(route => [route.page, route.contractPath, route.unbound]).sort(), routes.map(route =>
-    [route.page, `l2/${MODULE}/web/contracts/${route.page}.defs.ts`, '']).sort());
-  for (const route of packet.routes) {
-    assert.ok(route.inputSymbol && route.inputFields.length, route.route);
-    assert.ok(route.access.length, route.route);
-  }
+  assert.deepEqual(packet.routes, []);
+  assert.equal(packet.sources.some(item => item.path.includes('/l2/')), false);
 
   const workerPrompt = firstPrompt(intents, target);
   const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
   const ready = prepared.find((intent): intent is mls.msg.AgentIntentPromptReady => intent.type === 'prompt_ready');
   assert.ok(ready, prepared.filter(intent => intent.type === 'update-status').map(intent => (intent as mls.msg.AgentIntentUpdateStatus).traceMsg).join(' | '));
-  for (const route of routes) {
-    assert.match(ready.humanPrompt, new RegExp(`Route ${route.route.replace(/\./g, '\\.')}\nContract: l2/${MODULE}/web/contracts/${route.page}\.defs\.ts\n`));
-  }
-  assert.doesNotMatch(ready.humanPrompt, /no contract binding|ambiguous|MDM_CONTRACT_UNREAD/);
+  assert.doesNotMatch(ready.humanPrompt, /Contract:|no contract binding|MDM_CONTRACT_UNREAD/);
 
-  const request = { ...work.request, usecases: [usecase], routes, plans: [fixturePlan(work.request, usecase)] };
+  const request = { ...work.request, usecases: [usecase], plans: [fixturePlan(work.request, usecase)] };
   const build = buildD1Usecases(request);
-  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD'), false, build.problems.map(item => `${item.code} ${item.message}`).join('; '));
+  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' || item.code === 'L2_DEPENDENCY'), false, build.problems.map(item => `${item.code} ${item.message}`).join('; '));
 });
 
 function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {

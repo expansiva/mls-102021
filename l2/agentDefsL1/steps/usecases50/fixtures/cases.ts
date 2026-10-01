@@ -6,7 +6,7 @@ import type {
   D1UsecaseSelection,
   D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 /**
@@ -140,14 +140,13 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   const entity = request.entities.find(item => item.entityId === usecase.entity);
   const steps: D1WorkerStep[] = [{ kind: 'context', source: 'ctx' }];
   if (entity?.storageTarget === 'mdm') {
-    const routes = usecase.routes.flatMap(routeId => {
-      const route = request.routes.find(item => item.route === routeId);
-      return route ? [route] : [];
-    });
+    const payload = usecase.operation === 'transition'
+      ? (entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
+      : [];
     const read = mdmInputFields(
-      request.contracts,
-      routes,
+      domainSignature(entity, usecase.operation, payload).input,
       preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
+      declaredFieldsFor(request.files, request.moduleName, entity.entityId, entity.fields),
     );
     const bound = mdmForOperation({
       entityId: entity.entityId,

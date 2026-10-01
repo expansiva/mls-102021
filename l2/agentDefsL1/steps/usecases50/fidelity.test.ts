@@ -101,8 +101,8 @@ function focused(): { request: D1UsecaseRequest; files: FidelityFile[] } {
         capabilities: { 'edit.platformFields': 'Edits the platform name.' },
         record: {
           fields: {
-            id: { type: 'uuid', derived: true },
-            version: { type: 'integer', derived: true, writePrecondition: true },
+            id: { type: 'uuid', derived: true, required: true },
+            version: { type: 'integer', derived: true, required: true, writePrecondition: true },
             details: {
               type: 'object',
               fields: {
@@ -227,18 +227,20 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(attendance.rules.some(rule => rule.ruleId === 'attendanceNoteRequired' && rule.path === RULES && rule.symbol === 'attendanceNoteRequired'), true);
   assert.equal(attendance.effects.some(effect => effect.eventId === 'atendimentoRegistrado' && effect.path === INTEGRATION && effect.symbol === 'atendimentoRegistrado'), true);
   assert.equal(attendance.transaction, 'none');
-  assert.equal(attendance.routes.some(route => route.route.endsWith('cmdRegistrarAtendimento') && route.outputFields.includes('id')), true);
+  assert.deepEqual(attendance.routes, []);
   const parsed = parseRendered(registrar);
   const depends = ((parsed?.definition as { dependencies?: string[] } | undefined)?.dependencies || [])
     .map(path => path.replace(/^_\d+_\/+/, ''));
   assert.equal(depends.includes('l4/agendaClinica/ontology/Consulta.defs.ts'), true);
   assert.equal(depends.includes(RULES), true);
   assert.equal(depends.includes(INTEGRATION), true);
-  assert.equal(depends.includes('l2/agendaClinica/web/contracts/agenda.defs.ts'), true);
+  assert.equal(depends.some(path => path.includes('/l2/')), false);
 
   const listed = behaviorOf(list, files);
   assert.equal(listed.uses.some(use => use.path === 'id' && use.role === 'filter'), true);
-  assert.deepEqual(listed.routes[0]?.outputFields, ['id', 'status']);
+  assert.deepEqual(listed.routes, []);
+  const listData = parseRendered(list)?.definition as { data?: { functions?: Array<{ output?: Array<{ name?: string }> }> } } | undefined;
+  assert.deepEqual(listData?.data?.functions?.[0]?.output?.map(field => field.name), ['items', 'hasMore']);
   assert.equal(listed.mdm, null);
 
   const editedProfessional = behaviorOf(update, files);
@@ -248,7 +250,7 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(editedProfessional.mdm?.calls.some(call => call.method === 'attachRole'), false);
 });
 
-void test('removing payload, a rule, an MDM call, a projection or a contract dependency fails specifically', () => {
+void test('removing payload, a rule or an MDM call fails specifically, and a contract projection is not required', () => {
   const { request, files } = focused();
   const registrar = renderedOf(request, 'registrarAtendimento');
   const list = renderedOf(request, 'listConsulta');
@@ -299,19 +301,21 @@ void test('removing payload, a rule, an MDM call, a projection or a contract dep
   assert.equal(condition.problems.some(item => item.code === 'MDM_CALL_MISSING' || item.code === 'MDM_ARGUMENT_UNBOUND'), true);
 
   const withoutProjection = edited(list, definition => {
-    const data = definition.data as { routeProjections: unknown[] };
+    const data = definition.data as { routeProjections?: unknown[] };
+    assert.equal(data.routeProjections, undefined);
     data.routeProjections = [];
   });
   const projection = readUsecaseFidelity(withoutProjection, files);
-  assert.equal(projection.behavior, null);
-  assert.equal(projection.problems.some(item => item.code === 'PROJECTION_MISSING'), true);
+  assert.ok(projection.behavior);
+  assert.equal(projection.problems.some(item => item.code === 'PROJECTION_MISSING' || item.code === 'PROJECTION_UNRESOLVED' || item.code === 'PROJECTION_MISMATCH'), false);
 
   const withoutDependency = edited(list, (_definition, pipeline) => {
     pipeline[0].dependsFiles = pipeline[0].dependsFiles.filter(path => !path.includes('/web/contracts/'));
   });
   const dependency = readUsecaseFidelity(withoutDependency, files);
-  assert.equal(dependency.behavior, null);
-  assert.equal(dependency.problems.some(item => item.code === 'DEPENDENCY_MISSING' && item.message.includes('contracts')), true);
+  assert.ok(dependency.behavior);
+  assert.equal(dependency.problems.some(item => item.code === 'DEPENDENCY_MISSING' && item.message.includes('contracts')), false);
+  assert.equal(dependency.problems.some(item => item.message.includes('/l2/')), false);
 });
 
 void test('a serialized outbound that names the MDM queue is refused by the file reader', () => {

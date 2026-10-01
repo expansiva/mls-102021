@@ -51,7 +51,7 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   assert.equal((paciente?.definition?.data as { ports: string[] }).ports.length, 0);
 });
 
-void test('a contract type is bound by the route map, not by the first or the same-named symbol', () => {
+void test('a contract route map does not change the usecase signature', () => {
   const source = `
     export interface ListConsultaOutput { id: string; attendanceNote: string; }
     export interface ReceptionOut { id: string; status: string; }
@@ -66,25 +66,21 @@ void test('a contract type is bound by the route map, not by the first or the sa
   request.plans = request.usecases.filter(item => item.usecaseId === 'listConsulta').map(item => fixturePlan(request, item));
   request.usecases = request.usecases.filter(item => item.usecaseId === 'listConsulta');
   const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  assert.equal(build.emit.length, 1);
   const data = build.emit[0]?.definition.data as {
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-    functions: Array<{ output: Array<{ name: string }> }>;
+    routeProjections?: unknown;
+    functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }>;
   };
-  const consultas = data.routeProjections.find(item => item.route.endsWith('consultas.qryListConsulta'));
-  const agenda = data.routeProjections.find(item => item.route.endsWith('agenda.qryListConsulta'));
-  assert.deepEqual(consultas?.outputFields, ['id', 'status']);
-  assert.equal(agenda?.projection, 'unresolved');
-  assert.deepEqual(agenda?.outputFields, []);
-  assert.equal(build.problems.some(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === agenda?.route), true);
-  assert.match(
-    build.problems.find(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === agenda?.route)?.message || '',
-    /agendaClinica\.agenda\.qryListConsulta/,
-  );
-  assert.equal(build.problems.some(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === consultas?.route), false);
+  assert.equal(data.routeProjections, undefined);
+  assert.equal(data.functions[0].contractRefs, undefined);
+  assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore']);
   assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), false);
+  assert.equal(build.problems.some(item => item.code.startsWith('PROJECTION_') || item.code.startsWith('CONTRACT_')), false);
+  assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => /(^|\/)l2\//.test(file)), false);
 });
 
-void test('two pages with different disclosure keep one operation and per-route outputs', () => {
+void test('two pages with different disclosure keep one operation and the domain output', () => {
   const professional = `
     export interface AgendaOut { id: string; status: string; attendanceNote: string; }
     export const routes = { "agendaClinica.agenda.qryListConsulta": { output: "AgendaOut" } } as const;
@@ -105,15 +101,15 @@ void test('two pages with different disclosure keep one operation and per-route 
   assert.equal(build.emit.length, 1);
   const data = build.emit[0].definition.data as {
     usecaseId: string;
-    routeProjections: Array<{ route: string; outputFields: string[] }>;
-    functions: Array<{ output: Array<{ name: string }> }>;
+    routeProjections?: unknown;
+    functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }>;
   };
   assert.equal(data.usecaseId, 'listConsulta');
-  const agenda = data.routeProjections.find(item => item.route.includes('.agenda.'));
-  const consultas = data.routeProjections.find(item => item.route.includes('.consultas.'));
-  assert.deepEqual(agenda?.outputFields, ['id', 'status', 'attendanceNote']);
-  assert.deepEqual(consultas?.outputFields, ['id', 'status']);
-  assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), true);
+  assert.equal(data.routeProjections, undefined);
+  assert.equal(data.functions[0].contractRefs, undefined);
+  assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore']);
+  assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), false);
+  assert.equal(build.problems.some(item => item.code === 'TYPE_CONFLICT' || item.code.startsWith('PROJECTION_')), false);
 });
 
 void test('an invalid transition, an unresolved rule, a derived input, an adapter and an omitted effect are findings', () => {
@@ -356,7 +352,7 @@ void test('parseStep still rejects a key from another kind', () => {
   }
 });
 
-void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
+void test('an unclosed exported interface does not withhold the usecase', () => {
   const request = coreUsecaseRequest();
   const usecase = request.usecases[0];
   request.usecases = [usecase];
@@ -364,20 +360,20 @@ void test('an unclosed exported interface is CONTRACT_UNPARSED', () => {
   const path = 'l2/agendaClinica/web/contracts/agenda.defs.ts';
   request.contracts = [{ pageId: 'agenda', path, source: 'export interface Broken { id: string' }];
   const build = buildD1Usecases(request);
-  const problem = build.problems.find(item => item.code === 'CONTRACT_UNPARSED');
-  assert.equal(problem?.path, path);
-  assert.match(problem?.message || '', /Broken/);
-  assert.equal(build.emit.length, 0);
+  assert.equal(build.problems.some(item => item.code === 'CONTRACT_UNPARSED'), false);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  assert.equal(build.emit.length, 1);
+  assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => file === path || file.endsWith(`/${path}`)), false);
 });
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REAL_CONTRACTS = path.join(HERE, '../input20/fixtures/contracts');
 const MISSING_ROUTE = 'agendaClinica.pacientes.cmdMissingShape';
 
-void test('the six L2 contracts declare route signatures, and a route without a form is unresolved with a problem', () => {
+void test('the six L2 contracts do not set the usecase signature, and a route without a form is still the domain operation', () => {
   const contracts = realContractSources();
   assert.equal(contracts.length, 6);
-  let declared = 0;
+  const seen = new Set<string>();
   for (const contract of contracts) {
     const matcher = /export const (\w+Route) = ["']([^"']+)["']/g;
     let match: RegExpExecArray | null;
@@ -385,140 +381,98 @@ void test('the six L2 contracts declare route signatures, and a route without a 
     while ((match = matcher.exec(contract.source))) {
       found += 1;
       const route = match[2];
-      const request = requestForRealRoute(contract, route);
-      const build = buildD1Usecases(request);
-      const mdmUpdate = /cmdUpdate(?:Profissional|Recepcionista)$/.test(route);
-      if (mdmUpdate) {
-        assert.equal(build.ok, false, route);
-        assert.equal(build.emit.length, 0, route);
-        assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), true, route);
-        declared += 1;
-        continue;
-      }
+      const build = buildD1Usecases(requestForRealRoute(contract, route));
       assert.equal(
         build.ok,
         true,
         `${route}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`,
       );
       const data = build.emit[0]?.definition.data as {
-        functions: Array<{ input: Array<{ name: string }>; contractRefs: Array<{ route: string; symbol: string }> }>;
-        routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
+        operation: string;
+        routeProjections?: unknown;
+        functions: Array<{ contractRefs?: unknown; input: Array<{ name: string }>; output: Array<{ name: string }> }>;
       };
-      const row = data.routeProjections.find(item => item.route === route);
-      assert.equal(row?.projection, 'declared', route);
-      assert.ok((row?.outputFields.length || 0) > 0, route);
-      const stem = match[1].slice(0, -'Route'.length);
-      const output = `${stem.charAt(0).toUpperCase()}${stem.slice(1)}Output`;
-      assert.equal(data.functions[0].contractRefs.some(item => item.route === route && item.symbol === output), true, route);
-      declared += 1;
+      assert.equal(data.routeProjections, undefined, route);
+      assert.equal(data.functions[0].contractRefs, undefined, route);
+      assert.equal(build.problems.some(item => item.code.startsWith('PROJECTION_') || item.code.startsWith('CONTRACT_') || item.code === 'TYPE_CONFLICT'), false, route);
+      if (data.operation === 'list') assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore'], route);
+      if (data.operation === 'update') {
+        assert.equal(data.functions[0].input.some(field => field.name === 'version'), true, route);
+        assert.equal(data.functions[0].input.some(field => field.name === 'id'), true, route);
+      }
+      seen.add(route);
     }
     assert.ok(found > 0, contract.pageId);
   }
-  assert.equal(declared, 26);
+  assert.equal(seen.size, 26);
 
   const pacientes = contracts.find(item => item.pageId === 'pacientes');
   assert.ok(pacientes);
   const create = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta'));
-  const createData = create.emit[0]?.definition.data as {
-    functions: Array<{ input: Array<{ name: string }>; contractRefs: Array<{ route: string; symbol: string }> }>;
-    routeProjections: Array<{ route: string; outputFields: string[] }>;
-  };
-  assert.deepEqual(createData.routeProjections[0]?.outputFields, ['id', 'version', 'patientId', 'professionalId', 'scheduledAt', 'status']);
-  assert.deepEqual(createData.functions[0].input.map(field => field.name), ['patientId', 'professionalId', 'scheduledAt', 'status']);
-  assert.equal(createData.functions[0].contractRefs[0]?.symbol, 'CreateConsultaOutput');
+  const createData = create.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }>; output: Array<{ name: string }> }> };
+  assert.equal(createData.functions[0].input.some(field => field.name === 'id'), false);
+  assert.equal(createData.functions[0].output.some(field => field.name === 'id'), true);
+  assert.equal(createData.functions[0].output.some(field => field.name === 'status'), true);
 
   const list = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.qryListConsulta'));
-  const listData = list.emit[0]?.definition.data as { routeProjections: Array<{ outputFields: string[] }> };
-  assert.deepEqual(listData.routeProjections[0]?.outputFields, ['id', 'version', 'patientId', 'professionalId', 'scheduledAt', 'status']);
+  const listData = list.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }>; output: Array<{ name: string }> }> };
+  assert.equal(listData.functions[0].input.some(field => field.name === 'id'), true);
+  assert.equal(listData.functions[0].input.some(field => field.name === 'page'), true);
+  assert.deepEqual(listData.functions[0].output.map(field => field.name), ['items', 'hasMore']);
 
   const missing = requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta');
   missing.routes[0].route = MISSING_ROUTE;
   missing.usecases[0].routes = [MISSING_ROUTE];
   missing.plans = missing.usecases.map(item => fixturePlan(missing, item));
   const unbound = buildD1Usecases(missing);
-  const unboundData = unbound.emit[0]?.definition.data as {
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-  };
-  assert.equal(unboundData.routeProjections[0]?.projection, 'unresolved');
-  assert.deepEqual(unboundData.routeProjections[0]?.outputFields, []);
-  const problem = unbound.problems.find(item => item.code === 'PROJECTION_UNRESOLVED' && item.path === MISSING_ROUTE);
-  assert.equal(problem?.severity, 'review');
-  assert.match(problem?.message || '', /cmdMissingShape/);
+  assert.equal(unbound.ok, true, unbound.problems.map(item => item.message).join('; '));
+  assert.equal(unbound.problems.some(item => item.code === 'PROJECTION_UNRESOLVED'), false);
+  const unboundData = unbound.emit[0]?.definition.data as { routeProjections?: unknown; functions: Array<{ output: Array<{ name: string }> }> };
+  assert.equal(unboundData.routeProjections, undefined);
+  assert.equal(unboundData.functions[0].output.some(field => field.name === 'id'), true);
 });
 
-void test('the six contracts keep one projection per route when disclosure differs', () => {
+void test('disclosure that differs across contracts stays one domain signature', () => {
   const contracts = realContractSources();
   assert.equal(contracts.length, 6);
-
-  const list = buildRealUsecase(contracts, 'listConsulta');
-  assert.equal(list.ok, true, list.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
-  assert.equal(list.emit.length, 1);
-  const listData = list.emit[0]?.definition.data as {
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-    functions: Array<{ output: Array<{ name: string; type?: string }> }>;
-  };
-  assert.equal(listData.routeProjections.length, 4);
-  assert.equal(list.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
-  for (const row of listData.routeProjections) {
-    assert.equal(row.projection, 'declared', row.route);
-    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
-  }
-  const professional = listData.routeProjections.find(item => item.route.endsWith('consultas_profissional.qryListConsulta'));
-  const reception = listData.routeProjections.find(item => item.route.endsWith('consultas_recepcionista.qryListConsulta'));
-  assert.equal(professional?.outputFields.includes('details'), true);
-  assert.equal(reception?.outputFields.includes('details'), false);
-  const listed = listData.functions[0].output.find(field => field.name === 'details');
-  assert.equal(listed?.type, declaredFieldType(contracts, professional?.route || '', 'output', 'details'));
-
-  const professionals = buildRealUsecase(contracts, 'listProfissional');
-  assert.equal(professionals.ok, true, professionals.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
-  assert.equal(professionals.emit.length, 1);
-  const professionalData = professionals.emit[0]?.definition.data as {
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-    functions: Array<{ output: Array<{ name: string; type?: string }> }>;
-  };
-  assert.equal(professionalData.routeProjections.length, 5);
-  assert.equal(professionals.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
-  for (const row of professionalData.routeProjections) {
-    assert.equal(row.projection, 'declared', row.route);
-    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
-  }
   const wide = declaredFieldType(contracts, 'agendaClinica.dados_profissional.qryListProfissional', 'output', 'details');
   const narrow = declaredFieldType(contracts, 'agendaClinica.pacientes.qryListProfissional', 'output', 'details');
   assert.notEqual(wide, narrow);
-  const sharedDetails = professionalData.functions[0].output.find(field => field.name === 'details');
-  assert.ok(sharedDetails);
-  assert.equal(Object.hasOwn(sharedDetails, 'type'), false);
 
-  const created = buildRealUsecase(contracts, 'createProfissional');
-  assert.equal(created.ok, true, created.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
-  assert.equal(created.emit.length, 1);
-  const createdData = created.emit[0]?.definition.data as {
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-    functions: Array<{ input: Array<{ name: string; type?: string }> }>;
-  };
-  assert.equal(createdData.routeProjections.length, 2);
-  for (const row of createdData.routeProjections) {
-    assert.deepEqual(row.outputFields, declaredOutputNames(contracts, row.route), row.route);
+  for (const usecaseId of ['listConsulta', 'listProfissional', 'createProfissional']) {
+    const build = buildRealUsecase(contracts, usecaseId);
+    assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
+    assert.equal(build.emit.length, 1, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'TYPE_CONFLICT'), false, usecaseId);
+    const data = build.emit[0]?.definition.data as {
+      operation: string;
+      routeProjections?: unknown;
+      functions: Array<{ contractRefs?: unknown; input: Array<{ name: string; type?: string }>; output: Array<{ name: string; type?: string }> }>;
+    };
+    assert.equal(data.routeProjections, undefined, usecaseId);
+    assert.equal(data.functions[0].contractRefs, undefined, usecaseId);
+    if (data.operation === 'list') {
+      assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore'], usecaseId);
+      assert.equal(data.functions[0].output.every(field => typeof field.type === 'string'), true, usecaseId);
+    }
+    if (data.operation === 'create') {
+      assert.equal(data.functions[0].input.some(field => field.name === 'id'), false, usecaseId);
+      assert.equal(data.functions[0].input.every(field => typeof field.type === 'string'), true, usecaseId);
+    }
   }
-  const wideInput = declaredFieldType(contracts, 'agendaClinica.dados_profissional.cmdCreateProfissional', 'input', 'details');
-  const narrowInput = declaredFieldType(contracts, 'agendaClinica.dados_recepcionista.cmdCreateProfissional', 'input', 'details');
-  assert.notEqual(wideInput, narrowInput);
-  const inputDetails = createdData.functions[0].input.find(field => field.name === 'details');
-  assert.ok(inputDetails);
-  assert.equal(Object.hasOwn(inputDetails, 'type'), false);
-  assert.equal(created.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
 });
 
-void test('two types for one field inside one route stay a conflict', () => {
+void test('two contract types for one field do not enter the usecase', () => {
   const output = `
     export interface ListConsultaOutput { id: string; status: string; status: number; }
     export const listConsultaRoute = "agendaClinica.consultas.qryListConsulta" as const;
   `;
   const listed = buildD1Usecases(singleRouteRequest('listConsulta', 'consultas', 'agendaClinica.consultas.qryListConsulta', 'qry', output));
-  const outputProblem = listed.problems.find(item => item.code === 'TYPE_CONFLICT');
-  assert.equal(outputProblem?.message, 'Field status has two contract types. No cast was applied.');
-  assert.equal(listed.emit.length, 0);
+  assert.equal(listed.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
+  assert.equal(listed.ok, true, listed.problems.map(item => item.message).join('; '));
+  const listedData = listed.emit[0]?.definition.data as { functions: Array<{ output: Array<{ name: string; type?: string }> }> };
+  assert.deepEqual(listedData.functions[0].output.map(field => field.name), ['items', 'hasMore']);
+  assert.equal(listedData.functions[0].output.every(field => typeof field.type === 'string'), true);
 
   const input = `
     export interface CreateConsultaInput { patientId: string; patientId: number; }
@@ -526,9 +480,11 @@ void test('two types for one field inside one route stay a conflict', () => {
     export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
   `;
   const created = buildD1Usecases(singleRouteRequest('createConsulta', 'consultas', 'agendaClinica.consultas.cmdCreateConsulta', 'cmd', input));
-  const inputProblem = created.problems.find(item => item.code === 'TYPE_CONFLICT');
-  assert.equal(inputProblem?.message, 'Input patientId has two contract types. No cast was applied.');
-  assert.equal(created.emit.length, 0);
+  assert.equal(created.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
+  assert.equal(created.ok, true, created.problems.map(item => item.message).join('; '));
+  const createdData = created.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
+  assert.equal(createdData.functions[0].input.some(field => field.name === 'patientId'), false);
+  assert.equal(created.emit.length, 1);
 });
 
 void test('a derived identity may filter a list or select an update or transition, and stays on the input', () => {
@@ -540,7 +496,7 @@ void test('a derived identity may filter a list or select an update or transitio
     const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string; type?: string }> }> };
     const id = data.functions[0].input.find(field => field.name === 'id');
     assert.ok(id, usecaseId);
-    assert.equal(id.type, 'string', usecaseId);
+    assert.equal(id.type, 'uuid', usecaseId);
     assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.id`), true, usecaseId);
   }
 
@@ -571,14 +527,18 @@ void test('a derived identity may filter a list or select an update or transitio
   assert.equal(withNote.problems.some(item => item.code === 'PAYLOAD_UNAUTHORIZED'), false);
   const noteInput = (withNote.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> }).functions[0].input;
   assert.equal(noteInput.some(field => field.name === 'id'), true);
-  assert.equal(noteInput.some(field => field.name === 'details'), true);
+  assert.equal(noteInput.some(field => field.name === 'details.attendanceNote'), true);
 
   for (const usecaseId of ['updateProfissional', 'updateRecepcionista']) {
     const build = buildRealUsecase(contracts, usecaseId);
     assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
-    assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), true, usecaseId);
-    assert.equal(build.emit.length, 0, usecaseId);
+    assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), false, usecaseId);
+    assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
+    assert.equal(build.emit.length, 1, usecaseId);
+    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
+    assert.equal(data.functions[0].input.some(field => field.name === 'version'), true, usecaseId);
     assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY' && item.path === `${usecaseId}.version`), true, usecaseId);
   }
 });
 
@@ -605,7 +565,7 @@ void test('r10 replies no longer carry DERIVED_EDITABLE, and other pending refus
 });
 
 void test('assigning a derived field stays an error, including a nested homonym and a version that is not concurrency', () => {
-  const created = buildD1Usecases(singleRouteRequest(
+  const createdRequest = singleRouteRequest(
     'createConsulta',
     'consultas',
     'agendaClinica.consultas.cmdCreateConsulta',
@@ -615,7 +575,15 @@ void test('assigning a derived field stays an error, including a nested homonym 
       export interface CreateConsultaOutput { id: string; }
       export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
     `,
-  ));
+  );
+  createdRequest.plans = [{
+    usecaseId: 'createConsulta',
+    steps: [
+      ...(createdRequest.plans[0]?.steps || []),
+      { kind: 'transition', transitionId: 'createConsulta', payload: ['id'] },
+    ],
+  }];
+  const created = buildD1Usecases(createdRequest);
   assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
   assert.equal(created.emit.length, 0);
 
@@ -677,6 +645,13 @@ void test('assigning a derived field stays an error, including a nested homonym 
     { path: 'id', type: 'string', optional: false },
     { path: 'version', type: 'number', optional: false },
   ])];
+  versioned.plans = [{
+    usecaseId: 'listConsulta',
+    steps: [
+      ...(versioned.plans[0]?.steps || []),
+      { kind: 'transition', transitionId: 'listConsulta', payload: ['version'] },
+    ],
+  }];
   const concurrency = buildD1Usecases(versioned);
   assert.equal(concurrency.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field version is assigned by listConsulta.'), true);
   assert.equal(concurrency.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
@@ -791,7 +766,7 @@ void test('a nested derived list field is a filter, a transition id is a selecto
   assert.equal(assigned.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by confirmarConsulta.'), true);
   assert.equal(assigned.emit.length, 0);
 
-  const created = buildD1Usecases(singleRouteRequest(
+  const createdRequest = singleRouteRequest(
     'createConsulta',
     'consultas',
     'agendaClinica.consultas.cmdCreateConsulta',
@@ -801,7 +776,15 @@ void test('a nested derived list field is a filter, a transition id is a selecto
       export interface CreateConsultaOutput { id: string; }
       export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
     `,
-  ));
+  );
+  createdRequest.plans = [{
+    usecaseId: 'createConsulta',
+    steps: [
+      ...(createdRequest.plans[0]?.steps || []),
+      { kind: 'transition', transitionId: 'createConsulta', payload: ['id'] },
+    ],
+  }];
+  const created = buildD1Usecases(createdRequest);
   assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
   assert.equal(created.emit.length, 0);
 
@@ -994,10 +977,6 @@ function contractFields(contracts: D1UsecaseRequest['contracts'], route: string,
     fields = inner[0].fields;
   }
   return fields;
-}
-
-function declaredOutputNames(contracts: D1UsecaseRequest['contracts'], route: string): string[] {
-  return contractFields(contracts, route, 'output').map(field => field.name);
 }
 
 function declaredFieldType(

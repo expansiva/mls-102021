@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { mdmInputFields, writePreconditionPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { domainSignature, mdmInputFields, ontologyLeaves, platformFieldPaths, writePreconditionPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { bindMdm, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
@@ -412,7 +412,7 @@ void test('dropping a producer or the create condition is refused before the def
   assert.ok(mdm);
   const entity = request.entities.find(item => item.entityId === 'Paciente');
   assert.ok(entity);
-  const read = mdmInputFields(request.contracts, request.routes, []);
+  const read = mdmInputFields(domainSignature(entity, 'create').input, []);
   const input = {
     entityId: 'Paciente',
     namespace: 'agendaClinica',
@@ -463,151 +463,48 @@ void test('an update without a route contract does not invent expectedVersion', 
 
   const request = one('updateProfissional');
   request.contracts = [];
-  request.plans = [{ usecaseId: 'updateProfissional', steps: [{ kind: 'context', source: 'ctx' }] }];
   const build = buildD1Usecases(request);
-  assert.equal(build.ok, false);
-  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes('contract absent')), true);
-  assert.equal(build.usecases[0]?.mdm?.calls.some(call => call.arguments.some(arg => arg.name === 'expectedVersion')), false);
+  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD'), false, build.problems.map(item => item.message).join('; '));
+  assert.equal(build.usecases[0]?.mdm?.calls.some(call => call.arguments.some(arg => arg.name === 'expectedVersion' && arg.origin.path === 'version')), true);
 });
 
-void test('a create without a route contract does not invent findByDocument', () => {
-  const role = coreUsecaseRequest().entities.find(item => item.entityId === 'Paciente');
-  assert.ok(role);
-  const bound = bindMdm({
-    entityId: role.entityId,
-    namespace: role.namespace,
-    capabilities: role.capabilities || [],
-    selected: ['register.createOrAttach'],
-    platformFields: role.platformFields || [],
-    inputFields: null,
-  });
-  assert.equal(bound.calls.some(call => call.id === 'findDocument' || call.method === 'findByDocument'), false);
-  assert.equal(bound.gaps.some(gap => gap.code === 'MDM_CONTRACT_UNREAD'), true);
-
+void test('a create without a route contract still binds from the domain fields', () => {
   const request = one('createPaciente');
   request.contracts = [];
-  request.plans = [{ usecaseId: 'createPaciente', steps: [{ kind: 'context', source: 'ctx' }] }];
-  const build = buildD1Usecases(request);
-  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes('contract absent')), true);
-  assert.equal(build.usecases[0]?.mdm?.calls.some(call => call.id === 'findDocument' || call.method === 'findByDocument'), false);
-});
-
-void test('an unread route contract names the missing contract, binding, or symbol', () => {
-  const absent = mdmInputFields([], [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }], []);
-  assert.equal(absent.fields, null);
-  assert.match(absent.unread.join('; '), /contract absent/);
-
-  const unbound = mdmInputFields(
-    [{ pageId: 'pacientes', path: 'pacientes.defs.ts', source: 'export interface Out { id: string }\nexport const routes = {} as const;\n' }],
-    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
-    [],
-  );
-  assert.equal(unbound.fields, null);
-  assert.match(unbound.unread.join('; '), /binding absent in pacientes\.defs\.ts/);
-
-  const missing = mdmInputFields(
-    [{
-      pageId: 'pacientes',
-      path: 'pacientes.defs.ts',
-      source: `
-        export interface Out { id: string }
-        export const routes = { "agendaClinica.pacientes.cmdCreatePaciente": { input: "Missing", output: "Out" } } as const;
-      `,
-    }],
-    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
-    [],
-  );
-  assert.equal(missing.fields, null);
-  assert.match(missing.unread.join('; '), /input symbol Missing absent/);
-
-  const ambiguous = mdmInputFields(
-    [{
-      pageId: 'pacientes',
-      path: 'pacientes.defs.ts',
-      source: `
-        export interface CreatePacienteInput { name: string }
-        export interface CreatePacienteOutput { id: string }
-        export interface AgainInput { name: string }
-        export interface AgainOutput { id: string }
-        export const createPacienteRoute = "agendaClinica.pacientes.cmdCreatePaciente" as const;
-        export const againRoute = "agendaClinica.pacientes.cmdCreatePaciente" as const;
-      `,
-    }],
-    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
-    [],
-  );
-  assert.equal(ambiguous.fields, null);
-  assert.match(ambiguous.unread.join('; '), /binding ambiguous in pacientes\.defs\.ts \(2 bindings\)/);
-
-  const noInput = mdmInputFields(
-    [{
-      pageId: 'pacientes',
-      path: 'pacientes.defs.ts',
-      source: 'export interface Out { id: string }\nexport const routes = { "agendaClinica.pacientes.cmdCreatePaciente": { output: "Out" } } as const;\n',
-    }],
-    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
-    [],
-  );
-  assert.equal(noInput.fields, null);
-  assert.match(noInput.unread.join('; '), /input not declared in pacientes\.defs\.ts/);
-
-  const twice = mdmInputFields(
-    [{
-      pageId: 'pacientes',
-      path: 'pacientes.defs.ts',
-      source: `
-        export interface In { name: string }
-        export interface In { name: string }
-        export interface Out { id: string }
-        export const routes = { "agendaClinica.pacientes.cmdCreatePaciente": { input: "In", output: "Out" } } as const;
-      `,
-    }],
-    [{ route: 'agendaClinica.pacientes.cmdCreatePaciente', page: 'pacientes' }],
-    [],
-  );
-  assert.equal(twice.fields, null);
-  assert.match(twice.unread.join('; '), /input symbol In duplicated \(2\)/);
-});
-
-/** d1_40: one MDM usecase reused by two routes on two pages, each read from its own contract. */
-void test('one MDM usecase bound by two routes resolves both; a missing or duplicated binding refuses', () => {
-  const second = 'agendaClinica.recepcao.cmdCreatePaciente';
-  const withSecond = (source: string): D1UsecaseRequest => {
-    const request = replay('createPaciente', 'Paciente', 'create', ['pacientes']);
-    request.contracts.push({ pageId: 'recepcao', path: 'l2/agendaClinica/web/contracts/recepcao.defs.ts', source });
-    request.routes.push({ route: second, page: 'recepcao', kind: 'cmd', usecaseRef: 'createPaciente' });
-    request.usecases[0].routes.push(second);
-    return request;
-  };
-  const pacientes = replay('createPaciente', 'Paciente', 'create', ['pacientes']).contracts[0].source;
-  // The second page names its own DTOs: reuse does not rely on equal type names.
-  const recepcao = pacientes
-    .replace(/export const createPacienteRoute = "[^"]+"/, `export const registerPatientRoute = "${second}"`)
-    .replace(/\bCreatePacienteInput\b/g, 'RegisterPatientInput')
-    .replace(/\bCreatePacienteOutput\b/g, 'RegisterPatientOutput');
-  assert.notEqual(recepcao, pacientes);
-
-  const both = withSecond(recepcao);
-  const read = mdmInputFields(both.contracts, both.routes, []);
+  const entity = request.entities.find(item => item.entityId === 'Paciente');
+  assert.ok(entity);
+  const read = mdmInputFields(domainSignature(entity, 'create').input, []);
   assert.deepEqual(read.unread, []);
-  assert.ok(read.fields?.length);
-  const ok = buildD1Usecases(both);
-  assert.equal(ok.ok, true, ok.problems.map(item => item.message).join('; '));
+  assert.ok(read.fields?.some(field => field.path === 'details.identification.docType'));
+  const build = buildD1Usecases(request);
+  assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' || item.code === 'PROJECTION_UNRESOLVED'), false);
+  assert.equal(build.usecases[0]?.mdm?.calls.some(call => call.method === 'findByDocument'), true);
+});
 
-  // The second page lost its route: the first page's contract does not lend its fields.
-  const absent = withSecond(recepcao.replace(`export const registerPatientRoute = "${second}" as const;`, ''));
-  assert.equal(mdmInputFields(absent.contracts, absent.routes, []).fields, null);
-  const refused = buildD1Usecases(absent);
-  assert.equal(refused.ok, false);
-  assert.equal(refused.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes(`Route ${second}: binding absent`)), true,
-    refused.problems.map(item => `${item.code} ${item.message}`).join('; '));
+void test('mdm input fields come from the operation signature, not a contract binding', () => {
+  const empty = mdmInputFields([], []);
+  assert.deepEqual(empty.fields, []);
+  assert.deepEqual(empty.unread, []);
+  const marked = mdmInputFields([{ name: 'version' }, { name: 'page' }, { name: 'pageSize' }], ['version']);
+  assert.deepEqual(marked.fields, [{ path: 'version', optional: false, writePrecondition: true }]);
+});
 
-  // The same route bound twice on its page is ambiguous; the first binding is not taken.
-  const doubled = withSecond(`${recepcao}\nexport const registerPatientAgainRoute = "${second}" as const;\n`);
-  const ambiguous = buildD1Usecases(doubled);
-  assert.equal(ambiguous.ok, false);
-  assert.equal(ambiguous.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' && item.message.includes(`Route ${second}: binding ambiguous`)), true,
-    ambiguous.problems.map(item => `${item.code} ${item.message}`).join('; '));
+void test('a second route and a broken page contract do not change the usecase', () => {
+  const request = one('createPaciente');
+  request.contracts = [];
+  request.routes.push({
+    route: 'agendaClinica.recepcao.cmdCreatePaciente',
+    page: 'recepcao',
+    kind: 'cmd',
+    usecaseRef: 'createPaciente',
+  });
+  request.usecases[0].routes.push('agendaClinica.recepcao.cmdCreatePaciente');
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const data = build.emit[0]?.definition.data as { routeProjections?: unknown; functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }> };
+  assert.equal(data.routeProjections, undefined);
+  assert.equal(data.functions[0].contractRefs, undefined);
+  assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => file.includes('/l2/')), false);
 });
 
 function one(usecaseId: string): D1UsecaseRequest {
@@ -710,6 +607,11 @@ function replay(usecaseId: string, entityId: string, operation: string, pages: r
   assert.ok(ontology, entityId);
   const entity = request.entities.find(item => item.entityId === entityId);
   assert.ok(entity, entityId);
+  const leaves = ontologyLeaves(ontology);
+  if (leaves.length) {
+    entity.fields = leaves;
+    entity.platformFields = platformFieldPaths(ontology);
+  }
   for (const marked of writePreconditionPaths(ontology)) {
     const field = entity.fields.find(item => item.name === marked);
     if (field) field.writePrecondition = true;
