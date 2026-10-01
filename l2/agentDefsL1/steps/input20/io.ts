@@ -112,18 +112,20 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
     return { pageId, loaded };
   }));
   const contractMap: Record<string, D1ContractAst | null> = {};
+  const contractTexts: Record<string, string> = {};
   for (const contract of contracts) {
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
+    if (contract.loaded.text != null) contractTexts[contract.pageId] = contract.loaded.text;
   }
 
   const loaded = contracts.map(item => item.loaded);
-  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, [], []);
+  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    artifactsFrom(moduleName, known, loaded, parsed, contractMap, present, writerReceipts),
+    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
     previous,
   ));
   sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
@@ -187,6 +189,7 @@ function artifactsFrom(
   contracts: Loaded[],
   parsed: Map<string, unknown>,
   contractMap: Record<string, D1ContractAst | null>,
+  contractTexts: Record<string, string>,
   presentDefs: D1PresentDef[],
   writerReceipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
 ): D1InputArtifacts {
@@ -221,6 +224,7 @@ function artifactsFrom(
     effort: parsed.get(paths.effort) ?? null,
     planner: parsed.get(paths.planner) ?? null,
     contracts: contractMap,
+    contractTexts,
     presentDefs,
     writerReceipts,
   };

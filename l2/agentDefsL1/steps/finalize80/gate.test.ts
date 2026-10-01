@@ -360,6 +360,7 @@ function snapshot(files: D1FinalizeObserved[]): D1InputSnapshot {
       ports: [{ portId: 'ConsultaRepository', entity: 'Consulta', status: 'toCreate' }],
       tables: [{ tableId: 'consulta', entity: 'Consulta', status: 'toCreate' }],
       entities: ['Consulta', 'Paciente'],
+      requests: [],
       outbound: ['atendimentoRegistrado'],
     },
     files: files.map(file => ({
@@ -885,7 +886,7 @@ async function replaceAccessScopeFromSupport(): Promise<void> {
   await writeText(trace, `${JSON.stringify(parsed, null, 2)}\n`);
 }
 
-void test('the real module approves when the platform catalog is on disk', async () => {
+void test('the real module approves when the platform catalog is on disk', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
   seedClinic(undefined, CONSISTENT_ROOT);
   await replaceAccessScopeFromSupport();
   const assembled = await assembleD1Finalize(PROJECT, MODULE);

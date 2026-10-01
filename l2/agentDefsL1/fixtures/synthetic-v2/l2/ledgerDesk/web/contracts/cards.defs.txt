@@ -1,3 +1,5 @@
+/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/cards.defs.ts" enhancement="_blank"/>
+
 export interface ItemLoad { id: string; version: number; }
 export interface NoteSave { id: string; version: number; }
 

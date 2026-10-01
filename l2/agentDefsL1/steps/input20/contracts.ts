@@ -2,7 +2,10 @@
 
 import type { D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
-export const D1_INPUT_VERSION = '2026-09-21-d1-input-v1' as const;
+export const D1_INPUT_VERSION = '2026-10-01-d1-input-v2' as const;
+
+/** P1 operation vocabulary (`agentPlannerL1` plan20). Not imported from that agent. */
+export const D1_P1_OPERATIONS = ['list', 'get', 'create', 'update', 'transition', 'delete', 'custom'] as const;
 
 export const D1_SOURCE_SCHEMAS = {
   module: '2026-09-10-ns5-module-v2',
@@ -71,6 +74,8 @@ export interface D1InputArtifacts {
   planner: unknown;
   /** Page id → contract AST. Null means the file was looked up and is absent. */
   contracts: Record<string, D1ContractAst | null>;
+  /** Page id → contract source. Present when the file was read. */
+  contractTexts?: Record<string, string>;
   presentDefs: D1PresentDef[];
   /**
    * Done write rows from the progress file of the step that wrote the def.
@@ -92,6 +97,33 @@ export interface D1SelectedRoute {
   kind: string;
   usecaseRef: string;
   status: D1ActiveStatus;
+}
+
+export interface D1RequestOutput {
+  key: string;
+  entity: string;
+  many: boolean;
+  page?: string;
+  pageSize?: string;
+  hasMore?: string;
+}
+
+/** `field` filters `target`. `pages` names the list organism instead of a field. */
+export interface D1RequestParam {
+  name: string;
+  target: string;
+  field?: string;
+  pages?: string;
+}
+
+export interface D1SelectedRequest {
+  route: string;
+  pageId: string;
+  kind: 'qry' | 'cmd';
+  writes: string;
+  outputs: D1RequestOutput[];
+  params: D1RequestParam[];
+  uses: string[];
 }
 
 export interface D1SelectedUsecase {
@@ -146,6 +178,7 @@ export interface D1InputSnapshot {
   selection: {
     pages: Array<{ pageId: string; routes: string[] }>;
     routes: D1SelectedRoute[];
+    requests: D1SelectedRequest[];
     usecases: D1SelectedUsecase[];
     ports: D1SelectedPort[];
     tables: D1SelectedTable[];

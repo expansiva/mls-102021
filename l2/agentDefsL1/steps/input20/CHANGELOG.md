@@ -1,5 +1,9 @@
 # input20
 
+## 2026-10-01 (d1_43)
+
+- Recipe `2026-10-01-d1-input-v2`. Contract v2 routes (promoted parser) become `selection.requests[]`, joined to the planned pool by entity and operation. v1 route selection stays.
+
 ## 2026-09-28 (p4_16)
 
 - The integration outbound def (`l1/<mod>/layer_1_external/adapters/integration/outbound.defs.ts`) is now inventoried whenever there is an outbound event, an inbound item, a process, or a plugin — the same condition support70's `emitEffects`/`laterOf` use to decide whether it writes that def. Before, a module with only an inbound item and no outbound event had support70 write the file while input20's inventory stayed silent about it, so finalize80 refused it as `EXTRA_FILE`.

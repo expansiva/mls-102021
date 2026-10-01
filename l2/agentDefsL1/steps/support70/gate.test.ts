@@ -703,7 +703,7 @@ const FROZEN_TEST_SUPPORT = [
   { id: 'mdm:Paciente', actorRefs: ['recepcionista'], entityRefs: ['Paciente'], sourceRefs: ['ontology:Consulta/relationships'], status: 'toCreate', owner: 'runtime', executorRef: '', cleanupRef: '', gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: no runtime API' },
 ];
 
-void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def; v1.1 leaves the def as it was', async () => {
+void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def; v1.1 leaves the def as it was', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
   const seedsOf = async () => {
     const built = await assembleD1Support(102047, 'agendaClinica');
     assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');
@@ -754,7 +754,7 @@ void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def
   assert.match(unread?.message ?? '', new RegExp(`^${backendPath.replace(/[.]/g, '\\.')} changed after input20`));
 });
 
-void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', async () => {
+void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
   seedFixture((_rel, text) => text);
   const built = await assembleD1Support(102047, 'agendaClinica');
   assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');

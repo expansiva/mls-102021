@@ -43,7 +43,7 @@ function info(path: string) {
 
 function inputBody(hash: string): string {
   return `${JSON.stringify({
-    schemaVersion: '2026-09-21-d1-input-v1',
+    schemaVersion: '2026-10-01-d1-input-v2',
     project: PROJECT,
     moduleName: MODULE,
     snapshotHash: hash,

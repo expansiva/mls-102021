@@ -152,7 +152,7 @@ void test('a held input20 run is reported as not generated', async () => {
     device: 'web',
     plannerRun: null,
     sources: [],
-    selection: { pages: [], routes: [], usecases: [], ports: [], tables: [], entities: [], outbound: ['consultaConfirmada', 'faltaPacienteRegistrada', 'atendimentoRegistrado'] },
+    selection: { pages: [], routes: [], requests: [], usecases: [], ports: [], tables: [], entities: [], outbound: ['consultaConfirmada', 'faltaPacienteRegistrada', 'atendimentoRegistrado'] },
     files: [{
       id: 'usecase:registrarAtendimento',
       artifactType: 'usecase',

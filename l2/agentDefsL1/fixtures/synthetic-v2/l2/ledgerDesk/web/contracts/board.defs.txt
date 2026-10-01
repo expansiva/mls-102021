@@ -1,3 +1,5 @@
+/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/board.defs.ts" enhancement="_blank"/>
+
 export interface BoardContracts {
   'ledgerDesk.board.load': {
     kind: 'qry';

@@ -208,7 +208,7 @@ void test('the same snapshot does not call the model again', async () => {
   const host = installStudio(PROJECT);
   const snapshot = 'sha256:same';
   await writeJson(inputFile(PROJECT, MODULE), {
-    schemaVersion: '2026-09-21-d1-input-v1',
+    schemaVersion: '2026-10-01-d1-input-v2',
     project: PROJECT,
     moduleName: MODULE,
     snapshotHash: snapshot,
@@ -626,7 +626,7 @@ void test('resume without a call keeps a proved reply', async () => {
   const host = installStudio(PROJECT);
   const snapshot = 'sha256:kept';
   await writeJson(inputFile(PROJECT, MODULE), {
-    schemaVersion: '2026-09-21-d1-input-v1',
+    schemaVersion: '2026-10-01-d1-input-v2',
     project: PROJECT,
     moduleName: MODULE,
     snapshotHash: snapshot,

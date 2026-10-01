@@ -1,9 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/gate.ts" enhancement="_blank"/>
 
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 import {
   D1_ACTIVE_STATUSES,
   D1_EFFORT_BACKEND_REF,
   D1_INPUT_VERSION,
+  D1_P1_OPERATIONS,
   D1_PLANNER_FLOW,
   D1_SOURCE_SCHEMAS,
   D1_TEST_SUPPORT_OWNERS,
@@ -21,7 +24,10 @@ import {
   type D1InputSnapshot,
   type D1PlannedFile,
   type D1RemovedItem,
+  type D1RequestOutput,
+  type D1RequestParam,
   type D1SelectedPort,
+  type D1SelectedRequest,
   type D1SelectedRoute,
   type D1SelectedTable,
   type D1SelectedUsecase,
@@ -270,7 +276,19 @@ export function buildD1InputSnapshot(
   notePayload(problems, moduleName, selectedUsecases, artifacts.entities);
   noteAccess(problems, paths.access, access, relationships);
   noteIntegration(problems, paths.integration, outbound);
-  noteContracts(problems, moduleName, selectedRoutes, artifacts.contracts);
+  const contractV2 = readContractV2(artifacts.contractTexts);
+  const requests = contractRequests(
+    problems,
+    moduleName,
+    contractV2,
+    selectedUsecases,
+    selectedTables,
+    entityKind,
+    artifacts.entities,
+    access,
+  );
+  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0);
+  noteContracts(problems, moduleName, selectedRoutes, artifacts.contracts, contractV2);
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
@@ -303,6 +321,7 @@ export function buildD1InputSnapshot(
     selection: {
       pages,
       routes: selectedRoutes,
+      requests,
       usecases: selectedUsecases,
       ports: selectedPorts,
       tables: selectedTables,
@@ -838,15 +857,182 @@ function noteChanges(
   }
 }
 
+const P1_OPERATION_SET = new Set<string>(D1_P1_OPERATIONS);
+
+function readContractV2(texts: Record<string, string> | undefined): Map<string, D2ContractV2Definition> {
+  const parsed = new Map<string, D2ContractV2Definition>();
+  if (!texts) return parsed;
+  for (const [pageId, source] of Object.entries(texts)) {
+    if (!source) continue;
+    try {
+      const definition = parseD2ContractV2(source);
+      if (definition.pageId === pageId) parsed.set(pageId, definition);
+    } catch {
+      // v1 contracts are not this shape. noteContracts still reports those.
+    }
+  }
+  return parsed;
+}
+
+function contractRequests(
+  problems: D1InputProblem[],
+  moduleName: string,
+  pages: Map<string, D2ContractV2Definition>,
+  usecases: D1SelectedUsecase[],
+  tables: D1SelectedTable[],
+  entityKind: Map<string, string>,
+  entities: Record<string, unknown>,
+  access: Record<string, unknown>,
+): D1SelectedRequest[] {
+  const requests: D1SelectedRequest[] = [];
+  const pageIds = [...pages.keys()].sort();
+  for (const pageId of pageIds) {
+    const definition = pages.get(pageId);
+    if (!definition) continue;
+    const path = contractPath(moduleName, pageId);
+    for (const route of definition.routes) {
+      noteContractAccess(problems, path, route, access);
+      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities));
+    }
+  }
+  requests.sort((left, right) => left.route.localeCompare(right.route));
+  return requests;
+}
+
+function oneRequest(
+  problems: D1InputProblem[],
+  path: string,
+  pageId: string,
+  route: D2ContractV2Route,
+  usecases: D1SelectedUsecase[],
+  tables: D1SelectedTable[],
+  entityKind: Map<string, string>,
+  entities: Record<string, unknown>,
+): D1SelectedRequest {
+  const outputs = requestOutputs(route);
+  const params = requestParams(route);
+  const uses: string[] = [];
+  const take = (entity: string, operation: string): void => {
+    const match = usecases.find(item => item.entity === entity && item.operation === operation);
+    if (!match) {
+      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool.`, route.route);
+      return;
+    }
+    if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
+  };
+  if (route.kind === 'cmd' && route.writes) {
+    const split = route.writes.indexOf('.');
+    const entity = split < 0 ? route.writes : route.writes.slice(0, split);
+    const written = split < 0 ? '' : route.writes.slice(split + 1);
+    const operation = P1_OPERATION_SET.has(written) ? written : 'transition';
+    if (!P1_OPERATION_SET.has(written) && !lifecycleHas(entities, entity, written)) {
+      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool.`, route.route);
+    } else {
+      take(entity, operation);
+    }
+    for (const output of outputs) {
+      if (output.entity === entity) continue;
+      take(output.entity, output.many ? 'list' : 'get');
+    }
+    if (entityKind.get(entity) === 'role' && outputs.some(output => output.entity !== entity && isLocalEntity(output.entity, tables, entities))) {
+      error(
+        problems,
+        'MDM_NOT_ATOMIC',
+        path,
+        `Route ${route.route} writes MDM ${entity} and also reads or writes a local table. That facade method is the boundary.`,
+        route.route,
+      );
+    }
+  } else {
+    for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
+  }
+  return { route: route.route, pageId, kind: route.kind, writes: route.writes ?? '', outputs, params, uses };
+}
+
+function lifecycleHas(entities: Record<string, unknown>, entity: string, transitionId: string): boolean {
+  return rows(rec(entities[entity]).transitions).some(row => text(row.transitionId) === transitionId);
+}
+
+function isLocalEntity(entity: string, tables: D1SelectedTable[], entities: Record<string, unknown>): boolean {
+  if (tables.some(table => table.entity === entity)) return true;
+  return text(rec(rec(entities[entity]).storage).target) === 'moduleDatabase';
+}
+
+function requestOutputs(route: D2ContractV2Route): D1RequestOutput[] {
+  const lists = Object.values(route.meta.lists);
+  return Object.entries(route.meta.output).map(([key, row]) => {
+    const list = lists.find(item => item.key === key);
+    const output: D1RequestOutput = { key, entity: row.entity, many: row.many };
+    if (list) {
+      output.page = list.page;
+      output.pageSize = list.pageSize;
+      output.hasMore = list.hasMore;
+    }
+    return output;
+  });
+}
+
+function requestParams(route: D2ContractV2Route): D1RequestParam[] {
+  return Object.entries(route.meta.params).map(([name, row]) => {
+    if ('filters' in row) return { name, target: row.filters, field: row.field };
+    const list = route.meta.lists[row.pages];
+    return { name, target: list?.key ?? '', pages: row.pages };
+  });
+}
+
+function noteContractAccess(
+  problems: D1InputProblem[],
+  path: string,
+  route: D2ContractV2Route,
+  access: Record<string, unknown>,
+): void {
+  const actors = new Set(rows(access.actors).map(row => text(row.actorId)).filter(Boolean));
+  const grants = new Map(rows(access.grants).map(row => [text(row.grantId), row]));
+  // The promoted parser keeps one access line greedy, so a token that is not an id was not split.
+  const actorsSplit = route.access.actors.every(actor => isSafeToken(actor));
+  let divergent = actorsSplit && route.access.actors.some(actor => !actors.has(actor));
+  for (const grantId of route.access.grants) {
+    if (!isSafeToken(grantId)) continue;
+    const grant = grants.get(grantId);
+    if (!grant) {
+      divergent = true;
+      continue;
+    }
+    const actorRef = text(grant.actorRef);
+    if (actorsSplit && actorRef && !route.access.actors.includes(actorRef)) divergent = true;
+    const mode = text(rec(grant.dataScope).mode);
+    if (mode && mode !== route.access.scope) divergent = true;
+  }
+  if (!divergent) return;
+  review(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `Route ${route.route} access does not match the L4 access artifact. L4 stays the source.`, route.route);
+}
+
+function noteUnrequested(
+  problems: D1InputProblem[],
+  path: string,
+  usecases: D1SelectedUsecase[],
+  requests: D1SelectedRequest[],
+  sawContract: boolean,
+): void {
+  if (!sawContract) return;
+  const used = new Set(requests.flatMap(request => request.uses));
+  for (const usecase of usecases) {
+    if (used.has(usecase.usecaseId)) continue;
+    review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it.`, usecase.usecaseId);
+  }
+}
+
 function noteContracts(
   problems: D1InputProblem[],
   moduleName: string,
   routes: D1SelectedRoute[],
   contracts: D1InputArtifacts['contracts'],
+  contractV2: Map<string, D2ContractV2Definition>,
 ): void {
   const pages = unique(routes.map(route => route.page));
   for (const pageId of pages) {
     const path = contractPath(moduleName, pageId);
+    if (contractV2.has(pageId)) continue;
     const value = contracts[pageId];
     if (value == null) {
       error(problems, 'CONTRACT_ABSENT', path, `L2 contract for ${pageId} is absent. The inventory stays readable and consumer phases are not released.`, pageId);
