@@ -22,11 +22,9 @@ import {
   serviceRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import {
-  readContractAst,
-  type D1ContractAst,
-  type D1ContractField,
-} from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import type { D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { worstOfList } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
   D1_CONTROLLER_VERSION,
   ENUMERATION_REASON,
@@ -50,8 +48,6 @@ import {
   type D1ServiceRow,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-const FORM_IDENTITY = new Set(['actorId', 'userId', 'sessionId', 'scope']);
-
 /**
  * One controller per page. Ids, route strings and contract symbols are copied.
  * An operation with no grant is an error. There is no public fallback.
@@ -66,28 +62,16 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   if (!request.actorsRead) {
     error(problems, 'ACTORS_UNREADABLE', 'needs', 'Page actors did not parse. No actor was assumed.');
   }
-  noteDuplicateRoutes(request, problems);
-
   const services = requestServices(request, problems);
-  const astByPage = new Map<string, D1ContractAst>();
   const byPage = new Map<string, D1HandlerBinding[]>();
-  for (const route of request.routes) {
-    if (isV2Page(request, route.page)) continue;
-    const binding = bindRoute(request, route, astFor(request, astByPage, route.page, problems), problems);
-    const list = byPage.get(route.page) || [];
-    list.push(binding);
-    byPage.set(route.page, list);
-  }
   for (const service of services) {
-    if (!isV2Page(request, service.pageId)) continue;
     for (const row of service.requests) {
-      const selected = request.routes.find(item => item.route === row.route && item.page === service.pageId);
       const route: D1ControllerRoute = {
         route: row.route,
         page: service.pageId,
         kind: row.kind,
-        usecaseRef: selected?.usecaseRef || '',
-        status: selected?.status || 'toCreate',
+        usecaseRef: '',
+        status: routeStatus(request, row.uses),
       };
       const binding = bindAdapter(request, route, row, problems);
       const list = byPage.get(service.pageId) || [];
@@ -100,7 +84,7 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   for (const [pageId, handlers] of byPage) {
     const page = pageFor(request, pageId);
     handlers.sort((left, right) => left.route.localeCompare(right.route));
-    const staleRoutes = staleOf(request, pageId, liveRoutes(request, pageId, services), problems);
+    const staleRoutes = staleOf(request, pageId, liveRoutes(pageId, services), problems);
     const item: D1ControllerItem = { pageId, defPath: page.defPath, handlers, staleRoutes, definition: null };
     if (!isSafeToken(pageId)) {
       error(problems, 'PAGE_ID', pageId, `Page ${pageId} is not a safe token. No controller file was named.`);
@@ -133,100 +117,6 @@ export function grantUnionIssues(
     if (grant && !actors.has(grant.actorRef)) issues.push(grantId);
   }
   return issues;
-}
-
-function bindRoute(
-  request: D1ControllerRequest,
-  route: D1ControllerRoute,
-  ast: D1ContractAst,
-  problems: D1ControllerProblem[],
-): D1HandlerBinding {
-  const contract = request.contracts.find(item => item.pageId === route.page);
-  const path = route.route;
-  const page = pageFor(request, route.page);
-  const usecase = request.usecases.find(item => item.usecaseId === route.usecaseRef);
-  const kind = mapKind(route.kind);
-  const contractPath = contract?.path || `l2/${request.moduleName}/web/contracts/${route.page}.defs.ts`;
-  let inputSymbol = '';
-  let outputSymbol = '';
-  let shape: D1HandlerBinding['projection']['shape'] = 'unresolved';
-  let contractFields: D1ContractField[] = [];
-
-  if (!kind) {
-    error(problems, 'KIND', path, `Route ${path} kind ${route.kind} is not query or command.`);
-  }
-  if (!usecase || !usecase.functionName) {
-    error(problems, 'INVALID_REF', path, `Route ${path} references ${route.usecaseRef || '(missing usecase)'}, which has no function.`);
-  }
-
-  if (ast.assertions.includes(route.route)) {
-    error(problems, 'TYPE_ASSERTION', path, `Route ${path} is bound by a type assertion. The projection lists the output fields.`);
-  } else {
-    const found = ast.bindings.filter(item => item.route === route.route);
-    if (found.length !== 1) {
-      error(problems, 'CONTRACT_UNBOUND', path, `Route ${path} has no contract binding. The route was kept.`);
-    } else {
-      inputSymbol = found[0].input;
-      outputSymbol = found[0].output;
-      const resolved = resolveSymbol(ast, outputSymbol);
-      if (!resolved) {
-        error(problems, 'INVALID_REF', path, `Route ${path} output symbol ${outputSymbol} does not resolve to one type.`);
-      } else {
-        shape = resolved.shape;
-        contractFields = resolved.fields;
-      }
-      if (inputSymbol) {
-        const input = resolveSymbol(ast, inputSymbol);
-        if (!input) {
-          error(problems, 'INVALID_REF', path, `Route ${path} input symbol ${inputSymbol} does not resolve to one type.`);
-        } else {
-          const identity = input.fields.find(field => FORM_IDENTITY.has(field.name));
-          if (identity) {
-            error(problems, 'FORM_IDENTITY', path, `Form field ${identity.name} is not authentication. The session stays verified.`);
-          }
-        }
-      }
-    }
-  }
-
-  const matched = usecase ? matchingGrants(page.actors, usecase.entity, request.grants).map(item => item.grantId) : [];
-  const kept = finishGrants(request, route, kind, matched, existing => existing.usecaseId === route.usecaseRef, problems);
-  const grantIds = kept.grantIds;
-  const preserved = kept.preserved;
-  if (usecase && grantIds.length === 0) {
-    error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${route.usecaseRef} on ${path} has no authority. No permissive fallback was applied.`);
-  }
-
-  const attached = grantIds.flatMap(grantId => {
-    const grant = request.grants.find(item => item.grantId === grantId);
-    return grant && page.actors.includes(grant.actorRef) ? [grant] : [];
-  });
-  const disclosed = usecase
-    ? discloseProjection(usecase.entity, contractFields, attached)
-    : { fields: contractFields.map(field => field.name), blocked: [] as string[], opaque: [] as string[] };
-  if (usecase && (disclosed.blocked.length || disclosed.opaque.length)) {
-    error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
-  }
-
-  return {
-    route: route.route,
-    pageId: route.page,
-    kind: kind || 'query',
-    usecaseId: route.usecaseRef,
-    functionName: usecase?.functionName || '',
-    serviceFunction: '',
-    contractPath,
-    contractInterface: '',
-    inputSymbol,
-    outputSymbol,
-    status: route.status,
-    preserved,
-    grantIds,
-    projection: { shape, fields: disclosed.fields, envelope: 'passthrough' },
-    session: 'verified',
-    steps: HANDLER_STEPS,
-    scopePlan: scopePlans(attached, request.relationships, problems, path),
-  };
 }
 
 /** v2 page: the handler calls one request-service function. It does not name a usecase. */
@@ -357,19 +247,21 @@ function finishGrants(
   return { grantIds, preserved };
 }
 
-function isV2Page(request: D1ControllerRequest, pageId: string): boolean {
-  const contract = request.contracts.find(item => item.pageId === pageId);
-  if (!contract?.source) return false;
-  const parsed = readContractV2(contract.source);
-  return !!parsed && parsed.pageId === pageId;
+/**
+ * A handler is done only when every usecase it calls is done (the rule input20 uses for the
+ * controller file). A request that calls no selected usecase is new.
+ */
+function routeStatus(request: D1ControllerRequest, uses: readonly string[]): D1ActiveStatus {
+  const statuses = uses.flatMap(usecaseId => {
+    const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
+    return usecase ? [usecase.status] : [];
+  });
+  return statuses.length === uses.length && uses.length > 0 ? worstOfList(statuses) : 'toCreate';
 }
 
-function liveRoutes(request: D1ControllerRequest, pageId: string, services: readonly D1RequestServiceItem[]): Set<string> {
-  if (isV2Page(request, pageId)) {
-    const rows = services.find(item => item.pageId === pageId)?.requests || [];
-    return new Set(rows.map(row => row.route));
-  }
-  return new Set(request.routes.filter(route => route.page === pageId).map(route => route.route));
+function liveRoutes(pageId: string, services: readonly D1RequestServiceItem[]): Set<string> {
+  const rows = services.find(item => item.pageId === pageId)?.requests || [];
+  return new Set(rows.map(row => row.route));
 }
 
 function matchingGrants(actors: readonly string[], entity: string, grants: readonly D1ControllerGrant[]): D1ControllerGrant[] {
@@ -628,20 +520,6 @@ function scopePlans(
   });
 }
 
-function resolveSymbol(ast: D1ContractAst, name: string, depth = 0): { shape: 'array' | 'object'; fields: D1ContractField[] } | null {
-  if (!name || depth > 4) return null;
-  const found = ast.symbols.filter(item => item.name === name);
-  if (found.length !== 1) return null;
-  const symbol = found[0];
-  if (symbol.shape === 'array' && symbol.fields.length === 0 && symbol.element) {
-    const inner = resolveSymbol(ast, symbol.element, depth + 1);
-    if (!inner) return null;
-    return { shape: 'array', fields: inner.fields };
-  }
-  if (symbol.shape === 'array' && symbol.fields.length === 0) return null;
-  return { shape: symbol.shape, fields: symbol.fields };
-}
-
 function existingHandler(request: D1ControllerRequest, route: D1ControllerRoute): D1ExistingHandler | null {
   const page = request.existing.find(item => item.pageId === route.page);
   if (!page || page.unreadable) return null;
@@ -668,14 +546,6 @@ function staleOf(
   return extra;
 }
 
-function noteDuplicateRoutes(request: D1ControllerRequest, problems: D1ControllerProblem[]): void {
-  const seen = new Map<string, number>();
-  for (const route of request.routes) seen.set(route.route, (seen.get(route.route) || 0) + 1);
-  for (const [route, count] of [...seen.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-    if (count > 1) error(problems, 'DUPLICATE_ROUTE', route, `Route ${route} is selected ${count} times.`);
-  }
-}
-
 function requestServices(request: D1ControllerRequest, problems: D1ControllerProblem[]): D1RequestServiceItem[] {
   const selected = request.serviceRequests || [];
   const knownFields = fieldsByEntity(request.ontology || {});
@@ -683,7 +553,12 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
   const services: D1RequestServiceItem[] = [];
   for (const contract of request.contracts) {
     const parsed = readContractV2(contract.source);
-    if (!parsed || parsed.pageId !== contract.pageId) continue;
+    if (!parsed || parsed.pageId !== contract.pageId) {
+      error(problems, 'CONTRACT_UNPARSED', contract.path, parsed
+        ? `L2 contract ${contract.path} names page ${parsed.pageId}, not ${contract.pageId}. No handler was planned.`
+        : `L2 contract ${contract.path} is not a readable v2 contract. No handler was planned.`);
+      continue;
+    }
     const pageSelected = selected.filter(item => item.pageId === contract.pageId);
     const selectedCounts = new Map<string, number>();
     for (const item of pageSelected) selectedCounts.set(item.route, (selectedCounts.get(item.route) || 0) + 1);
@@ -774,24 +649,16 @@ function emitServices(
 
 function fillDefinition(request: D1ControllerRequest, item: D1ControllerItem, problems: D1ControllerProblem[]): void {
   if (item.handlers.some(handler => handler.grantIds.length === 0)) return;
-  const adapter = item.handlers.some(handler => handler.serviceFunction);
   const data = {
     pageId: item.pageId,
-    handlers: item.handlers.map(handler => adapter
-      ? {
-        route: handler.route,
-        kind: handler.kind,
-        grantIds: handler.grantIds,
-        serviceFunction: handler.serviceFunction,
-        contractPath: handler.contractPath,
-        contractInterface: handler.contractInterface,
-      }
-      : {
-        route: handler.route,
-        kind: handler.kind,
-        usecaseId: handler.usecaseId,
-        grantIds: handler.grantIds,
-      }),
+    handlers: item.handlers.map(handler => ({
+      route: handler.route,
+      kind: handler.kind,
+      grantIds: handler.grantIds,
+      serviceFunction: handler.serviceFunction,
+      contractPath: handler.contractPath,
+      contractInterface: handler.contractInterface,
+    })),
   };
   const definition = pendingDefinition('httpController', item.pageId, request.moduleName, data);
   const issues = definitionIssues(definition);
@@ -835,19 +702,9 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
   const qualified = qualifyDefPath(request.project, item.defPath);
   const dependsOn: string[] = [];
   const dependsFiles: string[] = [];
-  if (item.handlers.some(handler => handler.serviceFunction)) {
-    const serviceLogical = `l1/${request.moduleName}/layer_2_application/requests/${item.pageId}.defs.ts`;
-    dependsOn.push(pipelineId(request.project, request.moduleName, 'requestService', item.pageId));
-    dependsFiles.push(qualifyDefPath(request.project, serviceLogical));
-  } else {
-    const usecaseIds = [...new Set(item.handlers.map(handler => handler.usecaseId).filter(Boolean))].sort();
-    for (const usecaseId of usecaseIds) {
-      const usecase = request.usecases.find(entry => entry.usecaseId === usecaseId);
-      if (!usecase?.defPath) continue;
-      dependsOn.push(pipelineId(request.project, request.moduleName, 'usecase', usecaseId));
-      dependsFiles.push(qualifyDefPath(request.project, usecase.defPath));
-    }
-  }
+  const serviceLogical = `l1/${request.moduleName}/layer_2_application/requests/${item.pageId}.defs.ts`;
+  dependsOn.push(pipelineId(request.project, request.moduleName, 'requestService', item.pageId));
+  dependsFiles.push(qualifyDefPath(request.project, serviceLogical));
   const scopeLogical = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;
   dependsOn.push(pipelineId(request.project, request.moduleName, 'accessScope', 'accessScope'));
   dependsFiles.push(qualifyDefPath(request.project, scopeLogical));
@@ -868,22 +725,6 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
     skills: skillPaths('httpController'),
     routes: item.handlers.map(handler => handler.route),
   };
-}
-
-function astFor(
-  request: D1ControllerRequest,
-  cache: Map<string, D1ContractAst>,
-  pageId: string,
-  problems: D1ControllerProblem[],
-): D1ContractAst {
-  const cached = cache.get(pageId);
-  if (cached) return cached;
-  const contract = request.contracts.find(item => item.pageId === pageId);
-  const fileName = contract?.path || `${pageId}.defs.ts`;
-  const ast = readContractAst(contract?.source || '', fileName);
-  cache.set(pageId, ast);
-  for (const detail of ast.unparsed) error(problems, 'CONTRACT_UNPARSED', fileName, detail);
-  return ast;
 }
 
 function pageFor(request: D1ControllerRequest, pageId: string): D1ControllerPage {
@@ -943,8 +784,8 @@ function finish(
     moduleName: request.moduleName,
     llmCalls: 0,
     ok,
-    measuredRoutes: request.routes.length,
-    measuredPages: new Set(request.routes.map(route => route.page)).size,
+    measuredRoutes: (request.serviceRequests || []).length,
+    measuredPages: new Set((request.serviceRequests || []).map(item => item.pageId)).size,
     enumerations,
     controllers,
     services,

@@ -22,7 +22,7 @@ import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.j
 import { contractSources, coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
+const AGENDA_KEPT = 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -116,7 +116,7 @@ async function throughControllers() {
   return { host, agent, ctx, parent };
 }
 
-void test('support70 writes scope, authority, the registry and the seed plan once', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('support70 writes scope, authority, the registry and the seed plan once', { skip: AGENDA_KEPT }, async () => {
   const { host, agent, ctx, parent } = await throughControllers();
 
   const neighbor = fileInfoFromDisplay(PROJECT, `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`)!;
@@ -194,7 +194,7 @@ void test('support70 writes scope, authority, the registry and the seed plan onc
   assert.deepEqual(host.writes, []);
 });
 
-void test('a structured ref stops support70 on the pipeline and writes no seed file', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('a structured ref stops support70 on the pipeline and writes no seed file', { skip: AGENDA_KEPT }, async () => {
   const { host, agent, ctx, parent } = await throughControllers();
   const index = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/ontology/index.defs.ts`)!;
   const current = host.files[fileKey(index)]?.content || '';

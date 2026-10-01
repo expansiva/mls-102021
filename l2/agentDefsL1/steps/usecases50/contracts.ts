@@ -113,13 +113,6 @@ export interface D1UsecasePort {
   signatures?: D1PortSignature[];
 }
 
-export interface D1UsecaseRoute {
-  route: string;
-  page: string;
-  kind: string;
-  usecaseRef: string;
-}
-
 export interface D1UsecaseSelection {
   usecaseId: string;
   entity: string;
@@ -328,7 +321,6 @@ export interface D1UsecaseRequest {
   project: number;
   moduleName: string;
   usecases: D1UsecaseSelection[];
-  routes: D1UsecaseRoute[];
   ports: D1UsecasePort[];
   entities: D1UsecaseEntity[];
   /** Ids only. The gate uses this catalog to validate a returned id. */

@@ -91,14 +91,6 @@ export interface D1PlannerRun {
   schemaVersion: string;
 }
 
-export interface D1SelectedRoute {
-  route: string;
-  page: string;
-  kind: string;
-  usecaseRef: string;
-  status: D1ActiveStatus;
-}
-
 export interface D1RequestOutput {
   key: string;
   entity: string;
@@ -177,7 +169,6 @@ export interface D1InputSnapshot {
   sources: D1SourceDigest[];
   selection: {
     pages: Array<{ pageId: string; routes: string[] }>;
-    routes: D1SelectedRoute[];
     requests: D1SelectedRequest[];
     usecases: D1SelectedUsecase[];
     ports: D1SelectedPort[];

@@ -14,7 +14,7 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import type { D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { capabilityApplies, mdmForOperation, mdmStepPairs, type MdmInputField } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   enforcedRuleIds,
@@ -24,7 +24,6 @@ import {
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 export { capabilityApplies };
 import type {
-  D1AccessGrant,
   D1CapabilityText,
   D1ContractPath,
   D1ContractSource,
@@ -41,7 +40,6 @@ import type {
   D1UsecaseField,
   D1UsecasePort,
   D1UsecaseRequest,
-  D1UsecaseRoute,
   D1UsecaseSelection,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
@@ -149,7 +147,7 @@ export async function loadVerifiedSources(
   }
   journeys.sort((left, right) => left.journeyId.localeCompare(right.journeyId));
   const pages = new Set(snapshot.selection.pages.map(page => page.pageId));
-  for (const route of snapshot.selection.routes) pages.add(route.page);
+  for (const request of snapshot.selection.requests || []) pages.add(request.pageId);
   const contracts: D1ContractSource[] = [];
   for (const pageId of [...pages].sort()) {
     if (!isSafeToken(pageId)) continue;
@@ -186,7 +184,6 @@ export async function loadVerifiedSources(
 export function buildUsecaseContexts(input: {
   moduleName: string;
   usecases: readonly D1UsecaseSelection[];
-  routes: readonly D1UsecaseRoute[];
   entities: readonly D1UsecaseEntity[];
   ports: readonly D1UsecasePort[];
   bundle: VerifiedBundle;
@@ -441,7 +438,7 @@ export function namespaceOf(body: unknown): string {
 
 function oneContext(
   usecase: D1UsecaseSelection,
-  input: { moduleName: string; routes: readonly D1UsecaseRoute[]; entities: readonly D1UsecaseEntity[]; ports: readonly D1UsecasePort[]; bundle: VerifiedBundle },
+  input: { moduleName: string; entities: readonly D1UsecaseEntity[]; ports: readonly D1UsecasePort[]; bundle: VerifiedBundle },
 ): D1UsecaseContext {
   const bundle = input.bundle;
   const entity = input.entities.find(item => item.entityId === usecase.entity) || null;
@@ -639,60 +636,6 @@ function resolveRule(
   const text = bundle.moduleRuleText?.[ruleId];
   if (!bundle.moduleRuleText || typeof text !== 'string') return { finding: ruleMissing(ruleId, bundle.moduleRulesPath) };
   return { rule: { ruleId, owner: 'module', source: bundle.moduleRulesPath, text } };
-}
-
-function routesFor(
-  usecase: D1UsecaseSelection,
-  routes: readonly D1UsecaseRoute[],
-  bundle: VerifiedBundle,
-): { routes: D1RouteContext[]; missing: D1SourceFinding[] } {
-  const out: D1RouteContext[] = [];
-  const missing: D1SourceFinding[] = [];
-  for (const routeId of usecase.routes) {
-    const route = routes.find(item => item.route === routeId);
-    const page = route?.page || '';
-    const contract = bundle.contracts.find(item => item.pageId === page);
-    const contractPath = contract?.path || '';
-    const actors = pageActors(bundle.needs, page);
-    const access = grantsFor(bundle.access, actors, usecase.entity);
-    if (!contract?.source) {
-      out.push(emptyRoute(routeId, page, contractPath, access, contractPath
-        ? `Route ${routeId} has no contract source in ${contractPath}.`
-        : `Route ${routeId} has no contract.`));
-      continue;
-    }
-    const ast = readContractAst(contract.source, contract.path);
-    const found = ast.bindings.filter(item => item.route === routeId);
-    if (found.length !== 1) {
-      out.push(emptyRoute(routeId, page, contract.path, access, found.length
-        ? `Route ${routeId} has ${found.length} contract bindings in ${contract.path} (ambiguous).`
-        : `Route ${routeId} has no contract binding in ${contract.path}.`));
-      continue;
-    }
-    if (ast.unparsed.length) {
-      missing.push({
-        code: 'CONTRACT_UNPARSED',
-        path: contract.path,
-        message: `Contract ${contract.path} did not close: ${ast.unparsed.join(' ')} The usecase was not sent to the model.`,
-      });
-    }
-    const input = symbolFields(ast, found[0].input);
-    const output = symbolFields(ast, found[0].output);
-    if (!input) missing.push(symbolMissing(contract.path, routeId, found[0].input));
-    if (!output) missing.push(symbolMissing(contract.path, routeId, found[0].output));
-    out.push({
-      route: routeId,
-      page,
-      contractPath: contract.path,
-      inputSymbol: input?.label || found[0].input,
-      outputSymbol: output?.label || found[0].output,
-      inputFields: input ? flattenFields(input.fields) : [],
-      outputFields: output ? flattenFields(output.fields) : [],
-      unbound: '',
-      access,
-    });
-  }
-  return { routes: out, missing };
 }
 
 function journeysFor(usecase: D1UsecaseSelection, pages: string[], bundle: VerifiedBundle): D1JourneyContext[] {
@@ -1031,33 +974,6 @@ function fieldLines(fields: readonly D1ContractPath[]): string[] {
   return fields.map(field => `- ${field.path}${field.optional ? '?' : ''}: ${field.type}`);
 }
 
-function emptyRoute(route: string, page: string, contractPath: string, access: D1AccessGrant[], unbound: string): D1RouteContext {
-  return {
-    route,
-    page,
-    contractPath,
-    inputSymbol: '',
-    outputSymbol: '',
-    inputFields: [],
-    outputFields: [],
-    unbound,
-    access,
-  };
-}
-
-function symbolFields(ast: D1ContractAst, symbol: string): { label: string; fields: D1ContractField[] } | null {
-  const found = ast.symbols.filter(item => item.name === symbol);
-  if (found.length !== 1) return null;
-  const item = found[0];
-  if (item.shape === 'array' && item.element) {
-    const inner = ast.symbols.filter(entry => entry.name === item.element);
-    if (inner.length !== 1) return null;
-    return { label: `${symbol}: array of ${item.element}`, fields: inner[0].fields };
-  }
-  if (item.shape === 'array' && !item.fields.length) return null;
-  return { label: symbol, fields: item.fields };
-}
-
 function flattenFields(fields: readonly D1ContractField[]): D1ContractPath[] {
   const out: D1ContractPath[] = [];
   for (const field of fields) out.push(...flattenType(field.name, field.type, field.optional));
@@ -1199,36 +1115,6 @@ function readMemberType(body: string, start: number): { text: string; end: numbe
   return { text, end: index };
 }
 
-function pageActors(needs: unknown, pageId: string): string[] {
-  if (!isRecord(needs) || !Array.isArray(needs.pages)) return [];
-  const page = needs.pages.find(item => isRecord(item) && item.pageId === pageId);
-  if (!isRecord(page)) return [];
-  return stringList(page.actors);
-}
-
-function grantsFor(access: unknown, actors: readonly string[], entityId: string): D1AccessGrant[] {
-  if (!isRecord(access) || !Array.isArray(access.grants)) return [];
-  const out: D1AccessGrant[] = [];
-  for (const grant of access.grants) {
-    if (!isRecord(grant) || typeof grant.grantId !== 'string') continue;
-    const actorRef = typeof grant.actorRef === 'string' ? grant.actorRef : '';
-    if (!actors.includes(actorRef) || !stringList(grant.entityRefs).includes(entityId)) continue;
-    const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
-    const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
-    out.push({
-      grantId: grant.grantId,
-      actorRef,
-      scope: typeof scope.mode === 'string' ? scope.mode : '',
-      anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
-      scopeDetail: typeof scope.description === 'string' ? scope.description : '',
-      disclosure: typeof disclosure.mode === 'string' ? disclosure.mode : '',
-      disclosureDetail: typeof disclosure.description === 'string' ? disclosure.description : '',
-      allowedFields: stringList(disclosure.allowedFields),
-    });
-  }
-  return out;
-}
-
 function pageCitations(needs: unknown, pageId: string): Array<{ journeyId: string; stepId: string }> {
   if (!isRecord(needs) || !Array.isArray(needs.pages)) return [];
   const page = needs.pages.find(item => isRecord(item) && item.pageId === pageId);
@@ -1246,14 +1132,6 @@ function pageCitations(needs: unknown, pageId: string): Array<{ journeyId: strin
     }
   }
   return out;
-}
-
-function symbolMissing(path: string, route: string, symbol: string): D1SourceFinding {
-  return {
-    code: 'CONTRACT_UNPARSED',
-    path,
-    message: `Route ${route} symbol ${symbol} has no declared form in ${path}. The usecase was not sent to the model.`,
-  };
 }
 
 function ruleMissing(ruleId: string, path: string): D1SourceFinding {

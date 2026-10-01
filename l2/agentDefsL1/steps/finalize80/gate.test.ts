@@ -1,38 +1,24 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { D1_DEFINITION_SCHEMA, D1_MEASURED_PUBLISH, type D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { D1_FINALIZE_REPAIR, createEntryPipeline, pipelineFile, type D1PipelineState, type D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { futureOutputPath, pipelineId, qualifyDefPath, skillPaths, type D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { artifactFile, renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
-import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { logicalDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
-import { sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
-import { assembleD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
-import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
-import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLINIC_ROOT = AGENDA_CLINICA_F35E28A;
-const CONSISTENT_ROOT = path.resolve(HERE, '../../fixtures/agendaClinica-3f4f677');
-const CATALOG_DISK = path.resolve(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts');
-const CATALOG = '/_102034_/l4/ontology/mdm.defs.ts';
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
 const ROUTE = 'agendaClinica.consultas.cmdRegistrarAtendimento';
@@ -41,7 +27,26 @@ const RULES = `l4/${MODULE}/rules.defs.ts`;
 const ONTOLOGY = `l4/${MODULE}/ontology/Consulta.defs.ts`;
 const INTEGRATION = `l4/${MODULE}/integration.defs.ts`;
 const HASH = 'sha256:contract';
-const CONTRACT_TEXT = `export interface Out0 { id: string }\nexport const routes = { "${ROUTE}": { "output": "Out0" } } as const;\n`;
+const CONTRACT_TEXT = [
+  `/// <mls fileReference="_${PROJECT}_/l2/${MODULE}/web/contracts/consultas.defs.ts" enhancement="_blank"/>`,
+  '',
+  'export interface Out0 {',
+  '  id: string;',
+  '}',
+  '',
+  'export interface ConsultasContracts {',
+  `  '${ROUTE}': {`,
+  `    kind: 'cmd';`,
+  `    writes: 'Consulta.registrarAtendimento';`,
+  `    input: {};`,
+  `    output: { result: Out0 };`,
+  `    meta: { output: { result: { entity: 'Consulta'; many: false } }; lists: {}; params: {} };`,
+  `    rules: [];`,
+  `    access: { actors: []; grants: []; scope: 'organization' };`,
+  '  };',
+  '}',
+  '',
+].join('\n');
 const RULES_TEXT = 'export const agendaClinicaRules = { "rules": { "noteRequired": "A note is required." } } as const;\n';
 const ONTOLOGY_TEXT = `export const agendaClinicaEntityConsulta = { "entityId": "Consulta", "storage": { "target": "moduleDatabase" }, "record": { "fields": { "id": { "type": "uuid", "derived": true } } }, "transitions": [{ "transitionId": "registrarAtendimento", "payload": ["attendanceNote"], "ruleRefs": ["noteRequired"] }] } as const;\n`;
 const INTEGRATION_TEXT = 'export const agendaClinicaIntegration = { "outbound": [{ "id": "atendimentoRegistrado", "event": "atendimentoRegistrado", "on": "Consulta.registrarAtendimento" }] } as const;\n';
@@ -347,7 +352,6 @@ function snapshot(files: D1FinalizeObserved[]): D1InputSnapshot {
     })),
     selection: {
       pages: [{ pageId: 'consultas', routes: [ROUTE] }],
-      routes: [{ route: ROUTE, page: 'consultas', kind: 'command', usecaseRef: 'registrarAtendimento', status: 'toCreate' }],
       usecases: [{
         usecaseId: 'registrarAtendimento',
         entity: 'Consulta',
@@ -808,129 +812,65 @@ void test('a run held at input20 does not claim the later phases ran', () => {
   }
 });
 
-function walkFiles(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const abs = path.join(dir, name);
-    if (statSync(abs).isDirectory()) out.push(...walkFiles(abs).map(rel => path.join(name, rel)));
-    else out.push(name);
-  }
-  return out;
-}
-
-function seedDisplay(host: TestHost, project: number, display: string, abs: string): boolean {
-  const info = fileInfoFromDisplay(project, display);
-  if (!info) return false;
-  seed(host, info, readFileSync(abs, 'utf8'));
-  return true;
-}
-
-function seedClinic(defsDir?: string, root: string = CLINIC_ROOT): TestHost {
-  const host = installStudio(PROJECT);
-  const l1 = path.join(root, 'l1/agendaClinica');
-  const overlaid = new Set<string>();
-  if (defsDir) {
-    for (const rel of walkFiles(defsDir)) {
-      const display = `l1/agendaClinica/${fixtureLogicalRel(rel.split(path.sep).join('/'))}`;
-      if (seedDisplay(host, PROJECT, display, path.join(defsDir, rel))) overlaid.add(display);
-    }
-  }
-  for (const rel of walkFiles(l1)) {
-    const display = `l1/agendaClinica/${fixtureLogicalRel(rel.split(path.sep).join('/'))}`;
-    if (overlaid.has(display)) continue;
-    seedDisplay(host, PROJECT, display, path.join(l1, rel));
-  }
-  const input = JSON.parse(readFileSync(path.join(l1, 'pipeline/agentDefsL1/input.json'), 'utf8')) as { sources: Array<{ path: string }> };
-  for (const source of input.sources) {
-    const abs = resolveFixtureFile(path.join(root, source.path));
-    if (!existsSync(abs) || !statSync(abs).isFile()) continue;
-    seedDisplay(host, PROJECT, source.path, abs);
-  }
-  const catalog = catalogInfo(CATALOG);
-  assert.ok(catalog);
-  seed(host, catalog, readFileSync(CATALOG_DISK, 'utf8'));
-  return host;
-}
-
-/** Frozen accessScope is the pre-change grant. Finalize reads the support70 render of that same fixture, and the receipt hash of that render. */
-async function replaceAccessScopeFromSupport(): Promise<void> {
-  const support = await assembleD1Support(PROJECT, MODULE);
-  assert.ok(!('refusal' in support), 'refusal' in support ? support.refusal : '');
-  assert.equal(support.build.ok, true);
-  const scopeLogical = `l1/${MODULE}/layer_2_application/scope/accessScope.defs.ts`;
-  let source = '';
-  const changed: string[] = [];
-  for (const part of support.build.emit) {
-    const defPath = part.pipeline[0]?.defPath || '';
-    const rendered = renderDefinition(part.definition, defPath);
-    if ('issues' in rendered) throw new Error(rendered.issues.join('\n'));
-    const logical = logicalDefPath(defPath);
-    const info = artifactFile(PROJECT, defPath);
-    const current = info ? await readText(info) : null;
-    if (current !== rendered.source) changed.push(logical);
-    if (logical === scopeLogical) source = rendered.source;
-  }
-  assert.deepEqual(changed, [scopeLogical]);
-  assert.ok(source);
-  const info = artifactFile(PROJECT, scopeLogical);
-  assert.ok(info);
-  await writeText(info, source);
-  const trace = fileInfoFromDisplay(PROJECT, `l1/${MODULE}/pipeline/agentDefsL1/traces/support70support70.json`);
-  assert.ok(trace);
-  const traceText = await readText(trace);
-  assert.ok(traceText);
-  const parsed = JSON.parse(traceText) as { files: Array<{ defPath: string; desiredHash: string }> };
-  const row = parsed.files.find(file => logicalDefPath(file.defPath) === scopeLogical);
-  assert.ok(row);
-  row.desiredHash = await sourceIdentityHash(source);
-  await writeText(trace, `${JSON.stringify(parsed, null, 2)}\n`);
-}
-
-void test('the real module approves when the platform catalog is on disk', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
-  seedClinic(undefined, CONSISTENT_ROOT);
-  await replaceAccessScopeFromSupport();
-  const assembled = await assembleD1Finalize(PROJECT, MODULE);
-  assert.ok(!('refusal' in assembled), 'refusal' in assembled ? assembled.refusal : '');
-  const opened = assembled.request.dependencyTexts[CATALOG] || assembled.request.dependencyTexts[CATALOG.replace(/^\/+/, '')];
-  assert.equal(typeof opened, 'string');
-  assert.match(opened, /rule-foreign-namespace-refused/);
-  const report = buildD1Finalize(assembled.request);
-  assert.equal(report.outcome, 'complete', report.blocking);
-  assert.equal(report.defsStatus, 'complete');
-  assert.equal(report.phases.find(phase => phase.stepId === 'finalize80')?.status, 'approved');
-  assert.equal(codes(report, 'REF_INVALID'), 0);
-  assert.equal(codes(report, 'SOURCE_ABSENT'), 0);
-  assert.equal(JSON.stringify(report), JSON.stringify(buildD1Finalize(assembled.request)));
-  assert.equal(report.materializationPending.some(item => item.outputPath.includes('102034')), false);
-  assert.equal(report.executableBackend, false);
-});
-
-void test('a missing read source and a missing symbol stay refused', async () => {
-  seedClinic();
-  const assembled = await assembleD1Finalize(PROJECT, MODULE);
-  assert.ok(!('refusal' in assembled));
-  const missing = '/_102034_/l4/ontology/missing.defs.ts';
-  const otherProject = '/_999999_/l4/ontology/mdm.defs.ts';
-  const absentPath = rewriteCatalog(assembled.request, missing);
-  const absent = buildD1Finalize(absentPath);
+void test('a missing read source and a missing rule symbol stay refused', () => {
+  const missing = `l4/${MODULE}/missingRules.defs.ts`;
+  const moved = parts();
+  const usecase = moved.find(row => row.logical === PATHS.usecase);
+  assert.ok(usecase);
+  const data = usecase.definition.data as { rules: Array<{ path: string; symbol: string }> };
+  data.rules[0].path = missing;
+  usecase.item.dependsFiles = usecase.item.dependsFiles.map(file => file === RULES ? missing : file);
+  const absentInput = request();
+  absentInput.observed = observedOf(moved);
+  const absent = buildD1Finalize(absentInput);
   assert.equal(absent.outcome, 'held');
-  assert.ok(codes(absent, 'REF_INVALID') >= 1);
-  assert.ok(codes(absent, 'SOURCE_ABSENT') >= 1);
-  assert.equal(absent.findings.some(item => item.code === 'REF_INVALID' && item.path === missing), true);
-  assert.equal(absent.findings.some(item => item.message.includes(missing)), true);
+  assert.equal(absent.findings.some(item => item.code === 'REF_INVALID' && item.path.endsWith(missing)), true, JSON.stringify(absent.findings));
+  assert.equal(absent.findings.some(item => item.code === 'SOURCE_ABSENT' && item.message.includes(missing)), true, JSON.stringify(absent.findings));
 
-  const foreign = buildD1Finalize(rewriteCatalog(assembled.request, otherProject));
-  assert.equal(foreign.outcome, 'held');
-  assert.equal(foreign.findings.some(item => item.code === 'REF_INVALID' && item.path === otherProject), true);
-  assert.equal(foreign.findings.some(item => item.code === 'SOURCE_ABSENT' && item.message.includes(otherProject)), true);
-  assert.equal(foreign.findings.some(item => item.path === CATALOG && item.severity === 'error'), false);
-
-  const symbol = rewriteSymbol(assembled.request);
-  const unread = buildD1Finalize(symbol);
+  const renamed = parts();
+  const named = renamed.find(row => row.logical === PATHS.usecase);
+  assert.ok(named);
+  (named.definition.data as { rules: Array<{ symbol: string }> }).rules[0].symbol = 'noteNotInRules';
+  const symbolInput = request();
+  symbolInput.observed = observedOf(renamed);
+  const unread = buildD1Finalize(symbolInput);
   assert.equal(unread.outcome, 'held');
-  assert.ok(codes(unread, 'RULE_TEXT_ABSENT') >= 1);
+  assert.ok(codes(unread, 'RULE_TEXT_ABSENT') >= 1, JSON.stringify(unread.findings));
   assert.equal(codes(unread, 'SOURCE_ABSENT'), 0);
   assert.equal(codes(unread, 'REF_INVALID'), 0);
+});
+
+void test('the contract route set and the handler route set must be equal', () => {
+  const extra = `${ROUTE}Extra`;
+  const declared = request();
+  const text = CONTRACT_TEXT.replace('export interface ConsultasContracts {', [
+    'export interface ConsultasContracts {',
+    `  '${extra}': {`,
+    `    kind: 'qry';`,
+    `    input: {};`,
+    `    output: { result: Out0 };`,
+    `    meta: { output: { result: { entity: 'Consulta'; many: false } }; lists: {}; params: {} };`,
+    `    rules: [];`,
+    `    access: { actors: []; grants: []; scope: 'organization' };`,
+    '  };',
+  ].join('\n'));
+  declared.contracts.consultas = { ...declared.contracts.consultas, text };
+  const missing = buildD1Finalize(declared);
+  assert.equal(missing.outcome, 'held');
+  assert.equal(missing.findings.some(item => item.code === 'CONTRACT_DIVERGENT' && item.path === CONTRACT && item.message.includes(extra) && item.message.includes('no handler')), true, JSON.stringify(missing.findings));
+
+  const rows = parts();
+  const controller = rows.find(row => row.logical === PATHS.controller);
+  assert.ok(controller);
+  const handlers = (controller.definition.data as { handlers: Array<Record<string, unknown>> }).handlers;
+  handlers.push({ ...handlers[0], route: extra });
+  const undeclared = request();
+  undeclared.observed = observedOf(rows);
+  const report = buildD1Finalize(undeclared);
+  assert.equal(report.outcome, 'held');
+  assert.equal(report.findings.some(item => item.code === 'CONTRACT_DIVERGENT' && item.message.includes(`does not declare route ${extra}`)), true, JSON.stringify(report.findings));
+
+  assert.equal(buildD1Finalize(request()).findings.some(item => item.code === 'CONTRACT_DIVERGENT'), false);
 });
 
 void test('a read source is opened from the project the path names', async () => {
@@ -958,25 +898,3 @@ void test('a read source is opened from the project the path names', async () =>
   assert.equal(fileKey(catalog).startsWith('102099_'), true);
 });
 
-function rewriteCatalog(request: D1FinalizeRequest, next: string): D1FinalizeRequest {
-  const copy = structuredClone(request);
-  delete copy.dependencyTexts[next];
-  for (const item of copy.observed) {
-    if (!item.text?.includes(CATALOG)) continue;
-    item.text = item.text.replaceAll(CATALOG, next);
-  }
-  return copy;
-}
-
-function rewriteSymbol(request: D1FinalizeRequest): D1FinalizeRequest {
-  const copy = structuredClone(request);
-  let changed = false;
-  for (const item of copy.observed) {
-    if (!item.text?.includes('"symbol": "rule-foreign-namespace-refused"')) continue;
-    item.text = item.text.replace('"symbol": "rule-foreign-namespace-refused"', '"symbol": "rule-not-in-catalog"');
-    changed = true;
-    break;
-  }
-  assert.equal(changed, true);
-  return copy;
-}

@@ -1,106 +1,137 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.ts" enhancement="_blank"/>
 
-import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { loadD1Artifacts } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
+import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import type {
   D1ControllerGrant,
-  D1ControllerPage,
   D1ControllerRelationship,
   D1ControllerRequest,
-  D1ControllerRoute,
+  D1ServiceRequestSource,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
-import { contractSources } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/v1Contracts.js';
 
-export { contractSources };
+export { contractSources } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/v1Contracts.js';
 
-/**
- * Measured from the frozen agendaClinica backend (22 routes, 5 pages).
- * The spec text said 5 controllers and 19 routes. The fixture follows the measurement.
- * Actors are the needs.json actors of those pages, not inferred from a route name.
- */
-const PAGE_ACTORS: Record<string, string[]> = {
-  agenda: ['profissional'],
-  cadastro_profissional: ['profissional'],
-  cadastro_recepcionista: ['recepcionista'],
-  consultas: ['recepcionista'],
-  pacientes: ['recepcionista'],
-};
-
-const GRANTS: D1ControllerGrant[] = [
-  grant('recepcionistaCadastroPacientes', 'recepcionista', ['Paciente', 'ContatoPaciente'], 'fieldsOnly', [
-    'Paciente.id', 'Paciente.version', 'Paciente.details.identification', 'Paciente.details.base',
-    'ContatoPaciente.id', 'ContatoPaciente.version', 'ContatoPaciente.details.identification', 'ContatoPaciente.details.contactChannel',
-  ], '', 'organization'),
-  grant('recepcionistaAgendaConsultas', 'recepcionista', ['Consulta'], 'fieldsOnly', [
-    'Consulta.id', 'Consulta.version', 'Consulta.patientId', 'Consulta.professionalId', 'Consulta.scheduledAt', 'Consulta.status',
-  ], '', 'organization'),
-  grant('recepcionistaLocalizarProfissionais', 'recepcionista', ['Profissional'], 'fieldsOnly', [
-    'Profissional.id', 'Profissional.version', 'Profissional.details.identification', 'Profissional.details.person',
-  ], '', 'organization'),
-  grant('recepcionistaProprioCadastro', 'recepcionista', ['Recepcionista'], 'fullRecord', [], 'Recepcionista', 'own'),
-  grant('profissionalProprioCadastro', 'profissional', ['Profissional'], 'fullRecord', [], 'Profissional', 'own'),
-  grant('profissionalAgendaDiaria', 'profissional', ['Consulta'], 'fullRecord', [], 'Paciente', 'own'),
-  grant('profissionalPacientesDaAgenda', 'profissional', ['Paciente'], 'fieldsOnly', [
-    'Paciente.id', 'Paciente.details.identification',
-  ], 'Paciente', 'own'),
-];
-
-const RELATIONSHIPS: D1ControllerRelationship[] = [
-  { relationshipId: 'patientContacts', from: 'Paciente', to: 'ContatoPaciente', field: '', required: true },
-  { relationshipId: 'appointmentPatient', from: 'Consulta', to: 'Paciente', field: 'Consulta.patientId', required: true },
-  { relationshipId: 'appointmentProfessional', from: 'Consulta', to: 'Profissional', field: 'Consulta.professionalId', required: true },
-];
-
-export function frozenControllerCounts(): { routes: number; pages: number } {
-  const request = coreControllerRequest();
-  return {
-    routes: request.routes.length,
-    pages: new Set(request.routes.map(route => route.page)).size,
-  };
+/** input20 over a stored v2 seed. */
+export function seedSnapshot(id: string, moduleName: string): { snapshot: D1InputSnapshot; artifacts: D1InputArtifacts } {
+  const artifacts = loadD1Artifacts(id, moduleName);
+  return { snapshot: buildD1InputSnapshot({ project: 102047, moduleName }, artifacts, null), artifacts };
 }
 
-export function coreControllerRequest(): D1ControllerRequest {
-  const source = coreUsecaseRequest();
-  const routes: D1ControllerRoute[] = source.routes.map(route => ({ ...route, status: 'toCreate' }));
-  const pageIds = [...new Set(routes.map(route => route.page))].sort();
-  const pages: D1ControllerPage[] = pageIds.map(pageId => ({
-    pageId,
-    actors: [...(PAGE_ACTORS[pageId] || [])],
-    defPath: `l1/${source.moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
+/**
+ * The controllers60 request io.ts would assemble from that snapshot: page actors from needs,
+ * grants from access, relationships from the ontology index, and the v2 contracts as stored.
+ */
+export function seedControllerRequest(id: string, moduleName: string): D1ControllerRequest {
+  const { snapshot, artifacts } = seedSnapshot(id, moduleName);
+  const usecasePath = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
+  const serviceRequests: D1ServiceRequestSource[] = snapshot.selection.requests.map(item => ({
+    route: item.route,
+    pageId: item.pageId,
+    kind: item.kind,
+    uses: [...item.uses],
+    outputs: item.outputs.map(output => ({ key: output.key, entity: output.entity })),
+    params: item.params.map(param => ({
+      name: param.name,
+      target: param.target,
+      ...(param.field ? { field: param.field } : {}),
+      ...(param.pages ? { pages: param.pages } : {}),
+    })),
   }));
+  const actors = pageActors(artifacts.needs);
+  const pageIds = [...new Set(snapshot.selection.requests.map(request => request.pageId))].sort();
   return {
-    project: source.project,
-    moduleName: source.moduleName,
-    pages,
-    routes,
-    usecases: source.usecases.map(usecase => ({
+    project: 102047,
+    moduleName,
+    pages: pageIds.map(pageId => ({
+      pageId,
+      actors: actors.get(pageId) || [],
+      defPath: `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
+    })),
+    usecases: snapshot.selection.usecases.map(usecase => ({
       usecaseId: usecase.usecaseId,
       entity: usecase.entity,
       operation: usecase.operation,
-      functionName: usecase.usecaseId,
-      defPath: usecase.defPath,
+      status: usecase.status,
+      functionName: '',
+      defPath: usecasePath.get(usecase.identity) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),
-    grants: GRANTS.map(item => ({ ...item, entityRefs: [...item.entityRefs], allowedFields: [...item.allowedFields] })),
-    relationships: RELATIONSHIPS.map(item => ({ ...item })),
-    contracts: contractSources(source.moduleName, routes),
+    grants: grantsFrom(artifacts.access),
+    relationships: relationshipsFrom(artifacts.ontologyIndex),
+    contracts: Object.entries(artifacts.contractTexts || {}).map(([pageId, source]) => ({
+      pageId,
+      path: `l2/${moduleName}/web/contracts/${pageId}.defs.ts`,
+      source,
+    })),
     existing: [],
-    enumerations: source.entities.flatMap(entity => entity.enumerations.map(item => ({
-      entityId: entity.entityId,
-      path: item.path,
-      values: [...item.values],
-    }))),
+    enumerations: [],
     accessRead: true,
     actorsRead: true,
+    serviceRequests,
+    ontology: artifacts.entities,
   };
 }
 
-function grant(
-  grantId: string,
-  actorRef: string,
-  entityRefs: string[],
-  disclosure: 'fieldsOnly' | 'fullRecord',
-  allowedFields: string[],
-  anchorEntity: string,
-  scopeMode: string,
-): D1ControllerGrant {
-  return { grantId, actorRef, entityRefs, disclosure, allowedFields, anchorEntity, scopeMode };
+function pageActors(needs: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  if (!isRecord(needs) || !Array.isArray(needs.pages)) return out;
+  for (const page of needs.pages) {
+    if (!isRecord(page) || typeof page.pageId !== 'string' || !Array.isArray(page.actors)) continue;
+    out.set(page.pageId, page.actors.filter((item): item is string => typeof item === 'string' && item.length > 0));
+  }
+  return out;
+}
+
+function grantsFrom(access: unknown): D1ControllerGrant[] {
+  if (!isRecord(access) || !Array.isArray(access.grants)) return [];
+  const out: D1ControllerGrant[] = [];
+  for (const grant of access.grants) {
+    if (!isRecord(grant) || typeof grant.grantId !== 'string' || typeof grant.actorRef !== 'string') continue;
+    const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
+    const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
+    const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
+    if (!mode) continue;
+    out.push({
+      grantId: grant.grantId,
+      actorRef: grant.actorRef,
+      entityRefs: stringList(grant.entityRefs),
+      disclosure: mode,
+      allowedFields: stringList(disclosure.allowedFields),
+      anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
+      scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
+    });
+  }
+  return out;
+}
+
+function relationshipsFrom(index: unknown): D1ControllerRelationship[] {
+  if (!isRecord(index) || !Array.isArray(index.relationships)) return [];
+  const out: D1ControllerRelationship[] = [];
+  for (const rel of index.relationships) {
+    if (!isRecord(rel) || typeof rel.relationshipId !== 'string') continue;
+    out.push({
+      relationshipId: rel.relationshipId,
+      from: typeof rel.from === 'string' ? rel.from : '',
+      to: typeof rel.to === 'string' ? rel.to : '',
+      field: typeof rel.field === 'string' ? rel.field : '',
+      required: rel.required === true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Agenda v1 entry still imported by skipped tests. Not a v2 source; never called by a live test.
+ */
+export function coreControllerRequest(): D1ControllerRequest {
+  throw new Error('agendaClinica fixtures kept by Wagner (01/10); not a v2 source');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
 }

@@ -15,18 +15,8 @@ export interface D1ContractSymbol {
   element: string;
 }
 
-/** A route string bound to symbols in this file. The symbol name is not an identity. */
-export interface D1RouteBinding {
-  route: string;
-  input: string;
-  output: string;
-}
-
 export interface D1ContractAst {
-  bindings: D1RouteBinding[];
   symbols: D1ContractSymbol[];
-  /** Routes whose binding is a type assertion instead of an input/output symbol. */
-  assertions: string[];
   /**
    * Exported declarations this reader could see but not close.
    * Callers surface each entry as `CONTRACT_UNPARSED`. Empty on a file this reader finished.
@@ -64,16 +54,14 @@ const TYPE_KEYWORDS = new Set([
 ]);
 
 /**
- * Reads exported `routes` bindings, exported `*Route` consts, and type shapes.
- * A `*Route` const whose value is the route string binds `StemInput`/`StemOutput`.
- * The first interface, and a name that matches the usecase, are not an identity.
+ * Reads exported type shapes. Route identity is the promoted v2 parser, not
+ * `export const routes` or a `*Route` const. The first interface, and a name
+ * that matches the usecase, are not an identity.
  * Deno loads this file with the agent. It must not import `typescript`.
  */
 export function readContractAst(source: string, fileName: string): D1ContractAst {
   const scan: Scan = { source, i: 0, fileName, unparsed: [] };
-  const bindings: D1RouteBinding[] = [];
   const symbols: D1ContractSymbol[] = [];
-  const assertions: string[] = [];
   while (scan.i < scan.source.length) {
     const mark = scan.i;
     skipTrivia(scan);
@@ -91,10 +79,10 @@ export function readContractAst(source: string, fileName: string): D1ContractAst
     if (consumeKeyword(scan, 'interface')) readInterface(scan, symbols);
     else if (consumeKeyword(scan, 'type')) readTypeAlias(scan, symbols);
     else if (consumeKeyword(scan, 'const') || consumeKeyword(scan, 'let') || consumeKeyword(scan, 'var')) {
-      readVariables(scan, bindings, assertions);
+      readVariables(scan);
     } else skipStatement(scan);
   }
-  return { bindings, symbols, assertions, unparsed: scan.unparsed };
+  return { symbols, unparsed: scan.unparsed };
 }
 
 /** The unique symbol of this name, or null when it is missing or duplicated. */
@@ -160,7 +148,7 @@ function readTypeAlias(scan: Scan, symbols: D1ContractSymbol[]): void {
   consumeSemi(scan);
 }
 
-function readVariables(scan: Scan, bindings: D1RouteBinding[], assertions: string[]): void {
+function readVariables(scan: Scan): void {
   while (scan.i < scan.source.length) {
     const name = readIdent(scan);
     if (!name) {
@@ -175,9 +163,7 @@ function readVariables(scan: Scan, bindings: D1RouteBinding[], assertions: strin
     skipTrivia(scan);
     if (scan.source[scan.i] === '=') {
       scan.i += 1;
-      const expr = parseExpr(scan);
-      if (name === 'routes') recordRoutes(expr, bindings, assertions);
-      else recordRouteConst(name, expr, bindings);
+      parseExpr(scan);
     }
     skipTrivia(scan);
     if (scan.source[scan.i] === ',') {
@@ -187,54 +173,6 @@ function readVariables(scan: Scan, bindings: D1RouteBinding[], assertions: strin
     consumeSemi(scan);
     break;
   }
-}
-
-function recordRoutes(expr: Expr, bindings: D1RouteBinding[], assertions: string[]): void {
-  const value = unwrapExpr(expr);
-  if (value.k !== 'object') return;
-  for (const prop of value.props) {
-    if (!prop.name) continue;
-    const inner = unwrapExpr(prop.value);
-    if (inner.k !== 'object') {
-      if (expressionAsserts(prop.value)) assertions.push(prop.name);
-      continue;
-    }
-    const input = stringProp(inner, 'input');
-    const output = stringProp(inner, 'output');
-    if (!output) continue;
-    bindings.push({ route: prop.name, input, output });
-  }
-}
-
-function recordRouteConst(name: string, expr: Expr, bindings: D1RouteBinding[]): void {
-  if (!name.endsWith('Route')) return;
-  const stem = name.slice(0, -'Route'.length);
-  if (!stem) return;
-  const value = unwrapExpr(expr);
-  if (value.k !== 'string' || !value.text) return;
-  const pascal = `${stem[0].toUpperCase()}${stem.slice(1)}`;
-  bindings.push({ route: value.text, input: `${pascal}Input`, output: `${pascal}Output` });
-}
-
-function stringProp(object: Extract<Expr, { k: 'object' }>, key: string): string {
-  for (const prop of object.props) {
-    if (prop.name !== key) continue;
-    const value = unwrapExpr(prop.value);
-    if (value.k === 'string') return value.text;
-  }
-  return '';
-}
-
-function expressionAsserts(expr: Expr): boolean {
-  let current = expr;
-  while (current.k === 'paren') current = current.inner;
-  return current.k === 'as' || current.k === 'satisfies';
-}
-
-function unwrapExpr(expr: Expr): Expr {
-  let current = expr;
-  while (current.k === 'as' || current.k === 'satisfies' || current.k === 'paren') current = current.inner;
-  return current;
 }
 
 function arrayElement(type: AstType): AstType | null {

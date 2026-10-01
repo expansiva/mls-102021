@@ -7,7 +7,7 @@ import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath, entityPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import type { D1SelectedRequest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1ActiveStatus, D1SelectedRequest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import {
@@ -100,9 +100,8 @@ async function controllerRequest(
   snapshot: {
     selection: {
       pages: Array<{ pageId: string; routes: string[] }>;
-      routes: Array<{ route: string; page: string; kind: string; usecaseRef: string; status: string }>;
       requests?: readonly D1SelectedRequest[];
-      usecases: Array<{ usecaseId: string; entity: string; operation: string; identity: string }>;
+      usecases: Array<{ usecaseId: string; entity: string; operation: string; status: D1ActiveStatus; identity: string }>;
     };
     files: Array<{ artifactType: string; identity: string; defPath: string }>;
     removed: Array<{ kind: string; id: string; defPath: string | null; contentHash?: string }>;
@@ -120,7 +119,10 @@ async function controllerRequest(
   const controllerPath = new Map(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.defPath]));
   const usecasePath = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
   const functions = functionsOf(usecases);
-  const pageIds = [...new Set(snapshot.selection.routes.map(route => route.page))].sort();
+  const pageIds = [...new Set([
+    ...snapshot.selection.pages.map(page => page.pageId),
+    ...(snapshot.selection.requests || []).map(request => request.pageId),
+  ])].filter(Boolean).sort();
   const contracts = [];
   for (const pageId of pageIds) {
     if (!isSafeToken(pageId)) continue;
@@ -143,17 +145,11 @@ async function controllerRequest(
       actors: actors.get(pageId) || [],
       defPath: controllerPath.get(pageId) || `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
     })),
-    routes: snapshot.selection.routes.map(route => ({
-      route: route.route,
-      page: route.page,
-      kind: route.kind,
-      usecaseRef: route.usecaseRef,
-      status: route.status,
-    })),
     usecases: snapshot.selection.usecases.map(usecase => ({
       usecaseId: usecase.usecaseId,
       entity: usecase.entity,
       operation: usecase.operation,
+      status: usecase.status,
       functionName: functions.get(usecase.usecaseId) || '',
       defPath: usecasePath.get(usecase.identity) || usecasePath.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),

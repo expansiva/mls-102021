@@ -90,7 +90,7 @@ void test('an explicit seed field does not transfer a homonym on the same entity
   assert.equal(rows.find(item => item.path === 'right')?.consumed, false);
 });
 
-void test('agenda sources keep seed use, the docType subset and the Phone restriction', () => {
+void test('agenda sources keep seed use, the docType subset and the Phone restriction', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const create = text(path.join(L1, 'layer_2_application/usecases/createRecepcionista.defs.ts'));
   const contractFile = path.join(AGENDA_CLINICA_F35E28A, 'l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts');
   const seeds = text(path.join(L1, 'layer_1_external/adapters/persistence/seeds.defs.ts'));

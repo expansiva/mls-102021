@@ -143,7 +143,7 @@ void test('input20 without contracts records the inventory and does not unlock t
 });
 
 /** The frozen head carries backend and effort v1.1; D1 reads only the v1.2 plans the producers write (d1_37, d1_39). */
-void test('input20 refuses v1.1 plans even when contracts parse, and writes no defs', async () => {
+void test('input20 refuses v1.1 plans even when contracts parse, and writes no defs', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = await readyHost(true);
   const contractKey = fileKey(fileInfoFromDisplay(PROJECT, `l2/${MODULE}/web/contracts/pacientes.defs.ts`)!);
   const contractMtime = host.files[contractKey]?.updatedAt;

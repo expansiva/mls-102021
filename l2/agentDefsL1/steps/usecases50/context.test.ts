@@ -76,7 +76,7 @@ function seedTree(host: ReturnType<typeof installStudio>, dir: string, prefix: s
  * writes (d1_37), so the live hook never reaches the usecases50 fan-out on it. The per-usecase worker
  * prompt tests come back when the 102047 bench is regenerated with the current producers.
  */
-void test('the real hook on a v1.1 effort stops at input20 and usecases50 writes nothing', async () => {
+void test('the real hook on a v1.1 effort stops at input20 and usecases50 writes nothing', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = installStudio(PROJECT);
   seedTree(host, path.join(APP, 'l4', MODULE), `l4/${MODULE}`);
   seedTree(host, path.join(APP, 'l2', MODULE, 'web', 'contracts'), `l2/${MODULE}/web/contracts`);

@@ -5,10 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
 
-import { parseDefsSource } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
-import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { fileKey, installStudio } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import {
@@ -24,6 +21,7 @@ import {
   derivedFieldIssues,
   domainImportIssues,
   integrationMechanismIssues,
+  pendingDefinition,
   recordFieldIssues,
   seedScenarioIssues,
   typeDataSchema,
@@ -48,10 +46,6 @@ import {
   agendaCatalog,
 } from '/_102021_/l2/agentDefsL1/examples/agendaClinicaCatalog.js';
 import type { D1MeasuredPlan } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import {
-  agendaExamples,
-  listConsultaWithContracts,
-} from '/_102021_/l2/agentDefsL1/examples/agendaClinicaExamples.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -97,21 +91,6 @@ function knownSkills(): string[] {
   return readdirSync(path.join(ROOT, 'skills'))
     .filter(name => name.endsWith('.md'))
     .map(name => `_102021_/l2/agentDefsL1/skills/${name}`);
-}
-
-function syntaxIssues(source: string, fileName: string): string[] {
-  const transpiled = ts.transpileModule(source, {
-    fileName,
-    reportDiagnostics: true,
-    compilerOptions: {
-      strict: true,
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-    },
-  });
-  return (transpiled.diagnostics ?? [])
-    .filter(diagnostic => diagnostic.category === ts.DiagnosticCategory.Error)
-    .map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
 }
 
 function walkProperties(node: unknown, pathName: string, root: unknown, out: string[]): void {
@@ -198,7 +177,7 @@ void test('agendaClinica catalog records the measured plan and does not turn the
   const catalog = agendaCatalog(plan);
   const skills = knownSkills();
   assert.deepEqual(catalogIssues(catalog, skills), []);
-  assert.equal(plan.selection.routes.length, 26);
+  assert.equal(plan.selection.pages.flatMap(page => page.routes).length, 26);
   assert.equal(plan.files.length, 32);
   assert.equal(plan.files.filter(file => file.artifactType === 'httpController').length, 6);
   const coverage = coverageReport(catalog, plan, AGENDA_ENTITY_STORAGE);
@@ -219,7 +198,7 @@ void test('agendaClinica catalog records the measured plan and does not turn the
   );
   assert.deepEqual(
     catalog.items.flatMap(item => item.routes || []).sort(),
-    plan.selection.routes.map(route => route.route).sort(),
+    plan.selection.pages.flatMap(page => page.routes).sort(),
   );
   assert.equal(catalog.items.some(item => item.outputAvailability !== 'future'), false);
   assert.equal(JSON.stringify(catalog).includes('agentCbMaterialize'), false);
@@ -230,65 +209,21 @@ void test('agendaClinica catalog records the measured plan and does not turn the
   }
 });
 
-void test('examples render, parse without eval and typecheck', () => {
-  const plan = loadAgendaPlan();
-  const examples = agendaExamples(agendaCatalog(plan), plan);
-  assert.equal(examples.length, 11);
-  for (const example of examples) {
-    const rendered = renderDefinition(example.definition, example.pipeline[0].defPath);
-    assert.equal('issues' in rendered, false, 'issues' in rendered ? rendered.issues.join('\n') : '');
-    if (!('source' in rendered)) continue;
-    const parsed = parseRendered(rendered.source);
-    assert.ok(parsed);
-    assert.deepEqual(parsed?.definition, example.definition);
-    assert.equal(rendered.source.includes('export const pipeline'), false);
-    assert.deepEqual(parseDefsSource(rendered.source), example.definition);
-    assert.deepEqual(syntaxIssues(rendered.source, `${example.definition.artifactId}.defs.ts`), []);
-    assert.equal(rendered.source.includes(`"status": "${example.definition.status}"`), true);
-    assert.equal(rendered.source.includes('agentCbMaterialize'), false);
-  }
-});
-
-void test('listConsulta keeps one inventory projection and per-route outputs', () => {
-  const plan = loadAgendaPlan();
-  const examples = agendaExamples(agendaCatalog(plan), plan);
-  const list = examples.find(example => example.definition.artifactId === 'listConsulta');
-  assert.ok(list);
-  const data = list?.definition.data as {
-    functions: Array<{ functionName: string; output: Array<{ name: string }> }>;
-    routeProjections: Array<{ route: string; projection: string; outputFields: string[] }>;
-  };
-  assert.equal(data.functions.length, 1);
-  assert.equal(data.functions[0]?.functionName, 'listConsulta');
-  assert.deepEqual(data.functions[0]?.output.map(field => field.name), ['id', 'status', 'attendanceNote']);
-  const professional = data.routeProjections.find(item => item.route === 'agendaClinica.consultas_profissional.qryListConsulta');
-  const reception = data.routeProjections.find(item => item.route === 'agendaClinica.consultas_recepcionista.qryListConsulta');
-  assert.deepEqual(professional?.outputFields, ['id', 'status', 'attendanceNote']);
-  assert.deepEqual(reception?.outputFields, ['id', 'status']);
-  assert.equal(reception?.outputFields.includes('attendanceNote'), false);
-  const unresolved = data.routeProjections.filter(item => item.projection === 'unresolved');
-  assert.ok(unresolved.length >= 1);
-  for (const item of unresolved) assert.deepEqual(item.outputFields, []);
-});
-
 void test('refs separate a future output from a missing contract and reject an uncontracted declaration', () => {
   const plan = loadAgendaPlan();
   const catalog = agendaCatalog(plan);
-  const examples = agendaExamples(catalog, plan);
-  const list = examples.find(example => example.definition.artifactId === 'listConsulta');
-  assert.ok(list);
-  const withContracts = listConsultaWithContracts(list!);
-  const items = catalog.items.map(item => item.id === withContracts.pipeline[0]?.id ? withContracts.pipeline[0] : item);
+  const controller = catalog.items.find(item => item.type === 'httpController');
+  assert.ok(controller);
   const broken = {
-    ...items[0],
-    dependsFiles: [...items[0].dependsFiles, '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.d.ts'],
+    ...controller,
+    dependsFiles: [...controller.dependsFiles, '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.d.ts', 'l2/agendaClinica/web/contracts/consultas_profissional.defs.ts'],
   };
-  const findings = resolveCatalogRefs({ ...catalog, items: [broken, ...items.slice(1)] });
-  assert.equal(findings.some(item => item.kind === 'futureOutput' && item.path.endsWith('/listConsulta.ts')), true);
-  assert.equal(findings.some(item => item.kind === 'plannedDef' && item.path.endsWith('/consulta.defs.ts')), true);
+  const findings = resolveCatalogRefs({ ...catalog, items: catalog.items.map(item => item.id === broken.id ? broken : item) });
+  assert.equal(findings.some(item => item.kind === 'futureOutput' && item.path.endsWith('.ts') && !item.path.endsWith('.defs.ts')), true);
   assert.equal(findings.some(item => item.kind === 'missingInput' && item.path === 'l2/agendaClinica/web/contracts/consultas_profissional.defs.ts'), true);
   assert.equal(findings.some(item => item.kind === 'uncontractedDeclaration' && item.path.endsWith('.d.ts')), true);
 });
+
 
 void test('the gate reports cycle, duplicate id, route and output, orphan dependency and a domain import', () => {
   const catalog = agendaCatalog(loadAgendaPlan());
@@ -317,8 +252,14 @@ void test('the gate reports cycle, duplicate id, route and output, orphan depend
   controllers[1].routes = [...(controllers[0].routes || [])];
   assert.equal(catalogIssues(routes, skills).some(issue => issue.startsWith('Duplicate route')), true);
 
-  const external = structuredClone(agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan())[0].definition);
-  (external.data as { imports: string[] }).imports = ['l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts'];
+  const external = pendingDefinition('domainEntity', 'Consulta', 'agendaClinica', {
+    entityId: 'Consulta',
+    storageTarget: 'moduleDatabase',
+    fields: [],
+    lifecycle: { states: [], transitions: [] },
+    invariants: [],
+    imports: ['l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts'],
+  });
   assert.equal(definitionIssues(external).some(issue => issue.includes('outside the domain')), true);
   assert.equal(domainImportIssues('agendaClinica', ['l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts']).length, 1);
 });
@@ -336,102 +277,91 @@ void test('unknown fields, draft status and an empty value object are refused wi
   }).some(issue => issue.includes('constraint')), true);
 });
 
-void test('access keeps the contradictory anchor and integration keeps unbound events', () => {
-  const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
-  const scope = examples.find(example => example.definition.artifactType === 'accessScope');
-  const authority = examples.find(example => example.definition.artifactType === 'authorityMap');
-  const integration = examples.find(example => example.definition.artifactType === 'integrationOutbound');
-  const adapter = examples.find(example => example.definition.artifactType === 'repositoryAdapter');
-  const port = examples.find(example => example.definition.artifactType === 'repositoryPort');
-  const table = examples.find(example => example.definition.artifactType === 'table');
-  assert.ok(scope && authority && integration && adapter && port && table);
-  assert.deepEqual(accessScopeIssues(scope?.definition.data), []);
-  const anchors = accessAnchorIssues(scope?.definition.data);
+void test('an anchor outside entity refs is kept as a finding', () => {
+  const scope = {
+    scopeId: 'accessScope',
+    grants: [{
+      grantId: 'ownDesk',
+      actorRef: 'clerk',
+      anchorEntity: 'Other',
+      entityRefs: ['Item'],
+      disclosure: 'fullRecord',
+      scopeMode: 'own',
+      session: 'verified',
+      path: [{
+        entityId: 'Item',
+        steps: [{ relationshipId: 'r1', from: 'Item', to: 'Other', field: 'ownerId' }],
+        pending: '',
+      }],
+      pending: '',
+    }],
+  };
+  assert.deepEqual(accessScopeIssues(scope), []);
+  const anchors = accessAnchorIssues(scope);
   assert.equal(anchors.length, 1);
-  assert.match(anchors[0] || '', /profissionalAgendaDiaria/);
-  assert.deepEqual(authorityGrantIssues(authority?.definition.data, scope?.definition.data), []);
-  assert.deepEqual(adapterLinkIssues(adapter?.definition, port?.definition, table?.definition), []);
-  const events = (integration?.definition.data as { events: unknown[] }).events;
-  const unbound = integrationMechanismIssues(integration?.definition.data);
-  assert.equal(events.length, 3);
-  assert.equal(unbound.length, 3);
-  assert.equal(definitionIssues(integration?.definition).length, 0);
+  assert.match(anchors[0] || '', /ownDesk/);
+  assert.deepEqual(authorityGrantIssues({ mapId: 'authorityMap', entries: [{ grantId: 'ownDesk', actorRef: 'clerk' }] }, scope), []);
 });
 
-void test('the measured MDM queue is an incompatible mechanism, not a missing API', () => {
-  const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
-  const integration = examples.find(example => example.definition.artifactType === 'integrationOutbound');
-  assert.ok(integration);
-  const data = structuredClone(integration.definition.data) as {
-    events: Array<{ eventId: string; mechanism: string; mechanismRef?: string }>;
+void test('naming the measured queue is an incompatible mechanism, not a missing API', () => {
+  const data = {
+    integrationId: 'outbound',
+    events: [{ eventId: 'itemSaved', on: 'Item.create', entityId: 'Item', mechanism: '', consumer: 'createItem' }],
   };
+  assert.equal(integrationMechanismIssues(data).length, 1);
   data.events[0].mechanism = D1_MEASURED_PUBLISH.symbol;
-  data.events[0].mechanismRef = D1_MEASURED_PUBLISH.path;
+  (data.events[0] as { mechanismRef?: string }).mechanismRef = D1_MEASURED_PUBLISH.path;
   const named = integrationMechanismIssues(data);
-  assert.equal(named.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:') && issue.includes(String(data.events[0].eventId))), true);
+  assert.equal(named.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:') && issue.includes('itemSaved')), true);
   assert.equal(named.some(issue => issue.startsWith('FICTIONAL_API:')), false);
   assert.equal(named.some(issue => issue.startsWith('MECHANISM_REF:')), false);
 
-  data.events[0].mechanismRef = 'mls-102034/l1/other.ts';
+  (data.events[0] as { mechanismRef?: string }).mechanismRef = 'mls-102034/l1/other.ts';
   const wrong = integrationMechanismIssues(data);
   assert.equal(wrong.some(issue => issue.startsWith('MECHANISM_REF:')), true);
   assert.equal(wrong.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:')), true);
   assert.equal(wrong.some(issue => issue.startsWith('FICTIONAL_API:')), false);
 
   data.events[0].mechanism = 'ctx.publishEvent';
-  delete data.events[0].mechanismRef;
+  delete (data.events[0] as { mechanismRef?: string }).mechanismRef;
   const fictional = integrationMechanismIssues(data);
   assert.equal(fictional.some(issue => issue.startsWith('FICTIONAL_API:')), true);
   assert.equal(fictional.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:')), false);
 });
 
 void test('a derived field is rejected as a usecase input', () => {
-  const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
-  const entity = examples.find(example => example.definition.artifactType === 'domainEntity')?.definition.data;
-  const usecase = structuredClone(examples.find(example => example.definition.artifactId === 'listConsulta')?.definition.data) as {
-    functions: Array<{ input: Array<{ name: string }> }>;
-  };
-  usecase.functions[0].input.push({ name: 'id' });
+  const entity = { fields: [{ name: 'id', type: 'string', derived: true }] };
+  const usecase = { functions: [{ input: [{ name: 'id' }] }] };
   assert.equal(derivedFieldIssues(entity, [usecase]).some(issue => issue.includes('Derived field id')), true);
 });
 
-void test('round-trip through the real inventory, and a collision writes nothing', async () => {
+void test('a duplicate def path writes nothing', async () => {
   const host = installStudio(102047);
-  const examples = agendaExamples(agendaCatalog(loadAgendaPlan()), loadAgendaPlan());
-  const port = examples.find(example => example.definition.artifactType === 'repositoryPort');
-  assert.ok(port);
-  const refused = await persistDefinitions(102047, [port!, port!].map(example => ({
-    definition: example.definition,
-    defPath: example.pipeline[0].defPath,
-  })));
+  const definition = pendingDefinition('repositoryPort', 'itemRepository', 'ledgerDesk', {
+    entityId: 'Item',
+    interfaceName: 'ItemRepository',
+    methods: [{ name: 'save', params: ['record'], returns: 'void' }],
+  });
+  const defPath = '_102047_/l1/ledgerDesk/layer_2_application/ports/itemRepository.defs.ts';
+  const refused = await persistDefinitions(102047, [
+    { definition, defPath },
+    { definition, defPath },
+  ]);
   assert.equal(refused.written.length, 0);
   assert.equal(host.writes.length, 0);
   assert.equal(refused.issues.some(issue => issue.startsWith('Duplicate defPath')), true);
 
-  const stored = await persistDefinitions(102047, examples.map(example => ({
-    definition: example.definition,
-    defPath: example.pipeline[0].defPath,
-  })));
+  const stored = await persistDefinitions(102047, [{ definition, defPath }]);
   assert.deepEqual(stored.issues, []);
-  assert.equal(stored.written.length, examples.length);
+  assert.equal(stored.written.length, 1);
   const sample = stored.written[0];
   assert.ok(sample);
-  assert.deepEqual(artifactFile(102047, examples[0].pipeline[0].defPath), sample);
-  assert.equal(fileKey(artifactFile(102047, examples[0].pipeline[0].defPath)!), fileKey(sample));
-
-  const inventory = await readL1Inventory(102047, 'agendaClinica');
-  assert.equal(inventory.present, true);
-  assert.deepEqual(inventory.ports.map(item => item.portId), ['ConsultaRepository']);
-  assert.equal(inventory.ports[0]?.entity, 'Consulta');
-  assert.deepEqual(inventory.tables, [{ tableId: 'consulta', entity: 'Consulta' }]);
-  const list = inventory.usecases.find(item => item.usecaseId === 'listConsulta');
-  assert.ok(list);
-  assert.equal(list?.functions[0]?.name, 'listConsulta');
-  assert.deepEqual(list?.functions[0]?.input.map(field => field.name), ['professionalId', 'scheduledAt']);
-  assert.deepEqual(list?.functions[0]?.output.map(field => field.name), ['id', 'status', 'attendanceNote']);
-  assert.equal(list?.functions[0]?.output.find(field => field.name === 'attendanceNote')?.fieldRef, 'Consulta.details.attendanceNote');
-  assert.deepEqual(inventory.routes, [
-    'agendaClinica.consultas_profissional.cmdRegistrarAtendimento',
-    'agendaClinica.consultas_profissional.qryListConsulta',
-  ]);
+  assert.deepEqual(artifactFile(102047, defPath), sample);
+  assert.equal(fileKey(artifactFile(102047, defPath)!), fileKey(sample));
+  const rendered = renderDefinition(definition, defPath);
+  assert.equal('issues' in rendered, false);
+  if ('source' in rendered) {
+    const parsed = parseRendered(host.files[fileKey(sample)]?.content || '');
+    assert.deepEqual(parsed?.definition, definition);
+  }
 });

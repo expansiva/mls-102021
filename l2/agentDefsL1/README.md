@@ -66,7 +66,10 @@ Intact means the file parses, those identities match the invocation, and
 bytes. A duplicate or late hook cannot move `entry10` off `approved` and
 cannot move `awaitingStep` forward.
 
-`input20` records the inventory and does not generate `.defs.ts`. It approves
+`input20` records the inventory and does not generate `.defs.ts`. A route comes from the
+L2 contract v2, not from `backend.endpoints` or `effort.endpoints`. A usecase comes from the
+pool (`backend.json` and `effort.json`) and is tied to a request by entity and operation.
+It approves
 itself and mints `input20-done` only when consumer phases are released. A missing
 contract or a missing required source sets `awaitingStep` to `input20` and
 records the blocking codes and counts on `steps.input20` (`failed`, not

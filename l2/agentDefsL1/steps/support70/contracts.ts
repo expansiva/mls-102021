@@ -26,7 +26,7 @@ export type D1EnumWriter = 'platform' | 'module' | 'derived' | 'unresolved';
 
 export type D1EnumRestriction = 'inherited' | 'subset' | 'own' | 'invalid' | 'unresolved';
 
-export type D1EnumPurpose = 'seedScenario' | 'routeContract' | 'usecaseDef' | 'domainDef';
+export type D1EnumPurpose = 'seedScenario' | 'usecaseDef' | 'domainDef';
 
 /** One proved use. A homonymous literal on another entity or path is not this use. */
 export interface D1EnumUse {
@@ -320,7 +320,6 @@ export interface D1SupportRequest {
   enumSnapshot?: {
     sources: Record<string, string>;
     definitions: string[];
-    contracts: Array<{ path: string; text: string }>;
     tables: Array<{ tableId: string; entityId: string }>;
   };
   /** Datasets already shared. Dropping one owner does not drop the dataset. */

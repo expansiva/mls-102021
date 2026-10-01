@@ -2,7 +2,6 @@
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import {
   ENUMERATION_CONSUMED_REASON,
   ENUMERATION_PROVED_REASON,
@@ -27,12 +26,11 @@ import type {
 } from '/_102035_/l2/solution/types.js';
 
 /** What the report looked at. A union or an owner is not runtime enforcement. */
-export const ENUMERATION_LIMITS = 'Covered uses are a seed scenario that names this entity and path, a route-contract union, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.' as const;
+export const ENUMERATION_LIMITS = 'Covered uses are a seed scenario that names this entity and path, and a domain or usecase def whose type names this path with those literals. A TypeScript union is not runtime enforcement. Ownership is not consumption. No seed, catalog or table is created here.' as const;
 
 export interface D1EnumSnapshot {
   sources: Record<string, string>;
   definitions: string[];
-  contracts: Array<{ path: string; text: string }>;
   tables: Array<{ tableId: string; entityId: string }>;
 }
 
@@ -57,7 +55,7 @@ export function projectEnumerations(input: D1EnumInput): D1EnumRow[] {
   const snapshot = input.snapshot;
   const bodies = bodiesOf(snapshot?.sources || {});
   const tables = new Map((snapshot?.tables || []).map(table => [table.tableId, table.entityId]));
-  const fromDefs = usesFromTexts(snapshot?.definitions || [], snapshot?.contracts || [], input.enumerations, tables);
+  const fromDefs = usesFromTexts(snapshot?.definitions || [], input.enumerations, tables);
   const fromSeeds = (input.seedCitations || []).map(citation => useOf(
     'seedScenario',
     citation.scenarioId,
@@ -211,23 +209,17 @@ function findNode(view: OntologyTreeView, path: string): OntologyNode | null {
 
 function usesFromTexts(
   definitions: readonly string[],
-  contracts: ReadonlyArray<{ path: string; text: string }>,
   enumerations: ReadonlyArray<{ entityId: string; path: string; values: readonly string[] }>,
   tables: ReadonlyMap<string, string>,
 ): D1EnumUse[] {
   const uses: D1EnumUse[] = [];
-  const routes = new Map<string, string>();
   for (const text of definitions) {
     const parsed = parseD1Source(text, 'defs');
     if (!isRecord(parsed) || !isRecord(parsed.data)) continue;
     const data = parsed.data;
-    if (parsed.artifactType === 'usecase') uses.push(...usecaseUses(data, enumerations, routes));
+    if (parsed.artifactType === 'usecase') uses.push(...usecaseUses(data, enumerations));
     else if (parsed.artifactType === 'domainEntity') uses.push(...domainUses(data, enumerations));
     else if (parsed.artifactType === 'persistenceSeeds') uses.push(...seedUses(data, enumerations, tables));
-  }
-  for (const contract of contracts) {
-    if (!contract.text) continue;
-    uses.push(...contractUses(contract.text, contract.path, enumerations, routes));
   }
   return uses;
 }
@@ -235,7 +227,6 @@ function usesFromTexts(
 function usecaseUses(
   data: Record<string, unknown>,
   enumerations: ReadonlyArray<{ entityId: string; path: string; values: readonly string[] }>,
-  routes: Map<string, string>,
 ): D1EnumUse[] {
   const entityId = typeof data.entityId === 'string' ? data.entityId : '';
   const usecaseId = typeof data.usecaseId === 'string' ? data.usecaseId : '';
@@ -243,14 +234,8 @@ function usecaseUses(
   const uses: D1EnumUse[] = [];
   for (const fn of arrayOf(data.functions)) {
     if (!isRecord(fn)) continue;
-    for (const ref of arrayOf(fn.contractRefs)) {
-      if (isRecord(ref) && typeof ref.route === 'string' && ref.route) routes.set(ref.route, entityId);
-    }
     uses.push(...slotUses(entityId, usecaseId, 'input', fn.input, enumerations));
     uses.push(...slotUses(entityId, usecaseId, 'output', fn.output, enumerations));
-  }
-  for (const projection of arrayOf(data.routeProjections)) {
-    if (isRecord(projection) && typeof projection.route === 'string' && projection.route) routes.set(projection.route, entityId);
   }
   return uses;
 }
@@ -335,59 +320,6 @@ function scenarioEntity(scenario: Record<string, unknown>, tables: ReadonlyMap<s
   if (typeof scenario.entityId === 'string' && scenario.entityId) return scenario.entityId;
   const tableId = typeof scenario.tableId === 'string' ? scenario.tableId : '';
   return tableId ? tables.get(tableId) || '' : '';
-}
-
-function contractUses(
-  text: string,
-  filePath: string,
-  enumerations: ReadonlyArray<{ entityId: string; path: string; values: readonly string[] }>,
-  routes: ReadonlyMap<string, string>,
-): D1EnumUse[] {
-  const ast = readContractAst(text, filePath);
-  const uses: D1EnumUse[] = [];
-  for (const binding of ast.bindings) {
-    const entityId = routes.get(binding.route);
-    if (!entityId) continue;
-    uses.push(...symbolUses(ast, binding.input, binding.route, entityId, true, enumerations));
-    uses.push(...symbolUses(ast, binding.output, binding.route, entityId, false, enumerations));
-  }
-  return uses;
-}
-
-function symbolUses(
-  ast: ReturnType<typeof readContractAst>,
-  symbol: string,
-  route: string,
-  entityId: string,
-  editable: boolean,
-  enumerations: ReadonlyArray<{ entityId: string; path: string; values: readonly string[] }>,
-): D1EnumUse[] {
-  const fields = symbolFields(ast, symbol);
-  if (!fields) return [];
-  const uses: D1EnumUse[] = [];
-  for (const field of fields) {
-    for (const leaf of leavesOf(field.type, field.name)) {
-      const match = enumerations.find(item => item.entityId === entityId && item.path === leaf.path);
-      const values = match ? provedValues(leaf.literals, match.values) : null;
-      if (!match || !values) continue;
-      uses.push(useOf('routeContract', route, entityId, leaf.path, values, editable));
-    }
-  }
-  return uses;
-}
-
-function symbolFields(
-  ast: ReturnType<typeof readContractAst>,
-  name: string,
-  seen = new Set<string>(),
-): Array<{ name: string; type: string }> | null {
-  if (!name || seen.has(name)) return null;
-  seen.add(name);
-  const found = ast.symbols.filter(item => item.name === name);
-  if (found.length !== 1) return null;
-  const item = found[0];
-  if (item.shape === 'array' && item.element) return symbolFields(ast, item.element, seen);
-  return item.fields.map(field => ({ name: field.name, type: field.type }));
 }
 
 function useOf(

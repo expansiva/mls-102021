@@ -28,7 +28,6 @@ import {
   type D1RequestParam,
   type D1SelectedPort,
   type D1SelectedRequest,
-  type D1SelectedRoute,
   type D1SelectedTable,
   type D1SelectedUsecase,
   type D1SourceDigest,
@@ -140,61 +139,6 @@ export function buildD1InputSnapshot(
     }
   }
 
-  const backendByRoute = indexBy(backendEndpoints.filter(row => text(row.status) !== 'toRemove'), 'route');
-  const effortByRoute = indexBy(effortEndpoints.filter(row => text(row.status) !== 'toRemove'), 'route');
-  const selectedRoutes: D1SelectedRoute[] = [];
-  const routeIds = new Set([...backendByRoute.keys(), ...effortByRoute.keys()]);
-  for (const route of [...routeIds].sort()) {
-    const left = backendByRoute.get(route);
-    const right = effortByRoute.get(route);
-    if (!left || !right) {
-      error(problems, 'DIVERGENT_SOURCE', !left ? paths.backend : paths.effort, `Route ${route} is not in both plans.`, route);
-      continue;
-    }
-    const fields: Array<[string, string, string]> = [
-      ['status', text(left.status), text(right.status)],
-      ['page', text(left.page), text(right.page)],
-      ['kind', text(left.kind), text(right.kind)],
-      ['usecaseRef', text(left.usecaseRef), text(right.usecaseRef)],
-    ];
-    const mismatch = fields.find(([, a, b]) => a !== b);
-    if (mismatch) {
-      error(problems, 'DIVERGENT_SOURCE', paths.backend, `Route ${route} ${mismatch[0]} is '${mismatch[1]}' in backend and '${mismatch[2]}' in effort.`, route);
-      continue;
-    }
-    if (!isActive(text(left.status))) continue;
-    const page = text(left.page);
-    if (!menuPages.has(page) || !needPages.has(page)) {
-      error(problems, 'ORPHAN_ROUTE', paths.backend, `Route ${route} page ${page} is not in the menu and needs.`, route);
-      continue;
-    }
-    selectedRoutes.push({
-      route,
-      page,
-      kind: text(left.kind),
-      usecaseRef: text(left.usecaseRef),
-      status: text(left.status) as D1ActiveStatus,
-    });
-  }
-
-  for (const screen of effortScreens.values()) {
-    const pageId = text(screen.pageId);
-    if (!pageId || text(screen.status) === 'toRemove') continue;
-    const listed = strings(screen.endpoints).slice().sort();
-    const planned = selectedRoutes.filter(route => route.page === pageId).map(route => route.route).sort();
-    const orphans = strings(screen.endpoints).filter(route => {
-      const row = backendByRoute.get(route);
-      return !!row && (!menuPages.has(text(row.page)) || !needPages.has(text(row.page)));
-    });
-    if (orphans.length) continue;
-    if (listed.join('\0') !== planned.join('\0')) {
-      error(problems, 'DIVERGENT_SOURCE', paths.effort, `Screen ${pageId} endpoints do not match the selected routes.`, pageId);
-    }
-    if (listed.length === 0) {
-      review(problems, 'SCREEN_WITHOUT_ROUTES', paths.effort, `Screen ${pageId} has no routes. No controller is planned.`, pageId);
-    }
-  }
-
   const selectedUsecases: D1SelectedUsecase[] = [];
   const usecaseIds = new Set([...backendUsecases.keys(), ...effortUsecases.keys()]);
   for (const usecaseId of [...usecaseIds].sort()) {
@@ -216,10 +160,6 @@ export function buildD1InputSnapshot(
       continue;
     }
     if (!isActive(text(left.status))) continue;
-    const routes = selectedRoutes.filter(route => route.usecaseRef === usecaseId).map(route => route.route);
-    if (!routes.length) {
-      review(problems, 'USECASE_WITHOUT_ROUTE', paths.backend, `Usecase ${usecaseId} has no selected route.`, usecaseId);
-    }
     const existing = text(left.existing);
     const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing);
     selectedUsecases.push({
@@ -229,7 +169,7 @@ export function buildD1InputSnapshot(
       status: text(left.status) as D1ActiveStatus,
       existing,
       identity: identityId,
-      routes,
+      routes: [],
     });
   }
 
@@ -267,7 +207,6 @@ export function buildD1InputSnapshot(
     selectedPorts.push({ portId, entity, status: status as D1ActiveStatus });
   }
 
-  const removed = collectRemoved(problems, paths, backend, effort, selectedRoutes, selectedUsecases);
   const entityClosure = closeEntities(selectedUsecases, relationships, new Set(entityIds));
   const outbound = outboundEvents(integration);
   const hasEffects = outbound.length > 0 || hasEffectOperations(integration, workflows);
@@ -287,14 +226,18 @@ export function buildD1InputSnapshot(
     artifacts.entities,
     access,
   );
+  for (const usecase of selectedUsecases) {
+    usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
+  }
   noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0);
-  noteContracts(problems, moduleName, selectedRoutes, artifacts.contracts, contractV2);
+  noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
+  const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
   const files = stampHashes(planFiles({
     moduleName,
-    routes: selectedRoutes,
+    requests,
     usecases: selectedUsecases,
     ports: selectedPorts,
     tables: selectedTables,
@@ -310,7 +253,7 @@ export function buildD1InputSnapshot(
   noteRemovals(problems, removed, previous, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
 
-  const pages = pageGroups(selectedRoutes);
+  const pages = pageGroups(requests);
   const snapshot: D1InputSnapshot = {
     schemaVersion: D1_INPUT_VERSION,
     project: identity.project,
@@ -320,7 +263,6 @@ export function buildD1InputSnapshot(
     sources,
     selection: {
       pages,
-      routes: selectedRoutes,
       requests,
       usecases: selectedUsecases,
       ports: selectedPorts,
@@ -343,14 +285,12 @@ export function contractPageIds(artifacts: Pick<D1InputArtifacts, 'menu' | 'need
   for (const pageId of menuPageIds(rec(artifacts.menu))) ids.add(pageId);
   for (const row of rows(rec(artifacts.needs).pages)) ids.add(text(row.pageId));
   for (const row of rows(rec(artifacts.effort).screens)) ids.add(text(row.pageId));
-  for (const row of rows(rec(artifacts.backend).endpoints)) ids.add(text(row.page));
-  for (const key of Object.keys(rec(rec(rec(artifacts.backend).meta).pages))) ids.add(key);
   return [...ids].filter(id => isSafeToken(id)).sort();
 }
 
 function planFiles(input: {
   moduleName: string;
-  routes: D1SelectedRoute[];
+  requests: D1SelectedRequest[];
   usecases: D1SelectedUsecase[];
   ports: D1SelectedPort[];
   tables: D1SelectedTable[];
@@ -483,16 +423,20 @@ function planFiles(input: {
     });
   }
 
-  for (const page of pageGroups(input.routes)) {
+  for (const page of pageGroups(input.requests)) {
     if (!isSafeToken(page.pageId)) continue;
     const defPath = `l1/${moduleName}/layer_1_external/adapters/http/controllers/${page.pageId}.defs.ts`;
-    const pageRoutes = input.routes.filter(route => route.page === page.pageId);
-    const status = worstOfList(pageRoutes.map(route => route.status));
-    const mixed = new Set(pageRoutes.map(route => route.status)).size > 1;
-    const usecaseIds = unique(pageRoutes.map(route => {
-      const usecase = input.usecases.find(item => item.usecaseId === route.usecaseRef);
+    const pageRequests = input.requests.filter(request => request.pageId === page.pageId);
+    const statuses = unique(pageRequests.flatMap(request => request.uses.map(usecaseId => {
+      const usecase = input.usecases.find(item => item.usecaseId === usecaseId);
+      return usecase?.status || '';
+    }).filter(Boolean))) as D1ActiveStatus[];
+    const status = worstOfList(statuses.length ? statuses : ['toCreate']);
+    const mixed = new Set(statuses).size > 1;
+    const usecaseIds = unique(pageRequests.flatMap(request => request.uses.map(usecaseId => {
+      const usecase = input.usecases.find(item => item.usecaseId === usecaseId);
       return usecase ? `usecase:${usecase.identity}` : '';
-    }).filter(Boolean));
+    }).filter(Boolean)));
     add({
       id: `controller:${page.pageId}`,
       artifactType: 'httpController',
@@ -683,7 +627,7 @@ function collectRemoved(
   paths: ReturnType<typeof inputPaths>,
   backend: Record<string, unknown>,
   effort: Record<string, unknown>,
-  routes: D1SelectedRoute[],
+  requests: D1SelectedRequest[],
   usecases: D1SelectedUsecase[],
 ): D1RemovedItem[] {
   const backendRemoved = rows(backend.removed).map(row => ({ kind: text(row.kind), id: text(row.id), status: text(row.status) }));
@@ -699,8 +643,8 @@ function collectRemoved(
     const key = `${item.kind}:${item.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    if (item.kind === 'usecase' && routes.some(route => route.usecaseRef === item.id)) {
-      error(problems, 'REMOVE_STILL_REFERENCED', paths.effort, `Usecase ${item.id} is toRemove but a selected route still uses it.`, item.id);
+    if (item.kind === 'usecase' && requests.some(request => request.uses.includes(item.id))) {
+      error(problems, 'REMOVE_STILL_REFERENCED', paths.effort, `Usecase ${item.id} is toRemove but a contract request still calls it.`, item.id);
       continue;
     }
     if (item.kind !== 'endpoint') {
@@ -1025,24 +969,26 @@ function noteUnrequested(
 function noteContracts(
   problems: D1InputProblem[],
   moduleName: string,
-  routes: D1SelectedRoute[],
   contracts: D1InputArtifacts['contracts'],
+  texts: Record<string, string> | undefined,
   contractV2: Map<string, D2ContractV2Definition>,
 ): void {
-  const pages = unique(routes.map(route => route.page));
-  for (const pageId of pages) {
+  const pageIds = new Set([...Object.keys(contracts), ...Object.keys(texts || {})]);
+  for (const pageId of [...pageIds].sort()) {
     const path = contractPath(moduleName, pageId);
-    if (contractV2.has(pageId)) continue;
-    const value = contracts[pageId];
-    if (value == null) {
+    const text = texts?.[pageId];
+    if (text == null) {
       error(problems, 'CONTRACT_ABSENT', path, `L2 contract for ${pageId} is absent. The inventory stays readable and consumer phases are not released.`, pageId);
       continue;
     }
-    if (!Array.isArray(value.unparsed)) {
-      error(problems, 'CONTRACT_UNPARSED', path, `L2 contract for ${pageId} is unreadable.`, pageId);
+    if (contractV2.has(pageId)) continue;
+    const value = contracts[pageId];
+    const details = value && Array.isArray(value.unparsed) ? value.unparsed : [];
+    if (!details.length) {
+      error(problems, 'CONTRACT_UNPARSED', path, `L2 contract for ${pageId} is not a v2 contract.`, pageId);
       continue;
     }
-    for (const detail of value.unparsed) {
+    for (const detail of details) {
       error(problems, 'CONTRACT_UNPARSED', path, detail, pageId);
     }
   }
@@ -1257,12 +1203,12 @@ function menuPageIds(menu: Record<string, unknown>): Set<string> {
   return ids;
 }
 
-function pageGroups(routes: D1SelectedRoute[]): Array<{ pageId: string; routes: string[] }> {
+function pageGroups(requests: D1SelectedRequest[]): Array<{ pageId: string; routes: string[] }> {
   const pages = new Map<string, string[]>();
-  for (const route of routes) {
-    const list = pages.get(route.page) || [];
-    list.push(route.route);
-    pages.set(route.page, list);
+  for (const request of requests) {
+    const list = pages.get(request.pageId) || [];
+    list.push(request.route);
+    pages.set(request.pageId, list);
   }
   return [...pages.entries()]
     .map(([pageId, pageRoutes]) => ({ pageId, routes: pageRoutes.slice().sort() }))
@@ -1284,7 +1230,8 @@ function worstOf(left: D1ActiveStatus, right: D1ActiveStatus): D1ActiveStatus {
   return worstOfList([left, right]);
 }
 
-function worstOfList(statuses: D1ActiveStatus[]): D1ActiveStatus {
+/** `toCreate` over `toUpdate` over `done`. controllers60 applies it per handler. */
+export function worstOfList(statuses: readonly D1ActiveStatus[]): D1ActiveStatus {
   if (statuses.includes('toCreate')) return 'toCreate';
   if (statuses.includes('toUpdate')) return 'toUpdate';
   return 'done';

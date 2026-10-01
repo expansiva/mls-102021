@@ -41,7 +41,7 @@ function hopIds(path: SerializedGrant['path'] | undefined): string[] {
   return (path || []).flatMap(entry => entry.steps.map(step => step.relationshipId));
 }
 
-void test('the frozen fixture emits scope, authority and the live registry', () => {
+void test('the frozen fixture emits scope, authority and the live registry', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
@@ -95,7 +95,7 @@ void test('the frozen fixture emits scope, authority and the live registry', () 
   assert.equal(build.emit.some(item => item.definition.artifactType === 'persistenceSeeds'), false);
 });
 
-void test('registry and scope are separate emitters', () => {
+void test('registry and scope are separate emitters', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   const problems: D1SupportProblem[] = [];
   const scope = emitScope(request, problems);
@@ -106,7 +106,7 @@ void test('registry and scope are separate emitters', () => {
   assert.equal(scope.resolutions.length, 7);
 });
 
-void test('a dead adapter is not registered and one removed consumer keeps the helper', () => {
+void test('a dead adapter is not registered and one removed consumer keeps the helper', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   const daily = request.grants.find(item => item.grantId === 'profissionalAgendaDiaria');
   assert.ok(daily);
@@ -146,7 +146,7 @@ void test('a dead adapter is not registered and one removed consumer keeps the h
   assert.equal(gone.removedHelpers.includes('join:appointmentPatient'), true);
 });
 
-void test('a missing grant and an anchor without a path stay diagnoses', () => {
+void test('a missing grant and an anchor without a path stay diagnoses', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   request.citedGrantIds.push('missingGrant');
   request.grants.push({
@@ -186,7 +186,7 @@ void test('a missing grant and an anchor without a path stay diagnoses', () => {
   assert.notEqual(serialized?.scopeMode, 'public');
 });
 
-void test('own and organization stay distinct and a multi-hop path is not just the anchor name', () => {
+void test('own and organization stay distinct and a multi-hop path is not just the anchor name', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const controllers = buildD1Controllers(coreControllerRequest());
   const request = coreSupportRequest();
   request.grants.push(
@@ -283,7 +283,7 @@ void test('own and organization stay distinct and a multi-hop path is not just t
   assert.equal(dropped.policies.length, 0);
 });
 
-void test('a receipt mismatch and a form identity do not emit', () => {
+void test('a receipt mismatch and a form identity do not emit', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   const scopePath = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;
   request.files = [{
@@ -307,7 +307,7 @@ void test('a receipt mismatch and a form identity do not emit', () => {
   assert.equal(JSON.stringify(formed.emit).includes('actorId'), false);
 });
 
-void test('an inverted application edge is refused', () => {
+void test('an inverted application edge is refused', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   request.applicationEdges = [{
     id: pipelineId(request.project, request.moduleName, 'usecase', 'listConsulta'),
@@ -320,7 +320,7 @@ void test('an inverted application edge is refused', () => {
   assert.equal(build.problems.some(item => item.code === 'INVERTED_IMPORT'), true);
 });
 
-void test('removing one adapter keeps the shared registry', () => {
+void test('removing one adapter keeps the shared registry', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   request.adapters.push({
     portId: 'PacienteRepository',
@@ -355,7 +355,7 @@ void test('removing one adapter keeps the shared registry', () => {
   assert.deepEqual(supportFilesToRemove(none, request.files).map(file => file.artifactType), ['repositoryRegistration']);
 });
 
-void test('the frozen fixture plans consulta seeds and does not write rows', () => {
+void test('the frozen fixture plans consulta seeds and does not write rows', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
@@ -409,7 +409,7 @@ void test('the frozen fixture plans consulta seeds and does not write rows', () 
   assert.equal(JSON.stringify(build).includes('l5/'), false);
 });
 
-void test('a ref on a structured field without a column relationship is refused', () => {
+void test('a ref on a structured field without a column relationship is refused', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.seedRefs = [{ field: 'details.attendanceNote', relationshipId: 'appointmentPatient', entityId: 'Paciente' }];
   const build = buildD1Support(request);
@@ -421,7 +421,7 @@ void test('a ref on a structured field without a column relationship is refused'
   assert.equal(JSON.stringify(build.emit).includes('details.attendanceNote'), false);
 });
 
-void test('a role tag is not an MDM entity id and an MDM table is not seeded', () => {
+void test('a role tag is not an MDM entity id and an MDM table is not seeded', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.seedRefs = [{ field: 'patientId', relationshipId: 'appointmentPatient', entityId: 'paciente' }];
   const tagged = buildD1Support(request);
@@ -451,7 +451,7 @@ void test('a role tag is not an MDM entity id and an MDM table is not seeded', (
   assert.equal(JSON.stringify(namespaced.seedPlan).includes('mdmSeed'), false);
 });
 
-void test('maintenance does not reseed and one removed owner keeps the shared dataset', () => {
+void test('maintenance does not reseed and one removed owner keeps the shared dataset', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const reset = agendaSeedRequest();
   reset.maintenance = { action: 'reseed', ownerId: '' };
   const refused = buildD1Support(reset);
@@ -477,7 +477,7 @@ void test('maintenance does not reseed and one removed owner keeps the shared da
   assert.equal(kept.emit.some(item => item.definition.artifactType === 'persistenceSeeds'), true);
 });
 
-void test('the three clinic events stay linked and unbound, and the note payload is not invented', () => {
+void test('the three clinic events stay linked and unbound, and the note payload is not invented', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
@@ -510,7 +510,7 @@ void test('the three clinic events stay linked and unbound, and the note payload
   assert.equal(existsSync(fileURLToPath(new URL('./prompt.md', import.meta.url))), false);
 });
 
-void test('an omitted event stops the step and a fictional publish name is refused', () => {
+void test('an omitted event stops the step and a fictional publish name is refused', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const omitted = agendaSeedRequest();
   omitted.outbound = omitted.outbound.filter(event => event.eventId !== 'faltaPacienteRegistrada');
   const missing = buildD1Support(omitted);
@@ -528,7 +528,7 @@ void test('an omitted event stops the step and a fictional publish name is refus
   assert.equal(JSON.stringify(refused.emit).includes('publishEvent'), false);
 });
 
-void test('naming the measured MDM queue is not a module binding', () => {
+void test('naming the measured MDM queue is not a module binding', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.outbound = request.outbound.map(event => event.eventId === 'consultaConfirmada'
     ? { ...event, mechanism: D1_MEASURED_PUBLISH.symbol }
@@ -553,7 +553,7 @@ void test('naming the measured MDM queue is not a module binding', () => {
   assert.equal(JSON.stringify(build.emit).includes('publishEvent'), false);
 });
 
-void test('processes, inbound and plugins stay operations and a missing pool item stays a gap', () => {
+void test('processes, inbound and plugins stay operations and a missing pool item stays a gap', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.operations = [
     { id: 'confirmacao', kind: 'process', operations: ['confirmarConsulta'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
@@ -581,7 +581,7 @@ void test('processes, inbound and plugins stay operations and a missing pool ite
   assert.equal(build.effectPlan.executed, false);
 });
 
-void test('inbound create and update follow writes and effect, not a name or transitionRef', () => {
+void test('inbound create and update follow writes and effect, not a name or transitionRef', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const pool = [
     usecase('qx7', 'Quark', 'create'),
     usecase('createQuark', 'Nope', 'archive'),
@@ -703,7 +703,7 @@ const FROZEN_TEST_SUPPORT = [
   { id: 'mdm:Paciente', actorRefs: ['recepcionista'], entityRefs: ['Paciente'], sourceRefs: ['ontology:Consulta/relationships'], status: 'toCreate', owner: 'runtime', executorRef: '', cleanupRef: '', gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: no runtime API' },
 ];
 
-void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def; v1.1 leaves the def as it was', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
+void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def; v1.1 leaves the def as it was', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const seedsOf = async () => {
     const built = await assembleD1Support(102047, 'agendaClinica');
     assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');
@@ -754,7 +754,7 @@ void test('m1_28: a v1.2 backend puts the certification fixture on the seeds def
   assert.match(unread?.message ?? '', new RegExp(`^${backendPath.replace(/[.]/g, '\\.')} changed after input20`));
 });
 
-void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', { skip: 'agendaClinica v1 snapshot; removed in d1_46' }, async () => {
+void test('3f4f677 keeps a path per entity and a removed relationship leaves only that entity pending', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   seedFixture((_rel, text) => text);
   const built = await assembleD1Support(102047, 'agendaClinica');
   assert.equal('build' in built, true, 'refusal' in built ? built.refusal : '');

@@ -1,10 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/proofC1.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
@@ -16,27 +13,31 @@ import {
   type D1PipelineState,
   type D1StepId,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { fileKey, installStudio, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { fixtureLogicalName } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
-import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
+import { loadD1Fixture, seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MONOREPO = path.resolve(HERE, '../../../../..');
-const CLINIC = AGENDA_CLINICA_F35E28A;
+const FIXTURE_ID = 'controleEstoque-39a5166';
 const PROJECT = 102047;
-const MODULE = 'agendaClinica';
+const MODULE = 'controleEstoque';
 
 /**
- * The frozen agendaClinica run (f35e28a) carries backend and effort v1.1. D1 reads only the v1.2 the
- * producers write (d1_37 effort, d1_39 backend), so the replay is refused at input20: nothing past it runs and the bench is untouched.
- * The full C1 replay comes back when the 102047 bench is regenerated with the current producers.
+ * A run held at input20 stops there: the v2 seed with an older backend plan is refused by path,
+ * domain30 writes nothing, and the stored seed is not touched.
  */
-void test('controlled agendaClinica replay is refused at input20 on a v1.1 backend and effort and touches nothing', async () => {
-  const clinicBefore = clinicFingerprint();
+void test('a v2 seed with an older backend plan is refused at input20 and later phases write nothing', async () => {
+  const before = JSON.stringify(loadD1Fixture(FIXTURE_ID));
   const host = installStudio(PROJECT);
-  seedClinic(host);
+  seedD1Fixture(host, FIXTURE_ID, PROJECT);
+  const backend = fileInfoFromDisplay(PROJECT, `l4/${MODULE}/pool/l2/web/backend.json`);
+  assert.ok(backend);
+  const stored = host.files[fileKey(backend)];
+  assert.ok(stored);
+  const plan = JSON.parse(stored.content) as { schemaVersion: string };
+  const current = plan.schemaVersion;
+  plan.schemaVersion = '2026-09-21-p1-backend-v1.1';
+  stored.content = JSON.stringify(plan);
   await writeJson(pipelineFile(PROJECT, MODULE), createEntryPipeline(PROJECT, MODULE, new Date('2026-09-25T12:00:00.000Z')));
 
   const agent = createAgent();
@@ -49,22 +50,18 @@ void test('controlled agendaClinica replay is refused at input20 on a v1.1 backe
     problems?: Array<{ severity: string; code: string; path: string; message: string }>;
   };
   const inputErrors = (snapshot.problems || []).filter(problem => problem.severity === 'error');
-  assert.deepEqual(inputErrors.map(problem => `${problem.code} ${problem.path}`), [
-    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/backend.json`,
-    `SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/effort.json`,
-  ]);
-  assert.match(inputErrors[0].message, /'2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2/);
-  assert.match(inputErrors[1].message, /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2/);
+  assert.deepEqual(inputErrors.map(problem => `${problem.code} ${problem.path}`), [`SCHEMA_DIVERGENT l4/${MODULE}/pool/l2/web/backend.json`]);
+  assert.equal(inputErrors[0].message.includes(current), true, inputErrors[0].message);
   assert.equal(snapshot.consumersReleased, false);
   const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
   assert.equal(state.steps.input20?.status, 'failed');
-  assert.equal(state.steps.input20?.error, 'SCHEMA_DIVERGENT:2');
+  assert.equal(state.steps.input20?.error, 'SCHEMA_DIVERGENT:1');
   assert.equal(state.steps.domain30, undefined);
 
   const domainTrace = await runStep(agent, ctx, parent, 'domain30', 30);
   assert.match(domainTrace, /domain30 wrote nothing/, domainTrace);
   assert.equal(writtenDefs(host).length, 0);
-  assert.deepEqual(clinicFingerprint(), clinicBefore);
+  assert.equal(JSON.stringify(loadD1Fixture(FIXTURE_ID)), before);
 });
 
 function writtenDefs(host: TestHost): string[] {
@@ -72,56 +69,6 @@ function writtenDefs(host: TestHost): string[] {
     .filter(([, file]) => file.project === PROJECT && file.level === 1 && file.extension === '.defs.ts'
       && file.folder.startsWith(`${MODULE}/`) && !file.folder.includes('/pipeline/'))
     .map(([key]) => key);
-}
-
-function seedClinic(host: TestHost): string[] {
-  const seeded: string[] = [];
-  const add = (abs: string, logical: string, project = PROJECT) => {
-    if (!existsSync(abs) || !statSync(abs).isFile()) return;
-    const info = fileInfoFromDisplay(project, logical);
-    if (!info || host.files[fileKey(info)]) return;
-    seed(host, info, readFileSync(abs, 'utf8'), 'source');
-    seeded.push(`_${project}_/${logical}`);
-  };
-  const walk = (dir: string, logicalRoot: string) => {
-    for (const name of readdirSync(dir)) {
-      const abs = path.join(dir, name);
-      const logical = `${logicalRoot}/${fixtureLogicalName(name)}`;
-      if (statSync(abs).isDirectory()) walk(abs, logical);
-      else add(abs, logical);
-    }
-  };
-  walk(path.join(CLINIC, 'l4/agendaClinica'), 'l4/agendaClinica');
-  walk(path.join(CLINIC, 'l2/agendaClinica/web/contracts'), 'l2/agendaClinica/web/contracts');
-  add(path.join(CLINIC, 'l1/agendaClinica/pipeline/pipeline.json'), 'l4/agendaClinica/pool/l1/pipeline.json');
-  for (let pass = 0; pass < 3; pass += 1) {
-    const text = Object.values(host.files).map(file => file.content).join('\n');
-    for (const match of text.matchAll(/_(\d+)_\/(l\d+\/[A-Za-z0-9_./-]+\.defs\.ts)/g)) {
-      const project = Number(match[1]);
-      if (project === PROJECT) continue;
-      add(path.join(MONOREPO, `mls-${project}`, match[2]), match[2], project);
-    }
-  }
-  return seeded.sort();
-}
-
-function clinicFingerprint(): string[] {
-  const roots = [
-    path.join(CLINIC, 'l1/agendaClinica'),
-    path.join(CLINIC, 'l2/agendaClinica'),
-    path.join(CLINIC, 'l4/agendaClinica'),
-  ];
-  const out: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      const abs = path.join(dir, name);
-      const stat = statSync(abs);
-      if (stat.isDirectory()) walk(abs);
-      else out.push(`${abs.slice(CLINIC.length + 1)}:${stat.size}:${Math.trunc(stat.mtimeMs)}`);
-    }
-  };
-  for (const root of roots) walk(root);
-  return out.sort();
 }
 
 function context(): mls.msg.ExecutionContext {

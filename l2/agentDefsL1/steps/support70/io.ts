@@ -6,7 +6,7 @@ import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agen
 import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { contractPath, entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -236,17 +236,9 @@ async function enumSnapshotOf(
     const text = await readLogical(project, logicalDefPath(file.defPath));
     if (text) definitions.push(text);
   }
-  const contracts: Array<{ path: string; text: string }> = [];
-  for (const page of snapshot.selection.pages) {
-    if (!page.pageId) continue;
-    const path = contractPath(moduleName, page.pageId);
-    const text = await readLogical(project, path);
-    if (text) contracts.push({ path, text });
-  }
   return {
     sources,
     definitions,
-    contracts,
     tables: snapshot.selection.tables.map(table => ({ tableId: table.tableId, entityId: table.entity })),
   };
 }

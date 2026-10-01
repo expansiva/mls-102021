@@ -47,7 +47,8 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
   }
   await readDeclaredDependencies(project, observed, dependencyTexts);
   const contracts: D1FinalizeRequest['contracts'] = {};
-  const pages = new Set((snapshot?.selection.routes || []).map(route => route.page).filter(Boolean));
+  const pages = new Set((snapshot?.selection.pages || []).map(page => page.pageId).filter(Boolean));
+  for (const request of snapshot?.selection.requests || []) if (request.pageId) pages.add(request.pageId);
   for (const pageId of pages) {
     const path = contractPath(moduleName, pageId);
     const text = await readLogical(project, path);

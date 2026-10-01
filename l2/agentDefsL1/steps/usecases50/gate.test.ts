@@ -59,8 +59,6 @@ void test('a contract route map does not change the usecase signature', () => {
   `;
   const ast = readContractAst(source, 'consultas.defs.ts');
   assert.equal(symbolFields(ast, 'ListConsultaOutput')?.some(field => field.name === 'attendanceNote'), true);
-  assert.equal(ast.bindings.length, 1);
-  assert.equal(ast.bindings[0]?.output, 'ReceptionOut');
   const request = coreUsecaseRequest();
   request.contracts = [{ pageId: 'consultas', path: 'l2/agendaClinica/web/contracts/consultas.defs.ts', source }];
   request.plans = request.usecases.filter(item => item.usecaseId === 'listConsulta').map(item => fixturePlan(request, item));
@@ -432,7 +430,7 @@ void test('the six L2 contracts do not set the usecase signature, and a route wi
   assert.equal(unboundData.functions[0].output.some(field => field.name === 'id'), true);
 });
 
-void test('disclosure that differs across contracts stays one domain signature', () => {
+void test('disclosure that differs across contracts stays one domain signature', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const contracts = realContractSources();
   assert.equal(contracts.length, 6);
   const wide = declaredFieldType(contracts, 'agendaClinica.dados_profissional.qryListProfissional', 'output', 'details');

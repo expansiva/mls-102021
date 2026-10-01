@@ -90,7 +90,6 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
     project: 102047,
     moduleName: 'agendaClinica',
     usecases,
-    routes,
     ports: [{
       portId: 'ConsultaRepository',
       entityId: 'Consulta',
@@ -131,6 +130,7 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
     plans: [],
     llmCalls: 0,
   };
+  Object.assign(request, { routes });
   request.plans = usecases.map(usecase => fixturePlan(request, usecase));
   return request;
 }

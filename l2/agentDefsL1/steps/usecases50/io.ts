@@ -270,12 +270,6 @@ async function usecaseRequest(
     defPath: snapshot.files.find(file => file.artifactType === 'usecase' && file.identity === usecase.usecaseId)?.defPath
       || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
   }));
-  const routes = snapshot.selection.routes.map(route => ({
-    route: route.route,
-    page: route.page,
-    kind: route.kind,
-    usecaseRef: route.usecaseRef,
-  }));
   const ports = persistence.ports.map(port => ({
     portId: port.portId,
     entityId: port.entityId,
@@ -287,12 +281,11 @@ async function usecaseRequest(
       returns: method.returns,
     })),
   }));
-  const contexts = buildUsecaseContexts({ moduleName, usecases, routes, entities, ports, bundle });
+  const contexts = buildUsecaseContexts({ moduleName, usecases, entities, ports, bundle });
   return {
     project,
     moduleName,
     usecases,
-    routes,
     ports,
     entities,
     moduleRules: bundle.moduleRuleText ? Object.keys(bundle.moduleRuleText).sort() : [],

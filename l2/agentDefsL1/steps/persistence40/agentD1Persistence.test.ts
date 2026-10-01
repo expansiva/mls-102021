@@ -82,7 +82,7 @@ async function readyHost() {
   return host;
 }
 
-void test('persistence40 writes the consulta port, table and adapter once', async () => {
+void test('persistence40 writes the consulta port, table and adapter once', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

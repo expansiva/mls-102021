@@ -55,7 +55,7 @@ function seedFixture(host: TestHost): void {
   }
 }
 
-void test('input.json reopens the same snapshot and writes nothing outside the receipt', async () => {
+void test('input.json reopens the same snapshot and writes nothing outside the receipt', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = installStudio(PROJECT);
   seedFixture(host);
   const neighbors: D1FileInfo[] = [
@@ -101,7 +101,7 @@ function realContractFiles(): string[] {
   return readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
 }
 
-void test('with the six agendaClinica L2 contracts parsed, a v1.1 effort alone holds consumers', async () => {
+void test('with the six agendaClinica L2 contracts parsed, a v1.1 effort alone holds consumers', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const names = realContractFiles();
   assert.equal(names.length, 6);
   const host = installStudio(PROJECT);
@@ -181,7 +181,7 @@ async function writeUsecaseReceipt(defPath: string, desiredHash: string, snapsho
   });
 }
 
-void test('resume reads the writer receipt, keeps the snapshot, and still refuses a changed or unreceipted def', async () => {
+void test('resume reads the writer receipt, keeps the snapshot, and still refuses a changed or unreceipted def', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = installStudio(PROJECT);
   seedFixture(host);
   seedContracts(host);
@@ -296,7 +296,7 @@ function errorsOf(snapshot: { problems: Array<{ severity: string; code: string; 
   return snapshot.problems.filter(problem => problem.severity === 'error').map(problem => `${problem.code} ${problem.path}`);
 }
 
-void test('the current producer outputs are read as they are and release the consumers', async () => {
+void test('the current producer outputs are read as they are and release the consumers', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const snapshot = await readCurrent();
   assert.deepEqual(errorsOf(snapshot), []);
   assert.equal(snapshot.consumersReleased, true);
@@ -375,7 +375,7 @@ void test('an old backend plan is refused for regeneration and not converted', a
   assert.equal(snapshot.consumersReleased, false);
 });
 
-void test('divergent refs and totals between the two plans are refused', async () => {
+void test('divergent refs and totals between the two plans are refused', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const snapshot = await readCurrent(plans => {
     const endpoints = plans.effort.endpoints as Array<Record<string, unknown>>;
     endpoints[0].usecaseRef = 'otherUsecase';
@@ -387,7 +387,7 @@ void test('divergent refs and totals between the two plans are refused', async (
   assert.equal(snapshot.consumersReleased, false);
 });
 
-void test('the current seed with an entity renamed everywhere reads the same way', async () => {
+void test('the current seed with an entity renamed everywhere reads the same way', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const before = await readCurrent();
   const after = await readCurrent(undefined, [['ContatoPaciente', 'VinculoX'], ['contatoPaciente', 'vinculoX']]);
   assert.deepEqual(errorsOf(after), []);

@@ -1,79 +1,54 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-import { P1_BACKEND_SCHEMA_VERSION, P1_PLAN_STATUSES, P1_TEST_SUPPORT_OWNERS } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
-import { P2_EFFORT_SCHEMA_VERSION } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
+import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import {
   D1_SOURCE_SCHEMAS,
-  D1_TEST_SUPPORT_OWNERS,
-  D1_TEST_SUPPORT_STATUSES,
   type D1InputArtifacts,
   type D1InputSnapshot,
-  type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
-import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, 'fixtures', 'head');
-const CONTRACTS = path.join(HERE, 'fixtures', 'contracts');
-const MODULE = 'agendaClinica';
+const MODULE = 'controleEstoque';
 const PROJECT = 102047;
-const PAGES = ['agenda', 'cadastro_profissional', 'cadastro_recepcionista', 'consultas', 'pacientes'];
-const USECASES = [
-  'confirmarConsulta', 'createConsulta', 'createPaciente', 'createProfissional', 'createRecepcionista',
-  'listConsulta', 'listPaciente', 'listProfissional', 'listRecepcionista', 'registrarAtendimento',
-  'registrarFalta', 'updateProfissional', 'updateRecepcionista',
-];
+const FIXTURE_ID = 'controleEstoque-39a5166';
 
-function walk(dir: string, prefix: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const abs = path.join(dir, name);
-    const rel = prefix ? `${prefix}/${name}` : name;
-    if (statSync(abs).isDirectory()) out.push(...walk(abs, rel));
-    else out.push(rel);
-  }
-  return out;
-}
-
-function logical(rel: string): string {
-  return rel.endsWith('.defs.txt') ? `${rel.slice(0, -4)}.ts` : rel;
-}
-
-async function loadHead(): Promise<D1InputArtifacts> {
-  const sources: D1SourceDigest[] = [];
+function loadHead(): D1InputArtifacts {
+  const files = loadD1Fixture(FIXTURE_ID);
   const parsed = new Map<string, unknown>();
-  for (const rel of walk(FIXTURE, '')) {
-    const file = logical(rel);
-    const text = readFileSync(path.join(FIXTURE, rel), 'utf8');
+  const contractTexts: Record<string, string> = {};
+  const contracts: D1InputArtifacts['contracts'] = {};
+  for (const [file, text] of Object.entries(files)) {
     const kind = file.endsWith('.defs.ts') ? 'defs' : 'json';
-    const value = parseD1Source(text, kind);
-    const sha256 = await sha256Text(text);
-    sources.push({
-      path: file,
-      sha256,
-      bytes: new TextEncoder().encode(text).length,
-      schemaVersion: value && typeof value === 'object' && !Array.isArray(value) ? String((value as { schemaVersion?: string }).schemaVersion || '') : '',
-      state: value ? 'present' : 'invalid',
-    });
-    parsed.set(file, value);
+    parsed.set(file, parseD1Source(text, kind));
+    const contract = new RegExp(`^l2/${MODULE}/web/contracts/([A-Za-z0-9_]+)\\.defs\\.ts$`).exec(file);
+    if (!contract) continue;
+    contractTexts[contract[1]] = text;
+    contracts[contract[1]] = readContractAst(text, file);
   }
   const journeys: Record<string, unknown> = {};
   const entities: Record<string, unknown> = {};
   for (const [file, value] of parsed) {
-    if (file.includes('/journeys/') && !file.endsWith('/index.defs.ts')) journeys[path.basename(file, '.defs.ts')] = value;
-    if (file.includes('/ontology/') && !file.endsWith('/index.defs.ts')) entities[path.basename(file, '.defs.ts')] = value;
+    if (file.includes('/journeys/') && !file.endsWith('/index.defs.ts') && !file.includes('/_102034_/')) {
+      journeys[baseName(file, '.defs.ts')] = value;
+    }
+    if (file.includes('/ontology/') && !file.endsWith('/index.defs.ts') && !file.includes('/_102034_/')) {
+      entities[baseName(file, '.defs.ts')] = value;
+    }
   }
   const root = `l4/${MODULE}`;
   return {
-    sources,
+    sources: [...parsed.keys()].sort().map(file => ({
+      path: file,
+      sha256: 'fixture',
+      bytes: 1,
+      schemaVersion: '',
+      state: 'present' as const,
+    })),
     module: parsed.get(`${root}/module.defs.ts`) ?? null,
     journeyIndex: parsed.get(`${root}/journeys/index.defs.ts`) ?? null,
     journeys,
@@ -87,8 +62,9 @@ async function loadHead(): Promise<D1InputArtifacts> {
     needs: parsed.get(`${root}/pool/l1/web/needs.json`) ?? null,
     backend: parsed.get(`${root}/pool/l2/web/backend.json`) ?? null,
     effort: parsed.get(`${root}/pool/l2/web/effort.json`) ?? null,
-    planner: parsed.get(`l4/${MODULE}/pool/l1/pipeline.json`) ?? null,
-    contracts: {},
+    planner: parsed.get(`${root}/pool/l1/pipeline.json`) ?? null,
+    contracts,
+    contractTexts,
     presentDefs: [],
   };
 }
@@ -96,19 +72,32 @@ async function loadHead(): Promise<D1InputArtifacts> {
 const EFFORT_PATH = `l4/${MODULE}/pool/l2/web/effort.json`;
 const BACKEND_PATH = `l4/${MODULE}/pool/l2/web/backend.json`;
 
-/**
- * The frozen head carries backend v1.1 and effort v1.1. D1 reads only the v1.2 plans the producers
- * write (d1_37 effort, d1_39 backend), so both are refused by path.
- */
-function assertEffortRefused(snapshot: D1InputSnapshot, others: string[] = []): void {
-  assert.deepEqual([...new Set(codes(snapshot, 'error'))].sort(), [...others, 'SCHEMA_DIVERGENT'].sort());
-  const refused = snapshot.problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT');
-  assert.deepEqual(refused.map(problem => problem.path).sort(), [BACKEND_PATH, EFFORT_PATH]);
-  const message = (file: string) => refused.find(problem => problem.path === file)!.message;
-  assert.match(message(BACKEND_PATH), /'2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
-  assert.match(message(EFFORT_PATH), /'2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2\. Regenerate/);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'TEST_SUPPORT_INVALID'), false);
-  assert.equal(snapshot.consumersReleased, false);
+
+
+function baseName(file: string, suffix: string): string {
+  const name = file.slice(file.lastIndexOf('/') + 1);
+  return name.endsWith(suffix) ? name.slice(0, -suffix.length) : name;
+}
+
+function withoutRoute(source: string, route: string): string {
+  const marker = `'${route}':`;
+  const at = source.indexOf(marker);
+  if (at < 0) throw new Error(`missing route ${route}`);
+  const open = source.indexOf('{', at + marker.length);
+  let depth = 0;
+  let end = open;
+  for (; end < source.length; end += 1) {
+    if (source[end] === '{') depth += 1;
+    else if (source[end] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        end += 1;
+        break;
+      }
+    }
+  }
+  if (source[end] === ';') end += 1;
+  return source.slice(0, at) + source.slice(end);
 }
 
 function rec(value: unknown): Record<string, unknown> {
@@ -132,14 +121,15 @@ function fileOf(snapshot: D1InputSnapshot, artifactType: string, identity: strin
 }
 
 void test('supported plan schemas are the producers versions', () => {
-  assert.deepEqual([...D1_TEST_SUPPORT_OWNERS], [...P1_TEST_SUPPORT_OWNERS]);
-  assert.deepEqual([...D1_TEST_SUPPORT_STATUSES], [...P1_PLAN_STATUSES]);
-  assert.equal(D1_SOURCE_SCHEMAS.backend, P1_BACKEND_SCHEMA_VERSION);
-  assert.equal(D1_SOURCE_SCHEMAS.effort, P2_EFFORT_SCHEMA_VERSION);
+  const files = loadD1Fixture(FIXTURE_ID);
+  const backend = JSON.parse(files[`l4/${MODULE}/pool/l2/web/backend.json`]) as { schemaVersion: string };
+  const effort = JSON.parse(files[`l4/${MODULE}/pool/l2/web/effort.json`]) as { schemaVersion: string };
+  assert.equal(backend.schemaVersion, D1_SOURCE_SCHEMAS.backend);
+  assert.equal(effort.schemaVersion, D1_SOURCE_SCHEMAS.effort);
 });
 
-void test('only the current backend plan is read; another version is refused by path', async () => {
-  const upgraded = clone(await loadHead());
+void test('only the current backend plan is read; another version is refused by path', () => {
+  const upgraded = clone(loadHead());
   const backend = upgraded.backend as Record<string, unknown>;
   backend.schemaVersion = '2026-09-21-p1-backend-v9';
   const refused = build(upgraded).problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === BACKEND_PATH);
@@ -147,39 +137,18 @@ void test('only the current backend plan is read; another version is refused by 
   assert.match(refused[0].message, /'2026-09-21-p1-backend-v9', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
 });
 
-void test('frozen agendaClinica snapshot is cut by id', async () => {
-  const snapshot = build(await loadHead());
-  assertEffortRefused(snapshot, ['CONTRACT_ABSENT']);
-  assert.deepEqual(snapshot.selection.pages.map(page => page.pageId), PAGES);
-  const backend = JSON.parse(readFileSync(path.join(FIXTURE, 'l4', MODULE, 'pool/l2/web/backend.json'), 'utf8')) as {
-    endpoints: Array<{ route: string }>;
-  };
-  assert.deepEqual(snapshot.selection.routes.map(route => route.route), backend.endpoints.map(endpoint => endpoint.route).sort());
-  assert.equal(snapshot.selection.routes.length, backend.endpoints.length);
-  assert.deepEqual(snapshot.selection.usecases.map(usecase => usecase.usecaseId), USECASES);
-  assert.deepEqual(snapshot.selection.ports.map(port => port.portId), ['ConsultaRepository']);
-  assert.deepEqual(snapshot.selection.tables.map(table => table.tableId), ['consulta']);
-  assert.deepEqual(snapshot.selection.entities, ['Consulta', 'ContatoPaciente', 'Paciente', 'Profissional', 'Recepcionista']);
-  assert.deepEqual(snapshot.selection.outbound.slice().sort(), ['atendimentoRegistrado', 'consultaConfirmada', 'faltaPacienteRegistrada']);
-  assert.equal(snapshot.consumersReleased, false);
-  assert.equal(snapshot.files.filter(file => file.artifactType === 'usecase').length, USECASES.length);
-  assert.equal(snapshot.files.filter(file => file.artifactType === 'httpController').length, PAGES.length);
-  assert.equal(snapshot.files.some(file => file.defPath.includes('/painel')), false);
-  assert.equal(snapshot.files.some(file => file.artifactType === 'table' && file.identity !== 'consulta'), false);
-  const shared = fileOf(snapshot, 'usecase', 'listConsulta');
-  assert.ok(shared);
-  assert.ok(shared.ownerRefs.filter(owner => owner.startsWith('endpoint:')).length >= 2);
-  const contact = fileOf(snapshot, 'domainEntity', 'ContatoPaciente');
-  assert.ok(contact);
-  assert.ok(contact.ownerRefs.some(owner => owner === 'relationship:patientContacts'));
-  assert.equal(snapshot.files.filter(file => file.defPath.endsWith('/listConsulta.defs.ts')).length, 1);
-  assert.ok(snapshot.problems.some(problem => problem.code === 'PAYLOAD_UNDECLARED' && problem.ownerRef === 'registrarAtendimento'));
-  assert.ok(snapshot.problems.some(problem => problem.code === 'ACCESS_ANCHOR' && problem.ownerRef === 'profissionalAgendaDiaria'));
-  for (const event of ['consultaConfirmada', 'faltaPacienteRegistrada', 'atendimentoRegistrado']) {
-    assert.ok(snapshot.problems.some(problem => problem.code === 'INTEGRATION_UNBOUND' && problem.ownerRef === event), event);
-  }
-  assert.equal(codes(snapshot, 'review').includes('UNATTRIBUTED_CHANGE'), false);
-  assert.ok(snapshot.problems.some(problem => problem.code === 'SCREEN_WITHOUT_ROUTES' && problem.ownerRef === 'painel'));
+void test('the v2 seed is cut by the contract routes, not by backend endpoints', () => {
+  const snapshot = build(loadHead());
+  assert.equal('routes' in snapshot.selection, false);
+  assert.deepEqual(snapshot.selection.pages.map(page => page.pageId), ['movimentacoes', 'produtos']);
+  const requestRoutes = snapshot.selection.requests.map(item => item.route).sort();
+  assert.deepEqual(snapshot.selection.pages.flatMap(page => page.routes).sort(), requestRoutes);
+  assert.equal(requestRoutes.includes('controleEstoque.movimentacoes.load'), true);
+  assert.equal(requestRoutes.includes('controleEstoque.movimentacoes.qryListMovimentacaoEstoque'), false);
+  assert.deepEqual(snapshot.selection.usecases.map(item => item.usecaseId).sort(), [
+    'createMovimentacaoEstoque', 'createProduto', 'listMovimentacaoEstoque', 'listProduto',
+  ]);
+  assert.equal(snapshot.files.filter(file => file.artifactType === 'httpController').length, 2);
   assert.equal(codes(snapshot, 'error').includes('DAG_CYCLE'), false);
   for (const file of snapshot.files) {
     for (const dep of file.dependsOn) assert.ok(snapshot.files.some(item => item.id === dep), `${file.id} -> ${dep}`);
@@ -187,7 +156,7 @@ void test('frozen agendaClinica snapshot is cut by id', async () => {
 });
 
 void test('integration outbound def is inventoried from an inbound item, with no outbound events', async () => {
-  const artifacts = clone(await loadHead());
+  const artifacts = clone(loadHead());
   const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[] };
   integration.outbound = [];
   integration.inbound = [{ id: 'chamadaRecebida', kind: 'inbound', transitionRef: 'registrarFalta', mechanism: 'queue' }];
@@ -196,7 +165,7 @@ void test('integration outbound def is inventoried from an inbound item, with no
 });
 
 void test('integration outbound def is absent with no outbound event, process, inbound or plugin', async () => {
-  const artifacts = clone(await loadHead());
+  const artifacts = clone(loadHead());
   const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };
   integration.outbound = [];
   integration.inbound = [];
@@ -205,147 +174,107 @@ void test('integration outbound def is absent with no outbound event, process, i
   assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound'), undefined);
 });
 
-void test('removing one route keeps a usecase another page still uses', async () => {
-  const artifacts = clone(await loadHead());
-  const route = 'agendaClinica.agenda.qryListConsulta';
-  const backend = artifacts.backend as { endpoints: Array<{ route: string }>; meta: { pages: Record<string, string[]> } };
-  const effort = artifacts.effort as {
-    endpoints: Array<{ route: string }>;
-    screens: Array<{ pageId: string; endpoints: string[] }>;
-    totals: { endpoints: { toCreate: number } };
-    removed: Array<{ kind: string; id: string; status: string }>;
-  };
-  backend.endpoints = backend.endpoints.filter(endpoint => endpoint.route !== route);
-  backend.meta.pages.agenda = backend.meta.pages.agenda.filter(item => item !== route);
-  effort.endpoints = effort.endpoints.filter(endpoint => endpoint.route !== route);
-  effort.screens.find(screen => screen.pageId === 'agenda')!.endpoints = effort.screens.find(screen => screen.pageId === 'agenda')!.endpoints.filter(item => item !== route);
-  effort.totals.endpoints.toCreate -= 1;
-  effort.removed.push({ kind: 'endpoint', id: route, status: 'toRemove' });
+void test('removing one route keeps a usecase another page still uses', () => {
+  const artifacts = clone(loadHead());
+  const route = 'controleEstoque.movimentacoes.load';
+  artifacts.contractTexts.movimentacoes = withoutRoute(artifacts.contractTexts.movimentacoes, route);
   const snapshot = build(artifacts);
-  assert.equal(snapshot.selection.routes.some(item => item.route === route), false);
-  assert.ok(snapshot.selection.usecases.some(usecase => usecase.usecaseId === 'listConsulta'));
-  assert.ok(fileOf(snapshot, 'usecase', 'listConsulta'));
+  const requestRoutes = snapshot.selection.requests.map(item => item.route);
+  assert.equal(requestRoutes.includes(route), false);
+  assert.equal(requestRoutes.includes('controleEstoque.produtos.load'), true);
+  assert.ok(snapshot.selection.usecases.some(usecase => usecase.usecaseId === 'listProduto'));
+  assert.ok(fileOf(snapshot, 'usecase', 'listProduto'));
   assert.equal(snapshot.problems.some(problem => problem.code === 'REMOVE_STILL_REFERENCED'), false);
-  assert.equal(snapshot.removed.some(item => item.id === route && item.kind === 'endpoint'), true);
 });
 
-void test('an update keeps existing identity only with an inventoried hash', async () => {
-  const artifacts = clone(await loadHead());
+void test('an update keeps existing identity only with an inventoried hash', () => {
+  const artifacts = clone(loadHead());
   const head = build(artifacts);
-  const defPath = fileOf(head, 'usecase', 'updateProfissional')!.defPath;
+  const usecaseId = 'createMovimentacaoEstoque';
+  const defPath = fileOf(head, 'usecase', usecaseId)!.defPath;
   const hash = 'sha256:ab'.padEnd(7 + 64, 'c');
   const previous = clone(head);
   previous.files.find(file => file.defPath === defPath)!.contentHash = hash;
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>>; endpoints: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; endpoints: Array<Record<string, string>>; totals: { endpoints: Record<string, number>; usecases: Record<string, number> } };
-  const usecase = backend.usecases.find(item => item.usecaseId === 'updateProfissional')!;
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
+  const usecase = backend.usecases.find(item => item.usecaseId === usecaseId)!;
   usecase.status = 'toUpdate';
-  usecase.existing = 'updateProfissional';
-  effort.usecases.find(item => item.usecaseId === 'updateProfissional')!.status = 'toUpdate';
-  effort.usecases.find(item => item.usecaseId === 'updateProfissional')!.existing = 'updateProfissional';
-  for (const endpoint of [...backend.endpoints, ...effort.endpoints]) {
-    if (endpoint.usecaseRef === 'updateProfissional') endpoint.status = 'toUpdate';
-  }
+  usecase.existing = usecaseId;
+  const effortRow = effort.usecases.find(item => item.usecaseId === usecaseId)!;
+  effortRow.status = 'toUpdate';
+  effortRow.existing = usecaseId;
   effort.totals.usecases.toCreate -= 1;
   effort.totals.usecases.toUpdate += 1;
-  effort.totals.endpoints.toCreate -= 2;
-  effort.totals.endpoints.toUpdate += 2;
   artifacts.presentDefs = [{ path: defPath, sha256: hash }];
   const snapshot = build(artifacts, previous);
-  const file = fileOf(snapshot, 'usecase', 'updateProfissional');
+  const file = fileOf(snapshot, 'usecase', usecaseId);
   assert.equal(file?.action, 'update');
   assert.equal(file?.contentHash, hash);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.ownerRef === 'usecase:updateProfissional'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.ownerRef === `usecase:${usecaseId}`), false);
 });
 
-void test('alias existing keeps the inventoried id and does not mint the candidate', async () => {
-  const artifacts = clone(await loadHead());
+void test('alias existing keeps the inventoried id and does not mint the candidate', () => {
+  const artifacts = clone(loadHead());
   const head = build(artifacts);
-  const defPath = fileOf(head, 'usecase', 'listConsulta')!.defPath;
+  const defPath = fileOf(head, 'usecase', 'listProduto')!.defPath;
   const hash = `sha256:${'d'.repeat(64)}`;
   const previous = clone(head);
   previous.files.find(file => file.defPath === defPath)!.contentHash = hash;
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>>; endpoints: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; endpoints: Array<Record<string, string>>; totals: { endpoints: Record<string, number>; usecases: Record<string, number> } };
-  const row = backend.usecases.find(item => item.usecaseId === 'listConsulta')!;
-  row.usecaseId = 'listConsultaNovo';
-  row.existing = 'listConsulta';
-  row.status = 'toUpdate';
-  const effortRow = effort.usecases.find(item => item.usecaseId === 'listConsulta')!;
-  effortRow.usecaseId = 'listConsultaNovo';
-  effortRow.existing = 'listConsulta';
-  effortRow.status = 'toUpdate';
-  let moved = 0;
-  for (const endpoint of [...backend.endpoints, ...effort.endpoints]) {
-    if (endpoint.usecaseRef !== 'listConsulta') continue;
-    endpoint.usecaseRef = 'listConsultaNovo';
-    endpoint.status = 'toUpdate';
-    moved += 1;
-  }
-  effort.totals.usecases.toCreate -= 1;
-  effort.totals.usecases.toUpdate += 1;
-  effort.totals.endpoints.toCreate -= moved / 2;
-  effort.totals.endpoints.toUpdate += moved / 2;
-  artifacts.presentDefs = [{ path: defPath, sha256: hash }];
-  const snapshot = build(artifacts, previous);
-  assert.equal(fileOf(snapshot, 'usecase', 'listConsulta')?.action, 'update');
-  assert.equal(snapshot.files.some(file => file.defPath.endsWith('/listConsultaNovo.defs.ts')), false);
-  assert.equal(snapshot.selection.usecases.find(usecase => usecase.usecaseId === 'listConsultaNovo')?.identity, 'listConsulta');
-});
-
-void test('a done usecase with no file stays done and is not created', async () => {
-  const artifacts = clone(await loadHead());
   const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
   const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
-  backend.usecases.find(item => item.usecaseId === 'listRecepcionista')!.status = 'done';
-  effort.usecases.find(item => item.usecaseId === 'listRecepcionista')!.status = 'done';
+  const row = backend.usecases.find(item => item.usecaseId === 'listProduto')!;
+  row.usecaseId = 'listProdutoNovo';
+  row.existing = 'listProduto';
+  row.status = 'toUpdate';
+  const effortRow = effort.usecases.find(item => item.usecaseId === 'listProduto')!;
+  effortRow.usecaseId = 'listProdutoNovo';
+  effortRow.existing = 'listProduto';
+  effortRow.status = 'toUpdate';
+  effort.totals.usecases.toCreate -= 1;
+  effort.totals.usecases.toUpdate += 1;
+  artifacts.presentDefs = [{ path: defPath, sha256: hash }];
+  const snapshot = build(artifacts, previous);
+  assert.equal(fileOf(snapshot, 'usecase', 'listProduto')?.action, 'update');
+  assert.equal(snapshot.files.some(file => file.defPath.endsWith('/listProdutoNovo.defs.ts')), false);
+  assert.equal(snapshot.selection.usecases.find(usecase => usecase.usecaseId === 'listProdutoNovo')?.identity, 'listProduto');
+});
+
+void test('a done usecase with no file stays done and is not created', () => {
+  const artifacts = clone(loadHead());
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
+  backend.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
+  effort.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
   effort.totals.usecases.toCreate -= 1;
   effort.totals.usecases.done += 1;
   const snapshot = build(artifacts);
-  const file = fileOf(snapshot, 'usecase', 'listRecepcionista');
+  const file = fileOf(snapshot, 'usecase', 'listProduto');
   assert.equal(file?.action, 'preserve');
-  assert.equal(snapshot.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.ownerRef === 'usecase:listRecepcionista'), true);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.ownerRef === 'usecase:listProduto'), true);
   assert.equal(snapshot.consumersReleased, false);
 });
 
-void test('an orphan route is reported by path and is not given a controller', async () => {
-  const artifacts = clone(await loadHead());
-  const route = 'agendaClinica.fantasma.qryNowhere';
-  const endpoint = { route, page: 'fantasma', kind: 'qry', usecaseRef: 'listConsulta', status: 'toCreate', tableRefs: ['consulta'], noTable: 'ok' };
-  (artifacts.backend as { endpoints: unknown[] }).endpoints.push(endpoint);
-  (artifacts.effort as { endpoints: unknown[]; totals: { endpoints: { toCreate: number } } }).endpoints.push({
-    route, page: 'fantasma', kind: 'qry', usecaseRef: 'listConsulta', status: 'toCreate',
-  });
-  (artifacts.effort as { totals: { endpoints: { toCreate: number } } }).totals.endpoints.toCreate += 1;
-  const snapshot = build(artifacts);
-  const problem = snapshot.problems.find(item => item.code === 'ORPHAN_ROUTE');
-  assert.equal(problem?.path, `l4/${MODULE}/pool/l2/web/backend.json`);
-  assert.equal(problem?.ownerRef, route);
-  assert.equal(snapshot.selection.routes.some(item => item.route === route), false);
-  assert.equal(snapshot.files.some(file => file.identity === 'fantasma'), false);
-});
-
-void test('unattributed changes are recorded and do not add files', async () => {
-  const artifacts = clone(await loadHead());
+void test('unattributed changes are recorded and do not add files', () => {
+  const artifacts = clone(loadHead());
   const head = build(artifacts);
   const backend = artifacts.backend as { changes: unknown[]; meta: { unmappedChanges: unknown[] } };
   const effort = artifacts.effort as { unattributed: unknown[] };
-  backend.meta.unmappedChanges.push({ changeId: 'chg-map', kind: 'field', source: 'ontology/Consulta.defs.ts' });
-  backend.changes.push({ changeId: 'chg-open', kind: 'field', op: 'changed', entity: 'Consulta', tableRefs: [], noTable: 'ok', usecaseRefs: [], reason: '', source: 'ontology/Consulta.defs.ts' });
+  backend.meta.unmappedChanges.push({ changeId: 'chg-map', kind: 'field', source: 'ontology/Produto.defs.ts' });
+  backend.changes.push({ changeId: 'chg-open', kind: 'field', op: 'changed', entity: 'Produto', tableRefs: [], noTable: 'ok', usecaseRefs: [], reason: '', source: 'ontology/Produto.defs.ts' });
   effort.unattributed.push({ changeId: 'chg-effort', kind: 'rule', op: 'changed', reason: 'no page' });
   const snapshot = build(artifacts);
   const owners = snapshot.problems.filter(problem => problem.code === 'UNATTRIBUTED_CHANGE').map(problem => problem.ownerRef).sort();
   assert.deepEqual(owners, ['chg-effort', 'chg-map', 'chg-open']);
-  assert.ok(snapshot.problems.filter(problem => problem.code === 'UNATTRIBUTED_CHANGE').every(problem => problem.path.includes('agendaClinica')));
+  assert.ok(snapshot.problems.filter(problem => problem.code === 'UNATTRIBUTED_CHANGE').every(problem => problem.path.includes(MODULE)));
   assert.equal(snapshot.files.length, head.files.length);
-  assert.deepEqual(snapshot.selection.routes.map(route => route.route), head.selection.routes.map(route => route.route));
+  assert.deepEqual(snapshot.selection.requests.map(item => item.route), head.selection.requests.map(item => item.route));
 });
 
-void test('a new L4 hash does not validate an unchanged plan', async () => {
-  const artifacts = clone(await loadHead());
+void test('a new L4 hash does not validate an unchanged plan', () => {
+  const artifacts = clone(loadHead());
   const head = build(artifacts);
   const next = clone(artifacts);
-  const target = `l4/${MODULE}/ontology/Consulta.defs.ts`;
+  const target = `l4/${MODULE}/ontology/Produto.defs.ts`;
   const source = next.sources.find(item => item.path === target)!;
   const fresh = `sha256:${'e'.repeat(64)}`;
   source.sha256 = fresh;
@@ -358,41 +287,28 @@ void test('a new L4 hash does not validate an unchanged plan', async () => {
   assert.equal(snapshot.consumersReleased, false);
 });
 
-void test('toRemove on a live row is not treated as a removal', async () => {
-  const artifacts = clone(await loadHead());
+void test('toRemove on a live row is not treated as a removal', () => {
+  const artifacts = clone(loadHead());
   const effort = artifacts.effort as { endpoints: Array<Record<string, string>>; totals: { endpoints: Record<string, number> } };
   const backend = artifacts.backend as { endpoints: Array<Record<string, string>> };
-  const route = 'agendaClinica.pacientes.qryListPaciente';
+  const route = 'controleEstoque.movimentacoes.qryListMovimentacaoEstoque';
   backend.endpoints.find(item => item.route === route)!.status = 'toRemove';
   effort.endpoints.find(item => item.route === route)!.status = 'toRemove';
   effort.totals.endpoints.toCreate -= 1;
   effort.totals.endpoints.toRemove += 1;
   const snapshot = build(artifacts);
   assert.ok(snapshot.problems.some(problem => problem.code === 'STATUS_NOT_IN_REMOVED' && problem.ownerRef === route));
-  assert.equal(snapshot.selection.routes.some(item => item.route === route), false);
+  assert.equal(snapshot.selection.requests.some(item => item.route === route), false);
   assert.equal(snapshot.removed.some(item => item.id === route), false);
 });
 
-void test('with the six agendaClinica L2 contracts parsed, a v1.1 effort alone holds consumers', async () => {
-  const artifacts = await loadHead();
-  const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
-  assert.equal(names.length, 6);
-  const asts = names.map(name => {
-    const source = readFileSync(path.join(CONTRACTS, name), 'utf8');
-    const fileName = `l2/${MODULE}/web/contracts/${name.replace(/\.txt$/, '.ts')}`;
-    const ast = readContractAst(source, fileName);
-    assert.deepEqual(ast.unparsed, [], name);
-    return ast;
-  });
-  for (const [index, pageId] of PAGES.entries()) artifacts.contracts[pageId] = asts[index];
-  const snapshot = build(artifacts);
-  assertEffortRefused(snapshot);
-});
-
-void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', async () => {
-  const artifacts = await loadHead();
-  const contract = `l2/${MODULE}/web/contracts/pacientes.defs.ts`;
-  artifacts.contracts.pacientes = readContractAst('export interface Broken { id: string', contract);
+void test('an existing unreadable contract is CONTRACT_UNPARSED, never ABSENT', () => {
+  const artifacts = loadHead();
+  const pageId = 'movimentacoes';
+  const contract = `l2/${MODULE}/web/contracts/${pageId}.defs.ts`;
+  const broken = 'export interface Broken { id: string';
+  artifacts.contractTexts[pageId] = broken;
+  artifacts.contracts[pageId] = readContractAst(broken, contract);
   const snapshot = build(artifacts);
   const unparsed = snapshot.problems.filter(problem => problem.code === 'CONTRACT_UNPARSED' && problem.path === contract);
   assert.ok(unparsed.length >= 1);
@@ -405,34 +321,26 @@ const WRITTEN = new Set(['domainEntity', 'repositoryPort', 'table', 'repositoryA
 const HASH = `sha256:${'ab'.repeat(32)}`;
 const OTHER = `sha256:${'cd'.repeat(32)}`;
 
-async function releasedHead(): Promise<{ artifacts: D1InputArtifacts; first: D1InputSnapshot }> {
-  const artifacts = await loadHead();
-  const names = readdirSync(CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
-  const asts = names.map(name => {
-    const source = readFileSync(path.join(CONTRACTS, name), 'utf8');
-    const fileName = `l2/${MODULE}/web/contracts/${name.replace(/\.txt$/, '.ts')}`;
-    return readContractAst(source, fileName);
-  });
-  for (const [index, pageId] of PAGES.entries()) artifacts.contracts[pageId] = asts[index];
+function releasedHead(): { artifacts: D1InputArtifacts; first: D1InputSnapshot } {
+  const artifacts = loadHead();
   return { artifacts, first: build(artifacts) };
 }
 
-void test('resume accepts the writer receipt and keeps the plan', async () => {
-  const { artifacts, first } = await releasedHead();
-  assertEffortRefused(first);
+void test('resume accepts the writer receipt and keeps the plan', () => {
+  const { artifacts, first } = releasedHead();
   const written = first.files.filter(file => WRITTEN.has(file.artifactType));
-  assert.ok(written.length >= 13);
+  assert.ok(written.length > 0);
+  for (const artifactType of WRITTEN) assert.ok(written.some(file => file.artifactType === artifactType), artifactType);
   artifacts.presentDefs = written.map(file => ({ path: file.defPath, sha256: HASH }));
   artifacts.writerReceipts = written.map(file => ({ defPath: file.defPath, desiredHash: HASH }));
   const resume = build(artifacts, first);
   assert.equal(resume.problems.some(problem => problem.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-  assertEffortRefused(resume);
   assert.deepEqual(resume.files, first.files);
   assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a def changed outside the receipt stays refused', async () => {
-  const { artifacts, first } = await releasedHead();
+void test('a def changed outside the receipt stays refused', () => {
+  const { artifacts, first } = releasedHead();
   const written = first.files.filter(file => WRITTEN.has(file.artifactType));
   const target = written[0];
   artifacts.presentDefs = written.map(file => ({
@@ -450,8 +358,8 @@ void test('a def changed outside the receipt stays refused', async () => {
   assert.equal(resume.consumersReleased, false);
 });
 
-void test('a missing def is planned again even when a writer receipt names it', async () => {
-  const { artifacts, first } = await releasedHead();
+void test('a missing def is planned again even when a writer receipt names it', () => {
+  const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
   artifacts.writerReceipts = [{ defPath: target.defPath, desiredHash: HASH }];
@@ -459,11 +367,11 @@ void test('a missing def is planned again even when a writer receipt names it', 
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
   assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'create');
   assert.deepEqual(resume.files, first.files);
-  assertEffortRefused(resume);
+  assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a present def with no receipt is still refused', async () => {
-  const { artifacts, first } = await releasedHead();
+void test('a present def with no receipt is still refused', () => {
+  const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
   artifacts.presentDefs = [{ path: target.defPath, sha256: HASH }];
@@ -474,8 +382,8 @@ void test('a present def with no receipt is still refused', async () => {
   assert.equal(resume.consumersReleased, false);
 });
 
-void test('disagreeing writer receipts do not authorize a present def', async () => {
-  const { artifacts, first } = await releasedHead();
+void test('disagreeing writer receipts do not authorize a present def', () => {
+  const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
   artifacts.presentDefs = [{ path: target.defPath, sha256: HASH }];
@@ -492,8 +400,8 @@ void test('disagreeing writer receipts do not authorize a present def', async ()
   assert.equal(resume.consumersReleased, false);
 });
 
-void test('an inventoried hash still recomposes without a writer receipt', async () => {
-  const { artifacts, first } = await releasedHead();
+void test('an inventoried hash still recomposes without a writer receipt', () => {
+  const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
   const previous = clone(first);
@@ -504,5 +412,4 @@ void test('an inventoried hash still recomposes without a writer receipt', async
   assert.equal(file?.action, 'recompose');
   assert.equal(file?.contentHash, HASH);
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-  assertEffortRefused(resume);
 });

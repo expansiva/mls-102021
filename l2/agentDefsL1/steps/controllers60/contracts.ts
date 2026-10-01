@@ -2,6 +2,7 @@
 
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
 export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-adapter' as const;
 
@@ -52,6 +53,8 @@ export interface D1ControllerUsecase {
   usecaseId: string;
   entity: string;
   operation: string;
+  /** Copied from `selection.usecases[].status`. */
+  status: D1ActiveStatus;
   functionName: string;
   defPath: string;
 }
@@ -147,7 +150,6 @@ export interface D1ControllerRequest {
   project: number;
   moduleName: string;
   pages: D1ControllerPage[];
-  routes: D1ControllerRoute[];
   usecases: D1ControllerUsecase[];
   grants: D1ControllerGrant[];
   relationships: D1ControllerRelationship[];

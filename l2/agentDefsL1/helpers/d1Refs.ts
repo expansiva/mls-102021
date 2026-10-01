@@ -82,19 +82,16 @@ export interface D1PlannedFile {
   dependsOn: string[];
 }
 
-export interface D1PlanRoute {
-  route: string;
-  page: string;
-  kind: string;
-  usecaseRef: string;
-}
-
 export interface D1MeasuredPlan {
   project: number;
   moduleName: string;
   selection: {
     pages: Array<{ pageId: string; routes: string[] }>;
-    routes: D1PlanRoute[];
+    /**
+     * Debt for `examples/agendaClinicaExamples.ts`, which still indexes this.
+     * No D1 reader fills it. The snapshot from input20 does not have this field.
+     */
+    routes: Array<{ route: string; page: string; kind: string; usecaseRef: string }>;
     usecases: Array<{ usecaseId: string; entity: string; operation: string; routes: string[] }>;
     ports: Array<{ portId: string; entity: string }>;
     tables: Array<{ tableId: string; entity: string }>;
@@ -412,8 +409,8 @@ export function coverageReport(
     if (!usecaseIds.has(usecase.usecaseId)) gaps.push(`Selected usecase ${usecase.usecaseId} has no catalog item.`);
   }
   const routes = new Set(catalog.items.flatMap(item => item.routes || []));
-  for (const route of plan.selection.routes) {
-    if (!routes.has(route.route)) gaps.push(`Selected route ${route.route} has no controller.`);
+  for (const route of plan.selection.pages.flatMap(page => page.routes)) {
+    if (!routes.has(route)) gaps.push(`Selected route ${route} has no controller.`);
   }
   for (const port of plan.selection.ports) {
     if (!catalog.items.some(item => item.type === 'repositoryPort' && item.id.endsWith(`/${port.portId}`))) {

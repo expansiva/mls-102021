@@ -77,26 +77,11 @@ void test('the scanner matches the typescript reader on contract shapes', () => 
     const got = readContractAst(item.source, item.fileName);
     const expected = readWithTypescript(item.source, item.fileName);
     if (got.unparsed.length) mismatches.push(`${item.fileName} unparsed: ${got.unparsed.join(' | ')}`);
-    if (JSON.stringify(view(got)) !== JSON.stringify(expected)) {
-      mismatches.push(`${item.fileName}\n got ${JSON.stringify(view(got))}\n exp ${JSON.stringify(expected)}`);
+    if (JSON.stringify(got.symbols) !== JSON.stringify(expected.symbols)) {
+      mismatches.push(`${item.fileName}\n got ${JSON.stringify(got.symbols)}\n exp ${JSON.stringify(expected.symbols)}`);
     }
   }
   assert.deepEqual(mismatches, []);
-});
-
-void test('a Route const binds the route string to StemInput and StemOutput', () => {
-  const source = `
-    export const createConsultaRoute = "agendaClinica.pacientes.cmdCreateConsulta" as const;
-    export interface CreateConsultaInput { "patientId": string; }
-    export interface CreateConsultaOutput { "id": string; "status": string; }
-  `;
-  const ast = readContractAst(source, 'pacientes.defs.ts');
-  assert.deepEqual(ast.bindings, [{
-    route: 'agendaClinica.pacientes.cmdCreateConsulta',
-    input: 'CreateConsultaInput',
-    output: 'CreateConsultaOutput',
-  }]);
-  assert.equal(symbolFields(ast, 'CreateConsultaOutput')?.some(field => field.name === 'id'), true);
 });
 
 void test('an unclosed export is declared and a closed file is not', () => {

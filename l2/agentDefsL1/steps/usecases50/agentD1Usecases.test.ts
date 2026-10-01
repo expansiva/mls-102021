@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ import { commitD1Unit } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
@@ -31,20 +31,14 @@ import { domainSignature, mdmInputFields } from '/_102021_/l2/agentDefsL1/steps/
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = path.join(HERE, '../input20/fixtures/current');
-const MODULE = 'agendaClinica';
+const FIXTURE_ID = 'controleEstoque-39a5166';
+const MODULE = 'controleEstoque';
 const PROJECT = 102047;
-
-function walk(dir: string, prefix: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    const abs = path.join(dir, name);
-    const rel = prefix ? `${prefix}/${name}` : name;
-    if (statSync(abs).isDirectory()) out.push(...walk(abs, rel));
-    else out.push(rel);
-  }
-  return out;
-}
+/** Seed usecases by shape: a list on the module table, and a create and a list on an MDM entity. */
+const LOCAL_LIST = 'listMovimentacaoEstoque';
+const MDM_CREATE = 'createProduto';
+const MDM_LIST = 'listProduto';
+const SELECTED = 4;
 
 function context(): mls.msg.ExecutionContext {
   const root: mls.msg.AIAgentStep = {
@@ -77,19 +71,7 @@ function meta(): IAgentMeta {
 
 async function readyHost() {
   const host = installStudio(PROJECT);
-  for (const rel of walk(FIXTURE, '')) {
-    const file = rel.endsWith('.defs.txt') ? `${rel.slice(0, -4)}.ts` : rel;
-    const info = fileInfoFromDisplay(PROJECT, file);
-    assert.ok(info, rel);
-    let text = readFileSync(path.join(FIXTURE, rel), 'utf8');
-    if (/ontology\/(Profissional|Recepcionista|Paciente)\.defs\.txt$/.test(rel)) {
-      text = text.replace(/"version": \{\n(\s*)"type": "integer"/, '"version": {\n$1"writePrecondition": true,\n$1"type": "integer"');
-    }
-    seed(host, info, text, 'frozen');
-  }
-  // The current seed carries the real L2 contracts of its pages (input20/fixtures/current/l2).
-  // The MDM rule texts the ontology cites live in the platform catalog (mls-102034), not in the seed.
-  seed(host, fileInfoFromDisplay(102034, 'l4/ontology/mdm.defs.ts')!, readFileSync(path.join(HERE, '../../../../../mls-102034/l4/ontology/mdm.defs.ts'), 'utf8'), 'catalog');
+  seedD1Fixture(host, FIXTURE_ID, PROJECT);
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/steps/usecases50', shortName: 'prompt', extension: '.md' }, readFileSync(path.join(HERE, 'prompt.md'), 'utf8'), 'prompt');
   seed(host, { project: 102021, level: 2, folder: 'agentDefsL1/skills', shortName: 'usecase', extension: '.md' }, readFileSync(path.join(HERE, '../../skills/usecase.md'), 'utf8'), 'skill');
   await writeJson(pipelineFile(PROJECT, MODULE), createEntryPipeline(PROJECT, MODULE, new Date('2026-09-21T12:00:00.000Z')));
@@ -118,13 +100,13 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(fanout?.executionMode?.type, 'parallel');
   assert.equal(fanout?.executionMode?.maxParallel, 5);
-  assert.equal(fanout?.executionMode?.args.length, 9);
+  assert.equal(fanout?.executionMode?.args.length, SELECTED);
   assert.equal(fanout?.step.planning?.executionMode, 'parallel_dynamic');
   assert.equal(fanout?.step.planning?.planId, 'usecases50-fanout');
-  assertFanoutParent(fanout?.step, 9);
+  assertFanoutParent(fanout?.step, SELECTED);
   assert.equal(intents.some(intent => intent.type === 'prompt_ready'), false);
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
-  assert.match(trace?.traceMsg || '', /dispatched 9 workers/);
+  assert.match(trace?.traceMsg || '', new RegExp(`dispatched ${SELECTED} workers`));
 
   const workerPrompt = fanout?.executionMode?.args[0] || '';
   const arg = parseWorkerArg(workerPrompt);
@@ -196,9 +178,9 @@ void test('resume after persistence40 dispatches the same fan-out and does not r
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 4);
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(fanout?.executionMode?.type, 'parallel');
-  assert.equal(fanout?.executionMode?.args.length, 9);
-  assertFanoutParent(fanout?.step, 9);
-  assert.equal(intents.some(intent => intent.type === 'update-status' && /dispatched 9 workers/.test((intent as mls.msg.AgentIntentUpdateStatus).traceMsg || '')), true);
+  assert.equal(fanout?.executionMode?.args.length, SELECTED);
+  assertFanoutParent(fanout?.step, SELECTED);
+  assert.equal(intents.some(intent => intent.type === 'update-status' && new RegExp(`dispatched ${SELECTED} workers`).test((intent as mls.msg.AgentIntentUpdateStatus).traceMsg || '')), true);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as { steps?: { persistence40?: { status?: string } } };
   assert.equal(pipeline.steps?.persistence40?.status, 'approved');
   assert.deepEqual(keptFiles(host), kept);
@@ -220,7 +202,7 @@ void test('the same snapshot does not call the model again', async () => {
   pipeline.steps.persistence40 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'persistence40'))] };
   pipeline.steps.usecases50 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [artifact] };
   await writeJson(pipelineFile(PROJECT, MODULE), pipeline);
-  const defPath = `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`;
+  const defPath = `l1/${MODULE}/layer_2_application/usecases/${LOCAL_LIST}.defs.ts`;
   await commitD1Unit({
     project: PROJECT,
     moduleName: MODULE,
@@ -229,7 +211,7 @@ void test('the same snapshot does not call the model again', async () => {
     draftText: '{"llmCalls":0}',
     snapshotHash: snapshot,
     runId: snapshot,
-    parts: [{ defPath, source: 'export const definition = { "artifactId": "listConsulta" } as const;\n' }],
+    parts: [{ defPath, source: `export const definition = { "artifactId": "${LOCAL_LIST}" } as const;\n` }],
   });
   const stored = host.files[fileKey(fileInfo(defPath))]!;
   const mtime = stored.updatedAt;
@@ -337,7 +319,7 @@ async function openUsecases(): Promise<{
 }
 
 void test('a key outside the kind is INVENTED_FIELD and the barrier fires one repair', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -398,7 +380,7 @@ void test('a key outside the kind is INVENTED_FIELD and the barrier fires one re
 });
 
 void test('a repair that still names a foreign key stays repairable at the ceiling', async () => {
-  const target = 'createPaciente';
+  const target = MDM_CREATE;
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
   const bad = { steps: [{ kind: 'transition', transitionId: target, payload: ['id'], call: 'create' }] };
@@ -427,7 +409,7 @@ void test('a repair that still names a foreign key stays repairable at the ceili
 });
 
 void test('one unresolved unit closes the step, counts the error, and keeps the other defs', async () => {
-  const target = 'listPaciente';
+  const target = MDM_LIST;
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -472,20 +454,6 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
   assert.equal(pipeline.awaitingStep, 'usecases50');
   assert.equal(pipeline.steps?.usecases50?.status, 'failed');
   assert.notEqual(pipeline.steps?.usecases50?.status, 'approved');
-  const early = JSON.parse(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))]?.content || '{}') as {
-    problems?: Array<{ code?: string; path?: string; message?: string }>;
-    usecases?: Array<{ usecaseId?: string; definition?: { data?: { functions?: Array<{ input?: Array<{ name?: string }> }>; mdm?: { calls?: Array<{ method?: string; capabilities?: string[] }> } } } | null }>;
-  };
-  const lines = (early.problems || []).map(item => `${item.code} ${item.path}: ${item.message}`);
-  for (const item of early.usecases || []) {
-    if (!['createPaciente', 'listProfissional', 'listContatoPaciente'].includes(item.usecaseId || '')) continue;
-    const data = item.definition?.data;
-    const names = data?.functions?.[0]?.input?.map(field => field.name).join(',') || '';
-    const calls = data?.mdm?.calls?.map(call => `${call.method}:${(call.capabilities || []).join('+')}`).join(',') || '(none)';
-    lines.push(`DEF ${item.usecaseId} calls=${calls}`);
-    lines.push(`IN ${names}`);
-  }
-  writeFileSync('/tmp/d144-problems.txt', lines.join('\n'));
   assert.equal(pipeline.steps?.usecases50?.error, 'REPAIR_EXHAUSTED:1');
   assert.equal(pipeline.steps?.usecases50?.artifactPaths?.[0]?.endsWith('/usecases50.json'), true);
 
@@ -514,7 +482,7 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
 });
 
 void test('a delivered reply counts once, a redelivery does not, and cost is not the count', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -541,7 +509,7 @@ void test('a delivered reply counts once, a redelivery does not, and cost is not
 });
 
 void test('an invalid payload is one delivered reply and not yet a repair', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { host, agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
   const bad = { steps: [{ kind: 'rule', ruleId: 'keep', port: 'nope' }] };
@@ -555,7 +523,7 @@ void test('an invalid payload is one delivered reply and not yet a repair', asyn
 });
 
 void test('a prompt with no payload is not a delivered reply', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
   const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
@@ -570,7 +538,7 @@ void test('a prompt with no payload is not a delivered reply', async () => {
 });
 
 void test('a source block is not dispatched and is not a reply', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -578,8 +546,8 @@ void test('a source block is not dispatched and is not a reply', async () => {
   assert.ok(packet);
   packet.findings.push({
     code: 'SOURCE_ABSENT',
-    path: 'l4/agendaClinica/rules.defs.ts',
-    message: 'Source l4/agendaClinica/rules.defs.ts is absent. The usecase was not sent to the model.',
+    path: `l4/${MODULE}/rules.defs.ts`,
+    message: `Source l4/${MODULE}/rules.defs.ts is absent. The usecase was not sent to the model.`,
   });
   await writeD1UsecaseWork(PROJECT, work);
   const workerPrompt = firstPrompt(intents, target);
@@ -593,7 +561,7 @@ void test('a source block is not dispatched and is not a reply', async () => {
 });
 
 void test('one repair is a second reply, and the attempt index is not the total', async () => {
-  const target = 'listConsulta';
+  const target = LOCAL_LIST;
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -652,7 +620,7 @@ void test('resume without a call keeps a proved reply', async () => {
   pipeline.steps.persistence40 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [displayPath(draftFile(PROJECT, MODULE, 'persistence40'))] };
   pipeline.steps.usecases50 = { status: 'approved', updatedAt: pipeline.updatedAt, artifactPaths: [artifact] };
   await writeJson(pipelineFile(PROJECT, MODULE), pipeline);
-  const defPath = `l1/${MODULE}/layer_2_application/usecases/listConsulta.defs.ts`;
+  const defPath = `l1/${MODULE}/layer_2_application/usecases/${LOCAL_LIST}.defs.ts`;
   await commitD1Unit({
     project: PROJECT,
     moduleName: MODULE,
@@ -661,13 +629,13 @@ void test('resume without a call keeps a proved reply', async () => {
     draftText: '{"llmCalls":13}',
     snapshotHash: snapshot,
     runId: snapshot,
-    parts: [{ defPath, source: 'export const definition = { "artifactId": "listConsulta" } as const;\n' }],
+    parts: [{ defPath, source: `export const definition = { "artifactId": "${LOCAL_LIST}" } as const;\n` }],
   });
   await openCallDispatch(PROJECT, MODULE);
   await recordCallEvent(PROJECT, MODULE, {
     kind: 'reply_delivered',
-    usecaseId: 'listConsulta',
-    planId: 'usecases50-worker-listConsulta',
+    usecaseId: LOCAL_LIST,
+    planId: `usecases50-worker-${LOCAL_LIST}`,
     unitAttempts: 0,
   });
   const agent = createAgent();
@@ -687,7 +655,7 @@ void test('resume without a call keeps a proved reply', async () => {
   const account = accountCalls(await readCallLog(PROJECT, MODULE));
   assert.equal(account.repliesDelivered, 1);
   assert.equal(account.invocationReplies, 0);
-  assert.equal(host.files[fileKey(fileInfo(defPath))]?.content.includes('listConsulta'), true);
+  assert.equal(host.files[fileKey(fileInfo(defPath))]?.content.includes(LOCAL_LIST), true);
 });
 
 function workerStep(prompt: string, stepId: number): mls.msg.AIAgentStep {
@@ -707,7 +675,7 @@ function workerStep(prompt: string, stepId: number): mls.msg.AIAgentStep {
 
 /** The usecase context does not read the page contract. The signature is the domain record. */
 void test('the shared MDM usecase does not take its input from a page contract', async () => {
-  const target = 'listContatoPaciente';
+  const target = MDM_LIST;
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -757,7 +725,7 @@ function fileInfo(path: string) {
     project: PROJECT,
     level: 1,
     folder: `${MODULE}/layer_2_application/usecases`,
-    shortName: 'listConsulta',
+    shortName: LOCAL_LIST,
     extension: '.defs.ts',
   };
   assert.equal(`l1/${file.folder}/${file.shortName}${file.extension}`, path);

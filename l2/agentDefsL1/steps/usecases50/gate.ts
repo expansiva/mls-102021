@@ -14,7 +14,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { authorizedPayloadNames, declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
@@ -51,14 +51,6 @@ interface ProjectionField {
   /** Absent when the routes that declare this name do not agree on one type. */
   type?: string;
   fieldRef?: string;
-}
-
-interface RouteOutput {
-  route: string;
-  contractPath: string;
-  projection: 'declared' | 'unresolved';
-  outputFields: string[];
-  fields: ProjectionField[];
 }
 
 /**
@@ -201,193 +193,6 @@ function noteUnparsedContracts(request: D1UsecaseRequest, problems: D1UsecasePro
     const ast = readContractAst(contract.source, fileName);
     for (const detail of ast.unparsed) error(problems, 'CONTRACT_UNPARSED', fileName, detail);
   }
-}
-
-function resolveRoutes(
-  request: D1UsecaseRequest,
-  usecase: D1UsecaseSelection,
-  problems: D1UsecaseProblem[],
-): D1UsecaseRequest['routes'] {
-  const out: D1UsecaseRequest['routes'] = [];
-  for (const routeId of usecase.routes) {
-    const found = request.routes.filter(item => item.route === routeId);
-    if (found.length !== 1) {
-      error(problems, 'ROUTE_MISSING', usecase.usecaseId, `Route ${routeId} is not an exact selected route.`);
-      continue;
-    }
-    if (found[0].usecaseRef !== usecase.usecaseId) {
-      error(problems, 'ROUTE_MISMATCH', usecase.usecaseId, `Route ${routeId} belongs to ${found[0].usecaseRef}, not ${usecase.usecaseId}.`);
-      continue;
-    }
-    out.push(found[0]);
-  }
-  return out;
-}
-
-function routeOutputs(
-  request: D1UsecaseRequest,
-  usecase: D1UsecaseSelection,
-  entity: D1UsecaseEntity,
-  routes: D1UsecaseRequest['routes'],
-  problems: D1UsecaseProblem[],
-): RouteOutput[] {
-  return routes.map(route => {
-    const contractPath = contractPathFor(request.moduleName, route.page);
-    const binding = bindingFor(request, route);
-    const fields = binding ? projectFields(request, route.page, binding.output, entity) : null;
-    if (!fields) {
-      const symbol = binding?.output || route.route;
-      review(
-        problems,
-        'PROJECTION_UNRESOLVED',
-        route.route,
-        binding
-          ? `Route ${route.route} output symbol ${symbol} has no declared form.`
-          : `Route ${route.route} has no contract binding for ${symbol}.`,
-      );
-      return { route: route.route, contractPath, projection: 'unresolved' as const, outputFields: [], fields: [] };
-    }
-    return {
-      route: route.route,
-      contractPath,
-      projection: 'declared' as const,
-      outputFields: fields.map(field => field.name),
-      fields,
-    };
-  });
-}
-
-/** Two types for one name inside a single route. A difference across routes is not a conflict. */
-function conflictingFields(fields: ProjectionField[]): string[] {
-  const types = new Map<string, string | undefined>();
-  const conflicts: string[] = [];
-  for (const field of fields) {
-    const prior = types.get(field.name);
-    if (prior === undefined) {
-      types.set(field.name, field.type);
-      continue;
-    }
-    if (prior !== field.type && !conflicts.includes(field.name)) conflicts.push(field.name);
-  }
-  return conflicts;
-}
-
-function noteSameRouteConflicts(
-  outputs: RouteOutput[],
-  usecaseId: string,
-  problems: D1UsecaseProblem[],
-): void {
-  for (const item of outputs) {
-    if (item.projection !== 'declared') continue;
-    for (const name of conflictingFields(item.fields)) {
-      error(problems, 'TYPE_CONFLICT', usecaseId, `Field ${name} has two contract types. No cast was applied.`);
-    }
-  }
-}
-
-function sharedInput(
-  request: D1UsecaseRequest,
-  usecase: D1UsecaseSelection,
-  entity: D1UsecaseEntity,
-  routes: D1UsecaseRequest['routes'],
-  problems: D1UsecaseProblem[],
-): ProjectionField[] {
-  const declared: ProjectionField[][] = [];
-  for (const route of routes) {
-    const binding = bindingFor(request, route);
-    if (!binding?.input) continue;
-    const fields = projectFields(request, route.page, binding.input, entity);
-    if (fields) declared.push(fields);
-  }
-  let conflicted = false;
-  for (const list of declared) {
-    for (const name of conflictingFields(list)) {
-      error(problems, 'TYPE_CONFLICT', usecase.usecaseId, `Input ${name} has two contract types. No cast was applied.`);
-      conflicted = true;
-    }
-  }
-  if (conflicted || !declared.length) return [];
-  const [first, ...rest] = declared;
-  const shared: ProjectionField[] = [];
-  for (const field of first) {
-    const peers = rest.map(list => list.find(item => item.name === field.name));
-    if (rest.length && peers.some(item => !item)) {
-      review(problems, 'INPUT_NOT_SHARED', usecase.usecaseId, `Input ${field.name} is not on every resolved contract. It was not copied.`);
-      continue;
-    }
-    if (peers.some(item => item && item.type !== field.type)) {
-      const bare: ProjectionField = { name: field.name };
-      if (field.fieldRef && peers.every(item => item?.fieldRef === field.fieldRef)) bare.fieldRef = field.fieldRef;
-      shared.push(bare);
-      continue;
-    }
-    shared.push(field);
-  }
-  return shared;
-}
-
-function projectFields(
-  request: D1UsecaseRequest,
-  pageId: string,
-  symbol: string,
-  entity: D1UsecaseEntity,
-): ProjectionField[] | null {
-  const contract = request.contracts.find(item => item.pageId === pageId);
-  if (!contract?.source) return null;
-  const ast = readContractAst(contract.source, contract.path || `${pageId}.defs.ts`);
-  const binding = ast.bindings.find(item => item.input === symbol || item.output === symbol);
-  if (!binding) return null;
-  const fields = declaredFields(ast, symbol);
-  if (!fields) return null;
-  return fields.map(field => toProjection(field, entity));
-}
-
-function declaredFields(ast: D1ContractAst, symbol: string): D1ContractField[] | null {
-  const found = ast.symbols.filter(item => item.name === symbol);
-  if (found.length !== 1) return null;
-  const item = found[0];
-  if (item.shape === 'array' && item.fields.length === 0 && item.element) {
-    const inner = ast.symbols.filter(entry => entry.name === item.element);
-    if (inner.length !== 1) return null;
-    return inner[0].fields;
-  }
-  if (item.shape === 'array' && item.fields.length === 0) return null;
-  return item.fields;
-}
-
-function bindingFor(request: D1UsecaseRequest, route: D1UsecaseRequest['routes'][number] | undefined) {
-  if (!route) return null;
-  const contract = request.contracts.find(item => item.pageId === route.page);
-  if (!contract?.source) return null;
-  const ast = readContractAst(contract.source, contract.path || `${route.page}.defs.ts`);
-  const found = ast.bindings.filter(item => item.route === route.route);
-  if (found.length !== 1) return null;
-  return found[0];
-}
-
-function toProjection(field: D1ContractField, entity: D1UsecaseEntity): ProjectionField {
-  const domain = bindDomainField(entity, field.name);
-  const projected: ProjectionField = { name: field.name, type: field.type };
-  if (domain && domain !== 'ambiguous') projected.fieldRef = `${entity.entityId}.${domain.name}`;
-  return projected;
-}
-
-function unionOutputs(outputs: RouteOutput[]): ProjectionField[] {
-  const union: ProjectionField[] = [];
-  for (const route of outputs) {
-    for (const field of route.fields) {
-      const existing = union.find(item => item.name === field.name);
-      if (!existing) {
-        const copy: ProjectionField = { name: field.name, type: field.type };
-        if (field.fieldRef) copy.fieldRef = field.fieldRef;
-        union.push(copy);
-        continue;
-      }
-      if (existing.type !== field.type) delete existing.type;
-      if (existing.fieldRef && existing.fieldRef !== field.fieldRef) delete existing.fieldRef;
-    }
-  }
-  return union;
 }
 
 /**
@@ -874,10 +679,6 @@ function resolveBoundary(
 function requiredLeaf(ruleId: string): string {
   if (!ruleId.endsWith('Required')) return '';
   return ruleId.slice(0, -'Required'.length);
-}
-
-function contractPathFor(moduleName: string, pageId: string): string {
-  return `l2/${moduleName}/web/contracts/${pageId}.defs.ts`;
 }
 
 function ruleSourcePath(

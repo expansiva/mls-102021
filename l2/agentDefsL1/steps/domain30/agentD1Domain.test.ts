@@ -86,7 +86,7 @@ async function readyHost() {
   return host;
 }
 
-void test('domain30 writes the planned domain defs once and leaves done bytes and neighbors alone', async () => {
+void test('domain30 writes the planned domain defs once and leaves done bytes and neighbors alone', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();

@@ -24,6 +24,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { declaredDependencyPaths, readDefinitionExport } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { accountCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
@@ -512,10 +513,7 @@ function checkCoverage(
 ): void {
   const snapshot = request.snapshot;
   if (!snapshot) return;
-  const handlers = handlerRows(parsed);
   const usecases = parsed.filter(item => item.definition.artifactType === 'usecase');
-  const usecaseIds = new Set(usecases.flatMap(item => idsOfUsecase(item.definition)));
-  const selectedIds = new Set(snapshot.selection.usecases.flatMap(item => [item.usecaseId, item.identity].filter(Boolean)));
   const ports = new Set(parsed.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId));
   const portByEntity = new Map(snapshot.selection.ports.map(item => [item.entity, item.portId]));
   const storage = storageOf(parsed);
@@ -527,17 +525,7 @@ function checkCoverage(
   const draftedRules = draftRules(request);
   const outbound = new Set(snapshot.selection.outbound);
 
-  for (const route of snapshot.selection.routes) {
-    if (handlers.some(handler => handler.route === route.route)) continue;
-    gap(findings, gaps, route.route, `Route ${route.route} has no handler.`);
-  }
-  for (const handler of handlers) {
-    if (!selectedIds.has(handler.usecaseId) && !usecaseIds.has(handler.usecaseId)) {
-      gap(findings, gaps, handler.route, `Handler ${handler.route} names usecase ${handler.usecaseId}, which is not selected.`);
-    }
-    const page = snapshot.selection.routes.find(route => route.route === handler.route)?.page || '';
-    checkContract(request, page, handler.route, findings);
-  }
+  checkContract(request, parsed, findings);
   for (const item of usecases) {
     const data = isRecord(item.definition.data) ? item.definition.data : {};
     const usecaseId = typeof data.usecaseId === 'string' ? data.usecaseId : item.definition.artifactId;
@@ -579,20 +567,53 @@ function checkCoverage(
   }
 }
 
-function checkContract(request: D1FinalizeRequest, pageId: string, route: string, findings: D1FinalizeFinding[]): void {
-  if (!pageId) return;
-  const path = contractPath(request.moduleName, pageId);
-  const contract = request.contracts[pageId];
-  const digest = request.snapshot?.sources.find(source => source.path === path);
-  if (!contract || contract.text == null) {
-    error(findings, 'CONTRACT_ABSENT', path, `L2 contract for ${pageId} is absent.`, pageId);
-    return;
+function checkContract(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
+  const handlersByPage = new Map<string, string[]>();
+  for (const item of parsed) {
+    if (item.definition.artifactType !== 'httpController') continue;
+    const data = item.definition.data;
+    const pageId = isRecord(data) && typeof data.pageId === 'string' && data.pageId
+      ? data.pageId
+      : item.definition.artifactId;
+    const list = handlersByPage.get(pageId) || [];
+    list.push(...routesOf(item.definition));
+    handlersByPage.set(pageId, list);
   }
-  if (digest && digest.sha256 && contract.hash && digest.sha256 !== contract.hash) {
-    error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} does not match the snapshot.`, pageId);
-  }
-  if (!contract.text.includes(route)) {
-    error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} does not declare route ${route}.`, route);
+  const pageIds = new Set([...handlersByPage.keys(), ...Object.keys(request.contracts)]);
+  for (const pageId of [...pageIds].sort()) {
+    if (!pageId) continue;
+    const path = contractPath(request.moduleName, pageId);
+    const contract = request.contracts[pageId];
+    const digest = request.snapshot?.sources.find(source => source.path === path);
+    if (!contract || contract.text == null) {
+      error(findings, 'CONTRACT_ABSENT', path, `L2 contract for ${pageId} is absent.`, pageId);
+      continue;
+    }
+    if (digest && digest.sha256 && contract.hash && digest.sha256 !== contract.hash) {
+      error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} does not match the snapshot.`, pageId);
+    }
+    let declared: string[] = [];
+    try {
+      const parsedContract = parseD2ContractV2(contract.text);
+      if (parsedContract.pageId !== pageId) {
+        error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} names page ${parsedContract.pageId}.`, pageId);
+        continue;
+      }
+      declared = parsedContract.routes.map(route => route.route);
+    } catch {
+      error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} did not parse.`, pageId);
+      continue;
+    }
+    const handlers = new Set(handlersByPage.get(pageId) || []);
+    const declaredSet = new Set(declared);
+    for (const route of [...declaredSet].sort()) {
+      if (handlers.has(route)) continue;
+      error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} declares route ${route}, which has no handler.`, route);
+    }
+    for (const route of [...handlers].sort()) {
+      if (declaredSet.has(route)) continue;
+      error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} does not declare route ${route}.`, route);
+    }
   }
 }
 
@@ -604,7 +625,6 @@ function enumsOf(request: D1FinalizeRequest): { consumed: D1FinalizeEnum[]; notC
     snapshot: {
       sources: request.dependencyTexts,
       definitions: request.observed.flatMap(item => item.text ? [item.text] : []),
-      contracts: Object.values(request.contracts).map(item => ({ path: item.path, text: item.text || '' })),
       tables: (request.snapshot?.selection.tables || []).map(table => ({ tableId: table.tableId, entityId: table.entity })),
     },
   });
@@ -740,25 +760,6 @@ function inventoriedPaths(request: D1FinalizeRequest): Set<string> {
     if (removed.defPath) known.add(logicalDefPath(removed.defPath));
   }
   return known;
-}
-
-function handlerRows(parsed: ParsedDef[]): Array<{ route: string; usecaseId: string }> {
-  const rows: Array<{ route: string; usecaseId: string }> = [];
-  for (const item of parsed) {
-    if (item.definition.artifactType !== 'httpController' || !isRecord(item.definition.data)) continue;
-    const handlers = Array.isArray(item.definition.data.handlers) ? item.definition.data.handlers : [];
-    for (const handler of handlers) {
-      if (!isRecord(handler) || typeof handler.route !== 'string' || typeof handler.usecaseId !== 'string') continue;
-      rows.push({ route: handler.route, usecaseId: handler.usecaseId });
-    }
-  }
-  return rows;
-}
-
-function idsOfUsecase(definition: D1Definition): string[] {
-  const data = isRecord(definition.data) ? definition.data : {};
-  const usecaseId = typeof data.usecaseId === 'string' ? data.usecaseId : '';
-  return [definition.artifactId, usecaseId].filter(Boolean);
 }
 
 function storageOf(parsed: ParsedDef[]): Map<string, string> {

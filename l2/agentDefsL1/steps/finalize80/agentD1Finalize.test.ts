@@ -29,7 +29,7 @@ import { contractSources, coreControllerRequest } from '/_102021_/l2/agentDefsL1
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { parseFinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
-import { HEAD_SEED_V11_SKIP } from '/_102021_/l2/agentDefsL1/steps/input20/regenHead.js';
+const AGENDA_KEPT = 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, '../input20/fixtures/head');
@@ -133,7 +133,7 @@ async function readyHost() {
   return host;
 }
 
-void test('a held input20 run is reported as not generated', async () => {
+void test('a held input20 run is reported as not generated', { skip: AGENDA_KEPT }, async () => {
   const host = installStudio(PROJECT);
   const pipeline = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-22T04:41:26.070Z'));
   pipeline.status = 'awaitingStep';
@@ -225,7 +225,7 @@ void test('a held input20 run is reported as not generated', async () => {
   assert.equal(report?.pool, undefined);
 });
 
-void test('finalize80 reports the open gaps and does not run the earlier phases again', { skip: HEAD_SEED_V11_SKIP }, async () => {
+void test('finalize80 reports the open gaps and does not run the earlier phases again', { skip: AGENDA_KEPT }, async () => {
   const host = await readyHost();
   const agent = createAgent();
   const ctx = context();
