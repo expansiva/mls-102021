@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, semanticHash, type MaterializationReceipt, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, semanticHash, type MaterializationReceipt, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import { planMaterialization, PLAN_REASON } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';

@@ -8,7 +8,7 @@ import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import { planMaterialization } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';

@@ -6,10 +6,10 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, parseDefinitionSource, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, M1_RECEIPT_SCHEMA, outputPathFromDefPath, parseDefinitionSource, receiptPathFor, renderDefinition, semanticHash, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
-import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import type { MaterializationReceipt } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderScenarioTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';

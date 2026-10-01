@@ -9,7 +9,7 @@ import {
   semanticHash,
   type M1Definition,
   type MaterializationReceipt,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { displayPath, type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
 import { futureOutputPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';

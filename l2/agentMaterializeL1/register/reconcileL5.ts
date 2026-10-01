@@ -6,7 +6,7 @@
  * not invent a folder, and does not write.
  */
 
-import { outputPathFromDefPath } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { outputPathFromDefPath } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { busyDetail } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 

@@ -31,7 +31,7 @@ import {
   type M1Definition,
   type M1Status,
   type MaterializationReceipt,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { IMPLEMENT_HANDLER_RECIPE } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { STRUCTURE_HANDLER_RECIPE } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';

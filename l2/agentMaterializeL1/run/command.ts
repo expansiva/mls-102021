@@ -6,7 +6,7 @@
  * A flow that matches nothing is a refusal. The parser does not ask which file to open.
  */
 
-import { isRecord } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CEILING, type BudgetRequest } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
 

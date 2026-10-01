@@ -8,7 +8,7 @@ import {
   type M1Status,
   type MaterializationReceipt,
   type ReferenceIndex,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 export const M1_FIXTURE_PROJECT = 102047;
 export const M1_FIXTURE_MODULE = 'agendaClinica';

@@ -9,7 +9,7 @@
  * A grant proves behaviour; it is not a rule id (d1_26 r2, m1_10), so `ruleId` stays null.
  */
 
-import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';

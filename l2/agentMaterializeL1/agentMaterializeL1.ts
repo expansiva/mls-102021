@@ -3,7 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { helpText, parseStudioPrompt, M1_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/run/command.js';
 import { runMaterialize } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
-import { receiptFolder } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { receiptFolder } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { createStudioHost, loadStudioUnits, readStudioProfile } from '/_102021_/l2/agentMaterializeL1/studioHost.js';
 
 export function createAgent(): IAgentAsync {

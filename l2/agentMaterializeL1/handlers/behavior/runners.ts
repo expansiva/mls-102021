@@ -5,7 +5,7 @@
  * The observation does not invent a grant and does not execute the file.
  */
 
-import { outputPathFromDefPath, readDefinition, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { outputPathFromDefPath, readDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_IMPLEMENT_HANDLERS } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { HandlerCall, HandlerOutcome, MaterializeHandlerRunner } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { catalogForStage, parseCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';

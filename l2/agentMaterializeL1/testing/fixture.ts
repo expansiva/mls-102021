@@ -4,7 +4,7 @@
  * Memory harness of the certification fixture (m1_28). It runs the obligations of m1_27 against
  * the emitted code: per case, setup -> case -> cleanup in `finally`.
  * - Values come from the entity defs, the grants and the contract members; the plan
- *   (contracts/fixture.ts) says which data is local and which the runtime owns.
+ *   (l2/helpers/l1Defs/fixture.ts) says which data is local and which the runtime owns.
  * - Every id is made for this execution and registered; cleanup removes only registered ids,
  *   one by one, children first. No reset, no truncate, no delete by name.
  * - Identity in memory is the fixture actor id set on `sessionContext.actorId`, never a body
@@ -13,8 +13,8 @@
  * - production/homologation are refused before any write (`decideProfile`).
  */
 
-import { isRecord, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { dependencyOrder, type M1FixturePlan, type M1FixtureTarget } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { dependencyOrder, type M1FixturePlan, type M1FixtureTarget } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { lifecycleStart } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';

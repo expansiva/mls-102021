@@ -22,7 +22,7 @@ import {
   parseDefinitionSource,
   readDefinition,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,

@@ -6,7 +6,7 @@
  * removeOwned deletes listed files the manifest owns and never a directory.
  */
 
-import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import type { MaterializationReceipt } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 export interface MaterializeStateReader {
   readReceipt(defPath: string): Promise<MaterializationReceipt | null>;

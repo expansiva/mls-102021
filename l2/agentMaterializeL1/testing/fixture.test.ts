@@ -9,8 +9,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { planFixture, readFixturePlan, type M1FixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import type { M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { planFixture, readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { M1_RUNTIME_OWNER } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 import { BASE, fixture, tablesOf, type Fixture } from '/_102021_/l2/agentMaterializeL1/testing/oracleModule.js';

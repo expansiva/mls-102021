@@ -12,7 +12,7 @@ import {
   readDefinition,
   receiptPathFor,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
@@ -28,7 +28,7 @@ import {
   withoutUniqueChecks,
 } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/emitPersistence.js';
 import { persistenceHandlerIds, persistenceRunners, runPersistence } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
-import { planFixture } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { planFixture } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 
 const EXTRA = new Map<string, string>();
 const HERE = dirname(fileURLToPath(import.meta.url));

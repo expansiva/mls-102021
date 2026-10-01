@@ -7,7 +7,7 @@ import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseDefinitionSource, readDefinition, receiptPathFor, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource, readDefinition, receiptPathFor, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';

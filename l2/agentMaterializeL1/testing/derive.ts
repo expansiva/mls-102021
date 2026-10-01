@@ -11,7 +11,7 @@ import {
   outputPathFromDefPath,
   readDefinition,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import {
@@ -31,7 +31,7 @@ import {
   routeObligations,
   type M1Obligation,
 } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
-import { readFixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { classifyObligation, fixtureModel, runtimeGap, type M1FixtureModel } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 
 export const M1_CATALOG_RECIPE = '2026-09-27-m1-catalog-derive-v5' as const;

@@ -3,7 +3,7 @@
 import {
   parseDefinitionSource,
   renderDefinition as renderV2,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { type D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   definitionIssues,

@@ -6,7 +6,7 @@ import {
   renderDefinition,
   semanticHash,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 /**
  * Identity of a def file. A v2 definition hashes the semantic projection, so a

@@ -11,7 +11,7 @@ import {
   outputPathFromDefPath,
   type KnownArtifact,
   type M1ArtifactType,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { hashEvidence } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 import { testFileFor } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';

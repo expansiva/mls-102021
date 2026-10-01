@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseDefinitionSource, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11, M1_EXISTING_RECORD, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';

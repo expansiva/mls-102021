@@ -6,7 +6,7 @@
  * blocked by the planner. Nothing in this module writes a file.
  */
 
-import { isM1ArtifactType, type M1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isM1ArtifactType, type M1ArtifactType } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 export const M1_HANDLER_STAGES = ['structure', 'implement'] as const;
 export type M1HandlerStage = typeof M1_HANDLER_STAGES[number];

@@ -14,9 +14,9 @@ import {
   readDefinition,
   type M1Definition,
   type M1Verification,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
-import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { auditImports, importSpecifier, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
@@ -261,7 +261,7 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
  * Product seeds and the certification fixture are two exports. D1 plans datasets as
  * `{ datasetId, tableId, owners }` with no rows, so `applicableSeeds` stays empty and the
  * receipt says planned, not materialized. Rows a def carries (`seedFor`/`rows`) are product
- * seeds and keep the profile guard. The fixture (contracts/fixture.ts) is never a seed row.
+ * seeds and keep the profile guard. The fixture (l2/helpers/l1Defs/fixture.ts) is never a seed row.
  */
 function emitSeeds(definition: M1Definition, output: string): PersistenceEmit | EmitFailure {
   const pending = pendingOf(definition.data);

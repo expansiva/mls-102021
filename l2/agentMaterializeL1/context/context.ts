@@ -8,7 +8,7 @@
  * compiledSignature refuses a v2 def.
  */
 
-import { isRecord, type M1ArtifactType, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, type M1ArtifactType, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { handlerFor, type M1ContextCapability } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 
 export const PLATFORM_FILES: Record<M1ContextCapability, string> = {

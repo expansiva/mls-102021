@@ -18,7 +18,7 @@ import {
   type M1Status,
   type M1Verification,
   type MaterializationReceipt,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { handlerFor, type MaterializeHandler } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';

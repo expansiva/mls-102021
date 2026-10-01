@@ -1,4 +1,4 @@
-/// <mls fileReference="_102021_/l2/agentMaterializeL1/contracts/definition.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/helpers/l1Defs/definition.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -25,7 +25,7 @@ import {
   statusEvidenceIssues,
   traverseDefinitions,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import {
   LIST,
   LIST_CONSULTA_EXAMPLE,
@@ -44,7 +44,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/fixtures/cases.js';
 
 void test('d1_31 import surface is this module', () => {
-  assert.equal(D1_31_IMPORT, '/_102021_/l2/agentMaterializeL1/contracts/definition.js');
+  assert.equal(D1_31_IMPORT, '/_102021_/l2/helpers/l1Defs/definition.js');
   assert.deepEqual(D1_31_EXPORTS, [
     'M1_DEFINITION_SCHEMA',
     'M1_STATUSES',

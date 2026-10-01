@@ -83,7 +83,7 @@ void test('renamed fixture derives the same cases and no id reaches the derivati
   assert.deepEqual(shape(renamed), shape(DERIVED));
   const body = JSON.stringify(renamed.obligations) + JSON.stringify(renamed.catalog);
   for (const id of Object.values(BASE)) assert.equal(body.includes(id), false, id);
-  for (const file of ['obligations.ts', 'derive.ts', 'fixture.ts', '../contracts/fixture.ts']) {
+  for (const file of ['obligations.ts', 'derive.ts', 'fixture.ts', '../../helpers/l1Defs/fixture.ts']) {
     const source = readFileSync(join(HERE, file), 'utf8');
     for (const id of [...Object.values(BASE), ...Object.values(RENAMED).slice(1), 'agendaClinica', 'Consulta', 'profissional', 'paciente']) {
       assert.equal(source.includes(id), false, `${file} names ${id}`);

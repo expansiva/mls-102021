@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import ts from 'typescript';
 
-import type { M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import type { M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { emitDomain, ontologyEnums, ontologyRef } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 // Ids are arbitrary on purpose: the enumerated field is not called `status` and sits under `details`.

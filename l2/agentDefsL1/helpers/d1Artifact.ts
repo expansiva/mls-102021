@@ -7,8 +7,8 @@ import {
   M1_DEFINITION_SCHEMA,
   type M1ArtifactType,
   type M1Status,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 
 export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
 export type { M1Status, M1Status as D1DefinitionStatus };

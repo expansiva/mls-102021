@@ -6,8 +6,8 @@
  * the same scenario as data (`renderScenarioTest`); nothing here runs a case.
  */
 
-import type { M1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { isM1ArtifactType } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import type { M1ArtifactType } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { isM1ArtifactType } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 
 export const M1_CATALOG_SCHEMA = '2026-09-25-m1-scenario-catalog-v1' as const;

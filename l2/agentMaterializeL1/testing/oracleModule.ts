@@ -5,7 +5,7 @@
  * Every id comes from `Names`, so a renamed copy must derive the same. Test support only.
  */
 
-import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { deriveCatalog, type DerivedCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 

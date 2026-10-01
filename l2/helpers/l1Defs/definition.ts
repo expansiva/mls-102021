@@ -1,10 +1,10 @@
-/// <mls fileReference="_102021_/l2/agentMaterializeL1/contracts/definition.ts" enhancement="_blank"/>
+/// <mls fileReference="_102021_/l2/helpers/l1Defs/definition.ts" enhancement="_blank"/>
 
 /**
  * C0 contract for defs v2. Exclusive owner of this file: d1_30.
  *
  * d1_31 (writer/finalize), m1_01 (planner) and m1_04 (tests) import from here:
- *   /_102021_/l2/agentMaterializeL1/contracts/definition.js
+ *   /_102021_/l2/helpers/l1Defs/definition.js
  *
  * Does not import d1Artifact: d1_31 will import this module, and a reverse
  * runtime import would cycle. Business `data` keeps the D1 field names.
@@ -40,7 +40,7 @@ export const M1_VERIFICATION_KINDS = ['compile', 'test', 'schema', 'hash'] as co
 export type M1VerificationKind = typeof M1_VERIFICATION_KINDS[number];
 
 /** Public names d1_31 must import. Do not duplicate these enums in agentDefsL1. */
-export const D1_31_IMPORT = '/_102021_/l2/agentMaterializeL1/contracts/definition.js' as const;
+export const D1_31_IMPORT = '/_102021_/l2/helpers/l1Defs/definition.js' as const;
 export const D1_31_EXPORTS = [
   'M1_DEFINITION_SCHEMA',
   'M1_STATUSES',

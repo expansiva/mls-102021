@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, type M1Definition } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emitBehavior, OWN_MARK, withoutLifecycleChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { emitController, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';

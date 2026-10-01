@@ -13,8 +13,8 @@
  * not serialized. The CLI create is exclusive on disk.
  */
 
-import type { MaterializationReceipt } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
-import { receiptPathFor } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import type { MaterializationReceipt } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { receiptPathFor } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import type { MaterializeOwnedRemoval, MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { projectLockRef } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';

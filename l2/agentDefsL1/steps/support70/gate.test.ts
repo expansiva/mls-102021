@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, seedScenarioIssues, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { readFixturePlan } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';

@@ -14,7 +14,7 @@
  * - Memory is the only proof here. Runtime (identity, MDM) stays pending with its owner.
  */
 
-import { isRecord, outputPathFromDefPath, readDefinition, receiptFolder, type M1Definition, type M1Verification } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { isRecord, outputPathFromDefPath, readDefinition, receiptFolder, type M1Definition, type M1Verification } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';

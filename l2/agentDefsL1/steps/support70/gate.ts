@@ -19,7 +19,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { planFixture } from '/_102021_/l2/agentMaterializeL1/contracts/fixture.js';
+import { planFixture } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import type { D1ControllerGrant, D1ControllerRelationship } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import {
   D1_SUPPORT_VERSION,

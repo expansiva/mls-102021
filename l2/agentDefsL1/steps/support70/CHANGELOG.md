@@ -2,7 +2,7 @@
 
 ## 2026-09-27 (m1_28)
 
-- `backend.json.testSupport[]` (v1.2) becomes `data.fixture` of the seeds def, the shape of `agentMaterializeL1/contracts/fixture.ts`. No rows and no ids.
+- `backend.json.testSupport[]` (v1.2) becomes `data.fixture` of the seeds def, the shape of `l2/helpers/l1Defs/fixture.ts`. No rows and no ids.
 - The backend bytes are read only when they match the input20 digest. A v1.1 plan leaves the def as before.
 
 ## 2026-09-23 (d1_25)

@@ -9,7 +9,7 @@ import {
   outputPathFromDefPath,
   readDefinition,
   type M1Definition,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STRUCTURE_HANDLERS } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { HandlerCall, HandlerOutcome, MaterializeHandlerRunner } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import {

@@ -9,7 +9,7 @@ import {
   receiptPathFor,
   semanticHash,
   type MaterializationReceipt,
-} from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+} from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { pendingDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { pipelineFile, plannerPipelineFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { hashesAgree } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';

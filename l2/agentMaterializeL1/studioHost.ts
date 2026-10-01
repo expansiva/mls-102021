@@ -8,7 +8,7 @@
  */
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
-import { parseDefinitionSource } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { parseRef, readable, writable } from '/_102021_/l2/agentMaterializeL1/core/refs.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';

@@ -8,7 +8,7 @@
  * This module does not read an environment variable and does not open a database.
  */
 
-import { receiptFolder } from '/_102021_/l2/agentMaterializeL1/contracts/definition.js';
+import { receiptFolder } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 export const M1_CEILING = {
   maxWorkers: 2,
