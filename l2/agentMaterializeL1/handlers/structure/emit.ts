@@ -26,7 +26,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-09-29-structure-handler-v9';
+export const STRUCTURE_HANDLER_RECIPE = '2026-10-01-structure-handler-v10';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -658,6 +658,257 @@ function mapToken(tokenValue: string, entity: string, locals: Set<string>): stri
   return array ? `${ts}[]` : ts;
 }
 
+const FIELD_PATH = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+interface ServicePort {
+  interfaceName: string;
+  binding: string;
+}
+
+interface ServiceUse {
+  usecaseId: string;
+  functionName: string;
+  specifier: string;
+  entityId: string;
+  operation: string;
+  ports: ServicePort[];
+}
+
+interface ServiceOutput {
+  key: string;
+  entity: string;
+  fields: string[];
+  page: string;
+  pageSize: string;
+  hasMore: string;
+}
+
+interface ServiceParam {
+  name: string;
+  target: string;
+  pages: string;
+}
+
+interface ServiceCall {
+  route: string;
+  transaction: 'single' | 'none';
+  uses: ServiceUse[];
+  outputs: ServiceOutput[];
+  params: ServiceParam[];
+}
+
+/**
+ * One function per request, keyed by the route. A command resolves repositories on the
+ * transaction runtime: the adapter binds `ctx.data.moduleData` when the factory runs.
+ * `outputs[].page`, `pageSize` and `hasMore` are the contract pagination keys when the def has them.
+ */
+export async function emitRequestService(
+  definition: M1Definition,
+  output: string,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+  stage: 'structure' | 'implement',
+): Promise<EmitResult | EmitFailure> {
+  const loaded = await loadService(definition, read, registeredPortNames(moduleDefinitions));
+  if ('code' in loaded) return loaded;
+  const behavior = stage === 'implement';
+  const uses = loaded.flatMap(call => call.uses);
+  const specifiers = unique(uses.map(use => use.specifier));
+  const imports = [PLATFORM_CONTRACTS, ...(behavior ? [REPOSITORY_REGISTRY] : []), ...specifiers];
+  const source = [
+    header(output),
+    `import { AppError, type RequestContext } from '${PLATFORM_CONTRACTS}';`,
+    ...(behavior ? [`import { resolveRepository } from '${REPOSITORY_REGISTRY}';`] : []),
+    ...usecaseImportLines(uses),
+    '',
+    'export const requests = {',
+    ...loaded.map(call => renderRequest(call, behavior)),
+    '};',
+    '',
+    ...(behavior ? [projectSource(), ''] : []),
+  ].join('\n');
+  return { runsStub: !behavior, imports, source };
+}
+
+async function loadService(
+  definition: M1Definition,
+  read: StructureRead,
+  registered: ReadonlySet<string>,
+): Promise<ServiceCall[] | EmitFailure> {
+  const rows = Array.isArray(definition.data.requests) ? definition.data.requests.filter(isRecord) : [];
+  if (rows.length === 0) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} declares no request.` };
+  const calls: ServiceCall[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const route = typeof row.route === 'string' ? row.route : '';
+    const kind = row.kind === 'cmd' || row.kind === 'qry' ? row.kind : '';
+    const transaction = row.transaction === 'single' || row.transaction === 'none' ? row.transaction : '';
+    if (!route || !kind || !transaction) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has a request without a route.` };
+    if (seen.has(route)) return { code: 'REQUEST_HANDLER', detail: `Route ${route} is declared more than once.` };
+    seen.add(route);
+    const expected = kind === 'cmd' ? 'single' : 'none';
+    if (transaction !== expected) {
+      return { code: 'TRANSACTION_REQUIRED', detail: `${route} transaction is ${transaction}. A ${kind === 'cmd' ? 'command' : 'query'} is ${expected}.` };
+    }
+    const uses = await loadUses(definition, route, stringList(row.uses), read, registered);
+    if ('code' in uses) return uses;
+    const outputs = loadOutputs(route, row.outputs);
+    if ('code' in outputs) return outputs;
+    const params = loadParams(route, row.params);
+    if ('code' in params) return params;
+    for (const output of outputs) {
+      if (!uses.some(use => use.entityId === output.entity)) {
+        return { code: 'USECASE_UNBOUND', detail: `${route} projects ${output.entity}, which is not a used usecase.` };
+      }
+      if (output.page && !params.some(param => param.target === output.key && param.pages && param.name === 'page')) {
+        return { code: 'PAGINATION_UNBOUND', detail: `${route} output ${output.key} names ${output.page} and has no page param.` };
+      }
+      if (output.pageSize && !params.some(param => param.target === output.key && param.pages && param.name === 'pageSize')) {
+        return { code: 'PAGINATION_UNBOUND', detail: `${route} output ${output.key} names ${output.pageSize} and has no pageSize param.` };
+      }
+    }
+    calls.push({ route, transaction, uses, outputs, params });
+  }
+  return calls;
+}
+
+async function loadUses(
+  definition: M1Definition,
+  route: string,
+  ids: readonly string[],
+  read: StructureRead,
+  registered: ReadonlySet<string>,
+): Promise<ServiceUse[] | EmitFailure> {
+  if (ids.length === 0) return { code: 'USECASE_UNBOUND', detail: `${route} uses no usecase.` };
+  const uses: ServiceUse[] = [];
+  const names = new Set<string>();
+  const entities = new Set<string>();
+  for (const usecaseId of ids) {
+    if (!IDENT.test(usecaseId)) return { code: 'USECASE_UNBOUND', detail: `${route} uses ${usecaseId}, which is not an identifier.` };
+    const dep = definition.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`));
+    if (!dep) return { code: 'USECASE_UNBOUND', detail: `${route} has no dependency on ${usecaseId}.` };
+    const text = await read(dep);
+    if (text === null) return { code: 'USECASE_UNBOUND', detail: `${dep} could not be read.` };
+    const parsed = parseDefinitionExport(text);
+    if (!parsed) return { code: 'USECASE_UNBOUND', detail: `${dep} is not a definition.` };
+    const fn = firstFunction(parsed);
+    const entityId = typeof parsed.data.entityId === 'string' ? parsed.data.entityId : '';
+    const operation = typeof parsed.data.operation === 'string' ? parsed.data.operation : '';
+    if (!fn || !IDENT.test(fn.name) || !IDENT.test(entityId) || !operation) {
+      return { code: 'FUNCTION_MISSING', detail: `${usecaseId} has no function.` };
+    }
+    if (names.has(fn.name)) return { code: 'FUNCTION_MISSING', detail: `${fn.name} is exported by more than one usecase.` };
+    if (entities.has(entityId)) return { code: 'USECASE_ENTITY', detail: `${route} uses more than one usecase of ${entityId}.` };
+    names.add(fn.name);
+    entities.add(entityId);
+    const ports: ServicePort[] = [];
+    for (const interfaceName of stringList(parsed.data.ports)) {
+      if (!IDENT.test(interfaceName)) return { code: 'PORT_UNBOUND', detail: `${usecaseId} names a port that is not an identifier.` };
+      if (!registered.has(interfaceName)) return { code: 'PORT_UNBOUND', detail: `${interfaceName} is not a registered repository.` };
+      ports.push({ interfaceName, binding: camel(interfaceName) });
+    }
+    uses.push({ usecaseId, functionName: fn.name, specifier: importSpecifier(dep, 'output'), entityId, operation, ports });
+  }
+  return uses;
+}
+
+function loadOutputs(route: string, value: unknown): ServiceOutput[] | EmitFailure {
+  const rows = Array.isArray(value) ? value.filter(isRecord) : [];
+  if (rows.length === 0) return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
+  const outputs: ServiceOutput[] = [];
+  for (const row of rows) {
+    const key = typeof row.key === 'string' ? row.key : '';
+    const entity = typeof row.entity === 'string' ? row.entity : '';
+    const fields = stringList(row.fields);
+    if (!IDENT.test(key) || !IDENT.test(entity) || fields.length === 0 || fields.some(field => !FIELD_PATH.test(field))) {
+      return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has an output projection that is not a field path.` };
+    }
+    const page = typeof row.page === 'string' ? row.page : '';
+    const pageSize = typeof row.pageSize === 'string' ? row.pageSize : '';
+    const hasMore = typeof row.hasMore === 'string' ? row.hasMore : '';
+    if ([page, pageSize, hasMore].some(name => name && !IDENT.test(name))) {
+      return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has a pagination key that is not an identifier.` };
+    }
+    outputs.push({ key, entity, fields, page, pageSize, hasMore });
+  }
+  return outputs;
+}
+
+function loadParams(route: string, value: unknown): ServiceParam[] | EmitFailure {
+  const rows = Array.isArray(value) ? value.filter(isRecord) : [];
+  const params: ServiceParam[] = [];
+  for (const row of rows) {
+    const name = typeof row.name === 'string' ? row.name : '';
+    const target = typeof row.target === 'string' ? row.target : '';
+    const pages = typeof row.pages === 'string' ? row.pages : '';
+    if (!IDENT.test(name) || !IDENT.test(target)) {
+      return { code: 'ROUTE_MISSING', detail: `${route} has a param that is not an identifier.` };
+    }
+    params.push({ name, target, pages });
+  }
+  return params;
+}
+
+function usecaseImportLines(uses: readonly ServiceUse[]): string[] {
+  const bySpec = new Map<string, string[]>();
+  for (const use of uses) {
+    const names = bySpec.get(use.specifier) ?? [];
+    if (!names.includes(use.functionName)) names.push(use.functionName);
+    bySpec.set(use.specifier, names);
+  }
+  return [...bySpec].map(([specifier, names]) => `import { ${names.join(', ')} } from '${specifier}';`);
+}
+
+function renderRequest(call: ServiceCall, behavior: boolean): string {
+  const signature = `  ${JSON.stringify(call.route)}: async function (input: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {`;
+  if (!behavior) {
+    return [
+      signature,
+      '    void input;',
+      '    void ctx;',
+      ...call.uses.map(use => `    void ${use.functionName};`),
+      `    throw new AppError('${M1_STUB_ERROR}', ${JSON.stringify(`${call.route} is not implemented.`)}, ${M1_STUB_STATUS});`,
+      '  },',
+    ].join('\n');
+  }
+  const body = renderRequestBody(call, call.transaction === 'single' ? '    ' : '  ');
+  if (call.transaction === 'single') {
+    return [signature, '  return ctx.data.moduleData.runInTransaction(async (tx) => {', body, '  });', '  },'].join('\n');
+  }
+  return [signature, body, '  },'].join('\n');
+}
+
+function renderRequestBody(call: ServiceCall, indent: string): string {
+  const inTx = call.transaction === 'single';
+  const bound = inTx
+    ? `${indent}const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };`
+    : `${indent}const bound: RequestContext = ctx;`;
+  const steps = call.uses.map((use, index) => {
+    const ports = use.ports.length === 0
+      ? ''
+      : `, { ${use.ports.map(port => `${port.binding}: resolveRepository(bound, ${JSON.stringify(port.interfaceName)})`).join(', ')} } as Parameters<typeof ${use.functionName}>[2]`;
+    return `${indent}const step${index} = await ${use.functionName}(input as Parameters<typeof ${use.functionName}>[0], bound${ports});`;
+  });
+  const lines = [bound, ...steps, `${indent}const out: Record<string, unknown> = {};`];
+  call.outputs.forEach(output => {
+    const index = call.uses.findIndex(use => use.entityId === output.entity);
+    const step = `step${index}`;
+    const fields = output.fields.map(field => JSON.stringify(field)).join(', ');
+    const source = call.uses[index].operation === 'list'
+      ? `(${step} && typeof ${step} === 'object' ? (${step} as Record<string, unknown>).items : undefined)`
+      : step;
+    lines.push(`${indent}out[${JSON.stringify(output.key)}] = projectOutput(${source}, [${fields}]);`);
+    if (output.page) lines.push(`${indent}out[${JSON.stringify(output.page)}] = input.page;`);
+    if (output.pageSize) lines.push(`${indent}out[${JSON.stringify(output.pageSize)}] = input.pageSize;`);
+    if (output.hasMore) {
+      lines.push(`${indent}out[${JSON.stringify(output.hasMore)}] = ${step} && typeof ${step} === 'object' ? (${step} as Record<string, unknown>).hasMore : undefined;`);
+    }
+  });
+  lines.push(`${indent}return out;`);
+  return lines.join('\n');
+}
+
 /** Value bindings the structure emitters write. Types are not included. */
 export function emittedValueExports(definition: M1Definition): readonly string[] {
   switch (definition.artifactType) {
@@ -675,6 +926,8 @@ export function emittedValueExports(definition: M1Definition): readonly string[]
     }
     case 'httpController':
       return ['routes'];
+    case 'requestService':
+      return ['requests'];
     default:
       return [];
   }

@@ -106,12 +106,12 @@ function expandContextRef(ref: string, artifactType?: string, hasMdmRefs = false
 void test('closed registry names every contract type and no implement fallback', () => {
   assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'structure')), [...M1_ARTIFACT_TYPES]);
   assert.deepEqual(M1_ARTIFACT_TYPES.filter(type => handlerFor(type, 'implement')), [
-    'domainEntity', 'repositoryPort', 'usecase', 'accessScope', 'authorityMap',
+    'domainEntity', 'repositoryPort', 'usecase', 'requestService', 'accessScope', 'authorityMap',
   ]);
   assert.equal(handlerFor('table', 'implement'), null);
   assert.equal(handlerFor('widget'), null);
   assert.equal(registeredHandlerIds('structure').length, M1_ARTIFACT_TYPES.length);
-  for (const type of ['domainEntity', 'repositoryPort', 'usecase', 'accessScope', 'authorityMap'] as const) {
+  for (const type of ['domainEntity', 'repositoryPort', 'usecase', 'requestService', 'accessScope', 'authorityMap'] as const) {
     assert.equal(handlerFor(type, 'implement')?.needsLlm, false, type);
   }
   for (const type of M1_ARTIFACT_TYPES) {

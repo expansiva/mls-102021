@@ -16,6 +16,7 @@ export const behaviorRunners: Readonly<Record<string, MaterializeHandlerRunner>>
   'implement.domainEntity': call => runBehavior(call),
   'implement.repositoryPort': call => runBehavior(call),
   'implement.usecase': call => runBehavior(call),
+  'implement.requestService': call => runBehavior(call),
   'implement.accessScope': call => runBehavior(call),
   'implement.authorityMap': call => runBehavior(call),
 };
@@ -41,7 +42,7 @@ export async function runBehavior(call: HandlerCall): Promise<HandlerOutcome> {
       runsStub: false,
     };
   }
-  const produced = await emitBehavior(call.handler.id, parsed, output, ref => call.read(ref));
+  const produced = await emitBehavior(call.handler.id, parsed, output, ref => call.read(ref), call.moduleDefinitions ?? []);
   if ('code' in produced) return failed(produced.code, produced.detail);
   const observations = await observe(call, parsed);
   if ('code' in observations) return failed(observations.code, observations.detail);

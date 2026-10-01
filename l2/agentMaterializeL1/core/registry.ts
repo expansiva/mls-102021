@@ -40,7 +40,7 @@ const STRUCTURE: Record<M1ArtifactType, MaterializeHandler> = {
   ]),
   usecase: handler('structure.usecase', 'usecase', 'structure', ['requestContext', 'repositoryRegistry']),
   httpController: handler('structure.httpController', 'httpController', 'structure', ['requestContext']),
-  requestService: handler('structure.requestService', 'requestService', 'structure', []),
+  requestService: handler('structure.requestService', 'requestService', 'structure', ['requestContext', 'repositoryRegistry']),
   accessScope: handler('structure.accessScope', 'accessScope', 'structure', ['requestContext']),
   authorityMap: handler('structure.authorityMap', 'authorityMap', 'structure', ['requestContext']),
   repositoryRegistration: handler('persistence.repositoryRegistration', 'repositoryRegistration', 'structure', [
@@ -55,6 +55,7 @@ export const M1_IMPLEMENT_HANDLERS: Partial<Record<M1ArtifactType, MaterializeHa
   domainEntity: handler('implement.domainEntity', 'domainEntity', 'implement', []),
   repositoryPort: handler('implement.repositoryPort', 'repositoryPort', 'implement', []),
   usecase: handler('implement.usecase', 'usecase', 'implement', ['requestContext', 'repositoryRegistry']),
+  requestService: handler('implement.requestService', 'requestService', 'implement', ['requestContext', 'repositoryRegistry']),
   accessScope: handler('implement.accessScope', 'accessScope', 'implement', ['requestContext']),
   authorityMap: handler('implement.authorityMap', 'authorityMap', 'implement', ['requestContext']),
 };

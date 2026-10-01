@@ -34,6 +34,7 @@ import {
   ontologyEnums,
   ontologyRef,
   emitPort,
+  emitRequestService,
   emitUsecase,
   importSpecifier,
   recordFieldFromGrant,
@@ -43,7 +44,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-09-29-implement-handler-v8';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-01-implement-handler-v9';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -230,12 +231,14 @@ export async function emitBehavior(
   definition: M1Definition,
   output: string,
   read: StructureRead,
+  moduleDefinitions: readonly unknown[] = [],
 ): Promise<EmitResult | EmitFailure> {
   if (id === 'implement.domainEntity') return behaviorDomain(definition, output, read);
   if (id === 'implement.authorityMap') return done(emitAuthority(definition, output));
   if (id === 'implement.accessScope') return behaviorAccess(definition, output);
   if (id === 'implement.repositoryPort') return memoryPort(definition, output, read);
   if (id === 'implement.usecase') return memoryUsecase(definition, output, read);
+  if (id === 'implement.requestService') return emitRequestService(definition, output, read, moduleDefinitions, 'implement');
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a behavior body.` };
 }
 
