@@ -189,9 +189,11 @@ export function emitAuthority(definition: M1Definition, output: string): EmitRes
 }
 
 export async function emitUsecase(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
-  const fn = firstFunction(definition);
+  const fn = readFunction(definition);
   const [fnName] = emittedValueExports(definition);
   if (!fn || !fnName) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function.` };
+  // A v2 usecase has no contract refs. Its signature is the domain and application fields on the def.
+  if (fn.contractRefs.length === 0) return emitDomainUsecase(definition, output, read, fn, fnName);
   const contracts = await resolveContracts(definition, fn, read);
   if ('code' in contracts) return contracts;
   const declaredPorts = stringList(definition.data.ports);
@@ -233,6 +235,71 @@ export async function emitUsecase(definition: M1Definition, output: string, read
   };
 }
 
+/** Application interfaces over the def's fields. The entity type is imported; nothing from l2 is. */
+async function emitDomainUsecase(
+  definition: M1Definition,
+  output: string,
+  read: StructureRead,
+  fn: UsecaseFunction,
+  fnName: string,
+): Promise<EmitResult | EmitFailure> {
+  if (fn.input.length === 0 || fn.output.length === 0) {
+    return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no domain signature.` };
+  }
+  const declaredPorts = stringList(definition.data.ports);
+  const ports = portBindings(definition);
+  if (declaredPorts.length > 0 && ports.length === 0) {
+    return { code: 'PORT_UNBOUND', detail: `${definition.artifactId} names a port that is not a dependency.` };
+  }
+  if (ports.length > 1 && new Set(ports.map(item => item.specifier)).size > 1) {
+    return { code: 'PORT_UNBOUND', detail: `${definition.artifactId} ports are not in one module.` };
+  }
+  const entityName = token(definition.data.entityId, '');
+  const outputFields = fn.output.map(field => field.name === 'items' && field.type === entityName
+    ? { name: field.name, type: `${entityName}[]` }
+    : field);
+  const aliases = new Set<string>();
+  if (entityName && [...fn.input, ...outputFields].some(field => field.type === entityName || field.type === `${entityName}[]`)) {
+    aliases.add(entityName);
+  }
+  const entityDep = definition.dependencies.find(path => path.includes('/entities/'));
+  if (aliases.size > 0 && !entityDep) return { code: 'ENTITY_UNBOUND', detail: `${definition.artifactId} has no entity dependency.` };
+  if (entityDep && await read(entityDep) === null) return { code: 'ENTITY_UNBOUND', detail: `${entityDep} could not be read.` };
+  const portImport = ports.length === 0
+    ? ''
+    : `import type { ${ports.map(item => item.interfaceName).join(', ')} } from '${ports[0].specifier}';`;
+  const portArg = ports.length === 0
+    ? ''
+    : `, ports: { ${ports.map(item => `${item.binding}: ${item.interfaceName}`).join('; ')} }`;
+  const voidPorts = ports.length === 0 ? '' : '  void ports;\n';
+  const inputType = `${pascal(fnName)}Input`;
+  const outputType = `${pascal(fnName)}Output`;
+  const entitySpecifier = entityDep && aliases.size > 0 ? importSpecifier(entityDep, 'output') : '';
+  return {
+    runsStub: true,
+    imports: [PLATFORM_CONTRACTS, entitySpecifier, ...ports.map(item => item.specifier)].filter(Boolean),
+    source: [
+      header(output),
+      `import { AppError } from '${PLATFORM_CONTRACTS}';`,
+      `import type { RequestContext } from '${PLATFORM_CONTRACTS}';`,
+      ...(entitySpecifier ? [`import type { ${entityName} } from '${entitySpecifier}';`] : []),
+      portImport,
+      '',
+      // The service asserts this to and from a record. The index is what makes that assertion legal.
+      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), new Set(), aliases), '')}`,
+      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), new Set(), aliases), '')}`,
+      '',
+      `export async function ${fnName}(input: ${inputType}, ctx: RequestContext${portArg}): Promise<${outputType}> {`,
+      '  void input;',
+      '  void ctx;',
+      voidPorts.trimEnd(),
+      `  throw new AppError('${M1_STUB_ERROR}', '${fnName} is not implemented.', ${M1_STUB_STATUS});`,
+      '}',
+      '',
+    ].filter(line => line !== '').join('\n'),
+  };
+}
+
 export async function emitController(
   definition: M1Definition,
   output: string,
@@ -245,6 +312,9 @@ export async function emitController(
   if (scopeText === null) return { code: 'GRANT_UNREAD', detail: `${scopeDep} could not be read.` };
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers.filter(isRecord) : [];
   if (handlers.length === 0) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} declares no route.` };
+  if (handlers.some(handler => typeof handler.serviceFunction === 'string')) {
+    return emitAdapter(definition, output, read, handlers, scopeDep);
+  }
   // A route with grants takes its actor from the authority map. Without the map it is not emitted.
   const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
   const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
@@ -347,6 +417,191 @@ interface ResolvedRoute {
   outputFields: string[];
   disclosedPaths: string[];
   ports: PortBinding[];
+}
+
+interface AdapterRoute {
+  route: string;
+  fn: string;
+  grantIds: string[];
+  serviceFunction: string;
+  contractInterface: string;
+  requiredFields: string[];
+  allowedInputPaths: string[];
+  nullableInputPaths: string[];
+}
+
+/**
+ * The page controller calls one request-service function. Input and output types are
+ * indexed on the contract interface. It does not resolve a repository or cast through `unknown`.
+ */
+async function emitAdapter(
+  definition: M1Definition,
+  output: string,
+  read: StructureRead,
+  handlers: Record<string, unknown>[],
+  scopeDep: string,
+): Promise<EmitResult | EmitFailure> {
+  const pageId = typeof definition.data.pageId === 'string' ? definition.data.pageId : '';
+  const serviceDep = definition.dependencies.find(path => pageId && path.endsWith(`/requests/${pageId}.defs.ts`));
+  if (!serviceDep) return { code: 'USECASE_UNBOUND', detail: `${definition.artifactId} has no request service.` };
+  if (await read(serviceDep) === null) return { code: 'USECASE_UNBOUND', detail: `${serviceDep} could not be read.` };
+  const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
+  const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
+  if (needsAuthority && !authorityDep) {
+    return { code: AUTHORITY_UNREAD, detail: `${definition.artifactId} has grants and no authority map dependency.` };
+  }
+  if (authorityDep && await read(authorityDep) === null) {
+    return { code: AUTHORITY_UNREAD, detail: `${authorityDep} could not be read.` };
+  }
+  const routes: AdapterRoute[] = [];
+  const contracts = new Map<string, { specifier: string; iface: string }>();
+  for (const handler of handlers) {
+    const resolved = await resolveAdapterRoute(definition, handler, read);
+    if ('code' in resolved) return resolved;
+    routes.push(resolved.route);
+    contracts.set(resolved.specifier, { specifier: resolved.specifier, iface: resolved.route.contractInterface });
+  }
+  const authorityImport = authorityDep
+    ? [`import { actorRefFor } from '${importSpecifier(authorityDep, 'output')}';`]
+    : [];
+  const contractImports = [...contracts.values()].map(item => `import type { ${item.iface} } from '${item.specifier}';`);
+  const imports = [
+    PLATFORM_CONTRACTS,
+    importSpecifier(scopeDep, 'output'),
+    ...(authorityDep ? [importSpecifier(authorityDep, 'output')] : []),
+    importSpecifier(serviceDep, 'output'),
+    ...[...contracts.keys()],
+  ];
+  return {
+    runsStub: false,
+    imports,
+    source: [
+      header(output),
+      `import { AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope } from '${PLATFORM_CONTRACTS}';`,
+      `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
+      ...authorityImport,
+      `import { requests } from '${importSpecifier(serviceDep, 'output')}';`,
+      ...contractImports,
+      '',
+      `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
+      ...routes.map(route => `  { key: '${route.route}', handler: ${route.fn} },`),
+      '];',
+      '',
+      ...routes.map(renderAdapter),
+      scopeSource(),
+      authorizeSource(!!authorityDep),
+      validateSource(),
+      '',
+    ].join('\n'),
+  };
+}
+
+async function resolveAdapterRoute(
+  definition: M1Definition,
+  handler: Record<string, unknown>,
+  read: StructureRead,
+): Promise<{ route: AdapterRoute; specifier: string } | EmitFailure> {
+  const route = typeof handler.route === 'string' ? handler.route : '';
+  const serviceFunction = typeof handler.serviceFunction === 'string' ? handler.serviceFunction : '';
+  const contractPath = typeof handler.contractPath === 'string' ? handler.contractPath : '';
+  const contractInterface = typeof handler.contractInterface === 'string' ? handler.contractInterface : '';
+  const grantIds = stringList(handler.grantIds);
+  if (!route || !serviceFunction) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has a route without a service function.` };
+  if (!contractPath || !IDENT.test(contractInterface) || /(?:Input|Output)$/.test(contractInterface)) {
+    return { code: 'CONTRACT_SYMBOL', detail: `${route} has no contract interface.` };
+  }
+  const qualified = qualifyFile(contractPath, definition.dependencies);
+  const text = await read(qualified);
+  if (text === null) return { code: 'CONTRACT_UNREAD', detail: `${qualified} could not be read.` };
+  if (!text.includes(`export interface ${contractInterface} `) && !text.includes(`export interface ${contractInterface}{`)) {
+    return { code: 'CONTRACT_SYMBOL', detail: `${qualified} does not export ${contractInterface}.` };
+  }
+  const clause = routeClause(text, route);
+  if (!clause) return { code: 'CONTRACT_SYMBOL', detail: `${qualified} has no route ${route}.` };
+  const input = clauseValue(clause, 'input');
+  if (!input) return { code: 'CONTRACT_SYMBOL', detail: `${route} has no input type.` };
+  const members = membersOfType(text, input);
+  if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${route} input could not be read.` };
+  return {
+    specifier: importSpecifier(qualified, 'defs'),
+    route: {
+      route,
+      fn: functionName(route),
+      grantIds,
+      serviceFunction,
+      contractInterface,
+      requiredFields: members.requiredFields,
+      allowedInputPaths: members.allowedPaths,
+      nullableInputPaths: members.nullablePaths,
+    },
+  };
+}
+
+function renderAdapter(route: AdapterRoute): string {
+  const grants = route.grantIds.map(item => `'${item}'`).join(', ');
+  const required = route.requiredFields.map(item => `'${item}'`).join(', ');
+  const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
+  const nullable = route.nullableInputPaths.map(item => `'${item}'`).join(', ');
+  const inputType = `${route.contractInterface}['${route.route}']['input']`;
+  const outputType = `${route.contractInterface}['${route.route}']['output']`;
+  return [
+    `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse<${outputType}>> {`,
+    `  const denied = authorize(input.request, [${grants}]);`,
+    '  if (denied) throw denied;',
+    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}], [${nullable}]);`,
+    '  if (invalid) throw invalid;',
+    `  const params = scopeParams(input.request.params, input.ctx, [${grants}]) as ${inputType};`,
+    `  const data = await requests[${JSON.stringify(route.serviceFunction)}](params as Record<string, unknown>, input.ctx);`,
+    `  return { ok: true, data: data as ${outputType}, error: null };`,
+    '}',
+    '',
+  ].join('\n');
+}
+
+function membersOfType(source: string, typeText: string): { requiredFields: string[]; allowedPaths: string[]; nullablePaths: string[] } | null {
+  const text = typeText.trim();
+  if (text.startsWith('{')) {
+    const wrapped = `export interface Wrapped ${text.replaceAll('{', '{\n').replaceAll(';', ';\n').replaceAll('}', '\n}')}\n`;
+    const members = contractMembers(wrapped, 'Wrapped');
+    const nullable = contractNullablePaths(wrapped, 'Wrapped');
+    if (!members || !nullable) return null;
+    return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: nullable };
+  }
+  if (!IDENT.test(text)) return null;
+  const members = contractMembers(source, text);
+  const nullable = contractNullablePaths(source, text);
+  if (!members || !nullable) return null;
+  return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: nullable };
+}
+
+function routeClause(source: string, route: string): string | null {
+  const at = source.indexOf(`'${route}':`);
+  if (at < 0) return null;
+  const open = source.indexOf('{', at);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, index);
+    }
+  }
+  return null;
+}
+
+function clauseValue(clause: string, name: 'input' | 'output'): string | null {
+  const match = new RegExp(`(?:^|\\n)\\s*${name}: ([\\s\\S]*?);\\n`).exec(`\n${clause}\n`);
+  return match ? match[1].trim() : null;
+}
+
+function qualifyFile(path: string, dependencies: readonly string[]): string {
+  if (/^_\d+_\/l\d+\//.test(path)) return path;
+  const hit = dependencies.find(dep => dep === path || dep.endsWith(`/${path}`));
+  if (hit) return hit;
+  const project = dependencies.map(dep => /^_(\d+)_/.exec(dep)?.[1]).find(Boolean) ?? '';
+  return project && /^l\d+\//.test(path) ? `_${project}_/${path}` : path;
 }
 
 async function resolveContracts(definition: M1Definition, fn: { contractRefs: { route: string; symbol: string }[] }, read: StructureRead): Promise<ResolvedContract[] | EmitFailure> {
@@ -1072,7 +1327,14 @@ function parseDefinitionExport(source: string): M1Definition | null {
   }
 }
 
-function firstFunction(definition: M1Definition): { name: string; contractRefs: { route: string; symbol: string }[] } | null {
+interface UsecaseFunction {
+  name: string;
+  contractRefs: { route: string; symbol: string }[];
+  input: FieldRow[];
+  output: FieldRow[];
+}
+
+function readFunction(definition: M1Definition): UsecaseFunction | null {
   const functions = definition.data.functions;
   if (!Array.isArray(functions) || !isRecord(functions[0])) return null;
   const fn = functions[0];
@@ -1082,7 +1344,12 @@ function firstFunction(definition: M1Definition): { name: string; contractRefs: 
     route: typeof item.route === 'string' ? item.route : '',
     symbol: typeof item.symbol === 'string' ? item.symbol : '',
   })).filter(item => item.route && item.symbol) : [];
-  return { name, contractRefs };
+  return { name, contractRefs, input: fieldRows(fn.input), output: fieldRows(fn.output) };
+}
+
+function firstFunction(definition: M1Definition): { name: string; contractRefs: { route: string; symbol: string }[] } | null {
+  const fn = readFunction(definition);
+  return fn ? { name: fn.name, contractRefs: fn.contractRefs } : null;
 }
 
 function projections(definition: M1Definition): { route: string; contractPath: string; outputFields: string[] }[] {
@@ -1152,7 +1419,12 @@ export function ontologyEnums(source: string | null): Map<string, string[]> {
   return enums;
 }
 
-function nest(fields: readonly FieldRow[], enums: ReadonlyMap<string, readonly string[]>, optional: ReadonlySet<string> = new Set()): Tree {
+function nest(
+  fields: readonly FieldRow[],
+  enums: ReadonlyMap<string, readonly string[]>,
+  optional: ReadonlySet<string> = new Set(),
+  aliases: ReadonlySet<string> = new Set(),
+): Tree {
   const root: Tree = { ts: 'Record<string, never>', children: new Map() };
   for (const field of fields) {
     const parts = field.name.split('.').filter(Boolean);
@@ -1163,7 +1435,7 @@ function nest(fields: readonly FieldRow[], enums: ReadonlyMap<string, readonly s
         child = { ts: 'Record<string, unknown>', children: new Map() };
         node.children.set(part, child);
       }
-      if (index === parts.length - 1) child.ts = fieldTs(field.type, enums.get(field.name) ?? []);
+      if (index === parts.length - 1) child.ts = fieldTs(field.type, enums.get(field.name) ?? [], aliases);
       if (optional.has(parts.slice(0, index + 1).join('.'))) child.optional = true;
       node = child;
     });
@@ -1171,7 +1443,10 @@ function nest(fields: readonly FieldRow[], enums: ReadonlyMap<string, readonly s
   return root;
 }
 
-function fieldTs(type: string, values: readonly string[]): string {
+function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<string> = new Set()): string {
+  if (aliases.has(type)) return type;
+  const array = /^(.+)\[\]$/.exec(type);
+  if (array && aliases.has(array[1])) return type;
   if (type.includes('|') || type.includes('"')) return type.split('"').join("'");
   if (type === 'enum' && values.length > 0) return values.map(value => `'${value}'`).join(' | ');
   if (type === 'integer' || type === 'number') return 'number';
@@ -1188,6 +1463,10 @@ function renderType(node: Tree, indent: string): string {
 
 function header(output: string): string {
   return `/// <mls fileReference="${output}" enhancement="_blank"/>`;
+}
+
+function pascal(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function functionName(route: string): string {

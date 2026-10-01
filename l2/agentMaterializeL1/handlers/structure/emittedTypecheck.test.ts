@@ -6,9 +6,20 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
 
-import { parseDefinitionSource, readDefinition, receiptFolder, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { M1_DEFINITION_SCHEMA, parseDefinitionSource, readDefinition, receiptFolder, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import {
+  emitAccess,
+  emitAuthority,
+  emitController,
+  emitDomain,
+  emitPort,
+  emitRequestService,
+  emitUsecase,
+} from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import type { MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
@@ -263,6 +274,234 @@ function diskIo(defs: ReadonlyMap<string, string>): MaterializeReadIo {
       return readFileSync(disk, 'utf8');
     },
   };
+}
+
+void test('service, controller and usecase typecheck against the v2 contract', async () => {
+  const original = readFileSync(join(HERE, '../../fixtures/controleEstoque-39a5166/l2/controleEstoque/web/contracts/produtos.defs.txt'), 'utf8');
+  for (const source of [original, renamedContract(original)]) {
+    const emitted = await emitTrio(source);
+    assert.equal(adapterGuard(emitted.controller), true);
+    assert.equal(emitted.usecases.some(file => /from '[^']*\/l2\//.test(file)), false);
+    const errors = compileQualified(emitted.files);
+    assert.equal(errors, '', errors);
+  }
+
+  const emitted = await emitTrio(original);
+  let castFailed = false;
+  try {
+    assert.equal(adapterGuard(emitted.controller.replace(' as ', ' as unknown as ')), true);
+  } catch (error) {
+    castFailed = error instanceof assert.AssertionError;
+  }
+  assert.equal(castFailed, true, 'as unknown as must fail the adapter guard');
+
+  const derived = emitted.controller
+    .replace(/[A-Za-z0-9_]*Contracts\['[^']+'\]\['input'\]/g, 'LoadInput')
+    .replace(/[A-Za-z0-9_]*Contracts\['[^']+'\]\['output'\]/g, 'LoadOutput');
+  const files = new Map(emitted.files);
+  const controllerPath = [...files.keys()].find(path => path.includes('/controllers/'));
+  assert.ok(controllerPath);
+  files.set(controllerPath, derived);
+  assert.match(compileQualified(files), /error TS/);
+});
+
+interface Trio {
+  controller: string;
+  usecases: string[];
+  files: Map<string, string>;
+}
+
+async function emitTrio(contractSource: string): Promise<Trio> {
+  const parsed = parseD2ContractV2(contractSource);
+  const contractInterface = /export interface ([A-Za-z0-9_]*Contracts)\b/.exec(contractSource)?.[1] ?? '';
+  assert.match(contractInterface, /Contracts$/);
+  const project = '_102099_';
+  const moduleName = parsed.module;
+  const pageId = parsed.pageId;
+  const query = parsed.routes.find(route => route.kind === 'qry');
+  const command = parsed.routes.find(route => route.kind === 'cmd');
+  assert.ok(query && command);
+  const entity = Object.values(query.meta.output)[0]?.entity ?? '';
+  assert.equal(entity, Object.values(command.meta.output)[0]?.entity);
+  const port = `${entity}Repository`;
+  const entityFile = camel(entity);
+  const qualify = (path: string) => `${project}/${path}`;
+  const entityDef = qualify(`l1/${moduleName}/layer_3_domain/entities/${entityFile}.defs.ts`);
+  const portDef = qualify(`l1/${moduleName}/layer_2_application/ports/${entityFile}Repository.defs.ts`);
+  const scopeDef = qualify(`l1/${moduleName}/layer_2_application/scope/accessScope.defs.ts`);
+  const authorityDef = qualify(`l1/${moduleName}/layer_1_external/auth/authorityMap.defs.ts`);
+  const contractDef = qualify(`l2/${moduleName}/web/contracts/${pageId}.defs.ts`);
+  const listId = `list${entity}`;
+  const createId = `create${entity}`;
+  const listDef = qualify(`l1/${moduleName}/layer_2_application/usecases/${listId}.defs.ts`);
+  const createDef = qualify(`l1/${moduleName}/layer_2_application/usecases/${createId}.defs.ts`);
+  const serviceDef = qualify(`l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`);
+  const controllerDef = qualify(`l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`);
+  const grantId = query.access.grants[0] ?? command.access.grants[0] ?? '';
+  assert.ok(grantId);
+
+  const definition = (artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition => ({
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: artifactType as M1Definition['artifactType'],
+    artifactId,
+    moduleName,
+    status: 'pending',
+    dependencies,
+    data,
+  });
+  const entityDefinition = definition('domainEntity', entityFile, [], {
+    entityId: entity,
+    fields: [{ name: 'id', type: 'string' }, { name: 'name', type: 'string' }],
+  });
+  const portDefinition = definition('repositoryPort', entityFile, [entityDef], {
+    interfaceName: port,
+    entityId: entity,
+    methods: [{ name: 'get', params: ['string'], returns: entity }],
+  });
+  const scopeDefinition = definition('accessScope', 'accessScope', [], {
+    grants: [{ grantId, actorRef: 'actor', scopeMode: 'organization', session: 'verified', pending: '', disclosure: 'fullRecord' }],
+  });
+  const authorityDefinition = definition('authorityMap', 'authorityMap', [], {
+    entries: [{ grantId, actorRef: 'actor' }],
+  });
+  const signature = (operation: 'list' | 'create') => operation === 'list'
+    ? {
+      input: [{ name: 'name', type: 'string' }, { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' }],
+      output: [{ name: 'items', type: entity }, { name: 'hasMore', type: 'boolean' }],
+    }
+    : {
+      input: [{ name: 'name', type: 'string' }],
+      output: [{ name: 'id', type: 'string' }, { name: 'name', type: 'string' }],
+    };
+  const usecaseDefinition = (usecaseId: string, operation: 'list' | 'create') => definition('usecase', usecaseId, [entityDef, portDef], {
+    usecaseId,
+    entityId: entity,
+    operation,
+    ports: [port],
+    functions: [{ functionName: usecaseId, ...signature(operation) }],
+  });
+  const requestOf = (route: typeof query) => {
+    const outputKey = Object.keys(route.meta.output)[0] ?? '';
+    const list = Object.values(route.meta.lists).find(item => item.key === outputKey);
+    const operation = route.kind === 'qry' ? 'list' : 'create';
+    return {
+      route: route.route,
+      kind: route.kind,
+      uses: [operation === 'list' ? listId : createId],
+      transaction: route.kind === 'cmd' ? 'single' : 'none',
+      outputs: [{
+        key: outputKey,
+        entity,
+        fields: ['id'],
+        ...(list ? { page: list.page, pageSize: list.pageSize, hasMore: list.hasMore } : {}),
+      }],
+      params: list ? [
+        { name: 'page', target: outputKey, pages: 'list' },
+        { name: 'pageSize', target: outputKey, pages: 'list' },
+      ] : [],
+    };
+  };
+  const serviceDefinition = definition('requestService', pageId, [listDef, createDef].sort(), {
+    pageId,
+    requests: [requestOf(query), requestOf(command)],
+  });
+  const controllerDefinition = definition('httpController', pageId, [serviceDef, scopeDef, authorityDef].sort(), {
+    pageId,
+    handlers: [query, command].map(route => ({
+      route: route.route,
+      kind: route.kind === 'cmd' ? 'command' : 'query',
+      grantIds: route.access.grants,
+      serviceFunction: route.route,
+      contractPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts`,
+      contractInterface,
+    })),
+  });
+  const texts = new Map<string, string>([
+    [entityDef, `export const definition = ${JSON.stringify(entityDefinition)} as const;\n`],
+    [portDef, `export const definition = ${JSON.stringify(portDefinition)} as const;\n`],
+    [scopeDef, `export const definition = ${JSON.stringify(scopeDefinition)} as const;\n`],
+    [authorityDef, `export const definition = ${JSON.stringify(authorityDefinition)} as const;\n`],
+    [listDef, `export const definition = ${JSON.stringify(usecaseDefinition(listId, 'list'))} as const;\n`],
+    [createDef, `export const definition = ${JSON.stringify(usecaseDefinition(createId, 'create'))} as const;\n`],
+    [serviceDef, `export const definition = ${JSON.stringify(serviceDefinition)} as const;\n`],
+    [contractDef, contractSource],
+  ]);
+  const read = async (ref: string) => texts.get(ref) ?? null;
+  const registration = definition('repositoryRegistration', 'registerRepositories', [portDef], {
+    registrationId: 'registerRepositories',
+    adapters: [{ portId: port, adapterArtifactId: port }],
+  });
+  const produced = new Map<string, string>([[contractDef, contractSource]]);
+  const take = (result: { source: string } | { code: string; detail: string }, defPath: string) => {
+    assert.equal('code' in result, false, 'code' in result ? result.detail : defPath);
+    if ('code' in result) return '';
+    const output = defPath.replace(/\.defs\.ts$/, '.ts');
+    produced.set(output, result.source);
+    return result.source;
+  };
+  take(emitDomain(entityDefinition, entityDef.replace(/\.defs\.ts$/, '.ts')), entityDef);
+  take(emitPort(portDefinition, portDef.replace(/\.defs\.ts$/, '.ts')), portDef);
+  take(emitAccess(scopeDefinition, scopeDef.replace(/\.defs\.ts$/, '.ts')), scopeDef);
+  take(emitAuthority(authorityDefinition, authorityDef.replace(/\.defs\.ts$/, '.ts')), authorityDef);
+  const usecases = [
+    take(await emitUsecase(usecaseDefinition(listId, 'list'), listDef.replace(/\.defs\.ts$/, '.ts'), read), listDef),
+    take(await emitUsecase(usecaseDefinition(createId, 'create'), createDef.replace(/\.defs\.ts$/, '.ts'), read), createDef),
+  ];
+  take(await emitRequestService(serviceDefinition, serviceDef.replace(/\.defs\.ts$/, '.ts'), read, [registration], 'implement'), serviceDef);
+  const controller = take(await emitController(controllerDefinition, controllerDef.replace(/\.defs\.ts$/, '.ts'), read), controllerDef);
+  assert.equal(controller.includes('resolveRepository'), false);
+  assert.equal(controller.includes(listId), false);
+  assert.equal(controller.includes(createId), false);
+  return { controller, usecases, files: produced };
+}
+
+function adapterGuard(source: string): boolean {
+  assert.equal(source.includes('as unknown as'), false);
+  assert.equal(source.includes('resolveRepository'), false);
+  assert.match(source, /requests\[/);
+  assert.match(source, /Contracts\['[^']+'\]\['input'\]/);
+  assert.match(source, /Contracts\['[^']+'\]\['output'\]/);
+  return true;
+}
+
+function compileQualified(files: ReadonlyMap<string, string>): string {
+  const sandbox = mkdtempSync(join(tmpdir(), 'm1-39-'));
+  try {
+    writeFileSync(join(sandbox, 'tsconfig.base.json'), readFileSync(join(ROOT, 'tsconfig.base.json')));
+    symlinkSync(join(ROOT, 'node_modules'), join(sandbox, 'node_modules'));
+    for (const entry of readdirSync(ROOT)) {
+      if (/^mls-\d+$/.test(entry)) symlinkSync(join(ROOT, entry), join(sandbox, entry));
+    }
+    const include: string[] = [];
+    for (const [qualified, source] of files) {
+      const relativePath = qualified.replace(/^_102099_\//, 'mls-102099/');
+      const full = join(sandbox, relativePath);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, source);
+      include.push(relativePath);
+    }
+    const base = ts.readConfigFile(join(ROOT, 'tsconfig.base.json'), ts.sys.readFile);
+    const paths = (base.config?.compilerOptions?.paths ?? {}) as Record<string, string[]>;
+    const configPath = join(sandbox, '.tsconfig.m1-39-v2.json');
+    writeFileSync(configPath, `${JSON.stringify({
+      extends: './tsconfig.base.json',
+      compilerOptions: { noEmit: true, paths: { ...paths, '/_102099_/*': ['./mls-102099/*'] } },
+      include,
+    }, null, 2)}\n`);
+    const tsc = join(sandbox, 'node_modules/typescript/bin/tsc');
+    const result = spawnSync(process.execPath, [tsc, '-p', configPath, '--pretty', 'false'], { cwd: sandbox, encoding: 'utf8' });
+    return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.split('\n').filter(line => line.includes('error TS')).join('\n');
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+}
+
+function renamedContract(source: string): string {
+  return source.replaceAll('controleEstoque', 'ledgerDesk').replaceAll('Produto', 'Widget').replaceAll('produtos', 'cards');
+}
+
+function camel(value: string): string {
+  return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
 function loadDefs(root: string): Map<string, string> {
