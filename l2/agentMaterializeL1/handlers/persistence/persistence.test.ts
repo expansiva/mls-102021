@@ -35,7 +35,69 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
 sweepRepoRootScratch();
 const CATALOG = readFileSync(join(HERE, '../../testing/catalogFixture.json'), 'utf8');
-const FIXTURES = loadFixtures(join(HERE, '../structure/fixtures'));
+
+/**
+ * m1_41 b1-P2: the module is built here, with arbitrary ids (no clinic fixture, no client project on
+ * disk). `Guest` is an MDM entity; `Agent` a local one the main entity references. RENAMED derives
+ * the same and proves no id reaches the emitter.
+ */
+interface Names { mod: string; Entity: string; entity: string; Guest: string; guestField: string; Agent: string; agentField: string; when: string; note: string }
+const BASE: Names = { mod: 'visitDesk', Entity: 'Visit', entity: 'visit', Guest: 'Guest', guestField: 'guestId', Agent: 'Agent', agentField: 'agentId', when: 'slotAt', note: 'visitNote' };
+const RENAMED: Names = { mod: 'quayLine', Entity: 'Slip', entity: 'slip', Guest: 'Hull', guestField: 'hullRef', Agent: 'Skipper', agentField: 'skipperId', when: 'tieAt', note: 'memo' };
+const N = BASE;
+const lower = (value: string) => `${value.charAt(0).toLowerCase()}${value.slice(1)}`;
+const entityPathOf = (n: Names, entityId: string) => `_102047_/l1/${n.mod}/layer_3_domain/entities/${lower(entityId)}.defs.ts`;
+const portPathOf = (n: Names) => `_102047_/l1/${n.mod}/layer_2_application/ports/${n.entity}Repository.defs.ts`;
+const persistenceRoot = (n: Names) => `_102047_/l1/${n.mod}/layer_1_external/adapters/persistence`;
+const DEF_SCHEMA = '2026-09-24-d1-definition-v2';
+
+function moduleDefs(n: Names): M1Definition[] {
+  const entity = (entityId: string, storageTarget: string, dependencies: string[], fields: Record<string, unknown>[], extra: Record<string, unknown> = {}): M1Definition => ({
+    schemaVersion: DEF_SCHEMA, artifactType: 'domainEntity', artifactId: entityId, moduleName: n.mod, status: 'pending', dependencies,
+    data: { entityId, storageTarget, fields, lifecycle: { states: [], transitions: [] }, invariants: [], imports: [], ...extra },
+  } as M1Definition);
+  const keys = [{ name: 'id', type: 'uuid', derived: true }, { name: 'version', type: 'integer', derived: true }];
+  return [
+    entity(n.Entity, 'moduleDatabase', [entityPathOf(n, n.Guest), entityPathOf(n, n.Agent)].sort(), [
+      ...keys,
+      { name: n.guestField, type: 'record', ref: n.Guest },
+      { name: n.agentField, type: 'record', ref: n.Agent },
+      { name: n.when, type: 'timestamp' },
+      { name: 'status', type: 'enum' },
+      { name: 'details', type: 'object' },
+      { name: `details.${n.note}`, type: 'text' },
+    ], {
+      lifecycle: {
+        states: [{ state: 'open', reachedBy: 'actor' }, { state: 'done', reachedBy: 'actor' }],
+        transitions: [{ transitionId: 'close', from: ['open'], to: 'done', by: ['agent'], ruleRefs: ['flow'] }],
+      },
+      invariants: ['uniqueSlot', 'flow'],
+    }),
+    entity(n.Guest, 'mdm', [], [...keys, { name: 'details', type: 'object' }, { name: 'details.name', type: 'string' }]),
+    entity(n.Agent, 'moduleDatabase', [], [...keys, { name: 'label', type: 'text' }]),
+    {
+      schemaVersion: DEF_SCHEMA, artifactType: 'repositoryPort', artifactId: `${n.Entity}Repository`, moduleName: n.mod, status: 'pending',
+      dependencies: [entityPathOf(n, n.Entity)],
+      data: {
+        entityId: n.Entity,
+        interfaceName: `${n.Entity}Repository`,
+        methods: [
+          { name: 'create', params: [n.Entity], returns: n.Entity },
+          { name: 'list', params: [`${n.Entity}Filter`], returns: `${n.Entity}[]` },
+          { name: 'transition', params: [n.Entity, 'transitionId'], returns: n.Entity },
+        ],
+      },
+    } as M1Definition,
+  ];
+}
+
+const pathOfModuleDef = (n: Names, definition: M1Definition) => definition.artifactType === 'repositoryPort' ? portPathOf(n) : entityPathOf(n, definition.artifactId);
+const FIXTURES = new Map(moduleDefs(N).map(definition => {
+  const defPath = pathOfModuleDef(N, definition);
+  return [defPath, { defPath, text: defSource(defPath, definition), definition }] as const;
+}));
+/** Refs a handler asked for that are neither in the module built here nor a file of the repo (outputs not yet written, receipts, l5). */
+const MISSED = new Set<string>();
 
 void test('persistence runners cover the registry and do not name the clinic fixture', () => {
   assert.deepEqual(persistenceHandlerIds(), [
@@ -46,7 +108,7 @@ void test('persistence runners cover the registry and do not name the clinic fix
     'persistence.table',
   ]);
   for (const id of persistenceHandlerIds()) assert.equal(typeof persistenceRunners[id], 'function');
-  const banned = /agendaClinica|Consulta|professionalId|patientId|scheduledAt|attendanceNote|uniqueProfessionalSchedule|Paciente/;
+  const banned = /agendaClinica|Consulta|professionalId|patientId|scheduledAt|attendanceNote|uniqueProfessionalSchedule|Paciente|visitDesk|guestId|visitNote|uniqueSlot/;
   for (const name of ['emitPersistence.ts', 'runners.ts']) {
     assert.equal(banned.test(readFileSync(join(HERE, name), 'utf8')), false, name);
   }
@@ -66,10 +128,10 @@ void test('a local table keeps keys and puts derived version in details', async 
     indexes: Array<{ name: string; unique?: boolean; columns: string[] }>;
   };
   assert.deepEqual(table.primaryKey, ['id']);
-  assert.deepEqual(table.columns.map(column => column.name), ['id', 'patientId', 'professionalId', 'scheduledAt', 'status', 'details']);
+  assert.deepEqual(table.columns.map(column => column.name), ['id', N.guestField, N.agentField, N.when, 'status', 'details']);
   assert.equal(table.columns.some(column => column.name === 'version'), false);
-  assert.equal(source.includes('attendanceNote'), false);
-  assert.equal(table.indexes.some(index => index.unique && index.columns.join('+') === 'professionalId+scheduledAt'), true);
+  assert.equal(source.includes(N.note), false);
+  assert.equal(table.indexes.some(index => index.unique && index.columns.join('+') === `${N.agentField}+${N.when}`), true);
   assert.match(source, /"applied": false/);
   assert.equal(source.includes('DROP'), false);
   assert.equal(emitted.evidences?.find(item => item.id === 'tableFile')?.passed, true);
@@ -79,7 +141,7 @@ void test('a local table keeps keys and puts derived version in details', async 
 });
 
 void test('the same plan applied twice changes nothing, and a destructive step is blocked', () => {
-  const built = buildLocalTable(tableDef(), definitionFor('Consulta'));
+  const built = buildLocalTable(tableDef(), definitionFor(N.Entity));
   assert.equal('code' in built, false);
   if ('code' in built) return;
   const once = additivePlan([built.planned], null);
@@ -116,16 +178,16 @@ void test('the same plan applied twice changes nothing, and a destructive step i
 });
 
 void test('mdm, derived storage, platform fields and pending do not become a local table', async () => {
-  const paciente = definitionFor('Paciente');
-  const mdm = buildLocalTable(tableDef({ entity: paciente, tableId: 'paciente', physical: 'paciente' }), paciente);
+  const guest = definitionFor(N.Guest);
+  const mdm = buildLocalTable(tableDef({ entity: guest, tableId: lower(N.Guest), physical: lower(N.Guest) }), guest);
   assert.equal('code' in mdm && mdm.code, 'MDM_LOCAL_TABLE');
 
-  const derivedEntity = structuredClone(definitionFor('Consulta'));
+  const derivedEntity = structuredClone(definitionFor(N.Entity));
   derivedEntity.data = { ...derivedEntity.data, storageTarget: 'derived' };
   const derived = buildLocalTable(tableDef(), derivedEntity);
   assert.equal('code' in derived && derived.code, 'DERIVED_LOCAL_TABLE');
 
-  const platformEntity = structuredClone(definitionFor('Consulta'));
+  const platformEntity = structuredClone(definitionFor(N.Entity));
   const fields = Array.isArray(platformEntity.data.fields) ? platformEntity.data.fields : [];
   platformEntity.data = { ...platformEntity.data, fields: [...fields, { name: 'audit', type: 'text', platform: true }] };
   const platform = buildLocalTable(tableDef(), platformEntity);
@@ -144,7 +206,7 @@ void test('mdm, derived storage, platform fields and pending do not become a loc
 
 void test('adapter, registration and seeds follow the def, and outbound does not publish', async () => {
   const tableDefinition = tableDef();
-  const known = new Map<string, string>([[defPathOf('consulta'), defSource(defPathOf('consulta'), tableDefinition)]]);
+  const known = new Map<string, string>([[defPathOf('table'), defSource(defPathOf('table'), tableDefinition)]]);
   const table = await runPersistence(callFor(tableDefinition, known));
   known.set(outputOf(table), sourceOf(table));
   const adapter = await runPersistence(callFor(adapterDef(), known));
@@ -153,7 +215,7 @@ void test('adapter, registration and seeds follow the def, and outbound does not
   assert.match(source, /enforce:unique/);
   assert.match(source, /CONCURRENCY_CONFLICT/);
   assert.match(source, /export function bind/);
-  assert.match(source, /export function createConsultaRepository/);
+  assert.match(source, new RegExp(`export function create${N.Entity}Repository`));
   assert.equal(source.includes('REPOSITORY_NOT_IMPLEMENTED'), false);
   assert.equal(adapter.runsStub, false);
   const stripped = withoutUniqueChecks(source);
@@ -162,11 +224,11 @@ void test('adapter, registration and seeds follow the def, and outbound does not
 
   const registration = await runPersistence(callFor(registrationDef(), filesOf(adapter)));
   assert.equal(registration.failure, null, registration.failure?.detail);
-  assert.match(sourceOf(registration), /registerRepository\("ConsultaRepository"/);
+  assert.match(sourceOf(registration), new RegExp(`registerRepository\\("${N.Entity}Repository"`));
   assert.match(sourceOf(registration), /registerRepositories\(\)/);
   assert.equal(registration.runsStub, false);
 
-  const stubCall = callFor(registrationDef(), new Map([['_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.ts', "throw new AppError('REPOSITORY_NOT_IMPLEMENTED', 'x', 501);"]]));
+  const stubCall = callFor(registrationDef(), new Map([[`${persistenceRoot(N)}/${N.entity}RepositoryAdapter.ts`, "throw new AppError('REPOSITORY_NOT_IMPLEMENTED', 'x', 501);"]]));
   const stubbed = await runPersistence(stubCall);
   assert.equal(stubbed.runsStub, true);
 
@@ -177,15 +239,15 @@ void test('adapter, registration and seeds follow the def, and outbound does not
   assert.equal(sourceOf(seeds).includes('seedRows0'), false);
   const synthetic = await runPersistence(callFor(seedsDef(true)));
   assert.equal(synthetic.seeds, true);
-  assert.match(sourceOf(synthetic), /"seedFor":"consulta"/);
+  assert.match(sourceOf(synthetic), new RegExp(`"seedFor":"${N.entity}"`));
 
   // m1_28: the D1 shape (datasets without rows) plus the certification fixture.
   const planned = seedsDef(false);
   const fixture = planFixture([
-    { id: 'data:Consulta', owner: 'L1', entityRefs: ['Consulta'], actorRefs: [], sourceRefs: [], gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' },
-    { id: 'mdm:Paciente', owner: 'runtime', entityRefs: ['Paciente'], actorRefs: [], sourceRefs: [], gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: x' },
-  ], [{ tableId: 'consulta', entityId: 'Consulta' }]);
-  planned.data = { ...planned.data, datasets: [{ datasetId: 'consulta', tableId: 'consulta', owners: ['book'] }], fixture };
+    { id: `data:${N.Entity}`, owner: 'L1', entityRefs: [N.Entity], actorRefs: [], sourceRefs: [], gap: 'FIXTURE_EXECUTOR_UNREFERENCED: x' },
+    { id: `mdm:${N.Guest}`, owner: 'runtime', entityRefs: [N.Guest], actorRefs: [], sourceRefs: [], gap: 'RUNTIME_MDM_FIXTURE_UNREFERENCED: x' },
+  ], [{ tableId: N.entity, entityId: N.Entity }]);
+  planned.data = { ...planned.data, datasets: [{ datasetId: N.entity, tableId: N.entity, owners: ['book'] }], fixture };
   const withFixture = await runPersistence(callFor(planned));
   assert.equal(withFixture.failure, null, withFixture.failure?.detail);
   assert.equal(withFixture.seeds, false);
@@ -196,7 +258,7 @@ void test('adapter, registration and seeds follow the def, and outbound does not
   assert.equal(plannedSource.includes('seedRows0'), false);
   const evidences = Object.fromEntries((withFixture.evidences ?? []).map(item => [item.id, item]));
   assert.deepEqual(Object.keys(evidences).sort(), ['certificationFixturePlanned', 'seedPlanned']);
-  assert.match(evidences.seedPlanned?.detail ?? '', /^Planned only \(consulta\)\. No row was materialized or applied\.$/);
+  assert.equal(evidences.seedPlanned?.detail ?? '', `Planned only (${N.entity}). No row was materialized or applied.`);
   assert.match(evidences.certificationFixturePlanned?.detail ?? '', /1 dataset\(s\), 1 runtime need\(s\)\. Not applied or tested/);
   assert.equal((withFixture.evidences ?? []).some(item => /applied|tested/.test(item.id)), false);
   const broken = seedsDef(false);
@@ -211,15 +273,16 @@ void test('adapter, registration and seeds follow the def, and outbound does not
 void test('renamed ids still map columns, and production refuses synthetic seeds', async () => {
   const rewritten = rewrite();
   const read = async (ref: string) => rewritten.get(ref) ?? readFile(ref);
-  const table = await runPersistence(callFor(must(rewritten, 'visita'), new Map(), read));
+  const table = await runPersistence(callFor(must(rewritten, RENAMED.entity), new Map(), read));
   assert.equal(table.failure, null, table.failure?.detail);
   const source = sourceOf(table);
-  assert.match(source, /agentId/);
-  assert.equal(/agendaClinica|Consulta|professionalId|patientId|attendanceNote/.test(source), false, source);
-  const adapter = await runPersistence(callFor(must(rewritten, 'VisitaRepository', 'repositoryAdapter'), filesOf(table), read));
+  assert.match(source, new RegExp(RENAMED.agentField));
+  const baseIds = new RegExp([BASE.mod, BASE.Entity, BASE.guestField, BASE.agentField, BASE.when, BASE.note].join('|'));
+  assert.equal(baseIds.test(source), false, source);
+  const adapter = await runPersistence(callFor(must(rewritten, `${RENAMED.Entity}Repository`, 'repositoryAdapter'), filesOf(table), read));
   assert.equal(adapter.failure, null, adapter.failure?.detail);
-  assert.match(sourceOf(adapter), /createVisitaRepository/);
-  assert.equal(/Consulta|professionalId/.test(sourceOf(adapter)), false);
+  assert.match(sourceOf(adapter), new RegExp(`create${RENAMED.Entity}Repository`));
+  assert.equal(baseIds.test(sourceOf(adapter)), false);
 
   const note = noteEntity();
   const noteTable = noteTableDef(note);
@@ -294,9 +357,9 @@ void test('m1_28: a seeds def with the certification fixture is promoted like on
 
 void test('emitted persistence files compile', async () => {
   const table = await runPersistence(callFor(tableDef()));
-  const port = await runStructure(callFor(definitionFor('ConsultaRepository')));
-  const entity = await runStructure(callFor(definitionFor('Consulta')));
-  const known = new Map<string, string>([[defPathOf('consulta'), defSource(defPathOf('consulta'), tableDef())]]);
+  const port = await runStructure(callFor(definitionFor(`${N.Entity}Repository`)));
+  const entity = await runStructure(callFor(definitionFor(N.Entity)));
+  const known = new Map<string, string>([[defPathOf('table'), defSource(defPathOf('table'), tableDef())]]);
   const adapter = await runPersistence(callFor(adapterDef(), known));
   const registration = await runPersistence(callFor(registrationDef(), filesOf(adapter)));
   const seeds = await runPersistence(callFor(seedsDef(false)));
@@ -308,10 +371,10 @@ void test('emitted persistence files compile', async () => {
 
 void test('emitted persistence file with no unique keys compiles', async () => {
   const noUniqueTable = tableDef({ uniqueKeys: [] });
-  const port = await runStructure(callFor(definitionFor('ConsultaRepository')));
-  const entity = await runStructure(callFor(definitionFor('Consulta')));
+  const port = await runStructure(callFor(definitionFor(`${N.Entity}Repository`)));
+  const entity = await runStructure(callFor(definitionFor(N.Entity)));
   const table = await runPersistence(callFor(noUniqueTable));
-  const known = new Map<string, string>([[defPathOf('consulta'), defSource(defPathOf('consulta'), noUniqueTable)]]);
+  const known = new Map<string, string>([[defPathOf('table'), defSource(defPathOf('table'), noUniqueTable)]]);
   const adapter = await runPersistence(callFor(adapterDef(noUniqueTable), known));
   const rows = [entity, port, table, adapter];
   assert.deepEqual(rows.filter(item => item.failure).map(item => item.failure?.detail), []);
@@ -344,21 +407,20 @@ function definitionFor(artifactId: string): M1Definition {
   return found.definition;
 }
 
-function defPathOf(artifactId: string): string {
-  const found = [...FIXTURES.values()].find(item => item.definition.artifactId === artifactId);
-  if (artifactId === 'consulta') return '_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts';
-  if (artifactId === 'seeds') return '_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/seeds.defs.ts';
-  if (!found) throw new Error(artifactId);
-  return found.defPath;
+function defPathOf(artifactId: string, n: Names = N): string {
+  if (artifactId === 'table') return `${persistenceRoot(n)}/${n.entity}.defs.ts`;
+  if (artifactId === 'seeds') return `${persistenceRoot(n)}/seeds.defs.ts`;
+  if (artifactId === 'adapter') return `${persistenceRoot(n)}/${n.entity}RepositoryAdapter.defs.ts`;
+  if (artifactId === `${n.Entity}Repository`) return portPathOf(n);
+  return entityPathOf(n, artifactId);
 }
 
 function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: string; uniqueKeys?: string[][] }): M1Definition {
-  const entity = input?.entity ?? definitionFor('Consulta');
-  const entityPath = [...FIXTURES.values()].find(item => item.definition.artifactId === entity.artifactId)?.defPath
-    ?? '_102047_/l1/agendaClinica/layer_3_domain/entities/consulta.defs.ts';
-  const tableId = input?.tableId ?? 'consulta';
-  const physical = input?.physical ?? 'agendaClinica_consulta';
-  const uniqueKeys = input?.uniqueKeys ?? [['professionalId', 'scheduledAt']];
+  const entity = input?.entity ?? definitionFor(N.Entity);
+  const entityPath = entityPathOf(N, entity.artifactId);
+  const tableId = input?.tableId ?? N.entity;
+  const physical = input?.physical ?? `${N.mod}_${N.entity}`;
+  const uniqueKeys = input?.uniqueKeys ?? [[N.agentField, N.when]];
   return {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'table',
@@ -374,12 +436,12 @@ function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: 
       uniqueKeys,
       indexes: uniqueKeys.length
         ? [
-          { name: `${physical}_professionalId_scheduledAt`, columns: ['professionalId', 'scheduledAt'], unique: true },
-          { name: `${physical}_patientId`, columns: ['patientId'], unique: false },
+          { name: `${physical}_${N.agentField}_${N.when}`, columns: [N.agentField, N.when], unique: true },
+          { name: `${physical}_${N.guestField}`, columns: [N.guestField], unique: false },
           { name: `${physical}_status`, columns: ['status'], unique: false },
         ]
         : [
-          { name: `${physical}_patientId`, columns: ['patientId'], unique: false },
+          { name: `${physical}_${N.guestField}`, columns: [N.guestField], unique: false },
           { name: `${physical}_status`, columns: ['status'], unique: false },
         ],
     },
@@ -387,22 +449,22 @@ function tableDef(input?: { entity?: M1Definition; tableId?: string; physical?: 
 }
 
 function adapterDef(table?: M1Definition): M1Definition {
-  const built = buildLocalTable(table ?? tableDef(), definitionFor('Consulta'));
+  const built = buildLocalTable(table ?? tableDef(), definitionFor(N.Entity));
   if ('code' in built) throw new Error(built.detail);
   return {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'repositoryAdapter',
-    artifactId: 'ConsultaRepository',
-    moduleName: 'agendaClinica',
+    artifactId: `${N.Entity}Repository`,
+    moduleName: N.mod,
     status: 'pending',
     dependencies: [
-      defPathOf('consulta'),
-      defPathOf('ConsultaRepository'),
+      defPathOf('table'),
+      defPathOf(`${N.Entity}Repository`),
     ],
     data: {
-      entityId: 'Consulta',
-      portId: 'ConsultaRepository',
-      tableId: 'consulta',
+      entityId: N.Entity,
+      portId: `${N.Entity}Repository`,
+      tableId: N.entity,
       columns: built.bindings.map(binding => ({ field: binding.field, column: binding.column })),
     },
   };
@@ -413,12 +475,12 @@ function registrationDef(): M1Definition {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'repositoryRegistration',
     artifactId: 'registerRepositories',
-    moduleName: 'agendaClinica',
+    moduleName: N.mod,
     status: 'pending',
-    dependencies: ['_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts'],
+    dependencies: [defPathOf('adapter')],
     data: {
       registrationId: 'registerRepositories',
-      adapters: [{ portId: 'ConsultaRepository', adapterArtifactId: 'ConsultaRepository' }],
+      adapters: [{ portId: `${N.Entity}Repository`, adapterArtifactId: `${N.Entity}Repository` }],
     },
   };
 }
@@ -428,14 +490,14 @@ function seedsDef(withRows: boolean): M1Definition {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'persistenceSeeds',
     artifactId: 'seeds',
-    moduleName: 'agendaClinica',
+    moduleName: N.mod,
     status: 'pending',
-    dependencies: [defPathOf('consulta')],
+    dependencies: [defPathOf('table')],
     data: {
       seedId: 'seeds',
       phase: 'plan',
-      scenarios: [{ scenarioId: 'book', tableId: 'consulta', source: 'journey:book' }],
-      ...(withRows ? { datasets: [{ seedFor: 'consulta', rows: [{ id: 'row-1' }] }] } : {}),
+      scenarios: [{ scenarioId: 'book', tableId: N.entity, source: 'journey:book' }],
+      ...(withRows ? { datasets: [{ seedFor: N.entity, rows: [{ id: 'row-1' }] }] } : {}),
     },
   };
 }
@@ -445,7 +507,7 @@ function outboundDef(): M1Definition {
     schemaVersion: '2026-09-24-d1-definition-v2',
     artifactType: 'integrationOutbound',
     artifactId: 'outbound',
-    moduleName: 'agendaClinica',
+    moduleName: N.mod,
     status: 'blocked',
     dependencies: [],
     data: {
@@ -473,7 +535,8 @@ function pathFor(definition: M1Definition): string {
     const file = `${definition.artifactId.charAt(0).toLowerCase()}${definition.artifactId.slice(1)}`;
     return `_102047_/l1/${definition.moduleName}/layer_3_domain/entities/${file}.defs.ts`;
   }
-  return defPathOf(definition.artifactId);
+  if (definition.artifactType === 'repositoryPort') return portPathOf(N);
+  throw new Error(definition.artifactType);
 }
 
 function callFor(
@@ -515,54 +578,47 @@ function unit(definition: M1Definition): PlanUnitInput {
   return { defPath: callFor(definition).unit.defPath, definition };
 }
 
+/** The same module under RENAMED ids: entity, port, table and adapter defs, as sources. */
 function rewrite(): Map<string, string> {
+  const n = RENAMED;
   const map = new Map<string, string>();
-  const swap = (value: string) => value
-    .replaceAll('agendaClinica', 'oficina')
-    .replaceAll('Consulta', 'Visita')
-    .replaceAll('consulta', 'visita')
-    .replaceAll('professionalId', 'agentId')
-    .replaceAll('patientId', 'guestId')
-    .replaceAll('scheduledAt', 'when')
-    .replaceAll('attendanceNote', 'memo')
-    .replaceAll('uniqueProfessionalSchedule', 'r1');
-  for (const [path, fixture] of FIXTURES) {
-    if (fixture.definition.artifactId !== 'Consulta' && fixture.definition.artifactId !== 'ConsultaRepository') continue;
-    const nextPath = swap(path);
-    map.set(nextPath, swap(fixture.text));
-  }
-  const entity = readDefinition(parseDefinitionSource(map.get(swap(defPathOf('Consulta'))) ?? '').definition);
-  if ('issues' in entity) throw new Error(entity.issues.join(' '));
-  const table = tableDef({ entity, tableId: 'visita', physical: 'oficina_visita' });
-  table.moduleName = 'oficina';
-  table.dependencies = [swap(defPathOf('Consulta'))];
+  for (const definition of moduleDefs(n)) map.set(pathOfModuleDef(n, definition), defSource(pathOfModuleDef(n, definition), definition));
+  const entity = moduleDefs(n)[0];
+  const table: M1Definition = {
+    ...tableDef(),
+    artifactId: n.entity,
+    moduleName: n.mod,
+    dependencies: [entityPathOf(n, n.Entity)],
+  };
   table.data = {
-    ...table.data,
-    entityId: 'Visita',
-    uniqueKeys: [['agentId', 'when']],
+    tableId: n.entity,
+    entityId: n.Entity,
+    physicalName: `${n.mod}_${n.entity}`,
+    primaryKey: ['id'],
+    uniqueKeys: [[n.agentField, n.when]],
     indexes: [
-      { name: 'oficina_visita_agentId_when', columns: ['agentId', 'when'], unique: true },
-      { name: 'oficina_visita_guestId', columns: ['guestId'], unique: false },
-      { name: 'oficina_visita_status', columns: ['status'], unique: false },
+      { name: `${n.mod}_${n.entity}_${n.agentField}_${n.when}`, columns: [n.agentField, n.when], unique: true },
+      { name: `${n.mod}_${n.entity}_${n.guestField}`, columns: [n.guestField], unique: false },
+      { name: `${n.mod}_${n.entity}_status`, columns: ['status'], unique: false },
     ],
   };
-  const tablePath = swap(defPathOf('consulta'));
-  map.set(tablePath, `export const definition = ${JSON.stringify(table)} as const;\n`);
+  const tablePath = defPathOf('table', n);
+  map.set(tablePath, defSource(tablePath, table));
   const built = buildLocalTable(table, entity);
   if ('code' in built) throw new Error(built.detail);
   const adapter: M1Definition = {
     ...adapterDef(),
-    artifactId: 'VisitaRepository',
-    moduleName: 'oficina',
-    dependencies: [tablePath, swap(defPathOf('ConsultaRepository'))],
+    artifactId: `${n.Entity}Repository`,
+    moduleName: n.mod,
+    dependencies: [tablePath, portPathOf(n)],
     data: {
-      entityId: 'Visita',
-      portId: 'VisitaRepository',
-      tableId: 'visita',
+      entityId: n.Entity,
+      portId: `${n.Entity}Repository`,
+      tableId: n.entity,
       columns: built.bindings.map(binding => ({ field: binding.field, column: binding.column })),
     },
   };
-  map.set(swap('_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consultaRepositoryAdapter.defs.ts'), `export const definition = ${JSON.stringify(adapter)} as const;\n`);
+  map.set(defPathOf('adapter', n), defSource(defPathOf('adapter', n), adapter));
   return map;
 }
 
@@ -628,9 +684,15 @@ function readFile(ref: string): string | null {
   if (fixture) return fixture.text;
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
   if (!match) return null;
+  // The module lives here; a module ref that is not here is recorded, never read from the client on disk.
+  if (match[1] === '102047') {
+    MISSED.add(ref);
+    return null;
+  }
   try {
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
+    MISSED.add(ref);
     return null;
   }
 }
@@ -708,24 +770,7 @@ function world() {
   return { map, state };
 }
 
-function loadFixtures(dir: string): Map<string, { defPath: string; text: string; definition: M1Definition }> {
-  const map = new Map<string, { defPath: string; text: string; definition: M1Definition }>();
-  const walk = (current: string) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
-        const text = readFileSync(path, 'utf8');
-        const parsed = parseDefinitionSource(text);
-        if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));
-        const definition = readDefinition(parsed.definition);
-        if ('issues' in definition) throw new Error(definition.issues.join('; '));
-        const marked = /fileReference="([^"]+)"/.exec(text);
-        if (!marked) throw new Error(path);
-        map.set(marked[1], { defPath: marked[1], text, definition });
-      }
-    }
-  };
-  walk(dir);
-  return map;
-}
+void test('the module is built here: every def a handler read was in it, and the client project was not read (m1_41 b1-P2)', () => {
+  const defs = [...MISSED].filter(ref => ref.endsWith('.defs.ts') && [BASE.mod, RENAMED.mod].some(mod => ref.startsWith(`_102047_/l1/${mod}/`)));
+  assert.deepEqual(defs, []);
+});

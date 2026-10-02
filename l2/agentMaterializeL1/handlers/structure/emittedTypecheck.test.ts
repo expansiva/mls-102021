@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
@@ -29,18 +29,19 @@ import { simulate, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/si
 import { runStructure, structureHandlerIds } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { catalogWithheld, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { moduleSpecifier, renderMonitorCatalog, renderScenarioTest } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
-const FIXTURE = join(HERE, '../../../agentDefsL1/fixtures/agendaClinica-3f4f677');
+// m1_41 b1-P2: the v2 seed (byte for byte, read only) and its L2 contract; nothing of the client on disk.
+const SEED = join(HERE, '../../fixtures/v2ControleEstoque');
+// The l4 and the L2 contracts of the same commit, frozen for the D1 (read only).
+const SEED_SOURCES = join(HERE, '../../../agentDefsL1/fixtures/controleEstoque-39a5166');
 const PROJECT = '102047';
-const MODULE = 'agendaClinica';
+const MODULE = 'controleEstoque';
 
-void test('structure output of the clinic fixture typechecks on the official configs', async () => {
-  // The frozen fixture predates d1_36: controllers60 now adds the authority map to a controller with grants.
-  const texts = withAuthorityDependency(loadDefs(FIXTURE));
-  assert.ok(texts.has(`_${PROJECT}_/l2/${MODULE}/web/contracts/agenda.defs.ts`));
+void test('structure output of the v2 seed typechecks on the official configs', async () => {
+  const texts = seedTexts();
+  assert.ok(texts.has(`_${PROJECT}_/l2/${MODULE}/web/contracts/produtos.defs.ts`));
   const units: PlanUnitInput[] = [];
   const definitions = new Map<string, M1Definition>();
   for (const [defPath, text] of texts) {
@@ -62,16 +63,18 @@ void test('structure output of the clinic fixture typechecks on the official con
   const catalogRef = `_${PROJECT}_/${receiptFolder(MODULE)}/scenarioCatalog.ts`;
   const catalogSource = renderMonitorCatalog(derived.catalog, catalogRef);
   const read = async (ref: string): Promise<string | null> => ref === catalogRef ? catalogSource : texts.get(ref) ?? null;
+  const moduleDefinitions = units.map(unit => unit.definition);
   const files = new Map<string, string>();
   for (const unit of units) {
     if (withheld.has(unit.defPath)) continue;
     const definition = definitions.get(unit.defPath);
     const handler = handlerFor(definition.artifactType, 'structure');
     if (!definition || !handler || !handler.id.startsWith('structure.')) continue;
-    const outcome = await runStructure(callFor(unit.defPath, definition, read));
+    const outcome = await runStructure({ ...callFor(unit.defPath, definition, read), moduleDefinitions });
     assert.equal(outcome.failure, null, `${unit.defPath} ${outcome.failure?.detail ?? ''}`);
     for (const [path, source] of Object.entries(outcome.files)) files.set(path, source);
   }
+  for (const [ref, source] of texts) if (ref.startsWith(`_${PROJECT}_/l2/`)) files.set(ref, source);
   files.set(catalogRef, catalogSource);
   let tests = 0;
   for (const scenario of derived.catalog.scenarios) {
@@ -81,7 +84,12 @@ void test('structure output of the clinic fixture typechecks on the official con
   }
   assert.ok(tests > 0);
   assert.equal([...files.keys()].some(path => path.endsWith('/authorityMap.ts')), true);
-  assert.equal([...files].some(([path, source]) => path.includes('/controllers/') && source.includes('actorRefFor(grantId)')), true);
+  // Every page controller of the seed is emitted (both contracts are read), and calls only its page requests.
+  assert.deepEqual([...files.keys()].filter(path => path.includes('/controllers/') && !path.endsWith('.test.ts')).sort(), [
+    `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/movimentacoes.ts`,
+    `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/http/controllers/produtos.ts`,
+  ]);
+  assert.equal([...files].some(([path, source]) => path.includes('/controllers/') && source.includes('requests[')), true);
 
   const sandbox = mkdtempSync(join(tmpdir(), 'm1-15-'));
   try {
@@ -95,7 +103,6 @@ void test('structure output of the clinic fixture typechecks on the official con
       symlinkSync(join(ROOT, entry), join(sandbox, entry));
     }
     mkdirSync(join(sandbox, `mls-${PROJECT}`));
-    symlinkSync(join(ROOT, `mls-${PROJECT}`, 'l2'), join(sandbox, `mls-${PROJECT}`, 'l2'));
     const production: string[] = [];
     const testFiles: string[] = [];
     for (const [qualified, source] of files) {
@@ -133,7 +140,7 @@ void test('structure output of the clinic fixture typechecks on the official con
 });
 
 void test('m1_32/m1_35: the test of a unit promoted once and blocked now compiles whether the catalog keeps its scenario or not', async () => {
-  const texts = withAuthorityDependency(loadDefs(FIXTURE));
+  const texts = seedTexts();
   const units: PlanUnitInput[] = [];
   const definitions = new Map<string, M1Definition>();
   for (const [defPath, text] of texts) {
@@ -185,17 +192,6 @@ void test('a qualified output path keeps the leading slash and a bare name is re
   assert.equal(moduleSpecifier('./accessScope.ts'), '');
 });
 
-function withAuthorityDependency(texts: Map<string, string>): Map<string, string> {
-  const authority = [...texts.keys()].find(path => path.endsWith('/authorityMap.defs.ts'));
-  assert.ok(authority);
-  const out = new Map<string, string>();
-  for (const [path, text] of texts) {
-    const isController = text.includes('"artifactType": "httpController"') && text.includes('"grantIds"');
-    out.set(path, isController ? text.replace('"dependencies": [', `"dependencies": [\n    "${authority}",`) : text);
-  }
-  return out;
-}
-
 /** Runtime typecheck (tests and outputs) of `files` plus one catalog, in a sandbox that links the repo. */
 function compileRuntime(files: ReadonlyMap<string, string>, catalogRef: string, catalogSource: string): string {
   const sandbox = mkdtempSync(join(tmpdir(), 'm1-32-'));
@@ -209,7 +205,6 @@ function compileRuntime(files: ReadonlyMap<string, string>, catalogRef: string, 
       symlinkSync(join(ROOT, entry), join(sandbox, entry));
     }
     mkdirSync(join(sandbox, `mls-${PROJECT}`));
-    symlinkSync(join(ROOT, `mls-${PROJECT}`, 'l2'), join(sandbox, `mls-${PROJECT}`, 'l2'));
     const include: string[] = [];
     for (const [qualified, source] of [...files, [catalogRef, catalogSource] as const]) {
       const relativePath = qualified.replace(new RegExp(`^_${PROJECT}_/`), `mls-${PROJECT}/`);
@@ -268,7 +263,7 @@ function diskIo(defs: ReadonlyMap<string, string>): MaterializeReadIo {
       const own = defs.get(ref);
       if (own !== undefined) return own;
       const match = /^_(\d+)_\/(.+)$/.exec(ref);
-      if (!match) return null;
+      if (!match || match[1] === PROJECT) return null;
       const disk = join(ROOT, `mls-${match[1]}`, match[2]);
       if (!existsSync(disk) || !statSync(disk).isFile()) return null;
       return readFileSync(disk, 'utf8');
@@ -504,17 +499,22 @@ function camel(value: string): string {
   return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
-function loadDefs(root: string): Map<string, string> {
+/** The v2 seed defs and the l4/L2 sources of the same commit, by their logical path (`fileReference`). */
+function seedTexts(): Map<string, string> {
   const texts = new Map<string, string>();
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
-        texts.set(`_${PROJECT}_/${fixtureLogicalRel(relative(root, full))}`, readFileSync(full, 'utf8'));
+      else if (entry.name.endsWith('.defs.txt')) {
+        const text = readFileSync(full, 'utf8');
+        const ref = /fileReference="([^"]+)"/.exec(text)?.[1];
+        assert.ok(ref, full);
+        texts.set(ref, text);
       }
     }
   };
-  walk(root);
+  walk(SEED);
+  walk(SEED_SOURCES);
   return texts;
 }

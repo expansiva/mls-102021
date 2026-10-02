@@ -14,20 +14,27 @@ import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
 import { runMaterialize, type HandlerCall, type MaterializeRunHost } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
-import { M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { classifyCase, verifyBatch, type M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideRoute } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { runStructure, structureHandlerIds, structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
-import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
-import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
 sweepRepoRootScratch();
 const CATALOG_REF = 'catalog.json';
-const CATALOG = readFileSync(join(HERE, '../../testing/catalogFixture.json'), 'utf8');
-const FIXTURES = loadFixtures(join(HERE, 'fixtures'));
+// m1_41 b1-P2: the v2 seed (byte for byte, read only) plus the l4 and L2 contracts of the same commit,
+// frozen for the D1. The catalog is derived from them; nothing of the client project is read from disk.
+const SEED = join(HERE, '../../fixtures/v2ControleEstoque');
+const SEED_SOURCES = join(HERE, '../../../agentDefsL1/fixtures/controleEstoque-39a5166');
+const PROJECT = '102047';
+const MODULE = 'controleEstoque';
+const TEXTS = seedTexts();
+const FIXTURES = l1Defs(TEXTS);
+const MODULE_DEFINITIONS = [...FIXTURES.values()].map(item => item.definition);
+const CATALOG = renderMonitorCatalog(deriveCatalog(MODULE, [...FIXTURES.values()].map(item => ({ defPath: item.defPath, definition: item.definition })), Object.fromEntries(TEXTS)).catalog, CATALOG_REF);
 
 void test('structure runners cover the registry ids and stay free of node', () => {
   const ids = structureHandlerIds();
@@ -70,24 +77,27 @@ void test('contract reader separates permitted root keys from nested required pa
   });
 });
 
-void test('create and list Consulta compile, and the usecase does not pretend to succeed', async () => {
-  const ids = ['Consulta', 'ConsultaRepository', 'createConsulta', 'listConsulta'];
+void test('create and list compile, and the usecase does not pretend to succeed', async () => {
+  const ids = ['MovimentacaoEstoque', 'MovimentacaoEstoqueRepository', 'createMovimentacaoEstoque', 'listMovimentacaoEstoque'];
   const emitted = await emitAll(ids);
+  assert.equal(emitted.length, 4);
   for (const outcome of emitted) assert.equal(outcome.failure, null, outcome.failure?.detail);
-  const create = sourceOf(emitted, 'createConsulta');
-  const list = sourceOf(emitted, 'listConsulta');
+  const create = sourceOf(emitted, 'createMovimentacaoEstoque');
+  const list = sourceOf(emitted, 'listMovimentacaoEstoque');
   assert.match(create, /throw new AppError\('USECASE_NOT_IMPLEMENTED'/);
   assert.match(list, /throw new AppError\('USECASE_NOT_IMPLEMENTED'/);
   assert.equal(create.includes('ok: true'), false);
   assert.equal(list.includes('ok: true'), false);
   assert.match(create, /from '\/_102034_\/l1\/server\/layer_2_controllers\/contracts\.js'/);
-  assert.match(create, /CreateConsultaInput as CreateConsultaInput_0/);
+  // v2: the usecase signature is its def, read on the domain; no L2 contract and no l4 file is imported.
+  assert.equal(/from '[^']*\/l2\//.test(create), false);
   assert.equal(create.includes("from '/_102047_/l4/"), false);
   const problems = compile(emitted);
   assert.equal(problems, '', problems);
 });
 
-void test('the remaining structure files compile after the first pair', async () => {
+// The whole v2 module compiling is proved by emittedTypecheck.test.ts on the same seed.
+void test('the remaining structure files compile after the first pair', { skip: 'v1 path removed by m1_41 a/c' }, async () => {
   const emitted = await emitAll([...FIXTURES.keys()].map(path => FIXTURES.get(path)!.definition.artifactId));
   const failed = emitted.filter(item => item.failure);
   assert.deepEqual(failed.map(item => `${item.artifactId}: ${item.failure?.code} ${item.failure?.detail}`), []);
@@ -116,7 +126,9 @@ void test('the remaining structure files compile after the first pair', async ()
 });
 
 void test('verifyBatch accepts the structure checkpoint and rejects a different failure', async () => {
-  const wanted = ['createConsulta', 'listConsulta', 'registrarAtendimento', 'consultas_recepcionista', 'consultas_profissional'];
+  // Every usecase and page controller of the seed: the batch is verified against all of their catalog cases.
+  const wanted = [...FIXTURES.values()].map(item => item.definition)
+    .filter(definition => definition.artifactType === 'usecase' || definition.artifactType === 'httpController').map(definition => definition.artifactId);
   const emitted = await emitAll(wanted);
   for (const item of emitted) assert.equal(item.failure, null, `${item.artifactId} ${item.failure?.detail}`);
   const usecase = handlerFor('usecase', 'structure');
@@ -134,7 +146,8 @@ void test('verifyBatch accepts the structure checkpoint and rejects a different 
     monitorError: null,
   });
   assert.equal(usecaseReport.accepted, true, usecaseReport.nextAction);
-  assert.deepEqual(usecaseReport.counts, { passed: 3, expectedRed: 8, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
+  // Four seed usecases, each with a compile case (passes) and a business case (the stub: expected red).
+  assert.deepEqual(usecaseReport.counts, { passed: 4, expectedRed: 4, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
   assert.equal(usecaseReport.ready, false);
 
   const controllerReport = await verifyBatch({
@@ -149,11 +162,12 @@ void test('verifyBatch accepts the structure checkpoint and rejects a different 
     monitorError: null,
   });
   assert.equal(controllerReport.accepted, true, controllerReport.nextAction);
-  assert.deepEqual(controllerReport.counts, { passed: 3, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
+  // Two page controllers, each with a compile case and two routes refused before the request (no authority): all pass.
+  assert.deepEqual(controllerReport.counts, { passed: 6, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
 
   const catalog = parseCatalog(CATALOG).catalog;
   assert.ok(catalog);
-  const business = catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === 'createConsulta.creates');
+  const business = catalog.scenarios.filter(item => item.artifactId === 'createProduto').flatMap(item => item.cases).find(item => item.gate === 'business');
   assert.ok(business);
   const wrong = classifyCase('structure', business, observation(business.caseId, { ok: false, status: 500, errorCode: 'INTERNAL_ERROR' }));
   assert.equal(wrong.verdict, 'failed');
@@ -177,17 +191,17 @@ void test('verifyBatch accepts the structure checkpoint and rejects a different 
 });
 
 void test('a pending grant stays closed and is not replaced by the stub', () => {
-  const access = FIXTURES.get(defPath('accessScope'))!;
-  const grants = grantsOf(access.definition.data);
-  const pending = grants.find(item => item.grantId === 'profissionalAgendaDiaria');
+  // An own-scope grant whose anchor is not resolved, as the access scope def writes it (ids arbitrary).
+  const grants = grantsOf({ grants: [{ grantId: 'agentDeskRound', actorRef: 'agent', scopeMode: 'own', session: 'verified', disclosure: 'fullRecord', pending: 'ACCESS_ANCHOR' }] });
+  const pending = grants.find(item => item.grantId === 'agentDeskRound');
   assert.equal(pending?.pending, 'ACCESS_ANCHOR');
   const decision = decideRoute({
     source: 'http',
-    authorities: ['agendaClinica:profissional'],
-    grantIds: ['profissionalAgendaDiaria'],
+    authorities: ['deskRound:agent'],
+    grantIds: ['agentDeskRound'],
     grants,
-    authority: [{ grantId: 'profissionalAgendaDiaria', actorRef: 'profissional' }],
-    params: { id: 'consulta-1' },
+    authority: [{ grantId: 'agentDeskRound', actorRef: 'agent' }],
+    params: { id: 'visit-1' },
     requiredFields: ['id'],
   });
   assert.equal(decision.reachedUsecase, false);
@@ -196,9 +210,9 @@ void test('a pending grant stays closed and is not replaced by the stub', () => 
   const empty = decideRoute({
     source: 'http',
     authorities: [],
-    grantIds: ['profissionalAgendaDiaria'],
+    grantIds: ['agentDeskRound'],
     grants,
-    authority: [{ grantId: 'profissionalAgendaDiaria', actorRef: 'profissional' }],
+    authority: [{ grantId: 'agentDeskRound', actorRef: 'agent' }],
     params: {},
     requiredFields: ['id'],
   });
@@ -206,25 +220,25 @@ void test('a pending grant stays closed and is not replaced by the stub', () => 
 });
 
 void test('production does not write the stub and a development receipt stays scaffold', async () => {
-  const ids = ['Paciente', 'Profissional', 'Consulta', 'ConsultaRepository', 'createConsulta', 'listConsulta'];
+  const ids = ['Produto', 'MovimentacaoEstoque', 'MovimentacaoEstoqueRepository', 'createMovimentacaoEstoque', 'listMovimentacaoEstoque'];
   const units = ids.map(id => {
-    const found = [...FIXTURES.values()].find(item => item.definition.artifactId === id);
+    const found = [...FIXTURES.values()].find(item => item.definition.artifactId === id && isStructure(item.definition));
     if (!found) throw new Error(id);
     return { defPath: found.defPath, definition: found.definition };
   });
   const refused = world();
   const production = await runMaterialize(request(units, 'production'), host(refused));
-  const usecase = production.units.find(item => item.defPath.endsWith('/createConsulta.defs.ts'));
-  const port = production.units.find(item => item.defPath.endsWith('/consultaRepository.defs.ts'));
+  const usecase = production.units.find(item => item.defPath.endsWith('/createMovimentacaoEstoque.defs.ts'));
+  const port = production.units.find(item => item.defPath.endsWith('/movimentacaoEstoqueRepository.defs.ts'));
   assert.equal(port?.code, 'PROFILE_REFUSED');
   assert.equal(usecase?.code, 'BLOCKED_BY');
   assert.equal(refused.map.has(usecase?.defPath.replace(/\.defs\.ts$/, '.ts') ?? ''), false);
-  assert.equal([...refused.map.keys()].some(path => path.endsWith('/createConsulta.ts')), false);
-  assert.equal([...refused.map.keys()].some(path => path.endsWith('/consultaRepository.ts')), false);
+  assert.equal([...refused.map.keys()].some(path => path.endsWith('/createMovimentacaoEstoque.ts')), false);
+  assert.equal([...refused.map.keys()].some(path => path.endsWith('/movimentacaoEstoqueRepository.ts')), false);
 
   const store = world();
   const development = await runMaterialize(request(units, 'development'), host(store));
-  const created = development.units.find(item => item.defPath.endsWith('/createConsulta.defs.ts'));
+  const created = development.units.find(item => item.defPath.endsWith('/createMovimentacaoEstoque.defs.ts'));
   assert.equal(created?.code, 'PROMOTED', created?.detail);
   const receiptPath = receiptPathFor(created?.defPath ?? '');
   const receipt = JSON.parse(store.map.get(receiptPath) ?? '{}') as { stage?: string; reason?: string };
@@ -250,7 +264,7 @@ async function emitAll(artifactIds: readonly string[]): Promise<Emitted[]> {
   const wanted = new Set(artifactIds);
   const rows: Emitted[] = [];
   for (const entry of FIXTURES.values()) {
-    if (!wanted.has(entry.definition.artifactId)) continue;
+    if (!wanted.has(entry.definition.artifactId) || !isStructure(entry.definition)) continue;
     const outcome = await runStructure(callFor(entry.defPath, entry.definition));
     const output = entry.defPath.replace(/\.defs\.ts$/, '.ts');
     rows.push({
@@ -279,24 +293,19 @@ function compile(rows: readonly Emitted[]): string {
     const files: string[] = [];
     for (const row of rows) {
       if (!row.source) continue;
-      const relativePath = row.output.replace(/^_102047_\/l1\/agendaClinica\//, '');
+      const relativePath = row.output.replace(new RegExp(`^_${PROJECT}_/`), '');
       const full = join(dir, relativePath);
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, row.source);
       files.push(relative(ROOT, full));
     }
-    const clinic = join(dir, 'clinic');
-    copyFixtureSources(AGENDA_CLINICA_F35E28A, clinic);
+    // The client project is only what was emitted here.
     const overlay = `./${relative(ROOT, dir)}/*`;
     const base = readFileSync(join(ROOT, 'tsconfig.base.json'), 'utf8');
-    const paths: Record<string, string[]> = { '/_102047_/l1/agendaClinica/*': [overlay] };
+    const paths: Record<string, string[]> = { [`/_${PROJECT}_/*`]: [overlay] };
     for (const id of new Set([...base.matchAll(/\/_(\d+)_\//g)].map(match => match[1]))) {
       const key = `/_${id}_/*`;
-      if (!paths[key]) {
-        paths[key] = id === '102047'
-          ? [`./${relative(ROOT, clinic)}/*`]
-          : [`./mls-${id}/*`];
-      }
+      if (!paths[key]) paths[key] = [`./mls-${id}/*`];
     }
     writeFileSync(config, `${JSON.stringify({
       extends: './tsconfig.base.json',
@@ -348,13 +357,14 @@ function callFor(defPath: string, definition: M1Definition): HandlerCall {
     eventId: defPath,
     profile: decideProfile('development', true),
     modelText: null,
+    moduleDefinitions: MODULE_DEFINITIONS,
   };
 }
 
 function request(units: readonly PlanUnitInput[], mode: string) {
   return {
-    project: 102047,
-    moduleName: 'agendaClinica',
+    project: Number(PROJECT),
+    moduleName: MODULE,
     stage: 'structure' as const,
     flow: '',
     resume: false,
@@ -402,45 +412,54 @@ function world() {
 
 async function read(ref: string): Promise<string | null> {
   if (ref === CATALOG_REF) return CATALOG;
-  const fixture = FIXTURES.get(ref);
-  if (fixture) return fixture.text;
+  const own = TEXTS.get(ref);
+  if (own !== undefined) return own;
   const match = /^_(\d+)_\/(.+)$/.exec(ref);
-  if (!match) return null;
+  if (!match || match[1] === PROJECT) return null;
   try {
-    if (match[1] === '102047') return readFileSync(resolveFixtureFile(join(AGENDA_CLINICA_F35E28A, match[2])), 'utf8');
     return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
   } catch {
     return null;
   }
 }
 
-function loadFixtures(dir: string): Map<string, { defPath: string; text: string; definition: M1Definition }> {
-  const map = new Map<string, { defPath: string; text: string; definition: M1Definition }>();
-  const walk = (current: string) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.defs.ts') || entry.name.endsWith('.defs.txt')) {
-        const text = readFileSync(path, 'utf8');
-        const parsed = parseDefinitionSource(text);
-        if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));
-        const definition = readDefinition(parsed.definition);
-        if ('issues' in definition) throw new Error(`${path} ${definition.issues.join('; ')}`);
-        const marked = /fileReference="([^"]+)"/.exec(text);
-        const defPath = marked?.[1] ?? '';
-        if (!defPath) throw new Error(`no file reference in ${path}`);
-        map.set(defPath, { defPath, text, definition });
+/** The seed defs and the l4/L2 sources of the same commit, by their logical path (`fileReference`). */
+function seedTexts(): Map<string, string> {
+  const texts = new Map<string, string>();
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.defs.txt')) {
+        const text = readFileSync(full, 'utf8');
+        const ref = /fileReference="([^"]+)"/.exec(text)?.[1];
+        if (!ref) throw new Error(`no file reference in ${full}`);
+        texts.set(ref, text);
       }
     }
   };
-  walk(dir);
-  return map;
+  walk(SEED);
+  walk(SEED_SOURCES);
+  return texts;
 }
 
-function defPath(artifactId: string): string {
-  const found = [...FIXTURES.values()].find(item => item.definition.artifactId === artifactId);
-  if (!found) throw new Error(artifactId);
-  return found.defPath;
+/** A def the structure stage materializes (a port and its persistence adapter share the artifact id). */
+function isStructure(definition: M1Definition): boolean {
+  return handlerFor(definition.artifactType, 'structure')?.id.startsWith('structure.') ?? false;
+}
+
+/** The module's l1 defs among the seed texts. */
+function l1Defs(texts: ReadonlyMap<string, string>): Map<string, { defPath: string; text: string; definition: M1Definition }> {
+  const map = new Map<string, { defPath: string; text: string; definition: M1Definition }>();
+  for (const [defPath, text] of texts) {
+    if (!defPath.startsWith(`_${PROJECT}_/l1/${MODULE}/`)) continue;
+    const parsed = parseDefinitionSource(text);
+    if (!('definition' in parsed)) throw new Error(parsed.issues.join('; '));
+    const definition = readDefinition(parsed.definition);
+    if ('issues' in definition) throw new Error(`${defPath} ${definition.issues.join('; ')}`);
+    map.set(defPath, { defPath, text, definition });
+  }
+  return map;
 }
 
 function observation(caseId: string, patch: Partial<M1Observation>): M1Observation {
