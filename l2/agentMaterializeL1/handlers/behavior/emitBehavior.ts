@@ -23,7 +23,7 @@ import {
   readDefinition,
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { isL1Operation, L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
@@ -317,15 +317,37 @@ async function memoryUsecase(
   const outs = outputNames(definition);
   // No contract output: the update and the transition return the stub's own output type.
   const returnType = stubReturnType(stub.source);
-  const body = operation === 'create'
-    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, outs)
-    : operation === 'update'
-      ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition, returnType)
-      : transition
-        ? transitionBody(entityName, camel(portName), transition, returnType)
-        : operation === 'get'
-          ? getBody(camel(portName), returnType)
-          : listBody(entity, entityName, camel(portName), inputs, outs.includes('items') && outs.includes('hasMore'));
+  if (!isL1Operation(operation)) {
+    return { code: 'OPERATION_UNHANDLED', detail: `${definition.artifactId} operation ${operation || '(missing)'} is not an L1 operation.` };
+  }
+  let body: string;
+  switch (operation) {
+    case 'create':
+      body = createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, outs);
+      break;
+    case 'update':
+      body = updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition, returnType);
+      break;
+    case 'transition':
+      if (!transition || 'code' in transition) {
+        return { code: 'OPERATION_UNHANDLED', detail: `${definition.artifactId} transition has no derived body.` };
+      }
+      body = transitionBody(entityName, camel(portName), transition, returnType);
+      break;
+    case 'get':
+      body = getBody(camel(portName), returnType);
+      break;
+    case 'list':
+      body = listBody(entity, entityName, camel(portName), inputs, outs.includes('items') && outs.includes('hasMore'));
+      break;
+    case 'delete':
+    case 'custom':
+      return { code: 'OPERATION_UNHANDLED', detail: `${definition.artifactId} operation ${operation} has no derived body.` };
+    default: {
+      const never: never = operation;
+      return { code: 'OPERATION_UNHANDLED', detail: `${definition.artifactId} operation ${String(never)} has no derived body.` };
+    }
+  }
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,

@@ -23,7 +23,7 @@ export const behaviorRunners: Readonly<Record<string, MaterializeHandlerRunner>>
 };
 
 export function behaviorHandlerIds(): string[] {
-  return Object.values(M1_IMPLEMENT_HANDLERS).map(item => item.id).sort();
+  return Object.values(M1_IMPLEMENT_HANDLERS).flatMap(item => item ? [item.id] : []).sort();
 }
 
 export async function runBehavior(call: HandlerCall): Promise<HandlerOutcome> {

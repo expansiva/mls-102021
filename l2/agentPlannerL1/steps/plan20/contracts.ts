@@ -316,9 +316,20 @@ export function buildP1BackendMessage(input: {
 }
 
 export function p1UsecaseId(operation: P1Operation, entity: string, transitionRef = ''): string {
-  if (operation === 'transition') return lowerFirst(transitionRef || 'transition');
-  if (operation === 'custom') return lowerFirst(transitionRef || `custom${entity}`);
-  return `${operation}${entity}`;
+  switch (operation) {
+    case 'transition': return lowerFirst(transitionRef || 'transition');
+    case 'custom': return lowerFirst(transitionRef || `custom${entity}`);
+    case 'list':
+    case 'get':
+    case 'create':
+    case 'update':
+    case 'delete':
+      return `${operation}${entity}`;
+    default: {
+      const never: never = operation;
+      return String(never);
+    }
+  }
 }
 
 export function p1Route(moduleName: string, page: string, kind: P1Kind, usecaseId: string): string {

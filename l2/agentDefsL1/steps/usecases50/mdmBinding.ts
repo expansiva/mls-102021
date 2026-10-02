@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.ts" enhancement="_blank"/>
 
 import mdm from '/_102034_/l4/ontology/mdm.defs.js';
+import { isL1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_MDM_CALLS,
   type D1MdmArgument,
@@ -64,10 +65,20 @@ const READ_CAPABILITIES = [
 
 /** Same filter the worker catalog and the gate use before bindMdm. */
 export function capabilityApplies(name: string, operation: string): boolean {
-  if (operation === 'update') return name === 'edit.platformFields' || name.startsWith('edit.');
-  if (operation === 'create') return name.startsWith('register.') || name === 'create';
-  if (operation === 'list' || operation === 'get') return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
-  return false;
+  if (!isL1Operation(operation)) return false;
+  switch (operation) {
+    case 'update': return name === 'edit.platformFields' || name.startsWith('edit.');
+    case 'create': return name.startsWith('register.') || name === 'create';
+    case 'list':
+    case 'get': return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
+    case 'transition':
+    case 'delete':
+    case 'custom': return false;
+    default: {
+      const never: never = operation;
+      return never;
+    }
+  }
 }
 
 /**

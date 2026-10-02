@@ -600,12 +600,22 @@ function methodsFor(
   return OPERATIONS.filter(operation => selected.has(operation)).map(operation => methodFor(entityId, operation));
 }
 
-function methodFor(entityId: string, operation: Operation): D1PortMethod {
-  if (operation === 'list') return { name: 'list', params: [`${entityId}Filter`], returns: `${entityId}[]` };
-  if (operation === 'transition') return { name: 'transition', params: [entityId, 'transitionId'], returns: entityId };
-  if (operation === 'get') return { name: 'get', params: ['id'], returns: entityId };
-  if (operation === 'delete') return { name: 'delete', params: ['id'], returns: 'void' };
-  return { name: operation, params: [entityId], returns: entityId };
+function methodFor(entityId: string, operation: L1Operation): D1PortMethod {
+  switch (operation) {
+    case 'list': return { name: 'list', params: [`${entityId}Filter`], returns: `${entityId}[]` };
+    case 'transition': return { name: 'transition', params: [entityId, 'transitionId'], returns: entityId };
+    case 'get': return { name: 'get', params: ['id'], returns: entityId };
+    case 'delete': return { name: 'delete', params: ['id'], returns: 'void' };
+    case 'create':
+    case 'update':
+      return { name: operation, params: [entityId], returns: entityId };
+    case 'custom':
+      throw new Error(`Operation ${operation} has no repository method.`);
+    default: {
+      const never: never = operation;
+      throw new Error(`Operation ${String(never)} has no repository method.`);
+    }
+  }
 }
 
 function bindingsFor(

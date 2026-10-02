@@ -50,27 +50,34 @@ const STRUCTURE: Record<M1ArtifactType, MaterializeHandler> = {
   integrationOutbound: handler('persistence.integrationOutbound', 'integrationOutbound', 'structure', []),
 };
 
-/** Implement recipes. A type missing here has no fallback onto the structure scaffolder. */
-export const M1_IMPLEMENT_HANDLERS: Partial<Record<M1ArtifactType, MaterializeHandler>> = {
+/** Implement recipes. Null is a written absence: no fallback onto the structure scaffolder. */
+export const M1_IMPLEMENT_HANDLERS: Record<M1ArtifactType, MaterializeHandler | null> = {
   domainEntity: handler('implement.domainEntity', 'domainEntity', 'implement', []),
+  valueObject: null,
   repositoryPort: handler('implement.repositoryPort', 'repositoryPort', 'implement', []),
+  table: null,
+  repositoryAdapter: null,
   usecase: handler('implement.usecase', 'usecase', 'implement', ['requestContext', 'repositoryRegistry']),
+  httpController: null,
   requestService: handler('implement.requestService', 'requestService', 'implement', ['requestContext', 'repositoryRegistry']),
   accessScope: handler('implement.accessScope', 'accessScope', 'implement', ['requestContext']),
   authorityMap: handler('implement.authorityMap', 'authorityMap', 'implement', ['requestContext']),
+  repositoryRegistration: null,
+  persistenceSeeds: null,
+  integrationOutbound: null,
 };
 
 export const M1_STRUCTURE_HANDLERS: Readonly<Record<M1ArtifactType, MaterializeHandler>> = STRUCTURE;
 
 export function handlerFor(type: string, stage: M1HandlerStage = 'structure'): MaterializeHandler | null {
   if (!isM1ArtifactType(type)) return null;
-  if (stage === 'implement') return M1_IMPLEMENT_HANDLERS[type] ?? null;
+  if (stage === 'implement') return M1_IMPLEMENT_HANDLERS[type];
   return STRUCTURE[type];
 }
 
 export function registeredHandlerIds(stage: M1HandlerStage = 'structure'): string[] {
   if (stage === 'implement') {
-    return Object.values(M1_IMPLEMENT_HANDLERS).map(item => item.id).sort();
+    return Object.values(M1_IMPLEMENT_HANDLERS).flatMap(item => item ? [item.id] : []).sort();
   }
   return Object.values(STRUCTURE).map(item => item.id).sort();
 }

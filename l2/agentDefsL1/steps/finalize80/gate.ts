@@ -224,7 +224,7 @@ function classifyFiles(request: D1FinalizeRequest, chainApproved: boolean): D1Fi
   if (!snapshot) return [];
   const files: D1FinalizeFile[] = [];
   for (const planned of snapshot.files || []) {
-    const phase = PHASE_OF_TYPE[planned.artifactType] || '';
+    const phase = isArtifactType(planned.artifactType) ? PHASE_OF_TYPE[planned.artifactType] : '';
     const ran = chainApproved && !!phase && request.pipeline.steps[phase as D1StepId]?.status === 'approved';
     const action = fileAction(planned.action, ran);
     files.push({
@@ -236,7 +236,7 @@ function classifyFiles(request: D1FinalizeRequest, chainApproved: boolean): D1Fi
     });
   }
   for (const removed of snapshot.removed || []) {
-    const phase = PHASE_OF_TYPE[removed.kind] || '';
+    const phase = isArtifactType(removed.kind) ? PHASE_OF_TYPE[removed.kind] : '';
     const ran = chainApproved && !!phase && request.pipeline.steps[phase as D1StepId]?.status === 'approved';
     files.push({
       defPath: removed.defPath || removed.id,

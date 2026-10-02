@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/contracts.ts" enhancement="_blank"/>
 
+import type { D1ArtifactType } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineState, D1StepId } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import type { D1CallAccount, D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
@@ -17,7 +18,7 @@ export const D1_REPORT_VERSION = '2026-09-24-d1-report-v3' as const;
 export const INVENTORY_NOTE = 'Inventory recognition is not certification of an executable backend.' as const;
 
 /** Product types and the step that writes them. Matching is by artifact type, not by file name. */
-export const PHASE_OF_TYPE: Record<string, D1StepId> = {
+export const PHASE_OF_TYPE: Record<D1ArtifactType, D1StepId> = {
   domainEntity: 'domain30',
   valueObject: 'domain30',
   repositoryPort: 'persistence40',

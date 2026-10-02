@@ -15,6 +15,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import type { D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { isL1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { capabilityApplies, mdmForOperation, mdmStepPairs, type MdmInputField } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   enforcedRuleIds,
@@ -302,53 +303,63 @@ export function domainSignature(
     linked ? { name, type, fieldRef: ref(name) } : { name, type }
   );
   const record = [...fields.entries()].map(([name, field]) => asField(name, field.type, true));
-  if (operation === 'list') {
-    // `version` is a concurrency token, not a list filter. Other derived fields stay so the gate can refuse them.
-    const filters = record.filter(field => field.name !== 'version' || !fields.get(field.name)?.derived);
-    return {
-      input: [
-        ...filters,
-        { name: 'page', type: 'number' },
-        { name: 'pageSize', type: 'number' },
-      ],
-      output: [
-        { name: 'items', type: entity.entityId },
-        { name: 'hasMore', type: 'boolean' },
-      ],
-    };
-  }
-  if (operation === 'get') {
-    return { input: [asField('id', fields.get('id')?.type || 'string', fields.has('id'))], output: record };
-  }
-  // An operation this layer does not classify still exposes its fields, so a derived one is refused.
-  if (operation !== 'create' && operation !== 'update' && operation !== 'transition' && operation !== 'delete') {
-    return { input: record, output: record };
-  }
-  const writable = [...fields.entries()].filter(([, field]) => !field.derived);
-  const input: DomainField[] = [];
-  // create and update write the entity. A transition names its payload, not every column.
-  if (operation === 'create' || operation === 'update') {
-    for (const [name] of writable) input.push(asField(name, fields.get(name)?.type || 'string', true));
-  }
-  if (operation === 'update' || operation === 'transition' || operation === 'delete') {
-    for (const name of ['id', 'version']) {
-      if (input.some(field => field.name === name)) continue;
-      const known = fields.get(name);
-      input.push(asField(name, known?.type || (name === 'version' ? 'integer' : 'string'), Boolean(known)));
+  // A name outside the vocabulary still exposes its fields, so a derived one is refused.
+  if (!isL1Operation(operation)) return { input: record, output: record };
+  switch (operation) {
+    case 'list': {
+      // `version` is a concurrency token, not a list filter. Other derived fields stay so the gate can refuse them.
+      const filters = record.filter(field => field.name !== 'version' || !fields.get(field.name)?.derived);
+      return {
+        input: [
+          ...filters,
+          { name: 'page', type: 'number' },
+          { name: 'pageSize', type: 'number' },
+        ],
+        output: [
+          { name: 'items', type: entity.entityId },
+          { name: 'hasMore', type: 'boolean' },
+        ],
+      };
+    }
+    case 'get':
+      return { input: [asField('id', fields.get('id')?.type || 'string', fields.has('id'))], output: record };
+    case 'custom':
+      return { input: record, output: record };
+    case 'create':
+    case 'update':
+    case 'transition':
+    case 'delete': {
+      const writable = [...fields.entries()].filter(([, field]) => !field.derived);
+      const input: DomainField[] = [];
+      // create and update write the entity. A transition names its payload, not every column.
+      if (operation === 'create' || operation === 'update') {
+        for (const [name] of writable) input.push(asField(name, fields.get(name)?.type || 'string', true));
+      }
+      if (operation === 'update' || operation === 'transition' || operation === 'delete') {
+        for (const name of ['id', 'version']) {
+          if (input.some(field => field.name === name)) continue;
+          const known = fields.get(name);
+          input.push(asField(name, known?.type || (name === 'version' ? 'integer' : 'string'), Boolean(known)));
+        }
+      }
+      for (const path of payload) {
+        if (input.some(field => field.name === path)) continue;
+        const known = fields.get(path);
+        input.push(asField(path, known?.type || 'string', Boolean(known)));
+      }
+      if ((operation === 'update' || operation === 'transition')
+        && entity.namespace
+        && (entity.capabilities || []).includes('edit.moduleNamespace')) {
+        const namespacePath = `details.${entity.namespace}`;
+        if (!input.some(field => field.name === namespacePath)) input.push(asField(namespacePath, 'object', true));
+      }
+      return { input, output: record };
+    }
+    default: {
+      const never: never = operation;
+      return never;
     }
   }
-  for (const path of payload) {
-    if (input.some(field => field.name === path)) continue;
-    const known = fields.get(path);
-    input.push(asField(path, known?.type || 'string', Boolean(known)));
-  }
-  if ((operation === 'update' || operation === 'transition')
-    && entity.namespace
-    && (entity.capabilities || []).includes('edit.moduleNamespace')) {
-    const namespacePath = `details.${entity.namespace}`;
-    if (!input.some(field => field.name === namespacePath)) input.push(asField(namespacePath, 'object', true));
-  }
-  return { input, output: record };
 }
 
 function fieldUniverse(entity: D1UsecaseEntity): Map<string, { type: string; derived: boolean; optional: boolean }> {
