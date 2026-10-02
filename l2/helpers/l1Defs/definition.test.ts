@@ -28,16 +28,19 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import {
   LIST,
-  LIST_CONSULTA_EXAMPLE,
+  LIST_BUOY_EXAMPLE,
   ADAPTER,
   blockedReceipt,
-  CONSULTA,
+  BUOY,
+  defPathOf,
   definitionsByType,
   failedReceipt,
   fixtureIndex,
   indexedUnits,
-  listConsultaPending,
-  listConsultaReceipt,
+  listBuoyPending,
+  listBuoyReceipt,
+  M1_FIXTURE_MODULE,
+  M1_FIXTURE_PROJECT,
   PORT,
   TABLE,
   withStatus,
@@ -62,15 +65,15 @@ void test('d1_31 import surface is this module', () => {
     'receiptPathFor',
     'diagnoseUnit',
   ]);
-  assert.equal(receiptFolder('agendaClinica'), 'l1/agendaClinica/materialization/agentMaterializeL1');
+  assert.equal(receiptFolder(M1_FIXTURE_MODULE), `l1/${M1_FIXTURE_MODULE}/materialization/agentMaterializeL1`);
 });
 
 void test('receipt path follows the def, so the same id and case do not collide', () => {
-  const folder = receiptFolder('agendaClinica');
+  const folder = receiptFolder(M1_FIXTURE_MODULE);
   const port = receiptPathFor(PORT);
   const adapter = receiptPathFor(ADAPTER);
   assert.notEqual(port, adapter);
-  const entity = receiptPathFor(CONSULTA);
+  const entity = receiptPathFor(BUOY);
   const table = receiptPathFor(TABLE);
   assert.notEqual(entity.toLowerCase(), table.toLowerCase());
   for (const path of [port, adapter, entity, table]) {
@@ -91,8 +94,8 @@ void test('each artifact type has a valid pending definition', async () => {
   }
 });
 
-void test('serialized listConsulta example parses without eval and without pipeline', () => {
-  const rendered = renderDefinition(listConsultaPending, LIST);
+void test('serialized list usecase example parses without eval and without pipeline', () => {
+  const rendered = renderDefinition(listBuoyPending, LIST);
   assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
   if (!('source' in rendered)) return;
   assert.equal(rendered.source.includes('export const pipeline'), false);
@@ -100,15 +103,15 @@ void test('serialized listConsulta example parses without eval and without pipel
   const parsed = parseDefinitionSource(rendered.source);
   assert.equal('definition' in parsed, true, 'issues' in parsed ? parsed.issues.join('\n') : '');
   if (!('definition' in parsed)) return;
-  assert.deepEqual(parsed.definition, listConsultaPending);
-  assert.equal(JSON.parse(LIST_CONSULTA_EXAMPLE).schemaVersion, M1_DEFINITION_SCHEMA);
-  assert.equal(JSON.parse(LIST_CONSULTA_EXAMPLE).status, 'pending');
+  assert.deepEqual(parsed.definition, listBuoyPending);
+  assert.equal(JSON.parse(LIST_BUOY_EXAMPLE).schemaVersion, M1_DEFINITION_SCHEMA);
+  assert.equal(JSON.parse(LIST_BUOY_EXAMPLE).status, 'pending');
 });
 
 void test('parser closes on the final as const of the export', () => {
   const definition: M1Definition = {
-    ...listConsultaPending,
-    data: { ...listConsultaPending.data, operation: 'list as const; kept' },
+    ...listBuoyPending,
+    data: { ...listBuoyPending.data, operation: 'list as const; kept' },
   };
   const rendered = renderDefinition(definition, LIST);
   assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
@@ -120,7 +123,7 @@ void test('parser closes on the final as const of the export', () => {
 });
 
 void test('parser refuses pipeline, agent, eval and a missing export', () => {
-  const rendered = renderDefinition(listConsultaPending, LIST);
+  const rendered = renderDefinition(listBuoyPending, LIST);
   assert.equal('source' in rendered, true);
   if (!('source' in rendered)) return;
   const withPipeline = `${rendered.source}\nexport const pipeline = [] as const;\n`;
@@ -140,80 +143,82 @@ void test('parser refuses pipeline, agent, eval and a missing export', () => {
 });
 
 void test('D1 writer accepts v2 and does not export pipeline', () => {
-  const rendered = renderDefinition(listConsultaPending, LIST);
+  const rendered = renderDefinition(listBuoyPending, LIST);
   assert.equal('source' in rendered, true);
   if (!('source' in rendered)) return;
   const parsed = parseRendered(rendered.source);
   assert.ok(parsed);
-  assert.deepEqual(parsed?.definition, listConsultaPending);
+  assert.deepEqual(parsed?.definition, listBuoyPending);
   assert.equal(rendered.source.includes('export const pipeline'), false);
-  const issues = d1DefinitionIssues(listConsultaPending);
+  const issues = d1DefinitionIssues(listBuoyPending);
   assert.equal(issues.some(item => item.includes('schemaVersion') || item.includes('status is invalid')), false);
 });
 
 void test('old version, invalid status and unknown data are refused', () => {
-  const v1 = { ...listConsultaPending, schemaVersion: D1_DEFINITION_SCHEMA_V1 };
+  const v1 = { ...listBuoyPending, schemaVersion: D1_DEFINITION_SCHEMA_V1 };
   assert.match(definitionIssues(v1).join('\n'), /2026-09-21-d1-definition-v1/);
-  const status = { ...listConsultaPending, status: 'draft' };
+  const status = { ...listBuoyPending, status: 'draft' };
   assert.match(definitionIssues(status).join('\n'), /status is invalid/);
-  const unknown = { ...listConsultaPending, data: { ...listConsultaPending.data, extra: true } };
+  const unknown = { ...listBuoyPending, data: { ...listBuoyPending.data, extra: true } };
   assert.match(definitionIssues(unknown).join('\n'), /Unknown field data.extra/);
-  const tsImport = { ...listConsultaPending, dependencies: ['/_102047_/l1/agendaClinica/x.defs.ts'] };
+  const tsImport = { ...listBuoyPending, dependencies: [`/_${M1_FIXTURE_PROJECT}_/l1/${M1_FIXTURE_MODULE}/x.defs.ts`] };
   assert.match(definitionIssues(tsImport).join('\n'), /not a TypeScript import/);
 });
 
 void test('missing and ambiguous references are reported', () => {
-  const missing = referenceIssues(listConsultaPending, { files: listConsultaPending.dependencies, artifacts: [] });
-  assert.equal(missing.some(item => item.includes('Missing reference domainEntity:Consulta')), true);
-  const ambiguous = referenceIssues(listConsultaPending, {
+  const missing = referenceIssues(listBuoyPending, { files: listBuoyPending.dependencies, artifacts: [] });
+  const entityId = String(listBuoyPending.data.entityId);
+  const portId = String((listBuoyPending.data.ports as string[])[0]);
+  assert.equal(missing.some(item => item.includes(`Missing reference domainEntity:${entityId}`)), true);
+  const ambiguous = referenceIssues(listBuoyPending, {
     files: fixtureIndex.files,
     artifacts: [
       ...fixtureIndex.artifacts,
-      { artifactType: 'repositoryPort', artifactId: 'ConsultaRepository', defPath: `${LIST}.other` },
+      { artifactType: 'repositoryPort', artifactId: portId, defPath: `${LIST}.other` },
     ],
   });
-  assert.equal(ambiguous.some(item => item.includes('Ambiguous reference repositoryPort:ConsultaRepository')), true);
-  assert.deepEqual(referenceIssues(listConsultaPending, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
-  const contract = '_102047_/l2/agendaClinica/web/contracts/pacientes.defs.ts';
+  assert.equal(ambiguous.some(item => item.includes(`Ambiguous reference repositoryPort:${portId}`)), true);
+  assert.deepEqual(referenceIssues(listBuoyPending, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
+  const contract = `_${M1_FIXTURE_PROJECT}_/l2/${M1_FIXTURE_MODULE}/web/contracts/divers.defs.ts`;
   const catalog = '_102034_/l4/ontology/mdm.defs.ts';
   const mixed = {
-    ...listConsultaPending,
-    dependencies: [...new Set([...listConsultaPending.dependencies, catalog, contract])].sort(),
+    ...listBuoyPending,
+    dependencies: [...new Set([...listBuoyPending.dependencies, catalog, contract])].sort(),
     data: {
-      ...listConsultaPending.data,
+      ...listBuoyPending.data,
       routeProjections: [
-        ...(Array.isArray(listConsultaPending.data.routeProjections) ? listConsultaPending.data.routeProjections : []),
-        { route: 'agendaClinica.pacientes.cmdCreatePaciente', contractPath: 'l2/agendaClinica/web/contracts/pacientes.defs.ts', projection: 'declared', outputFields: [] },
+        ...(Array.isArray(listBuoyPending.data.routeProjections) ? listBuoyPending.data.routeProjections : []),
+        { route: `${M1_FIXTURE_MODULE}.divers.enrollIt`, contractPath: `l2/${M1_FIXTURE_MODULE}/web/contracts/divers.defs.ts`, projection: 'declared', outputFields: [] },
       ],
     },
   };
   const mixedIssues = referenceIssues(mixed, { files: mixed.dependencies, artifacts: fixtureIndex.artifacts });
   assert.equal(mixedIssues.some(item => item.includes('_102034_/l2/')), false, mixedIssues.join('\n'));
-  assert.equal(mixedIssues.some(item => item.includes('pacientes.defs.ts')), false, mixedIssues.join('\n'));
-  const tablePath = '_102047_/l1/agendaClinica/layer_1_external/adapters/persistence/consulta.defs.ts';
-  const portPath = '_102047_/l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts';
+  assert.equal(mixedIssues.some(item => item.includes('divers.defs.ts')), false, mixedIssues.join('\n'));
+  const tablePath = defPathOf('table', 'buoy');
+  const portPath = defPathOf('repositoryPort', 'BuoyRepository');
   const adapter = {
-    ...listConsultaPending,
+    ...listBuoyPending,
     artifactType: 'repositoryAdapter' as const,
-    artifactId: 'ConsultaRepository',
-    data: { entityId: 'Consulta', portId: 'ConsultaRepository', tableId: 'consulta', columns: [] },
+    artifactId: 'BuoyRepository',
+    data: { entityId: 'Buoy', portId: 'BuoyRepository', tableId: 'buoy', columns: [] },
   };
   const byTableId = referenceIssues(adapter, {
     files: [tablePath, portPath],
     artifacts: [
-      { artifactType: 'table', artifactId: 'consulta', defPath: tablePath },
-      { artifactType: 'repositoryPort', artifactId: 'ConsultaRepository', defPath: portPath },
+      { artifactType: 'table', artifactId: 'buoy', defPath: tablePath },
+      { artifactType: 'repositoryPort', artifactId: 'BuoyRepository', defPath: portPath },
     ],
   });
-  assert.equal(byTableId.some(item => item.includes('table:consulta')), false, byTableId.join('\n'));
+  assert.equal(byTableId.some(item => item.includes('table:buoy')), false, byTableId.join('\n'));
   const byFileName = referenceIssues(adapter, {
     files: [tablePath, portPath],
     artifacts: [
-      { artifactType: 'table', artifactId: 'Consulta', defPath: tablePath },
-      { artifactType: 'repositoryPort', artifactId: 'ConsultaRepository', defPath: portPath },
+      { artifactType: 'table', artifactId: 'Buoy', defPath: tablePath },
+      { artifactType: 'repositoryPort', artifactId: 'BuoyRepository', defPath: portPath },
     ],
   });
-  assert.equal(byFileName.some(item => item.includes('Missing reference table:consulta at data.tableId')), true, byFileName.join('\n'));
+  assert.equal(byFileName.some(item => item.includes('Missing reference table:buoy at data.tableId')), true, byFileName.join('\n'));
 });
 
 void test('traversal orders dependencies and reports a cycle', () => {
@@ -222,17 +227,17 @@ void test('traversal orders dependencies and reports a cycle', () => {
   assert.deepEqual(walked.issues, []);
   assert.equal(walked.order.indexOf(indexedUnits[0].defPath) < walked.order.indexOf(LIST), true);
   assert.equal(walked.order.indexOf(LIST) < walked.order.indexOf(indexedUnits.find(unit => unit.definition.artifactType === 'httpController')!.defPath), true);
-  const a = '_102047_/l1/agendaClinica/layer_2_application/usecases/a.defs.ts';
-  const b = '_102047_/l1/agendaClinica/layer_2_application/ports/b.defs.ts';
+  const a = defPathOf('usecase', 'a');
+  const b = defPathOf('repositoryPort', 'b');
   const cycle = traverseDefinitions([
-    { defPath: a, definition: { ...listConsultaPending, dependencies: [b] } },
-    { defPath: b, definition: { ...consultaPortClone(), dependencies: [a] } },
+    { defPath: a, definition: { ...listBuoyPending, dependencies: [b] } },
+    { defPath: b, definition: { ...portClone(), dependencies: [a] } },
   ], known);
   assert.equal(cycle.issues.some(item => item.includes('Cycle')), true);
 });
 
 void test('semantic hash ignores status and formatting and changes with rule, signature or dependency', async () => {
-  const pending = listConsultaPending;
+  const pending = listBuoyPending;
   const generated = withStatus(pending, 'generated');
   const compact: M1Definition = JSON.parse(JSON.stringify(pending));
   assert.deepEqual(canonicalProjection(pending), canonicalProjection(generated));
@@ -254,7 +259,7 @@ void test('semantic hash ignores status and formatting and changes with rule, si
     ...pending,
     data: {
       ...pending.data,
-      rules: [{ ruleId: 'otherRule', path: 'l4/agendaClinica/rules.defs.ts', symbol: 'otherRule' }],
+      rules: [{ ruleId: 'otherRule', path: `l4/${M1_FIXTURE_MODULE}/rules.defs.ts`, symbol: 'otherRule' }],
     },
   };
   const signatureChanged: M1Definition = {
@@ -269,7 +274,7 @@ void test('semantic hash ignores status and formatting and changes with rule, si
   };
   const dependencyChanged: M1Definition = {
     ...pending,
-    dependencies: [...pending.dependencies, '_102047_/l1/agendaClinica/layer_3_domain/entities/contatoPaciente.defs.ts'].sort(),
+    dependencies: [...pending.dependencies, defPathOf('domainEntity', 'diverContact')].sort(),
   };
   const pendingHash = await semanticHash(pending);
   assert.notEqual(await semanticHash(ruleChanged), pendingHash);
@@ -278,21 +283,21 @@ void test('semantic hash ignores status and formatting and changes with rule, si
 });
 
 void test('status fixtures do not claim generation without a receipt', async () => {
-  const hash = await semanticHash(listConsultaPending);
-  const receipt = listConsultaReceipt(hash);
+  const hash = await semanticHash(listBuoyPending);
+  const receipt = listBuoyReceipt(hash);
   const current = receipt.dependencyHashes;
-  assert.equal(await generatedAllowsSkip(listConsultaPending, null), false);
-  assert.deepEqual(await statusEvidenceIssues(listConsultaPending, null), []);
-  const generatedBare = withStatus(listConsultaPending, 'generated');
+  assert.equal(await generatedAllowsSkip(listBuoyPending, null), false);
+  assert.deepEqual(await statusEvidenceIssues(listBuoyPending, null), []);
+  const generatedBare = withStatus(listBuoyPending, 'generated');
   assert.equal(await generatedAllowsSkip(generatedBare, null), false);
   assert.match((await statusEvidenceIssues(generatedBare, null)).join('\n'), /generated requires a receipt/);
-  const generatedOk = withStatus(listConsultaPending, 'generated');
+  const generatedOk = withStatus(listBuoyPending, 'generated');
   assert.deepEqual(await statusEvidenceIssues(generatedOk, receipt, current), []);
   assert.equal(await generatedAllowsSkip(generatedOk, receipt, current), true);
-  const blocked = withStatus(listConsultaPending, 'blocked');
+  const blocked = withStatus(listBuoyPending, 'blocked');
   assert.equal(await generatedAllowsSkip(blocked, blockedReceipt()), false);
   assert.deepEqual(await statusEvidenceIssues(blocked, blockedReceipt()), []);
-  const failed = withStatus(listConsultaPending, 'failed');
+  const failed = withStatus(listBuoyPending, 'failed');
   assert.equal(await generatedAllowsSkip(failed, failedReceipt()), false);
   assert.deepEqual(await statusEvidenceIssues(failed, failedReceipt()), []);
   const diagnosis = await diagnoseUnit({
@@ -312,9 +317,9 @@ void test('status fixtures do not claim generation without a receipt', async () 
 });
 
 void test('generated skip compares the semantic hash and each dependency hash', async () => {
-  const hash = await semanticHash(listConsultaPending);
-  const receipt = listConsultaReceipt(hash);
-  const generated = withStatus(listConsultaPending, 'generated');
+  const hash = await semanticHash(listBuoyPending);
+  const receipt = listBuoyReceipt(hash);
+  const generated = withStatus(listBuoyPending, 'generated');
   const current = receipt.dependencyHashes;
   assert.equal(await generatedAllowsSkip(generated, receipt, current), true);
 
@@ -334,6 +339,6 @@ void test('generated skip compares the semantic hash and each dependency hash', 
   );
 });
 
-function consultaPortClone(): M1Definition {
+function portClone(): M1Definition {
   return definitionsByType.repositoryPort;
 }

@@ -28,15 +28,21 @@ import { simulate } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import {
   accessScope,
   authorityMap,
-  CONSULTA,
-  consultasController,
+  BUOY,
+  defPathOf,
+  deskController,
+  deskService,
   fixtureIndex,
   indexedUnits,
   LIST,
-  listConsultaPending,
-  listConsultaReceipt,
+  listBuoyPending,
+  listBuoyReceipt,
+  M1_FIXTURE_MODULE,
+  M1_FIXTURE_PROJECT,
+  M1_FIXTURE_ROUTE,
   OUTBOUND,
   PAGE,
+  REQUEST,
   SCOPE,
   TABLE,
   withStatus,
@@ -136,10 +142,10 @@ void test('platform files match the legacy expander only for equivalent type nam
     assert.deepEqual(platformFilesFor(next), expandContextRef('_102034_.d.ts', previous, false), next);
   }
   assert.deepEqual(
-    platformFilesFor('usecase', { mdm: { entityId: 'Paciente' } }),
+    platformFilesFor('usecase', { mdm: { entityId: 'Diver' } }),
     expandContextRef('_102034_.d.ts', 'applicationUsecase', true),
   );
-  assert.deepEqual(platformFilesFor('domainEntity', { mdm: { entityId: 'Paciente' } }), []);
+  assert.deepEqual(platformFilesFor('domainEntity', { mdm: { entityId: 'Diver' } }), []);
   assert.deepEqual(platformFilesFor('accessScope'), [PLATFORM_FILES.requestContext]);
   assert.deepEqual(platformFilesFor('authorityMap'), [PLATFORM_FILES.requestContext]);
   assert.deepEqual(platformFilesFor('repositoryRegistration'), [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]);
@@ -148,7 +154,7 @@ void test('platform files match the legacy expander only for equivalent type nam
   assert.deepEqual(expandContextRef('_102034_.d.ts', 'widget'), [...CONTRACTS_102034]);
   assert.equal(usesMdm({}), false);
   assert.equal(usesMdm({ mdm: {} }), false);
-  assert.equal(usesMdm({ mdm: { entityId: 'Paciente' } }), true);
+  assert.equal(usesMdm({ mdm: { entityId: 'Diver' } }), true);
   assert.equal(usesMdm({ sequence: [{ kind: 'mdm', call: 'get' }] }), true);
 });
 
@@ -156,50 +162,59 @@ void test('a definition source is not a compiled signature', () => {
   const def = 'export const definition = { "artifactType": "usecase" } as const;\n';
   assert.equal(compiledSignature(def), null);
   const ts = [
-    'export interface ListConsultaInput { id: string }',
-    'export function listConsulta(input: ListConsultaInput): Promise<void> { return Promise.resolve(); }',
+    'export interface ListBuoyInput { id: string }',
+    'export function listBuoy(input: ListBuoyInput): Promise<void> { return Promise.resolve(); }',
   ].join('\n');
   const signature = compiledSignature(ts);
-  assert.match(signature ?? '', /export function listConsulta/);
-  assert.match(signature ?? '', /export interface ListConsultaInput/);
+  assert.match(signature ?? '', /export function listBuoy/);
+  assert.match(signature ?? '', /export interface ListBuoyInput/);
   assert.equal(compiledSignature('const hidden = 1;\n'), null);
 });
 
 void test('order follows references, not folder rank or the legacy layer rank', async () => {
   const cb = orderItems([
-    { id: 'listConsulta', type: 'applicationUsecase', outputPath: 'usecase.ts' },
+    { id: 'listBuoy', type: 'applicationUsecase', outputPath: 'usecase.ts' },
     { id: 'accessScope', type: 'accessScope', outputPath: 'scope.ts' },
-    { id: 'consultas', type: 'httpController', outputPath: 'controller.ts' },
+    { id: 'keeperDesk', type: 'httpController', outputPath: 'controller.ts' },
   ]);
   assert.ok(layerRank('applicationUsecase') < layerRank('accessScope'));
   assert.ok(layerRank('httpController') < layerRank('accessScope'));
-  assert.ok(cb.findIndex(item => item.id === 'listConsulta') < cb.findIndex(item => item.id === 'accessScope'));
-  assert.ok(cb.findIndex(item => item.id === 'consultas') < cb.findIndex(item => item.id === 'accessScope'));
+  assert.ok(cb.findIndex(item => item.id === 'listBuoy') < cb.findIndex(item => item.id === 'accessScope'));
+  assert.ok(cb.findIndex(item => item.id === 'keeperDesk') < cb.findIndex(item => item.id === 'accessScope'));
 
-  const registrar = '_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.defs.ts';
+  const registrar = defPathOf('usecase', 'logVisit');
   const usecase = {
-    ...listConsultaPending,
-    dependencies: [...listConsultaPending.dependencies, SCOPE].sort(),
+    ...listBuoyPending,
+    dependencies: [...listBuoyPending.dependencies, SCOPE].sort(),
   };
   const second = {
-    ...listConsultaPending,
-    artifactId: 'registrarAtendimento',
-    dependencies: [...listConsultaPending.dependencies].sort(),
-    data: { ...listConsultaPending.data, usecaseId: 'registrarAtendimento' },
+    ...listBuoyPending,
+    artifactId: 'logVisit',
+    dependencies: [...listBuoyPending.dependencies].sort(),
+    data: { ...listBuoyPending.data, usecaseId: 'logVisit' },
   };
-  const controller = {
-    ...consultasController,
-    dependencies: [LIST, registrar, SCOPE].sort(),
+  // v2: the controller reaches the usecases only through the page request (`uses`).
+  const [listRequest] = deskService.data.requests as Array<Record<string, unknown>>;
+  const logRoute = `${M1_FIXTURE_ROUTE}Log`;
+  const request = {
+    ...deskService,
+    dependencies: [LIST, registrar].sort(),
     data: {
-      pageId: 'consultas_profissional',
-      handlers: [
-        { route: 'agendaClinica.consultas_profissional.qryListConsulta', kind: 'query', usecaseId: 'listConsulta', grantIds: ['profissionalAgendaDiaria'] },
-        { route: 'agendaClinica.consultas_profissional.cmdRegistrarAtendimento', kind: 'command', usecaseId: 'registrarAtendimento', grantIds: ['profissionalAgendaDiaria'] },
-      ],
+      ...deskService.data,
+      requests: [listRequest, { ...listRequest, route: logRoute, kind: 'cmd', uses: ['logVisit'], transaction: 'single' }],
+    },
+  };
+  const [listHandler] = deskController.data.handlers as Array<Record<string, unknown>>;
+  const controller = {
+    ...deskController,
+    data: {
+      ...deskController.data,
+      handlers: [listHandler, { ...listHandler, route: logRoute, kind: 'command', serviceFunction: logRoute }],
     },
   };
   const units = indexedUnits.map(unit => {
     if (unit.defPath === LIST) return { defPath: unit.defPath, definition: usecase };
+    if (unit.defPath === REQUEST) return { defPath: unit.defPath, definition: request };
     if (unit.defPath === PAGE) return { defPath: unit.defPath, definition: controller };
     return unit;
   });
@@ -219,10 +234,13 @@ void test('order follows references, not folder rank or the legacy layer rank', 
   assert.ok(at(registrar) < at(PAGE));
   assert.equal(first.units.find(unit => unit.defPath === LIST)?.needsLlm, false);
   assert.equal(first.units.find(unit => unit.artifactType === 'persistenceSeeds')?.needsLlm, false);
-  assert.equal(first.units.find(unit => unit.artifactType === 'domainEntity' && unit.artifactId === 'Consulta')?.needsLlm, false);
+  assert.equal(first.units.find(unit => unit.artifactType === 'domainEntity' && unit.artifactId === 'Buoy')?.needsLlm, false);
   assert.equal(first.units.find(unit => unit.defPath === OUTBOUND)?.reason.startsWith(PLAN_REASON.mechanismUnbound), true);
-  assert.equal(first.units.find(unit => unit.artifactType === 'authorityMap')?.reason.startsWith(PLAN_REASON.noConsumer), true);
-  const domain = first.units.find(unit => unit.defPath === CONSULTA);
+  // v2: the controller depends on the authorityMap (bench shape), so it has a consumer and runs before the page.
+  const authority = first.units.find(unit => unit.artifactType === 'authorityMap');
+  assert.match(authority?.reason ?? '', /^GENERATE:/);
+  assert.ok(at(authority!.defPath) < at(PAGE));
+  const domain = first.units.find(unit => unit.defPath === BUOY);
   assert.equal(domain?.contextRefs.includes(PLATFORM_FILES.mdmFacade), false);
 });
 
@@ -265,10 +283,10 @@ void test('empty mechanism on inbound is MECHANISM_UNBOUND, not NO_CONSUMER', as
 });
 
 void test('a cycle blocks its participants and their dependents only', async () => {
-  const A = '_102047_/l1/agendaClinica/layer_3_domain/entities/a.defs.ts';
-  const B = '_102047_/l1/agendaClinica/layer_3_domain/entities/b.defs.ts';
-  const C = '_102047_/l1/agendaClinica/layer_3_domain/entities/c.defs.ts';
-  const D = '_102047_/l1/agendaClinica/layer_3_domain/entities/d.defs.ts';
+  const A = defPathOf('domainEntity', 'a');
+  const B = defPathOf('domainEntity', 'b');
+  const C = defPathOf('domainEntity', 'c');
+  const D = defPathOf('domainEntity', 'd');
   const plan = await planMaterialization({
     units: [
       { defPath: C, definition: entity('C', [A]) },
@@ -290,20 +308,20 @@ void test('a cycle blocks its participants and their dependents only', async () 
 });
 
 void test('missing ref, unknown type and a relative path without a project stay visible', async () => {
-  const missing = '_102047_/l1/agendaClinica/layer_3_domain/entities/missing.defs.ts';
-  const relative = 'l2/agendaClinica/web/contracts/x.defs.ts';
+  const missing = defPathOf('domainEntity', 'missing');
+  const relative = `l2/${M1_FIXTURE_MODULE}/web/contracts/x.defs.ts`;
   const host = spyHost({
-    [CONSULTA]: 'export interface Consulta { id: string }\n',
+    [BUOY]: 'export interface Buoy { id: string }\n',
   });
   const snapshot = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: host.io,
     state: host.state,
     units: [
-      { defPath: CONSULTA, definition: entity('Consulta', [missing]) },
+      { defPath: BUOY, definition: entity('Buoy', [missing]) },
       {
         defPath: LIST,
-        definition: { ...listConsultaPending, artifactType: 'widget' },
+        definition: { ...listBuoyPending, artifactType: 'widget' },
       },
       { defPath: PAGE, definition: { ...accessScope, dependencies: [relative] } },
     ],
@@ -311,7 +329,7 @@ void test('missing ref, unknown type and a relative path without a project stay 
   assert.equal(snapshot.wrote, false);
   assert.equal(host.mutations.length, 0);
   const byPath = new Map(snapshot.units.map(unit => [unit.defPath, unit]));
-  const missed = byPath.get(CONSULTA)!;
+  const missed = byPath.get(BUOY)!;
   assert.match(missed.reason, /^MISSING_REF:/);
   assert.ok(missed.unresolved.includes(missing));
   assert.match(missed.prompt, /missing\.defs\.ts/);
@@ -325,15 +343,15 @@ void test('missing ref, unknown type and a relative path without a project stay 
   const bare = byPath.get(PAGE)!;
   assert.match(bare.reason, /^RELATIVE_WITHOUT_PROJECT:/);
   assert.ok(bare.unresolved.includes(relative));
-  assert.match(bare.prompt, /l2\/agendaClinica\/web\/contracts\/x\.defs\.ts/);
-  assert.equal(bare.prompt.includes('_102047_/l2/agendaClinica/web/contracts/x.defs.ts'), false);
+  assert.equal(bare.prompt.includes(relative), true);
+  assert.equal(bare.prompt.includes(`_${M1_FIXTURE_PROJECT}_/${relative}`), false);
   assert.deepEqual(snapshot, await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: host.io,
     state: host.state,
     units: [
-      { defPath: CONSULTA, definition: entity('Consulta', [missing]) },
-      { defPath: LIST, definition: { ...listConsultaPending, artifactType: 'widget' } },
+      { defPath: BUOY, definition: entity('Buoy', [missing]) },
+      { defPath: LIST, definition: { ...listBuoyPending, artifactType: 'widget' } },
       { defPath: PAGE, definition: { ...accessScope, dependencies: [relative] } },
     ],
   }));
@@ -341,34 +359,33 @@ void test('missing ref, unknown type and a relative path without a project stay 
 
 void test('unreadable platform context blocks that unit and stays in the prompt', async () => {
   const usecase = {
-    ...listConsultaPending,
-    dependencies: [CONSULTA].sort(),
+    ...listBuoyPending,
+    dependencies: [BUOY].sort(),
     data: {
-      ...listConsultaPending.data,
+      ...listBuoyPending.data,
       ports: [],
       rules: [],
-      routeProjections: [],
       effects: [],
     },
   };
   const host = spyHost({
     [PLATFORM_FILES.repositoryRegistry]: 'export function resolveRepository(): void {}\n',
     [PLATFORM_FILES.tableDefinition]: 'export interface TableDefinition { name: string }\n',
-    [CONSULTA]: 'export interface Consulta { id: string }\n',
+    [BUOY]: 'export interface Buoy { id: string }\n',
   });
   const snapshot = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: host.io,
     state: host.state,
-    extraArtifacts: [{ artifactType: 'domainEntity', artifactId: 'Consulta', defPath: CONSULTA }],
+    extraArtifacts: [{ artifactType: 'domainEntity', artifactId: 'Buoy', defPath: BUOY }],
     units: [
-      { defPath: CONSULTA, definition: entity('Consulta', []) },
+      { defPath: BUOY, definition: entity('Buoy', []) },
       { defPath: LIST, definition: usecase },
       { defPath: TABLE, definition: indexedUnits.find(unit => unit.defPath === TABLE)!.definition },
     ],
   });
   assert.equal(host.mutations.length, 0);
-  const domain = snapshot.units.find(unit => unit.defPath === CONSULTA)!;
+  const domain = snapshot.units.find(unit => unit.defPath === BUOY)!;
   const planned = snapshot.units.find(unit => unit.defPath === LIST)!;
   const persistence = snapshot.units.find(unit => unit.defPath === TABLE)!;
   assert.match(domain.reason, /^GENERATE:/);
@@ -382,28 +399,28 @@ void test('unreadable platform context blocks that unit and stays in the prompt'
 });
 
 void test('compiled signature and definition context stay distinct', async () => {
-  const output = outputPathFromDefPath(CONSULTA);
+  const output = outputPathFromDefPath(BUOY);
   const host = spyHost({
-    [output]: 'export interface Consulta { id: string }\nexport function isConsulta(value: unknown): boolean\n',
+    [output]: 'export interface Buoy { id: string }\nexport function isBuoy(value: unknown): boolean\n',
   });
   const seen = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: host.io,
     state: host.state,
-    units: [{ defPath: SCOPE, definition: { ...accessScope, dependencies: [CONSULTA] } }],
+    units: [{ defPath: SCOPE, definition: { ...accessScope, dependencies: [BUOY] } }],
   });
   const scope = seen.units[0];
-  assert.match(scope.prompt, /### def .*consulta\.defs\.ts/);
-  assert.match(scope.prompt, /### compiled .*consulta\.ts/);
-  assert.match(scope.prompt, /export interface Consulta/);
+  assert.match(scope.prompt, /### def .*buoy\.defs\.ts/);
+  assert.match(scope.prompt, /### compiled .*buoy\.ts/);
+  assert.match(scope.prompt, /export interface Buoy/);
   assert.equal(scope.prompt.includes('export const definition'), false);
 
   const posedAsTs = spyHost({ [output]: 'export const definition = { "artifactType": "domainEntity" } as const;\n' });
   const rejected = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: posedAsTs.io,
     state: posedAsTs.state,
-    units: [{ defPath: SCOPE, definition: { ...accessScope, dependencies: [CONSULTA] } }],
+    units: [{ defPath: SCOPE, definition: { ...accessScope, dependencies: [BUOY] } }],
   });
   assert.match(rejected.units[0].prompt, /\(not a compiled signature\)/);
   assert.equal(host.mutations.length, 0);
@@ -411,24 +428,24 @@ void test('compiled signature and definition context stay distinct', async () =>
 });
 
 void test('reuse and verify need an intact receipt; failed does not start over', async () => {
-  const definition = withStatus(listConsultaPending, 'generated');
+  const definition = withStatus(listBuoyPending, 'generated');
   const hash = await semanticHash(definition);
   const output = outputPathFromDefPath(LIST);
   const bodies = new Map<string, string>();
   for (const dep of definition.dependencies) bodies.set(dep, `export const dep = ${JSON.stringify(dep)};\n`);
   for (const file of platformFilesFor('usecase')) bodies.set(file, `export const platform = ${JSON.stringify(file)};\n`);
-  bodies.set(output, 'export function listConsulta(): Promise<void>\n');
+  bodies.set(output, 'export function listBuoy(): Promise<void>\n');
   const dependencyHashes: Record<string, string> = {};
   for (const [path, body] of bodies) dependencyHashes[path] = await contentHash(body);
   const receipt = {
-    ...listConsultaReceipt(hash),
+    ...listBuoyReceipt(hash),
     dependencyHashes: Object.fromEntries(definition.dependencies.map(path => [path, dependencyHashes[path]])),
     outputHashes: { [output]: dependencyHashes[output] },
   };
   const files = Object.fromEntries(bodies);
   const reuseHost = spyHost(files);
   const reused = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: reuseHost.io,
     state: { async readReceipt() { return receipt; } },
     extraArtifacts: fixtureIndex.artifacts,
@@ -439,11 +456,11 @@ void test('reuse and verify need an intact receipt; failed does not start over',
   assert.equal(reuseHost.mutations.length, 0);
 
   const editedBody = `${bodies.get(output)}// local edit\n`;
-  const child = '_102047_/l1/agendaClinica/layer_3_domain/entities/child.defs.ts';
-  const other = '_102047_/l1/agendaClinica/layer_3_domain/entities/other.defs.ts';
+  const child = defPathOf('domainEntity', 'child');
+  const other = defPathOf('domainEntity', 'other');
   const editedHost = spyHost({ ...files, [output]: editedBody });
   const drifted = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: editedHost.io,
     state: { async readReceipt() { return receipt; } },
     extraArtifacts: fixtureIndex.artifacts,
@@ -467,7 +484,7 @@ void test('reuse and verify need an intact receipt; failed does not start over',
 
   const verifyDriftHost = spyHost({ ...files, [output]: editedBody });
   const verifyDrift = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: verifyDriftHost.io,
     state: { async readReceipt() { return receipt; } },
     extraArtifacts: fixtureIndex.artifacts,
@@ -480,7 +497,7 @@ void test('reuse and verify need an intact receipt; failed does not start over',
 
   const omittedHost = spyHost(files);
   const omitted = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: omittedHost.io,
     state: {
       async readReceipt() {
@@ -495,7 +512,7 @@ void test('reuse and verify need an intact receipt; failed does not start over',
   assert.equal(omittedHost.mutations.length, 0);
 
   const verified = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: spyHost(files).io,
     state: { async readReceipt() { return receipt; } },
     extraArtifacts: fixtureIndex.artifacts,
@@ -505,9 +522,9 @@ void test('reuse and verify need an intact receipt; failed does not start over',
   assert.match(verified.units[0].reason, /^VERIFY:/);
   assert.equal(verified.units[0].needsLlm, false);
 
-  const failed = withStatus(listConsultaPending, 'failed');
+  const failed = withStatus(listBuoyPending, 'failed');
   const held = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: spyHost(files).io,
     state: { async readReceipt() { return { ...receipt, failures: [{ code: 'COMPILE', detail: 'still broken' }] }; } },
     extraArtifacts: fixtureIndex.artifacts,
@@ -517,7 +534,7 @@ void test('reuse and verify need an intact receipt; failed does not start over',
   assert.match(held.units[0].reason, /COMPILE/);
 
   const removed = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     io: spyHost({}).io,
     removals: [SCOPE],
     units: [],
@@ -528,28 +545,28 @@ void test('reuse and verify need an intact receipt; failed does not start over',
 
 void test('implement stage does not fall back to a structure handler', async () => {
   const named = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     stage: 'implement',
     io: spyHost({}).io,
-    units: [{ defPath: CONSULTA, definition: entity('Consulta', []) }],
+    units: [{ defPath: BUOY, definition: entity('Buoy', []) }],
   });
   assert.equal(named.units[0].action, 'generate');
   assert.equal(named.units[0].handlerId, 'implement.domainEntity');
   assert.equal(named.units[0].handlerId?.startsWith('structure.'), false);
   const table = await simulate({
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     stage: 'implement',
     io: spyHost({}).io,
     units: [{
-      defPath: '_102047_/l1/agendaClinica/layer_1_external/persistence/tables/consulta.defs.ts',
+      defPath: defPathOf('table', 'buoy'),
       definition: {
         schemaVersion: '2026-09-24-d1-definition-v2',
         artifactType: 'table',
-        artifactId: 'consulta',
-        moduleName: 'agendaClinica',
+        artifactId: 'buoy',
+        moduleName: M1_FIXTURE_MODULE,
         status: 'pending',
         dependencies: [],
-        data: { tableId: 'consulta' },
+        data: { tableId: 'buoy' },
       },
     }],
   });
@@ -626,7 +643,7 @@ function entity(artifactId: string, dependencies: string[]): M1Definition {
     schemaVersion: M1_DEFINITION_SCHEMA,
     artifactType: 'domainEntity',
     artifactId,
-    moduleName: 'agendaClinica',
+    moduleName: M1_FIXTURE_MODULE,
     status: 'pending',
     dependencies: [...dependencies].sort(),
     data: {
