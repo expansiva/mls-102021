@@ -22,7 +22,7 @@ import {
   planRuleApplicability,
   type RulePlanRule,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
-import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { transitionRefOf, type D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 export { capabilityApplies };
 import type {
   D1CapabilityText,
@@ -277,7 +277,7 @@ export function authorizedPayloadNames(
   const allowed = new Set(inputNames);
   const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
   const entity = request.entities.find(item => item.entityId === usecase?.entity);
-  const transition = entity?.transitions.find(item => item.transitionId === usecaseId);
+  const transition = entity?.transitions.find(item => item.transitionId === transitionRefOf(usecase || { operation: '' }));
   for (const path of transition?.payload || []) allowed.add(path);
   if (entity && usecase) {
     for (const field of domainSignature(entity, usecase.operation, transition?.payload || []).input) allowed.add(field.name);
@@ -597,8 +597,8 @@ function boundMdm(
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace) return null;
   const capabilities = capabilityNames(body).length ? capabilityNames(body) : entity.capabilities || [];
   const payload = usecase.operation === 'transition'
-    ? (ontologyTransitions(body).find(item => item.transitionId === usecase.usecaseId)?.payload
-      || entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload
+    ? (ontologyTransitions(body).find(item => item.transitionId === transitionRefOf(usecase))?.payload
+      || entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload
       || [])
     : [];
   const read = mdmInputFields(
@@ -665,7 +665,7 @@ function journeysFor(usecase: D1UsecaseSelection, pages: string[], bundle: Verif
     const hasTransition = journey.steps.some(step => step.transitionRef);
     const hasOtherWrite = journey.steps.some(step => step.kind === 'act' && step.effect && step.effect !== 'transition');
     const matched = journey.steps.filter(step => {
-      if (step.transitionRef) return step.transitionRef === usecase.usecaseId && (steps.has(step.stepId) || usecase.operation === 'transition');
+      if (step.transitionRef) return step.transitionRef === transitionRefOf(usecase) && (steps.has(step.stepId) || usecase.operation === 'transition');
       if (usecase.operation === 'transition' || hasTransition || hasOtherWrite) return false;
       return steps.has(step.stepId) && (step.kind === 'locate' || step.kind === 'inspect') && step.entity === usecase.entity;
     });
@@ -755,7 +755,7 @@ function transitionFor(
   entity: D1UsecaseEntity | null,
   body: unknown,
 ): D1UsecaseContext['transition'] {
-  const fromBody = ontologyTransitions(body).find(item => item.transitionId === usecase.usecaseId);
+  const fromBody = ontologyTransitions(body).find(item => item.transitionId === transitionRefOf(usecase));
   if (fromBody) {
     return {
       transitionId: fromBody.transitionId,
@@ -767,7 +767,7 @@ function transitionFor(
       description: fromBody.description,
     };
   }
-  const fromEntity = entity?.transitions.find(item => item.transitionId === usecase.usecaseId);
+  const fromEntity = entity?.transitions.find(item => item.transitionId === transitionRefOf(usecase));
   if (!fromEntity) return null;
   return {
     transitionId: fromEntity.transitionId,

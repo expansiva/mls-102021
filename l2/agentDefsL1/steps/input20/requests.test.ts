@@ -126,7 +126,7 @@ void test('contract access that disagrees with L4 is a review and does not gate'
   assert.ok(snapshot.selection.requests.some(item => item.route === 'controleEstoque.movimentacoes.load'));
 });
 
-type PoolRow = { usecaseId: string; entity: string; operation: string; status: string; existing: string };
+type PoolRow = { usecaseId: string; entity: string; operation: string; status: string; existing: string; transitionRef?: string };
 
 function qryRoute(route: string, key: string, entity: string, many: boolean): string {
   return `  '${route}': {
@@ -251,8 +251,8 @@ function deskTransitions(artifacts: D1InputArtifacts, ids: string[]): void {
 }
 
 void test('two planned transitions on one entity each bind their own route and neither is pruned', () => {
-  const close: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '' };
-  const archive: PoolRow = { usecaseId: 'archive', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '' };
+  const close: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'close' };
+  const archive: PoolRow = { usecaseId: 'archive', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'archive' };
   const artifacts = deskOf([close, archive], [
     cmdRoute('ledgerDesk.board.close', 'DeskNote.close'),
     cmdRoute('ledgerDesk.board.archive', 'DeskNote.archive'),
@@ -266,6 +266,39 @@ void test('two planned transitions on one entity each bind their own route and n
   assert.equal(snapshot.problems.some(item => item.code === 'USECASE_WITHOUT_REQUEST' && (item.ownerRef === 'close' || item.ownerRef === 'archive')), false);
 });
 
+void test('colliding transitionRef aprovar binds each route and each outbound event to its own usecase', () => {
+  const aprovarA: PoolRow = { usecaseId: 'aprovarA', entity: 'A', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'aprovar' };
+  const aprovarB: PoolRow = { usecaseId: 'aprovarB', entity: 'B', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'aprovar' };
+  const artifacts = deskOf([aprovarA, aprovarB], [
+    cmdRoute('ledgerDesk.board.aprovarA', 'A.aprovar'),
+    cmdRoute('ledgerDesk.board.aprovarB', 'B.aprovar'),
+  ]);
+  artifacts.entities.A = { transitions: [{ transitionId: 'aprovar' }] };
+  artifacts.entities.B = { transitions: [{ transitionId: 'aprovar' }] };
+  const integration = artifacts.integration as { outbound: unknown[] };
+  integration.outbound = [
+    { id: 'aAprovada', on: 'A.aprovar' },
+    { id: 'bAprovada', on: 'B.aprovar' },
+  ];
+  const snapshot = deskBuild(artifacts);
+  assert.equal(snapshot.problems.some(item => item.code === 'TRANSITION_REF_MISSING'), false);
+  const usesA = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.aprovarA')?.uses || [];
+  const usesB = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.aprovarB')?.uses || [];
+  assert.equal(usesA.includes('aprovarA') && !usesA.includes('aprovarB'), true);
+  assert.equal(usesB.includes('aprovarB') && !usesB.includes('aprovarA'), true);
+  assert.equal(snapshot.selection.usecases.find(item => item.usecaseId === 'aprovarA')?.transitionRef, 'aprovar');
+  assert.equal(snapshot.selection.usecases.find(item => item.usecaseId === 'aprovarB')?.transitionRef, 'aprovar');
+  const outbound = snapshot.files.find(file => file.artifactType === 'integrationOutbound');
+  assert.deepEqual(outbound?.dependsOn.slice().sort(), ['usecase:aprovarA', 'usecase:aprovarB']);
+});
+
+void test('a transition usecase without transitionRef is refused and not selected', () => {
+  const bare: PoolRow = { usecaseId: 'aprovar', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '' };
+  const snapshot = deskBuild(deskOf([bare], [cmdRoute('ledgerDesk.board.aprovar', 'DeskNote.aprovar')]));
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'aprovar'), false);
+  assert.equal(snapshot.problems.some(item => item.code === 'TRANSITION_REF_MISSING' && item.ownerRef === 'aprovar'), true);
+});
+
 void test('a lifecycle transition the plan lacks is created from the contract and the route uses it', () => {
   const artifacts = deskOf([], [
     cmdRoute('ledgerDesk.board.reopen', 'DeskNote.reopen'),
@@ -277,6 +310,7 @@ void test('a lifecycle transition the plan lacks is created from the contract an
   assert.equal(created.operation, 'transition');
   assert.equal(created.entity, 'DeskNote');
   assert.equal(created.identity, 'reopen');
+  assert.equal(created.transitionRef, 'reopen');
   assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.reopen')?.uses, ['reopen']);
   const fromContract = snapshot.problems.filter(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'reopen');
   assert.equal(fromContract.length, 1);

@@ -9,6 +9,7 @@ import {
   type D1UsecaseEntity,
   type D1UsecaseRequest,
   type D1UsecaseSelection,
+  transitionRefOf,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { declaredFieldsFor, domainSignature, formatUsecaseContext, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
@@ -156,11 +157,11 @@ export function closedFromRequest(
   const ruleIds = packet
     ? packet.rules.map(rule => rule.ruleId)
     : [...request.moduleRules, ...(entity?.rules.map(rule => rule.ruleId) || [])];
-  const transitionId = entity?.transitions.some(item => item.transitionId === usecase.usecaseId)
-    ? usecase.usecaseId
+  const transitionId = entity?.transitions.some(item => item.transitionId === transitionRefOf(usecase))
+    ? transitionRefOf(usecase)
     : '';
   const declaredPayload = transitionId
-    ? (entity?.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
+    ? (entity?.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])
     : [];
   const payloadNames = writablePayload(declaredPayload, entity);
   const portMethods = packet
@@ -292,7 +293,7 @@ function pairsFor(
 ): MdmStepPair[] {
   if (!entity || entity.storageTarget !== 'mdm' || !entity.namespace || !entity.entityId) return [];
   const payload = usecase.operation === 'transition'
-    ? (entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
+    ? (entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])
     : [];
   const read = mdmInputFields(
     domainSignature(entity, usecase.operation, payload).input,

@@ -65,6 +65,12 @@ export function validateP1Backend(
     if (!isP1Operation(usecase.operation)) {
       error(issues, 'P1_BACKEND_OPERATION', 'operation must be list|get|create|update|transition|delete|custom.', `${at}.operation`);
     }
+    if (usecase.operation === 'transition' && !usecase.transitionRef) {
+      error(issues, 'P1_BACKEND_TRANSITION_REF', 'A transition usecase names transitionRef, the L4 transitionId.', `${at}.transitionRef`);
+    }
+    if (usecase.operation !== 'transition' && usecase.transitionRef) {
+      error(issues, 'P1_BACKEND_TRANSITION_REF', 'transitionRef is only on a transition usecase.', `${at}.transitionRef`);
+    }
     if (!isP1PlanStatus(usecase.status) || usecase.status === 'toRemove') {
       error(issues, 'P1_BACKEND_STATUS', 'usecase status must be toCreate|toUpdate|done.', `${at}.status`);
     }

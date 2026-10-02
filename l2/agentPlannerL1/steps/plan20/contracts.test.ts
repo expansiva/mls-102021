@@ -602,6 +602,43 @@ void test('transition usecaseId is the transitionRef without concatenating the e
   assert.ok(planned.file.endpoints.some(item => item.route === 'mensalidadesAcademia.mensalidades_pagamentos.cmdSettleMensalidade' && item.usecaseRef === 'settleMensalidade'));
 });
 
+void test('two entities sharing aprovar become aprovarA and aprovarB, each keeping transitionRef', () => {
+  const needs = parseP1Needs({
+    schemaVersion: '2026-09-21-p2-needs-v1',
+    moduleName: 'mensalidadesAcademia',
+    device: 'web',
+    pages: [{
+      pageId: 'fila_a',
+      actors: ['aluno'],
+      reads: [{ entity: 'A', from: ['journey:ver/locate'], derived: [] }],
+      writes: [{ entity: 'A', operation: 'transition', transitionRef: 'aprovar', from: ['journey:aprovarA/act'] }],
+    }, {
+      pageId: 'fila_b',
+      actors: ['aluno'],
+      reads: [],
+      writes: [{ entity: 'B', operation: 'transition', transitionRef: 'aprovar', from: ['journey:aprovarB/act'] }],
+    }],
+  });
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      { entityId: 'A', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+      { entityId: 'B', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: [], rules: [] },
+    ],
+    now: AT,
+  });
+  const a = planned.file.usecases.find(item => item.usecaseId === 'aprovarA');
+  const b = planned.file.usecases.find(item => item.usecaseId === 'aprovarB');
+  assert.equal(a?.entity, 'A');
+  assert.equal(b?.entity, 'B');
+  assert.equal(a?.transitionRef, 'aprovar');
+  assert.equal(b?.transitionRef, 'aprovar');
+  assert.equal(planned.file.usecases.find(item => item.usecaseId === 'listA')?.transitionRef, undefined);
+  assert.ok(planned.file.endpoints.some(item => item.usecaseRef === 'aprovarA' && item.route.endsWith('cmdAprovarA')));
+  assert.ok(planned.file.endpoints.some(item => item.usecaseRef === 'aprovarB' && item.route.endsWith('cmdAprovarB')));
+});
+
 void test('same transitionRef on two entities suffixes the entity on every colliding side', () => {
   const needs = parseP1Needs({
     schemaVersion: '2026-09-21-p2-needs-v1',

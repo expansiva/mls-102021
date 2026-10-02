@@ -10,6 +10,7 @@ import { inputFile, plannerPipelineFile, type D1FileInfo } from '/_102021_/l2/ag
 import { progressFile } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { assembleD1Input, fileInfoFromDisplay, persistD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
@@ -296,6 +297,29 @@ function errorsOf(snapshot: { problems: Array<{ severity: string; code: string; 
   return snapshot.problems.filter(problem => problem.severity === 'error').map(problem => `${problem.code} ${problem.path}`);
 }
 
+// d1_53 r1c: testSupport, schema and hash do not depend on a transition. The stock seed has none.
+const STOCK = 'controleEstoque';
+const STOCK_BACKEND = `l4/${STOCK}/pool/l2/web/backend.json`;
+const STOCK_EFFORT = `l4/${STOCK}/pool/l2/web/effort.json`;
+
+async function readStock(edit?: (plans: { backend: Json; effort: Json }) => void) {
+  const host = installStudio(PROJECT);
+  const texts = new Map(Object.entries(loadD1Fixture('controleEstoque-39a5166')));
+  if (edit) {
+    const plans = { backend: JSON.parse(texts.get(STOCK_BACKEND)!) as Json, effort: JSON.parse(texts.get(STOCK_EFFORT)!) as Json };
+    edit(plans);
+    texts.set(STOCK_BACKEND, `${JSON.stringify(plans.backend, null, 2)}\n`);
+    texts.set(STOCK_EFFORT, `${JSON.stringify(plans.effort, null, 2)}\n`);
+  }
+  for (const [file, text] of texts) {
+    const platform = /^_(\d+)_\/(.+)$/.exec(file);
+    const info = platform ? fileInfoFromDisplay(Number(platform[1]), platform[2]) : fileInfoFromDisplay(PROJECT, file);
+    assert.ok(info, file);
+    seed(host, info, text, 'stock');
+  }
+  return assembleD1Input(PROJECT, STOCK);
+}
+
 void test('the current producer outputs are read as they are and release the consumers', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, async () => {
   const snapshot = await readCurrent();
   assert.deepEqual(errorsOf(snapshot), []);
@@ -309,15 +333,15 @@ void test('the current producer outputs are read as they are and release the con
 });
 
 void test('an empty testSupport is valid; an absent one is refused on the backend', async () => {
-  const empty = await readCurrent(plans => {
+  const empty = await readStock(plans => {
     plans.backend.testSupport = [];
     plans.effort.testSupport = [];
   });
   assert.deepEqual(errorsOf(empty), []);
-  const absent = await readCurrent(plans => {
+  const absent = await readStock(plans => {
     delete (plans.backend as Partial<Json>).testSupport;
   });
-  assert.deepEqual(errorsOf(absent), [`TEST_SUPPORT_INVALID ${BACKEND}`]);
+  assert.deepEqual(errorsOf(absent), [`TEST_SUPPORT_INVALID ${STOCK_BACKEND}`]);
   assert.match(absent.problems.find(problem => problem.code === 'TEST_SUPPORT_INVALID')!.message, /required \(an empty array is valid\)/);
   assert.equal(absent.consumersReleased, false);
 });
@@ -354,24 +378,24 @@ void test('a done testSupport item needs both refs', async () => {
 });
 
 void test('effort must mirror the backend testSupport and version', async () => {
-  const snapshot = await readCurrent(plans => {
+  const snapshot = await readStock(plans => {
     plans.effort.testSupport = plans.effort.testSupport.slice(1);
     (plans.effort.meta as Record<string, unknown>).sourceVersion = '2026-09-21-p1-backend-v1.1';
   });
-  assert.deepEqual(errorsOf(snapshot), [`DIVERGENT_SOURCE ${EFFORT}`, `DIVERGENT_SOURCE ${EFFORT}`]);
-  assert.deepEqual(snapshot.problems.filter(problem => problem.path === EFFORT).map(problem => problem.message).sort(), [
+  assert.deepEqual(errorsOf(snapshot), [`DIVERGENT_SOURCE ${STOCK_EFFORT}`, `DIVERGENT_SOURCE ${STOCK_EFFORT}`]);
+  assert.deepEqual(snapshot.problems.filter(problem => problem.path === STOCK_EFFORT).map(problem => problem.message).sort(), [
     "meta.sourceVersion is '2026-09-21-p1-backend-v1.1', expected 2026-09-21-p1-backend-v1.2.",
     'testSupport[] is not the copy of the backend plan. Regenerate effort from this backend.',
   ]);
 });
 
 void test('an old backend plan is refused for regeneration and not converted', async () => {
-  const snapshot = await readCurrent(plans => {
+  const snapshot = await readStock(plans => {
     plans.backend.schemaVersion = '2026-09-21-p1-backend-v1.1';
     delete (plans.backend as Partial<Json>).testSupport;
   });
-  assert.deepEqual(errorsOf(snapshot), [`SCHEMA_DIVERGENT ${BACKEND}`]);
-  assert.match(snapshot.problems.find(problem => problem.code === 'SCHEMA_DIVERGENT')!.message, /expected 2026-09-21-p1-backend-v1\.2\. Regenerate l4\/agendaClinica\/pool\/l2\/web\/backend\.json with its producer; other versions are not converted\./);
+  assert.deepEqual(errorsOf(snapshot), [`SCHEMA_DIVERGENT ${STOCK_BACKEND}`]);
+  assert.match(snapshot.problems.find(problem => problem.code === 'SCHEMA_DIVERGENT')!.message, /expected 2026-09-21-p1-backend-v1\.2\. Regenerate l4\/controleEstoque\/pool\/l2\/web\/backend\.json with its producer; other versions are not converted\./);
   assert.equal(snapshot.consumersReleased, false);
 });
 
@@ -399,15 +423,15 @@ void test('the current seed with an entity renamed everywhere reads the same way
 });
 
 void test('a testSupport-only change moves the hash and leaves the functional plan alone', async () => {
-  const before = await readCurrent();
-  assert.equal((await readCurrent(() => {})).snapshotHash, before.snapshotHash);
-  const after = await readCurrent(plans => {
+  const before = await readStock();
+  assert.equal((await readStock(() => {})).snapshotHash, before.snapshotHash);
+  const after = await readStock(plans => {
     plans.backend.testSupport[0].gap = `${String(plans.backend.testSupport[0].gap)} (edited)`;
     plans.effort.testSupport[0].gap = plans.backend.testSupport[0].gap;
   });
   assert.deepEqual(errorsOf(after), []);
   assert.notEqual(after.snapshotHash, before.snapshotHash);
-  assert.notEqual(after.sources.find(source => source.path === BACKEND)?.sha256, before.sources.find(source => source.path === BACKEND)?.sha256);
+  assert.notEqual(after.sources.find(source => source.path === STOCK_BACKEND)?.sha256, before.sources.find(source => source.path === STOCK_BACKEND)?.sha256);
   assert.deepEqual(after.selection, before.selection);
   assert.deepEqual(after.files, before.files);
 });

@@ -123,6 +123,8 @@ export interface D1SelectedUsecase {
   usecaseId: string;
   entity: string;
   operation: string;
+  /** L4 `transitionId`. Present only when `operation` is `transition`. */
+  transitionRef?: string;
   status: D1ActiveStatus;
   existing: string;
   identity: string;

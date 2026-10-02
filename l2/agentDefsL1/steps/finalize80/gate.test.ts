@@ -213,6 +213,7 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
           entityId: 'Consulta',
           usecaseId: 'registrarAtendimento',
           operation: 'transition',
+          transitionRef: 'registrarAtendimento',
           files: [
             { path: ONTOLOGY, text: ONTOLOGY_TEXT },
             { path: RULES, text: RULES_TEXT },
@@ -354,6 +355,7 @@ function snapshot(files: D1FinalizeObserved[]): D1InputSnapshot {
         usecaseId: 'registrarAtendimento',
         entity: 'Consulta',
         operation: 'transition',
+        transitionRef: 'registrarAtendimento',
         status: 'toCreate',
         existing: '',
         identity: 'registrarAtendimento',

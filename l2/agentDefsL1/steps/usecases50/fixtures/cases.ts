@@ -1,10 +1,11 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.ts" enhancement="_blank"/>
 
-import type {
-  D1UsecasePlanInput,
-  D1UsecaseRequest,
-  D1UsecaseSelection,
-  D1WorkerStep,
+import {
+  transitionRefOf,
+  type D1UsecasePlanInput,
+  type D1UsecaseRequest,
+  type D1UsecaseSelection,
+  type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
@@ -81,10 +82,12 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
   const routes = ROWS.map(([route, page, kind, usecaseRef]) => ({ route, page, kind, usecaseRef }));
   const byId = new Map<string, D1UsecaseSelection>();
   for (const [route, , , usecaseId, entity] of ROWS) {
+    const operation = OPERATIONS[usecaseId];
     const current = byId.get(usecaseId) || {
       usecaseId,
       entity,
-      operation: OPERATIONS[usecaseId],
+      operation,
+      ...(operation === 'transition' ? { transitionRef: usecaseId } : {}),
       routes: [],
       defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
     };
@@ -150,7 +153,7 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   const steps: D1WorkerStep[] = [{ kind: 'context', source: 'ctx' }];
   if (entity?.storageTarget === 'mdm') {
     const payload = usecase.operation === 'transition'
-      ? (entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])
+      ? (entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])
       : [];
     const read = mdmInputFields(
       domainSignature(entity, usecase.operation, payload).input,
@@ -183,7 +186,7 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
     if (port) steps.push({ kind: 'port', call: usecase.operation, port: port.portId });
   }
   if (usecase.operation === 'transition') {
-    const transition = entity?.transitions.find(item => item.transitionId === usecase.usecaseId);
+    const transition = entity?.transitions.find(item => item.transitionId === transitionRefOf(usecase));
     for (const ruleId of transition?.ruleRefs || []) steps.push({ kind: 'rule', ruleId });
     steps.push({ kind: 'transition', transitionId: usecase.usecaseId, payload: [] });
     for (const event of request.outbound) {

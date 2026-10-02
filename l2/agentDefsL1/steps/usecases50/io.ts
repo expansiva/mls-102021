@@ -266,6 +266,7 @@ async function usecaseRequest(
     usecaseId: usecase.usecaseId,
     entity: usecase.entity,
     operation: usecase.operation,
+    ...(usecase.operation === 'transition' ? { transitionRef: usecase.transitionRef || '' } : {}),
     routes: [...usecase.routes],
     defPath: snapshot.files.find(file => file.artifactType === 'usecase' && file.identity === usecase.usecaseId)?.defPath
       || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,

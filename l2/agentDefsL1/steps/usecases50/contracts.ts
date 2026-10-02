@@ -117,8 +117,15 @@ export interface D1UsecaseSelection {
   usecaseId: string;
   entity: string;
   operation: string;
+  /** L4 `transitionId`. Set when `operation` is `transition`. */
+  transitionRef?: string;
   routes: string[];
   defPath: string;
+}
+
+/** The L4 transition this usecase runs. Never the usecaseId. */
+export function transitionRefOf(usecase: { operation: string; transitionRef?: string }): string {
+  return usecase.operation === 'transition' ? usecase.transitionRef || '' : '';
 }
 
 export interface D1OutboundEvent {

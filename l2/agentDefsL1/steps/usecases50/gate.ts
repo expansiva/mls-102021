@@ -38,6 +38,7 @@ import {
   type D1UsecaseProblem,
   type D1RulePlanRow,
   type D1UsecaseRequest,
+  transitionRefOf,
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
@@ -120,7 +121,7 @@ function planUsecase(
     return blank;
   }
   const sourcePayload = usecase.operation === 'transition'
-    ? [...(entity.transitions.find(item => item.transitionId === usecase.usecaseId)?.payload || [])]
+    ? [...(entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])]
     : [];
   const signed = domainSignature(entity, usecase.operation, sourcePayload);
   const input = signed.input;
@@ -357,7 +358,7 @@ function noteRequiredNotes(
   problems: D1UsecaseProblem[],
 ): void {
   if (usecase.operation !== 'transition') return;
-  const transition = entity.transitions.find(item => item.transitionId === usecase.usecaseId);
+  const transition = entity.transitions.find(item => item.transitionId === transitionRefOf(usecase));
   for (const ruleId of transition?.ruleRefs || []) {
     const leaf = requiredLeaf(ruleId);
     if (!leaf) continue;
@@ -383,7 +384,7 @@ function noteTransition(
   let ok = true;
   for (const step of steps) {
     if (step.kind !== 'transition') continue;
-    if (usecase.operation !== 'transition' || step.transitionId !== usecase.usecaseId) {
+    if (usecase.operation !== 'transition' || step.transitionId !== transitionRefOf(usecase)) {
       error(problems, 'INVALID_TRANSITION', path, `Transition ${step.transitionId} is not the operation ${usecase.usecaseId}.`);
       ok = false;
     }
@@ -394,7 +395,7 @@ function noteTransition(
       }
     }
   }
-  if (usecase.operation === 'transition' && !entity.transitions.some(item => item.transitionId === usecase.usecaseId)) {
+  if (usecase.operation === 'transition' && !entity.transitions.some(item => item.transitionId === transitionRefOf(usecase))) {
     error(problems, 'INVALID_TRANSITION', path, `Transition ${usecase.usecaseId} is not on ${entity.entityId}.`);
     ok = false;
   }
@@ -420,6 +421,7 @@ function decideRules(
     entityId: entity.entityId,
     usecaseId: usecase.usecaseId,
     operation: usecase.operation,
+    transitionRef: transitionRefOf(usecase),
     files: request.files,
     entity: {
       rules: entity.rules,

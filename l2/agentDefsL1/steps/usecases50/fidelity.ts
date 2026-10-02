@@ -213,6 +213,7 @@ export function readUsecaseFidelity(
       entityId,
       usecaseId,
       operation,
+      transitionRef: operation === 'transition' ? readLifecycle(data)?.transitionId || '' : '',
       files,
       entity: {
         rules: [],

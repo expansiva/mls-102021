@@ -98,6 +98,7 @@ void test('renamed ids keep the same applicability, and the old CRUD copy does n
     ...shape(first),
     usecaseId: 'closeSlot',
     operation: 'transition',
+    transitionRef: 'closeSlot',
     routes: [{ route: CLOSE_ROUTE, contractPath: 'l2/sample/web/contracts/owner.defs.ts', grants: [] }],
   });
   assert.deepEqual(enforcedRuleIds(closed).sort(), [first.flow, first.own].sort());
@@ -311,6 +312,7 @@ function clinicPlan(
     entityId: 'Consulta',
     usecaseId,
     operation,
+    ...(operation === 'transition' ? { transitionRef: usecaseId } : {}),
     files,
     entity: { rules: [], transitions: [], namespace: '', storageTarget: 'moduleDatabase' },
     routes: routes.map(route => ({ ...route, grants: [] })),
@@ -452,6 +454,7 @@ function selection(usecaseId: string, operation: string, routes: string[]): D1Us
     usecaseId,
     entity: 'Slot',
     operation,
+    ...(operation === 'transition' ? { transitionRef: usecaseId } : {}),
     routes,
     defPath: `l1/sample/layer_2_application/usecases/${usecaseId}.defs.ts`,
   };

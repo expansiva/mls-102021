@@ -831,13 +831,16 @@ function requestForRealRoute(contract: D1UsecaseRequest['contracts'][number], ro
   const kind = tail.startsWith('cmd') ? 'cmd' : 'qry';
   const raw = tail.slice(3);
   const usecaseId = `${raw.charAt(0).toLowerCase()}${raw.slice(1)}`;
+  const operation = operationOf(usecaseId);
   const request = coreUsecaseRequest();
   request.contracts = [contract];
   request.routes = [{ route, page: contract.pageId, kind, usecaseRef: usecaseId }];
   request.usecases = [{
     usecaseId,
     entity: entityOf(usecaseId),
-    operation: operationOf(usecaseId),
+    operation,
+    // Route tails here are the L4 transition ids, one per entity, so the ref can equal the usecase id.
+    ...(operation === 'transition' ? { transitionRef: usecaseId } : {}),
     routes: [route],
     defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
   }];
@@ -872,10 +875,13 @@ function requestOf(
   const request = coreUsecaseRequest();
   request.contracts = contracts;
   request.routes = selected;
+  const operation = operationOf(usecaseId);
   request.usecases = [{
     usecaseId,
     entity: entityOf(usecaseId),
-    operation: operationOf(usecaseId),
+    operation,
+    // These route tails are the L4 transition ids. No two entities share one, so the ref can equal the usecase id.
+    ...(operation === 'transition' ? { transitionRef: usecaseId } : {}),
     routes: selected.map(item => item.route),
     defPath: `l1/agendaClinica/layer_2_application/usecases/${usecaseId}.defs.ts`,
   }];

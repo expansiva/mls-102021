@@ -92,6 +92,7 @@
           "type": "string",
           "enum": ["list", "get", "create", "update", "transition", "delete", "custom"]
         },
+        "transitionRef": { "type": "string", "minLength": 1 },
         "ports": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }

@@ -116,6 +116,8 @@ export interface P1Usecase {
   usecaseId: string;
   entity: string;
   operation: P1Operation;
+  /** L4 `transitionId`. Present only when `operation` is `transition`. */
+  transitionRef?: string;
   ports: string[];
   status: P1PlanStatus;
   existing: string;
@@ -671,6 +673,7 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
         usecaseId,
         entity: write.entity,
         operation,
+        ...(operation === 'transition' ? { transitionRef: write.transitionRef } : {}),
         ports: portEntities(write.entity, family, ontology),
         status: 'toCreate',
         existing: '',
@@ -937,6 +940,7 @@ function stripDraft(draft: UsecaseDraft): P1Usecase {
     usecaseId: draft.usecaseId,
     entity: draft.entity,
     operation: draft.operation,
+    ...(draft.operation === 'transition' ? { transitionRef: draft.transitionRef || '' } : {}),
     ports: draft.ports,
     status: draft.status,
     existing: draft.status === 'toCreate' ? '' : draft.existing,
@@ -1097,10 +1101,13 @@ function normalizeUsecase(value: unknown, ontology: Map<string, P1EntityView>): 
   const status = planStatus(text(raw.status), 'toCreate');
   const entity = text(raw.entity);
   const ports = unique(list(raw.ports).map(item => text(item)).filter(entityName => !isMdmEntity(ontology.get(entityName))));
+  const operation = isP1Operation(operationRaw) ? operationRaw : 'custom';
+  const transitionRef = text(raw.transitionRef);
   return {
     usecaseId: text(raw.usecaseId),
     entity,
-    operation: isP1Operation(operationRaw) ? operationRaw : 'custom',
+    operation,
+    ...(operation === 'transition' ? { transitionRef } : {}),
     ports: isMdmEntity(ontology.get(entity)) ? [] : ports,
     status,
     existing: status === 'toCreate' ? '' : text(raw.existing),

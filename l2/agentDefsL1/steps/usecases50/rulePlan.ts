@@ -58,6 +58,8 @@ export interface RulePlanInput {
   entityId: string;
   usecaseId: string;
   operation: string;
+  /** L4 transitionId. Compared with `transitionId`, never with `usecaseId`. */
+  transitionRef?: string;
   rules: readonly RulePlanRule[];
   transitions: readonly RulePlanTransition[];
   uniqueKeys: readonly (readonly string[])[];
@@ -113,7 +115,7 @@ export function planRuleApplicability(input: RulePlanInput): D1RulePlanRow[] {
     }
   }
   const transition = input.operation === 'transition'
-    ? transitions.find(item => item.transitionId === input.usecaseId) || null
+    ? transitions.find(item => item.transitionId === (input.transitionRef || '')) || null
     : null;
   if (transition) {
     const origin = `l4/${input.moduleName}/ontology/${input.entityId}.defs.ts#transitions.${transition.transitionId}.ruleRefs`;
@@ -192,6 +194,7 @@ export function rulePlanForUsecase(input: {
   entityId: string;
   usecaseId: string;
   operation: string;
+  transitionRef?: string;
   files?: readonly RulePlanFile[];
   entity: RulePlanEntity;
   routes: readonly RulePlanRoute[];
@@ -230,6 +233,7 @@ export function rulePlanForUsecase(input: {
     entityId: input.entityId,
     usecaseId: input.usecaseId,
     operation: input.operation,
+    transitionRef: input.transitionRef,
     rules,
     transitions,
     uniqueKeys,

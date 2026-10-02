@@ -161,13 +161,29 @@ export function buildD1InputSnapshot(
       error(problems, 'DIVERGENT_SOURCE', paths.backend, `Usecase ${usecaseId} ${mismatch[0]} is '${mismatch[1]}' in backend and '${mismatch[2]}' in effort.`, usecaseId);
       continue;
     }
+    const operation = text(left.operation);
+    const transitionRef = text(left.transitionRef);
+    const effortRef = text(right.transitionRef);
+    if (operation === 'transition' && (!transitionRef || !effortRef)) {
+      error(problems, 'TRANSITION_REF_MISSING', !transitionRef ? paths.backend : paths.effort, `Transition usecase ${usecaseId} has no transitionRef. The L4 transitionId is required; the usecaseId is not the transition.`, usecaseId);
+      continue;
+    }
+    if (operation === 'transition' && transitionRef !== effortRef) {
+      error(problems, 'DIVERGENT_SOURCE', paths.backend, `Usecase ${usecaseId} transitionRef is '${transitionRef}' in backend and '${effortRef}' in effort.`, usecaseId);
+      continue;
+    }
+    if (operation !== 'transition' && (transitionRef || effortRef)) {
+      error(problems, 'DIVERGENT_SOURCE', transitionRef ? paths.backend : paths.effort, `Usecase ${usecaseId} is ${operation} and must not carry transitionRef.`, usecaseId);
+      continue;
+    }
     if (!isActive(text(left.status))) continue;
     const existing = text(left.existing);
     const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing);
     selectedUsecases.push({
       usecaseId,
       entity: text(left.entity),
-      operation: text(left.operation),
+      operation,
+      ...(operation === 'transition' ? { transitionRef } : {}),
       status: text(left.status) as D1ActiveStatus,
       existing,
       identity: identityId,
@@ -509,8 +525,9 @@ function planFiles(input: {
   if (input.hasEffects) {
     const defPath = `l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`;
     const dependsOn = unique(input.outbound.map(event => {
+      const entityId = event.on.split('.')[0] || '';
       const transitionId = event.on.split('.')[1] || '';
-      const usecase = input.usecases.find(item => item.usecaseId === transitionId || item.identity === transitionId);
+      const usecase = input.usecases.find(item => item.operation === 'transition' && item.transitionRef === transitionId && item.entity === entityId);
       return usecase ? `usecase:${usecase.identity}` : '';
     }).filter(Boolean));
     add({
@@ -760,7 +777,7 @@ function notePayload(
   const perUsecase: Array<{ usecase: D1SelectedUsecase; rules: string[]; path: string }> = [];
   for (const usecase of transitions) {
     const entity = rec(entities[usecase.entity]);
-    const transition = rows(entity.transitions).find(row => text(row.transitionId) === usecase.usecaseId);
+    const transition = rows(entity.transitions).find(row => text(row.transitionId) === usecase.transitionRef);
     const path = entityPath(moduleName, usecase.entity);
     if (!transition) {
       error(problems, 'DIVERGENT_SOURCE', path, `Transition usecase ${usecase.usecaseId} has no matching transitionId.`, usecase.usecaseId);
@@ -775,7 +792,7 @@ function notePayload(
     const uniqueRules = item.rules.filter(rule => cited.get(rule) === 1);
     if (!uniqueRules.length) continue;
     const entity = rec(entities[item.usecase.entity]);
-    const transition = rows(entity.transitions).find(row => text(row.transitionId) === item.usecase.usecaseId);
+    const transition = rows(entity.transitions).find(row => text(row.transitionId) === item.usecase.transitionRef);
     if (transition && transition.payload !== undefined) continue;
     review(
       problems,
@@ -901,20 +918,29 @@ function oneRequest(
   const uses: string[] = [];
   const take = (entity: string, operation: string, transitionKey = ''): void => {
     const match = transitionKey
-      ? usecases.find(item => item.entity === entity && item.operation === 'transition' && (item.usecaseId === transitionKey || item.identity === transitionKey))
+      ? usecases.find(item => item.entity === entity && item.operation === 'transition' && item.transitionRef === transitionKey)
       : usecases.find(item => item.entity === entity && item.operation === operation);
     if (match) {
       if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
       return;
     }
-    const usecaseId = transitionKey || `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
-    const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned);
+    const usecaseId = transitionKey ? lowerFirst(transitionKey) : `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
+    const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, transitionKey);
     if (refusal) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. ${refusal}`, route.route);
       return;
     }
     // Same shape as a planned usecase. Rules and access still come from L4.
-    usecases.push({ usecaseId, entity, operation, status: 'toCreate', existing: '', identity: usecaseId, routes: [] });
+    usecases.push({
+      usecaseId,
+      entity,
+      operation,
+      ...(operation === 'transition' ? { transitionRef: transitionKey } : {}),
+      status: 'toCreate',
+      existing: '',
+      identity: usecaseId,
+      routes: [],
+    });
     review(problems, 'USECASE_FROM_CONTRACT', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Usecase ${usecaseId} was created from the contract.`, usecaseId);
     uses.push(usecaseId);
   };
@@ -927,7 +953,7 @@ function oneRequest(
     if (namedTransition && !lifecycleHas(entities, entity, written)) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Transition '${written}' is not in the L4 lifecycle of ${entity}.`, route.route);
     } else {
-      take(entity, operation, namedTransition ? lowerFirst(written) : '');
+      take(entity, operation, namedTransition ? written : '');
     }
     for (const output of outputs) {
       if (output.entity === entity) continue;
@@ -955,10 +981,11 @@ function contractUsecaseRefusal(
   usecaseId: string,
   entities: Record<string, unknown>,
   planned: PlannedIds,
+  transitionRef = '',
 ): string {
   if (!CONTRACT_CREATED_OPERATIONS.has(operation)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
-  // The bare operation `transition` still comes from the plan. Only a lifecycle ref, id lowerFirst(transitionId), is created here.
-  if (operation === 'transition' && !lifecycleHasId(entities, entity, usecaseId)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
+  // The bare operation `transition` still comes from the plan. A named lifecycle ref is created here.
+  if (operation === 'transition' && !lifecycleHasId(entities, entity, transitionRef)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
   if (!Object.prototype.hasOwnProperty.call(entities, entity)) return `Entity ${entity} is not in the module ontology.`;
   if (!isSafeToken(usecaseId)) return `Usecase id '${usecaseId}' is not an id.`;
   const prior = planned.ids.get(usecaseId);
@@ -971,8 +998,10 @@ function lifecycleHas(entities: Record<string, unknown>, entity: string, transit
   return rows(rec(entities[entity]).transitions).some(row => text(row.transitionId) === transitionId);
 }
 
-function lifecycleHasId(entities: Record<string, unknown>, entity: string, usecaseId: string): boolean {
-  return rows(rec(entities[entity]).transitions).some(row => lowerFirst(text(row.transitionId)) === usecaseId);
+function lifecycleHasId(entities: Record<string, unknown>, entity: string, transitionRef: string): boolean {
+  // A bare `entity.transition` write has no lifecycle id. An empty ref must not match a row whose transitionId is absent.
+  if (!transitionRef) return false;
+  return rows(rec(entities[entity]).transitions).some(row => text(row.transitionId) === transitionRef);
 }
 
 function isLocalEntity(entity: string, tables: D1SelectedTable[], entities: Record<string, unknown>): boolean {
