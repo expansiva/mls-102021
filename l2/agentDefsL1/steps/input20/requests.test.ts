@@ -3,9 +3,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { D1_DEFINITION_SCHEMA } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { D1_FLOW_ID, D1_FLOW_VERSION, D1_PIPELINE_SCHEMA, type D1PipelineState } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { CHAIN_STEP_IDS } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
+import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { capabilityNames } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
@@ -253,14 +257,95 @@ void test('a planned usecase no request calls is not generated when the module h
   const snapshot = deskBuild(deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]));
   assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'spareNote'), false);
   assert.equal(snapshot.files.some(file => file.ownerRefs.includes('usecase:spareNote')), false);
+  assert.equal(snapshot.removed.some(item => item.id === 'spareNote'), false);
   const unrequested = snapshot.problems.find(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote');
   assert.ok(unrequested);
   assert.equal(unrequested.severity, 'review');
   assert.ok(unrequested.message.includes('not generated'));
+  assert.equal(unrequested.message.includes('removed'), false);
 
   const noContract = deskOf([listNote, spare], null);
   noContract.contractTexts = {};
   const today = deskBuild(noContract);
   assert.ok(today.selection.usecases.some(item => item.usecaseId === 'spareNote'));
   assert.ok(today.files.some(file => file.id === 'usecase:spareNote'));
+});
+
+void test('a pruned usecase with a previous receipt is removed and inventoried', () => {
+  const spare: PoolRow = { usecaseId: 'spareNote', entity: 'DeskNote', operation: 'custom', status: 'toCreate', existing: '' };
+  const priorArtifacts = deskOf([listNote, spare], null);
+  priorArtifacts.contractTexts = {};
+  const prior = deskBuild(priorArtifacts);
+  const planned = prior.files.find(file => file.identity === 'spareNote' || file.ownerRefs.includes('usecase:spareNote'));
+  assert.ok(planned);
+  const hash = 'sha256:spare-note';
+  const previous: D1InputSnapshot = {
+    ...prior,
+    files: prior.files.map(file => file === planned ? { ...file, contentHash: hash } : file),
+  };
+  const artifacts = deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]);
+  artifacts.presentDefs = [{ path: planned.defPath, sha256: hash }];
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, previous);
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'spareNote'), false);
+  assert.deepEqual(snapshot.removed.find(item => item.kind === 'usecase' && item.id === 'spareNote'), {
+    kind: 'usecase',
+    id: 'spareNote',
+    defPath: planned.defPath,
+    inventoried: true,
+    contentHash: hash,
+  });
+  assert.equal(snapshot.problems.some(item => item.code === 'REMOVE_WITHOUT_RECEIPT' && item.ownerRef === 'spareNote'), false);
+  assert.equal(snapshot.problems.some(item => item.code === 'DIVERGENT_SOURCE' && item.ownerRef === 'spareNote'), false);
+  const unrequested = snapshot.problems.find(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote');
+  assert.ok(unrequested);
+  assert.equal(unrequested.severity, 'review');
+  assert.ok(unrequested.message.includes('removed'));
+
+  const steps = Object.fromEntries(CHAIN_STEP_IDS.map(stepId => [stepId, { status: 'approved', updatedAt: '2026-10-02T00:00:00.000Z' }])) as D1PipelineState['steps'];
+  const pipeline: D1PipelineState = {
+    schemaVersion: D1_PIPELINE_SCHEMA,
+    flowId: D1_FLOW_ID,
+    flowVersion: D1_FLOW_VERSION,
+    project: 102047,
+    moduleName: 'ledgerDesk',
+    status: 'inProgress',
+    command: 'run',
+    steps,
+    updatedAt: '2026-10-02T00:00:00.000Z',
+  };
+  const definition = {
+    schemaVersion: D1_DEFINITION_SCHEMA,
+    artifactType: 'usecase',
+    artifactId: 'spareNote',
+    moduleName: 'ledgerDesk',
+    status: 'pending',
+    dependencies: [] as string[],
+    data: { usecaseId: 'spareNote' },
+  };
+  const report = buildD1Finalize({
+    project: 102047,
+    moduleName: 'ledgerDesk',
+    pipeline,
+    snapshot,
+    sourceHashes: {},
+    dependencyTexts: {},
+    contracts: {},
+    drafts: { domain30: null, persistence40: null, usecases50: null, controllers60: null, support70: null },
+    observed: [{
+      defPath: planned.defPath,
+      text: `export const definition = ${JSON.stringify(definition)} as const;\n`,
+      currentHash: hash,
+      receiptHash: hash,
+      action: '',
+      ownerRefs: ['usecase:spareNote'],
+      unitDone: true,
+    }],
+    futurePresent: {},
+    children: [],
+    callLog: null,
+  });
+  const removedFile = report.files.find(file => file.defPath === planned.defPath);
+  assert.ok(removedFile);
+  assert.equal(removedFile.action, 'removed');
+  assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
 });

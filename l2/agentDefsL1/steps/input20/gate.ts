@@ -236,13 +236,14 @@ export function buildD1InputSnapshot(
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
-  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0);
+  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
   const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
   // With a v2 contract, a planned usecase no request calls is not generated. The plan stays an estimate.
   const generatedUsecases = contractV2.size > 0
     ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
     : selectedUsecases;
+  notePrunedRemovals(removed, previous, selectedUsecases, generatedUsecases, contractV2.size > 0);
   const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
@@ -999,18 +1000,44 @@ function noteContractAccess(
   review(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `Route ${route.route} access does not match the L4 access artifact. L4 stays the source.`, route.route);
 }
 
+function previousUsecaseFile(previous: D1InputSnapshot | null, usecaseId: string) {
+  return previous?.files.find(file => file.identity === usecaseId || file.ownerRefs.includes(`usecase:${usecaseId}`));
+}
+
+function notePrunedRemovals(
+  removed: D1RemovedItem[],
+  previous: D1InputSnapshot | null,
+  selected: D1SelectedUsecase[],
+  generated: D1SelectedUsecase[],
+  sawContract: boolean,
+): void {
+  if (!sawContract) return;
+  const kept = new Set(generated.map(usecase => usecase.usecaseId));
+  const seen = new Set(removed.map(item => `${item.kind}:${item.id}`));
+  for (const usecase of selected) {
+    if (kept.has(usecase.usecaseId)) continue;
+    if (!previousUsecaseFile(previous, usecase.usecaseId)) continue;
+    const key = `usecase:${usecase.usecaseId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    removed.push({ kind: 'usecase', id: usecase.usecaseId, defPath: null, inventoried: false });
+  }
+}
+
 function noteUnrequested(
   problems: D1InputProblem[],
   path: string,
   usecases: D1SelectedUsecase[],
   requests: D1SelectedRequest[],
   sawContract: boolean,
+  previous: D1InputSnapshot | null,
 ): void {
   if (!sawContract) return;
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
     if (used.has(usecase.usecaseId)) continue;
-    review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is not generated.`, usecase.usecaseId);
+    const fate = previousUsecaseFile(previous, usecase.usecaseId) ? 'removed' : 'not generated';
+    review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is ${fate}.`, usecase.usecaseId);
   }
 }
 
