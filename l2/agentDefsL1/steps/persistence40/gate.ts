@@ -38,7 +38,7 @@ import {
   type D1UniqueKeyUse,
 } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 
-const OPERATIONS = ['create', 'list', 'update', 'transition', 'delete'] as const;
+const OPERATIONS = ['create', 'list', 'get', 'update', 'transition', 'delete'] as const;
 type Operation = typeof OPERATIONS[number];
 const USECASE_STATUSES = ['toCreate', 'toUpdate', 'done', 'toRemove'] as const;
 const WRITE_ACTIONS = new Set(['create', 'update', 'recompose']);
@@ -595,6 +595,7 @@ function methodsFor(
 function methodFor(entityId: string, operation: Operation): D1PortMethod {
   if (operation === 'list') return { name: 'list', params: [`${entityId}Filter`], returns: `${entityId}[]` };
   if (operation === 'transition') return { name: 'transition', params: [entityId, 'transitionId'], returns: entityId };
+  if (operation === 'get') return { name: 'get', params: ['id'], returns: entityId };
   if (operation === 'delete') return { name: 'delete', params: ['id'], returns: 'void' };
   return { name: operation, params: [entityId], returns: entityId };
 }

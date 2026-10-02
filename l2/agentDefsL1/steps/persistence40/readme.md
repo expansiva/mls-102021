@@ -39,6 +39,6 @@ bytes are not rewritten.
   It is not the table schema version.
 - Indexed fields and unique-key fields are columns named by the logical path.
   Every other leaf is `json:<logical path>`. The mapping round-trips.
-- Methods are the selected operations (`create`, `list`, `update`,
+- Methods are the selected operations (`create`, `list`, `get`, `update`,
   `transition`, `delete`). The adapter lists the same methods. An unknown
   operation is an error. An NS4 field list is not converted.

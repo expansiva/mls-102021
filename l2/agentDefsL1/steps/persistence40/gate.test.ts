@@ -356,6 +356,23 @@ void test('change_order does not bind to change_orders', () => {
   assert.equal(JSON.stringify(kept.emit).includes(MEASURED_TABLE_REF), false);
 });
 
+void test('a get usecase gives the port get(id) returning the entity', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: noteEntity,
+    operations: ['get', 'create', 'list'],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  assert.equal(codes(build, 'error').includes('OPERATION_UNKNOWN'), false);
+  const port = build.ports[0];
+  assert.deepEqual(port.methods.map(method => method.name), ['create', 'list', 'get']);
+  assert.deepEqual(port.methods.find(method => method.name === 'get'), { name: 'get', params: ['id'], returns: 'Note' });
+  assert.deepEqual(build.adapters[0].methods.map(method => method.name), port.methods.map(method => method.name));
+});
+
 void test('a preserved port stays put and an incompatible one is diagnosed', async () => {
   const create: D1PortMethod = { name: 'create', params: ['Note'], returns: 'Note' };
   const list: D1PortMethod = { name: 'list', params: ['NoteFilter'], returns: 'Note[]' };
