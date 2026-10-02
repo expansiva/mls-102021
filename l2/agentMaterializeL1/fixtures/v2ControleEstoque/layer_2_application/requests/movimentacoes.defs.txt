@@ -1,0 +1,95 @@
+/// <mls fileReference="_102047_/l1/controleEstoque/layer_2_application/requests/movimentacoes.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "movimentacoes",
+  "moduleName": "controleEstoque",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/controleEstoque/layer_2_application/usecases/createMovimentacaoEstoque.defs.ts",
+    "_102047_/l1/controleEstoque/layer_2_application/usecases/listMovimentacaoEstoque.defs.ts",
+    "_102047_/l1/controleEstoque/layer_2_application/usecases/listProduto.defs.ts"
+  ],
+  "data": {
+    "pageId": "movimentacoes",
+    "requests": [
+      {
+        "route": "controleEstoque.movimentacoes.load",
+        "kind": "qry",
+        "uses": [
+          "listMovimentacaoEstoque",
+          "listProduto"
+        ],
+        "transaction": "none",
+        "outputs": [
+          {
+            "key": "movimentacoes",
+            "entity": "MovimentacaoEstoque",
+            "fields": [
+              "id",
+              "produtoId",
+              "movimentadoEm",
+              "details.tipo",
+              "details.quantidade"
+            ]
+          },
+          {
+            "key": "produtos",
+            "entity": "Produto",
+            "fields": [
+              "id",
+              "details.identification.name",
+              "details.identification.status",
+              "details.product.unitOfMeasure",
+              "details.controleEstoque.quantidadeMinima",
+              "details.controleEstoque.saldoAtual",
+              "details.controleEstoque.saldoAbaixoDoMinimo"
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "produtoId",
+            "target": "movimentacoes",
+            "field": "produtoId"
+          },
+          {
+            "name": "page",
+            "target": "movimentacoes",
+            "pages": "historicoMovimentacoes"
+          },
+          {
+            "name": "pageSize",
+            "target": "movimentacoes",
+            "pages": "historicoMovimentacoes"
+          }
+        ]
+      },
+      {
+        "route": "controleEstoque.movimentacoes.registrarMovimentacao",
+        "kind": "cmd",
+        "uses": [
+          "createMovimentacaoEstoque"
+        ],
+        "transaction": "single",
+        "outputs": [
+          {
+            "key": "movimentacaoEstoque",
+            "entity": "MovimentacaoEstoque",
+            "fields": [
+              "id",
+              "produtoId",
+              "movimentadoEm",
+              "details.tipo",
+              "details.quantidade"
+            ]
+          }
+        ],
+        "params": []
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,41 @@
+/// <mls fileReference="_102047_/l1/controleEstoque/layer_1_external/adapters/http/controllers/movimentacoes.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "httpController",
+  "artifactId": "movimentacoes",
+  "moduleName": "controleEstoque",
+  "status": "blocked",
+  "dependencies": [
+    "_102047_/l1/controleEstoque/layer_1_external/auth/authorityMap.defs.ts",
+    "_102047_/l1/controleEstoque/layer_2_application/requests/movimentacoes.defs.ts",
+    "_102047_/l1/controleEstoque/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "pageId": "movimentacoes",
+    "handlers": [
+      {
+        "route": "controleEstoque.movimentacoes.load",
+        "kind": "query",
+        "grantIds": [
+          "gerenciarEstoque"
+        ],
+        "serviceFunction": "controleEstoque.movimentacoes.load",
+        "contractPath": "l2/controleEstoque/web/contracts/movimentacoes.defs.ts",
+        "contractInterface": "MovimentacoesContracts"
+      },
+      {
+        "route": "controleEstoque.movimentacoes.registrarMovimentacao",
+        "kind": "command",
+        "grantIds": [
+          "gerenciarEstoque"
+        ],
+        "serviceFunction": "controleEstoque.movimentacoes.registrarMovimentacao",
+        "contractPath": "l2/controleEstoque/web/contracts/movimentacoes.defs.ts",
+        "contractInterface": "MovimentacoesContracts"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

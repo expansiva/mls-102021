@@ -44,7 +44,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-01-implement-handler-v9';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-01-implement-handler-v10';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -257,10 +257,15 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const entityDep = definition.dependencies.find(path => path.includes('/entities/')) ?? '';
   const contractRefs = firstFunction(definition);
   if (!contractRefs) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function contract.` };
-  const contractRoute = contractRefs.contractRefs.find(item => item.symbol.endsWith('Output'))?.route ?? '';
-  const contract = await resolveContract(definition, contractRefs, read, contractRoute);
+  // A v2 usecase has no contract. Allowed, required and nullable paths are the signature fields
+  // (the usecase def) read against the entity: writable, required, nullable. A route name is not a source.
+  const contract = contractRefs.contractRefs.length === 0
+    ? signaturePaths(definition, entity)
+    : await resolveContract(definition, contractRefs, read, contractRefs.contractRefs.find(item => item.symbol.endsWith('Output'))?.route ?? '');
   if ('code' in contract) return contract;
-  const pageFilterPaths = operation === 'list' ? await resolvePageListInputs(definition, read) : [];
+  const pageFilterPaths = operation === 'list' && contractRefs.contractRefs.length > 0
+    ? await resolvePageListInputs(definition, read)
+    : [];
   const keys = operation === 'create' || operation === 'update' ? await readUniqueKeys(definition, read) : [];
   if ('code' in keys) return keys;
   const applicableKeys = operation === 'update' ? keys.filter(columns => columns.every(column => contract.allowedInputPaths.includes(column))) : keys;
@@ -277,7 +282,7 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
       return ref ? expandInputType(name, text(field?.type)) : [name];
     })
     : [];
-  // Writable paths come from the contract input; updateBody drops derived, platform and lifecycle fields.
+  // Writable paths are the signature fields. With a contract, that signature is the contract input.
   const inputs = new Set(contract.allowedInputPaths.length ? contract.allowedInputPaths : usecaseInputPaths);
   const updateInputs = operation === 'update' ? new Set([...inputs].filter(path => {
     const leaf = path.split('.').pop() ?? path;
@@ -293,24 +298,29 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   const sources = operation === 'create' ? await createSources(definition, entity, inputs, lifecycle, read) : { missing: '', containers: new Set<string>() };
   if ('code' in sources) return sources;
   if (sources.missing) return { code: 'CREATE_SOURCE_MISSING', detail: `${definition.artifactId}: ${sources.missing} is required by the entity and has no input nor server assignment.` };
+  const domain = contractRefs.contractRefs.length === 0;
+  const outs = outputNames(definition);
   const body = operation === 'create'
-    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle)
+    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, domain ? outs : [])
     : operation === 'update'
       ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition)
       : transition
         ? transitionBody(entityName, camel(portName), transition)
-        : listBody(entity, entityName, camel(portName), new Set(pageFilterPaths.length ? pageFilterPaths : [...inputs]));
+        : listBody(entity, entityName, camel(portName), new Set(pageFilterPaths.length ? pageFilterPaths : [...inputs]), domain && outs.includes('items') && outs.includes('hasMore'));
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,
   );
   if (replaced === stub.source) return { code: 'STUB_SHAPE', detail: `${definition.artifactId} stub body was not recognized.` };
   const entityImport = importSpecifier(entityDep, 'output');
-  const source = replaced.replace(
-    `import { AppError } from '${PLATFORM_CONTRACTS}';`,
-    `import { AppError } from '${PLATFORM_CONTRACTS}';\nimport type { ${entityName} } from '${entityImport}';`,
-  );
-  const imports = [...stub.imports, entityImport];
+  const entityLine = `import type { ${entityName} } from '${entityImport}';`;
+  const source = replaced.includes(entityLine)
+    ? replaced
+    : replaced.replace(
+      `import { AppError } from '${PLATFORM_CONTRACTS}';`,
+      `import { AppError } from '${PLATFORM_CONTRACTS}';\n${entityLine}`,
+    );
+  const imports = stub.imports.includes(entityImport) ? [...stub.imports] : [...stub.imports, entityImport];
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
   return { runsStub: false, imports, source: finish(source) };
@@ -787,6 +797,8 @@ function createBody(
   declared: { required: ReadonlySet<string>; nullable: ReadonlySet<string> },
   containers: ReadonlySet<string>,
   lifecycle: { field: string; initial: string },
+  /** Output paths of a usecase with no contract. Empty keeps the contract return. */
+  projectFields: readonly string[] = [],
 ): string {
   const tree = fieldTree(entity);
   const fields = createMembers(tree, { inputs, ...declared, containers, assigned: serverAssigned(entity, lifecycle) }, '    ');
@@ -797,13 +809,23 @@ function createBody(
     `    if (taken.length > 0) throw new AppError('CONFLICT', 'Unique key already stored.', 409, { ruleId: ${JSON.stringify(ruleId)} });`,
     '  }',
   ].join('\n'));
+  const domain = projectFields.length > 0;
+  const tops = [...new Set(projectFields.map(path => path.split('.')[0] ?? '').filter(isIdent))];
+  const returned = domain
+    ? [
+      `  const saved = await ports.${binding}.create(record);`,
+      '  return {',
+      ...tops.map(name => `    ${name}: saved.${name},`),
+      '  };',
+    ]
+    : [`  return ports.${binding}.create(record);`];
   return [
-    `  const body = input as ${entityName};`,
-    `  const record: ${entityName} = {`,
+    domain ? '  const body = input;' : `  const body = input as ${entityName};`,
+    domain ? '  const record = {' : `  const record: ${entityName} = {`,
     ...fields,
-    '  };',
+    domain ? `  } as ${entityName};` : '  };',
     ...checks,
-    `  return ports.${binding}.create(record);`,
+    ...returned,
   ].join('\n');
 }
 
@@ -1272,23 +1294,74 @@ function invariantsOf(entity: M1Definition): string[] {
   return stringList(entity.data.invariants);
 }
 
-function listBody(entity: M1Definition, entityName: string, binding: string, inputs: ReadonlySet<string>): string {
+function listBody(entity: M1Definition, entityName: string, binding: string, inputs: ReadonlySet<string>, page = false): string {
   const names = [...inputs].filter(name => nodeAt(fieldTree(entity), name));
   const filters = names.map(name => name.includes('.')
     ? `  if (filled(readPath(body, ${JSON.stringify(name)}))) writePath(where, ${JSON.stringify(name)}, readPath(body, ${JSON.stringify(name)}));`
     : `  if (filled(body.${name})) where.${name} = body.${name};`);
+  const tail = page
+    ? [
+      `  const found = await ports.${binding}.list(where);`,
+      '  const size = Number(input.pageSize);',
+      '  const start = Number(input.page) * size;',
+      '  const items = Number.isFinite(size) && size > 0 ? found.slice(start, start + size) : found;',
+      '  return { items, hasMore: Number.isFinite(size) && size > 0 ? start + size < found.length : false };',
+    ]
+    : [
+      `  const found = await ports.${binding}.list(where);`,
+      '  return found;',
+    ];
   return [
     '  const filled = (value: unknown): boolean => value !== undefined && value !== null && value !== \'\';',
     ...(names.some(name => name.includes('.')) ? [
       '  const readPath = (source: unknown, path: string): unknown => { let value: unknown = source; for (const part of path.split(\'.\')) value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined; return value; };',
       '  const writePath = (source: Record<string, unknown>, path: string, value: unknown): void => { const parts = path.split(\'.\'); let node = source; for (const part of parts.slice(0, -1)) node = (node[part] ??= {}) as Record<string, unknown>; node[parts[parts.length - 1]] = value; };',
     ] : []),
-    `  const body = input as ${entityName};`,
+    page ? '  const body = input;' : `  const body = input as ${entityName};`,
     '  const where: Record<string, unknown> = {};',
     ...filters,
-    `  const found = await ports.${binding}.list(where);`,
-    '  return found;',
+    ...tail,
   ].join('\n');
+}
+
+/**
+ * Input paths of a usecase that has no contract. Names are the usecase signature, the same
+ * fields the structure interface lists. `required` and `nullable` are the entity field's
+ * (then the signature field's): a field neither side marks optional is required, and the
+ * structure signature therefore has no `?`. Nothing here is read from a route name.
+ */
+function signaturePaths(definition: M1Definition, entity: M1Definition): { allowedInputPaths: string[]; requiredInputPaths: string[]; nullableInputPaths: string[] } {
+  const functions = definition.data.functions;
+  const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : {};
+  const inputs = Array.isArray(fn.input) ? fn.input.filter(isRecord) : [];
+  const entityFields = new Map<string, Record<string, unknown>>();
+  if (Array.isArray(entity.data.fields)) {
+    for (const field of entity.data.fields.filter(isRecord)) {
+      const name = text(field.name);
+      if (name) entityFields.set(name, field);
+    }
+  }
+  const allowedInputPaths: string[] = [];
+  const requiredInputPaths: string[] = [];
+  const nullableInputPaths: string[] = [];
+  for (const field of inputs) {
+    const name = text(field.name);
+    if (!name || !name.split('.').every(isIdent)) continue;
+    const entityField = entityFields.get(name);
+    allowedInputPaths.push(name);
+    const optional = entityField?.optional === true || field.optional === true;
+    const markedRequired = entityField?.required === true || field.required === true;
+    if (!optional || markedRequired) requiredInputPaths.push(name);
+    const declared = text(entityField?.type) || text(field.type);
+    if (entityField?.nullable === true || field.nullable === true || /\bnull\b/.test(declared)) nullableInputPaths.push(name);
+  }
+  return { allowedInputPaths, requiredInputPaths, nullableInputPaths };
+}
+
+function outputNames(definition: M1Definition): string[] {
+  const functions = definition.data.functions;
+  if (!Array.isArray(functions) || !isRecord(functions[0]) || !Array.isArray(functions[0].output)) return [];
+  return functions[0].output.filter(isRecord).map(field => text(field.name)).filter(name => name.split('.').every(isIdent));
 }
 
 async function resolvePageListInputs(definition: M1Definition, read: StructureRead): Promise<string[]> {
