@@ -32,7 +32,7 @@ import {
 import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { classifyObligation, fixtureModel, runtimeGap, type M1FixtureModel } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 
-export const M1_CATALOG_RECIPE = '2026-10-01-m1-catalog-derive-v6' as const;
+export const M1_CATALOG_RECIPE = '2026-10-01-m1-catalog-derive-v7' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',

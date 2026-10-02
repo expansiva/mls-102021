@@ -21,6 +21,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { handlerFor, type MaterializeHandler } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
+import { qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { simulate, type SimulationSnapshot, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { isL1ModuleDef, type PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
@@ -1288,6 +1289,16 @@ async function prepareCatalog(
       if (texts[dependency]) continue;
       const text = await host.io.read(dependency);
       if (text) texts[dependency] = text;
+    }
+    // A v2 handler names its L2 contract relatively and outside the dependencies (m1_40 r1b).
+    if (raw.artifactType !== 'httpController' || !isRecord(raw.data) || !Array.isArray(raw.data.handlers)) continue;
+    for (const handler of raw.data.handlers) {
+      const contractPath = isRecord(handler) && typeof handler.contractPath === 'string' ? handler.contractPath : '';
+      if (!contractPath) continue;
+      const contractRef = qualifyFile(contractPath, dependencies);
+      if (texts[contractRef]) continue;
+      const text = await host.io.read(contractRef);
+      if (text) texts[contractRef] = text;
     }
   }
   const withheld = catalogWithheld(snapshot.units, new Set(Object.keys(host.runners)), await promotedUnits(host, snapshot.units));

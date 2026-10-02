@@ -11,7 +11,7 @@
 
 import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
-import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { contractMembers, grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
@@ -199,9 +199,9 @@ function routeObligationsV2(
   if (!serviceEntry || !found) return { gap: `REQUEST_UNREAD: no requestService request of page ${String(ref.controller.data.pageId ?? '')} has route ${ref.route}` };
   const request = requestRow(found);
   if (!request) return { gap: `REQUEST_UNREAD: the request of ${ref.route} has no kind, uses or outputs` };
-  const prefix = /^_\d+_\//.exec(ref.defPath)?.[0] ?? '';
-  const contractRef = [ref.contractPath, `${prefix}${ref.contractPath}`].find(key => texts[key] !== undefined) ?? '';
-  const text = contractRef ? texts[contractRef] ?? '' : '';
+  // Same key the catalog loader reads it under (run/execute.ts prepareCatalog).
+  const contractRef = qualifyFile(ref.contractPath, ref.controller.dependencies);
+  const text = texts[contractRef] ?? '';
   if (!text) return { gap: `CONTRACT_UNREAD: ${ref.contractPath} was not loaded for ${ref.route}` };
   if (!text.includes(`export interface ${ref.contractInterface} {`)) return { gap: `CONTRACT_UNREAD: ${ref.contractPath} has no interface ${ref.contractInterface}` };
   let contract: D2ContractV2Definition;

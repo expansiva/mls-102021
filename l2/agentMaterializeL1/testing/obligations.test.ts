@@ -23,8 +23,8 @@ const SCHEMA = '2026-09-24-d1-definition-v2';
 
 function pascal(value: string): string { return value[0].toUpperCase() + value.slice(1); }
 
-function def(ids: Ids, artifactType: string, artifactId: string, data: Record<string, unknown>): M1Definition {
-  return { schemaVersion: SCHEMA, artifactType, artifactId, moduleName: ids.mod, status: 'generated', dependencies: [], data } as unknown as M1Definition;
+function def(ids: Ids, artifactType: string, artifactId: string, data: Record<string, unknown>, dependencies: string[] = []): M1Definition {
+  return { schemaVersion: SCHEMA, artifactType, artifactId, moduleName: ids.mod, status: 'generated', dependencies, data } as unknown as M1Definition;
 }
 
 function fixture(ids: Ids, options: { dropRoute?: string; noService?: boolean; noContract?: boolean } = {}): { units: PlanUnitInput[]; texts: Record<string, string> } {
@@ -63,7 +63,7 @@ function fixture(ids: Ids, options: { dropRoute?: string; noService?: boolean; n
   const units: PlanUnitInput[] = [
     { defPath: `${prefix}/layer_1_external/adapters/http/controllers/${ids.page}.defs.ts`, definition: def(ids, 'httpController', ids.page, {
       pageId: ids.page, handlers: [handler('r1', 'query'), handler('r2', 'command'), handler('r3', 'command')],
-    }) },
+    }, [`${prefix}/layer_1_external/auth/authorityMap.defs.ts`, `${prefix}/layer_2_application/requests/${ids.page}.defs.ts`]) },
     { defPath: `${prefix}/layer_2_application/scope/accessScope.defs.ts`, definition: def(ids, 'accessScope', 'accessScope', {
       scopeId: 'accessScope',
       grants: [{ grantId: ids.grant, actorRef: ids.actor, entityRefs: [ids.e1, ids.e2], disclosure: 'fullRecord', scopeMode: 'organization', session: 'verified', path: [], pending: '' }],

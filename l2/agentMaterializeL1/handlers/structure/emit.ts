@@ -607,7 +607,8 @@ function clauseValue(clause: string, name: 'input' | 'output'): string | null {
   return match ? match[1].trim() : null;
 }
 
-function qualifyFile(path: string, dependencies: readonly string[]): string {
+/** Project-qualified ref of an L1/L2 file a def names relatively; the `_<proj>_/` prefix comes from its dependencies. */
+export function qualifyFile(path: string, dependencies: readonly string[]): string {
   if (/^_\d+_\/l\d+\//.test(path)) return path;
   const hit = dependencies.find(dep => dep === path || dep.endsWith(`/${path}`));
   if (hit) return hit;
