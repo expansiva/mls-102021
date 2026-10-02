@@ -189,10 +189,10 @@ void test('the run report hashes every source the authenticated oracle read, apa
   assert.deepEqual(Object.keys(oracle), refs, JSON.stringify(first.units.map(unit => `${unit.code} ${unit.detail}`)));
   assert.deepEqual(Object.entries(oracle).filter(([, hash]) => !hash.startsWith('sha256:')), []);
   // A changed contract moves its hash and not the catalog input hash.
-  texts[fx.refs.office] = `${texts[fx.refs.office]}\n// edited\n`;
+  texts[fx.refs.contractA] = `${texts[fx.refs.contractA]}\n// edited\n`;
   const second = await runMaterialize(request, { ...host(world(texts), bound), io, catalogRef });
   assert.equal(second.catalog?.inputHash, first.catalog?.inputHash);
-  assert.notEqual(second.catalog?.oracleSources[fx.refs.office], oracle[fx.refs.office]);
+  assert.notEqual(second.catalog?.oracleSources[fx.refs.contractA], oracle[fx.refs.contractA]);
   assert.equal(second.catalog?.oracleSources[fx.refs.scope], oracle[fx.refs.scope]);
 });
 

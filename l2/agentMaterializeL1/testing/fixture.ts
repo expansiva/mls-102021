@@ -99,6 +99,8 @@ export interface M1FixtureModel {
   entities: Map<string, EntityInfo>;
   /** Route -> entity of its usecase. */
   routeEntity: Map<string, string>;
+  /** Route -> why it has no single entity (a v2 request whose usecases write different entities). */
+  routeGaps: Map<string, string>;
   selectors: Set<string>;
 }
 
@@ -123,11 +125,32 @@ export function fixtureModel(plan: M1FixturePlan, defs: ReadonlyMap<string, M1De
     entities.set(entityId, { entityId, key, fields, lifecycleField: start.field, initial: start.initial, ownFields: uniqueBy(ownFields, item => `${item.field}:${item.actorRef}`) });
   }
   const routeEntity = new Map<string, string>();
+  const routeGaps = new Map<string, string>();
   const selectors = new Set<string>();
   const usecases = new Map([...defs.values()].filter(item => item.artifactType === 'usecase').map(item => [item.artifactId, item]));
+  const hasSelector = (usecase: M1Definition): boolean => (Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [])
+    .some(use => use.role === 'selector' && use.source === 'input');
   for (const controller of defs.values()) {
     if (controller.artifactType !== 'httpController') continue;
     for (const handler of Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : []) {
+      if (text(handler.contractInterface)) {
+        // v2 (m1_40 r2b): the page request names the usecases; they must agree on one entity.
+        const route = text(handler.route);
+        const service = [...defs.values()].find(item => item.artifactType === 'requestService'
+          && item.moduleName === controller.moduleName && item.data.pageId === controller.data.pageId);
+        const request = (service && Array.isArray(service.data.requests) ? service.data.requests.filter(isRecord) : []).find(row => row.route === route);
+        const used = (request && Array.isArray(request.uses) ? request.uses : []).map(id => usecases.get(text(id)));
+        if (!route || used.length === 0 || used.some(item => !item)) continue;
+        const resolved = used as M1Definition[];
+        const ids = [...new Set(resolved.map(item => text(item.data.entityId)))];
+        if (ids.length !== 1 || !ids[0]) {
+          routeGaps.set(route, `FIXTURE_ROUTE_ENTITY_AMBIGUOUS: ${route} uses ${ids.join(',')}`);
+          continue;
+        }
+        routeEntity.set(route, ids[0]);
+        if (resolved.some(hasSelector)) selectors.add(route);
+        continue;
+      }
       const usecase = usecases.get(text(handler.usecaseId));
       if (!usecase || !text(handler.route)) continue;
       routeEntity.set(text(handler.route), text(usecase.data.entityId));
@@ -135,7 +158,7 @@ export function fixtureModel(plan: M1FixturePlan, defs: ReadonlyMap<string, M1De
       if (uses.some(use => use.role === 'selector' && use.source === 'input')) selectors.add(text(handler.route));
     }
   }
-  return { plan, entities, routeEntity, selectors };
+  return { plan, entities, routeEntity, routeGaps, selectors };
 }
 
 /** Actors of one execution: two of the same category with different rows, and one with no link. */
@@ -145,6 +168,8 @@ export function fixtureActors(runId: string, actorRef: string): { owner: string;
 
 /** Why a case cannot run in memory, or null. Derived from the plan and the defs, never from the case kind. */
 export function memoryGap(model: M1FixtureModel, obligation: M1Obligation): { gap: string; owner: string } | null {
+  const ambiguous = model.routeGaps.get(obligation.routine);
+  if (ambiguous) return { gap: ambiguous, owner: 'L1' };
   const entityId = model.routeEntity.get(obligation.routine) ?? '';
   if (!model.plan.datasets.some(item => item.entityId === entityId)) {
     // The route reads or writes data the runtime owns (MDM record or the person of an actor).

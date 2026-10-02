@@ -35,26 +35,47 @@ const byId = (caseId: string): M1Obligation => {
 void test('the oracle comes from the contract, the grants and the authority map, and every authenticated case stays pending', () => {
   const cases = DERIVED.catalog.scenarios.flatMap(item => item.cases);
   assert.equal(cases.every(item => item.actorId === '' && (item.runner === 'module' || item.caller?.authorities.length === 0)), true);
-  assert.equal(DERIVED.obligations.every(item => item.blocker === 'RUNTIME_IDENTITY_PENDING' && item.owner === 'runtime 102034' && item.expect.ruleId === null), true);
+  // Only the rollback case waits for Postgres; every other one for the runtime identity.
+  assert.equal(DERIVED.obligations.every(item => item.expect.ruleId === null && (item.kind === 'rollback'
+    ? item.blocker === 'POSTGRES_ONLY' && item.owner === 'runtime 102034 (DATABASE_URL_TEST)'
+    : item.blocker === 'RUNTIME_IDENTITY_PENDING' && item.owner === 'runtime 102034')), true);
   assert.equal(DERIVED.obligations.every(item => item.caller.authorities.length > 0), true);
   assert.equal(DERIVED.obligations.every(item => DERIVED.gaps.some(gap => gap.reason.includes(`${item.caseId} is declared, not executed`))), true);
   const kinds = new Map<string, number>();
   for (const item of DERIVED.obligations) kinds.set(item.kind, (kinds.get(item.kind) ?? 0) + 1);
-  assert.deepEqual(Object.fromEntries(kinds), { contract: 3, disclosure: 5, minimalInput: 4, noIdentity: 2, other: 1, own: 1 });
+  assert.deepEqual(Object.fromEntries(kinds), { contract: 3, disclosure: 5, minimalInput: 4, noIdentity: 2, own: 1, rollback: 1, shape: 2, success: 3 });
 
   const n = FX.n;
-  const deckDisclosure = byId(`deck.disclosure.qryList${n.Entity}`);
-  // The deck contract declares tideCheck, the owner grant does not disclose it; the related record is not granted.
-  assert.deepEqual(deckDisclosure.expect.forbiddenPaths, ['details.tideCheck.doneAt', `${n.related}.details.secret`, `${n.related}.id`].sort());
-  assert.equal(deckDisclosure.expect.allowedPaths.includes(`details.${n.note}`), true);
+  const rows = `${n.entity}Rows`;
+  const deckDisclosure = byId(`${n.pageB}.disclosure.${n.reqRoster}`);
+  // The deck request projects tideCheck, the owner grant does not disclose it; the related record is not granted.
+  assert.deepEqual(deckDisclosure.expect.forbiddenPaths, [`${rows}.details.tideCheck.doneAt`, `${rows}.${n.related}.details.secret`, `${rows}.${n.related}.id`].sort());
+  assert.equal(deckDisclosure.expect.allowedPaths.includes(`${rows}.details.${n.note}`), true);
   assert.equal(deckDisclosure.identity, 'owner');
   assert.deepEqual(deckDisclosure.caller.authorities, [`${n.mod}:${n.owner}`]);
-  assert.equal(deckDisclosure.sources.includes(FX.refs.deck), true);
+  assert.equal(deckDisclosure.sources.includes(FX.refs.contractB), true);
+  assert.equal(deckDisclosure.sources.includes(FX.refs.request(n.pageB)), true);
   assert.equal(deckDisclosure.sources.includes(FX.refs.scope), true);
-  assert.equal(byId(`deck.own.qryList${n.Entity}`).expect.isolatedActorField, n.ownerField);
-  assert.equal(byId('deck.other.cmdMarkSailed').identity, 'other');
-  assert.equal(byId(`office.minimal.qryList${n.Entity}`).identity, 'member');
-  assert.equal(DERIVED.obligations.some(item => item.caseId.startsWith('office.') && item.kind === 'own'), false);
+  assert.equal(byId(`${n.pageB}.own.${n.reqRoster}`).expect.isolatedActorField, n.ownerField);
+  assert.equal(byId(`${n.pageA}.minimal.${n.reqList}`).identity, 'member');
+  assert.equal(DERIVED.obligations.some(item => item.caseId.startsWith(`${n.pageA}.`) && item.kind === 'own'), false);
+
+  // qry: the exact output shape (keys, projected fields, paging keys of the list).
+  const shape = byId(`${n.pageA}.shape.${n.reqList}`);
+  assert.equal(shape.expect.ok && shape.expect.status === 200 && !shape.mutating, true);
+  assert.equal(shape.expect.allowedPaths.includes(rows) && shape.expect.allowedPaths.includes(`${rows}.dockAt`), true);
+  assert.deepEqual(['hasMoreRows', 'pageRows', 'pageSizeRows'].filter(key => shape.expect.allowedPaths.includes(key)), ['hasMoreRows', 'pageRows', 'pageSizeRows']);
+  // cmd: success writes; the second usecase failing proves all or nothing, in Postgres only.
+  const success = byId(`${n.pageA}.success.${n.reqDock}`);
+  assert.equal(success.mutating && success.expect.ok && success.expect.allowedPaths.includes(`${n.entity}.id`), true);
+  assert.deepEqual(success.input.required.includes(n.parentField), true);
+  const rollback = byId(`${n.pageA}.rollback.${n.reqDock}.create${n.Entity}`);
+  assert.equal(rollback.mutating && !rollback.expect.ok, true);
+  assert.equal(DERIVED.obligations.filter(item => item.kind === 'rollback').length, 1);
+  assert.deepEqual(DERIVED.gaps.filter(gap => gap.reason.startsWith('ROLLBACK_SINGLE_USE')).map(gap => gap.reason).sort(), [
+    `ROLLBACK_SINGLE_USE: ${FX.routes.amend} uses one usecase`, `ROLLBACK_SINGLE_USE: ${FX.routes.sail} uses one usecase`,
+  ].sort());
+  assert.equal(DERIVED.gaps.some(gap => /^(REQUEST_UNREAD|CONTRACT_UNREAD|CONTRACT_ROUTE_MISSING)/.test(gap.reason)), false);
 
   // A pending grant refuses; it never becomes a passing case.
   const pendingScope = structuredClone(FX.defs.find(([, ref]) => ref === FX.refs.scope)?.[2]);
@@ -65,7 +86,7 @@ void test('the oracle comes from the contract, the grants and the authority map,
     ...FX.controllers.map(([defPath, definition]) => ({ defPath, definition })),
   ];
   const pending = deriveCatalog(n.mod, units, FX.texts);
-  assert.equal(pending.obligations.some(item => item.caseId.startsWith('deck.')), false);
+  assert.equal(pending.obligations.some(item => item.caseId.startsWith(`${n.pageB}.`)), false);
   assert.equal(pending.gaps.some(gap => gap.origin.endsWith(`#${FX.routes.sail}`) && gap.reason.startsWith('grant is not resolved')), true);
 
   // An unmapped grant refuses as well (d1_36).
@@ -73,7 +94,7 @@ void test('the oracle comes from the contract, the grants and the authority map,
   assert.ok(map);
   map.data.entries = (map.data.entries as Array<{ grantId: string }>).filter(entry => entry.grantId !== `${n.owner}Deck`);
   const unmapped = deriveCatalog(n.mod, units.map(unit => unit.defPath === FX.refs.authority ? { ...unit, definition: map } : unit.defPath === FX.refs.scope ? { ...unit, definition: FX.defs.find(([, ref]) => ref === FX.refs.scope)![2] } : unit), FX.texts);
-  assert.equal(unmapped.obligations.some(item => item.caseId.startsWith('deck.')), false);
+  assert.equal(unmapped.obligations.some(item => item.caseId.startsWith(`${n.pageB}.`)), false);
   assert.equal(unmapped.gaps.some(gap => gap.reason.startsWith('AUTHORITY_UNMAPPED')), true);
 });
 
@@ -94,13 +115,13 @@ void test('renamed fixture derives the same cases and no id reaches the derivati
 void test('a changed contract invalidates only the cases that read it', async () => {
   const before = await obligationSourceHashes(DERIVED.obligations, FX.texts);
   assert.equal(Object.values(before).includes('absent'), false);
-  const texts = { ...FX.texts, [FX.refs.office]: `${FX.texts[FX.refs.office]}\n// edited\n` };
+  const texts = { ...FX.texts, [FX.refs.contractA]: `${FX.texts[FX.refs.contractA]}\n// edited\n` };
   const after = await obligationSourceHashes(DERIVED.obligations, texts);
   const stale = staleObligations(DERIVED.obligations, before, after);
-  const expected = DERIVED.obligations.filter(item => item.sources.includes(FX.refs.office)).map(item => item.caseId);
+  const expected = DERIVED.obligations.filter(item => item.sources.includes(FX.refs.contractA)).map(item => item.caseId);
   assert.deepEqual(stale, expected);
   assert.equal(stale.length > 0 && stale.length < DERIVED.obligations.length, true);
-  assert.equal(stale.some(item => item.startsWith('deck.')), false);
+  assert.equal(stale.some(item => item.startsWith(`${FX.n.pageB}.`)), false);
   const missing = { ...FX.texts };
   delete missing[FX.refs.scope];
   assert.equal(staleObligations(DERIVED.obligations, before, await obligationSourceHashes(DERIVED.obligations, missing)).length, DERIVED.obligations.length);

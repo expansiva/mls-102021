@@ -2,12 +2,14 @@
 
 /**
  * Neutral module for the memory tests of m1_27/m1_28: defs, contracts and the p1_12 testSupport.
+ * v2 since m1_40 r2: page requests (requestService), v2 controllers and the L2 contract v2.
  * Every id comes from `Names`, so a renamed copy must derive the same. Test support only.
  */
 
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { deriveCatalog, type DerivedCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 
 /**
  * `Parent` is a local entity the main one references (related data, created first); `Mdm` is an
@@ -16,27 +18,34 @@ import { deriveCatalog, type DerivedCatalog } from '/_102021_/l2/agentMaterializ
 export interface Names {
   project: string; mod: string; Entity: string; entity: string; owner: string; org: string; Anchor: string; ownerField: string; note: string; related: string;
   Parent: string; parent: string; parentField: string; Mdm: string; mdmField: string;
+  /** Pages and request ids: routes are `<mod>.<page>.<requestId>`, nothing in the name says qry/cmd. */
+  pageA: string; pageB: string; reqList: string; reqDock: string; reqAmend: string; reqRoster: string; reqSail: string;
 }
 export const BASE: Names = {
   project: '_102097_', mod: 'tideBoard', Entity: 'Berth', entity: 'berth', owner: 'pilot', org: 'harbor',
   Anchor: 'Pilot', ownerField: 'pilotId', note: 'pilotNote', related: 'berthShip',
   Parent: 'Ship', parent: 'ship', parentField: 'shipId', Mdm: 'Agency', mdmField: 'agencyId',
+  pageA: 'office', pageB: 'deck', reqList: 'tideList', reqDock: 'moorIt', reqAmend: 'amendIt', reqRoster: 'deckRoster', reqSail: 'sailIt',
 };
 export const RENAMED: Names = {
   project: '_102096_', mod: 'quayLine', Entity: 'Slip', entity: 'slip', owner: 'skipper', org: 'warden',
   Anchor: 'Skipper', ownerField: 'skipperId', note: 'skipperMemo', related: 'slipVessel',
   Parent: 'Hull', parent: 'hull', parentField: 'hullRef', Mdm: 'Broker', mdmField: 'brokerRef',
+  pageA: 'yard', pageB: 'helm', reqList: 'slipList', reqDock: 'tieUp', reqAmend: 'reviseIt', reqRoster: 'helmRoster', reqSail: 'castOff',
 };
 
 export interface Fixture {
   n: Names;
   refs: {
     entity: string; port: string; parentEntity: string; parentPort: string; scope: string; authority: string;
-    uc: (id: string) => string; ctrl: (page: string) => string; office: string; deck: string; ontology: string;
+    uc: (id: string) => string; ctrl: (page: string) => string; request: (page: string) => string;
+    /** L2 contract v2 of page A and page B (project-qualified). */
+    contractA: string; contractB: string; ontology: string;
   };
   /** `backend.json.testSupport[]` in the p1_12 shape, as the planner derives it for this module. */
   testSupport: unknown[];
-  routes: { create: string; update: string; officeList: string; deckList: string; sail: string };
+  /** `dock` is the command with two usecases (rollback case); `amend` and `sail` have one. */
+  routes: { list: string; dock: string; amend: string; roster: string; sail: string };
   defs: Array<[string, string, M1Definition]>;
   controllers: Array<[string, M1Definition]>;
   texts: Record<string, string>;
@@ -44,6 +53,7 @@ export interface Fixture {
 
 export function fixture(n: Names): Fixture {
   const L1 = `${n.project}/l1/${n.mod}`;
+  const contractPath = (page: string) => `l2/${n.mod}/web/contracts/${page}.defs.ts`;
   const refs = {
     entity: `${L1}/layer_3_domain/entities/${n.entity}.defs.ts`,
     port: `${L1}/layer_2_application/ports/${n.entity}Repository.defs.ts`,
@@ -53,17 +63,18 @@ export function fixture(n: Names): Fixture {
     authority: `${L1}/layer_1_external/auth/authorityMap.defs.ts`,
     uc: (id: string) => `${L1}/layer_2_application/usecases/${id}.defs.ts`,
     ctrl: (page: string) => `${L1}/layer_1_external/adapters/http/controllers/${page}.defs.ts`,
-    office: `${n.project}/l2/${n.mod}/web/contracts/office.defs.ts`,
-    deck: `${n.project}/l2/${n.mod}/web/contracts/deck.defs.ts`,
+    request: (page: string) => `${L1}/layer_2_application/requests/${page}.defs.ts`,
+    contractA: `${n.project}/${contractPath(n.pageA)}`,
+    contractB: `${n.project}/${contractPath(n.pageB)}`,
     ontology: `${n.project}/l4/${n.mod}/ontology/${n.Entity}.defs.ts`,
   };
   const E = n.Entity;
   const routes = {
-    create: `${n.mod}.office.cmdCreate${E}`,
-    update: `${n.mod}.office.cmdUpdate${E}`,
-    officeList: `${n.mod}.office.qryList${E}`,
-    deckList: `${n.mod}.deck.qryList${E}`,
-    sail: `${n.mod}.deck.cmdMarkSailed`,
+    list: `${n.mod}.${n.pageA}.${n.reqList}`,
+    dock: `${n.mod}.${n.pageA}.${n.reqDock}`,
+    amend: `${n.mod}.${n.pageA}.${n.reqAmend}`,
+    roster: `${n.mod}.${n.pageB}.${n.reqRoster}`,
+    sail: `${n.mod}.${n.pageB}.${n.reqSail}`,
   };
   const def = (artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition =>
     ({ schemaVersion: M1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: n.mod, status: 'pending', dependencies: [...dependencies].sort(), data } as M1Definition);
@@ -122,30 +133,30 @@ export function fixture(n: Names): Fixture {
     interfaceName: `${n.Parent}Repository`,
     methods: [{ name: 'create', params: [n.Parent], returns: n.Parent }, { name: 'list', params: [`${n.Parent}Filter`], returns: `${n.Parent}[]` }],
   });
-  const out = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage', 'details', n.related];
-  const usecase = (id: string, operation: string, rs: Array<[string, string, string]>, extra: Record<string, unknown> = {}): M1Definition =>
-    def('usecase', id, [refs.port, refs.entity, ...new Set(rs.map(item => item[2])), refs.ontology], {
+  // v2 usecases: no contractRefs and no routeProjections; the page request names them in `uses`.
+  const usecase = (id: string, entityId: string, portRef: string, entityRef: string, operation: string, extra: Record<string, unknown> = {}): M1Definition =>
+    def('usecase', id, [portRef, entityRef, refs.ontology], {
       usecaseId: id,
-      entityId: E,
+      entityId,
       operation,
-      ports: [`${E}Repository`],
-      functions: [{ functionName: id, input: [], output: [], contractRefs: rs.map(([route, symbol]) => ({ route, symbol })) }],
-      routeProjections: rs.map(([route, , contract]) => ({ route, contractPath: contract.replace(`${n.project}/`, ''), projection: 'declared', outputFields: out })),
+      ports: [`${entityId}Repository`],
+      functions: [{ functionName: id, input: [], output: [] }],
       portCalls: [operation],
       effects: [],
       uses: [{ path: 'id', role: operation === 'list' ? 'filter' : 'selector', source: 'input' }],
       rulesApplied: [],
       rules: [],
       rulePlan: [],
-      sequence: [{ kind: 'port', call: operation, port: `${E}Repository` }],
+      sequence: [{ kind: 'port', call: operation, port: `${entityId}Repository` }],
       transactional: false,
       transaction: { boundary: 'none' },
       ...extra,
     });
-  const create = usecase(`create${E}`, 'create', [[routes.create, `Create${E}Output`, refs.office]]);
-  const update = usecase(`update${E}`, 'update', [[routes.update, `Update${E}Output`, refs.office]]);
-  const list = usecase(`list${E}`, 'list', [[routes.officeList, `List${E}Output`, refs.office], [routes.deckList, `List${E}Output`, refs.deck]]);
-  const sail = usecase('markSailed', 'transition', [[routes.sail, 'MarkSailedOutput', refs.deck]], {
+  const create = usecase(`create${E}`, E, refs.port, refs.entity, 'create');
+  const createParent = usecase(`create${n.Parent}`, n.Parent, refs.parentPort, refs.parentEntity, 'create');
+  const update = usecase(`update${E}`, E, refs.port, refs.entity, 'update');
+  const list = usecase(`list${E}`, E, refs.port, refs.entity, 'list');
+  const sail = usecase('markSailed', E, refs.port, refs.entity, 'transition', {
     lifecycle: { transitionId: 'markSailed', payload: [`details.${n.note}`] },
   });
   const keep = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage'].map(field => `${E}.${field}`);
@@ -172,42 +183,88 @@ export function fixture(n: Names): Fixture {
     mapId: 'authorityMap',
     entries: [{ grantId: `${n.org}Office`, actorRef: n.org }, { grantId: `${n.owner}Deck`, actorRef: n.owner }],
   });
-  const office = def('httpController', 'office', [refs.authority, refs.scope, refs.uc(create.artifactId), refs.uc(update.artifactId), refs.uc(list.artifactId)], {
-    pageId: 'office',
-    handlers: [
-      { route: routes.create, kind: 'command', usecaseId: create.artifactId, grantIds: [`${n.org}Office`] },
-      { route: routes.update, kind: 'command', usecaseId: update.artifactId, grantIds: [`${n.org}Office`] },
-      { route: routes.officeList, kind: 'query', usecaseId: list.artifactId, grantIds: [`${n.org}Office`] },
+  // Page requests (requestService), in the shape of the bench.
+  const rowFields = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage', 'details.tideCheck.doneAt', `${n.related}.id`, `${n.related}.details.secret`];
+  const deckFields = [...rowFields, `details.${n.note}`];
+  const rowsKey = `${n.entity}Rows`;
+  const one = (fields: string[]) => [{ key: n.entity, entity: E, fields }];
+  const pageParams = (list: string) => [{ name: 'page', target: rowsKey, pages: list }, { name: 'pageSize', target: rowsKey, pages: list }];
+  const requestA = def('requestService', n.pageA, [refs.uc(create.artifactId), refs.uc(createParent.artifactId), refs.uc(update.artifactId), refs.uc(list.artifactId)], {
+    pageId: n.pageA,
+    requests: [
+      { route: routes.list, kind: 'qry', uses: [list.artifactId], transaction: 'none', outputs: [{ key: rowsKey, entity: E, fields: rowFields }], params: pageParams(`${n.pageA}Rows`) },
+      // Two usecases: the parent row, then the entity row. The second failing must leave nothing written.
+      { route: routes.dock, kind: 'cmd', uses: [createParent.artifactId, create.artifactId], transaction: 'single', outputs: one(rowFields), params: [] },
+      { route: routes.amend, kind: 'cmd', uses: [update.artifactId], transaction: 'single', outputs: one(rowFields), params: [] },
     ],
   });
-  const deck = def('httpController', 'deck', [refs.authority, refs.scope, refs.uc('markSailed'), refs.uc(list.artifactId)], {
-    pageId: 'deck',
-    handlers: [
-      { route: routes.sail, kind: 'command', usecaseId: 'markSailed', grantIds: [`${n.owner}Deck`] },
-      { route: routes.deckList, kind: 'query', usecaseId: list.artifactId, grantIds: [`${n.owner}Deck`] },
+  const requestB = def('requestService', n.pageB, [refs.uc(sail.artifactId), refs.uc(list.artifactId)], {
+    pageId: n.pageB,
+    requests: [
+      { route: routes.roster, kind: 'qry', uses: [list.artifactId], transaction: 'none', outputs: [{ key: rowsKey, entity: E, fields: deckFields }], params: pageParams(`${n.pageB}Rows`) },
+      { route: routes.sail, kind: 'cmd', uses: [sail.artifactId], transaction: 'single', outputs: one(deckFields), params: [] },
     ],
   });
-  const related = `  "${n.related}"?: {\n    "id": string;\n    "details"?: {\n      "secret"?: string;\n    };\n  };`;
-  const recordOut = (details: string) => `{\n  "id": string;\n  "version": number;\n  "${n.parentField}": string;\n  "${n.ownerField}": string;\n  "dockAt": string;\n  "stage": "moored" | "cancelled" | "sailed";\n  "details": {\n${details}\n  };\n${related}\n}`;
-  const listInput = `export interface List${E}Input {\n  "id"?: string;\n  "${n.parentField}"?: string;\n  "${n.ownerField}"?: string;\n  "stage"?: "moored" | "cancelled" | "sailed";\n  "page"?: number;\n}`;
-  const tide = '    "tideCheck"?: {\n      "doneAt": string;\n    };';
-  const officeText = [
-    `export interface Create${E}Input {\n  "${n.parentField}": string;\n  "${n.mdmField}": string;\n  "${n.ownerField}": string;\n  "dockAt": string;\n  "details": {\n    "tideCheck"?: {\n      "doneAt": string;\n    };\n  };\n}`,
-    `export interface Create${E}Output ${recordOut(tide)}`,
-    `export interface Update${E}Input {\n  "id": string;\n  "${n.parentField}"?: string;\n  "dockAt"?: string;\n  "details"?: {\n    "tideCheck"?: {\n      "doneAt"?: string;\n    };\n  };\n}`,
-    `export interface Update${E}Output ${recordOut(tide)}`,
-    listInput,
-    `export interface List${E}Item ${recordOut(tide)}`,
-    `export type List${E}Output = List${E}Item[];`,
-  ].join('\n\n');
-  const deckDetails = `${tide}\n    "${n.note}"?: string;`;
-  const deckText = [
-    `export interface MarkSailedInput {\n  "id": string;\n  "details": {\n    "${n.note}": string;\n  };\n}`,
-    `export interface MarkSailedOutput ${recordOut(deckDetails)}`,
-    listInput,
-    `export interface List${E}Item ${recordOut(deckDetails)}`,
-    `export type List${E}Output = List${E}Item[];`,
-  ].join('\n\n');
+  const pascal = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+  const handler = (route: string, kind: string, page: string, grant: string) => ({
+    route, kind, grantIds: [grant], serviceFunction: route, contractPath: contractPath(page), contractInterface: `${pascal(page)}Contracts`,
+  });
+  const office = def('httpController', n.pageA, [refs.authority, refs.scope, refs.request(n.pageA)], {
+    pageId: n.pageA,
+    handlers: [
+      handler(routes.dock, 'command', n.pageA, `${n.org}Office`),
+      handler(routes.amend, 'command', n.pageA, `${n.org}Office`),
+      handler(routes.list, 'query', n.pageA, `${n.org}Office`),
+    ],
+  });
+  const deck = def('httpController', n.pageB, [refs.authority, refs.scope, refs.request(n.pageB)], {
+    pageId: n.pageB,
+    handlers: [
+      handler(routes.sail, 'command', n.pageB, `${n.owner}Deck`),
+      handler(routes.roster, 'query', n.pageB, `${n.owner}Deck`),
+    ],
+  });
+  // L2 contracts v2, rendered by the promoted helper.
+  const related = `  ${n.related}?: {\n    id: string;\n    details?: {\n      secret?: string;\n    };\n  };`;
+  const rowBody = (details: string) => `  id: string;\n  version: number;\n  ${n.parentField}: string;\n  ${n.ownerField}: string;\n  dockAt: string;\n  stage: 'moored' | 'cancelled' | 'sailed';\n  details: {\n${details}\n  };\n${related}`;
+  const tide = '    tideCheck?: {\n      doneAt: string;\n    };';
+  const listInput = `{ id?: string; ${n.parentField}?: string; ${n.ownerField}?: string; stage?: 'moored' | 'cancelled' | 'sailed'; page?: number; pageSize?: number }`;
+  const paging = { page: 'pageRows', pageSize: 'pageSizeRows', hasMore: 'hasMoreRows' };
+  const listOutput = (row: string) => `{ ${rowsKey}: ${row}[]; pageRows: number; pageSizeRows: number; hasMoreRows: boolean }`;
+  const listMeta = (page: string) => ({ output: { [rowsKey]: { entity: E, many: true } }, lists: { [`${page}Rows`]: { key: rowsKey, ...paging } }, params: {} });
+  const oneMeta = { output: { [n.entity]: { entity: E, many: false } }, lists: {}, params: {} };
+  const access = (actor: string, grant: string) => ({ actors: [actor], grants: [grant], scope: 'organization' });
+  const project = Number(n.project.replace(/_/g, ''));
+  const rowA = `${E}${pascal(n.pageA)}Row`;
+  const rowB = `${E}${pascal(n.pageB)}Row`;
+  const contractA = renderD2ContractV2({ project, module: n.mod, pageId: n.pageA }, {
+    module: n.mod, pageId: n.pageA,
+    projections: [{ name: rowA, entityId: E, requestIds: [], body: rowBody(tide) }],
+    routes: [
+      { route: routes.list, kind: 'qry', input: listInput, output: listOutput(rowA), meta: listMeta(n.pageA), rules: [], access: access(n.org, `${n.org}Office`) },
+      {
+        route: routes.dock, kind: 'cmd', writes: `${E}.create`,
+        input: `{ ${n.parentField}: string; ${n.mdmField}: string; ${n.ownerField}: string; dockAt: string; details: { tideCheck?: { doneAt: string } } }`,
+        output: `{ ${n.entity}: ${rowA} }`, meta: oneMeta, rules: [], access: access(n.org, `${n.org}Office`),
+      },
+      {
+        route: routes.amend, kind: 'cmd', writes: `${E}.update`,
+        input: `{ id: string; ${n.parentField}?: string; dockAt?: string; details?: { tideCheck?: { doneAt?: string } } }`,
+        output: `{ ${n.entity}: ${rowA} }`, meta: oneMeta, rules: [], access: access(n.org, `${n.org}Office`),
+      },
+    ],
+  });
+  const contractB = renderD2ContractV2({ project, module: n.mod, pageId: n.pageB }, {
+    module: n.mod, pageId: n.pageB,
+    projections: [{ name: rowB, entityId: E, requestIds: [], body: rowBody(`${tide}\n    ${n.note}?: string;`) }],
+    routes: [
+      { route: routes.roster, kind: 'qry', input: listInput, output: listOutput(rowB), meta: listMeta(n.pageB), rules: [], access: access(n.owner, `${n.owner}Deck`) },
+      {
+        route: routes.sail, kind: 'cmd', writes: `${E}.markSailed`, input: `{ id: string; details: { ${n.note}: string } }`,
+        output: `{ ${n.entity}: ${rowB} }`, meta: oneMeta, rules: [], access: access(n.owner, `${n.owner}Deck`),
+      },
+    ],
+  });
   const ontology = {
     schemaVersion: '2026-09-17-ns5-ontology-v3.1', moduleName: n.mod, entityId: E, kind: 'entity',
     record: { fields: { id: { type: 'uuid', required: true, derived: true }, stage: { type: 'enum', required: true } } },
@@ -223,14 +280,17 @@ export function fixture(n: Names): Fixture {
     ['implement.accessScope', refs.scope, scope],
     ['implement.authorityMap', refs.authority, authority],
     ['implement.usecase', refs.uc(create.artifactId), create],
+    ['implement.usecase', refs.uc(createParent.artifactId), createParent],
     ['implement.usecase', refs.uc(update.artifactId), update],
     ['implement.usecase', refs.uc(list.artifactId), list],
-    ['implement.usecase', refs.uc('markSailed'), sail],
+    ['implement.usecase', refs.uc(sail.artifactId), sail],
+    ['implement.requestService', refs.request(n.pageA), requestA],
+    ['implement.requestService', refs.request(n.pageB), requestB],
   ];
-  const controllers: Array<[string, M1Definition]> = [[refs.ctrl('office'), office], [refs.ctrl('deck'), deck]];
+  const controllers: Array<[string, M1Definition]> = [[refs.ctrl(n.pageA), office], [refs.ctrl(n.pageB), deck]];
   const texts: Record<string, string> = {
-    [refs.office]: officeText,
-    [refs.deck]: deckText,
+    [refs.contractA]: contractA,
+    [refs.contractB]: contractB,
     [refs.ontology]: `export const ${n.mod}Entity${E} = ${JSON.stringify(ontology, null, 2)} as const;\n`,
   };
   for (const [, ref, definition] of defs) texts[ref] = asSource(definition);

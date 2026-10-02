@@ -50,9 +50,20 @@ void test('the run report names the memory status and the runtime owner of every
   const withPlan = deriveCatalog(fx.n.mod, [...units, { defPath: seedsPath, definition: seeds }], fx.texts);
   const reasons = withPlan.gaps.filter(gap => gap.reason.includes(' is declared, not executed')).map(gap => gap.reason);
   assert.equal(reasons.length, withPlan.obligations.length);
-  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_MEMORY_AT_IMPLEMENT (L1): ')).length, 13);
-  assert.equal(reasons.filter(reason => reason.startsWith(`mdm:${fx.n.Mdm}: `) && reason.includes(`(${M1_RUNTIME_OWNER})`)).length, 3);
-  assert.equal(reasons.every(reason => reason.includes(`runtime proof RUNTIME_IDENTITY_PENDING (${M1_RUNTIME_OWNER}): identity:`)), true);
+  // v2 (m1_40 r2b): the route entity comes from the page request. 13 -> 16: `other` is gone (no selector in v2),
+  // shape (2 qry) and success (2 single-entity cmd) are new. `dock` uses the parent and the entity usecases, so its
+  // 5 cases are ambiguous, never one entity picked by position; those were the 3 `mdm:` cases (its body needs the MDM ref).
+  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_MEMORY_AT_IMPLEMENT (L1): ')).length, 16);
+  const ambiguous = reasons.filter(reason => reason.startsWith(`FIXTURE_ROUTE_ENTITY_AMBIGUOUS: ${fx.routes.dock} uses ${fx.n.Parent},${fx.n.Entity} (L1): `));
+  assert.equal(ambiguous.length, 5);
+  assert.equal(ambiguous.length, withPlan.obligations.filter(item => item.routine === fx.routes.dock).length);
+  assert.equal(reasons.filter(reason => reason.startsWith(`mdm:${fx.n.Mdm}: `) && reason.includes(`(${M1_RUNTIME_OWNER})`)).length, 0);
+  // The rollback case waits for Postgres (m1_40 r1); every other one for the runtime identity.
+  const rollbackIds = withPlan.obligations.filter(item => item.kind === 'rollback').map(item => item.caseId);
+  assert.equal(rollbackIds.length, 1);
+  assert.equal(reasons.every(reason => rollbackIds.some(id => reason.includes(`${id} is declared`))
+    ? reason.includes(`runtime proof POSTGRES_ONLY (${M1_RUNTIME_OWNER} (DATABASE_URL_TEST)): identity:`)
+    : reason.includes(`runtime proof RUNTIME_IDENTITY_PENDING (${M1_RUNTIME_OWNER}): identity:`)), true);
   // The gaps are not catalog bytes: the catalog stays the same.
   assert.equal(JSON.stringify(withPlan.catalog.scenarios.filter(item => item.artifactType !== 'persistenceSeeds')), JSON.stringify(without.catalog.scenarios));
 });
