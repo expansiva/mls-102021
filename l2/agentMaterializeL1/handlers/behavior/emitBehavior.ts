@@ -124,8 +124,7 @@ export function behaviorNeedsLlm(definition: M1Definition): boolean {
   const operation = text(definition.data.operation);
   if (operation === 'transition') {
     if (stringList(definition.data.ports).length !== 1) return true;
-    const lifecycle = definition.data.lifecycle;
-    return !isRecord(lifecycle) || !text(lifecycle.transitionId);
+    return !text(definition.data.transitionRef);
   }
   if (!DERIVED_OPERATIONS.has(operation)) return true;
   if (stringList(definition.data.ports).length !== 1) return true;
@@ -1201,7 +1200,7 @@ async function planTransition(
   moduleDefinitions: readonly unknown[],
 ): Promise<TransitionPlan | EmitFailure> {
   const lifecycle = definition.data.lifecycle;
-  const transitionId = isRecord(lifecycle) ? text(lifecycle.transitionId) : '';
+  const transitionId = text(definition.data.transitionRef);
   if (!transitionId || !isIdent(transitionId)) {
     return { code: 'TRANSITION_UNDECLARED', detail: `${definition.artifactId} has no transition id.` };
   }

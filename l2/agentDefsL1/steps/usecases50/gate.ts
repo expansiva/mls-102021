@@ -144,12 +144,13 @@ function planUsecase(
 
   const ontologyPath = `l4/${request.moduleName}/ontology/${entity.entityId}.defs.ts`;
   const integrationPath = `l4/${request.moduleName}/integration.defs.ts`;
+  const transitionRef = transitionRefOf(usecase);
   const lifecycle = usecase.operation === 'transition'
     ? {
-      transitionId: usecase.usecaseId,
+      transitionId: transitionRef,
       payload: sourcePayload,
       sourcePath: ontologyPath,
-      symbol: usecase.usecaseId,
+      symbol: transitionRef,
     }
     : undefined;
   const data = {
@@ -182,6 +183,7 @@ function planUsecase(
     })),
     rulePlan: decided.plan,
     transaction: { boundary: boundary === 'local' ? 'local' as const : 'none' as const },
+    ...(transitionRef ? { transitionRef } : {}),
     ...(lifecycle ? { lifecycle } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
   };

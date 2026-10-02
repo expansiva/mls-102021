@@ -784,10 +784,14 @@ export function usecaseIssues(data: unknown): string[] {
   ruleRefIssues(data.rules, issues);
   transactionIssues(data, issues);
   if (operation === 'transition') {
+    if (typeof data.transitionRef !== 'string' || !data.transitionRef.trim()) issues.push('Missing field data.transitionRef.');
     if (!isRecord(data.lifecycle)) issues.push('Missing field data.lifecycle.');
     else lifecycleRefIssues(data.lifecycle, issues);
   } else if (data.lifecycle !== undefined) {
     issues.push('data.lifecycle is only valid on a transition.');
+  }
+  if (operation !== 'transition' && data.transitionRef !== undefined) {
+    issues.push('data.transitionRef is only valid on a transition.');
   }
   if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
   issues.push(...projectionIssues(data));

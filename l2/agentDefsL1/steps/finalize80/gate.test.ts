@@ -206,6 +206,7 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
         usecaseId: 'registrarAtendimento',
         entityId: 'Consulta',
         operation: 'transition',
+        transitionRef: 'registrarAtendimento',
         ports: ['ConsultaRepository'],
         rulesApplied: ['noteRequired'],
         rulePlan: rulePlanForUsecase({

@@ -162,6 +162,7 @@ export function fixture(n: Names): Fixture {
   const update = usecase(`update${E}`, E, refs.port, refs.entity, 'update');
   const list = usecase(`list${E}`, E, refs.port, refs.entity, 'list');
   const sail = usecase('markSailed', E, refs.port, refs.entity, 'transition', {
+    transitionRef: 'markSailed',
     lifecycle: { transitionId: 'markSailed', payload: [`details.${n.note}`] },
   });
   const keep = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage'].map(field => `${E}.${field}`);

@@ -557,6 +557,7 @@ export const D1_FIELD_READERS = {
   'usecase.usecaseId': 'usecaseIssues',
   'usecase.entityId': 'usecaseIssues',
   'usecase.operation': 'usecaseIssues',
+  'usecase.transitionRef': 'planTransition',
   'usecase.ports': 'usecaseIssues',
   'usecase.rulesApplied': 'usecaseIssues',
   'usecase.rulePlan': 'readUsecaseFidelity',

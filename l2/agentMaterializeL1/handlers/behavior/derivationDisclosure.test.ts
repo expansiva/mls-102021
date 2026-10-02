@@ -116,6 +116,7 @@ const updateVisit = usecase('updateVisit', 'update', pick('id', 'clientId', 'slo
 const listVisit = usecase('listVisit', 'list', [...pick('id', 'clientId', 'agentId', 'phase'), { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' }],
   [{ name: 'items', type: 'Visit' }, { name: 'hasMore', type: 'boolean' }]);
 const markServed = usecase('markServed', 'transition', pick('id', 'details', 'details.visitNote'), ROW, {
+  transitionRef: 'markServed',
   lifecycle: { transitionId: 'markServed', payload: ['details.visitNote'] },
 });
 

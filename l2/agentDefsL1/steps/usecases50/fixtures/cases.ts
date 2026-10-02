@@ -188,7 +188,7 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
   if (usecase.operation === 'transition') {
     const transition = entity?.transitions.find(item => item.transitionId === transitionRefOf(usecase));
     for (const ruleId of transition?.ruleRefs || []) steps.push({ kind: 'rule', ruleId });
-    steps.push({ kind: 'transition', transitionId: usecase.usecaseId, payload: [] });
+    steps.push({ kind: 'transition', transitionId: transitionRefOf(usecase), payload: [] });
     for (const event of request.outbound) {
       if (event.on === `${usecase.entity}.${usecase.usecaseId}`) steps.push({ kind: 'effect', eventId: event.eventId });
     }

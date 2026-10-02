@@ -189,12 +189,14 @@ function build(n: Names, options: BuildOptions = {}): Module {
   });
   const confirm = usecase(ids.confirm, 'transition', pick('id'), {
     portCalls: ['transition'],
+    transitionRef: 'markConfirmed',
     lifecycle: { transitionId: 'markConfirmed', payload: [] },
     rulePlan: [transitionRule('markConfirmed', n.flowRule, ids.confirm)],
   });
   const integration = `${n.project}/l4/${n.mod}/integration.defs.ts`;
   const serve = usecase(ids.serve, 'transition', pick('id', 'details', `details.${n.note}`), {
     portCalls: ['transition'],
+    transitionRef: 'markServed',
     lifecycle: { transitionId: 'markServed', payload: [`details.${n.note}`] },
     effects: [{ eventId: `${n.entity}Served`, path: `l4/${n.mod}/integration.defs.ts`, symbol: `${n.entity}Served` }],
     rulePlan: [

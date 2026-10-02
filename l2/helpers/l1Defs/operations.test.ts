@@ -47,3 +47,24 @@ test('no agent source lists create and list except l1Defs/operations.ts', () => 
   }
   assert.deepEqual(violations, []);
 });
+
+/** Equality of a usecase name with a transition, either side. Co-occurrence in a message is not a comparison. */
+const COMPARE = String.raw`(?:===|!==|==|!=)`;
+const NAME = String.raw`(?:usecaseId|identity)`;
+const TRANSITION = String.raw`(?:transitionId|transitionRef)`;
+const LEFT = new RegExp(String.raw`\b${NAME}\b[^;\n]{0,80}${COMPARE}[^;\n]{0,80}\b${TRANSITION}\b`);
+const RIGHT = new RegExp(String.raw`\b${TRANSITION}\b[^;\n]{0,80}${COMPARE}[^;\n]{0,80}\b${NAME}\b`);
+
+test('no agent source compares a usecase id with a transition id', () => {
+  const violations: string[] = [];
+  for (const agent of AGENTS) {
+    const files: string[] = [];
+    walk(join(L2, agent), files);
+    for (const file of files) {
+      const rel = relative(L2, file).replace(/\\/g, '/');
+      const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+      if (LEFT.test(source) || RIGHT.test(source)) violations.push(rel);
+    }
+  }
+  assert.deepEqual(violations, []);
+});

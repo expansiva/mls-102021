@@ -186,6 +186,7 @@
         "uses": { "type": "array", "items": { "$ref": "#/$defs/fieldUse" } },
         "rules": { "type": "array", "items": { "$ref": "#/$defs/ruleRef" } },
         "transaction": { "$ref": "#/$defs/transactionBoundary" },
+        "transitionRef": { "type": "string", "minLength": 1 },
         "lifecycle": { "$ref": "#/$defs/lifecycleRef" },
         "mdm": { "$ref": "#/$defs/mdmBinding" }
       }

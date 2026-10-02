@@ -129,8 +129,9 @@ export function readUsecaseFidelity(
   }
 
   const fields = ontology ? recordFields(ontology) : [];
+  const transitionRef = typeof data.transitionRef === 'string' ? data.transitionRef : '';
   const transition = ontology
-    ? ontologyTransitions(ontology).find(entry => entry.transitionId === usecaseId) || null
+    ? ontologyTransitions(ontology).find(entry => entry.transitionId === transitionRef) || null
     : null;
   const lifecycle = readLifecycle(data);
   if (operation === 'transition') {
@@ -213,7 +214,7 @@ export function readUsecaseFidelity(
       entityId,
       usecaseId,
       operation,
-      transitionRef: operation === 'transition' ? readLifecycle(data)?.transitionId || '' : '',
+      transitionRef: operation === 'transition' ? transitionRef : '',
       files,
       entity: {
         rules: [],
