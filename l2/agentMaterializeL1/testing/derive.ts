@@ -279,7 +279,6 @@ function routeCases(
   const routes = handlers
     .map(item => ({
       route: typeof item.route === 'string' ? item.route : '',
-      usecaseId: typeof item.usecaseId === 'string' ? item.usecaseId : '',
       kind: typeof item.kind === 'string' ? item.kind : '',
       contractPath: typeof item.contractPath === 'string' ? item.contractPath : '',
       contractInterface: typeof item.contractInterface === 'string' ? item.contractInterface : '',

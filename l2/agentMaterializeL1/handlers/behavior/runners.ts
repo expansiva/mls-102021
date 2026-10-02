@@ -11,6 +11,7 @@ import type { HandlerCall, HandlerOutcome, MaterializeHandlerRunner } from '/_10
 import { catalogForStage, parseCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import { behaviorNeedsLlm, caseBlock, emitBehavior, usecaseRoutes } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { DEF_V1_UNSUPPORTED, defV1Detail, isDefV1 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 export const behaviorRunners: Readonly<Record<string, MaterializeHandlerRunner>> = {
   'implement.domainEntity': call => runBehavior(call),
@@ -28,6 +29,7 @@ export function behaviorHandlerIds(): string[] {
 export async function runBehavior(call: HandlerCall): Promise<HandlerOutcome> {
   const parsed = readDefinition(call.definition);
   if ('issues' in parsed) return failed('DEFINITION', parsed.issues.join(' '));
+  if (isDefV1(parsed.data)) return failed(DEF_V1_UNSUPPORTED, defV1Detail(parsed.artifactId));
   const output = outputPathFromDefPath(call.unit.defPath);
   if (!output) return failed('OUTPUT_PATH', `${call.unit.defPath} has no output file.`);
   if (parsed.artifactType === 'usecase' && behaviorNeedsLlm(parsed)) {

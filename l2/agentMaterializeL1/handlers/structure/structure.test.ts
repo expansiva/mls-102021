@@ -96,35 +96,6 @@ void test('create and list compile, and the usecase does not pretend to succeed'
   assert.equal(problems, '', problems);
 });
 
-// The whole v2 module compiling is proved by emittedTypecheck.test.ts on the same seed.
-void test('the remaining structure files compile after the first pair', { skip: 'v1 path removed by m1_41 a/c' }, async () => {
-  const emitted = await emitAll([...FIXTURES.keys()].map(path => FIXTURES.get(path)!.definition.artifactId));
-  const failed = emitted.filter(item => item.failure);
-  assert.deepEqual(failed.map(item => `${item.artifactId}: ${item.failure?.code} ${item.failure?.detail}`), []);
-  const problems = compile(emitted);
-  assert.equal(problems, '', problems);
-  const controller = sourceOf(emitted, 'consultas_recepcionista');
-  const start = controller.indexOf('async function handleCmdCreateConsulta');
-  const handler = controller.slice(start, controller.indexOf('async function handle', start + 20));
-  assert.ok(handler.indexOf('authorize(') < handler.indexOf('validateInput('));
-  assert.ok(handler.indexOf('validateInput(') < handler.indexOf('await createConsulta('));
-  assert.match(handler, /if \(denied\) throw denied;/);
-  assert.match(handler, /if \(invalid\) throw invalid;/);
-  assert.match(handler, /validateInput\(input\.request\.params, \[.*\], \[.*\]\)/);
-  assert.equal(handler.includes('return fail('), false);
-  assert.equal(handler.includes('catch ('), false);
-  const access = sourceOf(emitted, 'accessScope');
-  assert.match(access, /profissionalAgendaDiaria/);
-  assert.match(access, /ACCESS_ANCHOR/);
-  const professional = sourceOf(emitted, 'consultas_profissional');
-  assert.equal(professional.includes("kind !== 'command'"), false);
-  assert.match(professional, /if \(resolved\.pending\) return new AppError\(resolved\.pending/);
-  const commandStart = professional.indexOf('async function handleCmdRegistrarAtendimento');
-  const commandHandler = professional.slice(commandStart, professional.indexOf('\nasync function ', commandStart + 10));
-  assert.match(commandHandler, /authorize\(input\.request, \['profissionalAgendaDiaria'\]\)/);
-  assert.equal(commandHandler.includes("'command'"), false);
-});
-
 void test('verifyBatch accepts the structure checkpoint and rejects a different failure', async () => {
   // Every usecase and page controller of the seed: the batch is verified against all of their catalog cases.
   const wanted = [...FIXTURES.values()].map(item => item.definition)

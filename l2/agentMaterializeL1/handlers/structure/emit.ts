@@ -23,11 +23,13 @@ import {
   SCOPE_UNBOUND,
   SESSION_UNVERIFIED,
   VALIDATION_ERROR,
+  DEF_V1_UNSUPPORTED,
+  defV1Detail,
   type StructureGrant,
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v12';
+export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v13';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -193,47 +195,8 @@ export async function emitUsecase(definition: M1Definition, output: string, read
   const fn = readFunction(definition);
   const [fnName] = emittedValueExports(definition);
   if (!fn || !fnName) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function.` };
-  // A v2 usecase has no contract refs. Its signature is the domain and application fields on the def.
-  if (fn.contractRefs.length === 0) return emitDomainUsecase(definition, output, read, fn, fnName);
-  const contracts = await resolveContracts(definition, fn, read);
-  if ('code' in contracts) return contracts;
-  const declaredPorts = stringList(definition.data.ports);
-  const ports = portBindings(definition);
-  if (declaredPorts.length > 0 && ports.length === 0) {
-    return { code: 'PORT_UNBOUND', detail: `${definition.artifactId} names a port that is not a dependency.` };
-  }
-  const portImport = ports.length === 0
-    ? ''
-    : `import type { ${ports.map(item => item.interfaceName).join(', ')} } from '${ports[0].specifier}';`;
-  if (ports.length > 1 && new Set(ports.map(item => item.specifier)).size > 1) {
-    return { code: 'PORT_UNBOUND', detail: `${definition.artifactId} ports are not in one module.` };
-  }
-  const portArg = ports.length === 0
-    ? ''
-    : `, ports: { ${ports.map(item => `${item.binding}: ${item.interfaceName}`).join('; ')} }`;
-  const voidPorts = ports.length === 0 ? '' : '  void ports;\n';
-  const aliases = contracts.map((contract, index) => `import type { ${contract.inputType} as ${contract.inputType}_${index}, ${contract.outputType} as ${contract.outputType}_${index} } from '${contract.specifier}';`);
-  const inputUnion = contracts.map((contract, index) => `${contract.inputType}_${index}`).join(' | ');
-  const outputUnion = contracts.map((contract, index) => `${contract.outputType}_${index}`).join(' | ');
-  return {
-    runsStub: true,
-    imports: [PLATFORM_CONTRACTS, ...contracts.map(item => item.specifier), ...ports.map(item => item.specifier)],
-    source: [
-      header(output),
-      `import { AppError } from '${PLATFORM_CONTRACTS}';`,
-      `import type { RequestContext } from '${PLATFORM_CONTRACTS}';`,
-      ...aliases,
-      portImport,
-      '',
-      `export async function ${fnName}(input: ${inputUnion}, ctx: RequestContext${portArg}): Promise<${outputUnion}> {`,
-      '  void input;',
-      '  void ctx;',
-      voidPorts.trimEnd(),
-      `  throw new AppError('${M1_STUB_ERROR}', '${fnName} is not implemented.', ${M1_STUB_STATUS});`,
-      '}',
-      '',
-    ].filter(line => line !== '').join('\n'),
-  };
+  // The signature is the domain and application fields on the def.
+  return emitDomainUsecase(definition, output, read, fn, fnName);
 }
 
 /** Application interfaces over the def's fields. The entity type is imported; nothing from l2 is. */
@@ -321,111 +284,17 @@ export async function emitController(
   if (scopeText === null) return { code: 'GRANT_UNREAD', detail: `${scopeDep} could not be read.` };
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers.filter(isRecord) : [];
   if (handlers.length === 0) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} declares no route.` };
-  if (handlers.some(handler => typeof handler.serviceFunction === 'string')) {
-    return emitAdapter(definition, output, read, handlers, scopeDep);
+  // A handler without a service function is the removed v1 route (usecaseId); it is refused, never emitted.
+  if (!handlers.every(handler => typeof handler.serviceFunction === 'string')) {
+    return { code: DEF_V1_UNSUPPORTED, detail: defV1Detail(definition.artifactId) };
   }
-  // A route with grants takes its actor from the authority map. Without the map it is not emitted.
-  const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
-  const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
-  if (needsAuthority && !authorityDep) {
-    return { code: AUTHORITY_UNREAD, detail: `${definition.artifactId} has grants and no authority map dependency.` };
-  }
-  if (authorityDep && await read(authorityDep) === null) {
-    return { code: AUTHORITY_UNREAD, detail: `${authorityDep} could not be read.` };
-  }
-  const registered = registeredPortNames(moduleDefinitions);
-  const scopeGrants = scopeGrantRows(scopeText);
-  const routes: ResolvedRoute[] = [];
-  for (const handler of handlers) {
-    const resolved = await resolveRoute(definition, handler, read, registered, scopeGrants);
-    if ('code' in resolved) return resolved;
-    routes.push(resolved);
-  }
-  const usecaseImports = unique(routes.map(route => `import { ${route.usecaseId} } from '${route.usecaseSpecifier}';`));
-  const typeImports = unique(routes.map(route => `import type { ${route.inputType} } from '${route.inputSpecifier}';`));
-  const ports = routes.flatMap(route => route.ports);
-  const portImports = unique(ports.filter(port => !port.registered).map(port => `import { ${port.pending} } from '${port.specifier}';`));
-  const registeredTypes = unique(ports.filter(port => port.registered).map(port => `import type { ${port.interfaceName} } from '${port.specifier}';`));
-  const registryImport = ports.some(port => port.registered)
-    ? [`import { resolveRepository } from '${REPOSITORY_REGISTRY}';`]
-    : [];
-  const functions = routes.map(renderHandler);
-  const authorityImport = authorityDep
-    ? [`import { actorRefFor } from '${importSpecifier(authorityDep, 'output')}';`]
-    : [];
-  const imports = [
-    PLATFORM_CONTRACTS,
-    importSpecifier(scopeDep, 'output'),
-    ...(authorityDep ? [importSpecifier(authorityDep, 'output')] : []),
-    ...routes.map(route => route.usecaseSpecifier),
-    ...routes.map(route => route.inputSpecifier),
-    ...routes.flatMap(route => route.ports.map(port => port.specifier)),
-    ...(ports.some(port => port.registered) ? [REPOSITORY_REGISTRY] : []),
-  ];
-  return {
-    runsStub: false,
-    imports,
-    source: [
-      header(output),
-      `import { AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope } from '${PLATFORM_CONTRACTS}';`,
-      `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
-      ...authorityImport,
-      ...usecaseImports,
-      ...typeImports,
-      ...registryImport,
-      ...registeredTypes,
-      ...portImports,
-      '',
-      `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
-      ...routes.map(route => `  { key: '${route.route}', handler: ${route.fn} },`),
-      '];',
-      '',
-      ...functions,
-      scopeSource(),
-      authorizeSource(!!authorityDep),
-      validateSource(),
-      projectSource(),
-      '',
-    ].join('\n'),
-  };
-}
-
-interface ResolvedContract {
-  specifier: string;
-  inputType: string;
-  outputType: string;
-  requiredFields: string[];
-  allowedInputFields: string[];
-  allowedInputPaths: string[];
-  /** Input paths whose declared type admits `null`. */
-  nullableInputPaths: string[];
-  outputFields: string[];
-  outputPaths: string[];
+  return emitAdapter(definition, output, read, handlers, scopeDep);
 }
 
 interface PortBinding {
   interfaceName: string;
   specifier: string;
   binding: string;
-  pending: string;
-  registered: boolean;
-}
-
-interface ResolvedRoute {
-  route: string;
-  usecaseId: string;
-  grantIds: string[];
-  fn: string;
-  usecaseSpecifier: string;
-  inputType: string;
-  inputSpecifier: string;
-  requiredFields: string[];
-  allowedInputFields: string[];
-  allowedInputPaths: string[];
-  nullableInputPaths: string[];
-  outputFields: string[];
-  disclosedPaths: string[];
-  ports: PortBinding[];
 }
 
 interface AdapterRoute {
@@ -625,79 +494,10 @@ export function qualifyFile(path: string, dependencies: readonly string[]): stri
   return project && /^l\d+\//.test(path) ? `_${project}_/${path}` : path;
 }
 
-async function resolveContracts(definition: M1Definition, fn: { contractRefs: { route: string; symbol: string }[] }, read: StructureRead): Promise<ResolvedContract[] | EmitFailure> {
-  const refs = fn.contractRefs.filter(item => item.symbol.endsWith('Output'));
-  if (refs.length === 0) return { code: 'CONTRACT_UNREAD', detail: `${definition.artifactId} has no output contract.` };
-  const contracts: ResolvedContract[] = [];
-  const seen = new Set<string>();
-  for (const ref of refs) {
-    if (seen.has(`${ref.route}:${ref.symbol}`)) continue;
-    seen.add(`${ref.route}:${ref.symbol}`);
-    const resolved = await resolveContract(definition, { contractRefs: [ref] }, read, ref.route);
-    if ('code' in resolved) return resolved;
-    contracts.push(resolved);
-  }
-  return contracts;
-}
-
-async function resolveContract(definition: M1Definition, fn: { contractRefs: { route: string; symbol: string }[] }, read: StructureRead, route = ''): Promise<ResolvedContract | EmitFailure> {
-  const outputRef = fn.contractRefs.find(item => item.symbol.endsWith('Output') && (!route || item.route === route))
-    ?? fn.contractRefs.find(item => item.symbol.endsWith('Output'));
-  if (!outputRef) return { code: 'CONTRACT_UNREAD', detail: `${definition.artifactId} has no output contract.` };
-  const projection = projections(definition).find(item => item.route === outputRef.route);
-  const dependency = contractDependency(definition, projection?.contractPath ?? '', outputRef.route);
-  if (!dependency) return { code: 'CONTRACT_UNREAD', detail: `${outputRef.route} is not a dependency.` };
-  const text = await read(dependency);
-  if (text === null) return { code: 'CONTRACT_UNREAD', detail: `${dependency} could not be read.` };
-  const inputType = outputRef.symbol.replace(/Output$/, 'Input');
-  if (!text.includes(`export interface ${inputType} `) && !text.includes(`export interface ${inputType}{`)) {
-    return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${inputType}.` };
-  }
-  if (!text.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${outputRef.symbol}.` };
-  const members = contractMembers(text, inputType);
-  if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
-  const outputPaths = contractOutputPaths(text, outputRef.symbol);
-  if (!outputPaths) return { code: 'CONTRACT_SYMBOL', detail: `${outputRef.symbol} could not be read.` };
-  return {
-    specifier: importSpecifier(dependency, 'defs'),
-    inputType,
-    outputType: outputRef.symbol,
-    requiredFields: members.requiredFields,
-    allowedInputFields: members.allowedFields,
-    allowedInputPaths: members.allowedPaths,
-    nullableInputPaths: contractNullablePaths(text, inputType) ?? [],
-    outputFields: projection?.outputFields ?? [],
-    outputPaths,
-  };
-}
-
-/** Member paths of an output interface, or of the item interface of `export type X = Item[];`. */
-function contractOutputPaths(source: string, symbol: string): string[] | null {
-  const alias = new RegExp(`export type ${symbol}\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\[\\];`).exec(source);
-  return contractMembers(source, alias ? alias[1] : symbol)?.allowedPaths ?? null;
-}
-
-function scopeGrantRows(scopeText: string): Record<string, unknown>[] {
-  const parsed = parseDefinitionExport(scopeText);
-  return parsed && Array.isArray(parsed.data.grants) ? parsed.data.grants.filter(isRecord) : [];
-}
-
-/**
- * Output paths the route may return: declared by the contract, in the route projection, and
- * disclosed by every route grant (`fullRecord` all; `fieldsOnly`/`summaryOnly` the
- * `<entityId>.` allowed fields; any other mode or an undeclared grant nothing). Only paths that
- * are copied whole are returned; their ancestors are walked.
- */
-function disclosedOutputPaths(contract: ResolvedContract, outputFields: readonly string[], grants: readonly Record<string, unknown>[], entityId: string): string[] {
-  const declared = contract.outputPaths.filter(path => outputFields.includes(path.split('.')[0] ?? ''));
-  return declared.filter(path => !declared.some(other => other.startsWith(`${path}.`))
-    && grants.every(grant => grantDiscloses(grant, path, entityId, true)));
-}
-
 /**
  * Whether one grant discloses an entity path: `fullRecord` all; `fieldsOnly`/`summaryOnly` the
  * `<entityId>.` allowed fields and what is under them (`whole` = false also admits an ancestor of one);
- * any other mode, or an undeclared grant (`{}`), nothing. The v1 controller and the v2 request share it.
+ * any other mode, or an undeclared grant (`{}`), nothing. The v2 request service reads it.
  */
 function grantDiscloses(grant: Record<string, unknown>, path: string, entityId: string, whole: boolean): boolean {
   const mode = String(grant.disclosure ?? '');
@@ -710,7 +510,7 @@ function grantDiscloses(grant: Record<string, unknown>, path: string, entityId: 
 
 /**
  * Grants of each route a v2 page controller of the module exposes: the handler's `grantIds` read on
- * the module access scope. An undeclared grant id stays `{}` and discloses nothing, as in v1.
+ * the module access scope. An undeclared grant id stays `{}` and discloses nothing.
  * A route no controller names is not exposed and has no entry.
  */
 export function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<string, Record<string, unknown>[]> | EmitFailure {
@@ -729,78 +529,6 @@ export function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<s
     }
   }
   return routes;
-}
-
-async function resolveRoute(
-  definition: M1Definition,
-  handler: Record<string, unknown>,
-  read: StructureRead,
-  registered: ReadonlySet<string>,
-  scopeGrants: readonly Record<string, unknown>[],
-): Promise<ResolvedRoute | EmitFailure> {
-  const route = typeof handler.route === 'string' ? handler.route : '';
-  const usecaseId = typeof handler.usecaseId === 'string' ? handler.usecaseId : '';
-  const grantIds = stringList(handler.grantIds);
-  if (!route || !usecaseId) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has a route without an id.` };
-  const usecaseDep = definition.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`));
-  if (!usecaseDep) return { code: 'USECASE_UNBOUND', detail: `${route} has no dependency on ${usecaseId}.` };
-  const usecaseText = await read(usecaseDep);
-  if (usecaseText === null) return { code: 'USECASE_UNBOUND', detail: `${usecaseDep} could not be read.` };
-  const parsed = parseDefinitionExport(usecaseText);
-  if (!parsed) return { code: 'USECASE_UNBOUND', detail: `${usecaseDep} is not a definition.` };
-  const fn = firstFunction(parsed);
-  if (!fn) return { code: 'FUNCTION_MISSING', detail: `${usecaseId} has no function.` };
-  const contract = await resolveContract(parsed, fn, read, route);
-  if ('code' in contract) return contract;
-  const projection = projections(parsed).find(item => item.route === route);
-  if (!projection || projection.outputFields.length === 0) {
-    return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
-  }
-  const ports = portBindings(parsed, registered);
-  // An undeclared grant discloses nothing; several grants disclose what all of them allow.
-  const routeGrants = grantIds.map(grantId => scopeGrants.find(grant => grant.grantId === grantId) ?? {});
-  const entityId = typeof parsed.data.entityId === 'string' ? parsed.data.entityId : '';
-  return {
-    route,
-    usecaseId,
-    grantIds,
-    fn: functionName(route),
-    usecaseSpecifier: importSpecifier(usecaseDep, 'output'),
-    inputType: contract.inputType,
-    inputSpecifier: contract.specifier,
-    requiredFields: contract.requiredFields,
-    allowedInputFields: contract.allowedInputFields,
-    allowedInputPaths: contract.allowedInputPaths,
-    nullableInputPaths: contract.nullableInputPaths,
-    outputFields: projection.outputFields,
-    disclosedPaths: disclosedOutputPaths(contract, projection.outputFields, routeGrants, entityId),
-    ports,
-  };
-}
-
-function renderHandler(route: ResolvedRoute): string {
-  const grants = route.grantIds.map(item => `'${item}'`).join(', ');
-  const required = route.requiredFields.map(item => `'${item}'`).join(', ');
-  const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
-  const nullable = route.nullableInputPaths.map(item => `'${item}'`).join(', ');
-  const projected = route.disclosedPaths.map(item => `'${item}'`).join(', ');
-  return [
-    `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse> {`,
-    `  const denied = authorize(input.request, [${grants}]);`,
-    '  if (denied) throw denied;',
-    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}], [${nullable}]);`,
-    '  if (invalid) throw invalid;',
-    `  const data = await ${route.usecaseId}(${argsOf(route)});`,
-    `  return { ok: true, data: projectOutput(data, [${projected}]), error: null };`,
-    '}',
-    '',
-  ].join('\n');
-}
-
-function argsOf(route: ResolvedRoute): string {
-  const args = [`scopeParams(input.request.params, input.ctx, [${route.grantIds.map(item => `'${item}'`).join(', ')}]) as unknown as ${route.inputType}`, 'input.ctx'];
-  if (route.ports.length > 0) args.push(`{ ${route.ports.map(portExpression).join(', ')} }`);
-  return args.join(', ');
 }
 
 function scopeSource(): string {
@@ -904,7 +632,7 @@ function projectSource(): string {
   ].join('\n');
 }
 
-function portBindings(definition: M1Definition, registered: ReadonlySet<string> = new Set()): PortBinding[] {
+function portBindings(definition: M1Definition): PortBinding[] {
   const names = stringList(definition.data.ports);
   if (names.length === 0) return [];
   const specifier = definition.dependencies.find(path => path.includes('/ports/'));
@@ -913,16 +641,7 @@ function portBindings(definition: M1Definition, registered: ReadonlySet<string> 
     interfaceName,
     specifier: importSpecifier(specifier, 'output'),
     binding: camel(interfaceName),
-    pending: `pending${interfaceName}`,
-    registered: registered.has(interfaceName),
   }));
-}
-
-function portExpression(port: PortBinding): string {
-  const value = port.registered
-    ? `resolveRepository<${port.interfaceName}>(input.ctx, '${port.interfaceName}')`
-    : port.pending;
-  return `${port.binding}: ${value}`;
 }
 
 /** Port names named by a repositoryRegistration adapter row in this module's defs. */
@@ -1107,7 +826,7 @@ async function loadUses(
     if (text === null) return { code: 'USECASE_UNBOUND', detail: `${dep} could not be read.` };
     const parsed = parseDefinitionExport(text);
     if (!parsed) return { code: 'USECASE_UNBOUND', detail: `${dep} is not a definition.` };
-    const fn = firstFunction(parsed);
+    const fn = readFunction(parsed);
     const entityId = typeof parsed.data.entityId === 'string' ? parsed.data.entityId : '';
     const operation = typeof parsed.data.operation === 'string' ? parsed.data.operation : '';
     if (!fn || !IDENT.test(fn.name) || !IDENT.test(entityId) || !operation) {
@@ -1236,7 +955,7 @@ export function emittedValueExports(definition: M1Definition): readonly string[]
     case 'authorityMap':
       return ['entries', 'actorRefFor'];
     case 'usecase': {
-      const fn = firstFunction(definition);
+      const fn = readFunction(definition);
       return fn ? [fn.name] : [];
     }
     case 'httpController':
@@ -1367,10 +1086,6 @@ function readMembers(source: string, name: string): { requiredFields: string[]; 
   return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)], nullablePaths: [...new Set(nullablePaths)] };
 }
 
-export function requiredMembers(source: string, name: string): string[] | null {
-  return contractMembers(source, name)?.requiredFields ?? null;
-}
-
 function parseDefinitionExport(source: string): M1Definition | null {
   const marker = 'export const definition = ';
   const at = source.indexOf(marker);
@@ -1389,7 +1104,6 @@ function parseDefinitionExport(source: string): M1Definition | null {
 
 interface UsecaseFunction {
   name: string;
-  contractRefs: { route: string; symbol: string }[];
   input: FieldRow[];
   output: FieldRow[];
 }
@@ -1400,34 +1114,7 @@ function readFunction(definition: M1Definition): UsecaseFunction | null {
   const fn = functions[0];
   const name = typeof fn.functionName === 'string' ? fn.functionName : '';
   if (!name) return null;
-  const contractRefs = Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord).map(item => ({
-    route: typeof item.route === 'string' ? item.route : '',
-    symbol: typeof item.symbol === 'string' ? item.symbol : '',
-  })).filter(item => item.route && item.symbol) : [];
-  return { name, contractRefs, input: fieldRows(fn.input), output: fieldRows(fn.output) };
-}
-
-function firstFunction(definition: M1Definition): { name: string; contractRefs: { route: string; symbol: string }[] } | null {
-  const fn = readFunction(definition);
-  return fn ? { name: fn.name, contractRefs: fn.contractRefs } : null;
-}
-
-function projections(definition: M1Definition): { route: string; contractPath: string; outputFields: string[] }[] {
-  if (!Array.isArray(definition.data.routeProjections)) return [];
-  return definition.data.routeProjections.filter(isRecord).map(item => ({
-    route: typeof item.route === 'string' ? item.route : '',
-    contractPath: typeof item.contractPath === 'string' ? item.contractPath : '',
-    outputFields: stringList(item.outputFields),
-  })).filter(item => item.route);
-}
-
-function contractDependency(definition: M1Definition, contractPath: string, route: string): string {
-  if (contractPath) {
-    const match = definition.dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`));
-    if (match) return match;
-  }
-  const page = route.split('.')[1] ?? '';
-  return definition.dependencies.find(path => page && path.endsWith(`/${page}.defs.ts`)) ?? '';
+  return { name, input: fieldRows(fn.input), output: fieldRows(fn.output) };
 }
 
 function fieldRows(value: unknown): FieldRow[] {

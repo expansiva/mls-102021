@@ -26,8 +26,6 @@ import {
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
-  contractMembers,
-  contractNullablePaths,
   emitAccess,
   emitAuthority,
   emitDomain,
@@ -57,7 +55,7 @@ import {
 export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v15';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v16';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -222,7 +220,7 @@ export async function caseBlock(
     if (!('code' in plan) && (ruleId === plan.flowRule || ruleId === plan.payloadRule)) return null;
   }
   if (!item.routine) return null;
-  const grant = await caseRouteGrant(definition, defPath, item.routine, read, moduleDefinitions);
+  const grant = await caseRouteGrant(definition, item.routine, read, moduleDefinitions);
   if (grant.unread) return { gap: 'GRANT_UNREAD', owner: '', ruleId: '', unread: true };
   if (!grant.pending) return null;
   return { gap: grant.pending, owner: GAP_OWNER[grant.pending] ?? grant.pending, ruleId: '', unread: false };
@@ -275,17 +273,11 @@ async function memoryUsecase(
   if ('code' in entity) return entity;
   const entityName = text(entity.data.entityId) || 'Entity';
   const entityDep = definition.dependencies.find(path => path.includes('/entities/')) ?? '';
-  const contractRefs = firstFunction(definition);
-  if (!contractRefs) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function contract.` };
-  // A v2 usecase has no contract. Allowed, required and nullable paths are the signature fields
-  // (the usecase def) read against the entity: writable, required, nullable. A route name is not a source.
-  const contract = contractRefs.contractRefs.length === 0
-    ? signaturePaths(definition, entity, domainOptionalPaths(entity, await read(ontologyRef(entity, entityDep))) ?? new Set())
-    : await resolveContract(definition, contractRefs, read, contractRefs.contractRefs.find(item => item.symbol.endsWith('Output'))?.route ?? '');
-  if ('code' in contract) return contract;
-  const pageFilterPaths = operation === 'list' && contractRefs.contractRefs.length > 0
-    ? await resolvePageListInputs(definition, read)
-    : [];
+  const fnName = firstFunctionName(definition);
+  if (!fnName) return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no function contract.` };
+  // Allowed, required and nullable paths are the signature fields (the usecase def) read against
+  // the entity: writable, required, nullable. A route name is not a source.
+  const contract = signaturePaths(definition, entity, domainOptionalPaths(entity, await read(ontologyRef(entity, entityDep))) ?? new Set());
   const keys = operation === 'create' || operation === 'update' ? await readUniqueKeys(definition, read) : [];
   if ('code' in keys) return keys;
   const applicableKeys = operation === 'update' ? keys.filter(columns => columns.every(column => contract.allowedInputPaths.includes(column))) : keys;
@@ -293,7 +285,7 @@ async function memoryUsecase(
   if (applicableKeys.length > 0 && !ruleId) {
     return { code: 'UNIQUE_RULE_UNNAMED', detail: `${definition.artifactId} enforces a storage constraint with no rule id.` };
   }
-  const usecaseInputPaths = firstFunction(definition)?.name
+  const usecaseInputPaths = fnName
     ? inputNames(definition).flatMap(name => {
       const fn = Array.isArray(definition.data.functions) && isRecord(definition.data.functions[0]) ? definition.data.functions[0] : {};
       const fields = Array.isArray(fn.input) ? fn.input.filter(isRecord) : [];
@@ -318,17 +310,16 @@ async function memoryUsecase(
   const sources = operation === 'create' ? await createSources(definition, entity, inputs, lifecycle, read) : { missing: '', containers: new Set<string>() };
   if ('code' in sources) return sources;
   if (sources.missing) return { code: 'CREATE_SOURCE_MISSING', detail: `${definition.artifactId}: ${sources.missing} is required by the entity and has no input nor server assignment.` };
-  const domain = contractRefs.contractRefs.length === 0;
   const outs = outputNames(definition);
-  // v2: no contract output; the update and the transition return the stub's own output type.
-  const returnType = domain ? stubReturnType(stub.source) : '';
+  // No contract output: the update and the transition return the stub's own output type.
+  const returnType = stubReturnType(stub.source);
   const body = operation === 'create'
-    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, domain ? outs : [])
+    ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, outs)
     : operation === 'update'
       ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition, returnType)
       : transition
         ? transitionBody(entityName, camel(portName), transition, returnType)
-        : listBody(entity, entityName, camel(portName), new Set(pageFilterPaths.length ? pageFilterPaths : [...inputs]), domain && outs.includes('items') && outs.includes('hasMore'));
+        : listBody(entity, entityName, camel(portName), inputs, outs.includes('items') && outs.includes('hasMore'));
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,
@@ -1253,12 +1244,6 @@ function effectIds(definition: M1Definition): string[] {
   return definition.data.effects.filter(isRecord).map(item => text(item.eventId)).filter(isIdent);
 }
 
-export function contractRoutes(definition: M1Definition): string[] {
-  const functions = definition.data.functions;
-  if (!Array.isArray(functions) || !isRecord(functions[0]) || !Array.isArray(functions[0].contractRefs)) return [];
-  return functions[0].contractRefs.filter(isRecord).map(item => text(item.route)).filter(Boolean);
-}
-
 function selectorField(definition: M1Definition): string {
   if (!Array.isArray(definition.data.uses)) return '';
   const found = definition.data.uses.find(item => isRecord(item) && text(item.role) === 'selector' && text(item.source) === 'input');
@@ -1356,111 +1341,15 @@ function outputNames(definition: M1Definition): string[] {
   return functions[0].output.filter(isRecord).map(field => text(field.name)).filter(name => name.split('.').every(isIdent));
 }
 
-async function resolvePageListInputs(definition: M1Definition, read: StructureRead): Promise<string[]> {
-  const route = firstFunction(definition)?.contractRefs.find(item => item.symbol.endsWith('Output'))?.route;
-  const pageDef = definition.dependencies.filter(ref => ref.endsWith('/web.defs.ts')).map(async ref => ({ loaded: await loadDefinition(ref, read) }));
-  const pages = await Promise.all(pageDef);
-  for (const { loaded } of pages) {
-    if ('code' in loaded || !Array.isArray(loaded.data.operationBindings)) continue;
-    const binding = loaded.data.operationBindings.filter(isRecord).find(item => text(item.route) === route && text(item.operation) === 'list');
-    if (!binding || !Array.isArray(binding.inputFields)) continue;
-    return binding.inputFields.filter(isRecord).map(item => text(item.path)).filter(Boolean);
-  }
-  // Older snapshots have no operation bindings; fall back to structurally
-  // disclosed indexed fields while keeping filters optional.
-  const entity = await loadEntity(definition, read);
-  if ('code' in entity) return [];
-  const tree = fieldTree(entity);
-  const ontologyRef = definition.dependencies.find(ref => ref.includes('/ontology/'));
-  const ontology = ontologyRef ? await loadDefinition(ontologyRef, read) : null;
-  const indexed = new Set<string>();
-  if (ontology && !('code' in ontology)) {
-    for (const [field, metadata] of Object.entries(isRecord(ontology.data.indexes) ? ontology.data.indexes : {})) {
-      if (metadata === true || isRecord(metadata) && metadata.indexed === true) indexed.add(field);
-    }
-    if (Array.isArray(ontology.data.fields)) for (const row of ontology.data.fields.filter(isRecord)) {
-      if (row.indexed === true) indexed.add(text(row.name));
-    }
-  }
-  return [...indexed].filter(path => nodeAt(tree, path));
-}
-
 function inputNames(definition: M1Definition): string[] {
   const functions = definition.data.functions;
   if (!Array.isArray(functions) || !isRecord(functions[0]) || !Array.isArray(functions[0].input)) return [];
   return functions[0].input.filter(isRecord).map(field => text(field.name)).filter(Boolean);
 }
 
-async function resolveContract(
-  definition: M1Definition,
-  fn: { contractRefs: { route: string; symbol: string }[] },
-  read: StructureRead,
-  route = '',
-): Promise<{ allowedInputPaths: string[]; requiredInputPaths: string[]; nullableInputPaths: string[] } | EmitFailure> {
-  const outputRef = fn.contractRefs.find(item => item.symbol.endsWith('Output') && (!route || item.route === route))
-    ?? fn.contractRefs.find(item => item.symbol.endsWith('Output'));
-  if (!outputRef) return { code: 'CONTRACT_UNREAD', detail: `${definition.artifactId} has no output contract.` };
-  const projections = Array.isArray(definition.data.routeProjections) ? definition.data.routeProjections.filter(isRecord) : [];
-  const projection = projections.find(item => text(item.route) === outputRef.route);
-  const contractPath = text(projection?.contractPath);
-  let dependency = contractPath
-    ? definition.dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`)) ?? ''
-    : '';
-  if (!dependency) {
-    const page = outputRef.route.split('.')[1] ?? '';
-    dependency = definition.dependencies.find(path => page && path.endsWith(`/${page}.defs.ts`)) ?? '';
-  }
-  if (!dependency) return { code: 'CONTRACT_UNREAD', detail: `${outputRef.route} is not a dependency.` };
-  const source = await read(dependency);
-  if (source === null) return { code: 'CONTRACT_UNREAD', detail: `${dependency} could not be read.` };
-  const inputType = outputRef.symbol.replace(/Output$/, 'Input');
-  if (!source.includes(`export interface ${inputType} `) && !source.includes(`export interface ${inputType}{`)
-    || !source.includes(outputRef.symbol)) return { code: 'CONTRACT_SYMBOL', detail: `${dependency} does not export ${inputType}.` };
-  const members = readContractMembers(source, inputType);
-  if (!members) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
-  const declared = contractMembers(source, inputType);
-  return { allowedInputPaths: members.allowedPaths, requiredInputPaths: declared?.requiredFields ?? [], nullableInputPaths: contractNullablePaths(source, inputType) ?? [] };
-}
-
-function readContractMembers(source: string, name: string): { allowedPaths: string[] } | null {
-  const start = source.indexOf(`export interface ${name}`);
-  if (start < 0) return null;
-  const open = source.indexOf('{', start);
-  if (open < 0) return null;
-  let depth = 1;
-  let end = open + 1;
-  for (; end < source.length && depth > 0; end++) {
-    if (source[end] === '{') depth++;
-    else if (source[end] === '}') depth--;
-  }
-  if (depth !== 0) return null;
-  const body = source.slice(open + 1, end - 1);
-  const allowedPaths: string[] = [];
-  const addMembers = (text: string, prefix = '') => {
-    for (const line of text.split(/[;\n,]/)) {
-      const match = line.trim().match(/^([A-Za-z_$][\w$]*)(\?)?\s*:\s*(.+)$/);
-      if (!match) continue;
-      const path = prefix ? `${prefix}.${match[1]}` : match[1];
-      allowedPaths.push(path);
-      const nested = match[3].match(/^\{([\s\S]*)\}$/);
-      if (nested) addMembers(nested[1], path);
-    }
-  };
-  addMembers(body);
-  return { allowedPaths: [...new Set([...allowedPaths, ...(contractMembers(source, name)?.allowedPaths ?? [])])] };
-}
-
-function firstFunction(definition: M1Definition): { name: string; contractRefs: { route: string; symbol: string }[] } | null {
+function firstFunctionName(definition: M1Definition): string {
   const functions = definition.data.functions;
-  if (!Array.isArray(functions) || !isRecord(functions[0])) return null;
-  const fn = functions[0];
-  const name = text(fn.functionName);
-  if (!name) return null;
-  const contractRefs = Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord).map(item => ({
-    route: text(item.route),
-    symbol: text(item.symbol),
-  })).filter(item => item.route && item.symbol) : [];
-  return { name, contractRefs };
+  return Array.isArray(functions) && isRecord(functions[0]) ? text(functions[0].functionName) : '';
 }
 
 async function loadEntity(definition: M1Definition, read: StructureRead): Promise<M1Definition | EmitFailure> {
@@ -1520,34 +1409,7 @@ function constraintRuleId(definition: M1Definition): string {
   return pending.length === 1 ? pending[0].ruleId : '';
 }
 
-async function grantPending(
-  definition: M1Definition,
-  defPath: string,
-  routine: string,
-  read: StructureRead,
-): Promise<GrantFacts> {
-  const page = routine.split('.')[1] ?? '';
-  const project = /^_(\d+)_/.exec(defPath)?.[1] ?? '';
-  const moduleName = definition.moduleName;
-  if (!page || !project || !moduleName) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  const controllerRef = `_${project}_/l1/${moduleName}/layer_1_external/adapters/http/controllers/${page}.defs.ts`;
-  const controller = await loadDefinition(controllerRef, read);
-  if ('code' in controller) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
-  const handler = handlers.find(entry => entry.route === routine);
-  const grantIds = handler ? stringList(handler.grantIds) : [];
-  if (!handler || grantIds.length === 0) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  const scopeDep = controller.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
-  if (!scopeDep) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  const scope = await loadDefinition(scopeDep, read);
-  if ('code' in scope) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  const grants = Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];
-  const matched = grants.filter(grant => grantIds.includes(text(grant.grantId)));
-  if (matched.length !== grantIds.length) return { pending: '', scopeMode: '', unread: true, recordField: '' };
-  return grantFacts(matched);
-}
-
-/** Pending gap, scope mode and own-scope record field of the grants matched for one route (v1 and v2). */
+/** Pending gap, scope mode and own-scope record field of the grants matched for one route. */
 function grantFacts(matched: readonly Record<string, unknown>[]): GrantFacts {
   let pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
   const scopeMode = text(matched.find(grant => text(grant.pending) === pending)?.scopeMode);
@@ -1559,8 +1421,7 @@ function grantFacts(matched: readonly Record<string, unknown>[]): GrantFacts {
 type GrantFacts = { pending: string; scopeMode: string; unread: boolean; recordField: string };
 
 /**
- * Routes that reach a usecase, with the grant facts of each. v1 (the usecase cites contracts): its
- * `contractRefs` routes, read on the page controller. v2: the `requests[]` of the module's request
+ * Routes that reach a usecase, with the grant facts of each: the `requests[]` of the module's request
  * services that name the usecase in `uses`, kept when a v2 controller exposes the route; the grants
  * are that handler's `grantIds` on the access scope (`exposedRouteGrants`). A route no controller
  * names is not exposed and is left out. A route with no grant, or a grant id the scope does not
@@ -1571,12 +1432,6 @@ async function usecaseRouteGrants(
   read: StructureRead,
   moduleDefinitions: readonly unknown[],
 ): Promise<Array<{ route: string; grant: GrantFacts }> | EmitFailure> {
-  const v1 = contractRoutes(definition);
-  if (v1.length > 0) {
-    const routes: Array<{ route: string; grant: GrantFacts }> = [];
-    for (const route of v1) routes.push({ route, grant: await grantPending(definition, definition.dependencies[0] ?? '', route, read) });
-    return routes;
-  }
   const v2 = usecaseRoutes(definition, moduleDefinitions);
   if ('code' in v2) return v2;
   const exposed = exposedRouteGrants(moduleDefinitions);
@@ -1593,15 +1448,13 @@ async function usecaseRouteGrants(
 }
 
 /**
- * Routes of a usecase. v1 (the usecase cites contracts): its `contractRefs` routes. v2: the
+ * Routes of a usecase: the
  * `requests[].route` of the module's request services that name the usecase in `uses`. A v2 usecase
  * read without the module defs has no source for its routes: `MODULE_DEFS_UNREAD`, never an empty list.
  */
 export function usecaseRoutes(definition: M1Definition, moduleDefinitions: readonly unknown[]): string[] | EmitFailure {
-  const v1 = contractRoutes(definition);
-  if (v1.length > 0) return v1;
   if (moduleDefinitions.length === 0) {
-    return { code: 'MODULE_DEFS_UNREAD', detail: `${definition.artifactId} has no contract routes and the module defs were not loaded.` };
+    return { code: 'MODULE_DEFS_UNREAD', detail: `${definition.artifactId}: the module defs were not loaded, so its routes have no source.` };
   }
   const routes = new Set<string>();
   for (const value of moduleDefinitions) {
@@ -1616,15 +1469,13 @@ export function usecaseRoutes(definition: M1Definition, moduleDefinitions: reado
   return [...routes];
 }
 
-/** Grant facts of one case route: v1 by the page controller (as before); v2 by the usecase's exposed routes. */
+/** Grant facts of one case route, by the usecase's exposed routes. */
 async function caseRouteGrant(
   definition: M1Definition,
-  defPath: string,
   routine: string,
   read: StructureRead,
   moduleDefinitions: readonly unknown[],
 ): Promise<GrantFacts> {
-  if (contractRoutes(definition).length > 0) return grantPending(definition, defPath, routine, read);
   const routes = await usecaseRouteGrants(definition, read, moduleDefinitions);
   const found = 'code' in routes ? undefined : routes.find(item => item.route === routine);
   return found ? found.grant : { pending: '', scopeMode: '', unread: true, recordField: '' };

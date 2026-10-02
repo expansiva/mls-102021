@@ -127,7 +127,6 @@ export function fixtureModel(plan: M1FixturePlan, defs: ReadonlyMap<string, M1De
   const routeEntity = new Map<string, string>();
   const routeGaps = new Map<string, string>();
   const selectors = new Set<string>();
-  const usecases = new Map([...defs.values()].filter(item => item.artifactType === 'usecase').map(item => [item.artifactId, item]));
   const hasSelector = (usecase: M1Definition): boolean => (Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [])
     .some(use => use.role === 'selector' && use.source === 'input');
   for (const controller of defs.values()) {
@@ -136,12 +135,9 @@ export function fixtureModel(plan: M1FixturePlan, defs: ReadonlyMap<string, M1De
       if (text(handler.contractInterface)) {
         // v2 (m1_40 r2b): the page request names the usecases; they must agree on one entity.
         const route = text(handler.route);
-        const service = [...defs.values()].find(item => item.artifactType === 'requestService'
-          && item.moduleName === controller.moduleName && item.data.pageId === controller.data.pageId);
-        const request = (service && Array.isArray(service.data.requests) ? service.data.requests.filter(isRecord) : []).find(row => row.route === route);
-        const used = (request && Array.isArray(request.uses) ? request.uses : []).map(id => usecases.get(text(id)));
+        const used = routeUsecases(defs, controller, route);
         if (!route || used.length === 0 || used.some(item => !item)) continue;
-        const resolved = used as M1Definition[];
+        const resolved = used.flatMap(item => item ? [item[1]] : []);
         const ids = [...new Set(resolved.map(item => text(item.data.entityId)))];
         if (ids.length !== 1 || !ids[0]) {
           routeGaps.set(route, `FIXTURE_ROUTE_ENTITY_AMBIGUOUS: ${route} uses ${ids.join(',')}`);
@@ -151,14 +147,28 @@ export function fixtureModel(plan: M1FixturePlan, defs: ReadonlyMap<string, M1De
         if (resolved.some(hasSelector)) selectors.add(route);
         continue;
       }
-      const usecase = usecases.get(text(handler.usecaseId));
-      if (!usecase || !text(handler.route)) continue;
-      routeEntity.set(text(handler.route), text(usecase.data.entityId));
-      const uses = Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [];
-      if (uses.some(use => use.role === 'selector' && use.source === 'input')) selectors.add(text(handler.route));
+      // A v1 handler (no contract interface) has no entity here; the catalog reports DEF_V1_UNSUPPORTED.
     }
   }
   return { plan, entities, routeEntity, routeGaps, selectors };
+}
+
+/**
+ * Usecases a v2 controller route reaches: the `uses` of the request with that route in the
+ * requestService of the controller's page (same module and `pageId`), each as `[defPath, def]`,
+ * or `null` when the id is not a usecase def. Empty when no request has the route.
+ */
+export function routeUsecases(
+  defs: ReadonlyMap<string, M1Definition>,
+  controller: M1Definition,
+  route: string,
+): Array<[string, M1Definition] | null> {
+  const service = [...defs.values()].find(item => item.artifactType === 'requestService'
+    && item.moduleName === controller.moduleName && item.data.pageId === controller.data.pageId);
+  const request = (service && Array.isArray(service.data.requests) ? service.data.requests.filter(isRecord) : []).find(row => row.route === route);
+  const usecases = [...defs.entries()].filter(([, item]) => item.artifactType === 'usecase');
+  return (request && Array.isArray(request.uses) ? request.uses : [])
+    .map(id => usecases.find(([, item]) => item.artifactId === text(id)) ?? null);
 }
 
 /** Actors of one execution: two of the same category with different rows, and one with no link. */

@@ -20,7 +20,7 @@ import { emittedValueExports } from '/_102021_/l2/agentMaterializeL1/handlers/st
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { canonicalJson } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { fixtureModelOf } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
-import { M1_RUNTIME_OWNER, runtimeGap, type M1FixtureCaseResult, type M1FixtureModel, type M1FixtureReceipt } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
+import { M1_RUNTIME_OWNER, routeUsecases, runtimeGap, type M1FixtureCaseResult, type M1FixtureModel, type M1FixtureReceipt } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 import type { M1Obligation } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { M1_CHECKPOINT_BUDGET_MS, M1_CHECKPOINT_SCHEMA, type M1Checkpoint, type M1Evidence } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 
@@ -126,7 +126,6 @@ export async function fixturePass(input: FixturePassInput): Promise<M1RunFixture
   if (!model) return [];
   const seeds = [...defs.values()].find(item => item.artifactType === 'persistenceSeeds' && item.data.fixture !== undefined);
   const fixtureHash = await contentHash(canonicalJson(seeds?.data.fixture ?? null));
-  const byId = new Map([...defs.entries()].map(([path, definition]) => [`${definition.artifactType}:${definition.artifactId}`, path]));
   const ports = [...defs.entries()].filter(([, definition]) => definition.artifactType === 'repositoryPort');
   const dataEntities = new Set(model.plan.datasets.map(item => item.entityId));
   const closure = (roots: readonly string[]): string[] => {
@@ -145,18 +144,17 @@ export async function fixturePass(input: FixturePassInput): Promise<M1RunFixture
     if (controller.artifactType !== 'httpController') continue;
     const obligations = input.obligations.filter(item => item.sources.some(source => source.startsWith(`${controllerPath}#`)));
     if (obligations.length === 0) continue;
-    const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
     // The controller and what it imports besides its route usecases (scope, authority map, contracts).
     const own = [controllerPath, ...closure(controller.dependencies.filter(path => defs.get(path)?.artifactType !== 'usecase'))];
     const ready: M1Obligation[] = [];
     const unready: M1FixtureCaseResult[] = [];
     const imported = new Set<string>([controllerPath]);
     for (const obligation of obligations) {
-      const handler = handlers.find(item => item.route === obligation.routine);
-      const usecase = byId.get(`usecase:${String(handler?.usecaseId ?? '')}`) ?? '';
+      const reached = routeUsecases(defs, controller, obligation.routine);
+      const usecases = reached.length > 0 && reached.every(item => item) ? reached.flatMap(item => item ? [item[0]] : []) : [];
       const entities = new Set([...dataEntities, model.routeEntity.get(obligation.routine) ?? '']);
-      const needed = [...new Set([...own, ...closure([usecase, ...ports.filter(([, port]) => entities.has(String(port.data.entityId))).map(([path]) => path)])])].sort();
-      const missing: string[] = usecase ? [] : [`usecase of ${obligation.routine} is not a unit`];
+      const needed = [...new Set([...own, ...closure([...usecases, ...ports.filter(([, port]) => entities.has(String(port.data.entityId))).map(([path]) => path)])])].sort();
+      const missing: string[] = usecases.length > 0 ? [] : [`usecase of ${obligation.routine} is not a unit`];
       for (const path of needed) {
         const why = await input.unready(path);
         if (why) missing.push(`${path} ${why}`);

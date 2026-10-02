@@ -19,6 +19,28 @@ export const AUTHORITY_UNREAD = 'AUTHORITY_UNREAD';
 /** A grant the authority map does not name has no actor: the route is refused. */
 export const AUTHORITY_UNMAPPED = 'AUTHORITY_UNMAPPED';
 
+/** A def of the removed v1 shape (m1_41 a): refused, never read through a default. */
+export const DEF_V1_UNSUPPORTED = 'DEF_V1_UNSUPPORTED';
+
+/**
+ * Whether a def still carries the v1 shape: an httpController handler with `usecaseId` and no
+ * `serviceFunction`, a usecase function with `contractRefs`, or `routeProjections`. A usecase's own
+ * `data.usecaseId` is v2 and is not a marker.
+ */
+export function isDefV1(data: Record<string, unknown>): boolean {
+  if (Array.isArray(data.routeProjections)) return true;
+  const functions = Array.isArray(data.functions) ? data.functions : [];
+  if (functions.some(fn => !!fn && typeof fn === 'object' && Array.isArray((fn as Record<string, unknown>).contractRefs)
+    && ((fn as Record<string, unknown>).contractRefs as unknown[]).length > 0)) return true;
+  const handlers = Array.isArray(data.handlers) ? data.handlers : [];
+  return handlers.some(row => !!row && typeof row === 'object' && 'usecaseId' in row
+    && typeof (row as Record<string, unknown>).serviceFunction !== 'string');
+}
+
+export function defV1Detail(artifactId: string): string {
+  return `${DEF_V1_UNSUPPORTED}: ${artifactId} has the removed v1 shape (handler usecaseId, contractRefs or routeProjections); regenerate its defs as v2.`;
+}
+
 export interface StructureGrant {
   grantId: string;
   actorRef: string;

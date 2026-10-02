@@ -11,8 +11,8 @@
 
 import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
-import { contractMembers, grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
-import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
+import { grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { defV1Detail, resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -76,9 +76,8 @@ export interface RouteRef {
   defPath: string;
   route: string;
   kind: string;
-  usecaseId: string;
   grantIds: string[];
-  /** v2 handler: the L2 contract file and its route interface. '' on a v1 handler. */
+  /** The L2 contract file and its route interface. '' on a v1 handler, which is refused. */
   contractPath: string;
   contractInterface: string;
 }
@@ -91,82 +90,9 @@ export function routeObligations(
   defs: ReadonlyMap<string, M1Definition>,
   texts: Readonly<Record<string, string>>,
 ): RouteObligations {
-  if (ref.contractInterface) return routeObligationsV2(ref, defs, texts);
-  const found = [...defs.entries()].find(([, item]) => item.artifactType === 'usecase' && item.artifactId === ref.usecaseId);
-  if (!found) return { gap: 'contract required field was not read' };
-  const [usecasePath, usecase] = found;
-  const contract = contractOf(usecase, ref.route, texts);
-  if (!contract) return { gap: 'contract required field was not read' };
-  const scopeEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'accessScope' && item.moduleName === ref.controller.moduleName);
-  const rows = scopeEntry && Array.isArray(scopeEntry[1].data.grants) ? scopeEntry[1].data.grants.filter(isRecord) : [];
-  const grants = scopeEntry ? grantsOf(scopeEntry[1].data) : [];
-  const resolved = ref.grantIds.every(id => !('code' in resolveGrant(grants, id)));
-  if (!resolved || ref.grantIds.length === 0) return { gap: 'grant is not resolved, so a contract case would fail for another cause' };
-  const authorityEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'authorityMap' && item.moduleName === ref.controller.moduleName);
-  if (!authorityEntry) return { gap: 'AUTHORITY_UNREAD: no authority map, so every authenticated case is refused' };
-  const entries = Array.isArray(authorityEntry[1].data.entries) ? authorityEntry[1].data.entries.filter(isRecord) : [];
-  const actorRefs = ref.grantIds.map(id => String(entries.find(entry => entry.grantId === id)?.actorRef ?? ''));
-  if (actorRefs.some(actor => !actor)) return { gap: 'AUTHORITY_UNMAPPED: a route grant has no actor in the authority map' };
-  const ownFields = [...new Set(ref.grantIds.flatMap(id => {
-    const grant = grants.find(item => item.grantId === id);
-    return grant && grant.scopeMode === 'own' && grant.recordField ? [grant.recordField] : [];
-  }))];
-  if (ownFields.length > 1) return { gap: 'own grants of the route name different record fields' };
-  const ownField = ownFields[0] ?? '';
-  const entityId = typeof usecase.data.entityId === 'string' ? usecase.data.entityId : '';
-  const routeGrants = ref.grantIds.map(id => rows.find(row => row.grantId === id) ?? {});
-  const disclosed = contract.outputPaths ? disclosure(contract.outputPaths, routeGrants, entityId) : null;
-  const moduleName = ref.controller.moduleName;
-  const caller: M1CaseCaller = { source: 'http', authorities: sorted([...new Set(actorRefs.map(actor => `${moduleName}:${actor}`))]) };
-  const tail = ref.route.split('.').pop() || ref.route;
-  const optional = contract.allowedPaths.filter(path => !contract.required.includes(path));
-  const operation = typeof usecase.data.operation === 'string' ? usecase.data.operation : '';
-  const command = ref.kind === 'command';
-  const positive: M1ObligationIdentity = ownField ? 'owner' : 'member';
-  const sources = sorted([`${ref.defPath}#${ref.route}`, usecasePath, contract.ref, ...(scopeEntry ? [scopeEntry[0]] : []), authorityEntry[0]]);
-  const make = (
-    kind: M1ObligationKind,
-    caseId: string,
-    identity: M1ObligationIdentity,
-    expect: Partial<M1ObligationExpect> & Pick<M1ObligationExpect, 'ok' | 'status' | 'errorCode'>,
-    omitted: string[] = [],
-    mutating = false,
-  ): M1Obligation => ({
-    caseId: `${ref.controller.artifactId}.${caseId}`,
-    kind,
-    routine: ref.route,
-    grantIds: [...ref.grantIds],
-    actorRef: actorRefs[0] ?? '',
-    identity,
-    caller: { source: caller.source, authorities: [...caller.authorities] },
-    input: { required: [...contract.required], optional: [...optional], omitted },
-    mutating,
-    expect: { ruleId: null, forbiddenPaths: [], allowedPaths: [], isolatedActorField: null, ...expect },
-    sources: [...sources],
-    blocker: M1_OBLIGATION_BLOCKER,
-    owner: M1_OBLIGATION_OWNER,
-  });
-  const obligations: M1Obligation[] = [];
-  const field = contract.required[0];
-  if (field) {
-    obligations.push(make('contract', `contract.${tail}.${field}`, positive, { ok: false, status: 400, errorCode: 'VALIDATION_ERROR' }, [field]));
-  }
-  // An optional member made mandatory by the handler refuses this body.
-  if (optional.length > 0) obligations.push(make('minimalInput', `minimal.${tail}`, positive, { ok: true, status: 200, errorCode: null }, [], command));
-  if (ownField) {
-    obligations.push(make('noIdentity', `noIdentity.${tail}`, 'none', { ok: false, status: 403, errorCode: 'FORBIDDEN_ACTOR' }));
-    if (operation === 'list') {
-      obligations.push(make('own', `own.${tail}`, 'owner', { ok: true, status: 200, errorCode: null, isolatedActorField: ownField }));
-    }
-    // Another actor addressing a row of the owner: the own scope makes it a missing row.
-    if (hasSelector(usecase)) obligations.push(make('other', `other.${tail}`, 'other', { ok: false, status: 404, errorCode: 'NOT_FOUND' }, [], command));
-  }
-  if (disclosed) {
-    obligations.push(make('disclosure', `disclosure.${tail}`, positive, {
-      ok: true, status: 200, errorCode: null, forbiddenPaths: disclosed.forbidden, allowedPaths: disclosed.allowed,
-    }, [], command));
-  }
-  return { obligations, gaps: [] };
+  // A handler with no contract interface is the removed v1 route: a visible gap, never a derived case.
+  if (!ref.contractInterface) return { gap: defV1Detail(ref.controller.artifactId) };
+  return routeObligationsV2(ref, defs, texts);
 }
 
 interface RequestOutput {
@@ -409,52 +335,6 @@ function splitTop(body: string): string[] {
     }
   }
   return out;
-}
-
-interface RouteContract {
-  ref: string;
-  required: string[];
-  allowedPaths: string[];
-  outputPaths: string[] | null;
-}
-
-function contractOf(usecase: M1Definition, route: string, texts: Readonly<Record<string, string>>): RouteContract | null {
-  const projections = Array.isArray(usecase.data.routeProjections) ? usecase.data.routeProjections.filter(isRecord) : [];
-  const contractPath = String(projections.find(item => item.route === route)?.contractPath ?? '');
-  if (!contractPath) return null;
-  const ref = usecase.dependencies.find(path => path === contractPath || path.endsWith(`/${contractPath}`)) || contractPath;
-  const text = texts[ref] || texts[contractPath] || '';
-  if (!text) return null;
-  const inputName = inputNameOf(route, text);
-  const input = inputName ? contractMembers(text, inputName) : null;
-  if (!input) return null;
-  const symbol = outputSymbol(usecase, route);
-  const alias = symbol ? new RegExp(`export type ${symbol}\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\[\\];`).exec(text) : null;
-  const output = symbol ? contractMembers(text, alias ? alias[1] : symbol) : null;
-  return { ref, required: input.requiredFields, allowedPaths: input.allowedPaths, outputPaths: output ? output.allowedPaths : null };
-}
-
-function inputNameOf(route: string, source: string): string {
-  const tail = route.split('.').pop() ?? '';
-  const stem = tail.replace(/^(cmd|qry)/, '');
-  const name = stem.charAt(0).toUpperCase() + stem.slice(1);
-  const candidate = name.endsWith('Input') ? name : `${name}Input`;
-  return source.includes(`export interface ${candidate} `) ? candidate : '';
-}
-
-function outputSymbol(usecase: M1Definition, route: string): string {
-  const functions = Array.isArray(usecase.data.functions) ? usecase.data.functions.filter(isRecord) : [];
-  for (const fn of functions) {
-    const refs = Array.isArray(fn.contractRefs) ? fn.contractRefs.filter(isRecord) : [];
-    const found = refs.find(item => item.route === route);
-    if (found && typeof found.symbol === 'string') return found.symbol;
-  }
-  return '';
-}
-
-function hasSelector(usecase: M1Definition): boolean {
-  const uses = Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [];
-  return uses.some(item => item.role === 'selector' && item.source === 'input');
 }
 
 /**

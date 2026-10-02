@@ -31,11 +31,10 @@ import {
   emitUsecase,
   emitValueObject,
   grantsOf,
-  requiredMembers,
   type EmitFailure,
   type EmitResult,
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
-import { AUTHORITY_UNREAD, decideRoute, stubDecision, type StructureGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
+import { AUTHORITY_UNREAD, DEF_V1_UNSUPPORTED, decideRoute, defV1Detail, isDefV1, stubDecision, type StructureGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 export const structureRunners: Readonly<Record<string, MaterializeHandlerRunner>> = {
   'structure.domainEntity': call => runStructure(call),
@@ -55,6 +54,7 @@ export function structureHandlerIds(): string[] {
 export async function runStructure(call: HandlerCall): Promise<HandlerOutcome> {
   const parsed = readDefinition(call.definition);
   if ('issues' in parsed) return failed('DEFINITION', parsed.issues.join(' '));
+  if (isDefV1(parsed.data)) return failed(DEF_V1_UNSUPPORTED, defV1Detail(parsed.artifactId));
   const output = outputPathFromDefPath(call.unit.defPath);
   if (!output) return failed('OUTPUT_PATH', `${call.unit.defPath} has no output file.`);
   const produced = await produce(call.handler.id, parsed, output, call.read, call);
@@ -189,40 +189,8 @@ async function routeFor(
     return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has no route ${routine}.` };
   }
   const row = handler as Record<string, unknown>;
-  if (typeof row.serviceFunction === 'string') return adapterRouteFacts(definition, row, read);
-  const usecaseId = typeof row.usecaseId === 'string' ? row.usecaseId : '';
-  if (!usecaseId) {
-    return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has no route ${routine}.` };
-  }
-  const usecaseDep = definition.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`));
-  if (!usecaseDep) return { code: 'USECASE_UNBOUND', detail: `${routine} has no dependency on ${usecaseId}.` };
-  const text = await read(usecaseDep);
-  if (text === null) return { code: 'USECASE_UNBOUND', detail: `${usecaseDep} could not be read.` };
-  const parsed = readDefinition(JSON.parse(sliceJson(text) || 'null'));
-  if ('issues' in parsed) return { code: 'USECASE_UNBOUND', detail: parsed.issues.join(' ') };
-  const projection = Array.isArray(parsed.data.routeProjections)
-    ? parsed.data.routeProjections.find(item => !!item && typeof item === 'object' && (item as { route?: string }).route === routine) as { contractPath?: string } | undefined
-    : undefined;
-  const contractPath = typeof projection?.contractPath === 'string' ? projection.contractPath : '';
-  const contract = parsed.dependencies.find(path => contractPath && (path === contractPath || path.endsWith(`/${contractPath}`)));
-  if (!contract) return { code: 'CONTRACT_UNREAD', detail: `${routine} contract was not read.` };
-  const contractText = await read(contract);
-  if (contractText === null) return { code: 'CONTRACT_UNREAD', detail: `${contract} could not be read.` };
-  const inputType = inputName(routine, contractText);
-  if (!inputType) return { code: 'CONTRACT_SYMBOL', detail: `${contract} has no input for ${routine}.` };
-  const required = requiredMembers(contractText, inputType);
-  if (!required) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
-  const grantIds = Array.isArray(row.grantIds) ? row.grantIds.filter((item): item is string => typeof item === 'string') : [];
-  return { grantIds, requiredFields: required };
-}
-
-function inputName(routine: string, source: string): string {
-  const tail = routine.split('.').pop() ?? '';
-  const stem = tail.replace(/^(cmd|qry)/, '');
-  const name = stem.charAt(0).toUpperCase() + stem.slice(1);
-  const candidate = name.endsWith('Input') ? name : `${name}Input`;
-  if (source.includes(`export interface ${candidate} `)) return candidate;
-  return '';
+  if (typeof row.serviceFunction !== 'string') return { code: DEF_V1_UNSUPPORTED, detail: defV1Detail(definition.artifactId) };
+  return adapterRouteFacts(definition, row, read);
 }
 
 function authoritiesFor(item: M1ScenarioCase, authority: readonly { grantId: string; actorRef: string }[], grantIds: readonly string[], moduleName: string): string[] {
