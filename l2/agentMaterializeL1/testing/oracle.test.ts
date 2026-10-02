@@ -43,7 +43,7 @@ void test('the oracle comes from the contract, the grants and the authority map,
   assert.equal(DERIVED.obligations.every(item => DERIVED.gaps.some(gap => gap.reason.includes(`${item.caseId} is declared, not executed`))), true);
   const kinds = new Map<string, number>();
   for (const item of DERIVED.obligations) kinds.set(item.kind, (kinds.get(item.kind) ?? 0) + 1);
-  assert.deepEqual(Object.fromEntries(kinds), { contract: 3, disclosure: 5, minimalInput: 4, noIdentity: 2, own: 1, rollback: 1, shape: 2, success: 3 });
+  assert.deepEqual(Object.fromEntries(kinds), { contract: 4, disclosure: 6, minimalInput: 5, noIdentity: 2, own: 1, rollback: 1, shape: 2, success: 4 });
 
   const n = FX.n;
   const rows = `${n.entity}Rows`;
@@ -74,6 +74,7 @@ void test('the oracle comes from the contract, the grants and the authority map,
   assert.equal(DERIVED.obligations.filter(item => item.kind === 'rollback').length, 1);
   assert.deepEqual(DERIVED.gaps.filter(gap => gap.reason.startsWith('ROLLBACK_SINGLE_USE')).map(gap => gap.reason).sort(), [
     `ROLLBACK_SINGLE_USE: ${FX.routes.amend} uses one usecase`, `ROLLBACK_SINGLE_USE: ${FX.routes.sail} uses one usecase`,
+    `ROLLBACK_SINGLE_USE: ${FX.routes.berth} uses one usecase`,
   ].sort());
   assert.equal(DERIVED.gaps.some(gap => /^(REQUEST_UNREAD|CONTRACT_UNREAD|CONTRACT_ROUTE_MISSING)/.test(gap.reason)), false);
 

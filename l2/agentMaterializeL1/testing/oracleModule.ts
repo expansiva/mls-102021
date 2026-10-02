@@ -19,19 +19,19 @@ export interface Names {
   project: string; mod: string; Entity: string; entity: string; owner: string; org: string; Anchor: string; ownerField: string; note: string; related: string;
   Parent: string; parent: string; parentField: string; Mdm: string; mdmField: string;
   /** Pages and request ids: routes are `<mod>.<page>.<requestId>`, nothing in the name says qry/cmd. */
-  pageA: string; pageB: string; reqList: string; reqDock: string; reqAmend: string; reqRoster: string; reqSail: string;
+  pageA: string; pageB: string; reqList: string; reqDock: string; reqAmend: string; reqRoster: string; reqSail: string; reqBerth: string;
 }
 export const BASE: Names = {
   project: '_102097_', mod: 'tideBoard', Entity: 'Berth', entity: 'berth', owner: 'pilot', org: 'harbor',
   Anchor: 'Pilot', ownerField: 'pilotId', note: 'pilotNote', related: 'berthShip',
   Parent: 'Ship', parent: 'ship', parentField: 'shipId', Mdm: 'Agency', mdmField: 'agencyId',
-  pageA: 'office', pageB: 'deck', reqList: 'tideList', reqDock: 'moorIt', reqAmend: 'amendIt', reqRoster: 'deckRoster', reqSail: 'sailIt',
+  pageA: 'office', pageB: 'deck', reqList: 'tideList', reqDock: 'moorIt', reqAmend: 'amendIt', reqRoster: 'deckRoster', reqSail: 'sailIt', reqBerth: 'berthIt',
 };
 export const RENAMED: Names = {
   project: '_102096_', mod: 'quayLine', Entity: 'Slip', entity: 'slip', owner: 'skipper', org: 'warden',
   Anchor: 'Skipper', ownerField: 'skipperId', note: 'skipperMemo', related: 'slipVessel',
   Parent: 'Hull', parent: 'hull', parentField: 'hullRef', Mdm: 'Broker', mdmField: 'brokerRef',
-  pageA: 'yard', pageB: 'helm', reqList: 'slipList', reqDock: 'tieUp', reqAmend: 'reviseIt', reqRoster: 'helmRoster', reqSail: 'castOff',
+  pageA: 'yard', pageB: 'helm', reqList: 'slipList', reqDock: 'tieUp', reqAmend: 'reviseIt', reqRoster: 'helmRoster', reqSail: 'castOff', reqBerth: 'slipIt',
 };
 
 export interface Fixture {
@@ -44,8 +44,11 @@ export interface Fixture {
   };
   /** `backend.json.testSupport[]` in the p1_12 shape, as the planner derives it for this module. */
   testSupport: unknown[];
-  /** `dock` is the command with two usecases (rollback case); `amend` and `sail` have one. */
-  routes: { list: string; dock: string; amend: string; roster: string; sail: string };
+  /**
+   * `dock` is the command with two usecases (rollback case); `amend` and `sail` have one. `berth` creates
+   * the entity alone and its input requires the MDM ref (the `mdm:` memory class).
+   */
+  routes: { list: string; dock: string; amend: string; roster: string; sail: string; berth: string };
   defs: Array<[string, string, M1Definition]>;
   controllers: Array<[string, M1Definition]>;
   texts: Record<string, string>;
@@ -75,6 +78,7 @@ export function fixture(n: Names): Fixture {
     amend: `${n.mod}.${n.pageA}.${n.reqAmend}`,
     roster: `${n.mod}.${n.pageB}.${n.reqRoster}`,
     sail: `${n.mod}.${n.pageB}.${n.reqSail}`,
+    berth: `${n.mod}.${n.pageA}.${n.reqBerth}`,
   };
   const def = (artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition =>
     ({ schemaVersion: M1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: n.mod, status: 'pending', dependencies: [...dependencies].sort(), data } as M1Definition);
@@ -196,6 +200,7 @@ export function fixture(n: Names): Fixture {
       // Two usecases: the parent row, then the entity row. The second failing must leave nothing written.
       { route: routes.dock, kind: 'cmd', uses: [createParent.artifactId, create.artifactId], transaction: 'single', outputs: one(rowFields), params: [] },
       { route: routes.amend, kind: 'cmd', uses: [update.artifactId], transaction: 'single', outputs: one(rowFields), params: [] },
+      { route: routes.berth, kind: 'cmd', uses: [create.artifactId], transaction: 'single', outputs: one(rowFields), params: [] },
     ],
   });
   const requestB = def('requestService', n.pageB, [refs.uc(sail.artifactId), refs.uc(list.artifactId)], {
@@ -214,6 +219,7 @@ export function fixture(n: Names): Fixture {
     handlers: [
       handler(routes.dock, 'command', n.pageA, `${n.org}Office`),
       handler(routes.amend, 'command', n.pageA, `${n.org}Office`),
+      handler(routes.berth, 'command', n.pageA, `${n.org}Office`),
       handler(routes.list, 'query', n.pageA, `${n.org}Office`),
     ],
   });
@@ -236,6 +242,8 @@ export function fixture(n: Names): Fixture {
   const access = (actor: string, grant: string) => ({ actors: [actor], grants: [grant], scope: 'organization' });
   const project = Number(n.project.replace(/_/g, ''));
   const rowA = `${E}${pascal(n.pageA)}Row`;
+  // The create body (v1 `Create<E>Input`): the MDM ref is required.
+  const createInput = `{ ${n.parentField}: string; ${n.mdmField}: string; ${n.ownerField}: string; dockAt: string; details: { tideCheck?: { doneAt: string } } }`;
   const rowB = `${E}${pascal(n.pageB)}Row`;
   const contractA = renderD2ContractV2({ project, module: n.mod, pageId: n.pageA }, {
     module: n.mod, pageId: n.pageA,
@@ -243,8 +251,11 @@ export function fixture(n: Names): Fixture {
     routes: [
       { route: routes.list, kind: 'qry', input: listInput, output: listOutput(rowA), meta: listMeta(n.pageA), rules: [], access: access(n.org, `${n.org}Office`) },
       {
-        route: routes.dock, kind: 'cmd', writes: `${E}.create`,
-        input: `{ ${n.parentField}: string; ${n.mdmField}: string; ${n.ownerField}: string; dockAt: string; details: { tideCheck?: { doneAt: string } } }`,
+        route: routes.dock, kind: 'cmd', writes: `${E}.create`, input: createInput,
+        output: `{ ${n.entity}: ${rowA} }`, meta: oneMeta, rules: [], access: access(n.org, `${n.org}Office`),
+      },
+      {
+        route: routes.berth, kind: 'cmd', writes: `${E}.create`, input: createInput,
         output: `{ ${n.entity}: ${rowA} }`, meta: oneMeta, rules: [], access: access(n.org, `${n.org}Office`),
       },
       {
