@@ -57,7 +57,7 @@ import {
 export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v13';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v14';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -222,7 +222,7 @@ export async function caseBlock(
     if (!('code' in plan) && (ruleId === plan.flowRule || ruleId === plan.payloadRule)) return null;
   }
   if (!item.routine) return null;
-  const grant = await grantPending(definition, defPath, item.routine, read);
+  const grant = await caseRouteGrant(definition, defPath, item.routine, read, moduleDefinitions);
   if (grant.unread) return { gap: 'GRANT_UNREAD', owner: '', ruleId: '', unread: true };
   if (!grant.pending) return null;
   return { gap: grant.pending, owner: GAP_OWNER[grant.pending] ?? grant.pending, ruleId: '', unread: false };
@@ -1571,24 +1571,57 @@ async function usecaseRouteGrants(
     for (const route of v1) routes.push({ route, grant: await grantPending(definition, definition.dependencies[0] ?? '', route, read) });
     return routes;
   }
+  const v2 = usecaseRoutes(definition, moduleDefinitions);
+  if ('code' in v2) return v2;
   const exposed = exposedRouteGrants(moduleDefinitions);
   if ('code' in exposed) return exposed;
   const unread: GrantFacts = { pending: '', scopeMode: '', unread: true, recordField: '' };
   const routes: Array<{ route: string; grant: GrantFacts }> = [];
+  for (const route of v2) {
+    const grants = exposed.get(route);
+    if (!grants) continue;
+    const declared = grants.length > 0 && grants.every(grant => text(grant.grantId) !== '');
+    routes.push({ route, grant: declared ? grantFacts(grants) : unread });
+  }
+  return routes;
+}
+
+/**
+ * Routes of a usecase. v1 (the usecase cites contracts): its `contractRefs` routes. v2: the
+ * `requests[].route` of the module's request services that name the usecase in `uses`. A v2 usecase
+ * read without the module defs has no source for its routes: `MODULE_DEFS_UNREAD`, never an empty list.
+ */
+export function usecaseRoutes(definition: M1Definition, moduleDefinitions: readonly unknown[]): string[] | EmitFailure {
+  const v1 = contractRoutes(definition);
+  if (v1.length > 0) return v1;
+  if (moduleDefinitions.length === 0) {
+    return { code: 'MODULE_DEFS_UNREAD', detail: `${definition.artifactId} has no contract routes and the module defs were not loaded.` };
+  }
+  const routes = new Set<string>();
   for (const value of moduleDefinitions) {
     const service = readDefinition(value);
     if ('issues' in service || service.artifactType !== 'requestService') continue;
     const requests = Array.isArray(service.data.requests) ? service.data.requests.filter(isRecord) : [];
     for (const request of requests) {
       const route = text(request.route);
-      if (!route || !stringList(request.uses).includes(definition.artifactId)) continue;
-      const grants = exposed.get(route);
-      if (!grants) continue;
-      const declared = grants.length > 0 && grants.every(grant => text(grant.grantId) !== '');
-      routes.push({ route, grant: declared ? grantFacts(grants) : unread });
+      if (route && stringList(request.uses).includes(definition.artifactId)) routes.add(route);
     }
   }
-  return routes;
+  return [...routes];
+}
+
+/** Grant facts of one case route: v1 by the page controller (as before); v2 by the usecase's exposed routes. */
+async function caseRouteGrant(
+  definition: M1Definition,
+  defPath: string,
+  routine: string,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<GrantFacts> {
+  if (contractRoutes(definition).length > 0) return grantPending(definition, defPath, routine, read);
+  const routes = await usecaseRouteGrants(definition, read, moduleDefinitions);
+  const found = 'code' in routes ? undefined : routes.find(item => item.route === routine);
+  return found ? found.grant : { pending: '', scopeMode: '', unread: true, recordField: '' };
 }
 
 async function loadDefinition(ref: string, read: StructureRead): Promise<M1Definition | EmitFailure> {

@@ -10,7 +10,7 @@ import { M1_IMPLEMENT_HANDLERS } from '/_102021_/l2/agentMaterializeL1/core/regi
 import type { HandlerCall, HandlerOutcome, MaterializeHandlerRunner } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { catalogForStage, parseCatalog, type M1ScenarioCase } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, contractRoutes, emitBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, usecaseRoutes } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 
 export const behaviorRunners: Readonly<Record<string, MaterializeHandlerRunner>> = {
   'implement.domainEntity': call => runBehavior(call),
@@ -68,8 +68,17 @@ async function observe(call: HandlerCall, definition: M1Definition): Promise<M1O
     .filter(item => item.artifactId === definition.artifactId)
     .flatMap(item => item.cases);
   const observations: M1Observation[] = [];
+  // Routes of the usecase, read once and only when a case names one (v1 contract refs, v2 page requests).
+  let routes: string[] | null = null;
   for (const item of cases) {
-    if (item.gate !== 'compile' && item.routine && !contractRoutes(definition).includes(item.routine)) continue;
+    if (item.gate !== 'compile' && item.routine) {
+      if (!routes) {
+        const read = usecaseRoutes(definition, call.moduleDefinitions ?? []);
+        if ('code' in read) return { code: read.code, detail: `${read.detail} No file was written.` };
+        routes = read;
+      }
+      if (!routes.includes(item.routine)) continue;
+    }
     const observed = await observationFor(call, definition, item);
     if ('code' in observed) return observed;
     observations.push(observed);
