@@ -42,9 +42,21 @@ import {
   type EmitResult,
   type StructureRead,
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import {
+  domainOptionalPaths,
+  enumField,
+  identityField,
+  lifecycleStart,
+  ontologyRequired,
+  optionalSignatureNames,
+  serverAssigned,
+  versionField,
+} from '/_102021_/l2/agentMaterializeL1/handlers/structure/domainOptional.js';
+
+export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-01-implement-handler-v10';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v11';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -260,7 +272,7 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
   // A v2 usecase has no contract. Allowed, required and nullable paths are the signature fields
   // (the usecase def) read against the entity: writable, required, nullable. A route name is not a source.
   const contract = contractRefs.contractRefs.length === 0
-    ? signaturePaths(definition, entity)
+    ? signaturePaths(definition, entity, domainOptionalPaths(entity, await read(ontologyRef(entity, entityDep))) ?? new Set())
     : await resolveContract(definition, contractRefs, read, contractRefs.contractRefs.find(item => item.symbol.endsWith('Output'))?.route ?? '');
   if ('code' in contract) return contract;
   const pageFilterPaths = operation === 'list' && contractRefs.contractRefs.length > 0
@@ -829,17 +841,7 @@ function createBody(
   ].join('\n');
 }
 
-/** Server-assigned values of a new record: the identity, the version and the initial lifecycle state. */
-function serverAssigned(entity: M1Definition, lifecycle: { field: string; initial: string }): Map<string, string> {
-  const assigned = new Map<string, string>();
-  const identity = identityField(entity);
-  if (identity) assigned.set(identity, 'ctx.idGenerator.newId()');
-  const version = versionField(entity, identity);
-  if (version) assigned.set(version, '1');
-  // The server assigns the initial lifecycle state; a client value is never read for it.
-  if (lifecycle.field) assigned.set(lifecycle.field, `'${lifecycle.initial}'`);
-  return assigned;
-}
+
 
 interface CreateSources {
   /** Contract input paths. */
@@ -915,31 +917,7 @@ async function createSources(
   return { missing, containers };
 }
 
-/** Field paths the canonical l4 entity marks `required`, walking nested `fields`; null when unreadable. */
-function ontologyRequired(source: string): Set<string> | null {
-  const match = /=\s*(\{[\s\S]*\})\s*as const/.exec(source);
-  if (!match) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(match[1]);
-  } catch (error) {
-    console.warn(`ontology record is not JSON: ${String(error)}`);
-    return null;
-  }
-  const record = isRecord(value) && isRecord(value.record) ? value.record : null;
-  if (!record || !isRecord(record.fields)) return null;
-  const paths = new Set<string>();
-  const walk = (fields: Record<string, unknown>, prefix: string): void => {
-    for (const [name, meta] of Object.entries(fields)) {
-      if (!isRecord(meta)) continue;
-      const path = prefix ? `${prefix}.${name}` : name;
-      if (meta.required === true) paths.add(path);
-      if (isRecord(meta.fields)) walk(meta.fields, path);
-    }
-  };
-  walk(record.fields, '');
-  return paths;
-}
+
 
 /**
  * A module-database entity types as optional every field its l4 entity does not require and the
@@ -951,11 +929,8 @@ async function behaviorDomain(definition: M1Definition, output: string, read: St
   const enums = ontologyEnums(source);
   if (text(definition.data.storageTarget) !== 'moduleDatabase') return done(emitDomain(definition, output, new Set(), enums));
   if (source === null) return done(emitDomain(definition, output));
-  const requiredFields = ontologyRequired(source);
-  if (!requiredFields) return { code: 'ONTOLOGY_UNREAD', detail: `${ref} has no readable record fields.` };
-  const assigned = serverAssigned(definition, lifecycleStart(definition));
-  const paths = (Array.isArray(definition.data.fields) ? definition.data.fields.filter(isRecord) : []).map(field => text(field.name)).filter(Boolean);
-  const optional = new Set(paths.filter(path => !requiredFields.has(path) && !assigned.has(path)));
+  const optional = domainOptionalPaths(definition, source);
+  if (!optional) return { code: 'ONTOLOGY_UNREAD', detail: `${ref} has no readable record fields.` };
   return done(emitDomain(definition, output, optional, enums));
 }
 
@@ -1265,30 +1240,13 @@ function selectorField(definition: M1Definition): string {
   return isIdent(path) ? path : '';
 }
 
-function identityField(entity: M1Definition): string {
-  const fields = topFields(entity);
-  const uuid = fields.find(field => field.derived && field.type === 'uuid');
-  if (uuid && isIdent(uuid.name)) return uuid.name;
-  const derived = fields.find(field => field.derived);
-  return derived && isIdent(derived.name) ? derived.name : '';
-}
 
-function enumField(entity: M1Definition): string {
-  const fields = topFields(entity).filter(field => field.type === 'enum');
-  return fields.length === 1 && isIdent(fields[0].name) ? fields[0].name : '';
-}
 
-function versionField(entity: M1Definition, identity: string): string {
-  const fields = topFields(entity).filter(field => field.derived && field.name !== identity && (field.type === 'integer' || field.type === 'number'));
-  return fields.length === 1 && isIdent(fields[0].name) ? fields[0].name : '';
-}
 
-function topFields(entity: M1Definition): Array<{ name: string; type: string; derived: boolean }> {
-  const fields = Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
-  return fields
-    .map(field => ({ name: text(field.name), type: text(field.type), derived: field.derived === true }))
-    .filter(field => field.name && !field.name.includes('.'));
-}
+
+
+
+
 
 function invariantsOf(entity: M1Definition): string[] {
   return stringList(entity.data.invariants);
@@ -1330,10 +1288,20 @@ function listBody(entity: M1Definition, entityName: string, binding: string, inp
  * (then the signature field's): a field neither side marks optional is required, and the
  * structure signature therefore has no `?`. Nothing here is read from a route name.
  */
-function signaturePaths(definition: M1Definition, entity: M1Definition): { allowedInputPaths: string[]; requiredInputPaths: string[]; nullableInputPaths: string[] } {
+/**
+ * Paths of a v2 usecase signature. A field is optional exactly when the domain types it with `?`
+ * (`domainOptionalPaths`: the l4 entity `required` and the server assignments). With an unreadable l4
+ * entity the domain unit itself is refused (`ONTOLOGY_UNREAD`), so the set here is empty.
+ */
+function signaturePaths(
+  definition: M1Definition,
+  entity: M1Definition,
+  domainOptional: ReadonlySet<string>,
+): { allowedInputPaths: string[]; requiredInputPaths: string[]; nullableInputPaths: string[] } {
   const functions = definition.data.functions;
   const fn = Array.isArray(functions) && isRecord(functions[0]) ? functions[0] : {};
   const inputs = Array.isArray(fn.input) ? fn.input.filter(isRecord) : [];
+  const optionalNames = optionalSignatureNames(inputs, text(entity.data.entityId), domainOptional);
   const entityFields = new Map<string, Record<string, unknown>>();
   if (Array.isArray(entity.data.fields)) {
     for (const field of entity.data.fields.filter(isRecord)) {
@@ -1349,9 +1317,7 @@ function signaturePaths(definition: M1Definition, entity: M1Definition): { allow
     if (!name || !name.split('.').every(isIdent)) continue;
     const entityField = entityFields.get(name);
     allowedInputPaths.push(name);
-    const optional = entityField?.optional === true || field.optional === true;
-    const markedRequired = entityField?.required === true || field.required === true;
-    if (!optional || markedRequired) requiredInputPaths.push(name);
+    if (!optionalNames.has(name)) requiredInputPaths.push(name);
     const declared = text(entityField?.type) || text(field.type);
     if (entityField?.nullable === true || field.nullable === true || /\bnull\b/.test(declared)) nullableInputPaths.push(name);
   }
@@ -1618,22 +1584,7 @@ function nodeAt(root: FieldNode, path: string): FieldNode | undefined {
   return node;
 }
 
-/**
- * The lifecycle field is the single top-level enum of an entity that declares transitions.
- * Its initial state is the one declared state no transition reaches; otherwise it is ''.
- */
-export function lifecycleStart(definition: M1Definition): { field: string; initial: string } {
-  const lifecycle = definition.data.lifecycle;
-  if (!isRecord(lifecycle) || !Array.isArray(lifecycle.transitions) || lifecycle.transitions.length === 0) return { field: '', initial: '' };
-  const field = enumField(definition);
-  if (!field) return { field: '', initial: '' };
-  const states = Array.isArray(lifecycle.states)
-    ? lifecycle.states.flatMap(item => isRecord(item) ? [text(item.state)] : []).filter(Boolean)
-    : [];
-  const reached = new Set(lifecycle.transitions.flatMap(item => isRecord(item) ? [text(item.to)] : []));
-  const initial = states.filter(state => !reached.has(state));
-  return { field, initial: initial.length === 1 && isIdent(initial[0]) ? initial[0] : '' };
-}
+
 
 function done(result: EmitResult): EmitResult {
   return { ...result, runsStub: false, source: finish(result.source) };

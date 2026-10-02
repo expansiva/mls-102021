@@ -13,6 +13,7 @@ import {
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { domainOptionalPaths, optionalSignatureNames } from '/_102021_/l2/agentMaterializeL1/handlers/structure/domainOptional.js';
 import {
   AUTHORITY_UNMAPPED,
   AUTHORITY_UNREAD,
@@ -26,7 +27,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-10-01-structure-handler-v10';
+export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v11';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -264,7 +265,15 @@ async function emitDomainUsecase(
   }
   const entityDep = definition.dependencies.find(path => path.includes('/entities/'));
   if (aliases.size > 0 && !entityDep) return { code: 'ENTITY_UNBOUND', detail: `${definition.artifactId} has no entity dependency.` };
-  if (entityDep && await read(entityDep) === null) return { code: 'ENTITY_UNBOUND', detail: `${entityDep} could not be read.` };
+  const entityText = entityDep ? await read(entityDep) : null;
+  if (entityDep && entityText === null) return { code: 'ENTITY_UNBOUND', detail: `${entityDep} could not be read.` };
+  // Optional is what the domain types with `?`: same entity def, same l4 entity, same criterion.
+  // Unreadable l4 entity: the domain unit is refused on its own (ONTOLOGY_UNREAD); nothing is optional here.
+  const entity = entityText === null ? null : parseDefinitionExport(entityText);
+  const domainOptional = entity && entityDep ? domainOptionalPaths(entity, await read(ontologyRef(entity, entityDep))) ?? new Set<string>() : new Set<string>();
+  const rawFn = Array.isArray(definition.data.functions) && isRecord(definition.data.functions[0]) ? definition.data.functions[0] : {};
+  const inputOptional = optionalSignatureNames(Array.isArray(rawFn.input) ? rawFn.input : [], entityName, domainOptional);
+  const outputOptional = optionalSignatureNames(Array.isArray(rawFn.output) ? rawFn.output : [], entityName, domainOptional);
   const portImport = ports.length === 0
     ? ''
     : `import type { ${ports.map(item => item.interfaceName).join(', ')} } from '${ports[0].specifier}';`;
@@ -286,8 +295,8 @@ async function emitDomainUsecase(
       portImport,
       '',
       // The service asserts this to and from a record. The index is what makes that assertion legal.
-      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), new Set(), aliases), '')}`,
-      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), new Set(), aliases), '')}`,
+      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), inputOptional, aliases), '')}`,
+      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), outputOptional, aliases), '')}`,
       '',
       `export async function ${fnName}(input: ${inputType}, ctx: RequestContext${portArg}): Promise<${outputType}> {`,
       '  void input;',

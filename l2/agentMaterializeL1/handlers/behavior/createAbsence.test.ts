@@ -20,6 +20,7 @@ import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, type M1Definition } from '
 import { emitBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { emitController, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import { clearRepositories, registerRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
@@ -31,10 +32,12 @@ const PORT = `${L1}/layer_2_application/ports/crateRepository.defs.ts`;
 const SCOPE = `${L1}/layer_2_application/scope/accessScope.defs.ts`;
 const AUTHORITY = `${L1}/layer_1_external/auth/authorityMap.defs.ts`;
 const UC = `${L1}/layer_2_application/usecases/createCrate.defs.ts`;
+const REQUEST = `${L1}/layer_2_application/requests/dock.defs.ts`;
 const CTRL = `${L1}/layer_1_external/adapters/http/controllers/dock.defs.ts`;
 const DOCK = `${P}/l2/${MOD}/web/contracts/dock.defs.ts`;
 const ONTOLOGY = `${P}/l4/${MOD}/ontology/Crate.defs.ts`;
-const ROUTE = `${MOD}.dock.cmdCreateCrate`;
+// v2 route: `<mod>.<page>.<requestId>`; nothing in the name says command or query.
+const ROUTE = `${MOD}.dock.packCrate`;
 
 function def(artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition {
   return { schemaVersion: M1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: MOD, status: 'pending', dependencies: [...dependencies].sort(), data } as M1Definition;
@@ -82,13 +85,34 @@ const port = def('repositoryPort', 'CrateRepository', [ENTITY], {
     { name: 'list', params: ['CrateFilter'], returns: 'Crate[]' },
   ],
 });
-const createCrate = def('usecase', 'createCrate', [PORT, ENTITY, DOCK, ONTOLOGY], {
+// v2 usecase: the signature is the def's fields as the D1 writes them (no optional flag: what is optional
+// comes from the l4 entity, as for the domain); nullable is on the field. No contract ref.
+type Row = Record<string, unknown>;
+const field = (name: string, type: string, extra: Row = {}): Row => ({ name, type, fieldRef: `Crate.${name}`, ...extra });
+const createInput = (nullable: readonly string[] = []): Row[] => [
+  field('dockId', 'record'),
+  field('label', 'text'),
+  field('weight', 'number'),
+  field('fragile', 'boolean'),
+  field('specs', 'object'),
+  field('specs.width', 'number'),
+  field('specs.sealed', 'boolean'),
+  field('specs.memo', 'text'),
+  field('specs.inspection', 'object'),
+  field('specs.inspection.passed', 'boolean'),
+  field('specs.inspection.score', 'number'),
+].map(row => nullable.includes(String(row.name)) ? { ...row, nullable: true } : row);
+const createOutput: Row[] = [
+  field('id', 'uuid'), field('version', 'integer'), field('dockId', 'record'), field('status', 'enum'), field('label', 'text'),
+  field('specs', 'object'), field('specs.width', 'number'), field('specs.sealed', 'boolean'), field('specs.memo', 'text'),
+  field('specs.inspection', 'object'), field('specs.inspection.passed', 'boolean'), field('specs.inspection.score', 'number'),
+];
+const usecaseOf = (nullable: readonly string[] = []) => def('usecase', 'createCrate', [PORT, ENTITY, ONTOLOGY], {
   usecaseId: 'createCrate',
   entityId: 'Crate',
   operation: 'create',
   ports: ['CrateRepository'],
-  functions: [{ functionName: 'createCrate', input: [], output: [], contractRefs: [{ route: ROUTE, symbol: 'CreateCrateOutput' }] }],
-  routeProjections: [{ route: ROUTE, contractPath: DOCK.replace(`${P}/`, ''), projection: 'declared', outputFields: ['id', 'version', 'dockId', 'status', 'label', 'specs'] }],
+  functions: [{ functionName: 'createCrate', input: createInput(nullable), output: createOutput }],
   portCalls: ['create'],
   effects: [],
   uses: [{ path: 'id', role: 'selector', source: 'input' }],
@@ -99,6 +123,16 @@ const createCrate = def('usecase', 'createCrate', [PORT, ENTITY, DOCK, ONTOLOGY]
   transactional: false,
   transaction: { boundary: 'none' },
 });
+const createCrate = usecaseOf();
+const OUT_FIELDS = ['id', 'version', 'dockId', 'status', 'label', 'specs.width', 'specs.sealed', 'specs.memo', 'specs.inspection.passed', 'specs.inspection.score'];
+const service = def('requestService', 'dock', [UC], {
+  pageId: 'dock',
+  requests: [{ route: ROUTE, kind: 'cmd', uses: ['createCrate'], transaction: 'single', outputs: [{ key: 'crate', entity: 'Crate', fields: OUT_FIELDS }], params: [] }],
+});
+const registration = def('repositoryRegistration', 'registerRepositories', [], {
+  registrationId: 'registerRepositories',
+  adapters: [{ portId: 'CrateRepository', adapterArtifactId: 'CrateRepository' }],
+});
 const scope = def('accessScope', 'accessScope', [], {
   scopeId: 'accessScope',
   grants: [{
@@ -108,15 +142,21 @@ const scope = def('accessScope', 'accessScope', [], {
   }],
 });
 const authority = def('authorityMap', 'authorityMap', [SCOPE], { mapId: 'authorityMap', entries: [{ grantId: 'clerkDock', actorRef: 'clerk' }] });
-const dock = def('httpController', 'dock', [AUTHORITY, SCOPE, UC], {
+const dock = def('httpController', 'dock', [AUTHORITY, SCOPE, REQUEST], {
   pageId: 'dock',
-  handlers: [{ route: ROUTE, kind: 'command', usecaseId: 'createCrate', grantIds: ['clerkDock'] }],
+  handlers: [{
+    route: ROUTE, kind: 'command', grantIds: ['clerkDock'], serviceFunction: ROUTE,
+    contractPath: DOCK.replace(`${P}/`, ''), contractInterface: 'DockContracts',
+  }],
 });
 
-const DOCK_SOURCE = [
-  'export interface CreateCrateInput {\n  "dockId": string;\n  "label"?: string;\n  "weight"?: number;\n  "fragile"?: boolean;\n  "specs": {\n    "width"?: number;\n    "sealed"?: boolean;\n    "memo"?: string;\n    "inspection"?: {\n      "passed": boolean;\n      "score"?: number;\n    };\n  };\n}',
-  'export interface CreateCrateOutput {\n  "id": string;\n  "version": number;\n  "dockId": string;\n  "status": "shipped" | "held" | "packed";\n  "label"?: string;\n  "specs": {\n    "width"?: number;\n    "sealed"?: boolean;\n    "memo"?: string;\n    "inspection"?: {\n      "passed": boolean;\n      "score"?: number;\n    };\n  };\n}',
+// The L2 contract v2 writes the route input inline, as `renderD2ContractV2` does.
+const CRATE_INPUT = '{ dockId: string; label?: string; weight?: number; fragile?: boolean; specs: { width?: number; sealed?: boolean; memo?: string; inspection?: { passed: boolean; score?: number; }; }; }';
+const contractOf = (input: string) => [
+  'export interface CrateRow {\n  "id": string;\n  "version": number;\n  "dockId": string;\n  "status": "shipped" | "held" | "packed";\n  "label"?: string;\n  "specs": {\n    "width"?: number;\n    "sealed"?: boolean;\n    "memo"?: string;\n    "inspection"?: {\n      "passed": boolean;\n      "score"?: number;\n    };\n  };\n}',
+  `export interface DockContracts {\n  '${ROUTE}': {\n    kind: 'cmd';\n    input: ${input};\n    output: { crate: CrateRow };\n  };\n}`,
 ].join('\n\n');
+const DOCK_SOURCE = contractOf(CRATE_INPUT);
 
 type Fields = Record<string, { type: string; required?: boolean; derived?: boolean; fields?: Fields }>;
 const RECORD: Fields = {
@@ -146,7 +186,7 @@ const asSource = (definition: M1Definition) => `export const definition = ${JSON
 function reader(overrides: Map<string, string> = new Map()): (ref: string) => Promise<string | null> {
   const files = new Map<string, string>([
     [ENTITY, asSource(entity)], [PORT, asSource(port)], [SCOPE, asSource(scope)], [AUTHORITY, asSource(authority)],
-    [UC, asSource(createCrate)], [CTRL, asSource(dock)], [DOCK, DOCK_SOURCE], [ONTOLOGY, ontologySource(RECORD)],
+    [UC, asSource(createCrate)], [REQUEST, asSource(service)], [CTRL, asSource(dock)], [DOCK, DOCK_SOURCE], [ONTOLOGY, ontologySource(RECORD)],
   ]);
   for (const [ref, source] of overrides) files.set(ref, source);
   return async ref => files.get(ref) ?? null;
@@ -158,26 +198,26 @@ function ok(result: EmitResult | EmitFailure): EmitResult {
 }
 
 type Handler = (input: unknown) => Promise<{ data: unknown }>;
-type Row = Record<string, unknown>;
 
-async function emitAll(contract = DOCK_SOURCE): Promise<Map<string, string>> {
-  const read = reader(new Map([[DOCK, contract]]));
+async function emitAll(contract = DOCK_SOURCE, usecase = createCrate): Promise<Map<string, string>> {
+  const read = reader(new Map([[DOCK, contract], [UC, asSource(usecase)]]));
   const units: Array<[string, string, M1Definition]> = [
     ['implement.domainEntity', ENTITY, entity],
     ['implement.repositoryPort', PORT, port],
     ['implement.accessScope', SCOPE, scope],
     ['implement.authorityMap', AUTHORITY, authority],
-    ['implement.usecase', UC, createCrate],
+    ['implement.usecase', UC, usecase],
+    ['implement.requestService', REQUEST, service],
   ];
   const sources = new Map<string, string>();
-  for (const [id, ref, definition] of units) sources.set(ref, ok(await emitBehavior(id, definition, outputPathFromDefPath(ref), read)).source);
+  for (const [id, ref, definition] of units) sources.set(ref, ok(await emitBehavior(id, definition, outputPathFromDefPath(ref), read, [registration])).source);
   sources.set(CTRL, ok(await emitController(dock, outputPathFromDefPath(CTRL), read)).source);
   return sources;
 }
 
 /** Writes the emitted files (after `edit`) to a scratch folder and loads the controller and the store. */
-async function load(edit: (defPath: string, source: string) => string = (_ref, source) => source, contract = DOCK_SOURCE) {
-  const sources = await emitAll(contract);
+async function load(edit: (defPath: string, source: string) => string = (_ref, source) => source, contract = DOCK_SOURCE, usecase = createCrate) {
+  const sources = await emitAll(contract, usecase);
   const dir = mkdtempSync(join(tmpdir(), 'm1-29-'));
   const fileOf = (qualified: string) => join(dir, qualified.replace(`${P}/`, ''));
   for (const [ref, source] of sources) {
@@ -193,18 +233,25 @@ async function load(edit: (defPath: string, source: string) => string = (_ref, s
   const handler = controller.routes.find(item => item.key === ROUTE)?.handler;
   assert.ok(handler, ROUTE);
   memory.resetMemory([]);
+  // The page request resolves the port through the registry; the memory port stands in for the adapter.
+  clearRepositories();
+  registerRepository('CrateRepository', () => memory.pendingCrateRepository);
   const create = async (params: Row): Promise<{ code?: string; row?: Row }> => {
     const ctx = createRequestContext();
     ctx.sessionContext.actorId = 'k-1';
     try {
       const response = await handler({ request: { routine: ROUTE, params, meta: { source: 'http', verifiedAuthorities: [`${MOD}:clerk`] } }, ctx });
-      const id = (response.data as { id: string }).id;
+      const id = (response.data as { crate: { id: string } }).crate.id;
       return { row: (await memory.pendingCrateRepository.list({})).find(item => item.id === id) };
     } catch (error) {
       return { code: String((error as { code?: string }).code ?? error) };
     }
   };
-  return { create, sources, rows: () => memory.pendingCrateRepository.list({}), dispose: () => rmSync(dir, { recursive: true, force: true }) };
+  const dispose = () => {
+    clearRepositories();
+    rmSync(dir, { recursive: true, force: true });
+  };
+  return { create, sources, rows: () => memory.pendingCrateRepository.list({}), dispose };
 }
 
 const own = (value: unknown, key: string) => Boolean(value) && typeof value === 'object' && Object.hasOwn(value as object, key);
@@ -286,11 +333,12 @@ void test('null is refused where the contract does not declare it and stored as 
   } finally {
     strict.dispose();
   }
-  const declared = DOCK_SOURCE
-    .replace('    "memo"?: string;\n    "inspection"?: {', '    "memo"?: string | null;\n    "inspection"?: {')
-    .replace('      "score"?: number;\n    };\n  };\n}\n\nexport interface CreateCrateOutput', '      "score"?: number;\n    } | null;\n  };\n}\n\nexport interface CreateCrateOutput');
+  const declared = contractOf(CRATE_INPUT
+    .replace('memo?: string;', 'memo?: string | null;')
+    .replace('score?: number; };', 'score?: number; } | null;'));
   assert.notEqual(declared, DOCK_SOURCE);
-  const open = await load(undefined, declared);
+  // v2: the contract gates the controller and the usecase def declares the same nullable fields.
+  const open = await load(undefined, declared, usecaseOf(['specs.memo', 'specs.inspection']));
   try {
     const { code, row } = await open.create({ dockId: 'd-1', specs: { memo: null, inspection: null } });
     assert.equal(code, undefined, code);
@@ -317,7 +365,7 @@ void test('null is refused where the contract does not declare it and stored as 
 void test('a default written back into the emitted copy is caught', async () => {
   for (const edit of [
     (source: string) => source.replace(/\.\.\.\(input\.fragile !== undefined \? \{ fragile: input\.fragile \} : \{\}\),/, 'fragile: input.fragile ?? false,'),
-    (source: string) => source.replace(/(const record: Crate = \{\n)/, "$1    notes: '',\n"),
+    (source: string) => source.replace(/(const record(?:: Crate)? = \{\n)/, "$1    notes: '',\n"),
     (source: string) => source.replace(/\.\.\.\(input\.specs\.inspection !== undefined \? \{ inspection: /, 'inspection: {}, ...(input.specs.inspection !== undefined ? { inspection: '),
   ]) {
     const mutated = await load((ref, source) => {
@@ -362,7 +410,7 @@ void test('the emitted domain, port and create compile together against the cont
       writeFileSync(full, source);
       files.push(`./${relative(ROOT, full)}`);
     };
-    for (const ref of [ENTITY, PORT, UC]) write(outputPathFromDefPath(ref), sources.get(ref) ?? '');
+    for (const ref of [ENTITY, PORT, UC, REQUEST, SCOPE, AUTHORITY, CTRL]) write(outputPathFromDefPath(ref), sources.get(ref) ?? '');
     write(DOCK, DOCK_SOURCE);
     const paths = { [`/${P}/*`]: [`./${relative(ROOT, dir)}/*`], '/_102034_/*': ['./mls-102034/*'] };
     writeFileSync(config, `${JSON.stringify({ extends: './tsconfig.base.json', compilerOptions: { noEmit: true, paths }, files }, null, 2)}\n`);
