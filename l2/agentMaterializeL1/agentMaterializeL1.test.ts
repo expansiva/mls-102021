@@ -220,3 +220,32 @@ void test('m1_45: runEndedWell is true only for COMPLETED, units in place and ca
   assert.equal(runEndedWell(ended({ stage: 'simulate', ended: 'SIMULATED' })), true, 'simulate');
   assert.equal(runEndedWell(ended({ stage: 'simulate', ended: 'NO_UNITS' })), false, 'simulate NO_UNITS');
 });
+
+function promotedAnd(code: string): EndedInput['units'] {
+  return [
+    { defPath: 'a.defs.ts', code: 'PROMOTED', detail: '', promoted: true, modelCalls: 0 },
+    { defPath: 'b.defs.ts', code: 'PROMOTED', detail: '', promoted: true, modelCalls: 0 },
+    { defPath: 'outbound.defs.ts', code, detail: 'recebimentoRegistrado', promoted: false, modelCalls: 0 },
+  ];
+}
+
+void test('m1_47: MECHANISM_UNBOUND is a declared gap: the run completes and the trace line is gap:', async () => {
+  const units = promotedAnd('MECHANISM_UNBOUND');
+  assert.equal(runEndedWell(ended({ units })), true);
+  const host = installStudio(PROJECT);
+  seedDomain(host);
+  const rel = 'layer_1_external/adapters/integration/outbound.defs.txt';
+  seed(host, { project: PROJECT, level: 1, folder: `${MODULE}/layer_1_external/adapters/integration`, shortName: 'outbound', extension: '.defs.ts' },
+    readFileSync(path.join(SOURCE_ROOT, rel), 'utf8').split(SOURCE_MODULE).join(MODULE));
+  const status = rootStatus(await intentsOf(`@@agentMaterializeL1 ${MODULE} /structure`));
+  assert.match(status.traceMsg, /^gap: MECHANISM_UNBOUND _102047_\/l1\/salaEnsaio\/layer_1_external\/adapters\/integration\/outbound\.defs\.ts$/m);
+  assert.doesNotMatch(status.traceMsg, /^MECHANISM_UNBOUND /m);
+});
+
+void test('m1_47: NO_CONSUMER is the same declared gap', () => {
+  assert.equal(runEndedWell(ended({ units: promotedAnd('NO_CONSUMER') })), true);
+});
+
+void test('m1_47: BLOCKED_BY still fails the run', () => {
+  assert.equal(runEndedWell(ended({ units: promotedAnd('BLOCKED_BY') })), false);
+});

@@ -82,7 +82,7 @@ function summarize(result: { moduleName: string; project: number; stage: string;
     `Stage ${result.stage}. ${result.ended}.`,
     ...(result.detail ? [result.detail] : []),
     `Model calls: ${result.llmCalls}. Writes: ${result.wrote ? 'yes' : 'no'}.`,
-    ...result.units.map(unit => `${unit.code} ${unit.defPath}`),
+    ...result.units.map(unitLine),
   ];
   if (result.catalog) {
     lines.push(`catalog: ${result.catalog.action} ${result.catalog.ref}`);
@@ -100,21 +100,34 @@ function summarize(result: { moduleName: string; project: number; stage: string;
 
 /** Unit codes of a unit whose code is in place (the same list as `dependencyOk` in run/execute.ts). */
 const UNIT_OK: ReadonlySet<string> = new Set(['PROMOTED', 'REUSE', 'VERIFIED']);
+/**
+ * m1_47: declared platform gaps. The module event bus does not exist, so the app still boots.
+ * Closed list: no pattern and no prefix. These do not hold the end of the run.
+ */
+const UNIT_GAP: ReadonlySet<string> = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
 /** Catalog actions that refuse: the derived catalog was not stored. */
 const CATALOG_REFUSED: ReadonlySet<string> = new Set(['conflict', 'invalid']);
 /** Registration actions that refuse: l5 was not registered. */
 const REGISTRATION_REFUSED: ReadonlySet<string> = new Set(['pending', 'invalid']);
 
+/** `<code> <defPath>`, prefixed `gap:` once for a declared platform gap. */
+function unitLine(unit: { defPath: string; code: string }): string {
+  const body = `${unit.code} ${unit.defPath}`;
+  if (!UNIT_GAP.has(unit.code) || body.startsWith('gap:')) return body;
+  return `gap: ${body}`;
+}
+
 /**
  * m1_45: the run ended well, so the root step may close `completed`.
  * simulate writes nothing and plans only: it ends well when it ended `SIMULATED`.
- * Any other stage needs `COMPLETED`, every unit in place, and catalog and registration without refusal.
+ * Any other stage needs `COMPLETED`, every unit in place or a declared gap, and catalog and registration without refusal.
  * A registration with pendings is a refusal even when it patched: part of the backend is not registered.
+ * m1_47: MECHANISM_UNBOUND and NO_CONSUMER are gaps, not refusals. Other unit codes still refuse.
  */
 export function runEndedWell(result: Pick<MaterializeRunResult, 'stage' | 'ended' | 'units' | 'catalog' | 'registration'>): boolean {
   if (result.stage === 'simulate') return result.ended === 'SIMULATED';
   if (result.ended !== 'COMPLETED') return false;
-  if (!result.units.every(unit => UNIT_OK.has(unit.code))) return false;
+  if (!result.units.every(unit => UNIT_OK.has(unit.code) || UNIT_GAP.has(unit.code))) return false;
   if (result.catalog && CATALOG_REFUSED.has(result.catalog.action)) return false;
   if (result.registration && (REGISTRATION_REFUSED.has(result.registration.action) || result.registration.pendings.length > 0)) return false;
   return true;
