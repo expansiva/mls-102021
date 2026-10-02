@@ -107,28 +107,30 @@ function shape(derived: DerivedCatalog, ids: Ids): string[] {
 void test('m1_40: v2 controller cases come from the request and the contract v2', () => {
   const derived = derive(BASE);
   const byKind = (kind: string): string[] => derived.obligations.filter(item => item.kind === kind).map(item => item.caseId).sort();
-  assert.deepEqual(byKind('shape'), ['pgA.shape.r1']);
-  assert.deepEqual(byKind('success'), ['pgA.success.r2', 'pgA.success.r3']);
+  const catalogIds = (marker: string): string[] => derived.catalog.scenarios.flatMap(item => item.cases).map(item => item.caseId).filter(id => id.split('.')[1] === marker).sort();
+  assert.deepEqual(catalogIds('shape'), ['pgA.shape.r1']);
+  assert.deepEqual(catalogIds('success'), ['pgA.success.r2', 'pgA.success.r3']);
   assert.deepEqual(byKind('rollback'), ['pgA.rollback.r2.ucThree']);
-  assert.deepEqual(byKind('contract'), ['pgA.contract.r2.f2', 'pgA.contract.r3.f4']);
-  assert.deepEqual(byKind('minimalInput'), ['pgA.minimal.r1', 'pgA.minimal.r2']);
+  assert.deepEqual(catalogIds('contract'), ['pgA.contract.r2.f2', 'pgA.contract.r3.f4']);
+  assert.deepEqual(catalogIds('minimal'), ['pgA.minimal.r1', 'pgA.minimal.r2']);
   assert.equal(derived.gaps.some(gap => gap.reason.includes('contract required field was not read')), false);
 
-  const shapeCase = derived.obligations.find(item => item.kind === 'shape');
+  const shapeCase = derived.catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === 'pgA.shape.r1');
   assert.ok(shapeCase);
-  assert.deepEqual(shapeCase.expect.allowedPaths, ['a1', 'a1.id', 'a1.x1', 'a2', 'a2.id', 'a2.y1', 'hm', 'pg', 'ps']);
   assert.equal(shapeCase.expect.ok, true);
   assert.equal(shapeCase.expect.status, 200);
   assert.equal(shapeCase.mutating, false);
+  assert.equal(shapeCase.actorId.length > 0, true);
   assert.deepEqual(shapeCase.caller, { source: 'http', authorities: ['mxq:acA'] });
+  const shapePaths = derived.obligations.find(item => item.caseId === 'pgA.disclosure.r1');
+  assert.ok(shapePaths);
+  assert.deepEqual(shapePaths.expect.allowedPaths, ['a1.id', 'a1.x1', 'a2.id', 'a2.y1', 'hm', 'pg', 'ps']);
 
-  const success = derived.obligations.find(item => item.caseId === 'pgA.success.r2');
+  const success = derived.catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === 'pgA.success.r2');
   assert.ok(success);
   assert.equal(success.mutating, true);
-  assert.deepEqual(success.input.required, ['f2', 'nest', 'nest.n1']);
-  assert.deepEqual(success.input.optional, ['f3', 'nest.n2']);
-  assert.deepEqual(success.expect.allowedPaths, ['b1', 'b1.id', 'b1.x1']);
-  assert.equal(success.blocker, 'RUNTIME_IDENTITY_PENDING');
+  assert.equal(success.expect.ok, true);
+  assert.equal(success.actorId.length > 0, true);
 
   const rollback = derived.obligations.find(item => item.kind === 'rollback');
   assert.ok(rollback);
@@ -142,10 +144,10 @@ void test('m1_40: v2 controller cases come from the request and the contract v2'
   // The command with one usecase has no rollback case and says so.
   const single = derived.gaps.filter(gap => gap.reason.startsWith('ROLLBACK_SINGLE_USE'));
   assert.deepEqual(single.map(gap => gap.reason), ['ROLLBACK_SINGLE_USE: mxq.pgA.r3 uses one usecase']);
-  // Only the unauthenticated refusal is a catalog case; the monitor format does not change.
-  const cases = derived.catalog.scenarios.flatMap(item => item.cases).filter(item => item.runner === 'route');
+  const cases = derived.catalog.scenarios.flatMap(item => item.cases).filter(item => item.runner === 'route' && item.caller?.authorities.length === 0);
   assert.equal(cases.length, 3);
   assert.equal(cases.every(item => item.gate === 'auth'), true);
+  assert.equal(derived.catalog.scenarios.flatMap(item => item.cases).some(item => item.caseId === 'pgA.contract.r2.f2' && item.actorId.length > 0), true);
 });
 
 void test('m1_40: renaming every id keeps the same cases', () => {

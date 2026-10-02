@@ -101,7 +101,8 @@ async function catalogGaps(files: Record<string, string>): Promise<string[]> {
 void test('m1_40 r1b: the catalog reads the relative contract of a v2 handler', async () => {
   const reasons = await catalogGaps({ [CONTRACT_REF]: CONTRACT });
   assert.equal(reasons.some(reason => reason.startsWith('CONTRACT_UNREAD')), false, reasons.join('\n'));
-  assert.equal(reasons.some(reason => reason.includes(`${PAGE}.shape.r1 is declared, not executed`)), true, reasons.join('\n'));
+  assert.equal(reasons.some(reason => reason.includes(`${PAGE}.shape.r1 is declared, not executed`)), false, reasons.join('\n'));
+  assert.equal(reasons.some(reason => reason.includes(`${PAGE}.disclosure.r1 is declared, not executed`)), true, reasons.join('\n'));
 });
 
 void test('m1_40 r1b: an unreadable contract is a visible CONTRACT_UNREAD', async () => {

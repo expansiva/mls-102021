@@ -133,8 +133,8 @@ void test('verifyBatch accepts the structure checkpoint and rejects a different 
     monitorError: null,
   });
   assert.equal(controllerReport.accepted, true, controllerReport.nextAction);
-  // Two page controllers, each with a compile case and two routes refused before the request (no authority): all pass.
-  assert.deepEqual(controllerReport.counts, { passed: 6, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
+  // Two page controllers: compile and the unauthenticated refusal pass. Positive route cases are the structure stub.
+  assert.deepEqual(controllerReport.counts, { passed: 8, expectedRed: 6, failed: 0, blocked: 0, skipped: 0, inconclusive: 0 });
 
   const catalog = parseCatalog(CATALOG).catalog;
   assert.ok(catalog);
@@ -158,7 +158,8 @@ void test('verifyBatch accepts the structure checkpoint and rejects a different 
     monitorError: null,
   });
   assert.equal(masked.accepted, false);
-  assert.equal(masked.counts.expectedRed, 0);
+  // Positive route cases carry the structure stub mark. A stub there is expected red, not a pass.
+  assert.equal(masked.counts.expectedRed, 6);
 });
 
 void test('a pending grant stays closed and is not replaced by the stub', () => {

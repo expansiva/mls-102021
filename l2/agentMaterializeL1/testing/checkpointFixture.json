@@ -1,7 +1,7 @@
 {
   "schemaVersion": "2026-09-25-m1-checkpoint-v1",
   "runId": "m1-04-structure",
-  "inputHash": "sha256:0568ac818f81aa30ca17362561a070b3f727151a90d3a64c8e8e71074add235c",
+  "inputHash": "sha256:5b9a23ff538caf68477de57e4999ba61e21719dd937d9bce010d691e2aaad4eb",
   "commit": "69adf1f",
   "stage": "structure",
   "handlerId": "structure.usecase",

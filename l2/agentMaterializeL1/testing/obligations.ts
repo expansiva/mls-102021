@@ -3,9 +3,10 @@
 /**
  * Authenticated route cases (m1_27). The oracle is read from the L2 contract of the
  * route, the access grants and the authority map; never from the emitted handler. A
- * case with authorities needs a test identity the runtime provisions, so it is declared
- * here with that blocker. It is not a catalog case and the run never reports it executed;
- * the memory harness (testing/fixture.ts, m1_28) runs it against the emitted code.
+ * case with authorities needs a test identity the runtime provisions. Kinds the monitor can
+ * already run (identity per case, runtime m1_35 item 2) leave here for the catalog. own/other,
+ * disclosure and rollback stay, with the reason on the gap. The memory harness (testing/fixture.ts,
+ * m1_28) still runs what stays against the emitted code.
  * A grant proves behaviour; it is not a rule id (d1_26 r2, m1_10), so `ruleId` stays null.
  */
 
@@ -13,9 +14,10 @@ import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1D
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { defV1Detail, resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
-import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_SEED_REF, type M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { isL1Operation, L1_OPERATION_TRAITS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
+import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 
 /** Runtime proof: credential -> actor -> personEntity and the test identities are the runtime's. */
 export const M1_OBLIGATION_BLOCKER = 'RUNTIME_IDENTITY_PENDING' as const;
@@ -25,6 +27,27 @@ export const M1_OBLIGATION_BLOCKER_POSTGRES = 'POSTGRES_ONLY' as const;
 export const M1_OBLIGATION_OWNER_POSTGRES = 'runtime 102034 (DATABASE_URL_TEST)' as const;
 
 export type M1ObligationKind = 'contract' | 'minimalInput' | 'noIdentity' | 'own' | 'other' | 'disclosure' | 'shape' | 'success' | 'rollback';
+
+/**
+ * Kinds the monitor runs once a declared actor without an identity is blocked, never anonymous
+ * (runtime m1_35 item 2). The others stay obligations: own/other need a row owned by that actor,
+ * disclosure needs nested `observation.fields`, rollback only Postgres proves.
+ */
+export const M1_MONITOR_CASE_KINDS = ['contract', 'minimalInput', 'noIdentity', 'shape', 'success'] as const;
+
+/** False only when identity-per-case is closed and the monitor can run this kind. */
+export function obligationStays(kind: M1ObligationKind, identityClosed: boolean): boolean {
+  if (!identityClosed) return true;
+  return !(M1_MONITOR_CASE_KINDS as readonly string[]).includes(kind);
+}
+
+/** Why a kind is not a catalog case. Empty when the monitor can run it. */
+export function obligationStayText(kind: M1ObligationKind): string {
+  if (kind === 'own' || kind === 'other') return 'needs a stored row owned by that actor; the monitor does not seed by owner';
+  if (kind === 'disclosure') return 'needs nested paths on observation.fields (runtime m1_35 item 4)';
+  if (kind === 'rollback') return 'only Postgres proves nothing was written';
+  return '';
+}
 /**
  * Actor the fixture binds: `member` holds the role, `owner` owns the addressed rows,
  * `other` holds the same role and owns none of them, `none` has the authority and no identity.
@@ -60,6 +83,10 @@ export interface M1Obligation {
   sources: string[];
   blocker: typeof M1_OBLIGATION_BLOCKER | typeof M1_OBLIGATION_BLOCKER_POSTGRES;
   owner: typeof M1_OBLIGATION_OWNER | typeof M1_OBLIGATION_OWNER_POSTGRES;
+  /** Required input paths that address a stored field. Value is always `<seedRef>`. */
+  params: Record<string, string>;
+  /** `<Entity>.<field>` for each key of `params`, from the usecase or the contract meta. */
+  paramFieldRefs: Record<string, string>;
 }
 
 export interface M1ObligationObservation {
@@ -163,6 +190,7 @@ function routeObligationsV2(
   const optional = input.allowedPaths.filter(path => !input.required.includes(path));
   const positive: M1ObligationIdentity = access.ownField ? 'owner' : 'member';
   const sources = sorted([`${ref.defPath}#${ref.route}`, serviceEntry[0], contractRef, ...access.sources]);
+  const stored = storedFieldRefs(request, route, defs);
   const make = (
     kind: M1ObligationKind,
     caseId: string,
@@ -185,6 +213,7 @@ function routeObligationsV2(
     sources: [...sources],
     blocker: postgres ? M1_OBLIGATION_BLOCKER_POSTGRES : M1_OBLIGATION_BLOCKER,
     owner: postgres ? M1_OBLIGATION_OWNER_POSTGRES : M1_OBLIGATION_OWNER,
+    ...seedParams(stored, input.required, omitted),
   });
   const obligations: M1Obligation[] = [];
   const gaps: string[] = [];
@@ -249,6 +278,55 @@ function routeAccess(ref: RouteRef, defs: ReadonlyMap<string, M1Definition>): Ro
     caller: { source: 'http', authorities: sorted([...new Set(actorRefs.map(actor => `${moduleName}:${actor}`))]) },
     sources: [...(scopeEntry ? [scopeEntry[0]] : []), authorityEntry[0]],
   };
+}
+
+/** Required input paths that address a stored row. The value is the marker, never an invented id. */
+function seedParams(
+  stored: ReadonlyMap<string, string>,
+  required: readonly string[],
+  omitted: readonly string[],
+): { params: Record<string, string>; paramFieldRefs: Record<string, string> } {
+  const params: Record<string, string> = {};
+  const paramFieldRefs: Record<string, string> = {};
+  for (const path of required) {
+    if (omitted.includes(path) || omitted.some(item => path.startsWith(`${item}.`) || item.startsWith(`${path}.`))) continue;
+    const ref = stored.get(path);
+    if (!ref) continue;
+    params[path] = M1_SEED_REF;
+    paramFieldRefs[path] = ref;
+  }
+  return { params, paramFieldRefs };
+}
+
+/**
+ * `<Entity>.<field>` for an input path the source links to a stored row: a contract meta filter,
+ * or a usecase `uses` path whose operation addresses a record. Nothing is chosen by name.
+ */
+function storedFieldRefs(
+  request: RequestRow,
+  route: D2ContractV2Route,
+  defs: ReadonlyMap<string, M1Definition>,
+): Map<string, string> {
+  const refs = new Map<string, string>();
+  for (const [name, param] of Object.entries(route.meta.params)) {
+    if (!('field' in param) || !param.field) continue;
+    const entity = route.meta.output[param.filters]?.entity;
+    if (entity) refs.set(name, `${entity}.${param.field}`);
+  }
+  for (const useId of request.uses) {
+    const usecase = [...defs.values()].find(item => item.artifactType === 'usecase' && item.artifactId === useId);
+    if (!usecase) continue;
+    const operation = String(usecase.data.operation ?? '');
+    const entityId = String(usecase.data.entityId ?? '');
+    if (!entityId || !isL1Operation(operation) || !L1_OPERATION_TRAITS[operation].addressesRecord) continue;
+    const uses = Array.isArray(usecase.data.uses) ? usecase.data.uses.filter(isRecord) : [];
+    for (const row of uses) {
+      if (row.source !== 'input' || (row.role !== 'selector' && row.role !== 'filter')) continue;
+      if (typeof row.path !== 'string' || !row.path) continue;
+      refs.set(row.path, `${entityId}.${row.path}`);
+    }
+  }
+  return refs;
 }
 
 function requestRow(row: Record<string, unknown>): RequestRow | null {

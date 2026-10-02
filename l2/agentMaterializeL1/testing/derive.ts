@@ -16,7 +16,7 @@ import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/ope
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import {
-  M1_CATALOG_SCHEMA_V11,
+  M1_CATALOG_SCHEMA_V12,
   M1_EXISTING_RECORD,
   M1_STUB_ERROR,
   M1_STUB_STATUS,
@@ -27,13 +27,17 @@ import {
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import {
+  obligationStayText,
+  obligationStays,
   routeObligations,
   type M1Obligation,
 } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { classifyObligation, fixtureModel, runtimeGap, type M1FixtureModel } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 
-export const M1_CATALOG_RECIPE = '2026-10-01-m1-catalog-derive-v7' as const;
+export const M1_CATALOG_RECIPE = '2026-10-02-m1-catalog-derive-v8' as const;
+/** Runtime m1_35 item 2 is closed: a declared actor with no identity is blocked, never anonymous. */
+export const M1_IDENTITY_PER_CASE = true;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',
@@ -135,7 +139,7 @@ export function deriveCatalog(
   scenarios.sort((left, right) => left.scenarioId < right.scenarioId ? -1 : left.scenarioId > right.scenarioId ? 1 : 0);
   gaps.sort((left, right) => canonicalJson(left) < canonicalJson(right) ? -1 : canonicalJson(left) > canonicalJson(right) ? 1 : 0);
   return {
-    catalog: { schemaVersion: M1_CATALOG_SCHEMA_V11, moduleName, store: 'memory', scenarios },
+    catalog: { schemaVersion: M1_CATALOG_SCHEMA_V12, moduleName, store: 'memory', scenarios },
     gaps,
     obligations: obligations.sort((left, right) => left.caseId < right.caseId ? -1 : left.caseId > right.caseId ? 1 : 0),
     recipeVersion: M1_CATALOG_RECIPE,
@@ -316,12 +320,17 @@ function routeCases(
     }
     const model = fixtureModelOf(defs);
     for (const item of derived.obligations) {
+      if (!obligationStays(item.kind, M1_IDENTITY_PER_CASE)) {
+        cases.push(caseFromObligation(definition, item));
+        continue;
+      }
       obligations.push(item);
+      const stay = obligationStayText(item.kind);
       gaps.push({
         artifactId: definition.artifactId,
         artifactType: 'httpController',
         origin: `${defPath}#${route.route}`,
-        reason: `${memoryReason(model, item)}; runtime proof ${item.blocker} (${item.owner})${model ? `: ${runtimeGap(model.plan, item)}` : ''}`,
+        reason: `${memoryReason(model, item)}; runtime proof ${item.blocker} (${item.owner})${model ? `: ${runtimeGap(model.plan, item)}` : ''}${stay ? `; ${stay}` : ''}`,
       });
     }
   }
@@ -342,6 +351,37 @@ function memoryReason(model: M1FixtureModel | null, item: M1Obligation): string 
   const blocked = classifyObligation(model, item);
   if (blocked) return `${blocked.gap} (${blocked.owner}): ${item.caseId} is declared, not executed`;
   return `FIXTURE_MEMORY_AT_IMPLEMENT (L1): ${item.caseId} is declared, not executed: an obligation, not a catalog case the monitor runs`;
+}
+
+/** Route case the monitor can run. Record params stay `<seedRef>` plus the field the source named. */
+function caseFromObligation(definition: M1Definition, item: M1Obligation): M1ScenarioCase {
+  const seeded = Object.keys(item.paramFieldRefs).length > 0;
+  return base(definition, {
+    caseId: item.caseId,
+    gate: item.kind === 'contract' ? 'contract' : item.kind === 'noIdentity' ? 'auth' : 'business',
+    source: item.sources[0] || item.routine,
+    expectation: seeded
+      ? `Runs as ${item.actorRef} with <seedRef> for each stored field the source names.`
+      : `Runs as ${item.actorRef}.`,
+    preconditions: item.input.omitted.map(path => `${path} omitted`),
+    actorId: item.actorRef,
+    routine: item.routine,
+    mutating: item.mutating,
+    expect: {
+      ok: item.expect.ok,
+      status: item.expect.status,
+      errorCode: item.expect.errorCode,
+      ruleId: null,
+      forbiddenFields: [],
+      isolatedActorField: item.expect.isolatedActorField,
+    },
+    expectedFailure: item.expect.ok ? {
+      caseId: item.caseId, stage: 'structure', errorCode: M1_STUB_ERROR, status: M1_STUB_STATUS,
+    } : null,
+    runner: 'route',
+    caller: { source: item.caller.source, authorities: [...item.caller.authorities] },
+    ...(seeded ? { params: { ...item.params }, paramFieldRefs: { ...item.paramFieldRefs } } : {}),
+  });
 }
 
 function base(definition: M1Definition, patch: Omit<M1ScenarioCase, 'mandatory' | 'synthetic'>): M1ScenarioCase {

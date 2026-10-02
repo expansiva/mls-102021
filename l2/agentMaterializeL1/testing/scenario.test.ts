@@ -183,9 +183,11 @@ void test('controller gates stay green and do not accept the stub', async () => 
     monitorError: null,
   });
   const controllerCases = catalog.scenarios.filter(scenario => scenario.handlerId === 'structure.httpController').flatMap(scenario => scenario.cases);
+  const marked = controllerCases.filter(item => item.expectedFailure);
   assert.equal(controllerCases.length > 0, true);
+  // Gate observations are the real outcome. A case still marked for the structure stub has not earned that outcome.
   assert.deepEqual(green.counts, {
-    passed: controllerCases.length, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0,
+    passed: controllerCases.length - marked.length, expectedRed: 0, failed: marked.length, blocked: 0, skipped: 0, inconclusive: 0,
   });
   assert.equal(green.ready, false);
 
@@ -199,8 +201,8 @@ void test('controller gates stay green and do not accept the stub', async () => 
     ...RUN,
     monitorError: null,
   });
-  assert.equal(masked.counts.expectedRed, 0);
-  assert.equal(masked.counts.failed, controllerCases.length);
+  assert.equal(masked.counts.expectedRed, marked.length);
+  assert.equal(masked.counts.failed, controllerCases.length - marked.length);
   assert.equal(masked.accepted, false);
 });
 

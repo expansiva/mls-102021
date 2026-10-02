@@ -37,8 +37,10 @@ const byId = (caseId: string): M1Obligation => {
 
 void test('the oracle comes from the contract, the grants and the authority map, and every authenticated case stays pending', () => {
   const cases = DERIVED.catalog.scenarios.flatMap(item => item.cases);
-  assert.equal(cases.every(item => item.actorId === '' && (item.runner === 'module' || item.caller?.authorities.length === 0)), true);
-  // Only the rollback case waits for Postgres; every other one for the runtime identity.
+  const denied = cases.filter(item => item.runner === 'route' && item.caller?.authorities.length === 0);
+  assert.equal(denied.every(item => item.actorId === ''), true);
+  assert.equal(cases.filter(item => item.runner === 'module').every(item => item.actorId === ''), true);
+  // What stays an obligation: rollback waits for Postgres; disclosure and own for the runtime identity.
   assert.equal(DERIVED.obligations.every(item => item.expect.ruleId === null && (item.kind === 'rollback'
     ? item.blocker === 'POSTGRES_ONLY' && item.owner === 'runtime 102034 (DATABASE_URL_TEST)'
     : item.blocker === 'RUNTIME_IDENTITY_PENDING' && item.owner === 'runtime 102034')), true);
@@ -46,7 +48,7 @@ void test('the oracle comes from the contract, the grants and the authority map,
   assert.equal(DERIVED.obligations.every(item => DERIVED.gaps.some(gap => gap.reason.includes(`${item.caseId} is declared, not executed`))), true);
   const kinds = new Map<string, number>();
   for (const item of DERIVED.obligations) kinds.set(item.kind, (kinds.get(item.kind) ?? 0) + 1);
-  assert.deepEqual(Object.fromEntries(kinds), { contract: 4, disclosure: 6, minimalInput: 5, noIdentity: 2, own: 1, rollback: 1, shape: 2, success: 4 });
+  assert.deepEqual(Object.fromEntries(kinds), { disclosure: 6, own: 1, rollback: 1 });
 
   const n = FX.n;
   const rows = `${n.entity}Rows`;
@@ -67,18 +69,20 @@ void test('the oracle comes from the contract, the grants and the authority map,
   assert.equal(deckDisclosure.sources.includes(FX.refs.request(n.pageB)), true);
   assert.equal(deckDisclosure.sources.includes(FX.refs.scope), true);
   assert.equal(byId(`${n.pageB}.own.${n.reqRoster}`).expect.isolatedActorField, n.ownerField);
-  assert.equal(byId(`${n.pageA}.minimal.${n.reqList}`).identity, 'member');
+  const minimal = DERIVED.catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === `${n.pageA}.minimal.${n.reqList}`);
+  assert.equal(minimal?.actorId, n.org);
   assert.equal(DERIVED.obligations.some(item => item.caseId.startsWith(`${n.pageA}.`) && item.kind === 'own'), false);
 
-  // qry: the exact output shape (keys, projected fields, paging keys of the list).
-  const shape = byId(`${n.pageA}.shape.${n.reqList}`);
-  assert.equal(shape.expect.ok && shape.expect.status === 200 && !shape.mutating, true);
-  assert.equal(shape.expect.allowedPaths.includes(rows) && shape.expect.allowedPaths.includes(`${rows}.dockAt`), true);
-  assert.deepEqual(['hasMoreRows', 'pageRows', 'pageSizeRows'].filter(key => shape.expect.allowedPaths.includes(key)), ['hasMoreRows', 'pageRows', 'pageSizeRows']);
-  // cmd: success writes; the second usecase failing proves all or nothing, in Postgres only.
-  const success = byId(`${n.pageA}.success.${n.reqDock}`);
-  assert.equal(success.mutating && success.expect.ok && success.expect.allowedPaths.includes(`${n.entity}.id`), true);
-  assert.deepEqual(success.input.required.includes(n.parentField), true);
+  // qry shape and cmd success are catalog cases (m1_48). The disclosure obligation still names the output paths.
+  const shape = DERIVED.catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === `${n.pageA}.shape.${n.reqList}`);
+  assert.ok(shape);
+  assert.equal(shape.expect.ok && shape.expect.status === 200 && !shape.mutating && shape.actorId === n.org, true);
+  const disclosed = byId(`${n.pageA}.disclosure.${n.reqList}`);
+  assert.equal(disclosed.expect.allowedPaths.includes(`${rows}.dockAt`), true);
+  assert.deepEqual(['hasMoreRows', 'pageRows', 'pageSizeRows'].filter(key => disclosed.expect.allowedPaths.includes(key)), ['hasMoreRows', 'pageRows', 'pageSizeRows']);
+  const success = DERIVED.catalog.scenarios.flatMap(item => item.cases).find(item => item.caseId === `${n.pageA}.success.${n.reqDock}`);
+  assert.ok(success);
+  assert.equal(success.mutating && success.expect.ok && success.actorId === n.org, true);
   const rollback = byId(`${n.pageA}.rollback.${n.reqDock}.create${n.Entity}`);
   assert.equal(rollback.mutating && !rollback.expect.ok, true);
   assert.equal(DERIVED.obligations.filter(item => item.kind === 'rollback').length, 1);

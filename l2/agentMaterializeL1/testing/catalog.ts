@@ -13,7 +13,11 @@ import type { M1HandlerStage } from '/_102021_/l2/agentMaterializeL1/core/regist
 export const M1_CATALOG_SCHEMA = '2026-09-25-m1-scenario-catalog-v1' as const;
 /** Additive: each case names its runner, and a route case names its caller. */
 export const M1_CATALOG_SCHEMA_V11 = '2026-09-26-m1-scenario-catalog-v1.1' as const;
-export const M1_CATALOG_SCHEMAS = [M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11] as const;
+/** Additive: a route case may name `<seedRef>` params and the entity field each one addresses. */
+export const M1_CATALOG_SCHEMA_V12 = '2026-10-02-m1-scenario-catalog-v1.2' as const;
+export const M1_CATALOG_SCHEMAS = [M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11, M1_CATALOG_SCHEMA_V12] as const;
+/** Literal the monitor resolves from a seeded row. Never an invented id. */
+export const M1_SEED_REF = '<seedRef>' as const;
 export type M1CatalogSchema = typeof M1_CATALOG_SCHEMAS[number];
 
 /** Positive case of an operation that addresses one stored record. */
@@ -83,6 +87,10 @@ export interface M1ScenarioCase {
   runner?: M1CaseRunner;
   /** Absent on a module case and on a v1 catalog. */
   caller?: M1CaseCaller;
+  /** Absent before v1.2. Values may be the literal `<seedRef>`. */
+  params?: Record<string, string>;
+  /** `<Entity>.<field>` for each `<seedRef>` param. Absent before v1.2. */
+  paramFieldRefs?: Record<string, string>;
 }
 
 export interface M1Scenario {
@@ -128,6 +136,7 @@ const CASE_KEYS = [
   'actorId', 'routine', 'mutating', 'expect', 'expectedFailure',
 ] as const;
 const CASE_KEYS_V11 = [...CASE_KEYS, 'runner', 'caller'] as const;
+const CASE_KEYS_V12 = [...CASE_KEYS_V11, 'params', 'paramFieldRefs'] as const;
 const CALLER_KEYS = ['source', 'authorities'] as const;
 const SCENARIO_KEYS = [
   'scenarioId', 'source', 'artifactType', 'artifactId', 'handlerId', 'productionFile', 'testFile', 'cases',
@@ -291,17 +300,17 @@ function catalogIssues(value: unknown): string[] {
     if (!(CATALOG_KEYS as readonly string[]).includes(key)) issues.push(`unknown catalog.${key}`);
   }
   const schema = value.schemaVersion;
-  if (schema !== M1_CATALOG_SCHEMA && schema !== M1_CATALOG_SCHEMA_V11) issues.push('schemaVersion');
+  if (schema !== M1_CATALOG_SCHEMA && schema !== M1_CATALOG_SCHEMA_V11 && schema !== M1_CATALOG_SCHEMA_V12) issues.push('schemaVersion');
   if (typeof value.moduleName !== 'string' || !/^[a-z][A-Za-z0-9]*$/.test(value.moduleName)) issues.push('moduleName');
   if (value.store !== 'memory') issues.push('store must be memory');
   if (!Array.isArray(value.scenarios)) return [...issues, 'scenarios'];
   const seen = new Set<string>();
-  const v11 = schema === M1_CATALOG_SCHEMA_V11;
-  for (const scenario of value.scenarios) issues.push(...scenarioIssues(scenario, seen, v11));
+  const revision = schema === M1_CATALOG_SCHEMA_V12 ? 12 : schema === M1_CATALOG_SCHEMA_V11 ? 11 : 1;
+  for (const scenario of value.scenarios) issues.push(...scenarioIssues(scenario, seen, revision));
   return issues;
 }
 
-function scenarioIssues(value: unknown, seen: Set<string>, v11: boolean): string[] {
+function scenarioIssues(value: unknown, seen: Set<string>, revision: number): string[] {
   if (!isRecord(value)) return ['scenario must be an object'];
   const issues: string[] = [];
   for (const key of Object.keys(value)) {
@@ -318,14 +327,14 @@ function scenarioIssues(value: unknown, seen: Set<string>, v11: boolean): string
   }
   if (value.testFile !== testFileFor(String(value.productionFile ?? ''))) issues.push(`${scenarioId} testFile`);
   if (!Array.isArray(value.cases) || value.cases.length === 0) return [...issues, `${scenarioId} cases`];
-  for (const item of value.cases) issues.push(...caseIssues(item, seen, v11));
+  for (const item of value.cases) issues.push(...caseIssues(item, seen, revision));
   return issues;
 }
 
-function caseIssues(value: unknown, seen: Set<string>, v11: boolean): string[] {
+function caseIssues(value: unknown, seen: Set<string>, revision: number): string[] {
   if (!isRecord(value)) return ['case must be an object'];
   const issues: string[] = [];
-  const allowed = v11 ? CASE_KEYS_V11 : CASE_KEYS;
+  const allowed = revision >= 12 ? CASE_KEYS_V12 : revision >= 11 ? CASE_KEYS_V11 : CASE_KEYS;
   for (const key of Object.keys(value)) {
     if (!(allowed as readonly string[]).includes(key)) issues.push(`unknown case.${key}`);
   }
@@ -347,12 +356,35 @@ function caseIssues(value: unknown, seen: Set<string>, v11: boolean): string[] {
   if (typeof value.mutating !== 'boolean') issues.push(`${caseId} mutating`);
   issues.push(...expectIssues(value.expect, caseId));
   issues.push(...failureIssues(value.expectedFailure, caseId, String(value.gate)));
-  issues.push(...runnerIssues(value, caseId, v11));
+  issues.push(...runnerIssues(value, caseId, revision));
+  issues.push(...seedIssues(value, caseId, revision));
   return issues;
 }
 
-function runnerIssues(value: Record<string, unknown>, caseId: string, v11: boolean): string[] {
-  if (!v11) return [];
+function seedIssues(value: Record<string, unknown>, caseId: string, revision: number): string[] {
+  if (revision < 12 || (value.params === undefined && value.paramFieldRefs === undefined)) return [];
+  const issues: string[] = [];
+  if (!stringRecord(value.params ?? {})) issues.push(`${caseId} params`);
+  if (!stringRecord(value.paramFieldRefs ?? {})) issues.push(`${caseId} paramFieldRefs`);
+  if (issues.length > 0) return issues;
+  const params = (value.params ?? {}) as Record<string, string>;
+  const refs = (value.paramFieldRefs ?? {}) as Record<string, string>;
+  for (const [key, ref] of Object.entries(refs)) {
+    if (!(key in params)) issues.push(`${caseId} paramFieldRefs.${key}`);
+    if (!/^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9.]*$/u.test(ref)) issues.push(`${caseId} paramFieldRefs.${key}`);
+  }
+  for (const [key, param] of Object.entries(params)) {
+    if (param === M1_SEED_REF && refs[key] === undefined) issues.push(`${caseId} paramFieldRefs.${key}`);
+  }
+  return issues;
+}
+
+function stringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every(item => typeof item === 'string');
+}
+
+function runnerIssues(value: Record<string, unknown>, caseId: string, revision: number): string[] {
+  if (revision < 11) return [];
   const issues: string[] = [];
   if (value.runner !== 'route' && value.runner !== 'module') issues.push(`${caseId} runner`);
   if (value.runner === 'module') {
@@ -425,7 +457,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCatalog(value: unknown): value is M1ScenarioCatalog {
   return isRecord(value)
-    && (value.schemaVersion === M1_CATALOG_SCHEMA || value.schemaVersion === M1_CATALOG_SCHEMA_V11)
+    && (value.schemaVersion === M1_CATALOG_SCHEMA || value.schemaVersion === M1_CATALOG_SCHEMA_V11 || value.schemaVersion === M1_CATALOG_SCHEMA_V12)
     && value.store === 'memory';
 }
 

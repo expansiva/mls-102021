@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-09-26-m1-scenario-catalog-v1.1",
+  "schemaVersion": "2026-10-02-m1-scenario-catalog-v1.2",
   "moduleName": "tideBoard",
   "store": "memory",
   "scenarios": [
@@ -415,6 +415,203 @@
           "runner": "module",
           "mandatory": true,
           "synthetic": []
+        },
+        {
+          "caseId": "deck.contract.sailIt.id",
+          "gate": "contract",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.sailIt",
+          "expectation": "Runs as pilot.",
+          "preconditions": [
+            "id omitted"
+          ],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.sailIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.minimal.deckRoster",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.deckRoster",
+          "expectation": "Runs as pilot.",
+          "preconditions": [],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.deckRoster",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "deck.minimal.deckRoster",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.noIdentity.deckRoster",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.deckRoster",
+          "expectation": "Runs as pilot.",
+          "preconditions": [],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.deckRoster",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.noIdentity.sailIt",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.sailIt",
+          "expectation": "Runs as pilot with <seedRef> for each stored field the source names.",
+          "preconditions": [],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.sailIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "params": {
+            "id": "<seedRef>"
+          },
+          "paramFieldRefs": {
+            "id": "Berth.id"
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.shape.deckRoster",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.deckRoster",
+          "expectation": "Runs as pilot.",
+          "preconditions": [],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.deckRoster",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "deck.shape.deckRoster",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.success.sailIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.sailIt",
+          "expectation": "Runs as pilot with <seedRef> for each stored field the source names.",
+          "preconditions": [],
+          "actorId": "pilot",
+          "routine": "tideBoard.deck.sailIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "deck.success.sailIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:pilot"
+            ]
+          },
+          "params": {
+            "id": "<seedRef>"
+          },
+          "paramFieldRefs": {
+            "id": "Berth.id"
+          },
+          "mandatory": true,
+          "synthetic": []
         }
       ]
     },
@@ -719,6 +916,372 @@
           },
           "expectedFailure": null,
           "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.contract.amendIt.id",
+          "gate": "contract",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.amendIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [
+            "id omitted"
+          ],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.amendIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.contract.berthIt.shipId",
+          "gate": "contract",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.berthIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [
+            "shipId omitted"
+          ],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.berthIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.contract.moorIt.shipId",
+          "gate": "contract",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.moorIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [
+            "shipId omitted"
+          ],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.moorIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 400,
+            "errorCode": "VALIDATION_ERROR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.minimal.amendIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.amendIt",
+          "expectation": "Runs as harbor with <seedRef> for each stored field the source names.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.amendIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.minimal.amendIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "params": {
+            "id": "<seedRef>"
+          },
+          "paramFieldRefs": {
+            "id": "Berth.id"
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.minimal.berthIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.berthIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.berthIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.minimal.berthIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.minimal.moorIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.moorIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.moorIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.minimal.moorIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.minimal.tideList",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.tideList",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.tideList",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.minimal.tideList",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.shape.tideList",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.tideList",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.tideList",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.shape.tideList",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.success.amendIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.amendIt",
+          "expectation": "Runs as harbor with <seedRef> for each stored field the source names.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.amendIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.success.amendIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "params": {
+            "id": "<seedRef>"
+          },
+          "paramFieldRefs": {
+            "id": "Berth.id"
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.success.berthIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.berthIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.berthIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.success.berthIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.success.moorIt",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.moorIt",
+          "expectation": "Runs as harbor.",
+          "preconditions": [],
+          "actorId": "harbor",
+          "routine": "tideBoard.office.moorIt",
+          "mutating": true,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": {
+            "caseId": "office.success.moorIt",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": [
+              "tideBoard:harbor"
+            ]
+          },
           "mandatory": true,
           "synthetic": []
         }

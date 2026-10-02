@@ -50,17 +50,14 @@ void test('the run report names the memory status and the runtime owner of every
   const withPlan = deriveCatalog(fx.n.mod, [...units, { defPath: seedsPath, definition: seeds }], fx.texts);
   const reasons = withPlan.gaps.filter(gap => gap.reason.includes(' is declared, not executed')).map(gap => gap.reason);
   assert.equal(reasons.length, withPlan.obligations.length);
-  // v2 (m1_40 r2b): the route entity comes from the page request. 13 -> 16: `other` is gone (no selector in v2),
-  // shape (2 qry) and success (2 single-entity cmd) are new. `dock` uses the parent and the entity usecases, so its
-  // 5 cases are ambiguous, never one entity picked by position. r2c: `berth` adds 4 cases, all `mdm:` below, so 16 stays.
-  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_MEMORY_AT_IMPLEMENT (L1): ')).length, 16);
+  // m1_48: contract, minimal, noIdentity, shape and success are catalog cases. What stays is own, disclosure and rollback.
+  assert.equal(reasons.filter(reason => reason.startsWith('FIXTURE_MEMORY_AT_IMPLEMENT (L1): ')).length, 5);
   const ambiguous = reasons.filter(reason => reason.startsWith(`FIXTURE_ROUTE_ENTITY_AMBIGUOUS: ${fx.routes.dock} uses ${fx.n.Parent},${fx.n.Entity} (L1): `));
-  assert.equal(ambiguous.length, 5);
+  assert.equal(ambiguous.length, 2);
   assert.equal(ambiguous.length, withPlan.obligations.filter(item => item.routine === fx.routes.dock).length);
-  // r2c: `berth` creates the entity alone and its input requires the MDM ref, so its 4 cases (contract, minimal,
-  // disclosure, success) need the runtime MDM record. v1 had 3 (no success case then).
+  // m1_48: berth's contract, minimal and success are catalog cases. Disclosure still needs the MDM record.
   const mdm = reasons.filter(reason => reason.startsWith(`mdm:${fx.n.Mdm}: `) && reason.includes(`(${M1_RUNTIME_OWNER})`));
-  assert.equal(mdm.length, 4);
+  assert.equal(mdm.length, 1);
   assert.deepEqual(mdm.map(reason => /: (\S+) is declared, not executed/.exec(reason)?.[1]).sort(), withPlan.obligations.filter(item => item.routine === fx.routes.berth).map(item => item.caseId).sort());
   // The rollback case waits for Postgres (m1_40 r1); every other one for the runtime identity.
   const rollbackIds = withPlan.obligations.filter(item => item.kind === 'rollback').map(item => item.caseId);
