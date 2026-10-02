@@ -2,7 +2,7 @@
 
 import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
-import { L1_OPERATIONS, L1_OPERATION_TRAITS, isL1Operation, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, L1_OPERATION_TRAITS, collidingTransitionIds, isL1Operation, transitionUsecaseId, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 
 export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
@@ -643,7 +643,9 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     endpoints.push({ page, kind, usecaseId });
   };
 
-  const collidingTransitions = collidingTransitionIds(needs);
+  const collidingTransitions = collidingTransitionIds(needs.pages.flatMap(page => page.writes
+    .filter(write => write.operation === 'transition')
+    .map(write => ({ entity: write.entity, transitionRef: write.transitionRef || 'transition' }))));
   for (const page of needs.pages) {
     for (const read of page.reads) {
       const family = familyFor(read.entity, ontology, read.family);
@@ -667,8 +669,9 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     for (const write of page.writes) {
       const family = familyFor(write.entity, ontology);
       const operation: P1Operation = write.operation;
-      let usecaseId = p1UsecaseId(operation, write.entity, write.transitionRef);
-      if (operation === 'transition' && collidingTransitions.has(usecaseId)) usecaseId = `${usecaseId}${write.entity}`;
+      const usecaseId = operation === 'transition'
+        ? transitionUsecaseId(write.entity, write.transitionRef || 'transition', collidingTransitions)
+        : p1UsecaseId(operation, write.entity, write.transitionRef);
       addUsecase({
         usecaseId,
         entity: write.entity,
@@ -686,24 +689,6 @@ function collectCandidates(needs: P1NeedsFile, ontology: Map<string, P1EntityVie
     }
   }
   return { usecases: [...usecases.values()], endpoints };
-}
-
-function collidingTransitionIds(needs: P1NeedsFile): Set<string> {
-  const entitiesById = new Map<string, Set<string>>();
-  for (const page of needs.pages) {
-    for (const write of page.writes) {
-      if (write.operation !== 'transition') continue;
-      const id = p1UsecaseId('transition', write.entity, write.transitionRef);
-      const entities = entitiesById.get(id) ?? new Set<string>();
-      entities.add(write.entity);
-      entitiesById.set(id, entities);
-    }
-  }
-  const colliding = new Set<string>();
-  for (const [id, entities] of entitiesById) {
-    if (entities.size > 1) colliding.add(id);
-  }
-  return colliding;
 }
 
 function matchCandidates(candidates: Matched, inventory: L1Inventory, ontology: Map<string, P1EntityView>): Matched {

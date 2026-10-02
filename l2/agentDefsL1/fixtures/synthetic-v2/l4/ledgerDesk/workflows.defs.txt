@@ -1,1 +1,1 @@
-export const ledgerDeskWorkflows = { "schemaVersion": "2026-09-17-ns5-workflows", "moduleName": "ledgerDesk", "workflows": [] } as const;
+export const ledgerDeskWorkflows = { "schemaVersion": "2026-09-17-ns5-workflows-v3", "moduleName": "ledgerDesk", "processes": [], "journeyDecisions": [{ "journeyId": "decidirSlip", "inProcess": false }] } as const;

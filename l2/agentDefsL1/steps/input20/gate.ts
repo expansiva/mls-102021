@@ -33,7 +33,7 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, collidingTransitionIds, transitionUsecaseId, type L1Operation, type L1TransitionWrite } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
 
@@ -849,7 +849,7 @@ function noteChanges(
 }
 
 const P1_OPERATION_SET = new Set<string>(D1_P1_OPERATIONS);
-/** Operations a contract request may create. A custom operation comes only from the plan. A transition is created only when the L4 lifecycle names it, with id lowerFirst(transitionRef). */
+/** Operations a contract request may create. A custom operation comes only from the plan. A transition is created only when the L4 lifecycle names it, with the id of transitionUsecaseId. */
 const CONTRACT_CREATED: Record<L1Operation, boolean> = {
   list: true, get: true, create: true, update: true, transition: true, delete: true, custom: false,
 };
@@ -889,17 +889,35 @@ function contractRequests(
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   const pageIds = [...pages.keys()].sort();
+  const colliding = collidingTransitionIds(transitionWrites(pages, usecases));
   for (const pageId of pageIds) {
     const definition = pages.get(pageId);
     if (!definition) continue;
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities, planned));
+      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities, planned, colliding));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
   return requests;
+}
+
+/** Every transition the plan and the contracts write. The same rule as P1 names the usecase from them. */
+function transitionWrites(pages: Map<string, D2ContractV2Definition>, usecases: readonly D1SelectedUsecase[]): L1TransitionWrite[] {
+  const writes: L1TransitionWrite[] = usecases
+    .filter(item => item.operation === 'transition' && item.transitionRef)
+    .map(item => ({ entity: item.entity, transitionRef: item.transitionRef || '' }));
+  for (const definition of pages.values()) {
+    for (const route of definition.routes) {
+      if (route.kind !== 'cmd' || !route.writes) continue;
+      const split = route.writes.indexOf('.');
+      if (split < 0) continue;
+      const written = route.writes.slice(split + 1);
+      if (!P1_OPERATION_SET.has(written)) writes.push({ entity: route.writes.slice(0, split), transitionRef: written });
+    }
+  }
+  return writes;
 }
 
 function oneRequest(
@@ -912,6 +930,7 @@ function oneRequest(
   entityKind: Map<string, string>,
   entities: Record<string, unknown>,
   planned: PlannedIds,
+  colliding: ReadonlySet<string>,
 ): D1SelectedRequest {
   const outputs = requestOutputs(route);
   const params = requestParams(route);
@@ -924,7 +943,7 @@ function oneRequest(
       if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
       return;
     }
-    const usecaseId = transitionKey ? lowerFirst(transitionKey) : `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
+    const usecaseId = transitionKey ? transitionUsecaseId(entity, transitionKey, colliding) : `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
     const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, transitionKey);
     if (refusal) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. ${refusal}`, route.route);

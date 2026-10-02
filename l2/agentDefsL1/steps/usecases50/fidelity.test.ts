@@ -372,3 +372,15 @@ void test('the inventory still reads the serialized usecase and the test does no
   assert.equal(usecase?.rulesApplied.includes('attendanceNoteRequired'), true);
   assert.equal(host.writes.length, 0);
 });
+
+void test('a transitionRef outside the entity lifecycle is refused by name (t1_09 r3)', () => {
+  const { request, files } = focused();
+  const registrar = renderedOf(request, 'registrarAtendimento');
+  const unknown = edited(registrar, definition => {
+    (definition.data as { transitionRef?: string }).transitionRef = 'zzNotALifecycleStep';
+  });
+  const read = readUsecaseFidelity(unknown, files);
+  assert.equal(read.behavior, null);
+  assert.equal(read.problems.some(item => item.code === 'TRANSITION_UNKNOWN' && item.message.includes('zzNotALifecycleStep')), true);
+  assert.equal(readUsecaseFidelity(registrar, files).problems.some(item => item.code === 'TRANSITION_UNKNOWN'), false);
+});

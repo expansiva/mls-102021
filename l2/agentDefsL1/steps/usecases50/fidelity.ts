@@ -135,6 +135,9 @@ export function readUsecaseFidelity(
     : null;
   const lifecycle = readLifecycle(data);
   if (operation === 'transition') {
+    if (ontology && !transition) {
+      fail(problems, 'TRANSITION_UNKNOWN', usecaseId, `Transition '${transitionRef || '(missing)'}' of ${usecaseId} is not in the ${entityId} lifecycle of ${ontologyPath}.`);
+    }
     const expected = transition?.payload || [];
     const actual = lifecycle?.payload || [];
     for (const path of expected) {

@@ -4,6 +4,30 @@ export const ledgerDeskEntityItemCard = {
   "entityId": "ItemCard",
   "kind": "role",
   "subtype": "Product",
+  "roleTag": "ledgerDesk.ItemCard",
+  "capabilities": {
+    "read.byId": "Read one item card by id.",
+    "edit.platformFields": "Patch the platform fields of one item card."
+  },
   "storage": { "target": "mdm" },
-  "record": { "fields": { "id": { "type": "uuid" }, "version": { "type": "integer", "writePrecondition": true } } }
+  "record": {
+    "fields": {
+      "id": { "type": "uuid", "required": true, "derived": true },
+      "version": { "type": "integer", "required": true, "derived": true, "writePrecondition": true },
+      "details": {
+        "type": "object",
+        "required": true,
+        "fields": {
+          "identification": {
+            "type": "object",
+            "required": true,
+            "owner": "platform",
+            "fields": {
+              "name": { "type": "string", "required": true, "owner": "platform" }
+            }
+          }
+        }
+      }
+    }
+  }
 } as const;

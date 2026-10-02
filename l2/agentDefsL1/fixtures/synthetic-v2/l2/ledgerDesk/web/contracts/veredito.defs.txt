@@ -1,0 +1,27 @@
+/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/veredito.defs.ts" enhancement="_blank"/>
+
+export interface SlipSave {
+  id: string;
+  version: number;
+}
+
+export interface VereditoContracts {
+  'ledgerDesk.veredito.aprovar': {
+    kind: 'cmd';
+    writes: 'Slip.aprovar';
+    input: { id: string; version: number };
+    output: { slip: SlipSave };
+    meta: { output: { slip: { entity: 'Slip'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+  'ledgerDesk.veredito.rejeitar': {
+    kind: 'cmd';
+    writes: 'Slip.rejeitar';
+    input: { id: string; version: number };
+    output: { slip: SlipSave };
+    meta: { output: { slip: { entity: 'Slip'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+}

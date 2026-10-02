@@ -1,1 +1,75 @@
-{ "schemaVersion": "2026-09-20-p1-backend", "moduleName": "ledgerDesk", "endpoints": [] }
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "ledgerDesk",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [],
+  "usecases": [
+    {
+      "usecaseId": "aprovarDeskNote",
+      "entity": "DeskNote",
+      "operation": "transition",
+      "transitionRef": "aprovar",
+      "ports": ["DeskNote"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "same transitionRef on DeskNote and Slip; the usecaseId is not the transition",
+      "tableRefs": ["deskNote"],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "aprovarSlip",
+      "entity": "Slip",
+      "operation": "transition",
+      "transitionRef": "aprovar",
+      "ports": ["Slip"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "same transitionRef on DeskNote and Slip; the usecaseId is not the transition",
+      "tableRefs": ["slip"],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "DeskNoteRepository",
+      "entity": "DeskNote",
+      "status": "toCreate",
+      "tableRefs": ["deskNote"],
+      "noTable": "ok"
+    },
+    {
+      "portId": "SlipRepository",
+      "entity": "Slip",
+      "status": "toCreate",
+      "tableRefs": ["slip"],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "deskNote",
+      "entity": "DeskNote",
+      "status": "toCreate",
+      "tableRefs": ["deskNote"],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "slip",
+      "entity": "Slip",
+      "status": "toCreate",
+      "tableRefs": ["slip"],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [],
+  "meta": {
+    "pages": {},
+    "generatedAt": "2026-10-02T12:00:00.000Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

@@ -54,6 +54,9 @@ const NAME = String.raw`(?:usecaseId|identity)`;
 const TRANSITION = String.raw`(?:transitionId|transitionRef)`;
 const LEFT = new RegExp(String.raw`\b${NAME}\b[^;\n]{0,80}${COMPARE}[^;\n]{0,80}\b${TRANSITION}\b`);
 const RIGHT = new RegExp(String.raw`\b${TRANSITION}\b[^;\n]{0,80}${COMPARE}[^;\n]{0,80}\b${NAME}\b`);
+/** Membership of a transition in a list of usecase ids (`known.has(transition)`, `usecaseIds.includes(ref)`). */
+const ID_LIST = String.raw`(?:known|planned|usecaseIds|usecaseIdSet|selectedIds)`;
+const MEMBER = new RegExp(String.raw`\b${ID_LIST}\s*\.\s*(?:has|includes)\(\s*[\w.]*(?:transition|Transition)\w*\s*\)`);
 
 test('no agent source compares a usecase id with a transition id', () => {
   const violations: string[] = [];
@@ -63,8 +66,17 @@ test('no agent source compares a usecase id with a transition id', () => {
     for (const file of files) {
       const rel = relative(L2, file).replace(/\\/g, '/');
       const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-      if (LEFT.test(source) || RIGHT.test(source)) violations.push(rel);
+      if (LEFT.test(source) || RIGHT.test(source) || MEMBER.test(source)) violations.push(rel);
     }
   }
   assert.deepEqual(violations, []);
+});
+
+test('the comparison guard catches a transition looked up in a usecase id list', () => {
+  for (const source of ['if (!known.has(transition)) fail();', 'usecaseIds.includes(task.transitionRef)', 'known.has( row.transitionId )']) {
+    assert.equal(MEMBER.test(source), true, source);
+  }
+  for (const source of ['known.has(grantId)', 'timeStates.has(transition.to)', 'planned.includes(operation)']) {
+    assert.equal(MEMBER.test(source), false, source);
+  }
 });

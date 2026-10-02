@@ -26,7 +26,7 @@ const PROJECT = 102047;
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
   { id: 'agendaClinica-cab144b', moduleName: 'agendaClinica', reachesFinalize: false },
-  { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: false },
+  { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70'];
@@ -48,6 +48,10 @@ for (const tip of TIPS) {
     assert.equal(report.findings.some(finding => finding.severity === 'error'), false);
     assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
     const snapshot = readSnapshot(host, tip.moduleName);
+    if (tip.id === 'synthetic-v2') {
+      const colliding = snapshot.selection.usecases.filter(item => item.transitionRef === 'aprovar');
+      assert.deepEqual(colliding.map(item => `${item.entity}:${item.usecaseId}`).sort(), ['DeskNote:aprovarDeskNote', 'Slip:aprovarSlip']);
+    }
     const services = snapshot.files.filter(file => file.artifactType === 'requestService');
     assert.deepEqual(services.map(file => file.defPath).sort(), expected);
     for (const service of services) {
@@ -79,11 +83,6 @@ function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string
   if (fixtureId === 'agendaClinica-cab144b') {
     assert.match(error, /TRANSITION_REF_MISSING:3/);
     assert.match(error, /REQUEST_USECASE_UNPLANNED:3/);
-    return;
-  }
-  if (fixtureId === 'synthetic-v2') {
-    assert.match(error, /SCHEMA_DIVERGENT:8/);
-    assert.match(error, /REQUEST_USECASE_UNPLANNED:1/);
     return;
   }
   assert.fail(`${fixtureId} stopped before finalize80: ${error}`);

@@ -1,1 +1,46 @@
-{ "schemaVersion": "2026-09-20-p2-needs", "moduleName": "ledgerDesk", "needs": [] }
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "ledgerDesk",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "board",
+      "actors": ["clerk"],
+      "reads": [],
+      "writes": []
+    },
+    {
+      "pageId": "cards",
+      "actors": ["clerk"],
+      "reads": [],
+      "writes": [
+        {
+          "entity": "DeskNote",
+          "operation": "transition",
+          "transitionRef": "aprovar",
+          "from": ["journey:decidirSlip/escolher"]
+        }
+      ]
+    },
+    {
+      "pageId": "veredito",
+      "actors": ["clerk"],
+      "reads": [],
+      "writes": [
+        {
+          "entity": "Slip",
+          "operation": "transition",
+          "transitionRef": "aprovar",
+          "from": ["journey:decidirSlip/escolher"]
+        },
+        {
+          "entity": "Slip",
+          "operation": "transition",
+          "transitionRef": "rejeitar",
+          "from": ["journey:decidirSlip/escolher"]
+        }
+      ]
+    }
+  ]
+}

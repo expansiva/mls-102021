@@ -1195,3 +1195,24 @@ void test('a local get returns the record and a role get is derived', async () =
     roleFiles.dispose();
   }
 });
+
+void test('a memory port gets exactly the operations its def declares, and a missing body is named (t1_09 r3)', async () => {
+  const m = build(BASE);
+  const { n, refs } = m;
+  const port = m.defs.get(refs.port);
+  assert.ok(port);
+  port.data = { ...port.data, methods: [{ name: 'transition', params: [n.Entity, 'transitionId'], returns: n.Entity }] };
+  m.texts.set(refs.port, `export const definition = ${JSON.stringify(port)} as const;\n`);
+  const result = await emitBehavior('implement.repositoryPort', port, outputPathFromDefPath(refs.port), reader(m), m.list);
+  assert.equal('code' in result, false, JSON.stringify(result));
+  const source = ok(result).source;
+  assert.equal(source.includes('await table().update'), true);
+  assert.equal(source.includes('table().insert'), false);
+  const problems = compile(m, [[refs.entity, await emit(m, n.Entity)], [refs.port, source]]);
+  assert.equal(problems, '', problems);
+
+  port.data = { ...port.data, methods: [{ name: 'update', params: ['id'], returns: n.Entity }] };
+  const refused = await emitBehavior('implement.repositoryPort', port, outputPathFromDefPath(refs.port), reader(m), m.list);
+  assert.equal('code' in refused && refused.code, 'STUB_SHAPE');
+  assert.match('detail' in refused ? refused.detail : '', /declares update and no memory body was written/);
+});

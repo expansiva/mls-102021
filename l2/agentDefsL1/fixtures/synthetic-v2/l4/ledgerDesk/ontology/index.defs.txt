@@ -6,7 +6,8 @@ export const ledgerDeskOntologyIndex = {
   "moduleNamespace": { "key": "ledgerDesk", "description": "Branch details.ledgerDesk." },
   "entities": [
     { "entityId": "ItemCard", "kind": "role", "subtype": "Product" },
-    { "entityId": "DeskNote", "kind": "entity", "class": "event" }
+    { "entityId": "DeskNote", "kind": "entity", "class": "event" },
+    { "entityId": "Slip", "kind": "entity", "class": "event" }
   ],
   "relationships": []
 } as const;

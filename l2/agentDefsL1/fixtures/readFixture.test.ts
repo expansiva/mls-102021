@@ -43,14 +43,23 @@ void test('synthetic fixture carries the shapes the frozen module lacks', () => 
   const files = loadD1Fixture('synthetic-v2');
   const cards = files['l2/ledgerDesk/web/contracts/cards.defs.ts'] ?? '';
   const board = files['l2/ledgerDesk/web/contracts/board.defs.ts'] ?? '';
+  const veredito = files['l2/ledgerDesk/web/contracts/veredito.defs.ts'] ?? '';
+  const journey = files['l4/ledgerDesk/journeys/decidirSlip.defs.ts'] ?? '';
+  const backend = files['l4/ledgerDesk/pool/l2/web/backend.json'] ?? '';
   assert.match(cards, /writes: 'ItemCard\.update'/);
-  assert.match(cards, /writes: 'DeskNote\.transition'/);
+  assert.match(cards, /writes: 'DeskNote\.aprovar'/);
   assert.match(cards, /version: number/);
   assert.match(cards, /entity: 'DeskNote'; many: false/);
   assert.match(cards, /entity: 'ItemCard'; many: false/);
-  assert.match(cards, /localWrites: 'DeskNote\.create'/);
+  assert.doesNotMatch(cards, /localWrites/);
   assert.doesNotMatch(board, /writes:/);
   assert.match(board, /kind: 'qry'/);
+  assert.match(veredito, /writes: 'Slip\.aprovar'/);
+  assert.match(veredito, /writes: 'Slip\.rejeitar'/);
+  assert.match(journey, /"kind": "decide"/);
+  assert.match(backend, /"usecaseId": "aprovarDeskNote"/);
+  assert.match(backend, /"usecaseId": "aprovarSlip"/);
+  assert.match(backend, /"transitionRef": "aprovar"/);
 });
 
 void test('agentDefsL1 non-test ts does not name the frozen module', () => {

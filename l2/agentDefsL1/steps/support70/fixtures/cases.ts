@@ -62,6 +62,7 @@ export function coreSupportRequest(): D1SupportRequest {
     outbound: [],
     selectedEventIds: [],
     usecaseIds: [],
+    transitionUsecases: [],
     operations: [],
   };
 }
@@ -149,6 +150,7 @@ export function agendaSeedRequest(): D1SupportRequest {
     { tag: 'HasContact', entityId: 'ContatoPaciente' },
   ];
   request.usecaseIds = ['confirmarConsulta', 'registrarFalta', 'registrarAtendimento'];
+  request.transitionUsecases = request.usecaseIds.map(usecaseId => ({ entity: 'Consulta', transitionRef: usecaseId, usecaseId }));
   request.selectedEventIds = ['atendimentoRegistrado', 'consultaConfirmada', 'faltaPacienteRegistrada'];
   request.outbound = [
     { eventId: 'consultaConfirmada', on: 'Consulta.confirmarConsulta', mechanism: '', payloadDeclared: false },

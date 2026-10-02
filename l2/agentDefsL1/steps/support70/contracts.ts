@@ -251,6 +251,28 @@ export interface D1SeedReport {
 }
 
 /** One outbound event from the integration artifact. `mechanism` is empty when the artifact names none. */
+/** A selected transition usecase. Two entities may share the transitionRef (d1_53). */
+export interface D1TransitionUsecase {
+  entity: string;
+  transitionRef: string;
+  usecaseId: string;
+}
+
+/** Selected transition usecases, keyed by entity and L4 transitionRef. */
+export function transitionUsecasesOf(
+  selected: readonly { usecaseId: string; entity: string; operation: string; transitionRef?: string; identity: string }[],
+): D1TransitionUsecase[] {
+  return selected.flatMap(item => item.operation === 'transition' && item.transitionRef
+    ? [{ entity: item.entity, transitionRef: item.transitionRef, usecaseId: item.identity || item.usecaseId }]
+    : []);
+}
+
+/** The usecase of one entity transition, or '' when none was selected. Never a usecase named like the transition. */
+export function transitionUsecaseFor(list: readonly D1TransitionUsecase[], entity: string, transitionRef: string): string {
+  const match = list.find(item => item.entity === entity && item.transitionRef === transitionRef);
+  return match ? match.usecaseId : '';
+}
+
 export interface D1EffectEvent {
   eventId: string;
   on: string;
@@ -336,8 +358,10 @@ export interface D1SupportRequest {
   outbound: D1EffectEvent[];
   /** Event ids input20 selected. A selected id missing here is an omission. */
   selectedEventIds: string[];
-  /** Usecase ids the plan selected. An event consumer must be one of these. */
+  /** Usecase ids the plan selected. A process, inbound or plugin operation must be one of these. */
   usecaseIds: string[];
+  /** Selected transition usecases by entity and L4 transitionRef. An outbound event binds one of these. */
+  transitionUsecases: D1TransitionUsecase[];
   /** Processes, inbound and plugins. A workflow does not become an endpoint. */
   operations: D1EffectOperation[];
 }

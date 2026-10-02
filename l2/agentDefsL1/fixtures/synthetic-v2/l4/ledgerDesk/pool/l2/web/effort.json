@@ -1,1 +1,48 @@
-{ "schemaVersion": "2026-09-20-p2-effort", "moduleName": "ledgerDesk", "screens": [] }
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
+  "moduleName": "ledgerDesk",
+  "device": "web",
+  "totals": {
+    "screens": { "toCreate": 3, "toUpdate": 0, "toRemove": 0, "done": 0 },
+    "endpoints": { "toCreate": 0, "toUpdate": 0, "toRemove": 0, "done": 0 },
+    "usecases": { "toCreate": 2, "toUpdate": 0, "toRemove": 0, "done": 0 },
+    "tables": { "toCreate": 2, "toUpdate": 0, "toRemove": 0, "done": 0 }
+  },
+  "screens": [
+    { "pageId": "board", "label": "Board", "actors": ["clerk"], "status": "toCreate", "endpoints": [] },
+    { "pageId": "cards", "label": "Cards", "actors": ["clerk"], "status": "toCreate", "endpoints": [] },
+    { "pageId": "veredito", "label": "Veredito", "actors": ["clerk"], "status": "toCreate", "endpoints": [] }
+  ],
+  "endpoints": [],
+  "usecases": [
+    {
+      "usecaseId": "aprovarDeskNote",
+      "entity": "DeskNote",
+      "operation": "transition",
+      "transitionRef": "aprovar",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "aprovarSlip",
+      "entity": "Slip",
+      "operation": "transition",
+      "transitionRef": "aprovar",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    { "tableId": "deskNote", "entity": "DeskNote", "status": "toCreate" },
+    { "tableId": "slip", "entity": "Slip", "status": "toCreate" }
+  ],
+  "removed": [],
+  "testSupport": [],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "sourceVersion": "2026-09-21-p1-backend-v1.2",
+    "generatedAt": "2026-10-02T12:00:00.000Z"
+  }
+}

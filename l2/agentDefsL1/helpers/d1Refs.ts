@@ -479,17 +479,19 @@ export function effectCoverageIssues(usecases: readonly { effects?: Array<{ even
   return issues;
 }
 
+/** An outbound event binds the usecase of its entity and transitionRef, never a usecase named like the transition. */
 export function integrationLinkIssues(
   events: readonly { eventId: string; on: string; consumer?: string }[],
-  usecaseIds: readonly string[],
+  transitionUsecases: readonly { entity: string; transitionRef: string; usecaseId: string }[],
 ): string[] {
   const issues: string[] = [];
-  const known = new Set(usecaseIds);
   for (const event of events) {
-    const transition = event.on.split('.')[1] || '';
-    if (!transition || !known.has(transition)) issues.push(`Outbound ${event.eventId} does not name a usecase id.`);
-    if (event.consumer !== undefined && event.consumer !== transition) {
-      issues.push(`Outbound ${event.eventId} consumer does not match ${transition}.`);
+    const [entity = '', transition = ''] = event.on.split('.');
+    const match = transitionUsecases.find(item => item.entity === entity && item.transitionRef === transition);
+    const usecaseId = match ? match.usecaseId : '';
+    if (!usecaseId) issues.push(`Outbound ${event.eventId} does not name a selected transition usecase.`);
+    if (usecaseId && event.consumer !== undefined && event.consumer !== usecaseId) {
+      issues.push(`Outbound ${event.eventId} consumer does not match ${usecaseId}.`);
     }
   }
   return issues;

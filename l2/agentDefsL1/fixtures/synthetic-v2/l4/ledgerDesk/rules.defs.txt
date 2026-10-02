@@ -1,1 +1,1 @@
-export const ledgerDeskRules = { "schemaVersion": "2026-09-17-ns5-rules", "moduleName": "ledgerDesk", "rules": [] } as const;
+export const ledgerDeskRules = { "schemaVersion": "2026-09-16-ns5-rules-v2", "moduleName": "ledgerDesk", "rules": [] } as const;

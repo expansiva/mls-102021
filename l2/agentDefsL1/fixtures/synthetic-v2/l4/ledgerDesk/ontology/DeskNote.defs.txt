@@ -7,11 +7,15 @@ export const ledgerDeskEntityDeskNote = {
   "storage": { "target": "moduleDatabase", "table": "ledgerDesk_desknote", "kind": "relational" },
   "record": {
     "fields": {
-      "id": { "type": "uuid", "required": true },
+      "id": { "type": "uuid", "required": true, "derived": true },
       "version": { "type": "integer", "required": true, "writePrecondition": true },
       "itemCardId": { "type": "record", "to": ["ItemCard"] },
       "state": { "type": "enum", "values": ["open", "closed"] }
     }
   },
-  "transitions": [{ "id": "close", "from": "open", "to": "closed" }]
+  "lifecycleStates": [
+    { "state": "open", "reachedBy": "actor" },
+    { "state": "closed", "reachedBy": "actor" }
+  ],
+  "transitions": [{ "transitionId": "aprovar", "from": ["open"], "to": "closed", "by": ["clerk"], "ruleRefs": [] }]
 } as const;

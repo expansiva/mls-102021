@@ -47,6 +47,7 @@ import {
   type D1SupportProblem,
   type D1SupportRequest,
 } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import { transitionUsecaseFor } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 import { lifecyclePath, projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
 
 const LIVE_ACTIONS = new Set(['create', 'update', 'recompose', 'preserve']);
@@ -363,7 +364,7 @@ function modelScenario(
   const states = [...model.states];
   const noteState = model.transitions.find(item => item.ruleRefs.includes(NOTE_RULE) && item.to)?.to || '';
   const requires = noteState && model.noteField ? [model.noteField] : [];
-  return scenarioRecord(`model-${tableId}`, tableId, `model:${model.entityId}`, model, refs, states, requires, noteState, stateField);
+  return scenarioRecord(`model_${tableId}`, tableId, `model:${model.entityId}`, model, refs, states, requires, noteState, stateField);
 }
 
 function citationsOf(entityId: string, stateField: string, scenarios: readonly Record<string, unknown>[]): D1SeedCitation[] {
@@ -854,7 +855,7 @@ function classifyEnumerations(request: D1SupportRequest, citations: readonly D1S
 }
 
 /**
- * One outbound def. Events keep the transition as consumer.
+ * One outbound def. An event's consumer is the usecase of its entity and transitionRef.
  * An empty mechanism stays empty. publishEvent and emitEvent are refused.
  * IQueueRuntime.publish is evidence, not an approved binding.
  * Processes, inbound and plugins stay operations. A scheduled trigger writes no scheduler.
@@ -876,7 +877,8 @@ export function emitEffects(
     const parts = event.on.split('.');
     const entityId = parts[0] || '';
     const transition = parts[1] || '';
-    if (!event.eventId || !entityId || !transition || parts.length !== 2 || !known.has(transition)) {
+    const usecaseId = transitionUsecaseFor(request.transitionUsecases, entityId, transition);
+    if (!event.eventId || !entityId || !transition || parts.length !== 2 || !usecaseId) {
       error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
       continue;
     }
@@ -896,7 +898,7 @@ export function emitEffects(
       on: event.on,
       entityId,
       mechanism: resolved.mechanism,
-      consumer: transition,
+      consumer: usecaseId,
     };
     if (resolved.mechanismRef) row.mechanismRef = resolved.mechanismRef;
     events.push(row);

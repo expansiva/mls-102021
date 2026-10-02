@@ -1,1 +1,7 @@
-export const ledgerDeskJourneyIndex = { "schemaVersion": "2026-09-17-ns5-journey-index", "moduleName": "ledgerDesk", "journeys": [] } as const;
+export const ledgerDeskJourneyIndex = {
+  "schemaVersion": "2026-09-10-ns5-journey-v1",
+  "moduleName": "ledgerDesk",
+  "journeys": [
+    { "journeyId": "decidirSlip", "actorRef": "clerk", "title": "Decide a slip" }
+  ]
+} as const;

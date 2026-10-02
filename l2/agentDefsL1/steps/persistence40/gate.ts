@@ -17,7 +17,7 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild, type D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, L1_OPERATION_PORT_READS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_DETAILS_COLUMN,
   D1_PERSISTENCE_ACTIONS,
@@ -596,6 +596,12 @@ function methodsFor(
     error(problems, 'METHODS_EMPTY', entityId, `Entity ${entityId} has no selected operation. No repository method was invented.`);
     blocked.add(entityId);
     return null;
+  }
+  // The reads the body of a selected operation calls are part of the port (update and transition load by list).
+  for (const operation of [...selected]) {
+    for (const read of L1_OPERATION_PORT_READS[operation]) {
+      if ((OPERATIONS as readonly string[]).includes(read)) selected.add(read as Operation);
+    }
   }
   return OPERATIONS.filter(operation => selected.has(operation)).map(operation => methodFor(entityId, operation));
 }

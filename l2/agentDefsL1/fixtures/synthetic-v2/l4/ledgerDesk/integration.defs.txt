@@ -1,1 +1,1 @@
-export const ledgerDeskIntegration = { "schemaVersion": "2026-09-17-ns5-integration", "moduleName": "ledgerDesk", "outbound": [] } as const;
+export const ledgerDeskIntegration = { "schemaVersion": "2026-09-12-ns5-integration-v2", "moduleName": "ledgerDesk", "outbound": [{ "id": "deskApproved", "on": "DeskNote.aprovar" }, { "id": "slipApproved", "on": "Slip.aprovar" }] } as const;

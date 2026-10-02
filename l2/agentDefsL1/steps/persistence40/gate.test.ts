@@ -515,3 +515,18 @@ void test('an external catalog is read and not copied into a table', () => {
   assert.equal(opened.emit.length, 0);
   assert.equal(opened.normalizations.some(item => item.code === 'CATALOG_READ_ONLY' && item.path === source), true);
 });
+
+void test('a transition-only entity port also declares the list its M1 body loads the row by (t1_09 r3)', () => {
+  const build = buildD1Persistence(planned({
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities: noteEntity,
+    operations: ['transition'],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  const port = build.ports[0];
+  assert.deepEqual(port.methods.map(method => method.name).sort(), ['list', 'transition']);
+  assert.deepEqual(build.adapters[0].methods.map(method => method.name), port.methods.map(method => method.name));
+});

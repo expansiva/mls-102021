@@ -16,10 +16,10 @@ import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/c
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
 import { assembleD1Support, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
-import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
+import { buildD1Support, emitEffects, emitRegistry, emitScope, emitSeeds } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
-import type { D1SupportEmit, D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import type { D1SupportEmit, D1SupportProblem, D1SupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 interface SerializedGrant {
   grantId: string;
@@ -585,7 +585,7 @@ void test('inbound create and update follow writes and effect, not a name or tra
   const pool = [
     usecase('qx7', 'Quark', 'create'),
     usecase('createQuark', 'Nope', 'archive'),
-    usecase('flipZz', 'Quark', 'transition'),
+    usecase('flipZz', 'Quark', 'transition', 'flipZz'),
   ];
   const created = inboundOperation({
     id: 'alphaIn',
@@ -640,8 +640,8 @@ void test('inbound create and update follow writes and effect, not a name or tra
   assert.deepEqual(gaps.gaps, [{ itemId: 'alphaIn', kind: 'inbound', code: 'POOL_ABSENT' }]);
 });
 
-function usecase(usecaseId: string, entity: string, operation: string): D1SelectedUsecase {
-  return { usecaseId, entity, operation, status: 'toCreate', existing: '', identity: usecaseId, routes: [] };
+function usecase(usecaseId: string, entity: string, operation: string, transitionRef = ''): D1SelectedUsecase {
+  return { usecaseId, entity, operation, ...(transitionRef ? { transitionRef } : {}), status: 'toCreate', existing: '', identity: usecaseId, routes: [] };
 }
 
 const FIXTURE_3F4F677 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/agendaClinica-3f4f677');
@@ -809,3 +809,82 @@ function policyUnit(part: D1SupportEmit): D1PolicyUnit {
     dependencies: part.pipeline[0]?.dependsFiles || [],
   };
 }
+
+function effectsRequest(): D1SupportRequest {
+  return {
+    project: 102047, moduleName: 'zzMod', grants: [], relationships: [], scopePlans: [], citedGrantIds: [], adapters: [],
+    files: [], existingHelpers: [], applicationEdges: [], formFields: [], enumerations: [], tables: [], models: [],
+    journeys: [], missingJourneys: [], roleTags: [], seedRefs: [], existingDatasets: [], maintenance: null,
+    outbound: [], selectedEventIds: [], usecaseIds: [], transitionUsecases: [], operations: [],
+  };
+}
+
+void test('an outbound event binds the usecase of its entity transition, not a usecase named like the transition (t1_09 r3)', () => {
+  const request = effectsRequest();
+  request.usecaseIds = ['approveQx', 'approveZy'];
+  request.transitionUsecases = [
+    { entity: 'Qx', transitionRef: 'approve', usecaseId: 'approveQx' },
+    { entity: 'Zy', transitionRef: 'approve', usecaseId: 'approveZy' },
+  ];
+  request.selectedEventIds = ['qxApproved', 'zyApproved'];
+  request.outbound = [
+    { eventId: 'qxApproved', on: 'Qx.approve', mechanism: '', payloadDeclared: false },
+    { eventId: 'zyApproved', on: 'Zy.approve', mechanism: '', payloadDeclared: false },
+  ];
+  const problems: D1SupportProblem[] = [];
+  const result = emitEffects(request, problems);
+  assert.equal(problems.some(item => item.code === 'INTEGRATION_LINK'), false, JSON.stringify(problems));
+  const outbound = result.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  const events = (outbound?.definition.data as { events: Array<{ eventId: string; consumer: string }> }).events;
+  assert.deepEqual(events.map(item => `${item.eventId}:${item.consumer}`), ['qxApproved:approveQx', 'zyApproved:approveZy']);
+  assert.deepEqual(outbound?.pipeline.flatMap(item => item.dependsOn), [
+    pipelineId(request.project, request.moduleName, 'usecase', 'approveQx'),
+    pipelineId(request.project, request.moduleName, 'usecase', 'approveZy'),
+  ]);
+
+  const unknown = effectsRequest();
+  unknown.usecaseIds = ['approve'];
+  unknown.transitionUsecases = [{ entity: 'Qx', transitionRef: 'approve', usecaseId: 'approve' }];
+  unknown.selectedEventIds = ['zyApproved'];
+  unknown.outbound = [{ eventId: 'zyApproved', on: 'Zy.approve', mechanism: '', payloadDeclared: false }];
+  const unknownProblems: D1SupportProblem[] = [];
+  emitEffects(unknown, unknownProblems);
+  assert.equal(unknownProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'zyApproved'), true);
+});
+
+void test('a local table outside every journey owns its dataset by a token scenario id (t1_09 r3)', () => {
+  const request = effectsRequest();
+  request.tables = [{ tableId: 'qxRow', entityId: 'Qx', action: 'create', defPath: 'l1/zzMod/layer_3_infra/tables/qxRow.defs.ts', uniqueKeys: [] }];
+  request.models = [{
+    entityId: 'Qx', storageTarget: 'local', kind: 'entity', namespace: '', fields: [{ name: 'id', type: 'string' }],
+    states: [], initialState: '', uniqueKeys: [], transitions: [], noteField: '',
+  }];
+  const problems: D1SupportProblem[] = [];
+  const seeds = emitSeeds(request, problems, []);
+  assert.equal(problems.some(item => item.code === 'DEFINITION'), false, JSON.stringify(problems));
+  const data = seeds.emit[0]?.definition.data as { datasets: Array<{ owners: string[] }>; scenarios: Array<{ scenarioId: string }> };
+  assert.equal(data.datasets.length, 1);
+  assert.deepEqual(data.datasets[0]?.owners, data.scenarios.map(item => item.scenarioId));
+  for (const owner of data.datasets[0]?.owners || []) assert.match(owner, /^[A-Za-z][A-Za-z0-9_]*$/);
+});
+
+void test('an inbound transition binds the usecase of its entity transitionRef (t1_09 r3)', () => {
+  const pool = [
+    usecase('approveQx', 'Qx', 'transition', 'approve'),
+    usecase('approveZy', 'Zy', 'transition', 'approve'),
+    usecase('approve', 'Wv', 'create'),
+  ];
+  const inbound = inboundOperation({ id: 'zyIn', effect: 'transition', transitionRef: 'approve', writes: ['Zy'] }, pool);
+  assert.deepEqual(inbound?.operations, ['approveZy']);
+  assert.equal(inbound?.consumer, 'approveZy');
+
+  const absent = inboundOperation({ id: 'wvIn', effect: 'transition', transitionRef: 'approve', writes: ['Wv'] }, pool);
+  assert.deepEqual(absent?.operations, ['Wv.approve']);
+  assert.equal(absent?.consumer, 'wvIn');
+  const request = effectsRequest();
+  request.usecaseIds = pool.map(item => item.usecaseId);
+  request.operations = [absent!];
+  const problems: D1SupportProblem[] = [];
+  emitEffects(request, problems);
+  assert.equal(problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'wvIn'), true);
+});

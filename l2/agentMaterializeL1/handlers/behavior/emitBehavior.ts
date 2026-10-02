@@ -387,8 +387,9 @@ async function memoryPort(definition: M1Definition, output: string, read: Struct
     `async list($1): Promise<$2> { return table().findMany({ where: filter as Partial<${entity}> }); }`,
   );
   const saved = replaceRecordWrites(listed, definition, entity, key);
-  if (!saved.includes('await table().insert') || !saved.includes('table().findMany')) {
-    return { code: 'STUB_SHAPE', detail: `${definition.artifactId} port methods were not recognized.` };
+  const unwritten = memoryUnwritten(definition, saved);
+  if (unwritten.length) {
+    return { code: 'STUB_SHAPE', detail: `${definition.artifactId} declares ${unwritten.join(', ')} and no memory body was written for it.` };
   }
   const source = saved.replace('export const pending', `${storeSource(entity, key)}\nexport const pending`);
   const renamed = renamePortArgs(source);
@@ -403,6 +404,36 @@ function behaviorAccess(definition: M1Definition, output: string): EmitResult | 
   const pending = '  if (grant.pending) return { code: grant.pending, detail: `Grant ${grantId} is pending ${grant.pending}.` };\n';
   if (!emitted.source.includes(pending)) return { code: 'STUB_SHAPE', detail: `${definition.artifactId} grant check was not recognized.` };
   return done({ ...emitted, source: emitted.source.replace(pending, '') });
+}
+
+/**
+ * What the memory body of each declared port operation writes. The port gets exactly the methods its def
+ * declares (t1_09 r3): a port without create or list is valid. '' is an operation the memory port leaves as its stub.
+ */
+const MEMORY_BODY: Record<L1Operation, string> = {
+  create: 'await table().insert',
+  list: 'table().findMany',
+  update: 'await table().update',
+  transition: 'await table().update',
+  get: '',
+  delete: '',
+  custom: '',
+};
+
+/** Declared operations whose memory body is missing from the source. */
+function memoryUnwritten(definition: M1Definition, source: string): string[] {
+  const methods = Array.isArray(definition.data.methods) ? definition.data.methods.filter(isRecord) : [];
+  const unwritten: string[] = [];
+  for (const method of methods) {
+    const name = text(method.name);
+    if (!isL1Operation(name)) continue;
+    const body = MEMORY_BODY[name];
+    const at = source.indexOf(`async ${name}(`);
+    const end = at < 0 ? -1 : source.indexOf('\n', at);
+    const line = at < 0 ? '' : source.slice(at, end < 0 ? undefined : end);
+    if (body && !line.includes(body)) unwritten.push(name);
+  }
+  return unwritten;
 }
 
 function replaceRecordWrites(source: string, definition: M1Definition, entity: string, key: string): string {

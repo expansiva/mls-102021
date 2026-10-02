@@ -2,8 +2,8 @@
 
 /**
  * t1_09 r2: /structure and implement over the defs the D1 tip writes in memory.
- * The compiler is the same sandbox as emittedTypecheck. agendaClinica and synthetic-v2
- * stay skipped until their D1 reaches finalize80.
+ * The compiler is the same sandbox as emittedTypecheck. agendaClinica stays
+ * skipped until its D1 reaches finalize80. synthetic-v2 reaches it (t1_09 r3).
  */
 
 import assert from 'node:assert/strict';
@@ -45,7 +45,7 @@ const UNIT_GAP = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
   { id: 'agendaClinica-cab144b', moduleName: 'agendaClinica', reachesFinalize: false },
-  { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: false },
+  { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70', 'finalize80'];

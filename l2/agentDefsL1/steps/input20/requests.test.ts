@@ -108,11 +108,30 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   const save = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.save');
   const move = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.move');
   assert.deepEqual(get?.uses, ['readItem']);
-  assert.deepEqual(save?.uses, ['writeItem', 'readNote']);
-  assert.equal(snapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), true);
-  assert.equal(move?.uses.length, 0);
-  assert.equal(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes('DeskNote.transition')), true);
+  assert.deepEqual(save?.uses, ['writeItem']);
+  assert.equal(snapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), false);
+  const verdict = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.veredito.aprovar');
+  assert.deepEqual(move?.uses, ['aprovarDeskNote']);
+  assert.deepEqual(verdict?.uses, ['aprovarSlip']);
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'aprovarDeskNote'), true);
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'aprovarSlip'), true);
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'aprovar'), false);
   assert.equal(snapshot.problems.some(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote'), true);
+  const mixed = artifactsOf('synthetic-v2', 'ledgerDesk');
+  const saveBlock = `writes: 'ItemCard.update';
+    input: { id: string; version: number; details: { identification: { name: string } } };
+    output: { item: ItemLoad };
+    meta: { output: { item: { entity: 'ItemCard'; many: false } }; lists: {}; params: {} };`;
+  mixed.contractTexts = {
+    cards: (mixed.contractTexts || {}).cards.replace(saveBlock, `writes: 'ItemCard.update';
+    input: { id: string; version: number; details: { identification: { name: string } } };
+    output: { item: ItemLoad; note: NoteSave };
+    meta: { output: { item: { entity: 'ItemCard'; many: false }; note: { entity: 'DeskNote'; many: false } }; lists: {}; params: {} };`),
+  };
+  (mixed.backend as Record<string, unknown>).usecases = pool;
+  (mixed.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
+  const mixedSnapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, mixed, null);
+  assert.equal(mixedSnapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), true);
 });
 
 void test('contract access that disagrees with L4 is a review and does not gate', () => {

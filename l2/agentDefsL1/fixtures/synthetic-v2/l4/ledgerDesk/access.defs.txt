@@ -1,1 +1,1 @@
-export const ledgerDeskAccess = { "schemaVersion": "2026-09-12-ns5-access-v3", "moduleName": "ledgerDesk", "actors": [{ "actorId": "clerk" }], "grants": [{ "grantId": "manageDesk", "actorRef": "clerk" }] } as const;
+export const ledgerDeskAccess = { "schemaVersion": "2026-09-12-ns5-access-v3", "moduleName": "ledgerDesk", "actors": [{ "actorId": "clerk" }], "grants": [{ "grantId": "manageDesk", "actorRef": "clerk", "entityRefs": ["DeskNote", "ItemCard", "Slip"], "dataScope": { "mode": "organization" }, "disclosure": { "mode": "fullRecord" } }] } as const;

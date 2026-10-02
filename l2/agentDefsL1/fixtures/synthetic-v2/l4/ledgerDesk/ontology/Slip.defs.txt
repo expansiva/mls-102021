@@ -1,0 +1,24 @@
+export const ledgerDeskEntitySlip = {
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "ledgerDesk",
+  "entityId": "Slip",
+  "kind": "entity",
+  "class": "event",
+  "storage": { "target": "moduleDatabase", "table": "ledgerDesk_slip", "kind": "relational" },
+  "record": {
+    "fields": {
+      "id": { "type": "uuid", "required": true, "derived": true },
+      "version": { "type": "integer", "required": true, "writePrecondition": true },
+      "state": { "type": "enum", "values": ["open", "approved", "rejected"] }
+    }
+  },
+  "lifecycleStates": [
+    { "state": "open", "reachedBy": "actor" },
+    { "state": "approved", "reachedBy": "actor" },
+    { "state": "rejected", "reachedBy": "actor" }
+  ],
+  "transitions": [
+    { "transitionId": "aprovar", "from": ["open"], "to": "approved", "by": ["clerk"], "ruleRefs": [] },
+    { "transitionId": "rejeitar", "from": ["open"], "to": "rejected", "by": ["clerk"], "ruleRefs": [] }
+  ]
+} as const;

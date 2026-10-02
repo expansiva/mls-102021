@@ -4,6 +4,7 @@
   "device": "web",
   "tree": [
     { "id": "cards", "kind": "page", "label": "Cards", "action": "maintain" },
-    { "id": "board", "kind": "page", "label": "Board", "action": "view" }
+    { "id": "board", "kind": "page", "label": "Board", "action": "view" },
+    { "id": "veredito", "kind": "page", "label": "Veredito", "action": "decide" }
   ]
 }

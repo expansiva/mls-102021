@@ -14,6 +14,8 @@ import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contr
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import {
   D1_SUPPORT_VERSION,
+  transitionUsecaseFor,
+  transitionUsecasesOf,
   type D1EffectEvent,
   type D1EffectOperation,
   type D1SeedDataset,
@@ -66,6 +68,7 @@ export async function assembleD1Support(
   const models = modelsOf(domain, index);
   const selected = snapshot.selection.usecases;
   const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
+  const transitionUsecases = transitionUsecasesOf(selected);
   const linked = await effectsOf(project, moduleName, selected);
   const request: D1SupportRequest = {
     project,
@@ -91,6 +94,7 @@ export async function assembleD1Support(
     outbound: linked.outbound,
     selectedEventIds: [...snapshot.selection.outbound].sort(),
     usecaseIds,
+    transitionUsecases,
     operations: linked.operations,
     enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };
@@ -599,21 +603,23 @@ export function inboundOperation(
 ): D1EffectOperation | null {
   if (typeof row.id !== 'string' || !row.id) return null;
   const effect = typeof row.effect === 'string' ? row.effect : '';
-  const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
   const operations: string[] = [];
   if (effect === 'transition') {
     const transitionRef = typeof row.transitionRef === 'string' ? row.transitionRef : '';
-    if (transitionRef) operations.push(transitionRef);
+    const transitions = transitionUsecasesOf(selected);
+    for (const entity of transitionRef ? stringList(row.writes) : []) {
+      // Unselected: the entity transition stays named, and the pool check reports it.
+      const operation = transitionUsecaseFor(transitions, entity, transitionRef) || `${entity}.${transitionRef}`;
+      if (!operations.includes(operation)) operations.push(operation);
+    }
   } else if (effect === 'create' || effect === 'update') {
     for (const entity of stringList(row.writes)) {
       const match = selected.find(item => item.entity === entity && item.operation === effect);
       if (match?.usecaseId && !operations.includes(match.usecaseId)) operations.push(match.usecaseId);
     }
   }
-  const named = operations[0] || '';
-  const consumer = effect === 'transition'
-    ? (named && known.has(named) ? named : row.id)
-    : (named || row.id);
+  const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
+  const consumer = operations.find(item => known.has(item)) || row.id;
   return { id: row.id, kind: 'inbound', operations, mechanism: '', consumer, scheduled: false };
 }
 
@@ -628,6 +634,7 @@ async function effectsOf(
   const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
   const workflows = workflowText ? parseD1Source(workflowText, 'defs') : null;
   const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
+  const transitions = transitionUsecasesOf(selected);
   const payloadCache = new Map<string, unknown>();
   const outbound: D1EffectEvent[] = [];
   if (isRecord(integration)) {
@@ -670,7 +677,12 @@ async function effectsOf(
       for (const task of arrayOf(row.tasks)) {
         if (!isRecord(task)) continue;
         if (typeof task.journeyRef === 'string' && task.journeyRef && !planned.includes(task.journeyRef)) planned.push(task.journeyRef);
-        if (typeof task.transitionRef === 'string' && task.transitionRef && !planned.includes(task.transitionRef)) planned.push(task.transitionRef);
+        if (typeof task.transitionRef === 'string' && task.transitionRef) {
+          const entity = typeof task.entityRef === 'string' ? task.entityRef : '';
+          // Unselected: the entity transition stays named, and the pool check reports it.
+          const operation = transitionUsecaseFor(transitions, entity, task.transitionRef) || `${entity}.${task.transitionRef}`;
+          if (!planned.includes(operation)) planned.push(operation);
+        }
       }
       const trigger = isRecord(row.trigger) ? row.trigger : {};
       const consumer = planned.find(item => known.has(item)) || row.processId;
