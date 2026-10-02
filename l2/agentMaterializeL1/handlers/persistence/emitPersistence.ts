@@ -583,6 +583,17 @@ function renderMethod(name: string, params: readonly string[], entityName: strin
       '    },',
     ].join('\n');
   }
+  if (name === 'get' && params.length === 1 && params[0] === 'id') {
+    return [
+      `    async get(id: string): Promise<${entityName}> {`,
+      '      const table = await runtime.getTable<Row>(REPOSITORY);',
+      '      const column = columnOf(PRIMARY_KEY[0]);',
+      '      const stored = await table.findOne({ where: { [column]: id } });',
+      "      if (!stored) throw new AppError('NOT_FOUND', 'Record not found.', 404);",
+      '      return fromRow(stored) as unknown as ' + entityName + ';',
+      '    },',
+    ].join('\n');
+  }
   if (name === 'delete' && params.length === 1 && params[0] === 'id') {
     return [
       '    async delete(id: string): Promise<void> {',

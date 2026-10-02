@@ -26,7 +26,7 @@ import { shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import type { SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
 import { M1_CATALOG_SCHEMA } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { verifyBatch } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
-import { behaviorNeedsLlm, caseBlock, emitBehavior, withoutCreateChecks, withoutLifecycleChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
+import { behaviorNeedsLlm, caseBlock, emitBehavior, isDerivedMdm, withoutCreateChecks, withoutLifecycleChecks, withoutPayloadChecks, withoutScopeChecks, withoutStorageChecks, withoutVersionChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
 import { emitController, recordFieldFromGrant, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { clearRepositories, registerRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -1102,5 +1102,94 @@ void test('a local table update is derived and proved on a module built in the t
     assert.equal(savedDetails[rn.check].doneAt, '2026-09-26T12:00:00.000Z');
   } finally {
     renamedFiles.dispose();
+  }
+});
+
+void test('a local get returns the record and a role get is derived', async () => {
+  const m = build(BASE);
+  const { n, refs, ids } = m;
+  const port = m.defs.get(refs.port);
+  assert.ok(port);
+  const methods = Array.isArray(port.data.methods) ? port.data.methods : [];
+  port.data = { ...port.data, methods: [...methods, { name: 'get', params: ['id'], returns: n.Entity }] };
+  m.texts.set(refs.port, `export const definition = ${JSON.stringify(port)} as const;\n`);
+  const update = defOf(m, ids.update).definition;
+  const fn = (update.data.functions as Row[])[0];
+  const getId = `get${n.Entity}`;
+  const getDef: M1Definition = {
+    ...update,
+    artifactId: getId,
+    data: {
+      ...update.data,
+      usecaseId: getId,
+      operation: 'get',
+      portCalls: ['get'],
+      functions: [{ ...fn, functionName: getId, input: [{ name: 'id', type: 'uuid', fieldRef: `${n.Entity}.id` }] }],
+      sequence: [{ kind: 'port', call: 'get', port: `${n.Entity}Repository` }],
+      rulePlan: [],
+    },
+  };
+  const getPath = refs.uc(getId);
+  m.defs.set(getPath, getDef);
+  m.texts.set(getPath, `export const definition = ${JSON.stringify(getDef)} as const;\n`);
+  assert.equal(behaviorNeedsLlm(getDef), false);
+  const source = ok(await emitBehavior('implement.usecase', getDef, outputPathFromDefPath(getPath), reader(m), m.list)).source;
+  assert.match(source, new RegExp(`ports\\.${n.entity}Repository\\.get\\(input\\.id\\)`));
+  assert.match(source, /return found as \w+;/);
+  assert.equal(source.includes('as unknown as'), false);
+  assert.equal(source.includes('items'), false);
+  assert.equal(source.includes('hasMore'), false);
+  const portSource = await emit(m, `${n.Entity}Repository`);
+  const problems = compile(m, [[refs.entity, await emit(m, n.Entity)], [refs.port, portSource], [getPath, source]]);
+  assert.equal(problems, '', problems);
+  const record = { id: 'row-1', version: 1 };
+  const files = scratch(m, 'm1-46-get-');
+  try {
+    const loaded = await usecaseAt(files.write(getPath, source), getId);
+    const saved = await loaded({ id: 'row-1' }, {}, { [`${n.entity}Repository`]: { async get(id: string) { return { ...record, id }; } } });
+    assert.equal(saved.id, 'row-1');
+    assert.equal('items' in saved, false);
+    assert.equal('hasMore' in saved, false);
+  } finally {
+    files.dispose();
+  }
+
+  const listMdm = defOf(m, ids.listMdm).definition;
+  const roleId = `get${n.Mdm}`;
+  const roleDef: M1Definition = {
+    ...listMdm,
+    artifactId: roleId,
+    data: {
+      ...listMdm.data,
+      usecaseId: roleId,
+      operation: 'get',
+      functions: (listMdm.data.functions as Row[]).map(item => ({ ...item, functionName: roleId, input: [{ name: 'id', type: 'uuid', fieldRef: `${n.Mdm}.id` }] })),
+      mdm: {
+        ...(listMdm.data.mdm as Row),
+        calls: [{ id: 'get', method: 'get', target: 'entity', when: [], arguments: [{ name: 'mdmId', role: 'selector', origin: { kind: 'contract', path: 'id' }, path: 'id' }] }],
+      },
+      uses: [{ path: 'id', role: 'selector', source: 'input' }],
+    },
+  };
+  assert.equal(isDerivedMdm(roleDef), true);
+  assert.equal(behaviorNeedsLlm(roleDef), false);
+  const rolePath = refs.uc(roleId);
+  m.defs.set(rolePath, roleDef);
+  m.texts.set(rolePath, `export const definition = ${JSON.stringify(roleDef)} as const;\n`);
+  const roleSource = ok(await emitBehavior('implement.usecase', roleDef, outputPathFromDefPath(rolePath), reader(m), m.list)).source;
+  assert.match(roleSource, /NOT_FOUND/);
+  assert.equal(roleSource.includes('NEEDS_LLM'), false);
+  const roleFiles = scratch(m, 'm1-46-role-');
+  try {
+    const call = await usecaseAt(roleFiles.write(rolePath, roleSource), roleId);
+    const ctx = { mdm: { entity: { async get() { return null; } } } };
+    await assert.rejects(() => call({ id: 'gone' }, ctx, {}), (error: { code?: string }) => error.code === 'NOT_FOUND');
+    const found = { mdm: { entity: { async get(input: { mdmId: string }) { return { mdmId: input.mdmId, version: 3, details: { name: 'Ada' } }; } } } };
+    const row = await call({ id: 'p-1' }, found, {});
+    assert.equal(row.id, 'p-1');
+    assert.equal(row.version, 3);
+    assert.equal('items' in row, false);
+  } finally {
+    roleFiles.dispose();
   }
 });

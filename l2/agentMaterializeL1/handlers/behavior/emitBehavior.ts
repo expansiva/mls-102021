@@ -55,7 +55,7 @@ import {
 export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v16';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v17';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -319,7 +319,9 @@ async function memoryUsecase(
       ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition, returnType)
       : transition
         ? transitionBody(entityName, camel(portName), transition, returnType)
-        : listBody(entity, entityName, camel(portName), inputs, outs.includes('items') && outs.includes('hasMore'));
+        : operation === 'get'
+          ? getBody(camel(portName), returnType)
+          : listBody(entity, entityName, camel(portName), inputs, outs.includes('items') && outs.includes('hasMore'));
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
     body,
@@ -519,7 +521,10 @@ function mdmBody(definition: M1Definition, entity: M1Definition, subtype: string
 
 function emitMdmCall(call: MdmCall, operation: string, subtype: string, precondition: string, returnType: string): string[] {
   const guard = [whenExpr(call), requiredExpr(call, precondition)].filter(Boolean).join(' && ');
-  const inner = callBody(call, subtype, precondition).split('\n').filter(line => line.length > 0);
+  const raw = operation === 'get' && (call.method === 'get' || `${call.target}.${call.method}` === 'read.byId')
+    ? readGetBody(call)
+    : callBody(call, subtype, precondition);
+  const inner = raw.split('\n').filter(line => line.length > 0);
   const indent = (line: string, spaces: number) => `${' '.repeat(spaces)}${line}`;
   const depth = guard ? 4 : 2;
   if (operation === 'list') {
@@ -558,6 +563,14 @@ function listReturn(call: MdmCall, returnType: string): string {
   return `[] as unknown as ${returnType}`;
 }
 
+function readGetBody(call: MdmCall): string {
+  const path = call.args.find(arg => arg.originKind === 'contract')?.path ?? 'id';
+  return [
+    `const found = await ctx.mdm.entity.get({ mdmId: String(readPath(body, ${JSON.stringify(path)})) });`,
+    `remember(${JSON.stringify(call.id)}, found ? { mdmId: found.mdmId, version: found.version, details: found.details } as Record<string, unknown> : null);`,
+  ].join('\n');
+}
+
 function callBody(call: MdmCall, subtype: string, precondition: string): string {
   const key = `${call.target}.${call.method}`;
   if (key === 'entity.findByDocument' || key === 'entity.findByContact') {
@@ -567,7 +580,7 @@ function callBody(call: MdmCall, subtype: string, precondition: string): string 
       `remember(${JSON.stringify(call.id)}, found ? { mdmId: found.mdmId, version: found.version, details: found.details } as Record<string, unknown> : null);`,
     ].join('\n');
   }
-  if (key === 'entity.get') {
+  if (key === 'entity.get' || key === 'read.byId') {
     const path = call.args.find(arg => arg.originKind === 'contract')?.path ?? 'id';
     return [
       `const found = await ctx.mdm.entity.get({ mdmId: String(readPath(body, ${JSON.stringify(path)})) });`,
@@ -778,7 +791,11 @@ function mdmPlan(definition: M1Definition): boolean {
   const calls = mdmCalls(definition);
   const operation = text(definition.data.operation);
   if (calls.length === 0 || stringList(definition.data.ports).length !== 0) return false;
-  if (operation !== 'create' && operation !== 'update' && operation !== 'list') return false;
+  const readById = operation === 'get' && calls.every(call => {
+    const key = `${call.target}.${call.method}`;
+    return key === 'entity.get' || key === 'read.byId';
+  });
+  if (operation !== 'create' && operation !== 'update' && operation !== 'list' && !readById) return false;
   return calls.every(call => MDM_METHODS.has(`${call.target}.${call.method}`)
     && call.when.every(clause => (clause.kind === 'contract' || clause.kind === 'prior') && (!clause.path || clause.path.split('.').every(isIdent)) && (!clause.call || isIdent(clause.call)))
     && call.args.every(arg => isIdent(arg.name) && argOriginOk(arg)));
@@ -1261,6 +1278,13 @@ function selectorField(definition: M1Definition): string {
 
 function invariantsOf(entity: M1Definition): string[] {
   return stringList(entity.data.invariants);
+}
+
+function getBody(binding: string, returnType: string): string {
+  return [
+    `  const found = await ports.${binding}.get(input.id);`,
+    `  return found as ${returnType};`,
+  ].join('\n');
 }
 
 function listBody(entity: M1Definition, entityName: string, binding: string, inputs: ReadonlySet<string>, page = false): string {

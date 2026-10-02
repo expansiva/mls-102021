@@ -120,6 +120,7 @@ export function fixture(n: Names): Fixture {
     methods: [
       { name: 'create', params: [E], returns: E },
       { name: 'list', params: [`${E}Filter`], returns: `${E}[]` },
+      { name: 'get', params: ['id'], returns: E },
       { name: 'update', params: [E], returns: E },
       { name: 'transition', params: [E, 'transitionId'], returns: E },
     ],

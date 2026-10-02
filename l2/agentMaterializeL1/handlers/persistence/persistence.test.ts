@@ -2,10 +2,11 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   parseDefinitionSource,
@@ -367,6 +368,47 @@ void test('emitted persistence files compile', async () => {
   assert.deepEqual(rows.filter(item => item.failure).map(item => item.failure?.detail), []);
   const problems = compile(rows.map(item => [outputOf(item), sourceOf(item)] as const).filter(([, source]) => source));
   assert.equal(problems, '', problems);
+});
+
+void test('a repository get compiles and returns NOT_FOUND for a missing id', async () => {
+  const portDef = structuredClone(definitionFor(`${N.Entity}Repository`));
+  const methods = Array.isArray(portDef.data.methods) ? portDef.data.methods : [];
+  portDef.data = { ...portDef.data, methods: [...methods, { name: 'get', params: ['id'], returns: N.Entity }] };
+  const portPath = defPathOf(`${N.Entity}Repository`);
+  const known = new Map<string, string>([
+    [defPathOf('table'), defSource(defPathOf('table'), tableDef())],
+    [portPath, defSource(portPath, portDef)],
+  ]);
+  const entity = await runStructure(callFor(definitionFor(N.Entity)));
+  const port = await runStructure(callFor(portDef, known));
+  const adapter = await runPersistence(callFor(adapterDef(), known));
+  assert.equal(adapter.failure, null, adapter.failure?.detail);
+  const source = sourceOf(adapter);
+  assert.match(source, /async get\(id: string\)/);
+  assert.match(source, /findOne/);
+  assert.match(source, /NOT_FOUND/);
+  const rows = [entity, port, adapter];
+  assert.deepEqual(rows.filter(item => item.failure).map(item => item.failure?.detail), []);
+  const problems = compile(rows.map(item => [outputOf(item), sourceOf(item)] as const));
+  assert.equal(problems, '', problems);
+
+  const dir = mkdtempSync(join(tmpdir(), 'm1-46-get-'));
+  const write = (output: string, text: string) => {
+    const relativePath = output.replace(/^_102047_\//, '');
+    const full = join(dir, relativePath);
+    mkdirSync(dirname(full), { recursive: true });
+    const rewritten = text.replace(/from '\/_102047_\/([^']+)\.js'/g, (_all, rest: string) => `from '${pathToFileURL(join(dir, `${rest}.ts`)).href}'`);
+    writeFileSync(full, rewritten);
+    return pathToFileURL(full).href;
+  };
+  try {
+    for (const item of [entity, port]) write(outputOf(item), sourceOf(item));
+    const loaded = await import(write(outputOf(adapter), source)) as { bind: (runtime: { getTable: (name: string) => Promise<unknown> }) => { get: (id: string) => Promise<unknown> } };
+    const runtime = { async getTable() { return { async findOne() { return null; }, async findMany() { return []; } }; } };
+    await assert.rejects(() => loaded.bind(runtime).get('missing'), (error: { code?: string; statusCode?: number }) => error.code === 'NOT_FOUND' && error.statusCode === 404);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 void test('emitted persistence file with no unique keys compiles', async () => {
