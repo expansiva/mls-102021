@@ -7,6 +7,8 @@ import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js'
 import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { capabilityNames } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 
 function artifactsOf(id: string, moduleName: string): D1InputArtifacts {
   const files = loadD1Fixture(id);
@@ -118,4 +120,147 @@ void test('contract access that disagrees with L4 is a review and does not gate'
   assert.ok(review.length > 0);
   assert.equal(review.every(item => item.severity === 'review'), true);
   assert.ok(snapshot.selection.requests.some(item => item.route === 'controleEstoque.movimentacoes.load'));
+});
+
+type PoolRow = { usecaseId: string; entity: string; operation: string; status: string; existing: string };
+
+function qryRoute(route: string, key: string, entity: string, many: boolean): string {
+  return `  '${route}': {
+    kind: 'qry';
+    input: {};
+    output: { ${key}: NoteSave${many ? '[]' : ''} };
+    meta: { output: { ${key}: { entity: '${entity}'; many: ${many} } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };`;
+}
+
+function cmdRoute(route: string, writes: string): string {
+  return `  '${route}': {
+    kind: 'cmd';
+    writes: '${writes}';
+    input: { id: string; version: number };
+    output: { note: NoteSave };
+    meta: { output: { note: { entity: 'DeskNote'; many: false } }; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };`;
+}
+
+function boardContract(routes: string[]): string {
+  return `/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/board.defs.ts" enhancement="_blank"/>
+
+export interface BoardContracts {
+${routes.join('\n')}
+}
+
+export interface NoteSave { id: string; version: number; }
+`;
+}
+
+/** synthetic-v2 with this pool in both plans and, when given, only the board contract with these routes. */
+function deskOf(pool: PoolRow[], routes: string[] | null): D1InputArtifacts {
+  const artifacts = artifactsOf('synthetic-v2', 'ledgerDesk');
+  (artifacts.backend as Record<string, unknown>).usecases = pool;
+  (artifacts.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
+  if (routes) artifacts.contractTexts = { board: boardContract(routes) };
+  return artifacts;
+}
+
+function deskBuild(artifacts: D1InputArtifacts): D1InputSnapshot {
+  return buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null);
+}
+
+const listNote: PoolRow = { usecaseId: 'listNote', entity: 'DeskNote', operation: 'list', status: 'toCreate', existing: '' };
+
+void test('a read the plan lacks is created from the contract, once for two requests', () => {
+  const snapshot = deskBuild(deskOf([listNote], [
+    qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true),
+    qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false),
+    qryRoute('ledgerDesk.board.noteAgain', 'note', 'DeskNote', false),
+  ]));
+  const created = snapshot.selection.usecases.filter(item => item.entity === 'DeskNote' && item.operation === 'get');
+  assert.equal(created.length, 1);
+  assert.deepEqual(created[0], {
+    usecaseId: 'getDeskNote',
+    entity: 'DeskNote',
+    operation: 'get',
+    status: 'toCreate',
+    existing: '',
+    identity: 'getDeskNote',
+    routes: ['ledgerDesk.board.note', 'ledgerDesk.board.noteAgain'],
+  });
+  const uses = (route: string) => snapshot.selection.requests.find(item => item.route === route)?.uses;
+  assert.deepEqual(uses('ledgerDesk.board.load'), ['listNote']);
+  assert.deepEqual(uses('ledgerDesk.board.note'), ['getDeskNote']);
+  assert.deepEqual(uses('ledgerDesk.board.noteAgain'), ['getDeskNote']);
+  const fromContract = snapshot.problems.filter(item => item.code === 'USECASE_FROM_CONTRACT');
+  assert.equal(fromContract.length, 1);
+  assert.equal(fromContract[0].severity, 'review');
+  assert.equal(fromContract[0].ownerRef, 'getDeskNote');
+  // synthetic-v2 carries schema and planner errors of its own. None of them is about these requests or this usecase.
+  const touched = new Set(['ledgerDesk.board.load', 'ledgerDesk.board.note', 'ledgerDesk.board.noteAgain', 'getDeskNote', 'listNote']);
+  assert.deepEqual(snapshot.problems.filter(item => item.severity === 'error' && (item.code.startsWith('REQUEST_') || touched.has(item.ownerRef || ''))), []);
+  assert.ok(snapshot.files.some(file => file.id === 'usecase:getDeskNote' && file.action === 'create'));
+});
+
+void test('a role read created from the contract binds read.byId in the usecase step', () => {
+  const artifacts = deskOf([], null);
+  artifacts.contractTexts = { cards: (artifacts.contractTexts || {}).cards };
+  const snapshot = deskBuild(artifacts);
+  const created = snapshot.selection.usecases.find(item => item.entity === 'ItemCard' && item.operation === 'get');
+  assert.ok(created);
+  assert.equal(created.usecaseId, 'getItemCard');
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.get')?.uses, ['getItemCard']);
+  assert.ok(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'getItemCard'));
+  const body = { ...(artifacts.entities.ItemCard as Record<string, unknown>), capabilities: { 'read.byId': 'Read one item card by id.' } };
+  const bound = mdmForOperation({
+    entityId: created.entity,
+    namespace: 'ledgerDesk',
+    capabilities: capabilityNames(body),
+    platformFields: [],
+    // The route input of ledgerDesk.cards.get is { id: string }.
+    inputFields: [{ path: 'id', optional: false, writePrecondition: false }],
+    operation: created.operation,
+  });
+  assert.ok(bound.calls.some(call => call.method === 'get' && call.capabilities.includes('read.byId')));
+});
+
+void test('a write the plan lacks is created; an unknown transition and a foreign entity stay errors', () => {
+  const snapshot = deskBuild(deskOf([listNote], [
+    qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true),
+    cmdRoute('ledgerDesk.board.add', 'DeskNote.create'),
+    cmdRoute('ledgerDesk.board.reopen', 'DeskNote.reopen'),
+    qryRoute('ledgerDesk.board.ghost', 'ghost', 'GhostCard', false),
+  ]));
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.add')?.uses, ['createDeskNote']);
+  assert.ok(snapshot.selection.usecases.some(item => item.usecaseId === 'createDeskNote' && item.operation === 'create'));
+  const unplanned = snapshot.problems.filter(item => item.code === 'REQUEST_USECASE_UNPLANNED');
+  assert.ok(unplanned.some(item => item.ownerRef === 'ledgerDesk.board.reopen' && item.severity === 'error' && item.message.includes("'reopen' is not in the L4 lifecycle")));
+  assert.ok(unplanned.some(item => item.ownerRef === 'ledgerDesk.board.ghost' && item.severity === 'error' && item.message.includes('GhostCard is not in the module ontology')));
+  assert.equal(snapshot.selection.usecases.some(item => item.entity === 'GhostCard'), false);
+});
+
+void test('a created id that the plan already names for another operation stays an error', () => {
+  const clash: PoolRow = { usecaseId: 'getDeskNote', entity: 'DeskNote', operation: 'list', status: 'toCreate', existing: '' };
+  const snapshot = deskBuild(deskOf([clash], [qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false)]));
+  assert.ok(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes('already in the plan as DeskNote.list')));
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT'), false);
+});
+
+void test('a planned usecase no request calls is not generated when the module has a v2 contract', () => {
+  const spare: PoolRow = { usecaseId: 'spareNote', entity: 'DeskNote', operation: 'custom', status: 'toCreate', existing: '' };
+  const snapshot = deskBuild(deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]));
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'spareNote'), false);
+  assert.equal(snapshot.files.some(file => file.ownerRefs.includes('usecase:spareNote')), false);
+  const unrequested = snapshot.problems.find(item => item.code === 'USECASE_WITHOUT_REQUEST' && item.ownerRef === 'spareNote');
+  assert.ok(unrequested);
+  assert.equal(unrequested.severity, 'review');
+  assert.ok(unrequested.message.includes('not generated'));
+
+  const noContract = deskOf([listNote, spare], null);
+  noContract.contractTexts = {};
+  const today = deskBuild(noContract);
+  assert.ok(today.selection.usecases.some(item => item.usecaseId === 'spareNote'));
+  assert.ok(today.files.some(file => file.id === 'usecase:spareNote'));
 });

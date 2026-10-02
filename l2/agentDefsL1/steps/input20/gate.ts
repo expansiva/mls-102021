@@ -207,7 +207,6 @@ export function buildD1InputSnapshot(
     selectedPorts.push({ portId, entity, status: status as D1ActiveStatus });
   }
 
-  const entityClosure = closeEntities(selectedUsecases, relationships, new Set(entityIds));
   const outbound = outboundEvents(integration);
   const hasEffects = outbound.length > 0 || hasEffectOperations(integration, workflows);
   noteStale(problems, moduleName, sources, previous);
@@ -216,6 +215,12 @@ export function buildD1InputSnapshot(
   noteAccess(problems, paths.access, access, relationships);
   noteIntegration(problems, paths.integration, outbound);
   const contractV2 = readContractV2(artifacts.contractTexts);
+  // Every usecase id the plan names, active or not, and every removed one. A usecase created from the contract may not reuse them.
+  const planned: PlannedIds = {
+    ids: new Map([...backendUsecases.values(), ...effortUsecases.values()].map(row => [text(row.usecaseId), `${text(row.entity)}.${text(row.operation)}`])),
+    removed: new Set([...rows(backend.removed), ...rows(effort.removed)].filter(row => text(row.kind) === 'usecase').map(row => text(row.id))),
+  };
+  // The contract is the source: a request may create the usecase it needs (selectedUsecases grows here).
   const requests = contractRequests(
     problems,
     moduleName,
@@ -225,20 +230,27 @@ export function buildD1InputSnapshot(
     entityKind,
     artifacts.entities,
     access,
+    planned,
   );
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
+  selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
   noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
   const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
+  // With a v2 contract, a planned usecase no request calls is not generated. The plan stays an estimate.
+  const generatedUsecases = contractV2.size > 0
+    ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
+    : selectedUsecases;
+  const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
   const files = stampHashes(planFiles({
     moduleName,
     requests,
-    usecases: selectedUsecases,
+    usecases: generatedUsecases,
     ports: selectedPorts,
     tables: selectedTables,
     entities: entityClosure,
@@ -264,7 +276,7 @@ export function buildD1InputSnapshot(
     selection: {
       pages,
       requests,
-      usecases: selectedUsecases,
+      usecases: generatedUsecases,
       ports: selectedPorts,
       tables: selectedTables,
       entities: [...entityClosure.ids],
@@ -802,6 +814,14 @@ function noteChanges(
 }
 
 const P1_OPERATION_SET = new Set<string>(D1_P1_OPERATIONS);
+/** Operations a contract request may create. A transition id and a custom operation come only from the plan. */
+const CONTRACT_CREATED_OPERATIONS = new Set<string>(['get', 'list', 'create', 'update', 'delete']);
+
+interface PlannedIds {
+  /** usecaseId -> `entity.operation`, every status of both plans. */
+  ids: Map<string, string>;
+  removed: Set<string>;
+}
 
 function readContractV2(texts: Record<string, string> | undefined): Map<string, D2ContractV2Definition> {
   const parsed = new Map<string, D2ContractV2Definition>();
@@ -827,6 +847,7 @@ function contractRequests(
   entityKind: Map<string, string>,
   entities: Record<string, unknown>,
   access: Record<string, unknown>,
+  planned: PlannedIds,
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   const pageIds = [...pages.keys()].sort();
@@ -836,7 +857,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities));
+      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities, planned));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -852,17 +873,27 @@ function oneRequest(
   tables: D1SelectedTable[],
   entityKind: Map<string, string>,
   entities: Record<string, unknown>,
+  planned: PlannedIds,
 ): D1SelectedRequest {
   const outputs = requestOutputs(route);
   const params = requestParams(route);
   const uses: string[] = [];
   const take = (entity: string, operation: string): void => {
     const match = usecases.find(item => item.entity === entity && item.operation === operation);
-    if (!match) {
-      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool.`, route.route);
+    if (match) {
+      if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
       return;
     }
-    if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
+    const usecaseId = `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
+    const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned);
+    if (refusal) {
+      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. ${refusal}`, route.route);
+      return;
+    }
+    // Same shape as a planned usecase. Rules and access still come from L4.
+    usecases.push({ usecaseId, entity, operation, status: 'toCreate', existing: '', identity: usecaseId, routes: [] });
+    review(problems, 'USECASE_FROM_CONTRACT', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Usecase ${usecaseId} was created from the contract.`, usecaseId);
+    uses.push(usecaseId);
   };
   if (route.kind === 'cmd' && route.writes) {
     const split = route.writes.indexOf('.');
@@ -870,7 +901,7 @@ function oneRequest(
     const written = split < 0 ? '' : route.writes.slice(split + 1);
     const operation = P1_OPERATION_SET.has(written) ? written : 'transition';
     if (!P1_OPERATION_SET.has(written) && !lifecycleHas(entities, entity, written)) {
-      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool.`, route.route);
+      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Transition '${written}' is not in the L4 lifecycle of ${entity}.`, route.route);
     } else {
       take(entity, operation);
     }
@@ -891,6 +922,23 @@ function oneRequest(
     for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
   }
   return { route: route.route, pageId, kind: route.kind, writes: route.writes ?? '', outputs, params, uses };
+}
+
+/** Why a contract request may not create the usecase it needs, or '' when it may. */
+function contractUsecaseRefusal(
+  entity: string,
+  operation: string,
+  usecaseId: string,
+  entities: Record<string, unknown>,
+  planned: PlannedIds,
+): string {
+  if (!CONTRACT_CREATED_OPERATIONS.has(operation)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
+  if (!Object.prototype.hasOwnProperty.call(entities, entity)) return `Entity ${entity} is not in the module ontology.`;
+  if (!isSafeToken(usecaseId)) return `Usecase id '${usecaseId}' is not an id.`;
+  const prior = planned.ids.get(usecaseId);
+  if (prior !== undefined) return `Usecase ${usecaseId} is already in the plan as ${prior}.`;
+  if (planned.removed.has(usecaseId)) return `Usecase ${usecaseId} is in removed.`;
+  return '';
 }
 
 function lifecycleHas(entities: Record<string, unknown>, entity: string, transitionId: string): boolean {
@@ -962,7 +1010,7 @@ function noteUnrequested(
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
     if (used.has(usecase.usecaseId)) continue;
-    review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it.`, usecase.usecaseId);
+    review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is not generated.`, usecase.usecaseId);
   }
 }
 

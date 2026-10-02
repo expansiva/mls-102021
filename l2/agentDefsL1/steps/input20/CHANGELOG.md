@@ -1,5 +1,10 @@
 # input20
 
+## 2026-10-02 (d1_47)
+
+- The v2 contract defines the usecases. A request that needs a `get`/`list`/`create`/`update`/`delete` the plan lacks creates `<operation><Entity>` (`toCreate`, same shape as a planned one) with a `USECASE_FROM_CONTRACT` review. It stays `REQUEST_USECASE_UNPLANNED` for an entity outside the ontology, a transition or custom operation, an id the plan already names, or a removed id.
+- With a v2 contract, a planned usecase no request calls is left out of `selection.usecases` and `files` (`USECASE_WITHOUT_REQUEST`, "not generated"). The entity closure and files are computed after the requests.
+
 ## 2026-10-01 (d1_43)
 
 - Recipe `2026-10-01-d1-input-v2`. Contract v2 routes (promoted parser) become `selection.requests[]`, joined to the planned pool by entity and operation. v1 route selection stays.
