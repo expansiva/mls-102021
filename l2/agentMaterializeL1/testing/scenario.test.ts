@@ -53,7 +53,7 @@ void test('fixture is the catalog both adapters read', () => {
   assert.ok(catalog);
   assert.equal(catalog.store, 'memory');
   assert.equal(M1_CATALOG_CONFIG_KEY, 'backend.scenarioCatalog');
-  const again = parseCatalog(renderMonitorCatalog(catalog, '_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.ts'));
+  const again = parseCatalog(renderMonitorCatalog(catalog, '_102047_/l1/reefLog/materialization/agentMaterializeL1/scenarioCatalog.ts'));
   assert.deepEqual(again.issues, []);
   assert.deepEqual(again.catalog, catalog);
   assert.equal(renderMonitorCatalog(catalog, 'x').includes("from 'node:test'"), false);
@@ -344,7 +344,7 @@ void test('m1_35: a pre-m1_35 node runner is recognised; the data test and a han
     '',
     `import assert from 'node:assert/strict';`,
     `import test from 'node:test';`,
-    `import { ${M1_CATALOG_EXPORT} } from '/_102047_/l1/agendaClinica/materialization/agentMaterializeL1/scenarioCatalog.js';`,
+    `import { ${M1_CATALOG_EXPORT} } from '/_102047_/l1/reefLog/materialization/agentMaterializeL1/scenarioCatalog.js';`,
     `const scenario = ${M1_CATALOG_EXPORT}.scenarios.find(item => item.scenarioId === '${scenario.scenarioId}');`,
     `void test('x', () => { assert.ok(scenario); });`,
   ].join('\n');

@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { composeBackendRuntimeConfig } from '/_102021_/l2/agentMaterializeL1/nodejsSaveConfigJson.js';
-import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { M1_STUB_ERROR, renderMonitorCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import {
   commitL5Registration,
   L5_PUBLICATION_OWNER,
@@ -19,7 +19,13 @@ import {
   type L5FileFact,
   type ReconcileL5Input,
 } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
-import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
+import { parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
+import { persistenceRunners } from '/_102021_/l2/agentMaterializeL1/handlers/persistence/runners.js';
+import { structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
+import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
+import { decideProfile } from '/_102021_/l2/agentMaterializeL1/run/budget.js';
+import { deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 
 const PROJECT = 109014;
 const MODULE = 'desk';
@@ -207,29 +213,97 @@ test('the real composer reads the patched registration and the controller route 
   }
 });
 
-const FROZEN = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/agendaClinica-8d8729d');
+/** m1_41 b2: the v2 controleEstoque seed (read only). Its outputs are emitted here by the structure handlers. */
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(HERE, '../../../..');
+const SEED = path.join(HERE, '../fixtures/v2ControleEstoque');
+/** Frozen D1 input of the same run: l2 contracts, l4 module and the 102034 mdm ontology (m1_41 b2b). */
+const UPSTREAM = path.join(HERE, '../../agentDefsL1/fixtures/controleEstoque-39a5166');
 
-function frozenText(rel: string): string | null {
-  const abs = resolveFixtureFile(path.join(FROZEN, rel));
-  if (!abs.startsWith(`${FROZEN}${path.sep}`)) return null;
-  try {
-    return fs.readFileSync(abs, 'utf8');
-  } catch {
-    return null;
-  }
-}
-
-function frozenDefs(moduleName: string): string[] {
-  const found: string[] = [];
+function seedTexts(): Map<string, string> {
+  const texts = new Map<string, string>();
   const walk = (dir: string): void => {
-    for (const name of fs.readdirSync(dir)) {
-      const abs = path.join(dir, name);
-      if (fs.statSync(abs).isDirectory()) walk(abs);
-      else if (name.endsWith('.defs.ts') || name.endsWith('.defs.txt')) found.push(fixtureLogicalRel(path.relative(FROZEN, abs).split(path.sep).join('/')));
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.txt')) {
+        const text = fs.readFileSync(full, 'utf8');
+        const ref = /fileReference="([^"]+)"/.exec(text)?.[1];
+        if (ref) texts.set(ref, text);
+      }
     }
   };
-  walk(path.join(FROZEN, 'l1', moduleName));
-  return found.sort();
+  walk(SEED);
+  walk(UPSTREAM);
+  return texts;
+}
+
+/** Runs every structure handler of the seed and returns the promoted outputs, the units and the failures. */
+async function materializeSeed(project: number, moduleName: string, catalogRef: string): Promise<{
+  units: PlanUnitInput[]; outputs: Map<string, string>; catalog: string; failures: string[];
+}> {
+  const texts = seedTexts();
+  const read = async (ref: string): Promise<string | null> => {
+    const own = texts.get(ref);
+    if (own !== undefined) return own;
+    const match = /^_(\d+)_\/(.+)$/.exec(ref);
+    if (!match) return null;
+    // The client bench is regenerated at will: a client ref outside the frozen seed is absent, never read from disk.
+    if (Number(match[1]) === project) {
+      console.log(`reconcileL5 seed: ${ref} is not in the frozen seed; the client project is not read from disk.`);
+      return null;
+    }
+    try {
+      return fs.readFileSync(path.join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
+    } catch (error) {
+      console.log(`reconcileL5 seed: platform file ${ref} could not be read: ${(error as Error).message}`);
+      return null;
+    }
+  };
+  const units: PlanUnitInput[] = [];
+  const definitions: M1Definition[] = [];
+  for (const [defPath, text] of texts) {
+    if (!defPath.startsWith(`_${project}_/l1/${moduleName}/`)) continue;
+    const parsed = parseDefinitionSource(text);
+    assert.ok('definition' in parsed, defPath);
+    const definition = readDefinition(parsed.definition);
+    assert.equal('issues' in definition, false, defPath);
+    units.push({ defPath, definition: parsed.definition });
+    definitions.push(definition as M1Definition);
+  }
+  const catalog = renderMonitorCatalog(deriveCatalog(moduleName, units, Object.fromEntries(texts)).catalog, catalogRef);
+  texts.set(catalogRef, catalog);
+  const runners = { ...structureRunners, ...persistenceRunners };
+  const outputs = new Map<string, string>();
+  const failures: string[] = [];
+  for (const [index, item] of units.entries()) {
+    const definition = definitions[index];
+    const handler = handlerFor(definition.artifactType, 'structure');
+    const runner = handler ? runners[handler.id] : undefined;
+    if (!handler || !runner) {
+      failures.push(`${item.defPath} NO_RUNNER`);
+      continue;
+    }
+    const outcome = await runner({
+      handler,
+      unit: {
+        defPath: item.defPath, artifactType: definition.artifactType, artifactId: definition.artifactId, action: 'generate', reason: '',
+        handlerId: handler.id, needsLlm: false, unresolved: [], contextRefs: [], blockedBy: [], prompt: '',
+      },
+      definition,
+      read,
+      catalogRef,
+      repair: false,
+      signal: new AbortController().signal,
+      eventId: item.defPath,
+      profile: decideProfile('development', true),
+      modelText: null,
+      moduleDefinitions: definitions,
+    });
+    if (outcome.failure) failures.push(`${item.defPath} ${outcome.failure.code}: ${outcome.failure.detail}`);
+    for (const [ref, source] of Object.entries(outcome.files)) outputs.set(ref, source);
+  }
+  return { units, outputs, catalog, failures };
 }
 
 function keysOf(source: string): string[] {
@@ -244,17 +318,16 @@ function keysOf(source: string): string[] {
 }
 
 test('the materialized client copy registers from promoted outputs, not a folder name', async () => {
-  const moduleName = 'agendaClinica';
+  const moduleName = 'controleEstoque';
   const project = 102047;
-  assert.match(fs.readFileSync(path.join(FROZEN, 'SOURCE.txt'), 'utf8'), /^8d8729d /);
-  const units = frozenDefs(moduleName).map(rel => {
-    const artifactType = /"artifactType": "([^"]+)"/.exec(frozenText(rel) ?? '')?.[1] ?? '';
-    return { defPath: `_${project}_/${rel}`, artifactType };
-  });
-  const files = await loadRegistrationFiles(project, moduleName, units, async ref => frozenText(ref.replace(`_${project}_/`, '')));
   const catalogRef = `_${project}_/l1/${moduleName}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+  const seeded = await materializeSeed(project, moduleName, catalogRef);
+  // The seed's outbound def carries its own gap (simulate reports MECHANISM_UNBOUND); no other handler fails.
+  assert.deepEqual(seeded.failures.map(item => item.split(' ')[0]), [`_${project}_/l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`], seeded.failures.join('\n'));
+  const units = seeded.units.map(unit => ({ defPath: unit.defPath, artifactType: String((unit.definition as { artifactType?: unknown }).artifactType ?? '') }));
+  const files = await loadRegistrationFiles(project, moduleName, units, async ref => seeded.outputs.get(ref) ?? null);
   if (!files.some(file => file.ref === catalogRef)) {
-    files.push({ ref: catalogRef, source: frozenText(catalogRef.replace(`_${project}_/`, '')), role: 'output' });
+    files.push({ ref: catalogRef, source: seeded.catalog, role: 'output' });
   }
   const input: ReconcileL5Input = {
     project,
@@ -269,7 +342,8 @@ test('the materialized client copy registers from promoted outputs, not a folder
   assert.equal(reconciled.action, 'patch', reconciled.detail);
   assert.equal(reconciled.pendings.filter(item => item.reason === 'ROUTE_DEPENDENCY_ABSENT' || item.reason === 'NO_ROUTES').length, 0, reconciled.detail);
   const controllers = files.filter(file => file.role === 'httpController' && file.source !== null);
-  assert.equal(controllers.length, 3);
+  assert.equal(controllers.length, units.filter(unit => unit.artifactType === 'httpController').length);
+  assert.equal(controllers.length > 1, true);
   const backend = reconciled.backend as { backendControllers: string; routeKeys: string[] };
   assert.equal(backend.backendControllers, `./${path.posix.dirname(controllers[0].ref)}`);
   assert.deepEqual(backend.routeKeys, controllers.flatMap(file => keysOf(file.source!)).sort());

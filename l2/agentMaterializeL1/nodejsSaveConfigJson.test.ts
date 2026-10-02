@@ -42,7 +42,7 @@ test('mlsDep.json from the backend compose includes both runtimeProject masters 
         backend: {
           backendControllers: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/http/controllers`,
           persistence: { tableDefsDir: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/persistence` },
-          routeKeys: ['todo.taskCatalogue.qryListTask'],
+          routeKeys: ['todo.taskCatalogue.listTask'],
         },
       }],
     }, null, 2)}\n`);

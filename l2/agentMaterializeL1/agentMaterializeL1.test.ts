@@ -16,8 +16,9 @@ import { createAgent } from '/_102021_/l2/agentMaterializeL1/agentMaterializeL1.
 import { installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SOURCE_ROOT = path.join(HERE, 'register/fixtures/agendaClinica-8d8729d/l1/agendaClinica');
-const SOURCE_MODULE = 'agendaClinica';
+/** m1_41 b2: the v2 controleEstoque seed (read only). */
+const SOURCE_ROOT = path.join(HERE, 'fixtures/v2ControleEstoque');
+const SOURCE_MODULE = 'controleEstoque';
 /** Renamed fixture: the bench module id never reaches the entry. */
 const MODULE = 'salaEnsaio';
 const PROJECT = 102047;
@@ -97,11 +98,11 @@ void test('technical causes still answer: no defs, defs of another project, a mi
   assert.match(await studio(`@@agentMaterializeL1 ${MODULE} /simulate`), /NO_UNITS/);
 
   const lone = installStudio(PROJECT);
-  const rel = 'layer_1_external/adapters/persistence/consulta.defs.txt';
-  seed(lone, { project: PROJECT, level: 1, folder: `${MODULE}/layer_1_external/adapters/persistence`, shortName: 'consulta', extension: '.defs.ts' },
+  const rel = 'layer_1_external/adapters/persistence/movimentacaoEstoque.defs.txt';
+  seed(lone, { project: PROJECT, level: 1, folder: `${MODULE}/layer_1_external/adapters/persistence`, shortName: 'movimentacaoEstoque', extension: '.defs.ts' },
     readFileSync(path.join(SOURCE_ROOT, rel), 'utf8').split(SOURCE_MODULE).join(MODULE));
   const missing = await studio(`@@agentMaterializeL1 ${MODULE} /simulate`);
-  assert.match(missing, /BLOCKED .*consulta\.defs\.ts/);
+  assert.match(missing, /BLOCKED .*movimentacaoEstoque\.defs\.ts/);
   assert.match(missing, /MISSING_REF: Missing dependency .*layer_3_domain/);
 
   const host = installStudio(PROJECT);

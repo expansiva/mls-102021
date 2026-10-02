@@ -39,15 +39,15 @@ import {
 import { invokeModel, shouldCallModel } from '/_102021_/l2/agentMaterializeL1/run/model.js';
 import { M1_OWNED_SCHEMA, ownedManifestRef, recipeForStage, renderOwnedManifest, writerRef } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 
-const MODULE = 'agendaClinica';
+const MODULE = 'deskLedger';
 const PROJECT = 102047;
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 void test('studio parses the command and simulate does not call a model or write', async () => {
-  const studio = parseStudioPrompt('@@agentMaterializeL1 agendaClinica /simulate flow:Note', 102047);
+  const studio = parseStudioPrompt('@@agentMaterializeL1 deskLedger /simulate flow:Note', 102047);
   assert.equal(studio.refusal, '');
   assert.equal(studio.project, 102047);
-  assert.equal(studio.moduleName, 'agendaClinica');
+  assert.equal(studio.moduleName, 'deskLedger');
   assert.equal(studio.stage, 'simulate');
   assert.equal(studio.flow, 'Note');
   assert.equal(studio.resume, false);
@@ -196,26 +196,31 @@ void test('the run report hashes every source the authenticated oracle read, apa
   assert.equal(second.catalog?.oracleSources[fx.refs.scope], oracle[fx.refs.scope]);
 });
 
-void test('implement on the clinic fixture does not emit a test for a unit with no output', async () => {
-  const fixture = join(HERE, '../register/fixtures/agendaClinica-8d8729d');
-  const loaded = loadDefs(fixture, '_102047_/');
-  const authority = loaded.units.find(unit => {
-    const definition = unit.definition as { artifactType?: string };
-    return definition.artifactType === 'authorityMap';
-  });
-  assert.ok(authority);
-  const store = world(loaded.texts);
-  const catalogRef = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
-  const result = await runMaterialize(baseRequest(loaded.units, {
-    stage: 'implement',
-    budget: { timeoutMs: 2000, repairsPerRun: 0, callsPerRun: 0 },
-  }), {
-    ...host(store, {}, () => Promise.reject(new Error('model must not be called'))),
-    catalogRef,
-  });
-  assert.equal(result.catalog?.gaps.some(gap => gap.artifactId === 'authorityMap' && gap.reason.startsWith('NO_CONSUMER:')), true);
+void test('implement does not emit a test for a unit with no output (v2 seed, authorityMap without its consumers)', async () => {
+  // m1_41 b2: the v2 controleEstoque seed (read only) under this module id. Its controllers are the only
+  // dependents of the authorityMap; without them the planner names NO_CONSUMER.
+  const loaded = loadSeed();
+  const consumers = loaded.units.filter(unit => (unit.definition as { artifactType?: string }).artifactType === 'httpController');
+  assert.equal(consumers.length > 0, true);
+  const run = async (units: readonly PlanUnitInput[]) => {
+    const store = world(loaded.texts);
+    const catalogRef = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
+    const result = await runMaterialize(baseRequest(units, {
+      stage: 'implement',
+      budget: { timeoutMs: 2000, repairsPerRun: 0, callsPerRun: 0 },
+    }), {
+      ...host(store, {}, () => Promise.reject(new Error('model must not be called'))),
+      catalogRef,
+    });
+    return { result, store, written: store.map.get(catalogRef) ?? '' };
+  };
+  const noConsumer = (result: Awaited<ReturnType<typeof run>>['result']) => result.catalog?.gaps.some(gap => gap.artifactId === 'authorityMap' && gap.reason.startsWith('NO_CONSUMER:'));
+  const control = await run(loaded.units);
+  assert.equal(noConsumer(control.result), false);
+
+  const { result, store, written } = await run(loaded.units.filter(unit => !consumers.includes(unit)));
+  assert.equal(noConsumer(result), true);
   assert.equal([...store.map.keys()].some(path => path.endsWith('/authorityMap.test.ts')), false);
-  const written = store.map.get(catalogRef) ?? '';
   assert.equal(written.includes('authorityMap'), false);
 });
 
@@ -562,7 +567,7 @@ void test('the model port is only for an implement handler that needs it', async
 
 void test('an old failure recipe works again and the same recipe keeps the budget', async () => {
   const note = entity('Note');
-  const other = '_102047_/l1/agendaClinica/layer_3_domain/entities/other.defs.ts';
+  const other = '_102047_/l1/deskLedger/layer_3_domain/entities/other.defs.ts';
   const rendered = renderDefinition(note.definition as M1Definition, note.defPath);
   assert.ok('source' in rendered);
   const store = world({ [note.defPath]: rendered.source });
@@ -578,7 +583,7 @@ void test('an old failure recipe works again and the same recipe keeps the budge
   const current = recipeForStage('implement');
   const receipt: MaterializationReceipt = {
     schemaVersion: M1_RECEIPT_SCHEMA,
-    runId: '102047:agendaClinica',
+    runId: '102047:deskLedger',
     candidateId: '',
     defPath: note.defPath,
     artifactType: 'domainEntity',
@@ -674,7 +679,7 @@ void test('a catalog that matches the M1 receipt is rewritten; a hand edit is a 
 
 void test('m1_32: a refused writer leaves the module untouched and names the file and its holder', async () => {
   const note = entity('Note');
-  const store = world({ [writerRef(MODULE)]: '{"schemaVersion":"x","moduleName":"agendaClinica","holder":"102047:agendaClinica:other"}\n' });
+  const store = world({ [writerRef(MODULE)]: '{"schemaVersion":"x","moduleName":"deskLedger","holder":"102047:deskLedger:other"}\n' });
   let calls = 0;
   const run = await runMaterialize(baseRequest([note], { stage: 'structure' }), {
     ...host(store, { 'structure.domainEntity': async () => { calls += 1; return passOutcome(outputPathFromDefPath(note.defPath)); } }),
@@ -685,7 +690,7 @@ void test('m1_32: a refused writer leaves the module untouched and names the fil
   assert.deepEqual(store.writes, [], 'nothing of the module is written before the claim');
   assert.equal(store.map.has('catalog.json'), false, 'the catalog is not written by a refused run');
   assert.equal(calls, 0);
-  assert.equal(run.detail, `${writerRef(MODULE)} is held by 102047:agendaClinica:other. If no run is active, remove ${writerRef(MODULE)} and run again.`);
+  assert.equal(run.detail, `${writerRef(MODULE)} is held by 102047:deskLedger:other. If no run is active, remove ${writerRef(MODULE)} and run again.`);
 });
 
 void test('m1_32: a unit promoted once and blocked now keeps its scenarios; one never emitted is a gap', async () => {
@@ -717,8 +722,8 @@ void test('m1_32: a unit promoted once and blocked now keeps its scenarios; one 
 
 void test('removing a controller route regenerates that test and leaves an untouched unit byte-identical', async () => {
   const note = entity('Note');
-  const board = controller('board', ['qryListAlpha', 'qryListBeta']);
-  const narrowed = controller('board', ['qryListAlpha']);
+  const board = controller('board', ['listAlpha', 'listBeta']);
+  const narrowed = controller('board', ['listAlpha']);
   const derived = deriveCatalog(MODULE, [note, board], {});
   const ref = `_${PROJECT}_/l1/${MODULE}/materialization/agentMaterializeL1/scenarioCatalog.ts`;
   const catalogText = renderMonitorCatalog(derived.catalog, ref);
@@ -729,7 +734,7 @@ void test('removing a controller route regenerates that test and leaves an untou
   const boardScenario = derived.catalog.scenarios.find(item => item.artifactId === 'board');
   assert.ok(boardScenario);
   const oldBoardTest = renderScenarioTest(boardScenario);
-  assert.match(oldBoardTest, /qryListBeta/);
+  assert.match(oldBoardTest, /listBeta/);
   const kept = 'export const kept = 1;\n';
   const noteBody = 'export const note = 1;\n';
   const noteRendered = definitionSource(note);
@@ -755,7 +760,7 @@ void test('removing a controller route regenerates that test and leaves an untou
         const scenario = nextDerived.catalog.scenarios.find(item => item.artifactId === 'board');
         if (!scenario) return emptyOutcome();
         return {
-          files: { [boardOutput]: 'export const routes = [{ key: "qryListAlpha" }];\n' },
+          files: { [boardOutput]: 'export const routes = [{ key: "listAlpha" }];\n' },
           observations: scenario.cases.map(item => observation(item.caseId, item.expect.ok, item.expect.errorCode, item.expect.status)),
           failure: null,
           seeds: false,
@@ -772,8 +777,8 @@ void test('removing a controller route regenerates that test and leaves an untou
   assert.notEqual(store.map.get(boardOutput), 'export const routes = [];\n');
   const regenerated = store.map.get(boardTest) ?? '';
   assert.notEqual(regenerated, oldBoardTest);
-  assert.equal(regenerated.includes('qryListBeta'), false);
-  assert.match(regenerated, /qryListAlpha/);
+  assert.equal(regenerated.includes('listBeta'), false);
+  assert.match(regenerated, /listAlpha/);
   assert.equal(store.map.get(noteTest), kept);
   assert.equal(store.map.get(noteOutput), noteBody);
   assert.equal(store.map.get(note.defPath), noteRendered);
@@ -863,7 +868,7 @@ void test('a misaligned ledger still rewrites an emitted catalog and records the
 void test('a failed receipt with a new test is checked again and another unit keeps its budget', async () => {
   const note = entity('Note');
   const failedNote = { ...note, definition: { ...(note.definition as M1Definition), status: 'failed' as const } };
-  const other = '_102047_/l1/agendaClinica/layer_3_domain/entities/other.defs.ts';
+  const other = '_102047_/l1/deskLedger/layer_3_domain/entities/other.defs.ts';
   const rendered = renderDefinition(failedNote.definition, failedNote.defPath);
   assert.ok('source' in rendered);
   const output = outputPathFromDefPath(note.defPath);
@@ -873,7 +878,7 @@ void test('a failed receipt with a new test is checked again and another unit ke
   const hash = await semanticHash(note.definition as M1Definition);
   const receipt: MaterializationReceipt = {
     schemaVersion: M1_RECEIPT_SCHEMA,
-    runId: '102047:agendaClinica',
+    runId: '102047:deskLedger',
     candidateId: '',
     defPath: note.defPath,
     artifactType: 'domainEntity',
@@ -962,6 +967,18 @@ function loadDefs(root: string, prefix: string): { units: PlanUnitInput[]; texts
   return { units, texts };
 }
 
+/** m1_41 b2: the v2 controleEstoque seed and its contract, read only, under MODULE. */
+function loadSeed(): { units: PlanUnitInput[]; texts: Record<string, string> } {
+  const SEED_MODULE = 'controleEstoque';
+  const rename = (text: string) => text.split(SEED_MODULE).join(MODULE);
+  const loaded = loadDefs(join(HERE, '../fixtures/v2ControleEstoque'), `_${PROJECT}_/l1/${SEED_MODULE}/`);
+  const contract = readFileSync(join(HERE, '../fixtures/controleEstoque-39a5166/l2/controleEstoque/web/contracts/produtos.defs.txt'), 'utf8');
+  const texts: Record<string, string> = { [rename(`_${PROJECT}_/l2/${SEED_MODULE}/web/contracts/produtos.defs.ts`)]: rename(contract) };
+  for (const [key, value] of Object.entries(loaded.texts)) texts[rename(key)] = rename(value);
+  const units = loaded.units.map(unit => ({ defPath: rename(unit.defPath), definition: JSON.parse(rename(JSON.stringify(unit.definition))) as PlanUnitInput['definition'] }));
+  return { units, texts };
+}
+
 function definitionSource(unit: PlanUnitInput): string {
   const rendered = renderDefinition(unit.definition, unit.defPath);
   if ('source' in rendered) return rendered.source;
@@ -973,7 +990,7 @@ async function scaffoldReceipt(unit: PlanUnitInput, output: string, body: string
   const hash = await semanticHash(definition);
   return {
     schemaVersion: M1_RECEIPT_SCHEMA,
-    runId: '102047:agendaClinica',
+    runId: '102047:deskLedger',
     candidateId: '',
     defPath: unit.defPath,
     artifactType: definition.artifactType,
@@ -1005,8 +1022,10 @@ function controller(id: string, routes: readonly string[]): PlanUnitInput {
       handlers: routes.map(route => ({
         route: `${MODULE}.${id}.${route}`,
         kind: 'query',
-        usecaseId: '',
         grantIds: [],
+        serviceFunction: `${MODULE}.${id}.${route}`,
+        contractPath: `l2/${MODULE}/web/contracts/${id}.defs.ts`,
+        contractInterface: 'BoardContracts',
       })),
     },
   };

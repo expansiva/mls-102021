@@ -20,7 +20,9 @@ import { emitController, emitRequestService, emitUsecase, type EmitFailure, type
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
 const SEED = join(HERE, '../../fixtures/v2ControleEstoque');
-const CONTRACT = join(HERE, '../../fixtures/controleEstoque-39a5166/l2/controleEstoque/web/contracts/produtos.defs.txt');
+/** Frozen D1 input of the same run: l2 contracts, l4 module and the 102034 mdm ontology (m1_41 b2b). */
+const UPSTREAM = join(HERE, '../../../agentDefsL1/fixtures/controleEstoque-39a5166');
+const CLIENT = 102047;
 const PREFIX = '_102047_/l1/controleEstoque/';
 const BEHAVIOR = new Set(['domainEntity', 'authorityMap', 'accessScope', 'repositoryPort', 'usecase', 'requestService']);
 
@@ -60,7 +62,7 @@ function seed(): Map<string, string> {
     }
   };
   walk(SEED);
-  texts.set('_102047_/l2/controleEstoque/web/contracts/produtos.defs.ts', readFileSync(CONTRACT, 'utf8'));
+  walk(UPSTREAM);
   return texts;
 }
 
@@ -76,9 +78,15 @@ void test('the all-required seed generates byte for byte what it generated befor
     if (own !== undefined) return own;
     const match = /^_(\d+)_\/(.+)$/.exec(ref);
     if (!match) return null;
+    // The client bench is regenerated at will: a client ref outside the frozen seed is absent, never read from disk.
+    if (Number(match[1]) === CLIENT) {
+      console.log(`seedControl: ${ref} is not in the frozen seed; the client project is not read from disk.`);
+      return null;
+    }
     try {
       return readFileSync(join(ROOT, `mls-${match[1]}`, match[2]), 'utf8');
-    } catch {
+    } catch (error) {
+      console.log(`seedControl: platform file ${ref} could not be read: ${(error as Error).message}`);
       return null;
     }
   };
