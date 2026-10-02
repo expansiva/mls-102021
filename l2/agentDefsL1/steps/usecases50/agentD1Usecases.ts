@@ -16,7 +16,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   D1_STEP_HOOKS,
-  drainWaitingSiblings,
+  stopStep,
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
@@ -486,13 +486,12 @@ async function closeUnresolved(
   const trace = `usecases50 closed. ${writeNote} Unresolved: ${named}. ${reason}. The next phase is not released.`;
   const stopped = `stopped: usecases50 is held.${reason ? ` ${reason}` : ''}`;
   const usecases = usecasesStep(context);
-  const intents: mls.msg.AgentIntent[] = [
-    ...drainWaitingSiblings(context, step, hookSequential, stopped),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', trace),
-  ];
+  const intents: mls.msg.AgentIntent[] = [];
   if (usecases && usecases.stepId !== step.stepId && usecases.status !== 'completed' && usecases.status !== 'failed') {
     intents.push(updateStatus(context, findOpenParent(context, parentStep), usecases, hookSequential, 'completed', trace));
   }
+  // The failed update stays last: the platform decides paused when it lands.
+  intents.push(...stopStep(context, parentStep, step, hookSequential, trace, { drainTrace: stopped }));
   return intents;
 }
 
@@ -588,10 +587,7 @@ function refuse(
   hookSequential: number,
   message: string,
 ): mls.msg.AgentIntent[] {
-  return [
-    ...drainWaitingSiblings(context, step, hookSequential, `stopped: ${message}`),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', message),
-  ];
+  return stopStep(context, parentStep, step, hookSequential, message);
 }
 
 function addStep(

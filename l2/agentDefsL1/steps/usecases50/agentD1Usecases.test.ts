@@ -86,7 +86,11 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   parent.nextSteps = [];
   const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
   input.stepId = 20;
-  await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  const released = await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  // d1_48: an approved input20 still completes.
+  const releasedUpdates = released.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  assert.equal(releasedUpdates.find(intent => intent.stepId === 20)?.status, 'completed');
+  assert.equal(releasedUpdates.some(intent => intent.status === 'failed'), false);
   const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
   domain.stepId = 30;
   await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
@@ -154,6 +158,27 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   assert.match(barrierTrace, new RegExp(arg.usecaseId));
   assert.match(barrierTrace, /missing trace|OPERATIONAL|operational/);
   assert.equal(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))], undefined);
+});
+
+void test('d1_48: a usecases50 refusal drains the siblings and fails the step last', async () => {
+  await readyHost();
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const step = createD1AgentStep('usecases50', MODULE, PROJECT, 'run');
+  step.stepId = 50;
+  const finalize = createD1AgentStep('finalize80', MODULE, PROJECT, 'run');
+  finalize.stepId = 80;
+  parent.nextSteps = [step, finalize];
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
+  const updates = intents.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  assert.equal(updates.length, intents.length);
+  assert.equal(updates.find(intent => intent.stepId === 80)?.status, 'completed');
+  assert.match(updates.find(intent => intent.stepId === 80)?.traceMsg || '', /^stopped: Checkpoint is not intact/);
+  const last = updates[updates.length - 1];
+  assert.equal(last.stepId, 50);
+  assert.equal(last.status, 'failed');
+  assert.match(last.traceMsg || '', /Checkpoint is not intact\. usecases50 wrote nothing\./);
 });
 
 void test('resume after persistence40 dispatches the same fan-out and does not rewrite the checkpoint', async () => {
@@ -444,6 +469,12 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
   assert.ok(stepUpdate.some(intent => intent.status === 'completed' && /not released/.test(intent.traceMsg || '')));
   assert.equal(stepUpdate.some(intent => intent.status === 'failed'), false);
   assert.equal(updates.filter(intent => intent.stepId === 60 || intent.stepId === 80).every(intent => intent.status === 'completed' && /stopped: usecases50 is held/.test(intent.traceMsg || '')), true);
+  // d1_48: the barrier that closes unresolved fails with the code, after every other update.
+  const last = closed[closed.length - 1] as mls.msg.AgentIntentUpdateStatus;
+  assert.equal(last.type, 'update-status');
+  assert.equal(last.stepId, barrier.stepId);
+  assert.equal(last.status, 'failed');
+  assert.match(last.traceMsg || '', /REPAIR_EXHAUSTED:1/);
 
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status?: string;

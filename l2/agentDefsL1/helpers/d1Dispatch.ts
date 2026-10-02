@@ -129,6 +129,26 @@ export function drainWaitingSiblings(
   return intents;
 }
 
+/**
+ * A D1 stop: drains the waiting siblings, then fails the step with the reason.
+ * The failed update is last, so the platform sees no active step and pauses
+ * the task with the reason instead of closing it as done.
+ */
+export function stopStep(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIPayload,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  reason: string,
+  opts?: { drainTrace?: string; onlyUnimplemented?: boolean },
+): mls.msg.AgentIntentUpdateStatus[] {
+  const drainTrace = opts?.drainTrace ?? `stopped: ${reason}`;
+  return [
+    ...drainWaitingSiblings(context, step, hookSequential, drainTrace, { onlyUnimplemented: opts?.onlyUnimplemented }),
+    updateStatus(context, parentStep, step, hookSequential, 'failed', reason),
+  ];
+}
+
 function walk(steps: mls.msg.AIPayload[]): mls.msg.AIPayload[] {
   const out: mls.msg.AIPayload[] = [];
   for (const step of steps) {

@@ -11,7 +11,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   D1_STEP_HOOKS,
-  drainWaitingSiblings,
+  stopStep,
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
@@ -77,10 +77,7 @@ function refuse(
   hookSequential: number,
   message: string,
 ): mls.msg.AgentIntent[] {
-  return [
-    ...drainWaitingSiblings(context, step, hookSequential, `stopped: ${message}`),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', message),
-  ];
+  return stopStep(context, parentStep, step, hookSequential, message);
 }
 
 function doneAnchor(

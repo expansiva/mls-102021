@@ -107,13 +107,16 @@ void test('input20 without contracts records the inventory and does not unlock t
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
   assert.match(trace?.traceMsg || '', /Consumer phases are not released/);
   assert.doesNotMatch(trace?.traceMsg || '', /success|approved/i);
-  assert.equal(trace?.status, 'completed');
+  // d1_48: the held step fails, last, so the platform pauses the task instead of closing it done.
+  assert.equal(trace?.status, 'failed');
+  assert.equal(intents[intents.length - 1], trace);
   assert.equal(intents.some(intent => intent.type === 'add-step'), false);
   const inventory = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as {
     problems?: Array<{ severity?: string; code?: string; path?: string }>;
   };
   const reason = blockingCodes(inventory.problems || []);
   assert.match(reason, /^CONTRACT_ABSENT:\d+,SCHEMA_DIVERGENT:2$/);
+  assert.equal((trace?.traceMsg || '').includes(reason), true);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status?: string;
     awaitingStep?: string;

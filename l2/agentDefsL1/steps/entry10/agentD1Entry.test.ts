@@ -142,7 +142,9 @@ void test('run bootstraps without a model, records identity, and tells the truth
   const inputTrace = inputIntents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === steps[1].stepId);
   assert.match(inputTrace?.traceMsg || '', /recorded the inventory/);
   assert.match(inputTrace?.traceMsg || '', /Consumer phases are not released/);
-  assert.equal(inputTrace?.status, 'completed');
+  // d1_48: a held input20 fails the step, after the drain, so the task does not end done.
+  assert.equal(inputTrace?.status, 'failed');
+  assert.equal(inputIntents[inputIntents.length - 1], inputTrace);
   assert.doesNotMatch(inputTrace?.traceMsg || '', /not implemented|success|generated/i);
   assert.equal(inputIntents.some(intent => intent.type === 'add-step'), false);
   const drained = inputIntents.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId !== steps[1].stepId);
@@ -261,6 +263,10 @@ void test('resume of a held input20 checkpoint does not rewrite it or approve th
   const input = await agent.beforePromptStep!(meta(), ctx, ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep, steps[1], 2);
   const trace = input.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === steps[1].stepId);
   assert.match(trace?.traceMsg || '', /did not approve/);
+  // d1_48: a resume that does not approve fails the step with the reason the checkpoint holds.
+  assert.equal(trace?.status, 'failed');
+  assert.match(trace?.traceMsg || '', /CONTRACT_ABSENT:6/);
+  assert.equal(input[input.length - 1], trace);
   assert.equal(input.some(intent => intent.type === 'add-step'), false);
   const stopped = input.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId !== steps[1].stepId);
   assert.ok(stopped.some(intent => /stopped: input20 is held/.test(intent.traceMsg || '')));

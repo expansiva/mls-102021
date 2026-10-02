@@ -22,7 +22,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   d1StatusMessage,
-  drainWaitingSiblings,
+  stopStep,
   hooksFor,
   markAwaitingStep,
   planIdOf,
@@ -169,10 +169,10 @@ async function notImplemented(
       await markAwaitingStep(pipeline, stepId);
     }
   }
-  return [
-    ...drainWaitingSiblings(context, step, hookSequential, stoppedTrace(stepId), { onlyUnimplemented: true }),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', notImplementedTrace(stepId)),
-  ];
+  return stopStep(context, parentStep, step, hookSequential, notImplementedTrace(stepId), {
+    drainTrace: stoppedTrace(stepId),
+    onlyUnimplemented: true,
+  });
 }
 
 function addStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep {

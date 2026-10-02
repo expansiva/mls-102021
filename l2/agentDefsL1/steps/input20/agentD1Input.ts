@@ -13,7 +13,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   D1_STEP_HOOKS,
-  drainWaitingSiblings,
+  stopStep,
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
@@ -51,10 +51,12 @@ export async function beforeD1InputPromptStep(
 
   // A resume of the held input20 does not recompute the reason and does not approve the step.
   if (prompt.command === 'resume' && inputHeld(pipeline)) {
-    return [
-      ...drainWaitingSiblings(context, step, hookSequential, 'stopped: input20 is held.'),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `input20 is held for ${prompt.moduleName}. Resume did not approve it.`),
-    ];
+    const held = pipeline.steps.input20?.error || '';
+    return stopStep(
+      context, parentStep, step, hookSequential,
+      `input20 is held for ${prompt.moduleName}. Resume did not approve it.${held ? ` ${held}` : ''}`,
+      { drainTrace: 'stopped: input20 is held.' },
+    );
   }
 
   const snapshot = await assembleD1Input(prompt.project, prompt.moduleName);
@@ -73,12 +75,9 @@ export async function beforeD1InputPromptStep(
       if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
       await writeJson(checkpointFile, heldPipeline);
     }
-    // Completed, not failed: a failed task step pauses the run, and paused is not an end.
-    // awaitingStep plus steps.input20 say the chain stopped.
-    return [
-      ...drainWaitingSiblings(context, step, hookSequential, `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`),
-      updateStatus(context, parentStep, step, hookSequential, 'completed', trace),
-    ];
+    return stopStep(context, parentStep, step, hookSequential, trace, {
+      drainTrace: `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`,
+    });
   }
 
   const approved = withInputApproved(pipeline, artifact, new Date().toISOString());
@@ -174,10 +173,7 @@ function refuse(
   hookSequential: number,
   message: string,
 ): mls.msg.AgentIntent[] {
-  return [
-    ...drainWaitingSiblings(context, step, hookSequential, `stopped: ${message}`),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', message),
-  ];
+  return stopStep(context, parentStep, step, hookSequential, message);
 }
 
 function doneAnchor(

@@ -13,7 +13,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   D1_STEP_HOOKS,
-  drainWaitingSiblings,
+  stopStep,
   planIdOf,
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
@@ -68,9 +68,7 @@ export async function beforeD1FinalizePromptStep(
   const artifact = displayPath(reportFile(prompt.project, prompt.moduleName));
 
   if (earlierHold(pipeline) || report.defsStatus === 'notRun') {
-    return [
-      updateStatus(context, parentStep, step, hookSequential, 'completed', stoppedTrace(prompt.moduleName, report.blocking)),
-    ];
+    return stopStep(context, parentStep, step, hookSequential, stoppedTrace(prompt.moduleName, report.blocking));
   }
 
   if (report.outcome !== 'complete') {
@@ -80,9 +78,7 @@ export async function beforeD1FinalizePromptStep(
       if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
       await writeJson(checkpointFile, held);
     }
-    return [
-      updateStatus(context, parentStep, step, hookSequential, 'completed', `finalize80 recorded the report for ${prompt.moduleName}. ${report.blocking}. The step is not approved.`),
-    ];
+    return stopStep(context, parentStep, step, hookSequential, `finalize80 recorded the report for ${prompt.moduleName}. ${report.blocking}. The step is not approved.`);
   }
 
   const approved = withFinalizeApproved(pipeline, artifact, new Date().toISOString());
@@ -192,10 +188,7 @@ function refuse(
   hookSequential: number,
   message: string,
 ): mls.msg.AgentIntent[] {
-  return [
-    ...drainWaitingSiblings(context, step, hookSequential, `stopped: ${message}`),
-    updateStatus(context, parentStep, step, hookSequential, 'completed', message),
-  ];
+  return stopStep(context, parentStep, step, hookSequential, message);
 }
 
 function doneAnchor(
