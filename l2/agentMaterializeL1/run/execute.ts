@@ -23,7 +23,7 @@ import { contentHash, type MaterializeReadIo } from '/_102021_/l2/agentMateriali
 import { handlerFor, type MaterializeHandler } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { simulate, type SimulationSnapshot, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/simulate/simulate.js';
-import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
+import { isL1ModuleDef, type PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import {
   canonicalJson,
   M1_STUB_ERROR,
@@ -198,7 +198,8 @@ export interface CatalogPrep {
 
 export async function runMaterialize(request: MaterializeRunRequest, host: MaterializeRunHost): Promise<MaterializeRunResult> {
   const profile = decideProfile(request.profileMode, request.profileDeclared);
-  const selected = unitsForFlow(request.units, request.flow);
+  const moduleUnits = request.units.filter(unit => isL1ModuleDef(unit.defPath));
+  const selected = unitsForFlow(moduleUnits, request.flow);
   const book = ledgerPath(request.moduleName);
   const stored = await readLedger(host, book, request.project, request.moduleName);
   if (request.resume && stored === 'missing') {
@@ -236,7 +237,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
 
   const planStage = stage === 'implement' ? 'implement' : 'structure';
   const merged = await preferDiskDefinitions(host, selected);
-  const removals = request.flow ? [] : await ownedRemovals(host, request.moduleName, request.units);
+  const removals = request.flow ? [] : await ownedRemovals(host, request.moduleName, moduleUnits);
   const snapshot = await simulate({
     moduleName: request.moduleName,
     units: merged,
@@ -330,7 +331,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     }
 
     const fixtures = stage === 'implement' && catalogPrep && derivedObligations.obligations.length > 0
-      ? await runFixtureStage(request, host, ledger, request.flow ? await preferDiskDefinitions(host, request.units) : merged, derivedObligations.obligations, catalogPrep, checkpoints)
+      ? await runFixtureStage(request, host, ledger, request.flow ? await preferDiskDefinitions(host, moduleUnits) : merged, derivedObligations.obligations, catalogPrep, checkpoints)
       : undefined;
 
     const endedName = ledger.callsExhausted && outcomes.some(item => item.code === 'BUDGET_CALLS')
@@ -348,7 +349,7 @@ export async function runMaterialize(request: MaterializeRunRequest, host: Mater
     const catalogRecord = catalogPrep && catalogPrep.action !== 'conflict'
       ? { ref: catalogPrep.ref, hash: catalogPrep.inputHash }
       : null;
-    await persistOwned(host, request.moduleName, request.units.map(unit => unit.defPath), catalogRecord);
+    await persistOwned(host, request.moduleName, moduleUnits.map(unit => unit.defPath), catalogRecord);
     const registration = host.l5
       ? await commitL5Registration(await registrationInput(request, host, snapshot, profile.allowsStubRun), host.l5, holder)
       : await reconcileRegistration(request, host, snapshot, profile.allowsStubRun);
@@ -603,7 +604,7 @@ async function attempt(
       eventId: `${unit.defPath}:${unitState.calls}`,
       profile,
       modelText,
-      moduleDefinitions: request.units.map(item => item.definition),
+      moduleDefinitions: request.units.filter(unit => isL1ModuleDef(unit.defPath)).map(item => item.definition),
     }), budget.timeoutMs);
   } catch (error) {
     const mapped = asCallError(error);

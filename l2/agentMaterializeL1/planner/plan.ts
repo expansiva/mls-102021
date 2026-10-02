@@ -46,6 +46,11 @@ export const PLAN_REASON = {
 
 const AUXILIARY = new Set(['accessScope', 'authorityMap', 'integrationOutbound']);
 
+/** A unit is a def under `l1/<module>/`. A def outside that tree is only a dependency source. */
+export function isL1ModuleDef(defPath: string): boolean {
+  return /(?:^|\/)l1\/[^/]+\//.test(defPath);
+}
+
 export interface PlanUnitInput {
   defPath: string;
   definition: unknown;
@@ -95,7 +100,8 @@ export interface MaterializationPlan {
 
 export async function planMaterialization(input: PlanInput): Promise<MaterializationPlan> {
   const stage = input.stage ?? 'structure';
-  const nodes = input.units.map(unit => inspect(unit));
+  const units = input.units.filter(unit => isL1ModuleDef(unit.defPath));
+  const nodes = units.map(unit => inspect(unit));
   const graph = buildGraph(nodes);
   for (const node of nodes) node.consumerCount = graph.outgoing.get(node.defPath)?.size ?? 0;
   applyReferences(nodes, input.readable, input.extraArtifacts ?? []);
@@ -128,7 +134,7 @@ export async function planMaterialization(input: PlanInput): Promise<Materializa
   propagate(planned, graph.incoming);
 
   const present = new Set(nodes.map(node => node.defPath));
-  const removals = (input.removals ?? []).filter(path => !present.has(path)).sort();
+  const removals = (input.removals ?? []).filter(path => isL1ModuleDef(path) && !present.has(path)).sort();
   for (const defPath of removals) {
     planned.set(defPath, {
       defPath,

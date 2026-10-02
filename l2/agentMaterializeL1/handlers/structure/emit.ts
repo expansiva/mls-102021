@@ -496,6 +496,17 @@ async function emitAdapter(
   };
 }
 
+/** Grant and required fields of one v2 route. The adapter names a service function, not a usecase. */
+export async function adapterRouteFacts(
+  definition: M1Definition,
+  handler: Record<string, unknown>,
+  read: StructureRead,
+): Promise<{ grantIds: string[]; requiredFields: string[] } | EmitFailure> {
+  const resolved = await resolveAdapterRoute(definition, handler, read);
+  if ('code' in resolved) return resolved;
+  return { grantIds: resolved.route.grantIds, requiredFields: resolved.route.requiredFields };
+}
+
 async function resolveAdapterRoute(
   definition: M1Definition,
   handler: Record<string, unknown>,

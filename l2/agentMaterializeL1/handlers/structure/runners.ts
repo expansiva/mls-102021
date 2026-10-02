@@ -21,6 +21,7 @@ import {
   auditImports,
   emitAccess,
   emitAuthority,
+  adapterRouteFacts,
   emitController,
   emitDomain,
   ontologyEnums,
@@ -183,12 +184,18 @@ async function routeFor(
   read: HandlerCall['read'],
 ): Promise<{ grantIds: string[]; requiredFields: string[] } | EmitFailure> {
   const handlers = Array.isArray(definition.data.handlers) ? definition.data.handlers : [];
-  const handler = handlers.find(item => !!item && typeof item === 'object' && (item as { route?: string }).route === routine) as { grantIds?: unknown; usecaseId?: string } | undefined;
-  if (!handler || typeof handler.usecaseId !== 'string') {
+  const handler = handlers.find(item => !!item && typeof item === 'object' && (item as { route?: string }).route === routine);
+  if (!handler || typeof handler !== 'object') {
     return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has no route ${routine}.` };
   }
-  const usecaseDep = definition.dependencies.find(path => path.endsWith(`/${handler.usecaseId}.defs.ts`));
-  if (!usecaseDep) return { code: 'USECASE_UNBOUND', detail: `${routine} has no dependency on ${handler.usecaseId}.` };
+  const row = handler as Record<string, unknown>;
+  if (typeof row.serviceFunction === 'string') return adapterRouteFacts(definition, row, read);
+  const usecaseId = typeof row.usecaseId === 'string' ? row.usecaseId : '';
+  if (!usecaseId) {
+    return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has no route ${routine}.` };
+  }
+  const usecaseDep = definition.dependencies.find(path => path.endsWith(`/${usecaseId}.defs.ts`));
+  if (!usecaseDep) return { code: 'USECASE_UNBOUND', detail: `${routine} has no dependency on ${usecaseId}.` };
   const text = await read(usecaseDep);
   if (text === null) return { code: 'USECASE_UNBOUND', detail: `${usecaseDep} could not be read.` };
   const parsed = readDefinition(JSON.parse(sliceJson(text) || 'null'));
@@ -205,7 +212,7 @@ async function routeFor(
   if (!inputType) return { code: 'CONTRACT_SYMBOL', detail: `${contract} has no input for ${routine}.` };
   const required = requiredMembers(contractText, inputType);
   if (!required) return { code: 'CONTRACT_SYMBOL', detail: `${inputType} could not be read.` };
-  const grantIds = Array.isArray(handler.grantIds) ? handler.grantIds.filter((item): item is string => typeof item === 'string') : [];
+  const grantIds = Array.isArray(row.grantIds) ? row.grantIds.filter((item): item is string => typeof item === 'string') : [];
   return { grantIds, requiredFields: required };
 }
 
