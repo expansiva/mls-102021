@@ -4,6 +4,8 @@
  * m1_41 a: the v1 path is gone from the M1. A def that still arrives in v1 (handler `usecaseId`,
  * `contractRefs`, `routeProjections`) fails closed with DEF_V1_UNSUPPORTED and writes nothing, at
  * every entry: structure runner, implement runner, controller emitter and route obligations.
+ * m1_41 c1: `routeProjections` left the l1Defs schema, so a def with it is refused one step earlier,
+ * at the definition stage (DEFINITION, naming DEF_V1_UNSUPPORTED), before the M1 gate.
  */
 
 import assert from 'node:assert/strict';
@@ -66,13 +68,18 @@ void test('the v1 markers are the handler usecaseId, contractRefs and routeProje
 
 void test('a v1 def fails closed with DEF_V1_UNSUPPORTED and writes nothing, in structure and implement', async () => {
   for (const [definition, stage] of [
-    [v1Usecase, 'structure'], [v1Usecase, 'implement'], [projectedUsecase, 'implement'], [v1Controller, 'structure'],
+    [v1Usecase, 'structure'], [v1Usecase, 'implement'], [v1Controller, 'structure'],
   ] as const) {
     const outcome = stage === 'structure' ? await runStructure(call(definition, stage)) : await runBehavior(call(definition, stage));
     assert.equal(outcome.failure?.code, DEF_V1_UNSUPPORTED, `${definition.artifactId} ${stage}`);
     assert.match(outcome.failure?.detail ?? '', new RegExp(`^${DEF_V1_UNSUPPORTED}: ${definition.artifactId} `));
     assert.deepEqual(outcome.files, {});
   }
+  // A usecase with routeProjections is refused at the definition stage, naming the removal.
+  const projected = await runBehavior(call(projectedUsecase, 'implement'));
+  assert.equal(projected.failure?.code, 'DEFINITION');
+  assert.match(projected.failure?.detail ?? '', /data\.routeProjections is the removed v1 shape \(DEF_V1_UNSUPPORTED\)/);
+  assert.deepEqual(projected.files, {});
 });
 
 void test('a controller with one handler that has no service function is refused, not emitted as an adapter', async () => {

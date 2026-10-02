@@ -179,22 +179,25 @@ void test('missing and ambiguous references are reported', () => {
   });
   assert.equal(ambiguous.some(item => item.includes(`Ambiguous reference repositoryPort:${portId}`)), true);
   assert.deepEqual(referenceIssues(listBuoyPending, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
-  const contract = `_${M1_FIXTURE_PROJECT}_/l2/${M1_FIXTURE_MODULE}/web/contracts/divers.defs.ts`;
+  const contract = `_${M1_FIXTURE_PROJECT}_/l4/${M1_FIXTURE_MODULE}/divers.defs.ts`;
   const catalog = '_102034_/l4/ontology/mdm.defs.ts';
   const mixed = {
     ...listBuoyPending,
     dependencies: [...new Set([...listBuoyPending.dependencies, catalog, contract])].sort(),
     data: {
       ...listBuoyPending.data,
-      routeProjections: [
-        ...(Array.isArray(listBuoyPending.data.routeProjections) ? listBuoyPending.data.routeProjections : []),
-        { route: `${M1_FIXTURE_MODULE}.divers.enrollIt`, contractPath: `l2/${M1_FIXTURE_MODULE}/web/contracts/divers.defs.ts`, projection: 'declared', outputFields: [] },
+      rules: [
+        ...(Array.isArray(listBuoyPending.data.rules) ? listBuoyPending.data.rules : []),
+        { ruleId: 'enrollIt', path: `l4/${M1_FIXTURE_MODULE}/divers.defs.ts`, symbol: 'enrollIt' },
       ],
     },
   };
   const mixedIssues = referenceIssues(mixed, { files: mixed.dependencies, artifacts: fixtureIndex.artifacts });
-  assert.equal(mixedIssues.some(item => item.includes('_102034_/l2/')), false, mixedIssues.join('\n'));
+  assert.equal(mixedIssues.some(item => item.includes(`_102034_/l4/${M1_FIXTURE_MODULE}/`)), false, mixedIssues.join('\n'));
   assert.equal(mixedIssues.some(item => item.includes('divers.defs.ts')), false, mixedIssues.join('\n'));
+  const unlisted = { ...mixed, dependencies: mixed.dependencies.filter(path => path !== contract) };
+  const unlistedIssues = referenceIssues(unlisted, { files: unlisted.dependencies, artifacts: fixtureIndex.artifacts });
+  assert.equal(unlistedIssues.some(item => item.includes('divers.defs.ts')), true, unlistedIssues.join('\n'));
   const tablePath = defPathOf('table', 'buoy');
   const portPath = defPathOf('repositoryPort', 'BuoyRepository');
   const adapter = {

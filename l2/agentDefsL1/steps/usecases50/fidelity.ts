@@ -397,20 +397,6 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return right.every(item => seen.has(item));
 }
 
-function readPlanRoutes(data: Record<string, unknown>): Array<{ route: string; contractPath: string; grants: [] }> {
-  if (!Array.isArray(data.routeProjections)) return [];
-  const out: Array<{ route: string; contractPath: string; grants: [] }> = [];
-  for (const item of data.routeProjections) {
-    if (!isRecord(item) || typeof item.route !== 'string') continue;
-    out.push({
-      route: item.route,
-      contractPath: typeof item.contractPath === 'string' ? item.contractPath : '',
-      grants: [],
-    });
-  }
-  return out;
-}
-
 function readRulePlan(data: Record<string, unknown>): D1RulePlanRow[] | null {
   if (!Array.isArray(data.rulePlan)) return null;
   const out: D1RulePlanRow[] = [];
@@ -682,53 +668,6 @@ function normalizeCall(call: D1MdmPlannedCall): unknown {
     capabilities: [...call.capabilities].sort(),
     result: [...call.result],
   };
-}
-
-function contractFiles(files: readonly FidelityFile[]): Array<{ pageId: string; path: string; source: string }> {
-  const out: Array<{ pageId: string; path: string; source: string }> = [];
-  for (const file of files) {
-    const pageId = pageIdOf(file.path);
-    if (!file.path.includes('/web/contracts/') || !pageId) continue;
-    out.push({ pageId, path: file.path, source: file.text });
-  }
-  return out;
-}
-
-function pageIdOf(contractPath: string): string {
-  const name = contractPath.split('/').pop() || '';
-  return name.endsWith('.defs.ts') ? name.slice(0, -'.defs.ts'.length) : '';
-}
-
-function readContractRefs(data: Record<string, unknown>): Array<{ route: string; symbol: string }> {
-  const functions = Array.isArray(data.functions) ? data.functions : [];
-  const refs: Array<{ route: string; symbol: string }> = [];
-  for (const fn of functions) {
-    if (!isRecord(fn) || !Array.isArray(fn.contractRefs)) continue;
-    for (const raw of fn.contractRefs) {
-      if (isRecord(raw) && typeof raw.route === 'string' && typeof raw.symbol === 'string') {
-        refs.push({ route: raw.route, symbol: raw.symbol });
-      }
-    }
-  }
-  return refs;
-}
-
-function readRoutes(data: Record<string, unknown>): Array<{
-  route: string;
-  contractPath: string;
-  projection: string;
-  outputFields: string[];
-}> {
-  if (!Array.isArray(data.routeProjections)) return [];
-  return data.routeProjections.flatMap(raw => {
-    if (!isRecord(raw) || typeof raw.route !== 'string' || typeof raw.contractPath !== 'string') return [];
-    return [{
-      route: raw.route,
-      contractPath: raw.contractPath,
-      projection: typeof raw.projection === 'string' ? raw.projection : '',
-      outputFields: stringList(raw.outputFields),
-    }];
-  });
 }
 
 function readEffects(data: Record<string, unknown>): UsecaseBehavior['effects'] {

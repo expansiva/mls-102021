@@ -167,13 +167,6 @@ export interface D1UsecaseData {
     functionName: string;
     input: D1ProjectionField[];
     output: D1ProjectionField[];
-    contractRefs: Array<{ route: string; symbol: string }>;
-  }>;
-  routeProjections: Array<{
-    route: string;
-    contractPath: string;
-    projection: 'declared' | 'unresolved';
-    outputFields: string[];
   }>;
   portCalls: string[];
   transactional: boolean;
@@ -725,53 +718,20 @@ export function projectionIssues(data: unknown): string[] {
   return issues;
 }
 
-export function routeProjectionIssues(data: unknown): string[] {
+/**
+ * The removed v1 shape of a usecase: `routeProjections` and `functions[].contractRefs`.
+ * A v2 usecase carries neither; the page request names it in `uses`. Present, even empty, is refused.
+ */
+export function usecaseV1Issues(data: unknown): string[] {
+  if (!isRecord(data)) return [];
   const issues: string[] = [];
-  if (!isRecord(data)) return ['Missing field data.'];
-  const outputNames = new Set<string>();
+  const removed = (path: string) => `${path} is the removed v1 shape (DEF_V1_UNSUPPORTED); regenerate the usecase as v2.`;
+  if (data.routeProjections !== undefined) issues.push(removed('data.routeProjections'));
   if (Array.isArray(data.functions)) {
-    for (const fn of data.functions) {
-      if (!isRecord(fn) || !Array.isArray(fn.output)) continue;
-      for (const field of fn.output) {
-        if (isRecord(field) && typeof field.name === 'string') outputNames.add(field.name);
-      }
-      if (Array.isArray(fn.contractRefs)) {
-        fn.contractRefs.forEach((ref, index) => {
-          const path = `data.functions.contractRefs.${index}`;
-          if (!isRecord(ref)) {
-            issues.push(`Missing field ${path}.`);
-            return;
-          }
-          unknownKeys(ref, ['route', 'symbol'], path, issues);
-          needString(ref, 'route', path, issues);
-          needString(ref, 'symbol', path, issues);
-        });
-      }
-    }
+    data.functions.forEach((fn, index) => {
+      if (isRecord(fn) && fn.contractRefs !== undefined) issues.push(removed(`data.functions.${index}.contractRefs`));
+    });
   }
-  if (!Array.isArray(data.routeProjections)) return issues;
-  data.routeProjections.forEach((projection, index) => {
-    const path = `data.routeProjections.${index}`;
-    if (!isRecord(projection)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    unknownKeys(projection, ['route', 'contractPath', 'projection', 'outputFields'], path, issues);
-    needString(projection, 'route', path, issues);
-    needString(projection, 'contractPath', path, issues);
-    const kind = typeof projection.projection === 'string' ? projection.projection : '';
-    oneOf(kind, ['declared', 'unresolved'], `${path}.projection`, issues);
-    const fields = stringList(projection.outputFields, `${path}.outputFields`, issues);
-    if (kind === 'unresolved' && fields.length > 0) {
-      issues.push(`${path} is unresolved and must not copy another route's fields.`);
-    }
-    if (kind === 'declared') {
-      if (fields.length === 0) issues.push(`Missing field ${path}.outputFields.`);
-      for (const name of fields) {
-        if (!outputNames.has(name)) issues.push(`${path}.outputFields names ${name}, which is not in the function projection.`);
-      }
-    }
-  });
   return issues;
 }
 
@@ -804,7 +764,7 @@ export function usecaseIssues(data: unknown): string[] {
       issues.push(`Missing field ${path}.`);
       return;
     }
-    unknownKeys(fn, ['functionName', 'input', 'output', 'contractRefs'], path, issues);
+    unknownKeys(fn, ['functionName', 'input', 'output'], path, issues);
     needString(fn, 'functionName', path, issues);
   });
   if (!Array.isArray(data.effects)) issues.push('Missing field data.effects.');
@@ -831,7 +791,7 @@ export function usecaseIssues(data: unknown): string[] {
   }
   if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
   issues.push(...projectionIssues(data));
-  issues.push(...routeProjectionIssues(data));
+  issues.push(...usecaseV1Issues(data));
   return issues;
 }
 

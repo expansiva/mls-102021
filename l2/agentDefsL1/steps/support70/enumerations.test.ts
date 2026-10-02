@@ -235,7 +235,6 @@ function definitionOf(entityId: string, type: string, pathOnly = false): string 
       functionName: 'createRecepcionista',
       input: [{ name: 'details', type, fieldRef: `${entityId}.details` }],
       output: [],
-      contractRefs: [],
       ...(pathOnly ? {
         arguments: [{ name: 'docType', path: 'details.identification.docType' }],
       } : {}),

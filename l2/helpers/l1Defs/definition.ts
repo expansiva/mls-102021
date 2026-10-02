@@ -77,7 +77,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'functions', 'portCalls', 'transactional', 'effects', 'sequence', 'uses', 'rules', 'transaction'],
-    optional: ['lifecycle', 'mdm', 'rulePlan', 'routeProjections'],
+    optional: ['lifecycle', 'mdm', 'rulePlan'],
     nonempty: ['functions'],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
@@ -521,6 +521,9 @@ function dataIssues(type: M1ArtifactType, data: Record<string, unknown>): string
   for (const key of Object.keys(data)) {
     if (!allowed.includes(key)) issues.push(`Unknown field data.${key}.`);
   }
+  if (type === 'usecase' && data.routeProjections !== undefined) {
+    issues.push('data.routeProjections is the removed v1 shape (DEF_V1_UNSUPPORTED); regenerate the usecase as v2.');
+  }
   for (const key of spec.required) {
     if (data[key] === undefined) issues.push(`Missing field data.${key}.`);
   }
@@ -617,11 +620,6 @@ function collectFileRefs(definition: M1Definition): Array<{ path: string; field:
   if (Array.isArray(data.rules)) {
     data.rules.forEach((rule, index) => {
       if (isRecord(rule)) push(rule.path, `data.rules.${index}.path`);
-    });
-  }
-  if (Array.isArray(data.routeProjections)) {
-    data.routeProjections.forEach((item, index) => {
-      if (isRecord(item)) push(item.contractPath, `data.routeProjections.${index}.contractPath`);
     });
   }
   if (Array.isArray(data.effects)) {

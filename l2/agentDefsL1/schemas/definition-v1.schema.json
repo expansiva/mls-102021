@@ -170,7 +170,7 @@
     "usecase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["usecaseId", "entityId", "operation", "ports", "rulesApplied", "functions", "routeProjections", "portCalls", "transactional", "effects", "sequence", "uses", "rules", "transaction"],
+      "required": ["usecaseId", "entityId", "operation", "ports", "rulesApplied", "functions", "portCalls", "transactional", "effects", "sequence", "uses", "rules", "transaction"],
       "properties": {
         "usecaseId": { "type": "string", "minLength": 1 },
         "entityId": { "type": "string", "minLength": 1 },
@@ -179,7 +179,6 @@
         "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "rulePlan": { "type": "array", "items": { "$ref": "#/$defs/rulePlanRow" } },
         "functions": { "type": "array", "items": { "$ref": "#/$defs/usecaseFunction" } },
-        "routeProjections": { "type": "array", "items": { "$ref": "#/$defs/routeProjection" } },
         "portCalls": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "transactional": { "type": "boolean" },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/effectRef" } },
@@ -326,12 +325,11 @@
     "usecaseFunction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["functionName", "input", "output", "contractRefs"],
+      "required": ["functionName", "input", "output"],
       "properties": {
         "functionName": { "type": "string", "minLength": 1 },
         "input": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } },
-        "output": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } },
-        "contractRefs": { "type": "array", "items": { "$ref": "#/$defs/contractRef" } }
+        "output": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } }
       }
     },
     "projectionField": {
@@ -342,26 +340,6 @@
         "name": { "type": "string", "minLength": 1 },
         "type": { "type": "string", "minLength": 1 },
         "fieldRef": { "type": "string", "minLength": 1 }
-      }
-    },
-    "contractRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["route", "symbol"],
-      "properties": {
-        "route": { "type": "string", "minLength": 1 },
-        "symbol": { "type": "string", "minLength": 1 }
-      }
-    },
-    "routeProjection": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["route", "contractPath", "projection", "outputFields"],
-      "properties": {
-        "route": { "type": "string", "minLength": 1 },
-        "contractPath": { "type": "string", "minLength": 1 },
-        "projection": { "type": "string", "enum": ["declared", "unresolved"] },
-        "outputFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
     "effectRef": {

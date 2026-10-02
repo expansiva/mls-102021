@@ -25,6 +25,7 @@ import {
   recordFieldIssues,
   seedScenarioIssues,
   typeDataSchema,
+  usecaseIssues,
   valueObjectIssues,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
@@ -275,6 +276,29 @@ void test('unknown fields, draft status and an empty value object are refused wi
     seedId: 'seeds',
     scenarios: [{ scenarioId: 'people', tableId: 'consulta', constraints: ['password:secret'] }],
   }).some(issue => issue.includes('constraint')), true);
+});
+
+void test('a usecase with the removed v1 fields is refused by name, even when they are empty', () => {
+  const v2 = {
+    usecaseId: 'listWidget',
+    entityId: 'Widget',
+    operation: 'list',
+    ports: ['WidgetRepository'],
+    rulesApplied: [],
+    functions: [{ functionName: 'listWidget', input: [], output: [{ name: 'id' }] }],
+    portCalls: ['list'],
+    transactional: false,
+    effects: [],
+    sequence: [{ kind: 'context', source: 'ctx' }, { kind: 'port', call: 'list', port: 'WidgetRepository' }],
+    uses: [],
+    rules: [],
+    transaction: { boundary: 'none' },
+  };
+  assert.equal(usecaseIssues(v2).some(issue => issue.includes('DEF_V1_UNSUPPORTED')), false);
+  const v1 = { ...v2, routeProjections: [], functions: [{ ...v2.functions[0], contractRefs: [] }] };
+  const issues = usecaseIssues(v1);
+  assert.equal(issues.some(issue => issue.startsWith('data.routeProjections is the removed v1 shape (DEF_V1_UNSUPPORTED)')), true, issues.join('\n'));
+  assert.equal(issues.some(issue => issue.startsWith('data.functions.0.contractRefs is the removed v1 shape (DEF_V1_UNSUPPORTED)')), true, issues.join('\n'));
 });
 
 void test('an anchor outside entity refs is kept as a finding', () => {

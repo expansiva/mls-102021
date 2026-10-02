@@ -300,15 +300,6 @@ void test('removing payload, a rule or an MDM call fails specifically, and a con
   assert.equal(condition.behavior, null);
   assert.equal(condition.problems.some(item => item.code === 'MDM_CALL_MISSING' || item.code === 'MDM_ARGUMENT_UNBOUND'), true);
 
-  const withoutProjection = edited(list, definition => {
-    const data = definition.data as { routeProjections?: unknown[] };
-    assert.equal(data.routeProjections, undefined);
-    data.routeProjections = [];
-  });
-  const projection = readUsecaseFidelity(withoutProjection, files);
-  assert.ok(projection.behavior);
-  assert.equal(projection.problems.some(item => item.code === 'PROJECTION_MISSING' || item.code === 'PROJECTION_UNRESOLVED' || item.code === 'PROJECTION_MISMATCH'), false);
-
   const withoutDependency = edited(list, (_definition, pipeline) => {
     pipeline[0].dependsFiles = pipeline[0].dependsFiles.filter(path => !path.includes('/web/contracts/'));
   });
