@@ -79,7 +79,7 @@ async function produce(id: string, definition: M1Definition, output: string, rea
   if (id === 'structure.accessScope') return emitAccess(definition, output);
   if (id === 'structure.authorityMap') return emitAuthority(definition, output);
   if (id === 'structure.usecase') return emitUsecase(definition, output, read);
-  if (id === 'structure.httpController') return emitController(definition, output, read, call.moduleDefinitions ?? []);
+  if (id === 'structure.httpController') return emitController(definition, output, read);
   if (id === 'structure.requestService') return emitRequestService(definition, output, read, call.moduleDefinitions ?? [], 'structure');
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a structure body.` };
 }

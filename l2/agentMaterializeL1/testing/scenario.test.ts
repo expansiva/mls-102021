@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/testing/scenario.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +35,8 @@ import {
   type M1Checkpoint,
   type M1Observation,
 } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
+import { deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
+import { BASE, fixture } from '/_102021_/l2/agentMaterializeL1/testing/oracleModule.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = readFileSync(join(HERE, 'catalogFixture.json'), 'utf8');
@@ -45,6 +47,42 @@ const RUN = {
   startedAt: '2026-09-25T12:00:00.000Z',
   finishedAt: '2026-09-25T12:00:01.000Z',
 };
+
+/**
+ * m1_41 c2: the two frozen files are generated, not hand-kept. Input is the neutral v2 module
+ * (`oracleModule` BASE) through `deriveCatalog`; the checkpoint is `verifyBatch` over those bytes.
+ * `M1_REFREEZE=1` rewrites both files; without it the test only compares.
+ */
+async function frozenFiles(): Promise<{ catalog: string; checkpoint: string }> {
+  const fx = fixture(BASE);
+  const units = [...fx.defs.map(([, defPath, definition]) => ({ defPath, definition })), ...fx.controllers.map(([defPath, definition]) => ({ defPath, definition }))];
+  const derived = deriveCatalog(fx.n.mod, units, fx.texts);
+  const catalog = `${JSON.stringify(derived.catalog, null, 2)}\n`;
+  const handler = handlerFor('usecase', 'structure');
+  assert.ok(handler);
+  const report = await verifyBatch({
+    handler,
+    io: memoryIo({ [CATALOG_REF]: catalog }),
+    catalogRef: CATALOG_REF,
+    observations: observationsFor(derived.catalog, 'structure.usecase', 'stub'),
+    ...RUN,
+    monitorError: null,
+  });
+  return { catalog, checkpoint: `${JSON.stringify(report, null, 2)}\n` };
+}
+
+void test('catalogFixture.json and checkpointFixture.json are generated from the v2 neutral module', async () => {
+  const generated = await frozenFiles();
+  if (process.env.M1_REFREEZE === '1') {
+    writeFileSync(join(HERE, 'catalogFixture.json'), generated.catalog);
+    writeFileSync(join(HERE, 'checkpointFixture.json'), generated.checkpoint);
+  }
+  assert.equal(readFileSync(join(HERE, 'catalogFixture.json'), 'utf8'), generated.catalog);
+  assert.equal(readFileSync(join(HERE, 'checkpointFixture.json'), 'utf8'), generated.checkpoint);
+  const parsed = parseCatalog(generated.catalog).catalog;
+  assert.ok(parsed);
+  assert.deepEqual(parseCatalog(renderMonitorCatalog(parsed, 'x')).catalog, parsed);
+});
 
 void test('fixture is the catalog both adapters read', () => {
   const parsed = parseCatalog(FIXTURE);
@@ -86,7 +124,9 @@ void test('fixture is the catalog both adapters read', () => {
   const controller = handlerFor('httpController', 'structure');
   assert.equal(usecase?.id, 'structure.usecase');
   assert.equal(controller?.id, 'structure.httpController');
-  assert.ok(catalog.scenarios.every(scenario => scenario.handlerId === usecase?.id || scenario.handlerId === controller?.id));
+  assert.ok(catalog.scenarios.some(scenario => scenario.handlerId === usecase?.id));
+  assert.ok(catalog.scenarios.some(scenario => scenario.handlerId === controller?.id));
+  assert.ok(catalog.scenarios.every(scenario => scenario.handlerId === handlerFor(scenario.artifactType, 'structure')?.id), 'each scenario names the registered structure handler');
 });
 
 void test('structure checkpoint is expected-red only on business cases', async () => {
@@ -106,9 +146,10 @@ void test('structure checkpoint is expected-red only on business cases', async (
   assert.equal(report.commit, '69adf1f');
   assert.equal(report.ready, false);
   assert.equal(report.accepted, true);
+  const usecaseCases = catalog.scenarios.filter(scenario => scenario.handlerId === 'structure.usecase').flatMap(scenario => scenario.cases);
   assert.deepEqual(report.counts, {
-    passed: 3,
-    expectedRed: 8,
+    passed: usecaseCases.filter(item => item.gate !== 'business').length,
+    expectedRed: usecaseCases.filter(item => item.gate === 'business').length,
     failed: 0,
     blocked: 0,
     skipped: 0,
@@ -141,8 +182,10 @@ void test('controller gates stay green and do not accept the stub', async () => 
     ...RUN,
     monitorError: null,
   });
+  const controllerCases = catalog.scenarios.filter(scenario => scenario.handlerId === 'structure.httpController').flatMap(scenario => scenario.cases);
+  assert.equal(controllerCases.length > 0, true);
   assert.deepEqual(green.counts, {
-    passed: 3, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0,
+    passed: controllerCases.length, expectedRed: 0, failed: 0, blocked: 0, skipped: 0, inconclusive: 0,
   });
   assert.equal(green.ready, false);
 
@@ -157,12 +200,12 @@ void test('controller gates stay green and do not accept the stub', async () => 
     monitorError: null,
   });
   assert.equal(masked.counts.expectedRed, 0);
-  assert.equal(masked.counts.failed, 3);
+  assert.equal(masked.counts.failed, controllerCases.length);
   assert.equal(masked.accepted, false);
 });
 
 void test('a different failure, a broken compile and an exception are not expected-red', () => {
-  const item = mustCase('createConsulta.creates');
+  const item = businessCase();
   const wrong = classifyCase('structure', item, observation(item, { ok: false, status: 500, errorCode: 'INTERNAL_ERROR' }));
   assert.equal(wrong.verdict, 'failed');
   assert.match(wrong.detail, /different failure/);
@@ -188,7 +231,7 @@ void test('skipped, inconclusive and a missing case block acceptance', async () 
   const handler = handlerFor('usecase', 'structure');
   assert.ok(handler);
   const rows = observationsFor(catalog, 'structure.usecase', 'stub').map(item => (
-    item.caseId === 'createConsulta.creates' ? observation(mustCase(item.caseId), { skipped: true, reason: 'not run' }) : item
+    item.caseId === businessCase().caseId ? observation(businessCase(), { skipped: true, reason: 'not run' }) : item
   ));
   const skipped = await verifyBatch({
     handler,
@@ -201,7 +244,7 @@ void test('skipped, inconclusive and a missing case block acceptance', async () 
   assert.equal(skipped.counts.skipped, 1);
   assert.equal(skipped.accepted, false);
 
-  const missing = classifyCase('structure', mustCase('listConsulta.lists'), undefined);
+  const missing = classifyCase('structure', businessCase(), undefined);
   assert.equal(missing.verdict, 'inconclusive');
 });
 
@@ -226,7 +269,7 @@ void test('implement drops the tolerance and an expired mark fails the checkpoin
   assert.equal(forged.evidence[0]?.detail, 'handler is not the registered one');
   assert.equal(forged.counts.expectedRed, 0);
 
-  const item = mustCase('createConsulta.creates');
+  const item = businessCase();
   const expired = classifyCase('implement', item, observation(item, { ok: true, status: 200, errorCode: null }));
   assert.equal(expired.verdict, 'failed');
   assert.equal(expired.detail, 'expected mark expired');
@@ -235,7 +278,7 @@ void test('implement drops the tolerance and an expired mark fails the checkpoin
   assert.notEqual(stillStub.verdict, 'expectedRed');
 
   const stripped = catalogForStage(catalog, 'implement');
-  const created = stripped.scenarios.flatMap(scenario => scenario.cases).find(entry => entry.caseId === 'createConsulta.creates');
+  const created = stripped.scenarios.flatMap(scenario => scenario.cases).find(entry => entry.caseId === businessCase().caseId);
   assert.ok(created);
   assert.equal(created.expectedFailure, null);
   assert.equal(classifyCase('implement', created, observation(created, { ok: true, status: 200, errorCode: null })).verdict, 'passed');
@@ -243,34 +286,41 @@ void test('implement drops the tolerance and an expired mark fails the checkpoin
 });
 
 void test('removing the projection filter or the actor filter blinds the test, and repair refuses it', () => {
-  const catalog = mustCatalog();
+  // The derived v2 catalog declares disclosure and own-scope cases as gaps, never as executable cases;
+  // the restricted cases are built here on a derived business case, with arbitrary field names.
+  const base = businessCase();
+  const hidden = 'hiddenNote';
+  const owner = 'ownerId';
+  const projection: M1ScenarioCase = { ...base, caseId: `${base.caseId}.projection`, expect: { ...base.expect, forbiddenFields: [hidden] } };
+  const isolation: M1ScenarioCase = { ...base, caseId: `${base.caseId}.own`, actorId: 'actor-1', expect: { ...base.expect, isolatedActorField: owner } };
+  const original = mustCatalog();
+  const catalog: M1ScenarioCatalog = {
+    ...original,
+    scenarios: original.scenarios.map(scenario => scenario.cases.some(item => item.caseId === base.caseId)
+      ? { ...scenario, cases: [...scenario.cases, projection, isolation] }
+      : scenario),
+  };
   const stripped = catalogForStage(catalog, 'implement');
-  const projection = caseIn(stripped, 'listConsulta.receptionistProjection');
-  const leaked = observation(projection, { ok: true, status: 200, errorCode: null, fields: ['id', 'status', 'attendanceNote'] });
-  assert.equal(classifyCase('implement', projection, leaked).detail, 'forbidden field present: attendanceNote');
-  const blind = withoutRule(projection, 'attendanceNote');
+  const openProjection = caseIn(stripped, projection.caseId);
+  const leaked = observation(openProjection, { ok: true, status: 200, errorCode: null, fields: ['id', hidden] });
+  assert.equal(classifyCase('implement', openProjection, leaked).detail, `forbidden field present: ${hidden}`);
+  const blind = withoutRule(openProjection, hidden);
   assert.equal(classifyCase('implement', blind, leaked).verdict, 'passed');
-  const refused = applyRepair(catalog, { caseId: projection.caseId, dropForbiddenFields: ['attendanceNote'] });
+  const refused = applyRepair(catalog, { caseId: projection.caseId, dropForbiddenFields: [hidden] });
   assert.deepEqual(refused.refused, ['forbiddenFields']);
   assert.equal(refused.catalog, catalog);
 
-  const isolation = caseIn(stripped, 'listConsulta.ownAppointments');
-  const foreign = observation(isolation, {
-    ok: true,
-    status: 200,
-    errorCode: null,
-    ruleId: 'professionalOwnAppointment',
-    rowActorIds: ['professional-1', 'professional-2'],
-  });
-  assert.equal(classifyCase('implement', isolation, foreign).detail, 'actor filter missed');
-  const unfiltered = withoutRule(isolation, 'professionalId');
+  const openIsolation = caseIn(stripped, isolation.caseId);
+  const foreign = observation(openIsolation, { ok: true, status: 200, errorCode: null, rowActorIds: ['actor-1', 'actor-2'] });
+  assert.equal(classifyCase('implement', openIsolation, foreign).detail, 'actor filter missed');
+  const unfiltered = withoutRule(openIsolation, owner);
   assert.equal(classifyCase('implement', unfiltered, foreign).verdict, 'passed');
   const actorRepair = applyRepair(catalog, { caseId: isolation.caseId, clearActorFilter: true });
   assert.deepEqual(actorRepair.refused, ['actorFilter']);
   assert.equal(actorRepair.catalog, catalog);
 
   const swapped = applyRepair(catalog, {
-    caseId: 'createConsulta.creates',
+    caseId: base.caseId,
     replaceExpectedFailure: { errorCode: 'INTERNAL_ERROR', status: 500 },
   });
   assert.deepEqual(swapped.refused, ['expectedFailure']);
@@ -360,9 +410,11 @@ function mustCatalog(): M1ScenarioCatalog {
   return parsed.catalog;
 }
 
-function mustCase(caseId: string): M1ScenarioCase {
-  const found = mustCatalog().scenarios.flatMap(scenario => scenario.cases).find(item => item.caseId === caseId);
-  if (!found) throw new Error(caseId);
+/** The first business case of a usecase scenario: it carries the structure stub mark. */
+function businessCase(): M1ScenarioCase {
+  const found = mustCatalog().scenarios.filter(scenario => scenario.handlerId === 'structure.usecase')
+    .flatMap(scenario => scenario.cases).find(item => item.gate === 'business');
+  if (!found) throw new Error('no usecase business case');
   return found;
 }
 

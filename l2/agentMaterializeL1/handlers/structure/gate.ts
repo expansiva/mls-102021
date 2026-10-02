@@ -24,11 +24,10 @@ export const DEF_V1_UNSUPPORTED = 'DEF_V1_UNSUPPORTED';
 
 /**
  * Whether a def still carries the v1 shape: an httpController handler with `usecaseId` and no
- * `serviceFunction`, a usecase function with `contractRefs`, or `routeProjections`. A usecase's own
- * `data.usecaseId` is v2 and is not a marker.
+ * `serviceFunction`, or a usecase function with `contractRefs`. A usecase's own `data.usecaseId` is
+ * v2 and is not a marker. `routeProjections` is refused earlier, by the l1Defs schema (m1_41 c1).
  */
 export function isDefV1(data: Record<string, unknown>): boolean {
-  if (Array.isArray(data.routeProjections)) return true;
   const functions = Array.isArray(data.functions) ? data.functions : [];
   if (functions.some(fn => !!fn && typeof fn === 'object' && Array.isArray((fn as Record<string, unknown>).contractRefs)
     && ((fn as Record<string, unknown>).contractRefs as unknown[]).length > 0)) return true;
@@ -38,7 +37,7 @@ export function isDefV1(data: Record<string, unknown>): boolean {
 }
 
 export function defV1Detail(artifactId: string): string {
-  return `${DEF_V1_UNSUPPORTED}: ${artifactId} has the removed v1 shape (handler usecaseId, contractRefs or routeProjections); regenerate its defs as v2.`;
+  return `${DEF_V1_UNSUPPORTED}: ${artifactId} has the removed v1 shape (handler usecaseId or contractRefs); regenerate its defs as v2.`;
 }
 
 export interface StructureGrant {

@@ -1,25 +1,23 @@
 {
-  "schemaVersion": "2026-09-25-m1-scenario-catalog-v1",
-  "moduleName": "agendaClinica",
+  "schemaVersion": "2026-09-26-m1-scenario-catalog-v1.1",
+  "moduleName": "tideBoard",
   "store": "memory",
   "scenarios": [
     {
-      "scenarioId": "createConsulta",
-      "source": "C3 create Consulta",
-      "artifactType": "usecase",
-      "artifactId": "createConsulta",
-      "handlerId": "structure.usecase",
-      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.ts",
-      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/createConsulta.test.ts",
+      "scenarioId": "Berth",
+      "source": "_102097_/l1/tideBoard/layer_3_domain/entities/berth.defs.ts",
+      "artifactType": "domainEntity",
+      "artifactId": "Berth",
+      "handlerId": "structure.domainEntity",
+      "productionFile": "_102097_/l1/tideBoard/layer_3_domain/entities/berth.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_3_domain/entities/berth.test.ts",
       "cases": [
         {
-          "caseId": "createConsulta.compile",
+          "caseId": "Berth.compile",
           "gate": "compile",
-          "mandatory": true,
-          "source": "structure compile gate",
-          "expectation": "createConsulta.ts imports. A broken import is a failure, not an expected red.",
-          "preconditions": ["memory store", "no database"],
-          "synthetic": [],
+          "source": "domainEntity structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
           "actorId": "",
           "routine": "",
           "mutating": false,
@@ -31,90 +29,28 @@
             "forbiddenFields": [],
             "isolatedActorField": null
           },
-          "expectedFailure": null
-        },
-        {
-          "caseId": "createConsulta.creates",
-          "gate": "business",
+          "expectedFailure": null,
+          "runner": "module",
           "mandatory": true,
-          "source": "C3 create Consulta",
-          "expectation": "A receptionist creates one Consulta and receives the saved record.",
-          "preconditions": ["actor recepcionista-1", "memory store empty of that slot"],
-          "synthetic": [],
-          "actorId": "recepcionista-1",
-          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
-          "mutating": true,
-          "expect": {
-            "ok": true,
-            "status": 200,
-            "errorCode": null,
-            "ruleId": null,
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "createConsulta.creates",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
-        },
-        {
-          "caseId": "createConsulta.duplicateSchedule",
-          "gate": "business",
-          "mandatory": true,
-          "source": "uniqueKeys professionalId+scheduledAt",
-          "expectation": "A second Consulta on the same professional and scheduledAt is CONFLICT uniqueProfessionalSchedule.",
-          "preconditions": ["consulta-1 already stored in memory"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 1,
-              "attendanceNote": ""
-            }
-          ],
-          "actorId": "recepcionista-1",
-          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
-          "mutating": true,
-          "expect": {
-            "ok": false,
-            "status": 409,
-            "errorCode": "CONFLICT",
-            "ruleId": "uniqueProfessionalSchedule",
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "createConsulta.duplicateSchedule",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
+          "synthetic": []
         }
       ]
     },
     {
-      "scenarioId": "listConsulta",
-      "source": "C3 list Consulta",
-      "artifactType": "usecase",
-      "artifactId": "listConsulta",
-      "handlerId": "structure.usecase",
-      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.ts",
-      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/listConsulta.test.ts",
+      "scenarioId": "BerthRepository",
+      "source": "_102097_/l1/tideBoard/layer_2_application/ports/berthRepository.defs.ts",
+      "artifactType": "repositoryPort",
+      "artifactId": "BerthRepository",
+      "handlerId": "structure.repositoryPort",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/ports/berthRepository.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/ports/berthRepository.test.ts",
       "cases": [
         {
-          "caseId": "listConsulta.compile",
+          "caseId": "BerthRepository.compile",
           "gate": "compile",
-          "mandatory": true,
-          "source": "structure compile gate",
-          "expectation": "listConsulta.ts imports. A broken import is a failure, not an expected red.",
-          "preconditions": ["memory store", "no database"],
-          "synthetic": [],
+          "source": "repositoryPort structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
           "actorId": "",
           "routine": "",
           "mutating": false,
@@ -126,148 +62,28 @@
             "forbiddenFields": [],
             "isolatedActorField": null
           },
-          "expectedFailure": null
-        },
-        {
-          "caseId": "listConsulta.lists",
-          "gate": "business",
+          "expectedFailure": null,
+          "runner": "module",
           "mandatory": true,
-          "source": "C3 list Consulta",
-          "expectation": "The professional receives the Consulta rows for the declared filter.",
-          "preconditions": ["actor professional-1", "memory rows below"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 2,
-              "attendanceNote": "seen"
-            }
-          ],
-          "actorId": "professional-1",
-          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
-          "mutating": false,
-          "expect": {
-            "ok": true,
-            "status": 200,
-            "errorCode": null,
-            "ruleId": null,
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "listConsulta.lists",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
-        },
-        {
-          "caseId": "listConsulta.ownAppointments",
-          "gate": "business",
-          "mandatory": true,
-          "source": "professionalOwnAppointment",
-          "expectation": "professional-1 sees only rows whose professionalId is professional-1.",
-          "preconditions": ["memory holds consulta-1 and consulta-2", "actor comes from the session, not the form"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 2,
-              "attendanceNote": "seen"
-            },
-            {
-              "entity": "Consulta",
-              "id": "consulta-2",
-              "professionalId": "professional-2",
-              "patientId": "patient-2",
-              "scheduledAt": "2026-09-25T15:00:00.000Z",
-              "status": "scheduled",
-              "version": 1,
-              "attendanceNote": ""
-            }
-          ],
-          "actorId": "professional-1",
-          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
-          "mutating": false,
-          "expect": {
-            "ok": true,
-            "status": 200,
-            "errorCode": null,
-            "ruleId": "professionalOwnAppointment",
-            "forbiddenFields": [],
-            "isolatedActorField": "professionalId"
-          },
-          "expectedFailure": {
-            "caseId": "listConsulta.ownAppointments",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
-        },
-        {
-          "caseId": "listConsulta.receptionistProjection",
-          "gate": "business",
-          "mandatory": true,
-          "source": "listConsulta receptionist projection omits attendanceNote",
-          "expectation": "The receptionist list does not contain attendanceNote.",
-          "preconditions": ["actor recepcionista-1", "stored row has attendanceNote"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 2,
-              "attendanceNote": "seen"
-            }
-          ],
-          "actorId": "recepcionista-1",
-          "routine": "agendaClinica.consultas_recepcionista.qryListConsulta",
-          "mutating": false,
-          "expect": {
-            "ok": true,
-            "status": 200,
-            "errorCode": null,
-            "ruleId": null,
-            "forbiddenFields": ["attendanceNote"],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "listConsulta.receptionistProjection",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
+          "synthetic": []
         }
       ]
     },
     {
-      "scenarioId": "registrarAtendimento",
-      "source": "C5 registrarAtendimento",
-      "artifactType": "usecase",
-      "artifactId": "registrarAtendimento",
-      "handlerId": "structure.usecase",
-      "productionFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.ts",
-      "testFile": "_102047_/l1/agendaClinica/layer_2_application/usecases/registrarAtendimento.test.ts",
+      "scenarioId": "Ship",
+      "source": "_102097_/l1/tideBoard/layer_3_domain/entities/ship.defs.ts",
+      "artifactType": "domainEntity",
+      "artifactId": "Ship",
+      "handlerId": "structure.domainEntity",
+      "productionFile": "_102097_/l1/tideBoard/layer_3_domain/entities/ship.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_3_domain/entities/ship.test.ts",
       "cases": [
         {
-          "caseId": "registrarAtendimento.compile",
+          "caseId": "Ship.compile",
           "gate": "compile",
-          "mandatory": true,
-          "source": "structure compile gate",
-          "expectation": "registrarAtendimento.ts imports. A broken import is a failure, not an expected red.",
-          "preconditions": ["memory store", "no database"],
-          "synthetic": [],
+          "source": "domainEntity structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
           "actorId": "",
           "routine": "",
           "mutating": false,
@@ -279,161 +95,258 @@
             "forbiddenFields": [],
             "isolatedActorField": null
           },
-          "expectedFailure": null
-        },
-        {
-          "caseId": "registrarAtendimento.staleVersion",
-          "gate": "business",
+          "expectedFailure": null,
+          "runner": "module",
           "mandatory": true,
-          "source": "expectedVersion on update",
-          "expectation": "A write that sends a stale version is CONFLICT expectedVersion and does not save.",
-          "preconditions": ["consulta-1 version is 2", "caller sends expectedVersion 1"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 2,
-              "attendanceNote": ""
-            }
-          ],
-          "actorId": "professional-1",
-          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
-          "mutating": true,
-          "expect": {
-            "ok": false,
-            "status": 409,
-            "errorCode": "CONFLICT",
-            "ruleId": "expectedVersion",
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "registrarAtendimento.staleVersion",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
-        },
-        {
-          "caseId": "registrarAtendimento.noteRequired",
-          "gate": "business",
-          "mandatory": true,
-          "source": "attendanceNoteRequired",
-          "expectation": "Attending without a note is VALIDATION_ERROR attendanceNoteRequired.",
-          "preconditions": ["consulta-1 status is scheduled", "attendanceNote is empty"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "scheduled",
-              "version": 2,
-              "attendanceNote": ""
-            }
-          ],
-          "actorId": "professional-1",
-          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
-          "mutating": true,
-          "expect": {
-            "ok": false,
-            "status": 400,
-            "errorCode": "VALIDATION_ERROR",
-            "ruleId": "attendanceNoteRequired",
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "registrarAtendimento.noteRequired",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
-        },
-        {
-          "caseId": "registrarAtendimento.invalidTransition",
-          "gate": "business",
-          "mandatory": true,
-          "source": "consultationTransitionFlow",
-          "expectation": "Attending from noShow is VALIDATION_ERROR consultationTransitionFlow.",
-          "preconditions": ["consulta-1 status is noShow"],
-          "synthetic": [
-            {
-              "entity": "Consulta",
-              "id": "consulta-1",
-              "professionalId": "professional-1",
-              "patientId": "patient-1",
-              "scheduledAt": "2026-09-25T13:00:00.000Z",
-              "status": "noShow",
-              "version": 2,
-              "attendanceNote": ""
-            }
-          ],
-          "actorId": "professional-1",
-          "routine": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
-          "mutating": true,
-          "expect": {
-            "ok": false,
-            "status": 400,
-            "errorCode": "VALIDATION_ERROR",
-            "ruleId": "consultationTransitionFlow",
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": {
-            "caseId": "registrarAtendimento.invalidTransition",
-            "stage": "structure",
-            "errorCode": "USECASE_NOT_IMPLEMENTED",
-            "status": 501
-          }
+          "synthetic": []
         }
       ]
     },
     {
-      "scenarioId": "consultas_recepcionista",
-      "source": "controller contract and auth",
+      "scenarioId": "ShipRepository",
+      "source": "_102097_/l1/tideBoard/layer_2_application/ports/shipRepository.defs.ts",
+      "artifactType": "repositoryPort",
+      "artifactId": "ShipRepository",
+      "handlerId": "structure.repositoryPort",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/ports/shipRepository.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/ports/shipRepository.test.ts",
+      "cases": [
+        {
+          "caseId": "ShipRepository.compile",
+          "gate": "compile",
+          "source": "repositoryPort structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "accessScope",
+      "source": "_102097_/l1/tideBoard/layer_2_application/scope/accessScope.defs.ts",
+      "artifactType": "accessScope",
+      "artifactId": "accessScope",
+      "handlerId": "structure.accessScope",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/scope/accessScope.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/scope/accessScope.test.ts",
+      "cases": [
+        {
+          "caseId": "accessScope.compile",
+          "gate": "compile",
+          "source": "accessScope structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "authorityMap",
+      "source": "_102097_/l1/tideBoard/layer_1_external/auth/authorityMap.defs.ts",
+      "artifactType": "authorityMap",
+      "artifactId": "authorityMap",
+      "handlerId": "structure.authorityMap",
+      "productionFile": "_102097_/l1/tideBoard/layer_1_external/auth/authorityMap.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_1_external/auth/authorityMap.test.ts",
+      "cases": [
+        {
+          "caseId": "authorityMap.compile",
+          "gate": "compile",
+          "source": "authorityMap structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "createBerth",
+      "source": "_102097_/l1/tideBoard/layer_2_application/usecases/createBerth.defs.ts",
+      "artifactType": "usecase",
+      "artifactId": "createBerth",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/usecases/createBerth.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/usecases/createBerth.test.ts",
+      "cases": [
+        {
+          "caseId": "createBerth.compile",
+          "gate": "compile",
+          "source": "usecase structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "createBerth.reachesStub",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/createBerth.defs.ts#operation",
+          "expectation": "A valid call reaches the structure stub. Import, auth and database errors are not this red.",
+          "preconditions": [
+            "memory store",
+            "no database"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "createBerth.reachesStub",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "createShip",
+      "source": "_102097_/l1/tideBoard/layer_2_application/usecases/createShip.defs.ts",
+      "artifactType": "usecase",
+      "artifactId": "createShip",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/usecases/createShip.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/usecases/createShip.test.ts",
+      "cases": [
+        {
+          "caseId": "createShip.compile",
+          "gate": "compile",
+          "source": "usecase structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "createShip.reachesStub",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/createShip.defs.ts#operation",
+          "expectation": "A valid call reaches the structure stub. Import, auth and database errors are not this red.",
+          "preconditions": [
+            "memory store",
+            "no database"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "createShip.reachesStub",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "deck",
+      "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts",
       "artifactType": "httpController",
-      "artifactId": "consultas_recepcionista",
+      "artifactId": "deck",
       "handlerId": "structure.httpController",
-      "productionFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.ts",
-      "testFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_recepcionista.test.ts",
+      "productionFile": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.test.ts",
       "cases": [
         {
-          "caseId": "consultas_recepcionista.contract",
-          "gate": "contract",
-          "mandatory": true,
-          "source": "route input validation",
-          "expectation": "A create body without patientId is VALIDATION_ERROR before the usecase runs.",
-          "preconditions": ["patientId omitted"],
-          "synthetic": [],
-          "actorId": "recepcionista-1",
-          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
-          "mutating": false,
-          "expect": {
-            "ok": false,
-            "status": 400,
-            "errorCode": "VALIDATION_ERROR",
-            "ruleId": null,
-            "forbiddenFields": [],
-            "isolatedActorField": null
-          },
-          "expectedFailure": null
-        },
-        {
-          "caseId": "consultas_recepcionista.auth",
+          "caseId": "deck.auth.deckRoster",
           "gate": "auth",
-          "mandatory": true,
-          "source": "FORBIDDEN_ACTOR before the usecase",
-          "expectation": "An http caller with no authority is FORBIDDEN_ACTOR. The stub must not hide this.",
-          "preconditions": ["verifiedAuthorities is empty", "source is http"],
-          "synthetic": [],
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.deckRoster",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
           "actorId": "",
-          "routine": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+          "routine": "tideBoard.deck.deckRoster",
           "mutating": false,
           "expect": {
             "ok": false,
@@ -443,29 +356,26 @@
             "forbiddenFields": [],
             "isolatedActorField": null
           },
-          "expectedFailure": null
-        }
-      ]
-    },
-    {
-      "scenarioId": "consultas_profissional",
-      "source": "controller auth",
-      "artifactType": "httpController",
-      "artifactId": "consultas_profissional",
-      "handlerId": "structure.httpController",
-      "productionFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.ts",
-      "testFile": "_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers/consultas_profissional.test.ts",
-      "cases": [
-        {
-          "caseId": "consultas_profissional.auth",
-          "gate": "auth",
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
           "mandatory": true,
-          "source": "FORBIDDEN_ACTOR before the usecase",
-          "expectation": "An http caller with no authority is FORBIDDEN_ACTOR on the professional routes.",
-          "preconditions": ["verifiedAuthorities is empty", "source is http"],
-          "synthetic": [],
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.auth.sailIt",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/deck.defs.ts#tideBoard.deck.sailIt",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
           "actorId": "",
-          "routine": "agendaClinica.consultas_profissional.qryListConsulta",
+          "routine": "tideBoard.deck.sailIt",
           "mutating": false,
           "expect": {
             "ok": false,
@@ -475,7 +385,436 @@
             "forbiddenFields": [],
             "isolatedActorField": null
           },
-          "expectedFailure": null
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "deck.compile",
+          "gate": "compile",
+          "source": "httpController structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "listBerth",
+      "source": "_102097_/l1/tideBoard/layer_2_application/usecases/listBerth.defs.ts",
+      "artifactType": "usecase",
+      "artifactId": "listBerth",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/usecases/listBerth.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/usecases/listBerth.test.ts",
+      "cases": [
+        {
+          "caseId": "listBerth.compile",
+          "gate": "compile",
+          "source": "usecase structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "listBerth.reachesStub",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/listBerth.defs.ts#operation",
+          "expectation": "A valid call reaches the structure stub. Import, auth and database errors are not this red.",
+          "preconditions": [
+            "memory store",
+            "no database"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "listBerth.reachesStub",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "markSailed",
+      "source": "_102097_/l1/tideBoard/layer_2_application/usecases/markSailed.defs.ts",
+      "artifactType": "usecase",
+      "artifactId": "markSailed",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/usecases/markSailed.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/usecases/markSailed.test.ts",
+      "cases": [
+        {
+          "caseId": "markSailed.compile",
+          "gate": "compile",
+          "source": "usecase structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "markSailed.missingRecord",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/markSailed.defs.ts#operation",
+          "expectation": "An id that is not stored is NOT_FOUND. This is not the positive case.",
+          "preconditions": [
+            "memory store",
+            "no database"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 404,
+            "errorCode": "NOT_FOUND",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "markSailed.missingRecord",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "markSailed.reachesStub",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/markSailed.defs.ts#operation",
+          "expectation": "A valid call reaches the structure stub. Import, auth and database errors are not this red.",
+          "preconditions": [
+            "memory store",
+            "no database",
+            "existing record"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "markSailed.reachesStub",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "office",
+      "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts",
+      "artifactType": "httpController",
+      "artifactId": "office",
+      "handlerId": "structure.httpController",
+      "productionFile": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.test.ts",
+      "cases": [
+        {
+          "caseId": "office.auth.amendIt",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.amendIt",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
+          "actorId": "",
+          "routine": "tideBoard.office.amendIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.auth.berthIt",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.berthIt",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
+          "actorId": "",
+          "routine": "tideBoard.office.berthIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.auth.moorIt",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.moorIt",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
+          "actorId": "",
+          "routine": "tideBoard.office.moorIt",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.auth.tideList",
+          "gate": "auth",
+          "source": "_102097_/l1/tideBoard/layer_1_external/adapters/http/controllers/office.defs.ts#tideBoard.office.tideList",
+          "expectation": "An http caller with no authority is refused before the usecase.",
+          "preconditions": [
+            "verifiedAuthorities is empty",
+            "source is http"
+          ],
+          "actorId": "",
+          "routine": "tideBoard.office.tideList",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 403,
+            "errorCode": "FORBIDDEN_ACTOR",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "route",
+          "caller": {
+            "source": "http",
+            "authorities": []
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "office.compile",
+          "gate": "compile",
+          "source": "httpController structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        }
+      ]
+    },
+    {
+      "scenarioId": "updateBerth",
+      "source": "_102097_/l1/tideBoard/layer_2_application/usecases/updateBerth.defs.ts",
+      "artifactType": "usecase",
+      "artifactId": "updateBerth",
+      "handlerId": "structure.usecase",
+      "productionFile": "_102097_/l1/tideBoard/layer_2_application/usecases/updateBerth.ts",
+      "testFile": "_102097_/l1/tideBoard/layer_2_application/usecases/updateBerth.test.ts",
+      "cases": [
+        {
+          "caseId": "updateBerth.compile",
+          "gate": "compile",
+          "source": "usecase structure",
+          "expectation": "The emitted file imports. A broken import is a failure, not an expected red.",
+          "preconditions": [],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 0,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "expectedFailure": null,
+          "runner": "module",
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "updateBerth.missingRecord",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/updateBerth.defs.ts#operation",
+          "expectation": "An id that is not stored is NOT_FOUND. This is not the positive case.",
+          "preconditions": [
+            "memory store",
+            "no database"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": false,
+            "status": 404,
+            "errorCode": "NOT_FOUND",
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "updateBerth.missingRecord",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
+        },
+        {
+          "caseId": "updateBerth.reachesStub",
+          "gate": "business",
+          "source": "_102097_/l1/tideBoard/layer_2_application/usecases/updateBerth.defs.ts#operation",
+          "expectation": "A valid call reaches the structure stub. Import, auth and database errors are not this red.",
+          "preconditions": [
+            "memory store",
+            "no database",
+            "existing record"
+          ],
+          "actorId": "",
+          "routine": "",
+          "mutating": false,
+          "expect": {
+            "ok": true,
+            "status": 200,
+            "errorCode": null,
+            "ruleId": null,
+            "forbiddenFields": [],
+            "isolatedActorField": null
+          },
+          "runner": "module",
+          "expectedFailure": {
+            "caseId": "updateBerth.reachesStub",
+            "stage": "structure",
+            "errorCode": "USECASE_NOT_IMPLEMENTED",
+            "status": 501
+          },
+          "mandatory": true,
+          "synthetic": []
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "2026-09-25-m1-checkpoint-v1",
   "runId": "m1-04-structure",
-  "inputHash": "sha256:231922cf5b7c0c53773f8697006c94d6ac195caa46d884e530d00172e341a192",
+  "inputHash": "sha256:0568ac818f81aa30ca17362561a070b3f727151a90d3a64c8e8e71074add235c",
   "commit": "69adf1f",
   "stage": "structure",
   "handlerId": "structure.usecase",
@@ -9,21 +9,21 @@
   "finishedAt": "2026-09-25T12:00:01.000Z",
   "budgetMs": 1200000,
   "counts": {
-    "passed": 3,
-    "expectedRed": 8,
+    "passed": 5,
+    "expectedRed": 7,
     "failed": 0,
     "blocked": 0,
     "skipped": 0,
     "inconclusive": 0
   },
   "durationsMs": {
-    "total": 11
+    "total": 12
   },
   "ready": false,
   "accepted": true,
   "evidence": [
     {
-      "caseId": "createConsulta.compile",
+      "caseId": "createBerth.compile",
       "verdict": "passed",
       "errorCode": null,
       "status": 0,
@@ -31,7 +31,7 @@
       "detail": "passed"
     },
     {
-      "caseId": "createConsulta.creates",
+      "caseId": "createBerth.reachesStub",
       "verdict": "expectedRed",
       "errorCode": "USECASE_NOT_IMPLEMENTED",
       "status": 501,
@@ -39,15 +39,7 @@
       "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
     },
     {
-      "caseId": "createConsulta.duplicateSchedule",
-      "verdict": "expectedRed",
-      "errorCode": "USECASE_NOT_IMPLEMENTED",
-      "status": 501,
-      "durationMs": 1,
-      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
-    },
-    {
-      "caseId": "listConsulta.compile",
+      "caseId": "createShip.compile",
       "verdict": "passed",
       "errorCode": null,
       "status": 0,
@@ -55,7 +47,7 @@
       "detail": "passed"
     },
     {
-      "caseId": "listConsulta.lists",
+      "caseId": "createShip.reachesStub",
       "verdict": "expectedRed",
       "errorCode": "USECASE_NOT_IMPLEMENTED",
       "status": 501,
@@ -63,23 +55,7 @@
       "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
     },
     {
-      "caseId": "listConsulta.ownAppointments",
-      "verdict": "expectedRed",
-      "errorCode": "USECASE_NOT_IMPLEMENTED",
-      "status": 501,
-      "durationMs": 1,
-      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
-    },
-    {
-      "caseId": "listConsulta.receptionistProjection",
-      "verdict": "expectedRed",
-      "errorCode": "USECASE_NOT_IMPLEMENTED",
-      "status": 501,
-      "durationMs": 1,
-      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
-    },
-    {
-      "caseId": "registrarAtendimento.compile",
+      "caseId": "listBerth.compile",
       "verdict": "passed",
       "errorCode": null,
       "status": 0,
@@ -87,7 +63,7 @@
       "detail": "passed"
     },
     {
-      "caseId": "registrarAtendimento.staleVersion",
+      "caseId": "listBerth.reachesStub",
       "verdict": "expectedRed",
       "errorCode": "USECASE_NOT_IMPLEMENTED",
       "status": 501,
@@ -95,7 +71,15 @@
       "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
     },
     {
-      "caseId": "registrarAtendimento.noteRequired",
+      "caseId": "markSailed.compile",
+      "verdict": "passed",
+      "errorCode": null,
+      "status": 0,
+      "durationMs": 1,
+      "detail": "passed"
+    },
+    {
+      "caseId": "markSailed.missingRecord",
       "verdict": "expectedRed",
       "errorCode": "USECASE_NOT_IMPLEMENTED",
       "status": 501,
@@ -103,7 +87,31 @@
       "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
     },
     {
-      "caseId": "registrarAtendimento.invalidTransition",
+      "caseId": "markSailed.reachesStub",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "updateBerth.compile",
+      "verdict": "passed",
+      "errorCode": null,
+      "status": 0,
+      "durationMs": 1,
+      "detail": "passed"
+    },
+    {
+      "caseId": "updateBerth.missingRecord",
+      "verdict": "expectedRed",
+      "errorCode": "USECASE_NOT_IMPLEMENTED",
+      "status": 501,
+      "durationMs": 1,
+      "detail": "expected red at structure: USECASE_NOT_IMPLEMENTED status 501"
+    },
+    {
+      "caseId": "updateBerth.reachesStub",
       "verdict": "expectedRed",
       "errorCode": "USECASE_NOT_IMPLEMENTED",
       "status": 501,

@@ -57,12 +57,13 @@ function call(definition: M1Definition, stage: 'structure' | 'implement'): Handl
   };
 }
 
-void test('the v1 markers are the handler usecaseId, contractRefs and routeProjections; a v2 usecaseId is not one', () => {
+void test('the v1 markers are the handler usecaseId and contractRefs; a v2 usecaseId is not one', () => {
   assert.equal(isDefV1(listBuoyPending.data), false);
   assert.equal(typeof listBuoyPending.data.usecaseId, 'string');
   assert.equal(isDefV1(deskController.data), false);
   assert.equal(isDefV1(v1Usecase.data), true);
-  assert.equal(isDefV1(projectedUsecase.data), true);
+  // routeProjections is refused by the l1Defs schema before the gate (m1_41 c1), so it is not a gate marker.
+  assert.equal(isDefV1(projectedUsecase.data), false);
   assert.equal(isDefV1(v1Controller.data), true);
 });
 

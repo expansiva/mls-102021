@@ -276,7 +276,6 @@ export async function emitController(
   definition: M1Definition,
   output: string,
   read: StructureRead,
-  moduleDefinitions: readonly unknown[] = [],
 ): Promise<EmitResult | EmitFailure> {
   const scopeDep = definition.dependencies.find(path => path.endsWith('/accessScope.defs.ts'));
   if (!scopeDep) return { code: 'GRANT_UNREAD', detail: `${definition.artifactId} has no access scope dependency.` };

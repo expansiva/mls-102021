@@ -265,8 +265,8 @@ async function load(edit: (defPath: string, source: string) => string = (_ref, s
   const modules = moduleDefs();
   const sources = new Map<string, string>();
   for (const [id, ref, definition] of units) sources.set(ref, ok(await emitBehavior(id, definition, outputPathFromDefPath(ref), read, modules)).source);
-  sources.set(CTRL('desk'), ok(await emitController(desk, outputPathFromDefPath(CTRL('desk')), read, modules)).source);
-  sources.set(CTRL('round'), ok(await emitController(round, outputPathFromDefPath(CTRL('round')), read, modules)).source);
+  sources.set(CTRL('desk'), ok(await emitController(desk, outputPathFromDefPath(CTRL('desk')), read)).source);
+  sources.set(CTRL('round'), ok(await emitController(round, outputPathFromDefPath(CTRL('round')), read)).source);
   const dir = mkdtempSync(join(tmpdir(), 'm1-26-'));
   const fileOf = (qualified: string) => join(dir, qualified.replace(`${P}/`, ''));
   for (const [ref, source] of sources) {

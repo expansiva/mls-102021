@@ -107,7 +107,7 @@ void test('the all-required seed generates byte for byte what it generated befor
     const type = definition.artifactType;
     if (type === 'usecase') measured.set(`s ${rel}`, hash(await emitUsecase(definition, output, read), rel));
     if (type === 'requestService') measured.set(`s ${rel}`, hash(await emitRequestService(definition, output, read, modules, 'structure'), rel));
-    if (type === 'httpController') measured.set(`s ${rel}`, hash(await emitController(definition, output, read, modules), rel));
+    if (type === 'httpController') measured.set(`s ${rel}`, hash(await emitController(definition, output, read), rel));
     if (BEHAVIOR.has(type)) measured.set(`i ${rel}`, hash(await emitBehavior(`implement.${type}`, definition, output, read, modules), rel));
   }
   assert.deepEqual([...measured].sort(), [...PINNED].sort());

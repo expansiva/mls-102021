@@ -438,7 +438,7 @@ async function emitAt(m: Module, defPath: string): Promise<string> {
   const definition = m.defs.get(defPath);
   if (!definition) throw new Error(defPath);
   const output = outputPathFromDefPath(defPath);
-  if (definition.artifactType === 'httpController') return ok(await emitController(definition, output, reader(m), m.list)).source;
+  if (definition.artifactType === 'httpController') return ok(await emitController(definition, output, reader(m))).source;
   return ok(await emitBehavior(`implement.${definition.artifactType}`, definition, output, reader(m), m.list)).source;
 }
 
