@@ -530,3 +530,31 @@ void test('a transition-only entity port also declares the list its M1 body load
   assert.deepEqual(port.methods.map(method => method.name).sort(), ['list', 'transition']);
   assert.deepEqual(build.adapters[0].methods.map(method => method.name), port.methods.map(method => method.name));
 });
+
+void test('a create-only entity with a unique key declares the list its M1 body checks the key by (t1_09 r3p6)', () => {
+  const entities = {
+    Note: {
+      ...noteEntity.Note,
+      uniqueKeys: [['code']],
+      record: { fields: { ...noteEntity.Note.record.fields, code: { type: 'string', required: true } } },
+    },
+  };
+  const build = buildD1Persistence(planned({
+    moduleName: 'sampleModule',
+    entityId: 'Note',
+    tableId: 'note',
+    portId: 'NoteRepository',
+    entities,
+    operations: ['create'],
+    uniqueKeys: [['code']],
+  }));
+  assert.equal(build.ok, true, JSON.stringify(build.problems));
+  const table = build.tables[0].definition!.data as unknown as D1TableData;
+  assert.deepEqual(table.uniqueKeys, [['code']]);
+  assert.deepEqual(build.ports[0].methods.map(method => method.name).sort(), ['create', 'list']);
+
+  const plain = buildD1Persistence(planned({
+    moduleName: 'sampleModule', entityId: 'Note', tableId: 'note', portId: 'NoteRepository', entities: noteEntity, operations: ['create'],
+  }));
+  assert.deepEqual(plain.ports[0].methods.map(method => method.name), ['create']);
+});

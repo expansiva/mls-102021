@@ -23,7 +23,7 @@ import {
   readDefinition,
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { isL1Operation, L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { isL1Operation, L1_OPERATIONS, portReadsFor, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
@@ -258,6 +258,28 @@ export async function emitBehavior(
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a behavior body.` };
 }
 
+/** The port def must declare the reads this body calls (portReadsFor, the same source as the D1 port plan). */
+async function portReadMissing(
+  definition: M1Definition,
+  operation: L1Operation,
+  uniqueKeys: readonly (readonly string[])[],
+  read: StructureRead,
+): Promise<EmitFailure | null> {
+  const needed = portReadsFor(operation, { uniqueKeys });
+  if (needed.length === 0) return null;
+  const portRef = definition.dependencies.find(path => path.includes('/layer_2_application/ports/'));
+  if (!portRef) return null;
+  const port = await loadDefinition(portRef, read);
+  if ('code' in port) return port;
+  const methods = Array.isArray(port.data.methods) ? port.data.methods.filter(isRecord).map(method => text(method.name)) : [];
+  const missing = needed.filter(name => !methods.includes(name));
+  if (missing.length === 0) return null;
+  return {
+    code: 'PORT_READ_MISSING',
+    detail: `${definition.artifactId} ${operation} reads the row by ${missing.join(', ')}, and ${port.artifactId} does not declare it.`,
+  };
+}
+
 async function memoryUsecase(
   definition: M1Definition,
   output: string,
@@ -284,6 +306,8 @@ async function memoryUsecase(
   const keys = operation === 'create' || operation === 'update' ? await readUniqueKeys(definition, read) : [];
   if ('code' in keys) return keys;
   const applicableKeys = operation === 'update' ? keys.filter(columns => columns.every(column => contract.allowedInputPaths.includes(column))) : keys;
+  const unread = isL1Operation(operation) ? await portReadMissing(definition, operation, applicableKeys, read) : null;
+  if (unread) return unread;
   const ruleId = constraintRuleId(definition);
   if (applicableKeys.length > 0 && !ruleId) {
     return { code: 'UNIQUE_RULE_UNNAMED', detail: `${definition.artifactId} enforces a storage constraint with no rule id.` };

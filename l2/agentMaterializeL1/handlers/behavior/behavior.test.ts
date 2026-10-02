@@ -1216,3 +1216,27 @@ void test('a memory port gets exactly the operations its def declares, and a mis
   assert.equal('code' in refused && refused.code, 'STUB_SHAPE');
   assert.match('detail' in refused ? refused.detail : '', /declares update and no memory body was written/);
 });
+
+void test('a create that checks a unique key needs list on its port, read from the same source as D1 (t1_09 r3p6)', async () => {
+  const m = build(BASE);
+  const { n, refs, ids } = m;
+  const port = m.defs.get(refs.port);
+  assert.ok(port);
+  const create = defOf(m, ids.create);
+  const setMethods = (methods: unknown[]) => {
+    port.data = { ...port.data, methods };
+    m.texts.set(refs.port, `export const definition = ${JSON.stringify(port)} as const;\n`);
+  };
+
+  setMethods([{ name: 'create', params: [n.Entity], returns: n.Entity }]);
+  const refused = await emitBehavior('implement.usecase', create.definition, outputPathFromDefPath(create.defPath), reader(m), m.list);
+  assert.equal('code' in refused && refused.code, 'PORT_READ_MISSING', JSON.stringify(refused));
+  assert.match('detail' in refused ? refused.detail : '', /reads the row by list/);
+
+  setMethods([{ name: 'create', params: [n.Entity], returns: n.Entity }, { name: 'list', params: [`${n.Entity}Filter`], returns: `${n.Entity}[]` }]);
+  const source = ok(await emitBehavior('implement.usecase', create.definition, outputPathFromDefPath(create.defPath), reader(m), m.list)).source;
+  assert.match(source, /\.list\(/);
+  const portSource = await emit(m, `${n.Entity}Repository`);
+  const problems = compile(m, [[refs.entity, await emit(m, n.Entity)], [refs.port, portSource], [create.defPath, source]]);
+  assert.equal(problems, '', problems);
+});

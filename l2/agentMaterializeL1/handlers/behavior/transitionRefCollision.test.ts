@@ -136,7 +136,8 @@ void test('colliding aprovar keeps each entity transition from P1 through planTr
       data: {
         entityId: definition.data.entityId,
         interfaceName: `${definition.data.entityId}Repository`,
-        methods: [{ name: 'transition', params: ['row', 'transitionId'], returns: 'row' }],
+        // As persistence40 plans it: the transition body loads the row by list (portReadsFor).
+        methods: [{ name: 'list', params: ['rowFilter'], returns: 'row[]' }, { name: 'transition', params: ['row', 'transitionId'], returns: 'row' }],
       },
     };
     const read = async (ref: string) => {

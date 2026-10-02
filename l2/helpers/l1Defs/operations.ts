@@ -13,11 +13,8 @@ export const L1_OPERATION_TRAITS: Record<L1Operation, { read: boolean; write: bo
   custom: { read: false, write: false, addressesRecord: false },
 };
 
-/**
- * Port reads the M1 body of each operation calls besides its own method (t1_09 r3): update and transition
- * load the current row through list. The port def declares them, so a transition-only entity still compiles.
- */
-export const L1_OPERATION_PORT_READS: Record<L1Operation, readonly L1Operation[]> = {
+/** Port reads the M1 body of each operation calls besides its own method: update and transition load the row by list. */
+const OPERATION_PORT_READS: Record<L1Operation, readonly L1Operation[]> = {
   list: [],
   get: [],
   create: [],
@@ -26,6 +23,19 @@ export const L1_OPERATION_PORT_READS: Record<L1Operation, readonly L1Operation[]
   delete: [],
   custom: [],
 };
+
+/**
+ * The one source for the reads a port declares for an operation (t1_09 r3, r3p6), read by the D1 port plan
+ * and by the M1 usecase body: the operation's own reads, and list for a create that checks unique keys.
+ */
+export function portReadsFor(
+  operation: L1Operation,
+  entity: { uniqueKeys: readonly (readonly string[])[] },
+): L1Operation[] {
+  const reads = [...OPERATION_PORT_READS[operation]];
+  if (operation === 'create' && entity.uniqueKeys.length > 0 && !reads.includes('list')) reads.push('list');
+  return reads;
+}
 
 export function isL1Operation(value: string): value is L1Operation {
   return (L1_OPERATIONS as readonly string[]).includes(value);

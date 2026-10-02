@@ -17,7 +17,7 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild, type D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { L1_OPERATIONS, L1_OPERATION_PORT_READS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, portReadsFor, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_DETAILS_COLUMN,
   D1_PERSISTENCE_ACTIONS,
@@ -208,7 +208,7 @@ function planEntity(
 
   const primaryKey = primaryKeyOf(entityId, body, leaves, problems, normalizations, blocked);
   if (!primaryKey || blocked.has(entityId)) return;
-  const methods = methodsFor(entityId, request, problems, normalizations, blocked);
+  const methods = methodsFor(entityId, request, problems, normalizations, blocked, keys);
   const bindings = bindingsFor(entityId, leaves, primaryKey, keys, problems, normalizations, blocked);
   if (!methods || !bindings || blocked.has(entityId)) return;
   const indexes = indexesFor(physical, keys, leaves, primaryKey, problems, normalizations);
@@ -566,6 +566,7 @@ function methodsFor(
   problems: D1PersistenceProblem[],
   normalizations: D1PersistenceNormalization[],
   blocked: Set<string>,
+  uniqueKeys: readonly (readonly string[])[],
 ): D1PortMethod[] | null {
   const selected = new Set<Operation>();
   let failed = false;
@@ -597,9 +598,9 @@ function methodsFor(
     blocked.add(entityId);
     return null;
   }
-  // The reads the body of a selected operation calls are part of the port (update and transition load by list).
+  // The reads the body of a selected operation calls are part of the port (same source as the M1 body).
   for (const operation of [...selected]) {
-    for (const read of L1_OPERATION_PORT_READS[operation]) {
+    for (const read of portReadsFor(operation, { uniqueKeys })) {
       if ((OPERATIONS as readonly string[]).includes(read)) selected.add(read as Operation);
     }
   }
