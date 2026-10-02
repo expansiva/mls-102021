@@ -25,6 +25,7 @@ export const PHASE_OF_TYPE: Record<string, D1StepId> = {
   repositoryAdapter: 'persistence40',
   usecase: 'usecases50',
   httpController: 'controllers60',
+  requestService: 'controllers60',
   accessScope: 'support70',
   authorityMap: 'support70',
   repositoryRegistration: 'support70',

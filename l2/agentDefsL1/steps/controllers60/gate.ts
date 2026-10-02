@@ -9,6 +9,7 @@ import {
   futureOutputPath,
   pipelineId,
   qualifyDefPath,
+  requestServiceDefPath,
   skillPaths,
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
@@ -573,7 +574,7 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
       selectedCounts,
     });
     problems.push(...pageProblems);
-    const defPath = `l1/${request.moduleName}/layer_2_application/requests/${contract.pageId}.defs.ts`;
+    const defPath = requestServiceDefPath(request.moduleName, contract.pageId);
     const item: D1RequestServiceItem = { pageId: contract.pageId, defPath, requests: built.rows, definition: null };
     if (!isSafeToken(contract.pageId)) {
       error(problems, 'PAGE_ID', contract.pageId, `Page ${contract.pageId} is not a safe token. No request service file was named.`);
@@ -702,7 +703,7 @@ function pipelineFor(request: D1ControllerRequest, item: D1ControllerItem): D1Pi
   const qualified = qualifyDefPath(request.project, item.defPath);
   const dependsOn: string[] = [];
   const dependsFiles: string[] = [];
-  const serviceLogical = `l1/${request.moduleName}/layer_2_application/requests/${item.pageId}.defs.ts`;
+  const serviceLogical = requestServiceDefPath(request.moduleName, item.pageId);
   dependsOn.push(pipelineId(request.project, request.moduleName, 'requestService', item.pageId));
   dependsFiles.push(qualifyDefPath(request.project, serviceLogical));
   const scopeLogical = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;

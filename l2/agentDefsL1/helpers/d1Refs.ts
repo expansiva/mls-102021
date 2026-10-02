@@ -31,7 +31,7 @@ export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> 
   table: ['domainEntity'],
   repositoryAdapter: ['repositoryPort', 'table'],
   usecase: ['domainEntity', 'repositoryPort', 'accessScope', 'valueObject'],
-  httpController: ['usecase', 'accessScope', 'authorityMap'],
+  httpController: ['usecase', 'requestService', 'accessScope', 'authorityMap'],
   requestService: ['usecase'],
   accessScope: [],
   authorityMap: ['accessScope'],
@@ -126,6 +126,11 @@ export function pipelineId(project: number, moduleName: string, type: string, ow
 
 export function qualifyDefPath(project: number, logicalPath: string): string {
   return `_${project}_/${logicalPath}`;
+}
+
+/** Logical path of the page request service. input20 inventories it; controllers60 writes it. */
+export function requestServiceDefPath(moduleName: string, pageId: string): string {
+  return `l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`;
 }
 
 export function futureOutputPath(defPath: string): string {

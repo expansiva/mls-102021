@@ -32,6 +32,7 @@ import {
   type D1SelectedUsecase,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
 
@@ -450,16 +451,31 @@ function planFiles(input: {
       const usecase = input.usecases.find(item => item.usecaseId === usecaseId);
       return usecase ? `usecase:${usecase.identity}` : '';
     }).filter(Boolean)));
+    const serviceId = `requestService:${page.pageId}`;
+    const servicePath = requestServiceDefPath(moduleName, page.pageId);
+    const pageAction = mixed
+      ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`)
+      : actionFor(status, defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`);
+    const serviceAction = mixed
+      ? recomposeOrConflict(servicePath, input.present, input.previous, input.receipts, input.problems, serviceId)
+      : actionFor(status, servicePath, input.present, input.previous, input.receipts, input.problems, serviceId);
+    add({
+      id: serviceId,
+      artifactType: 'requestService',
+      defPath: servicePath,
+      action: serviceAction,
+      identity: page.pageId,
+      ownerRefs: page.routes.map(route => `endpoint:${route}`),
+      dependsOn: usecaseIds,
+    });
     add({
       id: `controller:${page.pageId}`,
       artifactType: 'httpController',
       defPath,
-      action: mixed
-        ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`)
-        : actionFor(status, defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`),
+      action: pageAction,
       identity: page.pageId,
       ownerRefs: page.routes.map(route => `endpoint:${route}`),
-      dependsOn: [...usecaseIds, ...(input.grants.length ? [scopeId] : [])],
+      dependsOn: [serviceId, ...usecaseIds, ...(input.grants.length ? [scopeId] : [])],
     });
   }
 

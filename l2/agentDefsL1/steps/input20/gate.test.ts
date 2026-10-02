@@ -149,6 +149,13 @@ void test('the v2 seed is cut by the contract routes, not by backend endpoints',
     'createMovimentacaoEstoque', 'createProduto', 'listMovimentacaoEstoque', 'listProduto',
   ]);
   assert.equal(snapshot.files.filter(file => file.artifactType === 'httpController').length, 2);
+  assert.equal(snapshot.files.filter(file => file.artifactType === 'requestService').length, 2);
+  for (const pageId of ['movimentacoes', 'produtos']) {
+    const service = snapshot.files.find(file => file.id === `requestService:${pageId}`);
+    const controller = snapshot.files.find(file => file.id === `controller:${pageId}`);
+    assert.equal(service?.defPath, `l1/${MODULE}/layer_2_application/requests/${pageId}.defs.ts`);
+    assert.equal(controller?.dependsOn.includes(`requestService:${pageId}`), true);
+  }
   assert.equal(codes(snapshot, 'error').includes('DAG_CYCLE'), false);
   for (const file of snapshot.files) {
     for (const dep of file.dependsOn) assert.ok(snapshot.files.some(item => item.id === dep), `${file.id} -> ${dep}`);
