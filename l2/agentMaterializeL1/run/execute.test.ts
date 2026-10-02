@@ -14,7 +14,7 @@ import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CATALOG_SCHEMA, M1_STUB_ERROR, M1_STUB_STATUS, parseCatalog, renderMonitorCatalog, renderScenarioTest, testFileFor, type M1ScenarioCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog, M1_CATALOG_RECIPE } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
-import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import type { M1Observation } from '/_102021_/l2/agentMaterializeL1/testing/verify.js';
 import { BASE, derive, fixture } from '/_102021_/l2/agentMaterializeL1/testing/oracleModule.js';
 import {

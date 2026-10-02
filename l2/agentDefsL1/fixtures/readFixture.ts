@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import type { D1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';

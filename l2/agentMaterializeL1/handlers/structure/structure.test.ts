@@ -19,7 +19,7 @@ import { classifyCase, verifyBatch, type M1Observation } from '/_102021_/l2/agen
 import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { decideRoute } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { runStructure, structureHandlerIds, structureRunners } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
-import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

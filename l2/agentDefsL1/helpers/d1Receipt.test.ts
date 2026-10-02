@@ -12,7 +12,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { pendingDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { pipelineFile, plannerPipelineFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { hashesAgree } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { hashesAgree } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import {
   commitD1Unit,

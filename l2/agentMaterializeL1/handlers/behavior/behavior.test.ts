@@ -22,7 +22,7 @@ import { emitController, recordFieldFromGrant } from '/_102021_/l2/agentMaterial
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { createMemoryDataRuntime } from '/_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.js';
 import { runBehavior } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/runners.js';
-import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { copyFixtureSources, resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

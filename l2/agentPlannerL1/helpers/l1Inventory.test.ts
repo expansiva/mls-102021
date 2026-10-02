@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

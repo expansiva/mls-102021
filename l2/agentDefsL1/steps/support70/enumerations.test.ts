@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { projectEnumerations, type D1EnumSnapshot } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
-import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

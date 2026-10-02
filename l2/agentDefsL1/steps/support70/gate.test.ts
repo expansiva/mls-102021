@@ -18,7 +18,7 @@ import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_1020
 import { assembleD1Support, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitRegistry, emitScope } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
-import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import type { D1SupportEmit, D1SupportProblem } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 interface SerializedGrant {

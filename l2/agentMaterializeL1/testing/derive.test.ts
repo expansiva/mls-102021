@@ -10,7 +10,7 @@ import { parseDefinitionSource, type M1Definition } from '/_102021_/l2/helpers/l
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { M1_CATALOG_SCHEMA, M1_CATALOG_SCHEMA_V11, M1_EXISTING_RECORD, parseCatalog } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { catalogBytes, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
-import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 
 const AGENDA = join(dirname(fileURLToPath(import.meta.url)), '../register/fixtures/agendaClinica-8d8729d');
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), `../../../../mls-${102047}`);

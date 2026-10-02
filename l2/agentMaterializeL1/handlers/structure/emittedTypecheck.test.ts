@@ -29,7 +29,7 @@ import { simulate, type SimulatedUnit } from '/_102021_/l2/agentMaterializeL1/si
 import { runStructure, structureHandlerIds } from '/_102021_/l2/agentMaterializeL1/handlers/structure/runners.js';
 import { catalogWithheld, deriveCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import { moduleSpecifier, renderMonitorCatalog, renderScenarioTest } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { fixtureLogicalRel } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');

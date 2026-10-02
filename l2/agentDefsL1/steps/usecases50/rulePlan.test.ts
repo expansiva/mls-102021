@@ -17,7 +17,7 @@ import {
   type RulePlanInput,
   type RulePlanTransition,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
-import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const CLINIC = path.join(AGENDA_CLINICA_F35E28A, 'l4/agendaClinica');

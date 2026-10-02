@@ -11,7 +11,7 @@ import { fingerprintProject, logicalDefPath, type D1UnitProgress } from '/_10202
 import { futureOutputPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { artifactFile, declaredDependencyPaths, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';

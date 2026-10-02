@@ -19,7 +19,7 @@ import {
   type L5FileFact,
   type ReconcileL5Input,
 } from '/_102021_/l2/agentMaterializeL1/register/reconcileL5.js';
-import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { fixtureLogicalRel, resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 
 const PROJECT = 109014;
 const MODULE = 'desk';

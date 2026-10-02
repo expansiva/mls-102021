@@ -11,7 +11,7 @@ import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { bindMdm, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { resolveFixtureFile } from '/_102021_/l2/agentDefsL1/fixtures/fixtureDisk.js';
+import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const BENCH = AGENDA_CLINICA_F35E28A;

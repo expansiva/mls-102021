@@ -13,7 +13,7 @@ import {
   type M1Status,
   type MaterializationReceipt,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/agentDefsL1/helpers/d1Identity.js';
+import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { M1_RECIPE_VERSION, recipeForStage } from '/_102021_/l2/agentMaterializeL1/state/maintain.js';
 import {
   decideMaintenance,
