@@ -57,7 +57,7 @@ import {
 export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v14';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v15';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -320,12 +320,14 @@ async function memoryUsecase(
   if (sources.missing) return { code: 'CREATE_SOURCE_MISSING', detail: `${definition.artifactId}: ${sources.missing} is required by the entity and has no input nor server assignment.` };
   const domain = contractRefs.contractRefs.length === 0;
   const outs = outputNames(definition);
+  // v2: no contract output; the update and the transition return the stub's own output type.
+  const returnType = domain ? stubReturnType(stub.source) : '';
   const body = operation === 'create'
     ? createBody(entity, entityName, camel(portName), keys, ruleId, inputs, { required: new Set(contract.requiredInputPaths), nullable: new Set(contract.nullableInputPaths) }, sources.containers, lifecycle, domain ? outs : [])
     : operation === 'update'
-      ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition)
+      ? updateBody(entity, entityName, camel(portName), applicableKeys, ruleId, updateInputs, selectorField(definition), precondition, returnType)
       : transition
-        ? transitionBody(entityName, camel(portName), transition)
+        ? transitionBody(entityName, camel(portName), transition, returnType)
         : listBody(entity, entityName, camel(portName), new Set(pageFilterPaths.length ? pageFilterPaths : [...inputs]), domain && outs.includes('items') && outs.includes('hasMore'));
   const replaced = stub.source.replace(
     /void input;\n  void ctx;\n(?:  void ports;\n)?  throw new AppError\('USECASE_NOT_IMPLEMENTED'[\s\S]*?\);/,
@@ -447,7 +449,7 @@ async function memoryMdm(definition: M1Definition, output: string, read: Structu
   if ('code' in entity) return entity;
   const subtype = await ontologySubtype(definition, read);
   const precondition = operation === 'update' ? await confirmedPrecondition(definition, read) : '';
-  const returnType = /: Promise<([^>]+)>/.exec(stub.source)?.[1] ?? 'unknown';
+  const returnType = stubReturnType(stub.source);
   const body = operation === 'update' && !precondition
     ? '  void input;\n  throw new AppError(\'PRECONDITION_UNDECLARED\', \'Write precondition is not declared.\', 409);'
     : mdmBody(definition, entity, subtype, precondition, returnType);
@@ -951,6 +953,8 @@ function updateBody(
   inputs: ReadonlySet<string>,
   selector: string,
   precondition: string,
+  /** v2 (no contract): the stub output type the saved row is returned as. Empty keeps the contract return. */
+  returnType = '',
 ): string {
   const tree = fieldTree(entity);
   const platform = platformRoots(entity);
@@ -1016,7 +1020,7 @@ function updateBody(
     '  }',
   ].join('\n'));
   return [
-    `  const body = input as ${entityName};`,
+    returnType ? '  const body = input;' : `  const body = input as ${entityName};`,
     `  const found = await ports.${binding}.list({ ${selector}: body.${selector} });`,
     '  const current = found[0];',
     '  if (!current) throw new AppError(\'NOT_FOUND\', \'Record not found.\', 404);',
@@ -1026,7 +1030,7 @@ function updateBody(
     ...assigns,
     ...bump,
     ...checks,
-    `  return ports.${binding}.update(next);`,
+    returnType ? `  return (await ports.${binding}.update(next)) as ${returnType};` : `  return ports.${binding}.update(next);`,
   ].join('\n');
 }
 
@@ -1061,7 +1065,7 @@ interface TransitionPlan {
   own: { field: string; always: boolean };
 }
 
-function transitionBody(entityName: string, binding: string, plan: TransitionPlan): string {
+function transitionBody(entityName: string, binding: string, plan: TransitionPlan, returnType = ''): string {
   const payload = plan.payload.length > 0
     ? [
       '  const filled = (value: unknown): boolean => value !== undefined && value !== null && value !== \'\';',
@@ -1119,7 +1123,9 @@ function transitionBody(entityName: string, binding: string, plan: TransitionPla
     ...version,
     ...writes,
     ...effects,
-    `  return ports.${binding}.${plan.method}(next as unknown as ${entityName}, ${JSON.stringify(plan.transitionId)});`,
+    returnType
+      ? `  return (await ports.${binding}.${plan.method}(next as unknown as ${entityName}, ${JSON.stringify(plan.transitionId)})) as ${returnType};`
+      : `  return ports.${binding}.${plan.method}(next as unknown as ${entityName}, ${JSON.stringify(plan.transitionId)});`,
   ].join('\n');
 }
 
@@ -1684,6 +1690,11 @@ function nodeAt(root: FieldNode, path: string): FieldNode | undefined {
 }
 
 
+
+/** The output type the structure stub declares for the usecase (`Promise<T>`). */
+function stubReturnType(source: string): string {
+  return /: Promise<([^>]+)>/.exec(source)?.[1] ?? 'unknown';
+}
 
 function done(result: EmitResult): EmitResult {
   return { ...result, runsStub: false, source: finish(result.source) };
