@@ -114,3 +114,21 @@ void test('m1_33: control: a value import of node or l1 turns the guard red; imp
   ];
   for (const line of clean) assert.deepEqual(scan(ENTRY, injected(line)).violations, [], line);
 });
+
+/** m1_44: host capabilities of collab-msg that the browser stor lacks. Removal goes through libStor.deleteFile. */
+const HOST_ONLY = /localStor\.deleteFile|listFolder|diskPath/;
+
+function hostOnlyMentions(readSource: (file: string) => string): string[] {
+  const { reached } = scan(ENTRY, readSource);
+  return [...reached].filter(file => !file.endsWith('.test.ts') && HOST_ONLY.test(readSource(file))).map(file => file.slice(ROOT.length + 1));
+}
+
+void test('m1_44: no file reachable from the agent entry cites localStor.deleteFile, listFolder or diskPath', () => {
+  assert.equal(scan(ENTRY, disk).reached.has(join(ROOT, 'mls-102027', 'l2', 'libStor.ts')), true, 'libStor is reached');
+  assert.deepEqual(hostOnlyMentions(disk), []);
+  const studioHost = join(HERE, 'studioHost.ts');
+  for (const line of ['await mls.stor.localStor.deleteFile(stored);', 'mls.stor.localStor.listFolder(1, 1, "");', 'mls.stor.diskPath(file);']) {
+    const injected = (file: string): string => file === studioHost ? `${disk(file)}\n${line}\n` : disk(file);
+    assert.deepEqual(hostOnlyMentions(injected), ['mls-102021/l2/agentMaterializeL1/studioHost.ts'], line);
+  }
+});

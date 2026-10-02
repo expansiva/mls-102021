@@ -122,10 +122,9 @@ function studioFiles(project: number, io: MaterializeReadIo): LocalFiles {
       const file = writeTarget(project, ref);
       const stored = file ? lookup(file) : null;
       if (!stored || stored.status === 'deleted') return false;
-      // Host capability: collab-msg unlinks the file. Without it the stor keeps the entry as deleted.
-      const localStor = mls.stor.localStor as unknown as { deleteFile?: (file: StorFile) => unknown };
-      if (typeof localStor.deleteFile === 'function') await localStor.deleteFile(stored);
-      else stored.status = 'deleted';
+      // The Studio removal (libStor): a new file leaves the stor, any other is persisted to the trash.
+      const { deleteFile } = await import('/_102027_/l2/libStor.js');
+      await deleteFile(stored as mls.stor.IFileInfo);
       return true;
     },
     async createExclusive(ref: string, body: string): Promise<boolean> {

@@ -330,10 +330,48 @@ void test('m1_32: the claim/release sequence gives the expected verdicts with an
   const browser = installStudio(PROJECT);
   const key = fileKey({ project: PROJECT, level: 1, folder: writerRef(MODULE).slice(3, writerRef(MODULE).lastIndexOf('/')), shortName: 'writer', extension: '.json' });
   const studio = await sequence(createStudioHost(PROJECT), () => !!browser.files[key] && browser.files[key].status !== 'deleted');
-  // A stor with no localStor.deleteFile (browser): release marks the entry deleted.
-  const bare = installStudio(PROJECT);
-  delete (mls.stor.localStor as unknown as { deleteFile?: unknown }).deleteFile;
+  // A stor with no localStor.deleteFile (browser): release goes through libStor.deleteFile and persists.
+  const bare = installBrowserStor();
   const trash = await sequence(createStudioHost(PROJECT), () => !!bare.files[key] && bare.files[key].status !== 'deleted');
   assert.deepEqual(studio, expected);
   assert.deepEqual(trash, expected, 'without deleteFile');
+});
+
+/** installStudio without localStor.deleteFile, plus the mls globals libStor.deleteFile reads. */
+function installBrowserStor(): TestHost {
+  const host = installStudio(PROJECT);
+  delete (mls.stor.localStor as unknown as { deleteFile?: unknown }).deleteFile;
+  const globals = mls as unknown as Record<string, unknown> & { stor: Record<string, unknown> };
+  globals.editor = { models: {}, getKeyModel: (project: number, shortName: string, folder: string, level: number) => `${project}_${level}_${folder}/${shortName}` };
+  globals.common = { crc: { crc32: (text: string) => text.length } };
+  globals.stor.getKeyToFiles = (project: number, level: number, shortName: string, folder: string, extension: string) => fileKey({ project, level, folder, shortName, extension });
+  return host;
+}
+
+void test('m1_44: without localStor.deleteFile the release persists: a new file leaves the stor, a saved one is written to the trash', async () => {
+  const host = installBrowserStor();
+  const studio = createStudioHost(PROJECT);
+  const writerKey = fileKey({ project: PROJECT, level: 1, folder: writerRef(MODULE).slice(3, writerRef(MODULE).lastIndexOf('/')), shortName: 'writer', extension: '.json' });
+  const lockKey = fileKey({ project: PROJECT, level: 5, folder: '', shortName: 'm1-project-lock', extension: '.json' });
+  const writesOf = (key: string): number => host.writes.filter(item => item === key).length;
+
+  // New file (claimed in this session): release removes the key from mls.stor.files through setContent.
+  assert.equal(await studio.writer!.claim(MODULE, 'a'), true);
+  assert.equal(host.files[writerKey]?.status, 'new');
+  const beforeWriter = writesOf(writerKey);
+  await studio.writer!.release(MODULE, 'a');
+  assert.equal(writerKey in host.files, false, 'a new writer.json leaves mls.stor.files');
+  assert.equal(writesOf(writerKey), beforeWriter + 1, 'the removal reaches localStor.setContent');
+
+  // Saved file (as after a reload): release writes the trash content and marks the entry deleted.
+  assert.equal(await studio.l5!.claim(PROJECT, 'a'), true);
+  const lock = host.files[lockKey];
+  lock.status = 'changed';
+  const held = lock.content;
+  const beforeLock = writesOf(lockKey);
+  await studio.l5!.release(PROJECT, 'a');
+  assert.equal(host.files[lockKey]?.status, 'deleted');
+  assert.equal(writesOf(lockKey), beforeLock + 1, 'the trash is written through localStor.setContent');
+  assert.equal(host.files[lockKey].content, held, 'the trash keeps the released content');
+  assert.equal(await studio.l5!.claim(PROJECT, 'b'), true, 'the next claim is free');
 });
