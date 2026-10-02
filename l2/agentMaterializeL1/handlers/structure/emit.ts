@@ -27,7 +27,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
-export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v11';
+export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v12';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
@@ -690,16 +690,45 @@ function scopeGrantRows(scopeText: string): Record<string, unknown>[] {
  */
 function disclosedOutputPaths(contract: ResolvedContract, outputFields: readonly string[], grants: readonly Record<string, unknown>[], entityId: string): string[] {
   const declared = contract.outputPaths.filter(path => outputFields.includes(path.split('.')[0] ?? ''));
-  const prefix = `${entityId}.`;
-  const allows = (grant: Record<string, unknown>, path: string, whole: boolean): boolean => {
-    const mode = String(grant.disclosure ?? '');
-    if (mode === 'fullRecord') return true;
-    if (mode !== 'fieldsOnly' && mode !== 'summaryOnly') return false;
-    const allowed = stringList(grant.allowedFields).filter(field => entityId && field.startsWith(prefix)).map(field => field.slice(prefix.length));
-    return allowed.some(field => path === field || path.startsWith(`${field}.`) || (!whole && field.startsWith(`${path}.`)));
-  };
   return declared.filter(path => !declared.some(other => other.startsWith(`${path}.`))
-    && grants.every(grant => allows(grant, path, true)));
+    && grants.every(grant => grantDiscloses(grant, path, entityId, true)));
+}
+
+/**
+ * Whether one grant discloses an entity path: `fullRecord` all; `fieldsOnly`/`summaryOnly` the
+ * `<entityId>.` allowed fields and what is under them (`whole` = false also admits an ancestor of one);
+ * any other mode, or an undeclared grant (`{}`), nothing. The v1 controller and the v2 request share it.
+ */
+function grantDiscloses(grant: Record<string, unknown>, path: string, entityId: string, whole: boolean): boolean {
+  const mode = String(grant.disclosure ?? '');
+  if (mode === 'fullRecord') return true;
+  if (mode !== 'fieldsOnly' && mode !== 'summaryOnly') return false;
+  const prefix = `${entityId}.`;
+  const allowed = stringList(grant.allowedFields).filter(field => entityId && field.startsWith(prefix)).map(field => field.slice(prefix.length));
+  return allowed.some(field => path === field || path.startsWith(`${field}.`) || (!whole && field.startsWith(`${path}.`)));
+}
+
+/**
+ * Grants of each route a v2 page controller of the module exposes: the handler's `grantIds` read on
+ * the module access scope. An undeclared grant id stays `{}` and discloses nothing, as in v1.
+ * A route no controller names is not exposed and has no entry.
+ */
+function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<string, Record<string, unknown>[]> | EmitFailure {
+  const definitions = moduleDefinitions.map(value => readDefinition(value)).filter((item): item is M1Definition => !('issues' in item));
+  const scope = definitions.find(item => item.artifactType === 'accessScope');
+  const scopeGrants = scope && Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];
+  const routes = new Map<string, Record<string, unknown>[]>();
+  for (const controller of definitions.filter(item => item.artifactType === 'httpController')) {
+    const handlers = Array.isArray(controller.data.handlers) ? controller.data.handlers.filter(isRecord) : [];
+    for (const handler of handlers) {
+      if (typeof handler.serviceFunction !== 'string' || typeof handler.route !== 'string') continue;
+      const grantIds = stringList(handler.grantIds);
+      if (grantIds.length > 0 && !scope) return { code: 'GRANT_UNREAD', detail: `${handler.route} names grants and the module has no access scope.` };
+      const grants = grantIds.map(grantId => scopeGrants.find(grant => grant.grantId === grantId) ?? {});
+      routes.set(handler.route, [...(routes.get(handler.route) ?? []), ...grants]);
+    }
+  }
+  return routes;
 }
 
 async function resolveRoute(
@@ -988,6 +1017,16 @@ export async function emitRequestService(
 ): Promise<EmitResult | EmitFailure> {
   const loaded = await loadService(definition, read, registeredPortNames(moduleDefinitions));
   if ('code' in loaded) return loaded;
+  // The grant still bounds what leaves: every projected field fits what each grant of the route discloses.
+  const exposed = exposedRouteGrants(moduleDefinitions);
+  if ('code' in exposed) return exposed;
+  for (const call of loaded) {
+    const grants = exposed.get(call.route) ?? [];
+    for (const output of call.outputs) {
+      const field = output.fields.find(path => !grants.every(grant => grantDiscloses(grant, path, output.entity, true)));
+      if (field) return { code: 'DISCLOSURE_EXCEEDS_GRANT', detail: `DISCLOSURE_EXCEEDS_GRANT: ${call.route} ${field}` };
+    }
+  }
   const behavior = stage === 'implement';
   const uses = loaded.flatMap(call => call.uses);
   const specifiers = unique(uses.map(use => use.specifier));
