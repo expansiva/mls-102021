@@ -36,6 +36,7 @@ import {
   emitPort,
   emitRequestService,
   emitUsecase,
+  exposedRouteGrants,
   importSpecifier,
   recordFieldFromGrant,
   type EmitFailure,
@@ -56,7 +57,7 @@ import {
 export { lifecycleStart };
 
 /** Raised when the implement handler body changes. An older receipt is a new input. */
-export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v12';
+export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v13';
 
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
@@ -195,6 +196,7 @@ export async function caseBlock(
   defPath: string,
   item: { routine: string; expect: { ruleId: string | null } },
   read: StructureRead,
+  moduleDefinitions: readonly unknown[] = [],
 ): Promise<CaseBlock | null> {
   const ruleId = item.expect.ruleId ?? '';
   const rule = ruleRows(definition).find(row => ruleId && row.ruleId === ruleId && row.enforcement === 'pending' && BLOCKING_RULE_GAPS.has(row.gap));
@@ -213,7 +215,7 @@ export async function caseBlock(
     if (precondition && asksVersion) return null;
   }
   if (text(definition.data.operation) === 'transition' && ruleId) {
-    const plan = await planTransition(definition, read);
+    const plan = await planTransition(definition, read, moduleDefinitions);
     if (!('code' in plan) && plan.anchorRules.includes(ruleId)) {
       return { gap: 'ACCESS_ANCHOR', owner: GAP_OWNER.ACCESS_ANCHOR, ruleId, unread: false };
     }
@@ -231,9 +233,10 @@ export async function ruleRunsOnUsecase(
   definition: M1Definition,
   ruleId: string,
   read: StructureRead,
+  moduleDefinitions: readonly unknown[] = [],
 ): Promise<boolean> {
   if (text(definition.data.operation) !== 'transition' || !ruleId) return false;
-  const plan = await planTransition(definition, read);
+  const plan = await planTransition(definition, read, moduleDefinitions);
   if ('code' in plan) return false;
   return ruleId === plan.flowRule || ruleId === plan.payloadRule;
 }
@@ -249,12 +252,17 @@ export async function emitBehavior(
   if (id === 'implement.authorityMap') return done(emitAuthority(definition, output));
   if (id === 'implement.accessScope') return behaviorAccess(definition, output);
   if (id === 'implement.repositoryPort') return memoryPort(definition, output, read);
-  if (id === 'implement.usecase') return memoryUsecase(definition, output, read);
+  if (id === 'implement.usecase') return memoryUsecase(definition, output, read, moduleDefinitions);
   if (id === 'implement.requestService') return emitRequestService(definition, output, read, moduleDefinitions, 'implement');
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a behavior body.` };
 }
 
-async function memoryUsecase(definition: M1Definition, output: string, read: StructureRead): Promise<EmitResult | EmitFailure> {
+async function memoryUsecase(
+  definition: M1Definition,
+  output: string,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<EmitResult | EmitFailure> {
   if (isDerivedMdm(definition)) return memoryMdm(definition, output, read);
   if (behaviorNeedsLlm(definition)) {
     return { code: 'NEEDS_LLM', detail: `${definition.artifactId} is not derivable from its def. No file was written.` };
@@ -300,7 +308,7 @@ async function memoryUsecase(definition: M1Definition, output: string, read: Str
     const leaf = path.split('.').pop() ?? path;
     return leaf !== selectorField(definition) && !['id', 'version'].includes(leaf);
   })) : inputs;
-  const transition = operation === 'transition' ? await planTransition(definition, read) : null;
+  const transition = operation === 'transition' ? await planTransition(definition, read, moduleDefinitions) : null;
   if (transition && 'code' in transition) return transition;
   const precondition = operation === 'update' ? await localPrecondition(definition, read) : '';
   const lifecycle = lifecycleStart(entity);
@@ -1127,12 +1135,16 @@ function ownCheck(own: { field: string; always: boolean }): string[] {
 }
 
 /** Own-scope field of the routes that reach this usecase, read from each route grant. */
-async function ownScope(definition: M1Definition, read: StructureRead): Promise<{ field: string; always: boolean } | EmitFailure> {
-  const routes = contractRoutes(definition);
+async function ownScope(
+  definition: M1Definition,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<{ field: string; always: boolean } | EmitFailure> {
+  const routes = await usecaseRouteGrants(definition, read, moduleDefinitions);
+  if ('code' in routes) return routes;
   const fields = new Set<string>();
   let own = 0;
-  for (const route of routes) {
-    const grant = await grantPending(definition, definition.dependencies[0] ?? '', route, read);
+  for (const { route, grant } of routes) {
     if (grant.unread) return { code: 'GRANT_UNREAD', detail: `${route} grant was not read.` };
     if (grant.scopeMode !== 'own') continue;
     own += 1;
@@ -1143,7 +1155,11 @@ async function ownScope(definition: M1Definition, read: StructureRead): Promise<
   return { field, always: own > 0 && own === routes.length };
 }
 
-async function planTransition(definition: M1Definition, read: StructureRead): Promise<TransitionPlan | EmitFailure> {
+async function planTransition(
+  definition: M1Definition,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<TransitionPlan | EmitFailure> {
   const lifecycle = definition.data.lifecycle;
   const transitionId = isRecord(lifecycle) ? text(lifecycle.transitionId) : '';
   if (!transitionId || !isIdent(transitionId)) {
@@ -1169,9 +1185,9 @@ async function planTransition(definition: M1Definition, read: StructureRead): Pr
   const payloadRule = payloadRuleId(local, flowRule, payload);
   const claimed = new Set([flowRule, payloadRule].filter(Boolean));
   const leftover = local.map(row => row.ruleId).filter(ruleId => !claimed.has(ruleId));
-  const anchor = leftover.length > 0 ? await ownScopePending(definition, read) : false;
+  const anchor = leftover.length > 0 ? await ownScopePending(definition, read, moduleDefinitions) : false;
   if (typeof anchor !== 'boolean') return anchor;
-  const own = await ownScope(definition, read);
+  const own = await ownScope(definition, read, moduleDefinitions);
   if ('code' in own) return own;
   return {
     flowRule,
@@ -1199,12 +1215,16 @@ function payloadRuleId(local: readonly RuleRow[], flowRule: string, payload: rea
   return matched.length === 1 ? matched[0] : '';
 }
 
-async function ownScopePending(definition: M1Definition, read: StructureRead): Promise<boolean | EmitFailure> {
-  const routes = contractRoutes(definition);
+async function ownScopePending(
+  definition: M1Definition,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<boolean | EmitFailure> {
+  const routes = await usecaseRouteGrants(definition, read, moduleDefinitions);
+  if ('code' in routes) return routes;
   if (routes.length === 0) return { code: 'GRANT_UNREAD', detail: `${definition.artifactId} has no route.` };
   let saw = false;
-  for (const route of routes) {
-    const pending = await grantPending(definition, definition.dependencies[0] ?? '', route, read);
+  for (const { route, grant: pending } of routes) {
     if (pending.unread) return { code: 'GRANT_UNREAD', detail: `${route} grant was not read.` };
     if (pending.scopeMode === 'own' && pending.pending === 'ACCESS_ANCHOR') saw = true;
   }
@@ -1499,7 +1519,7 @@ async function grantPending(
   defPath: string,
   routine: string,
   read: StructureRead,
-): Promise<{ pending: string; scopeMode: string; unread: boolean; recordField: string }> {
+): Promise<GrantFacts> {
   const page = routine.split('.')[1] ?? '';
   const project = /^_(\d+)_/.exec(defPath)?.[1] ?? '';
   const moduleName = definition.moduleName;
@@ -1518,11 +1538,57 @@ async function grantPending(
   const grants = Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];
   const matched = grants.filter(grant => grantIds.includes(text(grant.grantId)));
   if (matched.length !== grantIds.length) return { pending: '', scopeMode: '', unread: true, recordField: '' };
+  return grantFacts(matched);
+}
+
+/** Pending gap, scope mode and own-scope record field of the grants matched for one route (v1 and v2). */
+function grantFacts(matched: readonly Record<string, unknown>[]): GrantFacts {
   let pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
   const scopeMode = text(matched.find(grant => text(grant.pending) === pending)?.scopeMode);
   const field = matched.length === 1 ? recordFieldFromGrant(matched[0]) : '';
   if (!pending && scopeMode === 'own' && !field) pending = 'ACCESS_ANCHOR';
   return { pending, scopeMode, unread: false, recordField: scopeMode === 'own' && !pending ? field : '' };
+}
+
+type GrantFacts = { pending: string; scopeMode: string; unread: boolean; recordField: string };
+
+/**
+ * Routes that reach a usecase, with the grant facts of each. v1 (the usecase cites contracts): its
+ * `contractRefs` routes, read on the page controller. v2: the `requests[]` of the module's request
+ * services that name the usecase in `uses`, kept when a v2 controller exposes the route; the grants
+ * are that handler's `grantIds` on the access scope (`exposedRouteGrants`). A route no controller
+ * names is not exposed and is left out. A route with no grant, or a grant id the scope does not
+ * declare, is unread: it fails closed.
+ */
+async function usecaseRouteGrants(
+  definition: M1Definition,
+  read: StructureRead,
+  moduleDefinitions: readonly unknown[],
+): Promise<Array<{ route: string; grant: GrantFacts }> | EmitFailure> {
+  const v1 = contractRoutes(definition);
+  if (v1.length > 0) {
+    const routes: Array<{ route: string; grant: GrantFacts }> = [];
+    for (const route of v1) routes.push({ route, grant: await grantPending(definition, definition.dependencies[0] ?? '', route, read) });
+    return routes;
+  }
+  const exposed = exposedRouteGrants(moduleDefinitions);
+  if ('code' in exposed) return exposed;
+  const unread: GrantFacts = { pending: '', scopeMode: '', unread: true, recordField: '' };
+  const routes: Array<{ route: string; grant: GrantFacts }> = [];
+  for (const value of moduleDefinitions) {
+    const service = readDefinition(value);
+    if ('issues' in service || service.artifactType !== 'requestService') continue;
+    const requests = Array.isArray(service.data.requests) ? service.data.requests.filter(isRecord) : [];
+    for (const request of requests) {
+      const route = text(request.route);
+      if (!route || !stringList(request.uses).includes(definition.artifactId)) continue;
+      const grants = exposed.get(route);
+      if (!grants) continue;
+      const declared = grants.length > 0 && grants.every(grant => text(grant.grantId) !== '');
+      routes.push({ route, grant: declared ? grantFacts(grants) : unread });
+    }
+  }
+  return routes;
 }
 
 async function loadDefinition(ref: string, read: StructureRead): Promise<M1Definition | EmitFailure> {

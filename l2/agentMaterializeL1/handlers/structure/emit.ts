@@ -713,7 +713,7 @@ function grantDiscloses(grant: Record<string, unknown>, path: string, entityId: 
  * the module access scope. An undeclared grant id stays `{}` and discloses nothing, as in v1.
  * A route no controller names is not exposed and has no entry.
  */
-function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<string, Record<string, unknown>[]> | EmitFailure {
+export function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<string, Record<string, unknown>[]> | EmitFailure {
   const definitions = moduleDefinitions.map(value => readDefinition(value)).filter((item): item is M1Definition => !('issues' in item));
   const scope = definitions.find(item => item.artifactType === 'accessScope');
   const scopeGrants = scope && Array.isArray(scope.data.grants) ? scope.data.grants.filter(isRecord) : [];

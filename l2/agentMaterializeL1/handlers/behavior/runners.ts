@@ -79,7 +79,7 @@ async function observe(call: HandlerCall, definition: M1Definition): Promise<M1O
 
 async function observationFor(call: HandlerCall, definition: M1Definition, item: M1ScenarioCase): Promise<M1Observation | { code: string; detail: string }> {
   if (item.gate === 'compile') return row(item.caseId, { ok: true, status: 0, errorCode: null, reason: 'imports resolve' });
-  const block = await caseBlock(definition, call.unit.defPath, item, ref => call.read(ref));
+  const block = await caseBlock(definition, call.unit.defPath, item, ref => call.read(ref), call.moduleDefinitions ?? []);
   // Fail closed: an unread grant refuses the unit; it is not a case verdict (m1_34).
   if (block?.unread) return { code: 'GRANT_UNREAD', detail: `${item.routine} grant was not read. No file was written.` };
   if (block) {

@@ -13,9 +13,12 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { outputPathFromDefPath } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { emitRequestService } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import { deriveCatalog, type DerivedCatalog } from '/_102021_/l2/agentMaterializeL1/testing/derive.js';
 import {
+  obligationMiss,
   obligationSourceHashes,
   staleObligations,
   type M1Obligation,
@@ -48,9 +51,16 @@ void test('the oracle comes from the contract, the grants and the authority map,
   const n = FX.n;
   const rows = `${n.entity}Rows`;
   const deckDisclosure = byId(`${n.pageB}.disclosure.${n.reqRoster}`);
-  // The deck request projects tideCheck, the owner grant does not disclose it; the related record is not granted.
-  assert.deepEqual(deckDisclosure.expect.forbiddenPaths, [`${rows}.details.tideCheck.doneAt`, `${rows}.${n.related}.details.secret`, `${rows}.${n.related}.id`].sort());
+  // m1_41 P4: the deck request projects inside the owner grant (the structure refuses wider), so no path is
+  // forbidden by name. The runtime check stays: tideCheck and the related record are not allowed, and returning one is a miss.
+  assert.deepEqual(deckDisclosure.expect.forbiddenPaths, []);
   assert.equal(deckDisclosure.expect.allowedPaths.includes(`${rows}.details.${n.note}`), true);
+  assert.equal(deckDisclosure.expect.allowedPaths.some(path => path.includes('tideCheck') || path.includes(n.related)), false);
+  const leaked = (extra: Record<string, unknown>) => obligationMiss(deckDisclosure, {
+    ok: true, status: 200, errorCode: null, actorId: 'p-1', data: { [rows]: [{ id: 'b-1', details: { [n.note]: 'x' }, ...extra }] },
+  });
+  assert.equal(leaked({}), '');
+  assert.equal(leaked({ [n.related]: { id: 's-1' } }), `undisclosed path returned: ${rows}.${n.related}.id`);
   assert.equal(deckDisclosure.identity, 'owner');
   assert.deepEqual(deckDisclosure.caller.authorities, [`${n.mod}:${n.owner}`]);
   assert.equal(deckDisclosure.sources.includes(FX.refs.contractB), true);
@@ -126,4 +136,30 @@ void test('a changed contract invalidates only the cases that read it', async ()
   const missing = { ...FX.texts };
   delete missing[FX.refs.scope];
   assert.equal(staleObligations(DERIVED.obligations, before, await obligationSourceHashes(DERIVED.obligations, missing)).length, DERIVED.obligations.length);
+});
+
+void test('the oracle page requests materialize at structure inside their route grants (m1_41 P4)', async () => {
+  for (const names of [BASE, RENAMED]) {
+    const fx = fixture(names);
+    // The oracle has no registration def (the derivation does not read one); the request service needs its
+    // ports registered, so the test adds one for the oracle's own ports. Nothing else is added.
+    const ports = fx.defs.map(([, , definition]) => definition).filter(definition => definition.artifactType === 'repositoryPort');
+    const registration = { ...ports[0], artifactType: 'repositoryRegistration', artifactId: 'registerRepositories', dependencies: [],
+      data: { registrationId: 'registerRepositories', adapters: ports.map(port => ({ portId: port.artifactId, adapterArtifactId: port.artifactId })) } };
+    const modules = [...fx.defs.map(([, , definition]) => definition), ...fx.controllers.map(([, definition]) => definition), registration];
+    const read = async (ref: string): Promise<string | null> => fx.texts[ref] ?? null;
+    const services = fx.defs.filter(([id]) => id === 'implement.requestService');
+    assert.equal(services.length, 2);
+    for (const [, ref, definition] of services) {
+      const emitted = await emitRequestService(definition, outputPathFromDefPath(ref), read, modules, 'structure');
+      assert.equal('code' in emitted ? `${emitted.code}: ${emitted.detail}` : '', '', ref);
+    }
+    // The check bites: the related record on the deck list is outside the owner grant.
+    const [, deckRef, deck] = services[1];
+    const requests = (deck.data.requests as Array<Record<string, unknown>>).map(row => row.route !== fx.routes.roster ? row
+      : { ...row, outputs: (row.outputs as Array<Record<string, unknown>>).map(out => ({ ...out, fields: [...(out.fields as string[]), `${names.related}.id`] })) });
+    const wider = { ...deck, data: { ...deck.data, requests } };
+    const refused = await emitRequestService(wider, outputPathFromDefPath(deckRef), read, modules.map(item => item === deck ? wider : item), 'structure');
+    assert.equal('code' in refused && refused.detail, `DISCLOSURE_EXCEEDS_GRANT: ${fx.routes.roster} ${names.related}.id`);
+  }
 });

@@ -3,8 +3,9 @@
 /**
  * m1_26: list, create, update and transition bodies are derived from the entity
  * fields, the lifecycle and the L2 contract; own scope applies on read and on the
- * transition; the output is cut to the contract and to the route grant at every
- * depth. The fixture names nothing of the bench. The emitted files run from a
+ * transition. m1_41 b1-P3 (v2): the page request projects its declared fields at every
+ * depth, and a request field the route grant does not disclose is refused at structure
+ * (`DISCLOSURE_EXCEEDS_GRANT`). The fixture names nothing of the bench. The emitted files run from a
  * scratch folder; the only rewrite is where the fixture project's modules live.
  */
 
@@ -18,8 +19,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { M1_DEFINITION_SCHEMA, outputPathFromDefPath, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { emitBehavior, OWN_MARK, withoutLifecycleChecks } from '/_102021_/l2/agentMaterializeL1/handlers/behavior/emitBehavior.js';
-import { emitController, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { emitController, emitRequestService, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import { clearRepositories, registerRepository } from '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const P = '_102098_';
@@ -31,15 +33,17 @@ const SCOPE = `${L1}/layer_2_application/scope/accessScope.defs.ts`;
 const AUTHORITY = `${L1}/layer_1_external/auth/authorityMap.defs.ts`;
 const UC = (id: string) => `${L1}/layer_2_application/usecases/${id}.defs.ts`;
 const CTRL = (page: string) => `${L1}/layer_1_external/adapters/http/controllers/${page}.defs.ts`;
+const REQ = (page: string) => `${L1}/layer_2_application/requests/${page}.defs.ts`;
 const DESK = `${P}/l2/${MOD}/web/contracts/desk.defs.ts`;
 const ROUND = `${P}/l2/${MOD}/web/contracts/round.defs.ts`;
 const ONTOLOGY = `${P}/l4/${MOD}/ontology/Visit.defs.ts`;
+// v2 routes: `<mod>.<page>.<requestId>`; nothing in the name says command or query.
 const R = {
-  create: `${MOD}.desk.cmdCreateVisit`,
-  update: `${MOD}.desk.cmdUpdateVisit`,
-  deskList: `${MOD}.desk.qryListVisit`,
-  roundList: `${MOD}.round.qryListVisit`,
-  serve: `${MOD}.round.cmdMarkServed`,
+  create: `${MOD}.desk.bookIt`,
+  update: `${MOD}.desk.amendIt`,
+  deskList: `${MOD}.desk.visitRows`,
+  roundList: `${MOD}.round.visitRows`,
+  serve: `${MOD}.round.serveIt`,
 };
 
 function def(artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition {
@@ -83,15 +87,18 @@ const port = def('repositoryPort', 'VisitRepository', [ENTITY], {
     { name: 'transition', params: ['Visit', 'transitionId'], returns: 'Visit' },
   ],
 });
-const OUT = ['id', 'version', 'clientId', 'agentId', 'slotAt', 'phase', 'details'];
-function usecase(id: string, operation: string, routes: Array<[string, string, string]>, extra: Record<string, unknown> = {}): M1Definition {
-  return def('usecase', id, [PORT, ENTITY, ...new Set(routes.map(item => item[2])), ONTOLOGY], {
+// v2 usecases: the signature is the def's fields, as the D1 writes them; no contract ref, no route projection.
+const row = (name: string, type: string) => ({ name, type, fieldRef: `Visit.${name}` });
+const ROW = [row('id', 'uuid'), row('version', 'integer'), row('clientId', 'record'), row('agentId', 'record'), row('slotAt', 'timestamp'), row('phase', 'enum'),
+  row('details', 'object'), row('details.callCheck', 'object'), row('details.callCheck.doneAt', 'timestamp'), row('details.visitNote', 'text')];
+const pick = (...names: string[]) => ROW.filter(item => names.includes(item.name));
+function usecase(id: string, operation: string, input: Array<Record<string, unknown>>, output: Array<Record<string, unknown>>, extra: Record<string, unknown> = {}): M1Definition {
+  return def('usecase', id, [PORT, ENTITY, ONTOLOGY], {
     usecaseId: id,
     entityId: 'Visit',
     operation,
     ports: ['VisitRepository'],
-    functions: [{ functionName: id, input: [], output: [], contractRefs: routes.map(([route, symbol]) => ({ route, symbol })) }],
-    routeProjections: routes.map(([route, , contract]) => ({ route, contractPath: contract.replace(`${P}/`, ''), projection: 'declared', outputFields: [...OUT, 'visitClient'] })),
+    functions: [{ functionName: id, input, output }],
     portCalls: [operation === 'transition' ? 'transition' : operation],
     effects: [],
     uses: [{ path: 'id', role: operation === 'list' ? 'filter' : 'selector', source: 'input' }],
@@ -104,10 +111,11 @@ function usecase(id: string, operation: string, routes: Array<[string, string, s
     ...extra,
   });
 }
-const createVisit = usecase('createVisit', 'create', [[R.create, 'CreateVisitOutput', DESK]]);
-const updateVisit = usecase('updateVisit', 'update', [[R.update, 'UpdateVisitOutput', DESK]]);
-const listVisit = usecase('listVisit', 'list', [[R.deskList, 'ListVisitOutput', DESK], [R.roundList, 'ListVisitOutput', ROUND]]);
-const markServed = usecase('markServed', 'transition', [[R.serve, 'MarkServedOutput', ROUND]], {
+const createVisit = usecase('createVisit', 'create', pick('clientId', 'agentId', 'slotAt', 'details', 'details.callCheck', 'details.callCheck.doneAt'), ROW);
+const updateVisit = usecase('updateVisit', 'update', pick('id', 'clientId', 'slotAt', 'phase', 'details', 'details.callCheck', 'details.callCheck.doneAt'), ROW);
+const listVisit = usecase('listVisit', 'list', [...pick('id', 'clientId', 'agentId', 'phase'), { name: 'page', type: 'number' }, { name: 'pageSize', type: 'number' }],
+  [{ name: 'items', type: 'Visit' }, { name: 'hasMore', type: 'boolean' }]);
+const markServed = usecase('markServed', 'transition', pick('id', 'details', 'details.visitNote'), ROW, {
   lifecycle: { transitionId: 'markServed', payload: ['details.visitNote'] },
 });
 
@@ -135,44 +143,70 @@ const authority = def('authorityMap', 'authorityMap', [SCOPE], {
   mapId: 'authorityMap',
   entries: [{ grantId: 'dispatcherDesk', actorRef: 'dispatcher' }, { grantId: 'agentRound', actorRef: 'agent' }],
 });
-const desk = def('httpController', 'desk', [AUTHORITY, SCOPE, UC('createVisit'), UC('updateVisit'), UC('listVisit')], {
+// What each page request projects: inside what its route grant discloses.
+const DESK_FIELDS = ['id', 'version', 'clientId', 'agentId', 'slotAt', 'phase', 'details.callCheck.doneAt'];
+const ROUND_FIELDS = ['id', 'version', 'clientId', 'agentId', 'slotAt', 'phase', 'details.visitNote'];
+const request = (route: string, kind: 'cmd' | 'qry', use: string, key: string, fields: readonly string[]) => ({
+  route, kind, uses: [use], transaction: kind === 'cmd' ? 'single' : 'none', outputs: [{ key, entity: 'Visit', fields: [...fields] }], params: [],
+});
+const deskRequests = (listFields: readonly string[] = DESK_FIELDS) => def('requestService', 'desk', [UC('createVisit'), UC('updateVisit'), UC('listVisit')], {
+  pageId: 'desk',
+  requests: [
+    request(R.create, 'cmd', 'createVisit', 'visit', DESK_FIELDS),
+    request(R.update, 'cmd', 'updateVisit', 'visit', DESK_FIELDS),
+    request(R.deskList, 'qry', 'listVisit', 'visits', listFields),
+  ],
+});
+const roundRequests = def('requestService', 'round', [UC('markServed'), UC('listVisit')], {
+  pageId: 'round',
+  requests: [
+    request(R.serve, 'cmd', 'markServed', 'visit', ROUND_FIELDS),
+    request(R.roundList, 'qry', 'listVisit', 'visits', ROUND_FIELDS),
+  ],
+});
+const handler = (route: string, kind: string, page: string, grantId: string) => ({
+  route, kind, grantIds: [grantId], serviceFunction: route, contractPath: (page === 'desk' ? DESK : ROUND).replace(`${P}/`, ''),
+  contractInterface: page === 'desk' ? 'DeskContracts' : 'RoundContracts',
+});
+const desk = def('httpController', 'desk', [AUTHORITY, SCOPE, REQ('desk')], {
   pageId: 'desk',
   handlers: [
-    { route: R.create, kind: 'command', usecaseId: 'createVisit', grantIds: ['dispatcherDesk'] },
-    { route: R.update, kind: 'command', usecaseId: 'updateVisit', grantIds: ['dispatcherDesk'] },
-    { route: R.deskList, kind: 'query', usecaseId: 'listVisit', grantIds: ['dispatcherDesk'] },
+    handler(R.create, 'command', 'desk', 'dispatcherDesk'),
+    handler(R.update, 'command', 'desk', 'dispatcherDesk'),
+    handler(R.deskList, 'query', 'desk', 'dispatcherDesk'),
   ],
 });
-const round = def('httpController', 'round', [AUTHORITY, SCOPE, UC('markServed'), UC('listVisit')], {
+const round = def('httpController', 'round', [AUTHORITY, SCOPE, REQ('round')], {
   pageId: 'round',
   handlers: [
-    { route: R.serve, kind: 'command', usecaseId: 'markServed', grantIds: ['agentRound'] },
-    { route: R.roundList, kind: 'query', usecaseId: 'listVisit', grantIds: ['agentRound'] },
+    handler(R.serve, 'command', 'round', 'agentRound'),
+    handler(R.roundList, 'query', 'round', 'agentRound'),
   ],
 });
+const registration = def('repositoryRegistration', 'registerRepositories', [], {
+  registrationId: 'registerRepositories',
+  adapters: [{ portId: 'VisitRepository', adapterArtifactId: 'VisitRepository' }],
+});
+const moduleDefs = (deskService = deskRequests()) => [entity, port, scope, authority, createVisit, updateVisit, listVisit, markServed, deskService, roundRequests, desk, round, registration];
 
-const RELATED = '  "visitClient"?: {\n    "id": string;\n    "details"?: {\n      "secret"?: string;\n    };\n  };';
-const visitOut = (details: string) => `{\n  "id": string;\n  "version": number;\n  "clientId": string;\n  "agentId": string;\n  "slotAt": string;\n  "phase": "booked" | "missed" | "served";\n  "details": {\n${details}\n  };\n${RELATED}\n}`;
-const LIST_INPUT = 'export interface ListVisitInput {\n  "id"?: string;\n  "clientId"?: string;\n  "agentId"?: string;\n  "phase"?: "booked" | "missed" | "served";\n  "page"?: number;\n}';
-const CALL_CHECK = '    "callCheck"?: {\n      "doneAt": string;\n    };';
+// L2 contracts v2: the route input is written inline, as `renderD2ContractV2` does.
+const VISIT = '{ id: string; version: number; clientId?: string; agentId?: string; slotAt?: string; phase: \'booked\' | \'missed\' | \'served\'; details?: { callCheck?: { doneAt?: string; }; visitNote?: string; }; }';
+const LIST_INPUT = '{ id?: string; clientId?: string; agentId?: string; phase?: \'booked\' | \'missed\' | \'served\'; page?: number; pageSize?: number; }';
+const route = (name: string, kind: 'cmd' | 'qry', input: string, output: string) => `  '${name}': {\n    kind: '${kind}';\n    input: ${input};\n    output: ${output};\n  };`;
 const DESK_SOURCE = [
-  'export interface CreateVisitInput {\n  "clientId": string;\n  "agentId": string;\n  "slotAt": string;\n  "details": {\n    "callCheck"?: {\n      "doneAt": string;\n    };\n  };\n}',
-  `export interface CreateVisitOutput ${visitOut(CALL_CHECK)}`,
+  'export interface DeskContracts {',
+  route(R.create, 'cmd', '{ clientId: string; agentId: string; slotAt: string; details: { callCheck?: { doneAt: string; }; }; }', `{ visit: ${VISIT} }`),
   // `phase` is listed here on purpose: a contract that names the lifecycle field still cannot move it.
-  'export interface UpdateVisitInput {\n  "id": string;\n  "clientId"?: string;\n  "slotAt"?: string;\n  "phase"?: "booked" | "missed" | "served";\n  "details"?: {\n    "callCheck"?: {\n      "doneAt"?: string;\n    };\n  };\n}',
-  `export interface UpdateVisitOutput ${visitOut(CALL_CHECK)}`,
-  LIST_INPUT,
-  `export interface ListVisitItem ${visitOut(CALL_CHECK)}`,
-  'export type ListVisitOutput = ListVisitItem[];',
-].join('\n\n');
-const ROUND_DETAILS = `${CALL_CHECK}\n    "visitNote"?: string;`;
+  route(R.update, 'cmd', '{ id: string; clientId?: string; slotAt?: string; phase?: \'booked\' | \'missed\' | \'served\'; details?: { callCheck?: { doneAt?: string; }; }; }', `{ visit: ${VISIT} }`),
+  route(R.deskList, 'qry', LIST_INPUT, `{ visits: ${VISIT}[] }`),
+  '}',
+].join('\n');
 const ROUND_SOURCE = [
-  'export interface MarkServedInput {\n  "id": string;\n  "details": {\n    "visitNote": string;\n  };\n}',
-  `export interface MarkServedOutput ${visitOut(ROUND_DETAILS)}`,
-  LIST_INPUT,
-  `export interface ListVisitItem ${visitOut(ROUND_DETAILS)}`,
-  'export type ListVisitOutput = ListVisitItem[];',
-].join('\n\n');
+  'export interface RoundContracts {',
+  route(R.serve, 'cmd', '{ id: string; details: { visitNote: string; }; }', `{ visit: ${VISIT} }`),
+  route(R.roundList, 'qry', LIST_INPUT, `{ visits: ${VISIT}[] }`),
+  '}',
+].join('\n');
 
 // The canonical l4 entity without the fields the l4 retired (operations, readProjection, preconditions).
 const ontology = {
@@ -190,6 +224,7 @@ function reader(overrides: Map<string, string> = new Map()): (ref: string) => Pr
     [ENTITY, asSource(entity)], [PORT, asSource(port)], [SCOPE, asSource(scope)], [AUTHORITY, asSource(authority)],
     [UC('createVisit'), asSource(createVisit)], [UC('updateVisit'), asSource(updateVisit)],
     [UC('listVisit'), asSource(listVisit)], [UC('markServed'), asSource(markServed)],
+    [REQ('desk'), asSource(deskRequests())], [REQ('round'), asSource(roundRequests)],
     [CTRL('desk'), asSource(desk)], [CTRL('round'), asSource(round)],
     [DESK, DESK_SOURCE], [ROUND, ROUND_SOURCE], [ONTOLOGY, ONTOLOGY_SOURCE],
   ]);
@@ -224,11 +259,14 @@ async function load(edit: (defPath: string, source: string) => string = (_ref, s
     ['implement.usecase', UC('updateVisit'), updateVisit],
     ['implement.usecase', UC('listVisit'), listVisit],
     ['implement.usecase', UC('markServed'), markServed],
+    ['implement.requestService', REQ('desk'), deskRequests()],
+    ['implement.requestService', REQ('round'), roundRequests],
   ];
+  const modules = moduleDefs();
   const sources = new Map<string, string>();
-  for (const [id, ref, definition] of units) sources.set(ref, ok(await emitBehavior(id, definition, outputPathFromDefPath(ref), read)).source);
-  sources.set(CTRL('desk'), ok(await emitController(desk, outputPathFromDefPath(CTRL('desk')), read)).source);
-  sources.set(CTRL('round'), ok(await emitController(round, outputPathFromDefPath(CTRL('round')), read)).source);
+  for (const [id, ref, definition] of units) sources.set(ref, ok(await emitBehavior(id, definition, outputPathFromDefPath(ref), read, modules)).source);
+  sources.set(CTRL('desk'), ok(await emitController(desk, outputPathFromDefPath(CTRL('desk')), read, modules)).source);
+  sources.set(CTRL('round'), ok(await emitController(round, outputPathFromDefPath(CTRL('round')), read, modules)).source);
   const dir = mkdtempSync(join(tmpdir(), 'm1-26-'));
   const fileOf = (qualified: string) => join(dir, qualified.replace(`${P}/`, ''));
   for (const [ref, source] of sources) {
@@ -245,13 +283,19 @@ async function load(edit: (defPath: string, source: string) => string = (_ref, s
     resetMemory: (seed: Record<string, unknown>[]) => void;
     pendingVisitRepository: { list: (filter: Record<string, unknown>) => Promise<Record<string, unknown>[]> };
   };
+  // The page request resolves the port through the registry; the memory port stands in for the adapter.
+  clearRepositories();
+  registerRepository('VisitRepository', () => memory.pendingVisitRepository);
   return {
     desk: await routesOf('desk'),
     round: await routesOf('round'),
     reset: memory.resetMemory,
     rows: () => memory.pendingVisitRepository.list({}),
     sources,
-    dispose: () => rmSync(dir, { recursive: true, force: true }),
+    dispose: () => {
+      clearRepositories();
+      rmSync(dir, { recursive: true, force: true });
+    },
   };
 }
 
@@ -262,7 +306,9 @@ async function call(routes: Map<string, Handler>, route: string, actor: string, 
   ctx.sessionContext.actorId = actorId;
   try {
     const response = await handler({ request: { routine: route, params, meta: { source: 'http', verifiedAuthorities: [`${MOD}:${actor}`] } }, ctx });
-    return { data: response.data };
+    // The page request keys its output: `visits` on a list, `visit` on a command.
+    const data = response.data as Record<string, unknown>;
+    return { data: 'visits' in data ? data.visits : data.visit };
   } catch (error) {
     return { code: String((error as { code?: string }).code ?? error) };
   }
@@ -336,7 +382,30 @@ void test('the own-scope transition serves the owner and not another agent; no i
   }
 });
 
-void test('the output carries only what the contract declares and the grant discloses, at every depth', async () => {
+void test('a request field the route grant does not disclose is refused at structure, not cut', async () => {
+  const read = reader();
+  // Inside the grant: the declared projection passes.
+  ok(await emitRequestService(deskRequests(), outputPathFromDefPath(REQ('desk')), read, moduleDefs(), 'structure'));
+  // The dispatcher grant does not disclose the agent note, nor the related record.
+  for (const field of ['details.visitNote', 'visitClient.id', 'details']) {
+    const wider = deskRequests([...DESK_FIELDS, field]);
+    for (const stage of ['structure', 'implement'] as const) {
+      const refused = await emitRequestService(wider, outputPathFromDefPath(REQ('desk')), read, moduleDefs(wider), stage);
+      assert.equal('code' in refused && refused.code, 'DISCLOSURE_EXCEEDS_GRANT', field);
+      assert.equal('code' in refused && refused.detail, `DISCLOSURE_EXCEEDS_GRANT: ${R.deskList} ${field}`);
+    }
+  }
+  // A grant id the scope does not declare discloses nothing (as in v1).
+  const unknownGrant = def('httpController', 'desk', [AUTHORITY, SCOPE, REQ('desk')], {
+    pageId: 'desk',
+    handlers: [handler(R.deskList, 'query', 'desk', 'nobodyDesk')],
+  });
+  const undeclared = await emitRequestService(deskRequests(), outputPathFromDefPath(REQ('desk')), read,
+    moduleDefs().map(item => item === desk ? unknownGrant : item), 'structure');
+  assert.equal('code' in undeclared && undeclared.code, 'DISCLOSURE_EXCEEDS_GRANT');
+});
+
+void test('the output carries only what the page request projects inside the grant, at every depth', async () => {
   const loaded = await load();
   try {
     loaded.reset(seed());
@@ -344,7 +413,7 @@ void test('the output carries only what the contract declares and the grant disc
     assert.deepEqual(deskRows[0].details, { callCheck: { doneAt: '2026-09-30' } });
     assert.equal('visitClient' in deskRows[0], false, 'a related record the grant does not disclose is dropped');
     const roundRows = (await call(loaded.round, R.roundList, AGENT, 'a-1', {})).data as Array<Record<string, unknown>>;
-    assert.deepEqual(roundRows[0].details, { visitNote: 'private-1' }, 'the contract declares callCheck; the grant does not');
+    assert.deepEqual(roundRows[0].details, { visitNote: 'private-1' }, 'the stored row has callCheck; the round request does not project it');
     const served = (await call(loaded.round, R.serve, AGENT, 'a-1', { id: 'v-1', details: { visitNote: 'done' } })).data as Record<string, unknown>;
     assert.deepEqual(served.details, { visitNote: 'done' });
     assert.deepEqual(Object.keys(served).sort(), ['agentId', 'clientId', 'details', 'id', 'phase', 'slotAt', 'version']);
@@ -373,7 +442,12 @@ void test('removing a check from the emitted copy reopens what it closed', async
   } finally {
     anonymous.dispose();
   }
-  const disclosed = await load((ref, source) => ref === CTRL('desk') ? source.replace(/projectOutput\(data, \[/g, "projectOutput(data, ['details', ") : source);
+  const disclosed = await load((ref, source) => {
+    if (ref !== REQ('desk')) return source;
+    const changed = source.replace(/projectOutput\((.*?), \[/g, "projectOutput($1, ['details', ");
+    assert.notEqual(changed, source, 'the mutation widens the emitted request projection');
+    return changed;
+  });
   try {
     disclosed.reset(seed());
     const rows = (await call(disclosed.desk, R.deskList, DISPATCHER, 'd-1', {})).data as Array<{ details: Record<string, unknown> }>;

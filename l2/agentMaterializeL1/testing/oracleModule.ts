@@ -187,9 +187,12 @@ export function fixture(n: Names): Fixture {
     mapId: 'authorityMap',
     entries: [{ grantId: `${n.org}Office`, actorRef: n.org }, { grantId: `${n.owner}Deck`, actorRef: n.owner }],
   });
-  // Page requests (requestService), in the shape of the bench.
-  const rowFields = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage', 'details.tideCheck.doneAt', `${n.related}.id`, `${n.related}.details.secret`];
-  const deckFields = [...rowFields, `details.${n.note}`];
+  // Page requests (requestService), in the shape of the bench. Each request projects inside its route
+  // grant (m1_41 P4): the structure refuses a field the grant does not disclose (DISCLOSURE_EXCEEDS_GRANT).
+  // The related record stays on the row and no request projects it.
+  const shared = ['id', 'version', n.parentField, n.ownerField, 'dockAt', 'stage'];
+  const rowFields = [...shared, 'details.tideCheck.doneAt'];
+  const deckFields = [...shared, `details.${n.note}`];
   const rowsKey = `${n.entity}Rows`;
   const one = (fields: string[]) => [{ key: n.entity, entity: E, fields }];
   const pageParams = (list: string) => [{ name: 'page', target: rowsKey, pages: list }, { name: 'pageSize', target: rowsKey, pages: list }];
