@@ -88,7 +88,11 @@ export function seedD1Fixture(host: TestHost, id: string, project: number): stri
   for (const [file, text] of Object.entries(loadD1Fixture(id))) {
     const platform = /^_(\d+)_\/(.+)$/.exec(file);
     const info = platform ? fileInfoFromDisplay(Number(platform[1]), platform[2]) : fileInfoFromDisplay(project, file);
-    if (!info) throw new Error(`fixture ${id}: ${file} has no Studio path.`);
+    // Call receipts are archived next to the seed. Their names are not Studio paths and carry no plan body.
+    if (!info) {
+      if (file.includes('/pipeline/agentDefsL1/calls/')) continue;
+      throw new Error(`fixture ${id}: ${file} has no Studio path.`);
+    }
     seed(host, info, text, `fixture-${id}`);
     seeded.push(file);
   }

@@ -1,0 +1,202 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "minha_area_profissional",
+      "kind": "hub",
+      "label": "Minha área profissional",
+      "context": "Profissional",
+      "text": "Seu cadastro profissional já está selecionado. Consulte sua agenda e mantenha seus dados de atuação.",
+      "children": [
+        {
+          "id": "agenda_profissional",
+          "kind": "page",
+          "label": "Minha agenda",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Consulte as suas consultas previstas para o dia e localize uma consulta da sua agenda."
+            },
+            {
+              "kind": "detail",
+              "text": "Veja os detalhes da consulta selecionada, incluindo os dados do paciente vinculados ao seu atendimento."
+            },
+            {
+              "kind": "form",
+              "text": "Registre a conclusão da consulta atendida e a anotação do atendimento."
+            },
+            {
+              "kind": "actions",
+              "text": "Consultar sua agenda diária e registrar o atendimento de uma consulta própria."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "meu_cadastro_profissional",
+          "kind": "page",
+          "label": "Meu cadastro profissional",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Consulte os seus dados de atuação na clínica."
+            },
+            {
+              "kind": "form",
+              "text": "Atualize os seus dados de atuação na clínica."
+            },
+            {
+              "kind": "actions",
+              "text": "Consultar e manter o seu próprio cadastro profissional."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "consultas_recepcao",
+      "kind": "page",
+      "label": "Consultas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize consultas por paciente, profissional, data, horário e situação."
+        },
+        {
+          "kind": "detail",
+          "text": "Confira os dados, o horário e a situação da consulta selecionada."
+        },
+        {
+          "kind": "form",
+          "text": "Registre um agendamento, a confirmação telefônica ou a falta do paciente."
+        },
+        {
+          "kind": "actions",
+          "text": "Verificar horários disponíveis, agendar consultas, registrar confirmações e marcar faltas."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pacientes",
+      "kind": "page",
+      "label": "Pacientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize pacientes cadastrados para organizar ou confirmar uma consulta."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulte os dados de identificação e os canais de contato do paciente."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre um novo paciente e informe seus dados de identificação e contato."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar pacientes e consultar seus dados de contato."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissionais_recepcao",
+      "kind": "page",
+      "label": "Profissionais",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize profissionais para selecionar quem atenderá a consulta."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulte os dados do profissional e sua ocupação para organizar a agenda."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "minha_area_recepcao",
+      "kind": "hub",
+      "label": "Minha área de recepção",
+      "context": "Recepcionista",
+      "text": "Seu cadastro de recepcionista já está selecionado. Consulte e mantenha seus dados de atuação.",
+      "children": [
+        {
+          "id": "meu_cadastro_recepcao",
+          "kind": "page",
+          "label": "Meu cadastro de recepção",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Consulte os seus dados de atuação na clínica."
+            },
+            {
+              "kind": "form",
+              "text": "Atualize os seus dados de atuação na clínica."
+            },
+            {
+              "kind": "actions",
+              "text": "Consultar e manter o seu próprio cadastro de recepcionista."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:profissional": [
+      "minha_area_profissional"
+    ],
+    "actor:recepcionista": [
+      "consultas_recepcao",
+      "pacientes",
+      "profissionais_recepcao",
+      "minha_area_recepcao"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "pacientes",
+        "profissionais_recepcao",
+        "consultas_recepcao"
+      ],
+      "confirmarConsulta": [
+        "consultas_recepcao",
+        "pacientes"
+      ],
+      "registrarFalta": [
+        "consultas_recepcao"
+      ],
+      "consultarAgendaDiaria": [
+        "agenda_profissional"
+      ],
+      "registrarConsultaAtendida": [
+        "agenda_profissional"
+      ]
+    },
+    "processes": {},
+    "records": {
+      "Profissional": [
+        "meu_cadastro_profissional"
+      ],
+      "Recepcionista": [
+        "meu_cadastro_recepcao"
+      ]
+    },
+    "removed": []
+  }
+}

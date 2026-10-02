@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
-import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
+import { loadD1Fixture, seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import {
   createD1AgentStep,
   createEntryPipeline,
@@ -22,72 +22,115 @@ import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDe
 import { readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
-const FIXTURE_ID = 'controleEstoque-39a5166';
 const PROJECT = 102047;
-const MODULE = 'controleEstoque';
+const TIPS = [
+  { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
+  { id: 'agendaClinica-cab144b', moduleName: 'agendaClinica', reachesFinalize: false },
+  { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: false },
+] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70'];
 
-void test('finalize80 accepts the request service inventoried by input20', async () => {
-  const host = await readyHost();
-  const report = await runToFinalize(host, false);
-  assert.equal(report.outcome, 'complete', JSON.stringify(report.findings));
-  assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
-  const snapshot = readSnapshot(host);
-  const services = snapshot.files.filter(file => file.artifactType === 'requestService');
-  assert.deepEqual(services.map(file => file.defPath).sort(), [
-    `l1/${MODULE}/layer_2_application/requests/movimentacoes.defs.ts`,
-    `l1/${MODULE}/layer_2_application/requests/produtos.defs.ts`,
-  ]);
-  for (const service of services) {
-    assert.equal(report.files.some(file => file.defPath === service.defPath), true, service.defPath);
+for (const tip of TIPS) {
+  const expected = requestServicePaths(tip.id, tip.moduleName);
+
+  const title = tip.reachesFinalize
+    ? `finalize80 accepts the request service inventoried by input20 (${tip.id})`
+    : `input20 stays closed before finalize80 (${tip.id})`;
+  void test(title, async () => {
+    const host = await readyHost(tip.id, tip.moduleName);
+    const report = await runToFinalize(host, tip.moduleName, false);
+    if (!report) {
+      assertInputClosed(host, tip.moduleName, tip.id);
+      return;
+    }
+    assert.equal(report.outcome, 'complete', JSON.stringify(report.findings));
+    assert.equal(report.findings.some(finding => finding.severity === 'error'), false);
+    assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
+    const snapshot = readSnapshot(host, tip.moduleName);
+    const services = snapshot.files.filter(file => file.artifactType === 'requestService');
+    assert.deepEqual(services.map(file => file.defPath).sort(), expected);
+    for (const service of services) {
+      assert.equal(report.files.some(file => file.defPath === service.defPath), true, service.defPath);
+    }
+  });
+
+  const negative = tip.reachesFinalize
+    ? `a request service missing from the inventory is EXTRA_FILE (${tip.id})`
+    : `the same closed input20 is stable when the inventory would be dropped (${tip.id})`;
+  void test(negative, async () => {
+    const host = await readyHost(tip.id, tip.moduleName);
+    const report = await runToFinalize(host, tip.moduleName, true);
+    if (!report) {
+      assertInputClosed(host, tip.moduleName, tip.id);
+      return;
+    }
+    assert.equal(report.outcome, 'held');
+    const extras = report.findings.filter(finding => finding.code === 'EXTRA_FILE');
+    assert.deepEqual(extras.map(finding => finding.path).sort(), expected);
+  });
+}
+
+/** Frozen plans that input20 refuses never reach finalize80. The refusal is the closed result. */
+function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string): void {
+  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
+  assert.equal(state.steps.input20?.status, 'failed', fixtureId);
+  const error = state.steps.input20?.error || '';
+  if (fixtureId === 'agendaClinica-cab144b') {
+    assert.match(error, /TRANSITION_REF_MISSING:3/);
+    assert.match(error, /REQUEST_USECASE_UNPLANNED:3/);
+    return;
   }
-});
+  if (fixtureId === 'synthetic-v2') {
+    assert.match(error, /SCHEMA_DIVERGENT:8/);
+    assert.match(error, /REQUEST_USECASE_UNPLANNED:1/);
+    return;
+  }
+  assert.fail(`${fixtureId} stopped before finalize80: ${error}`);
+}
 
-void test('a request service missing from the inventory is EXTRA_FILE', async () => {
-  const host = await readyHost();
-  const report = await runToFinalize(host, true);
-  assert.equal(report.outcome, 'held');
-  const extras = report.findings.filter(finding => finding.code === 'EXTRA_FILE');
-  assert.deepEqual(extras.map(finding => finding.path).sort(), [
-    `l1/${MODULE}/layer_2_application/requests/movimentacoes.defs.ts`,
-    `l1/${MODULE}/layer_2_application/requests/produtos.defs.ts`,
-  ]);
-});
+function requestServicePaths(id: string, moduleName: string): string[] {
+  return Object.keys(loadD1Fixture(id))
+    .filter(file => file.startsWith(`l2/${moduleName}/web/contracts/`) && file.endsWith('.defs.ts'))
+    .map(file => file.slice(file.lastIndexOf('/') + 1, -'.defs.ts'.length))
+    .sort()
+    .map(pageId => `l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`);
+}
 
-async function readyHost(): Promise<TestHost> {
+async function readyHost(fixtureId: string, moduleName: string): Promise<TestHost> {
   const host = installStudio(PROJECT);
-  seedD1Fixture(host, FIXTURE_ID, PROJECT);
-  await writeJson(pipelineFile(PROJECT, MODULE), createEntryPipeline(PROJECT, MODULE, new Date('2026-10-02T12:00:00.000Z')));
+  seedD1Fixture(host, fixtureId, PROJECT);
+  await writeJson(pipelineFile(PROJECT, moduleName), createEntryPipeline(PROJECT, moduleName, new Date('2026-10-02T12:00:00.000Z')));
   return host;
 }
 
-async function runToFinalize(host: TestHost, dropRequestServices: boolean): Promise<D1FinalizeReport> {
+async function runToFinalize(host: TestHost, moduleName: string, dropRequestServices: boolean): Promise<D1FinalizeReport | null> {
   const agent = createAgent();
-  const ctx = context();
+  const ctx = contextFor(moduleName);
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
   let order = 1;
   for (const stepId of BEFORE_USECASES) {
-    const trace = await runStep(agent, ctx, parent, stepId, order);
+    const trace = await runStep(agent, ctx, parent, moduleName, stepId, order);
     order += 1;
-    assertApproved(host, stepId, trace);
+    if (!isApproved(host, moduleName, stepId)) return null;
+    assertApproved(host, moduleName, stepId, trace);
   }
-  const usecaseTrace = await approveUsecases(agent, ctx, parent, order);
+  const usecaseTrace = await approveUsecases(agent, ctx, parent, moduleName, order);
   order += 1;
-  assertApproved(host, 'usecases50', usecaseTrace);
+  assertApproved(host, moduleName, 'usecases50', usecaseTrace);
   for (const stepId of AFTER_USECASES) {
-    const trace = await runStep(agent, ctx, parent, stepId, order);
+    const trace = await runStep(agent, ctx, parent, moduleName, stepId, order);
     order += 1;
-    assertApproved(host, stepId, trace);
+    assertApproved(host, moduleName, stepId, trace);
   }
   if (dropRequestServices) {
-    const snapshot = readSnapshot(host);
+    const snapshot = readSnapshot(host, moduleName);
     const kept = snapshot.files.filter(file => file.artifactType !== 'requestService');
     assert.equal(kept.length < snapshot.files.length, true);
-    await writeJson(inputFile(PROJECT, MODULE), { ...snapshot, files: kept });
+    await writeJson(inputFile(PROJECT, moduleName), { ...snapshot, files: kept });
   }
-  await runStep(agent, ctx, parent, 'finalize80', order);
-  const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, MODULE))]?.content || '');
+  await runStep(agent, ctx, parent, moduleName, 'finalize80', order);
+  const report = parseFinalizeReport(host.files[fileKey(reportFile(PROJECT, moduleName))]?.content || '');
   assert.ok(report);
   return report;
 }
@@ -96,17 +139,18 @@ async function approveUsecases(
   agent: ReturnType<typeof createAgent>,
   ctx: mls.msg.ExecutionContext,
   parent: mls.msg.AIAgentStep,
+  moduleName: string,
   order: number,
 ): Promise<string> {
-  const intents = await agent.beforePromptStep!(meta(), ctx, parent, createD1AgentStep('usecases50', MODULE, PROJECT, 'run'), order);
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, createD1AgentStep('usecases50', moduleName, PROJECT, 'run'), order);
   const barrier = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
     intent.type === 'add-step' && intent.step.planning?.planId === 'usecases50-barrier');
   assert.ok(barrier, 'usecases50 did not open a barrier');
-  const work = await readD1UsecaseWork(PROJECT, MODULE);
+  const work = await readD1UsecaseWork(PROJECT, moduleName);
   assert.ok(work);
   for (const usecase of work.request.usecases) {
     const plan = fixturePlan(work.request, usecase);
-    await writeAttempt(PROJECT, MODULE, {
+    await writeAttempt(PROJECT, moduleName, {
       usecaseId: usecase.usecaseId,
       status: 'parsed',
       trace: 'deterministic plan',
@@ -121,16 +165,21 @@ async function approveUsecases(
     .join('\n');
 }
 
-function assertApproved(host: TestHost, stepId: D1StepId, trace: string): void {
-  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as D1PipelineState;
+function isApproved(host: TestHost, moduleName: string, stepId: D1StepId): boolean {
+  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
+  return state.steps[stepId]?.status === 'approved';
+}
+
+function assertApproved(host: TestHost, moduleName: string, stepId: D1StepId, trace: string): void {
+  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
   assert.equal(state.steps[stepId]?.status, 'approved', `${stepId} ${state.steps[stepId]?.error || ''} ${trace}`);
 }
 
-function readSnapshot(host: TestHost): D1InputSnapshot {
-  return JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as D1InputSnapshot;
+function readSnapshot(host: TestHost, moduleName: string): D1InputSnapshot {
+  return JSON.parse(host.files[fileKey(inputFile(PROJECT, moduleName))]?.content || '{}') as D1InputSnapshot;
 }
 
-function context(): mls.msg.ExecutionContext {
+function contextFor(moduleName: string): mls.msg.ExecutionContext {
   const root: mls.msg.AIAgentStep = {
     type: 'agent',
     stepId: 1,
@@ -149,7 +198,7 @@ function context(): mls.msg.ExecutionContext {
       PK: 'task-1',
       iaCompressed: {
         nextSteps: [root],
-        longMemory: { project: String(PROJECT), moduleName: MODULE },
+        longMemory: { project: String(PROJECT), moduleName },
       },
     },
   } as unknown as mls.msg.ExecutionContext;
@@ -163,10 +212,11 @@ async function runStep(
   agent: ReturnType<typeof createAgent>,
   ctx: mls.msg.ExecutionContext,
   parent: mls.msg.AIAgentStep,
+  moduleName: string,
   stepId: D1StepId,
   order: number,
 ): Promise<string> {
-  const step = createD1AgentStep(stepId, MODULE, PROJECT, 'run');
+  const step = createD1AgentStep(stepId, moduleName, PROJECT, 'run');
   step.stepId = order;
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, order);
   return intents
