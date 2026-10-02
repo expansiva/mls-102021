@@ -21,6 +21,7 @@ import {
   emitAccess,
   emitAuthority,
   emitController,
+  emitRequestService,
   emitUsecase,
   type EmitFailure,
   type EmitResult,
@@ -32,10 +33,12 @@ const SCOPE = `${P}/l1/${MOD}/layer_2_application/scope/accessScope.defs.ts`;
 const AUTHORITY = `${P}/l1/${MOD}/layer_1_external/auth/authorityMap.defs.ts`;
 const CLOSE = `${P}/l1/${MOD}/layer_2_application/usecases/closeTicket.defs.ts`;
 const LIST = `${P}/l1/${MOD}/layer_2_application/usecases/listTicket.defs.ts`;
+const REQUEST = `${P}/l1/${MOD}/layer_2_application/requests/tickets.defs.ts`;
 const CONTROLLER = `${P}/l1/${MOD}/layer_1_external/adapters/http/controllers/tickets.defs.ts`;
 const CONTRACT = `${P}/l2/${MOD}/web/contracts/tickets.defs.ts`;
-const ROUTE_CLOSE = `${MOD}.tickets.cmdCloseTicket`;
-const ROUTE_LIST = `${MOD}.tickets.qryListTicket`;
+// v2 routes: `<mod>.<page>.<requestId>`; nothing in the name says command or query.
+const ROUTE_CLOSE = `${MOD}.tickets.closeIt`;
+const ROUTE_LIST = `${MOD}.tickets.ticketRows`;
 
 function def(artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition {
   return { schemaVersion: M1_DEFINITION_SCHEMA, artifactType, artifactId, moduleName: MOD, status: 'pending', dependencies, data } as M1Definition;
@@ -48,39 +51,61 @@ function grant(grantId: string, actorRef: string): Record<string, unknown> {
   };
 }
 
-function usecase(id: string, route: string, symbol: string): M1Definition {
-  return def('usecase', id, [CONTRACT], {
-    functions: [{ functionName: id, contractRefs: [{ route, symbol }] }],
-    routeProjections: [{ route, contractPath: CONTRACT, outputFields: ['id'] }],
+/** v2 usecase: the signature is the def's fields; no contract ref, no route projection. */
+function usecase(id: string, operation: string): M1Definition {
+  const idField = { name: 'id', type: 'uuid', fieldRef: 'Ticket.id' };
+  return def('usecase', id, [], {
+    usecaseId: id,
+    entityId: 'Ticket',
+    operation,
+    ports: [],
+    functions: [{ functionName: id, input: [idField], output: [idField] }],
   });
 }
 
 const scope = def('accessScope', 'accessScope', [], { scopeId: 'accessScope', grants: [grant('agentCloses', 'agent'), grant('auditorReads', 'auditor')] });
 const authority = (entries: Array<{ grantId: string; actorRef: string }>) => def('authorityMap', 'authorityMap', [SCOPE], { mapId: 'authorityMap', entries });
 const fullMap = authority([{ grantId: 'agentCloses', actorRef: 'agent' }, { grantId: 'auditorReads', actorRef: 'auditor' }]);
-const close = usecase('closeTicket', ROUTE_CLOSE, 'CloseTicketOutput');
-const list = usecase('listTicket', ROUTE_LIST, 'ListTicketOutput');
-const controller = (dependencies: string[]) => def('httpController', 'tickets', dependencies, {
+const close = usecase('closeTicket', 'update');
+const list = usecase('listTicket', 'list');
+const service = def('requestService', 'tickets', [CLOSE, LIST], {
   pageId: 'tickets',
-  handlers: [
-    { route: ROUTE_CLOSE, kind: 'command', usecaseId: 'closeTicket', grantIds: ['agentCloses'] },
-    { route: ROUTE_LIST, kind: 'query', usecaseId: 'listTicket', grantIds: ['auditorReads'] },
+  requests: [
+    { route: ROUTE_CLOSE, kind: 'cmd', uses: ['closeTicket'], transaction: 'single', outputs: [{ key: 'ticket', entity: 'Ticket', fields: ['id'] }], params: [] },
+    { route: ROUTE_LIST, kind: 'qry', uses: ['listTicket'], transaction: 'none', outputs: [{ key: 'tickets', entity: 'Ticket', fields: ['id'] }], params: [] },
   ],
 });
-const consumer = controller([AUTHORITY, SCOPE, CLOSE, LIST]);
+const handler = (route: string, kind: string, grantId: string) => ({
+  route, kind, grantIds: [grantId], serviceFunction: route, contractPath: `l2/${MOD}/web/contracts/tickets.defs.ts`, contractInterface: 'TicketsContracts',
+});
+const controller = (dependencies: string[]) => def('httpController', 'tickets', dependencies, {
+  pageId: 'tickets',
+  handlers: [handler(ROUTE_CLOSE, 'command', 'agentCloses'), handler(ROUTE_LIST, 'query', 'auditorReads')],
+});
+const consumer = controller([AUTHORITY, SCOPE, REQUEST]);
 
 const CONTRACT_SOURCE = [
-  'export interface CloseTicketInput {\n  id: string;\n}',
-  'export interface CloseTicketOutput {\n  id: string;\n}',
-  'export interface ListTicketInput {\n  status?: string;\n}',
-  'export interface ListTicketOutput {\n  id: string;\n}',
+  'export interface TicketsContracts {',
+  `  '${ROUTE_CLOSE}': {`,
+  "    kind: 'cmd';",
+  '    input: { id: string };',
+  '    output: { ticket: { id: string } };',
+  '  };',
+  `  '${ROUTE_LIST}': {`,
+  "    kind: 'qry';",
+  '    input: { status?: string };',
+  '    output: { tickets: { id: string }[] };',
+  '  };',
+  '}',
+  '',
 ].join('\n');
 
 const asSource = (definition: M1Definition) => `export const definition = ${JSON.stringify(definition)} as const;\n`;
 
 function reader(map: M1Definition): (ref: string) => Promise<string | null> {
   const files = new Map<string, string>([
-    [SCOPE, asSource(scope)], [AUTHORITY, asSource(map)], [CLOSE, asSource(close)], [LIST, asSource(list)], [CONTRACT, CONTRACT_SOURCE],
+    [SCOPE, asSource(scope)], [AUTHORITY, asSource(map)], [CLOSE, asSource(close)], [LIST, asSource(list)],
+    [REQUEST, asSource(service)], [CONTRACT, CONTRACT_SOURCE],
   ]);
   return async ref => files.get(ref) ?? null;
 }
@@ -100,6 +125,7 @@ async function load(map: M1Definition, mapSource: (source: string) => string = s
     [AUTHORITY, mapSource(ok(emitAuthority(map, outputPathFromDefPath(AUTHORITY))).source)],
     [CLOSE, ok(await emitUsecase(close, outputPathFromDefPath(CLOSE), read)).source],
     [LIST, ok(await emitUsecase(list, outputPathFromDefPath(LIST), read)).source],
+    [REQUEST, ok(await emitRequestService(service, outputPathFromDefPath(REQUEST), read, [], 'structure')).source],
     [CONTROLLER, ok(await emitController(consumer, outputPathFromDefPath(CONTROLLER), read)).source],
   ];
   const dir = mkdtempSync(join(tmpdir(), 'd1-36-'));
@@ -162,30 +188,31 @@ void test('a grant the map does not name is refused, and a controller without th
   } finally {
     loaded.dispose();
   }
-  const missing = await emitController(controller([SCOPE, CLOSE, LIST]), outputPathFromDefPath(CONTROLLER), reader(fullMap));
+  const missing = await emitController(controller([SCOPE, REQUEST]), outputPathFromDefPath(CONTROLLER), reader(fullMap));
   assert.equal('code' in missing && missing.code, 'AUTHORITY_UNREAD');
   const unread = await emitController(consumer, outputPathFromDefPath(CONTROLLER), async ref => ref === AUTHORITY ? null : reader(fullMap)(ref));
   assert.equal('code' in unread && unread.code, 'AUTHORITY_UNREAD');
 });
 
 void test('a consumed map is not NO_CONSUMER; an orphan map still is', async () => {
-  const readable = [SCOPE, AUTHORITY, CLOSE, LIST, CONTROLLER, CONTRACT, ...Object.values(PLATFORM_FILES)];
+  const readable = [SCOPE, AUTHORITY, CLOSE, LIST, REQUEST, CONTROLLER, CONTRACT, ...Object.values(PLATFORM_FILES)];
   const base = [
     { defPath: SCOPE, definition: scope },
     { defPath: AUTHORITY, definition: fullMap },
     { defPath: CLOSE, definition: close },
     { defPath: LIST, definition: list },
+    { defPath: REQUEST, definition: service },
   ];
   const consumed = await planMaterialization({ units: [...base, { defPath: CONTROLLER, definition: consumer }], readable });
   const map = consumed.units.find(unit => unit.defPath === AUTHORITY);
   assert.ok(map);
   assert.equal(map.reason.startsWith(PLAN_REASON.noConsumer), false, map.reason);
-  const orphan = await planMaterialization({ units: [...base, { defPath: CONTROLLER, definition: controller([SCOPE, CLOSE, LIST]) }], readable });
+  const orphan = await planMaterialization({ units: [...base, { defPath: CONTROLLER, definition: controller([SCOPE, REQUEST]) }], readable });
   assert.equal(orphan.units.find(unit => unit.defPath === AUTHORITY)?.reason.startsWith(PLAN_REASON.noConsumer), true);
 });
 
 void test('a map blocked by an earlier NO_CONSUMER receipt is released once a controller consumes it', async () => {
-  const readable = [SCOPE, AUTHORITY, CLOSE, LIST, CONTROLLER, CONTRACT, ...Object.values(PLATFORM_FILES)];
+  const readable = [SCOPE, AUTHORITY, CLOSE, LIST, REQUEST, CONTROLLER, CONTRACT, ...Object.values(PLATFORM_FILES)];
   const blocked = { ...fullMap, status: 'blocked' } as M1Definition;
   const receipt = {
     schemaVersion: '2026-09-24-m1-receipt-v1', runId: `102099:${MOD}`, candidateId: '', defPath: AUTHORITY,
@@ -199,6 +226,7 @@ void test('a map blocked by an earlier NO_CONSUMER receipt is released once a co
     { defPath: AUTHORITY, definition: blocked },
     { defPath: CLOSE, definition: close },
     { defPath: LIST, definition: list },
+    { defPath: REQUEST, definition: service },
     { defPath: CONTROLLER, definition: consumer },
   ];
   const plan = await planMaterialization({ units, readable, receipts: new Map([[AUTHORITY, receipt]]) });
@@ -206,7 +234,7 @@ void test('a map blocked by an earlier NO_CONSUMER receipt is released once a co
   assert.ok(map);
   assert.notEqual(map.action, 'blocked', map.reason);
   const orphan = await planMaterialization({
-    units: units.map(unit => unit.defPath === CONTROLLER ? { defPath: CONTROLLER, definition: controller([SCOPE, CLOSE, LIST]) } : unit),
+    units: units.map(unit => unit.defPath === CONTROLLER ? { defPath: CONTROLLER, definition: controller([SCOPE, REQUEST]) } : unit),
     readable,
     receipts: new Map([[AUTHORITY, receipt]]),
   });
