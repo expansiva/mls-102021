@@ -245,6 +245,44 @@ void test('a write the plan lacks is created; an unknown transition and a foreig
   assert.equal(snapshot.selection.usecases.some(item => item.entity === 'GhostCard'), false);
 });
 
+function deskTransitions(artifacts: D1InputArtifacts, ids: string[]): void {
+  const note = artifacts.entities.DeskNote as Record<string, unknown>;
+  note.transitions = ids.map(transitionId => ({ transitionId }));
+}
+
+void test('two planned transitions on one entity each bind their own route and neither is pruned', () => {
+  const close: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '' };
+  const archive: PoolRow = { usecaseId: 'archive', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '' };
+  const artifacts = deskOf([close, archive], [
+    cmdRoute('ledgerDesk.board.close', 'DeskNote.close'),
+    cmdRoute('ledgerDesk.board.archive', 'DeskNote.archive'),
+  ]);
+  deskTransitions(artifacts, ['close', 'archive']);
+  const snapshot = deskBuild(artifacts);
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.close')?.uses, ['close']);
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.archive')?.uses, ['archive']);
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'close'), true);
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'archive'), true);
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_WITHOUT_REQUEST' && (item.ownerRef === 'close' || item.ownerRef === 'archive')), false);
+});
+
+void test('a lifecycle transition the plan lacks is created from the contract and the route uses it', () => {
+  const artifacts = deskOf([], [
+    cmdRoute('ledgerDesk.board.reopen', 'DeskNote.reopen'),
+  ]);
+  deskTransitions(artifacts, ['reopen']);
+  const snapshot = deskBuild(artifacts);
+  const created = snapshot.selection.usecases.find(item => item.usecaseId === 'reopen');
+  assert.ok(created);
+  assert.equal(created.operation, 'transition');
+  assert.equal(created.entity, 'DeskNote');
+  assert.equal(created.identity, 'reopen');
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.reopen')?.uses, ['reopen']);
+  const fromContract = snapshot.problems.filter(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'reopen');
+  assert.equal(fromContract.length, 1);
+  assert.equal(fromContract[0].severity, 'review');
+});
+
 void test('a created id that the plan already names for another operation stays an error', () => {
   const clash: PoolRow = { usecaseId: 'getDeskNote', entity: 'DeskNote', operation: 'list', status: 'toCreate', existing: '' };
   const snapshot = deskBuild(deskOf([clash], [qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false)]));

@@ -815,8 +815,8 @@ function noteChanges(
 }
 
 const P1_OPERATION_SET = new Set<string>(D1_P1_OPERATIONS);
-/** Operations a contract request may create. A transition id and a custom operation come only from the plan. */
-const CONTRACT_CREATED_OPERATIONS = new Set<string>(['get', 'list', 'create', 'update', 'delete']);
+/** Operations a contract request may create. A custom operation comes only from the plan. A transition is created only when the L4 lifecycle names it, with id lowerFirst(transitionRef). */
+const CONTRACT_CREATED_OPERATIONS = new Set<string>(['get', 'list', 'create', 'update', 'delete', 'transition']);
 
 interface PlannedIds {
   /** usecaseId -> `entity.operation`, every status of both plans. */
@@ -879,13 +879,15 @@ function oneRequest(
   const outputs = requestOutputs(route);
   const params = requestParams(route);
   const uses: string[] = [];
-  const take = (entity: string, operation: string): void => {
-    const match = usecases.find(item => item.entity === entity && item.operation === operation);
+  const take = (entity: string, operation: string, transitionKey = ''): void => {
+    const match = transitionKey
+      ? usecases.find(item => item.entity === entity && item.operation === 'transition' && (item.usecaseId === transitionKey || item.identity === transitionKey))
+      : usecases.find(item => item.entity === entity && item.operation === operation);
     if (match) {
       if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
       return;
     }
-    const usecaseId = `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
+    const usecaseId = transitionKey || `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
     const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned);
     if (refusal) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. ${refusal}`, route.route);
@@ -900,11 +902,12 @@ function oneRequest(
     const split = route.writes.indexOf('.');
     const entity = split < 0 ? route.writes : route.writes.slice(0, split);
     const written = split < 0 ? '' : route.writes.slice(split + 1);
-    const operation = P1_OPERATION_SET.has(written) ? written : 'transition';
-    if (!P1_OPERATION_SET.has(written) && !lifecycleHas(entities, entity, written)) {
+    const namedTransition = !P1_OPERATION_SET.has(written);
+    const operation = namedTransition ? 'transition' : written;
+    if (namedTransition && !lifecycleHas(entities, entity, written)) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Transition '${written}' is not in the L4 lifecycle of ${entity}.`, route.route);
     } else {
-      take(entity, operation);
+      take(entity, operation, namedTransition ? lowerFirst(written) : '');
     }
     for (const output of outputs) {
       if (output.entity === entity) continue;
@@ -934,6 +937,8 @@ function contractUsecaseRefusal(
   planned: PlannedIds,
 ): string {
   if (!CONTRACT_CREATED_OPERATIONS.has(operation)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
+  // The bare operation `transition` still comes from the plan. Only a lifecycle ref, id lowerFirst(transitionId), is created here.
+  if (operation === 'transition' && !lifecycleHasId(entities, entity, usecaseId)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
   if (!Object.prototype.hasOwnProperty.call(entities, entity)) return `Entity ${entity} is not in the module ontology.`;
   if (!isSafeToken(usecaseId)) return `Usecase id '${usecaseId}' is not an id.`;
   const prior = planned.ids.get(usecaseId);
@@ -944,6 +949,10 @@ function contractUsecaseRefusal(
 
 function lifecycleHas(entities: Record<string, unknown>, entity: string, transitionId: string): boolean {
   return rows(rec(entities[entity]).transitions).some(row => text(row.transitionId) === transitionId);
+}
+
+function lifecycleHasId(entities: Record<string, unknown>, entity: string, usecaseId: string): boolean {
+  return rows(rec(entities[entity]).transitions).some(row => lowerFirst(text(row.transitionId)) === usecaseId);
 }
 
 function isLocalEntity(entity: string, tables: D1SelectedTable[], entities: Record<string, unknown>): boolean {
