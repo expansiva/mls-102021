@@ -1,5 +1,9 @@
 # usecases50
 
+## 2026-10-02 (d1_55)
+
+- A first worker attempt whose catalog leaves no choice is not sent to the model (`derive.ts`): no rule, no effect, no transition, and one data call — one port call on list/get/create/update, or one MDM pair on get/update. Steps are `context` then that call, the one sequence every recorded reply of those groups had. The attempt is `parsed` with `derived: true`, the call log records `derived` (not a prompt, not a reply), and the barrier runs the same gate and fidelity. A repair still goes to the model with the refusal.
+
 ## 2026-09-28 (p4_16)
 
 - `platformPatchKey` accepted only `identification`, `person` and `base` as platform branches, so `details.product.sku`, `details.company.legalName` and every other non-person subtype were refused as "not a platform branch" (controleEstoque, REPAIR_EXHAUSTED on createProduct/updateProduct). The accepted branch set is now derived from `mdm.defs.ts` `subtypes` (`identification`, `base`, plus every subtype name lowercased) instead of a fixed list, so a subtype added to the ontology is a platform branch automatically.

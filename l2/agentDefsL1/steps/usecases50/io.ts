@@ -108,6 +108,19 @@ export async function sourceBlockTrace(project: number, moduleName: string, usec
   }
 }
 
+/** A derived attempt has no model reply. Its trace stays when the host closes the worker without a payload. */
+export async function derivedTrace(project: number, moduleName: string, usecaseId: string): Promise<string | null> {
+  const text = await readText(attemptFile(project, moduleName, usecaseId));
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!isAttempt(parsed) || parsed.status !== 'parsed' || parsed.derived !== true) return null;
+    return parsed.trace;
+  } catch {
+    return null;
+  }
+}
+
 export async function readPromptEvidence(project: number, moduleName: string, usecaseId: string): Promise<D1PromptEvidence | null> {
   const text = await readText(attemptFile(project, moduleName, usecaseId));
   if (!text) return null;

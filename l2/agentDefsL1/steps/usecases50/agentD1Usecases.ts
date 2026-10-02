@@ -50,12 +50,14 @@ import {
   loadD1UsecaseWork,
   readAttempts,
   readD1UsecaseWork,
+  derivedTrace,
   readPromptEvidence,
   sourceBlockTrace,
   writeAttempt,
   writeD1UsecaseWork,
   writePromptEvidence,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { deriveUsecaseSteps } from '/_102021_/l2/agentDefsL1/steps/usecases50/derive.js';
 import { closedFromRequest, parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
 export async function beforeD1UsecasesPromptStep(
@@ -202,6 +204,27 @@ async function prepareWorker(
   }
   // Same catalogs for the tool and both prompts. An empty catalog omits that branch.
   const closed = closedFromRequest(work.request, usecase, packet);
+  // d1_55: a first attempt the catalog leaves no choice on is not sent to the model.
+  // The barrier runs the same gate on it. A repair goes to the model with the refusal.
+  const derived = arg.planId.startsWith('usecases50-worker-') ? deriveUsecaseSteps(usecase.operation, closed) : null;
+  if (derived) {
+    const trace = `usecases50 derived the steps for ${usecase.usecaseId}. No model was called.`;
+    await writeAttempt(arg.project, arg.moduleName, {
+      usecaseId: usecase.usecaseId,
+      status: 'parsed',
+      trace,
+      unitAttempts: arg.unitAttempts,
+      reply: derived,
+      derived: true,
+    });
+    await recordCallEvent(arg.project, arg.moduleName, {
+      kind: 'derived',
+      usecaseId: arg.usecaseId,
+      planId: arg.planId,
+      unitAttempts: arg.unitAttempts,
+    });
+    return [updateStatus(context, parentStep, step, hookSequential, 'completed', trace)];
+  }
   const humanPrompt = usecaseHumanPrompt({
     usecase,
     entityId: usecase.entity,
@@ -257,7 +280,9 @@ async function finishWorker(
       ? { steps: null, problems: [{ code: 'INVENTED_OPERATION', message: 'The model reply is not steps.' }] }
       : parseWorkerReply(payload.value);
   const prior = await readPromptEvidence(arg.project, arg.moduleName, arg.usecaseId);
-  const blockedTrace = !payload.present ? await sourceBlockTrace(arg.project, arg.moduleName, arg.usecaseId) : null;
+  const blockedTrace = !payload.present
+    ? await sourceBlockTrace(arg.project, arg.moduleName, arg.usecaseId) || await derivedTrace(arg.project, arg.moduleName, arg.usecaseId)
+    : null;
   if (blockedTrace) return [completeOnly(context, parentStep, step, hookSequential, blockedTrace)[0]];
   const operational = parsed.problems.some(problem => problem.code === 'OPERATIONAL');
   const outcome = parsed.problems.map(problem => problem.message).join(' ') || `usecases50 recorded steps for ${arg.usecaseId}.`;
@@ -339,7 +364,7 @@ async function barrier(
       updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier identified ${named}`),
     ];
   }
-  const build = buildFromWork(work, classified, classified.length);
+  const build = buildFromWork(work, classified, classified.filter(item => !item.derived).length);
   const committed = await commitD1Usecases(prompt.project, build);
   if (!build.ok || committed.issues.length) {
     const message = committed.issues[0] || build.problems.find(problem => problem.severity === 'error')?.message || 'usecases50 refused the plan.';
@@ -464,7 +489,7 @@ async function closeUnresolved(
   classified: readonly D1AttemptTrace[],
   identified: readonly { usecaseId: string; code: string; trace: string }[],
 ): Promise<mls.msg.AgentIntent[]> {
-  const build = holdUnresolvedBuild(work, classified, identified, classified.length);
+  const build = holdUnresolvedBuild(work, classified, identified, classified.filter(item => !item.derived).length);
   const committed = await commitD1Usecases(prompt.project, build);
   const reason = blockingReason(build.problems);
   const artifact = displayPath(draftFile(prompt.project, prompt.moduleName, 'usecases50'));

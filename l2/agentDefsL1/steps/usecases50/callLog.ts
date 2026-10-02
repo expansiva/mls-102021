@@ -21,7 +21,9 @@ export type D1CallEventKind =
   | 'reply_delivered'
   | 'reply_absent'
   | 'not_dispatched'
-  | 'repair_scheduled';
+  | 'repair_scheduled'
+  /** Steps the code derived. No prompt, no reply, not a model call (d1_55). */
+  | 'derived';
 
 const EVENT_SLUG: Record<D1CallEventKind, string> = {
   prompt_assembled: 'prompt',
@@ -29,6 +31,7 @@ const EVENT_SLUG: Record<D1CallEventKind, string> = {
   reply_absent: 'absent',
   not_dispatched: 'blocked',
   repair_scheduled: 'repair',
+  derived: 'derived',
 };
 
 export interface D1CallEvent {
@@ -272,7 +275,8 @@ function isEventKind(value: unknown): value is D1CallEventKind {
     || value === 'reply_delivered'
     || value === 'reply_absent'
     || value === 'not_dispatched'
-    || value === 'repair_scheduled';
+    || value === 'repair_scheduled'
+    || value === 'derived';
 }
 
 function positive(value: unknown): value is number {

@@ -34,6 +34,8 @@ export interface D1AttemptTrace {
   reply: unknown;
   /** The prompt the hook assembled. Present after prepareWorker. */
   request?: D1PromptEvidence;
+  /** True when the code derived the steps and the model was not called (d1_55). */
+  derived?: boolean;
 }
 
 export interface D1RepairOrder {

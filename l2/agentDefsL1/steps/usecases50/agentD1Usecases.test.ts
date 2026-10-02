@@ -112,7 +112,8 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
   assert.match(trace?.traceMsg || '', new RegExp(`dispatched ${SELECTED} workers`));
 
-  const workerPrompt = fanout?.executionMode?.args[0] || '';
+  // d1_55: a local list is derived without the model. The worker that reaches the model is an MDM create.
+  const workerPrompt = firstPrompt(intents, MDM_CREATE);
   const arg = parseWorkerArg(workerPrompt);
   assert.ok(arg);
   const worker: mls.msg.AIAgentStep = {
@@ -513,7 +514,7 @@ void test('one unresolved unit closes the step, counts the error, and keeps the 
 });
 
 void test('a delivered reply counts once, a redelivery does not, and cost is not the count', async () => {
-  const target = LOCAL_LIST;
+  const target = MDM_CREATE; // d1_55: LOCAL_LIST is derived and never reaches the model.
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
@@ -554,7 +555,7 @@ void test('an invalid payload is one delivered reply and not yet a repair', asyn
 });
 
 void test('a prompt with no payload is not a delivered reply', async () => {
-  const target = LOCAL_LIST;
+  const target = MDM_CREATE; // d1_55: LOCAL_LIST is derived and never reaches the model.
   const { agent, ctx, parent, intents } = await openUsecases();
   const workerPrompt = firstPrompt(intents, target);
   const prepared = await agent.beforePromptStep!(meta(), ctx, parent, workerStep(workerPrompt, 51), 5);
@@ -592,7 +593,7 @@ void test('a source block is not dispatched and is not a reply', async () => {
 });
 
 void test('one repair is a second reply, and the attempt index is not the total', async () => {
-  const target = LOCAL_LIST;
+  const target = MDM_CREATE; // d1_55: LOCAL_LIST is derived and never reaches the model.
   const { agent, ctx, parent, intents } = await openUsecases();
   const work = await readD1UsecaseWork(PROJECT, MODULE);
   assert.ok(work);
