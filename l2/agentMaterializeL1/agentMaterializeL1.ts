@@ -2,7 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { helpText, parseStudioPrompt, M1_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/run/command.js';
-import { runMaterialize } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
+import { runMaterialize, type MaterializeRunResult } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import { receiptFolder } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { createStudioHost, loadStudioUnits, readStudioProfile } from '/_102021_/l2/agentMaterializeL1/studioHost.js';
 
@@ -26,8 +26,8 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   const project = typeof mls.actualProject === 'number' ? mls.actualProject : 0;
   const command = parseStudioPrompt(userPrompt || context.message.content || '', project);
-  if (command.help) return statusTask(agent, context, helpText(project), { command: 'help' });
-  if (command.refusal) return statusTask(agent, context, command.refusal, { command: 'refused' });
+  if (command.help) return statusTask(agent, context, helpText(project), true, { command: 'help' });
+  if (command.refusal) return statusTask(agent, context, command.refusal, false, { command: 'refused' });
   try {
     const host = createStudioHost(command.project);
     const [units, profile] = await Promise.all([
@@ -45,14 +45,14 @@ async function beforePromptImplicit(
       profileMode: profile.mode,
       profileDeclared: profile.declared,
     }, host);
-    return statusTask(agent, context, summarize(result), {
+    return statusTask(agent, context, summarize(result), runEndedWell(result), {
       command: result.stage,
       ended: result.ended,
       moduleName: command.moduleName,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return statusTask(agent, context, `agentMaterializeL1 stopped: ${message}`, { command: 'stopped' });
+    return statusTask(agent, context, `agentMaterializeL1 stopped: ${message}`, false, { command: 'stopped' });
   }
 }
 
@@ -98,10 +98,33 @@ function summarize(result: { moduleName: string; project: number; stage: string;
   return lines.join('\n');
 }
 
+/** Unit codes of a unit whose code is in place (the same list as `dependencyOk` in run/execute.ts). */
+const UNIT_OK: ReadonlySet<string> = new Set(['PROMOTED', 'REUSE', 'VERIFIED']);
+/** Catalog actions that refuse: the derived catalog was not stored. */
+const CATALOG_REFUSED: ReadonlySet<string> = new Set(['conflict', 'invalid']);
+/** Registration actions that refuse: l5 was not registered. */
+const REGISTRATION_REFUSED: ReadonlySet<string> = new Set(['pending', 'invalid']);
+
+/**
+ * m1_45: the run ended well, so the root step may close `completed`.
+ * simulate writes nothing and plans only: it ends well when it ended `SIMULATED`.
+ * Any other stage needs `COMPLETED`, every unit in place, and catalog and registration without refusal.
+ * A registration with pendings is a refusal even when it patched: part of the backend is not registered.
+ */
+export function runEndedWell(result: Pick<MaterializeRunResult, 'stage' | 'ended' | 'units' | 'catalog' | 'registration'>): boolean {
+  if (result.stage === 'simulate') return result.ended === 'SIMULATED';
+  if (result.ended !== 'COMPLETED') return false;
+  if (!result.units.every(unit => UNIT_OK.has(unit.code))) return false;
+  if (result.catalog && CATALOG_REFUSED.has(result.catalog.action)) return false;
+  if (result.registration && (REGISTRATION_REFUSED.has(result.registration.action) || result.registration.pendings.length > 0)) return false;
+  return true;
+}
+
 function statusTask(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   message: string,
+  endedWell: boolean,
   memory: Record<string, string>,
 ): mls.msg.AgentIntent[] {
   const addMessage: mls.msg.AgentIntentAddMessageAI = {
@@ -130,7 +153,7 @@ function statusTask(
     result: message,
     planning: { planId: 'status', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
   } as mls.msg.AIResultStep;
-  // The root step (stepId 1) is closed so the task leaves `in progress`. A refusal or a stop is `completed`: the agent answered.
+  // The root step (stepId 1) is closed so the task leaves `in progress`: `failed` with the reason unless the run ended well.
   const root = { stepId: 1 } as mls.msg.AIPayload;
   return [addMessage, {
     type: 'add-step',
@@ -139,7 +162,7 @@ function statusTask(
     taskId: '',
     parentStepId: 1,
     step: result,
-  }, updateStatus(context, root, root, 0, 'completed', message)];
+  }, updateStatus(context, root, root, 0, endedWell ? 'completed' : 'failed', message)];
 }
 
 function updateStatus(

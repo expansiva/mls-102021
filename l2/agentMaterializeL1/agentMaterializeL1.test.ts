@@ -12,7 +12,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAgent } from '/_102021_/l2/agentMaterializeL1/agentMaterializeL1.js';
+import { createAgent, runEndedWell } from '/_102021_/l2/agentMaterializeL1/agentMaterializeL1.js';
 import { installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -115,17 +115,17 @@ async function intentsOf(prompt: string): Promise<mls.msg.AgentIntent[]> {
   return createAgent().beforePromptImplicit!(meta(), context(prompt), prompt);
 }
 
-function assertClosesTask(intents: mls.msg.AgentIntent[], label: string): void {
+function assertClosesTask(intents: mls.msg.AgentIntent[], label: string, expected: mls.msg.AIStepStatus = 'completed'): void {
   const status = intents.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
   assert.ok(status, `${label}: statusTask must emit update-status so the task leaves in progress`);
-  assert.equal(status.status, 'completed', label);
+  assert.equal(status.status, expected, label);
   assert.equal(status.stepId, 1, label);
   assert.equal(status.parentStepId, 1, label);
   const message = intents[0] as mls.msg.AgentIntentAddMessageAI;
   assert.equal(status.traceMsg, String(message.request.inputAI[1]?.content), label);
 }
 
-void test('m1_31: every status answer (run, refused, stopped) closes the root step with update-status completed', async () => {
+void test('m1_31: every status answer (run, refused, stopped) closes the root step; m1_45: refused and stopped close it failed', async () => {
   const host = installStudio(PROJECT);
   seedDefs(host, PROJECT);
   assertClosesTask(await intentsOf(`@@agentMaterializeL1 ${MODULE} /simulate`), 'run');
@@ -134,11 +134,89 @@ void test('m1_31: every status answer (run, refused, stopped) closes the root st
   installStudio(PROJECT);
   const refused = await intentsOf(`@@agentMaterializeL1 ${MODULE} /naoexiste`);
   assert.equal((refused[0] as mls.msg.AgentIntentAddMessageAI).request.longTermMemory?.command, 'refused');
-  assertClosesTask(refused, 'refused');
+  assertClosesTask(refused, 'refused', 'failed');
 
   installStudio(PROJECT);
   Object.defineProperty(mls.stor, 'files', { get() { throw new Error('stor offline'); } });
   const stopped = await intentsOf(`@@agentMaterializeL1 ${MODULE} /simulate`);
   assert.match(String((stopped[0] as mls.msg.AgentIntentAddMessageAI).request.inputAI[1]?.content), /agentMaterializeL1 stopped: stor offline/);
-  assertClosesTask(stopped, 'stopped');
+  assertClosesTask(stopped, 'stopped', 'failed');
+});
+
+
+/** m1_45: seeds only the domain entities, the units that structure promotes with no outside context. */
+function seedDomain(host: TestHost): void {
+  for (const rel of walk(SOURCE_ROOT).filter(item => item.startsWith('layer_3_domain/'))) {
+    const parts = rel.split('/');
+    const name = parts.pop()!.replace(/\.defs\.txt$/, '');
+    seed(host, { project: PROJECT, level: 1, folder: [MODULE, ...parts].join('/'), shortName: name, extension: '.defs.ts' },
+      readFileSync(path.join(SOURCE_ROOT, rel), 'utf8').split(SOURCE_MODULE).join(MODULE));
+  }
+}
+
+function rootStatus(intents: mls.msg.AgentIntent[]): mls.msg.AgentIntentUpdateStatus {
+  const status = intents.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
+  assert.ok(status);
+  assert.equal(status.stepId, 1);
+  return status;
+}
+
+void test('m1_45: a structure run with a refused unit closes the root step failed, the unit code in the trace', async () => {
+  const host = installStudio(PROJECT);
+  seedDefs(host, PROJECT);
+  const status = rootStatus(await intentsOf(`@@agentMaterializeL1 ${MODULE} /structure`));
+  assert.match(status.traceMsg, /Stage structure\. COMPLETED\./);
+  assert.equal(status.status, 'failed');
+  assert.match(status.traceMsg, /^MISSING_REF _102047_\/l1\/salaEnsaio\/layer_2_application\/usecases\/createProduto\.defs\.ts$/m);
+});
+
+void test('m1_45: a run every unit promoted or reused still fails while registration refuses (pending)', async () => {
+  const host = installStudio(PROJECT);
+  seedDomain(host);
+  seed(host, { project: PROJECT, level: 5, folder: '', shortName: 'project', extension: '.json' }, '{"modules":[]}\n');
+  for (const code of ['PROMOTED', 'REUSE']) {
+    const status = rootStatus(await intentsOf(`@@agentMaterializeL1 ${MODULE} /structure`));
+    assert.match(status.traceMsg, new RegExp(`^${code} .*produto\\.defs\\.ts$`, 'm'));
+    assert.match(status.traceMsg, /^registration: pending$/m);
+    assert.equal(status.status, 'failed', code);
+  }
+});
+
+void test('m1_45: an exception in the run closes the root step failed with stopped:', async () => {
+  installStudio(PROJECT);
+  Object.defineProperty(mls.stor, 'files', { get() { throw new Error('stor offline'); } });
+  const status = rootStatus(await intentsOf(`@@agentMaterializeL1 ${MODULE} /structure`));
+  assert.equal(status.status, 'failed');
+  assert.match(status.traceMsg, /^agentMaterializeL1 stopped: stor offline$/);
+});
+
+type EndedInput = Parameters<typeof runEndedWell>[0];
+
+function ended(patch: Partial<EndedInput>): EndedInput {
+  return {
+    stage: 'structure',
+    ended: 'COMPLETED',
+    units: [{ defPath: 'a.defs.ts', code: 'PROMOTED', detail: '', promoted: true, modelCalls: 0 }, { defPath: 'b.defs.ts', code: 'REUSE', detail: '', promoted: false, modelCalls: 0 }],
+    catalog: { ref: 'c', action: 'written', inputHash: 'h', recipeVersion: 'r', gaps: [], detail: '', oracleSources: {} },
+    registration: { action: 'patch', nextText: '{}', effectiveSource: 'l5/project.json', backend: {}, pendings: [], detail: '' },
+    ...patch,
+  };
+}
+
+void test('m1_45: runEndedWell is true only for COMPLETED, units in place and catalog and registration without refusal', () => {
+  assert.equal(runEndedWell(ended({})), true, 'all PROMOTED/REUSE');
+  assert.equal(runEndedWell(ended({ stage: 'verify', units: [{ defPath: 'a', code: 'VERIFIED', detail: '', promoted: false, modelCalls: 0 }] })), true, 'VERIFIED');
+  assert.equal(runEndedWell(ended({ registration: { ...ended({}).registration!, action: 'unchanged' }, catalog: { ...ended({}).catalog!, action: 'unchanged' } })), true, 'unchanged');
+  assert.equal(runEndedWell(ended({ ended: 'BUDGET_CALLS', units: [{ defPath: 'a', code: 'BUDGET_CALLS', detail: '', promoted: false, modelCalls: 0 }] })), false, 'BUDGET_CALLS');
+  assert.equal(runEndedWell(ended({ ended: 'INTERRUPTED' })), false, 'INTERRUPTED');
+  assert.equal(runEndedWell(ended({ units: [...ended({}).units, { defPath: 'x', code: 'BLOCKED', detail: '', promoted: false, modelCalls: 0 }] })), false, 'refused unit');
+  for (const action of ['conflict', 'invalid'] as const) {
+    assert.equal(runEndedWell(ended({ catalog: { ...ended({}).catalog!, action } })), false, `catalog ${action}`);
+  }
+  for (const action of ['pending', 'invalid'] as const) {
+    assert.equal(runEndedWell(ended({ registration: { ...ended({}).registration!, action } })), false, `registration ${action}`);
+  }
+  assert.equal(runEndedWell(ended({ registration: { ...ended({}).registration!, pendings: [{ origin: 'o', reason: 'STUB_REFUSED' }] } })), false, 'patch with pendings');
+  assert.equal(runEndedWell(ended({ stage: 'simulate', ended: 'SIMULATED' })), true, 'simulate');
+  assert.equal(runEndedWell(ended({ stage: 'simulate', ended: 'NO_UNITS' })), false, 'simulate NO_UNITS');
 });
