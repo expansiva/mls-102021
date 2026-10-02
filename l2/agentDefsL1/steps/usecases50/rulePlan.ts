@@ -6,6 +6,7 @@ import { capabilityApplies, mdmForOperation, mdmStepPairs } from '/_102021_/l2/a
 
 export { capabilityApplies };
 import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 /**
  * Applicability is citation, not a rule name and not a sentence.
@@ -17,8 +18,14 @@ import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/co
  * A platform catalog entry has no structured method field, so it stays pending.
  */
 
-const WRITE_OPERATIONS = new Set(['create', 'update', 'patch']);
-const READ_OPERATIONS = new Set(['list', 'get', 'read']);
+const WRITE: Record<L1Operation, boolean> = {
+  list: false, get: false, create: true, update: true, transition: false, delete: false, custom: false,
+};
+const WRITE_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => WRITE[operation]));
+const READ: Record<L1Operation, boolean> = {
+  list: true, get: true, create: false, update: false, transition: false, delete: false, custom: false,
+};
+const READ_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => READ[operation]));
 
 export interface RulePlanRule {
   ruleId: string;

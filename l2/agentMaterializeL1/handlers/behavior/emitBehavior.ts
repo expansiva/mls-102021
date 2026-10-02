@@ -23,6 +23,7 @@ import {
   readDefinition,
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/context/context.js';
 import {
   auditImports,
@@ -60,7 +61,10 @@ export const IMPLEMENT_HANDLER_RECIPE = '2026-10-02-implement-handler-v17';
 const MEMORY_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const MDM_MEMORY = '_102034_/l1/mdm/layer_1_external/data/memory/MdmDataRuntimeMemory.ts';
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
-const DERIVED_OPERATIONS = new Set(['create', 'list', 'get', 'read', 'update']);
+const DERIVED: Record<L1Operation, boolean> = {
+  list: true, get: true, create: true, update: true, transition: false, delete: false, custom: false,
+};
+const DERIVED_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => DERIVED[operation]));
 const BLOCKING_RULE_GAPS = new Set(['APPLICABILITY_UNDECLARED']);
 
 const GAP_OWNER: Record<string, string> = {

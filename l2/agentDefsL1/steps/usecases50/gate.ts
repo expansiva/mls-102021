@@ -41,10 +41,20 @@ import {
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
-const READ_OPERATIONS = new Set(['list', 'get', 'read']);
-const UPDATE_OPERATIONS = new Set(['update', 'patch']);
-const CREATE_OPERATIONS = new Set(['create']);
+const READ: Record<L1Operation, boolean> = {
+  list: true, get: true, create: false, update: false, transition: false, delete: false, custom: false,
+};
+const READ_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => READ[operation]));
+const UPDATE: Record<L1Operation, boolean> = {
+  list: false, get: false, create: false, update: true, transition: false, delete: false, custom: false,
+};
+const CREATE: Record<L1Operation, boolean> = {
+  list: false, get: false, create: true, update: false, transition: false, delete: false, custom: false,
+};
+const UPDATE_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => UPDATE[operation]));
+const CREATE_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => CREATE[operation]));
 
 interface ProjectionField {
   name: string;

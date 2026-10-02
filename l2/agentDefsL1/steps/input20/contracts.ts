@@ -1,11 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/contracts.ts" enhancement="_blank"/>
 
 import type { D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 export const D1_INPUT_VERSION = '2026-10-01-d1-input-v2' as const;
 
-/** P1 operation vocabulary (`agentPlannerL1` plan20). Not imported from that agent. */
-export const D1_P1_OPERATIONS = ['list', 'get', 'create', 'update', 'transition', 'delete', 'custom'] as const;
+/** P1 operation vocabulary. Same list as `L1_OPERATIONS`. */
+export const D1_P1_OPERATIONS = L1_OPERATIONS;
 
 export const D1_SOURCE_SCHEMAS = {
   module: '2026-09-10-ns5-module-v2',

@@ -12,6 +12,7 @@ import {
   readDefinition,
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { handlerFor } from '/_102021_/l2/agentMaterializeL1/core/registry.js';
 import type { PlannedUnit, PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan.js';
 import {
@@ -179,7 +180,10 @@ function compileCase(definition: M1Definition): M1ScenarioCase {
   });
 }
 
-const RECORD_OPERATIONS = new Set(['update', 'transition', 'get', 'read']);
+const RECORD: Record<L1Operation, boolean> = {
+  list: false, get: true, create: false, update: true, transition: true, delete: false, custom: false,
+};
+const RECORD_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => RECORD[operation]));
 
 function needsStoredRecord(definition: M1Definition): boolean {
   const operation = typeof definition.data.operation === 'string' ? definition.data.operation : '';

@@ -33,6 +33,7 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
 
@@ -832,7 +833,10 @@ function noteChanges(
 
 const P1_OPERATION_SET = new Set<string>(D1_P1_OPERATIONS);
 /** Operations a contract request may create. A custom operation comes only from the plan. A transition is created only when the L4 lifecycle names it, with id lowerFirst(transitionRef). */
-const CONTRACT_CREATED_OPERATIONS = new Set<string>(['get', 'list', 'create', 'update', 'delete', 'transition']);
+const CONTRACT_CREATED: Record<L1Operation, boolean> = {
+  list: true, get: true, create: true, update: true, transition: true, delete: true, custom: false,
+};
+const CONTRACT_CREATED_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => CONTRACT_CREATED[operation]));
 
 interface PlannedIds {
   /** usecaseId -> `entity.operation`, every status of both plans. */

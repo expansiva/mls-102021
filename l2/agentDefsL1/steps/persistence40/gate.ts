@@ -17,6 +17,7 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild, type D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_DETAILS_COLUMN,
   D1_PERSISTENCE_ACTIONS,
@@ -38,8 +39,15 @@ import {
   type D1UniqueKeyUse,
 } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 
-const OPERATIONS = ['create', 'list', 'get', 'update', 'transition', 'delete'] as const;
-type Operation = typeof OPERATIONS[number];
+const PERSISTENCE_RANK: Record<L1Operation, number | null> = {
+  create: 0, list: 1, get: 2, update: 3, transition: 4, delete: 5, custom: null,
+};
+
+const OPERATIONS = L1_OPERATIONS
+  .filter(operation => PERSISTENCE_RANK[operation] !== null)
+  .slice()
+  .sort((left, right) => (PERSISTENCE_RANK[left] ?? 0) - (PERSISTENCE_RANK[right] ?? 0));
+type Operation = (typeof OPERATIONS)[number];
 const USECASE_STATUSES = ['toCreate', 'toUpdate', 'done', 'toRemove'] as const;
 const WRITE_ACTIONS = new Set(['create', 'update', 'recompose']);
 const LOCAL_BAN: Record<string, { table: string; port: string; label: string }> = {

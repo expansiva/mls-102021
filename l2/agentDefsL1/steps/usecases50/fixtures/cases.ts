@@ -8,6 +8,12 @@ import type {
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
+
+/** Same order the old trait filters produced: create, then list, then transition. */
+const METHOD_RANK: Record<L1Operation, number | null> = {
+  create: 0, list: 1, get: null, update: null, transition: 2, delete: null, custom: null,
+};
 
 /**
  * Measured from the frozen agendaClinica backend (22 routes, 5 pages).
@@ -94,7 +100,10 @@ export function coreUsecaseRequest(): D1UsecaseRequest {
       portId: 'ConsultaRepository',
       entityId: 'Consulta',
       defPath: 'l1/agendaClinica/layer_2_application/ports/consultaRepository.defs.ts',
-      methods: ['create', 'list', 'transition'],
+      methods: L1_OPERATIONS
+        .filter(operation => METHOD_RANK[operation] !== null)
+        .slice()
+        .sort((left, right) => (METHOD_RANK[left] ?? 0) - (METHOD_RANK[right] ?? 0)),
     }],
     entities: [
       {

@@ -2,6 +2,7 @@
 
 import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
+import { L1_OPERATIONS, L1_OPERATION_TRAITS, isL1Operation, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import type { PoolMessage } from '/_102035_/l2/solution/pool.js';
 
 export const P1_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
@@ -9,13 +10,13 @@ export const P1_BACKEND_ARTIFACT = 'pool/l2/web/backend.json' as const;
 export const P1_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
 export const P1_KINDS = ['qry', 'cmd'] as const;
 export type P1Kind = typeof P1_KINDS[number];
-export const P1_OPERATIONS = ['list', 'get', 'create', 'update', 'transition', 'delete', 'custom'] as const;
-export type P1Operation = typeof P1_OPERATIONS[number];
+export const P1_OPERATIONS = L1_OPERATIONS;
+export type P1Operation = L1Operation;
 export const P1_PLAN_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'done'] as const;
 export type P1PlanStatus = typeof P1_PLAN_STATUSES[number];
 export const P1_NEEDS_FAMILIES = ['mdm', 'ddm', 'tdm'] as const;
 export type P1NeedsFamily = typeof P1_NEEDS_FAMILIES[number];
-export const P1_WRITE_OPERATIONS = ['create', 'update', 'transition', 'delete'] as const;
+export const P1_WRITE_OPERATIONS = L1_OPERATIONS.filter(operation => L1_OPERATION_TRAITS[operation].write);
 export type P1WriteOperation = typeof P1_WRITE_OPERATIONS[number];
 export const P1_REMOVED_KINDS = ['usecase', 'port', 'table'] as const;
 export type P1RemovedKind = typeof P1_REMOVED_KINDS[number];
@@ -28,7 +29,10 @@ export type P1ChangeOp = typeof P1_CHANGE_OPS[number];
 export const P1_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
 export type P1TestSupportOwner = typeof P1_TEST_SUPPORT_OWNERS[number];
 
-const NAMED_OPS = ['list', 'get', 'create', 'update', 'delete'] as const;
+const NAMED: Record<L1Operation, boolean> = {
+  list: true, get: true, create: true, update: true, transition: false, delete: true, custom: false,
+};
+const NAMED_OPS = L1_OPERATIONS.filter(operation => NAMED[operation]);
 const LIST_FROM = /\b(list|summary|highlights|locate)\b/;
 const GET_FROM = /\b(detail|inspect)\b/;
 const RELATIONAL_KIND = /^(relational|timeSeries)$/;
@@ -252,7 +256,7 @@ export function isP1Kind(value: string): value is P1Kind {
 }
 
 export function isP1Operation(value: string): value is P1Operation {
-  return (P1_OPERATIONS as readonly string[]).includes(value);
+  return isL1Operation(value);
 }
 
 export function isP1PlanStatus(value: string): value is P1PlanStatus {
@@ -264,7 +268,7 @@ export function isP1NeedsFamily(value: string): value is P1NeedsFamily {
 }
 
 export function isP1WriteOperation(value: string): value is P1WriteOperation {
-  return (P1_WRITE_OPERATIONS as readonly string[]).includes(value);
+  return isL1Operation(value) && L1_OPERATION_TRAITS[value].write;
 }
 
 export function isP1NoTable(value: string): value is P1NoTable {
