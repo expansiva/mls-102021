@@ -14,12 +14,17 @@ import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { contractMembers, grantsOf } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import type { M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
 
 /** Runtime proof: credential -> actor -> personEntity and the test identities are the runtime's. */
 export const M1_OBLIGATION_BLOCKER = 'RUNTIME_IDENTITY_PENDING' as const;
 export const M1_OBLIGATION_OWNER = 'runtime 102034' as const;
+/** "Nothing written" after a failed command: the memory runtime does not undo (102034 runInTransaction); only Postgres proves it. */
+export const M1_OBLIGATION_BLOCKER_POSTGRES = 'POSTGRES_ONLY' as const;
+export const M1_OBLIGATION_OWNER_POSTGRES = 'runtime 102034 (DATABASE_URL_TEST)' as const;
 
-export type M1ObligationKind = 'contract' | 'minimalInput' | 'noIdentity' | 'own' | 'other' | 'disclosure';
+export type M1ObligationKind = 'contract' | 'minimalInput' | 'noIdentity' | 'own' | 'other' | 'disclosure' | 'shape' | 'success' | 'rollback';
 /**
  * Actor the fixture binds: `member` holds the role, `owner` owns the addressed rows,
  * `other` holds the same role and owns none of them, `none` has the authority and no identity.
@@ -53,8 +58,8 @@ export interface M1Obligation {
   expect: M1ObligationExpect;
   /** Refs the oracle was read from. A change in any of them invalidates the case. */
   sources: string[];
-  blocker: typeof M1_OBLIGATION_BLOCKER;
-  owner: typeof M1_OBLIGATION_OWNER;
+  blocker: typeof M1_OBLIGATION_BLOCKER | typeof M1_OBLIGATION_BLOCKER_POSTGRES;
+  owner: typeof M1_OBLIGATION_OWNER | typeof M1_OBLIGATION_OWNER_POSTGRES;
 }
 
 export interface M1ObligationObservation {
@@ -73,15 +78,20 @@ export interface RouteRef {
   kind: string;
   usecaseId: string;
   grantIds: string[];
+  /** v2 handler: the L2 contract file and its route interface. '' on a v1 handler. */
+  contractPath: string;
+  contractInterface: string;
 }
 
-export type RouteObligations = { obligations: M1Obligation[] } | { gap: string };
+/** `gaps`: visible lines that go with the obligations (a command with one usecase has no rollback case). */
+export type RouteObligations = { obligations: M1Obligation[]; gaps: string[] } | { gap: string };
 
 export function routeObligations(
   ref: RouteRef,
   defs: ReadonlyMap<string, M1Definition>,
   texts: Readonly<Record<string, string>>,
 ): RouteObligations {
+  if (ref.contractInterface) return routeObligationsV2(ref, defs, texts);
   const found = [...defs.entries()].find(([, item]) => item.artifactType === 'usecase' && item.artifactId === ref.usecaseId);
   if (!found) return { gap: 'contract required field was not read' };
   const [usecasePath, usecase] = found;
@@ -156,7 +166,249 @@ export function routeObligations(
       ok: true, status: 200, errorCode: null, forbiddenPaths: disclosed.forbidden, allowedPaths: disclosed.allowed,
     }, [], command));
   }
-  return { obligations };
+  return { obligations, gaps: [] };
+}
+
+interface RequestOutput {
+  key: string;
+  entity: string;
+  fields: string[];
+}
+
+interface RequestRow {
+  kind: 'qry' | 'cmd';
+  uses: string[];
+  outputs: RequestOutput[];
+}
+
+/**
+ * v2 (m1_40): the page request is the case. The request comes from the requestService of the
+ * controller's page, matched by route; the input and the output keys from the L2 contract v2,
+ * read by the promoted parser. Nothing is derived from the route name.
+ */
+function routeObligationsV2(
+  ref: RouteRef,
+  defs: ReadonlyMap<string, M1Definition>,
+  texts: Readonly<Record<string, string>>,
+): RouteObligations {
+  const moduleName = ref.controller.moduleName;
+  const serviceEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'requestService'
+    && item.moduleName === moduleName && item.data.pageId === ref.controller.data.pageId);
+  const requests = serviceEntry && Array.isArray(serviceEntry[1].data.requests) ? serviceEntry[1].data.requests.filter(isRecord) : [];
+  const found = requests.find(row => row.route === ref.route);
+  if (!serviceEntry || !found) return { gap: `REQUEST_UNREAD: no requestService request of page ${String(ref.controller.data.pageId ?? '')} has route ${ref.route}` };
+  const request = requestRow(found);
+  if (!request) return { gap: `REQUEST_UNREAD: the request of ${ref.route} has no kind, uses or outputs` };
+  const prefix = /^_\d+_\//.exec(ref.defPath)?.[0] ?? '';
+  const contractRef = [ref.contractPath, `${prefix}${ref.contractPath}`].find(key => texts[key] !== undefined) ?? '';
+  const text = contractRef ? texts[contractRef] ?? '' : '';
+  if (!text) return { gap: `CONTRACT_UNREAD: ${ref.contractPath} was not loaded for ${ref.route}` };
+  if (!text.includes(`export interface ${ref.contractInterface} {`)) return { gap: `CONTRACT_UNREAD: ${ref.contractPath} has no interface ${ref.contractInterface}` };
+  let contract: D2ContractV2Definition;
+  try {
+    contract = parseD2ContractV2(text);
+  } catch (error) {
+    return { gap: `CONTRACT_UNREAD: ${ref.contractPath}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const route = contract.routes.find(item => item.route === ref.route);
+  if (!route) return { gap: `CONTRACT_ROUTE_MISSING: ${ref.route} is not a route of ${ref.contractPath}` };
+  if (route.kind !== request.kind) return { gap: `REQUEST_UNREAD: ${ref.route} is ${request.kind} in the requestService and ${route.kind} in the contract` };
+  const input = literalMembers(route.input);
+  if (!input) return { gap: `CONTRACT_UNREAD: the input of ${ref.route} in ${ref.contractPath} was not read` };
+  const missing = request.outputs.find(output => !route.meta.output[output.key]);
+  if (missing) return { gap: `CONTRACT_UNREAD: output ${missing.key} of ${ref.route} is not in the contract meta` };
+  const access = routeAccess(ref, defs);
+  if ('gap' in access) return access;
+  const pagination = (key: string): string[] => Object.values(route.meta.lists)
+    .filter(list => list.key === key)
+    .flatMap(list => [list.page, list.pageSize, list.hasMore]);
+  const allowedPaths = sorted([...new Set(request.outputs.flatMap(output => [
+    output.key, ...output.fields.map(field => `${output.key}.${field}`), ...pagination(output.key),
+  ]))]);
+  const routeGrants = ref.grantIds.map(id => access.rows.find(row => row.grantId === id) ?? {});
+  const disclosed = { allowed: [] as string[], forbidden: [] as string[] };
+  for (const output of request.outputs) {
+    const one = disclosure(output.fields, routeGrants, output.entity);
+    disclosed.allowed.push(...one.allowed.map(path => `${output.key}.${path}`), ...pagination(output.key));
+    disclosed.forbidden.push(...one.forbidden.map(path => `${output.key}.${path}`));
+  }
+  const tail = ref.route.split('.').pop() || ref.route;
+  const command = request.kind === 'cmd';
+  const optional = input.allowedPaths.filter(path => !input.required.includes(path));
+  const positive: M1ObligationIdentity = access.ownField ? 'owner' : 'member';
+  const sources = sorted([`${ref.defPath}#${ref.route}`, serviceEntry[0], contractRef, ...access.sources]);
+  const make = (
+    kind: M1ObligationKind,
+    caseId: string,
+    identity: M1ObligationIdentity,
+    expect: Partial<M1ObligationExpect> & Pick<M1ObligationExpect, 'ok' | 'status' | 'errorCode'>,
+    omitted: string[] = [],
+    mutating = false,
+    postgres = false,
+  ): M1Obligation => ({
+    caseId: `${ref.controller.artifactId}.${caseId}`,
+    kind,
+    routine: ref.route,
+    grantIds: [...ref.grantIds],
+    actorRef: access.actorRefs[0] ?? '',
+    identity,
+    caller: { source: access.caller.source, authorities: [...access.caller.authorities] },
+    input: { required: [...input.required], optional: [...optional], omitted },
+    mutating,
+    expect: { ruleId: null, forbiddenPaths: [], allowedPaths: [], isolatedActorField: null, ...expect },
+    sources: [...sources],
+    blocker: postgres ? M1_OBLIGATION_BLOCKER_POSTGRES : M1_OBLIGATION_BLOCKER,
+    owner: postgres ? M1_OBLIGATION_OWNER_POSTGRES : M1_OBLIGATION_OWNER,
+  });
+  const obligations: M1Obligation[] = [];
+  const gaps: string[] = [];
+  const field = input.required[0];
+  if (field) obligations.push(make('contract', `contract.${tail}.${field}`, positive, { ok: false, status: 400, errorCode: 'VALIDATION_ERROR' }, [field]));
+  if (optional.length > 0) obligations.push(make('minimalInput', `minimal.${tail}`, positive, { ok: true, status: 200, errorCode: null }, [], command));
+  if (access.ownField) {
+    obligations.push(make('noIdentity', `noIdentity.${tail}`, 'none', { ok: false, status: 403, errorCode: 'FORBIDDEN_ACTOR' }));
+    if (!command) obligations.push(make('own', `own.${tail}`, 'owner', { ok: true, status: 200, errorCode: null, isolatedActorField: access.ownField }));
+    // `other` needs a row selector; the v2 request does not name one, so it is not declared.
+  }
+  if (request.outputs.length > 0) {
+    obligations.push(make('disclosure', `disclosure.${tail}`, positive, {
+      ok: true, status: 200, errorCode: null, forbiddenPaths: sorted(disclosed.forbidden), allowedPaths: sorted([...new Set(disclosed.allowed)]),
+    }, [], command));
+  }
+  if (command) {
+    obligations.push(make('success', `success.${tail}`, positive, { ok: true, status: 200, errorCode: null, allowedPaths }, [], true));
+    const second = request.uses[1];
+    if (second) {
+      // The second usecase fails: the command answers the platform error and nothing is written.
+      obligations.push(make('rollback', `rollback.${tail}.${second}`, positive, { ok: false, status: 500, errorCode: 'INTERNAL_ERROR' }, [], true, true));
+    } else {
+      gaps.push(`ROLLBACK_SINGLE_USE: ${ref.route} uses one usecase`);
+    }
+  } else {
+    obligations.push(make('shape', `shape.${tail}`, positive, { ok: true, status: 200, errorCode: null, allowedPaths }));
+  }
+  return { obligations, gaps };
+}
+
+interface RouteAccess {
+  rows: Record<string, unknown>[];
+  actorRefs: string[];
+  ownField: string;
+  caller: M1CaseCaller;
+  sources: string[];
+}
+
+/** Grants, actors and the own field of a route, from the accessScope and the authority map. */
+function routeAccess(ref: RouteRef, defs: ReadonlyMap<string, M1Definition>): RouteAccess | { gap: string } {
+  const moduleName = ref.controller.moduleName;
+  const scopeEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'accessScope' && item.moduleName === moduleName);
+  const rows = scopeEntry && Array.isArray(scopeEntry[1].data.grants) ? scopeEntry[1].data.grants.filter(isRecord) : [];
+  const grants = scopeEntry ? grantsOf(scopeEntry[1].data) : [];
+  const resolved = ref.grantIds.every(id => !('code' in resolveGrant(grants, id)));
+  if (!resolved || ref.grantIds.length === 0) return { gap: 'grant is not resolved, so a contract case would fail for another cause' };
+  const authorityEntry = [...defs.entries()].find(([, item]) => item.artifactType === 'authorityMap' && item.moduleName === moduleName);
+  if (!authorityEntry) return { gap: 'AUTHORITY_UNREAD: no authority map, so every authenticated case is refused' };
+  const entries = Array.isArray(authorityEntry[1].data.entries) ? authorityEntry[1].data.entries.filter(isRecord) : [];
+  const actorRefs = ref.grantIds.map(id => String(entries.find(entry => entry.grantId === id)?.actorRef ?? ''));
+  if (actorRefs.some(actor => !actor)) return { gap: 'AUTHORITY_UNMAPPED: a route grant has no actor in the authority map' };
+  const ownFields = [...new Set(ref.grantIds.flatMap(id => {
+    const grant = grants.find(item => item.grantId === id);
+    return grant && grant.scopeMode === 'own' && grant.recordField ? [grant.recordField] : [];
+  }))];
+  if (ownFields.length > 1) return { gap: 'own grants of the route name different record fields' };
+  return {
+    rows,
+    actorRefs,
+    ownField: ownFields[0] ?? '',
+    caller: { source: 'http', authorities: sorted([...new Set(actorRefs.map(actor => `${moduleName}:${actor}`))]) },
+    sources: [...(scopeEntry ? [scopeEntry[0]] : []), authorityEntry[0]],
+  };
+}
+
+function requestRow(row: Record<string, unknown>): RequestRow | null {
+  const kind = row.kind === 'qry' || row.kind === 'cmd' ? row.kind : null;
+  const uses = Array.isArray(row.uses) ? row.uses.filter((item): item is string => typeof item === 'string' && item !== '') : [];
+  if (!kind || uses.length === 0 || !Array.isArray(row.outputs)) return null;
+  const outputs: RequestOutput[] = [];
+  for (const item of row.outputs) {
+    if (!isRecord(item) || typeof item.key !== 'string' || !item.key || typeof item.entity !== 'string' || !Array.isArray(item.fields)) return null;
+    outputs.push({ key: item.key, entity: item.entity, fields: item.fields.filter((field): field is string => typeof field === 'string') });
+  }
+  return { kind, uses, outputs };
+}
+
+/**
+ * Members of an inline type literal (`{ a: T; b?: { c: U } }`). Paths are dotted; a path is
+ * required when it has no `?` of its own (as `contractMembers`). Null when the text is not one.
+ */
+export function literalMembers(source: string): { required: string[]; allowedPaths: string[] } | null {
+  const text = source.trim();
+  const close = matching(text, 0);
+  if (!text.startsWith('{') || close !== text.length - 1) return null;
+  const required: string[] = [];
+  const allowedPaths: string[] = [];
+  const walk = (body: string, parent: string): boolean => {
+    for (const member of splitTop(body)) {
+      const match = /^['"]?([A-Za-z_$][A-Za-z0-9_$]*)['"]?\s*(\?)?\s*:([\s\S]*)$/.exec(member.replace(/^readonly\s+/, ''));
+      if (!match) return false;
+      const path = parent ? `${parent}.${match[1]}` : match[1];
+      allowedPaths.push(path);
+      if (match[2] !== '?') required.push(path);
+      const type = match[3].trim();
+      if (type.startsWith('{')) {
+        const end = matching(type, 0);
+        if (end < 0 || !walk(type.slice(1, end), path)) return false;
+      }
+    }
+    return true;
+  };
+  if (!walk(text.slice(1, close), '')) return null;
+  return { required, allowedPaths };
+}
+
+/** Index of the brace that closes the one at `open`; -1 when unbalanced. */
+function matching(text: string, open: number): number {
+  if (text[open] !== '{') return -1;
+  let depth = 0;
+  let quote = '';
+  for (let index = open; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '\'' || char === '"') quote = char;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+/** Members of a literal body, split at `;` or `,` outside braces, brackets, parens and quotes. */
+function splitTop(body: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  for (let index = 0; index <= body.length; index += 1) {
+    const char = body[index] ?? ';';
+    if (quote) {
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '\'' || char === '"') quote = char;
+    else if (char === '{' || char === '[' || char === '(' || char === '<') depth += 1;
+    else if (char === '}' || char === ']' || char === ')' || (char === '>' && body[index - 1] !== '=')) depth -= 1;
+    else if ((char === ';' || char === ',') && depth === 0) {
+      const member = body.slice(start, index).trim();
+      if (member) out.push(member);
+      start = index + 1;
+    }
+  }
+  return out;
 }
 
 interface RouteContract {

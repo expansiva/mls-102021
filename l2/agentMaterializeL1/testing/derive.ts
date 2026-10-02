@@ -26,15 +26,13 @@ import {
   type M1ScenarioCatalog,
 } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import {
-  M1_OBLIGATION_BLOCKER,
-  M1_OBLIGATION_OWNER,
   routeObligations,
   type M1Obligation,
 } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { classifyObligation, fixtureModel, runtimeGap, type M1FixtureModel } from '/_102021_/l2/agentMaterializeL1/testing/fixture.js';
 
-export const M1_CATALOG_RECIPE = '2026-09-27-m1-catalog-derive-v5' as const;
+export const M1_CATALOG_RECIPE = '2026-10-01-m1-catalog-derive-v6' as const;
 
 const STRUCTURE_COMPILE = new Set([
   'domainEntity',
@@ -283,6 +281,8 @@ function routeCases(
       route: typeof item.route === 'string' ? item.route : '',
       usecaseId: typeof item.usecaseId === 'string' ? item.usecaseId : '',
       kind: typeof item.kind === 'string' ? item.kind : '',
+      contractPath: typeof item.contractPath === 'string' ? item.contractPath : '',
+      contractInterface: typeof item.contractInterface === 'string' ? item.contractInterface : '',
       grantIds: Array.isArray(item.grantIds) ? item.grantIds.filter((id): id is string => typeof id === 'string') : [],
     }))
     .filter(item => item.route)
@@ -308,6 +308,9 @@ function routeCases(
       gaps.push({ artifactId: definition.artifactId, artifactType: 'httpController', origin: `${defPath}#${route.route}`, reason: derived.gap });
       continue;
     }
+    for (const reason of derived.gaps) {
+      gaps.push({ artifactId: definition.artifactId, artifactType: 'httpController', origin: `${defPath}#${route.route}`, reason });
+    }
     const model = fixtureModelOf(defs);
     for (const item of derived.obligations) {
       obligations.push(item);
@@ -315,7 +318,7 @@ function routeCases(
         artifactId: definition.artifactId,
         artifactType: 'httpController',
         origin: `${defPath}#${route.route}`,
-        reason: `${memoryReason(model, item)}; runtime proof ${M1_OBLIGATION_BLOCKER} (${M1_OBLIGATION_OWNER})${model ? `: ${runtimeGap(model.plan, item)}` : ''}`,
+        reason: `${memoryReason(model, item)}; runtime proof ${item.blocker} (${item.owner})${model ? `: ${runtimeGap(model.plan, item)}` : ''}`,
       });
     }
   }
