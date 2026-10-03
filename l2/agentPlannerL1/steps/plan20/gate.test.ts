@@ -10,9 +10,9 @@ import type { L1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventor
 import {
   parseP1Needs,
   planP1Backend,
-  type P1BackendFile,
   type P1EntityView,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import type { PoolBackendFile } from '/_102035_/l2/solution/poolPlan.js';
 import { repairP1Backend, validateP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +28,7 @@ const ONTOLOGY: P1EntityView[] = [
   { entityId: 'Aluno', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
 ];
 
-function planned(): P1BackendFile {
+function planned(): PoolBackendFile {
   return planP1Backend({ needs: NEEDS, inventory: EMPTY, ontology: ONTOLOGY, now: AT }).file;
 }
 

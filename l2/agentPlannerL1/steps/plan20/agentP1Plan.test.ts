@@ -17,7 +17,7 @@ import {
   beforeP1PlanPromptStep,
   executeP1Plan,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/agentP1Plan.js';
-import type { P1BackendFile } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import type { PoolBackendFile } from '/_102035_/l2/solution/poolPlan.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -224,7 +224,7 @@ void test('estimate writes backend.json and one l1→l2 message, traces, then de
   const entry = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in entry, false);
   const result = await executeP1Plan(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as PoolBackendFile;
   assert.equal(written.schemaVersion, '2026-09-21-p1-backend-v1.2');
   assert.equal(written.meta.llmCalled, false);
   assert.ok(written.usecases.every(item => item.status === 'toCreate'));
@@ -268,7 +268,7 @@ void test('estimate reads access.defs.ts actors into testSupport and still write
   const entry = await executeP1Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in entry, false);
   await executeP1Plan(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as PoolBackendFile;
   const identity = written.testSupport.find(item => item.id === 'identity:recepcao');
   assert.ok(identity);
   assert.ok(identity.sourceRefs.includes('access:actors/recepcao'));
@@ -402,7 +402,7 @@ void test('execute under /candidate writes pool/l2 in the override, reads candid
   assert.equal(moduleFolder(MODULE), candidate);
   assert.equal(p1BackendFile(MODULE).folder, `${candidate}/pool/l2/web`);
   assert.equal(result.backendPath, `l4/${candidate}/pool/l2/web/backend.json`);
-  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as PoolBackendFile;
   assert.equal(written.changes.length, 3);
   assert.deepEqual(written.meta.unmappedChanges, []);
   assert.equal(
@@ -430,7 +430,7 @@ void test('execute with pool/l1/web/l4diff.json fills changes[]', async () => {
     content: readFileSync(path.join(HERE, 'fixtures/l4diff-mensalidadesAcademia.json'), 'utf8'),
   });
   await executeP1Plan(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as P1BackendFile;
+  const written = JSON.parse(host.files[keyOf(p1BackendFile(MODULE))].content) as PoolBackendFile;
   assert.equal(written.changes.length, 3);
   assert.ok(written.changes.some(item => item.changeId === 'field:Mensalidade.desconto' && item.tableRefs.includes('mensalidade')));
   assert.ok(written.changes.some(item => item.changeId === 'rule:globalLateFee' && item.noTable === 'none'));

@@ -13,11 +13,10 @@ import {
   parseP1Entity,
   parseP1Needs,
   planP1Backend,
-  type P1BackendFile,
   type P1EntityView,
   type P1PlanBackendInput,
-  type P1TestSupportItem,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import type { PoolBackendFile, PoolTestSupportItem } from '/_102035_/l2/solution/poolPlan.js';
 import { repairP1Backend, validateP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -80,7 +79,7 @@ function rename(text: string, map: Array<[string, string]>): string {
   return out;
 }
 
-function canonical(items: readonly P1TestSupportItem[]): string {
+function canonical(items: readonly PoolTestSupportItem[]): string {
   const sorted = items.map(item => ({
     ...item,
     actorRefs: [...item.actorRefs].sort(),
@@ -129,7 +128,7 @@ void test('renamed fixture: every id renamed gives the renamed testSupport, with
   const renamedInput = inputFrom(renamedText);
   const renamed = planP1Backend(renamedInput).file;
   assert.equal(renamed.testSupport.length, 4);
-  assert.equal(canonical(renamed.testSupport), canonical(JSON.parse(rename(JSON.stringify(original), map)) as P1TestSupportItem[]));
+  assert.equal(canonical(renamed.testSupport), canonical(JSON.parse(rename(JSON.stringify(original), map)) as PoolTestSupportItem[]));
   const out = JSON.stringify(renamed.testSupport);
   for (const [from] of map) {
     assert.equal(new RegExp(`(?<![A-Za-z0-9_])${from}(?![A-Za-z0-9_])`).test(out), false, from);
@@ -143,7 +142,7 @@ void test('serialization is deterministic and the re-read (normalize/repair) giv
   const first = JSON.stringify(planP1Backend(input).file, null, 2);
   const second = JSON.stringify(planP1Backend(inputFrom(FIXTURE_TEXT)).file, null, 2);
   assert.equal(first, second);
-  const reread = JSON.parse(first) as P1BackendFile & Record<string, unknown>;
+  const reread = JSON.parse(first) as PoolBackendFile & Record<string, unknown>;
   reread.testSupport = [{
     id: 'identity:profissional', actorRefs: ['profissional'], entityRefs: ['Profissional'], sourceRefs: [],
     status: 'done', owner: 'runtime', executorRef: 'invented', cleanupRef: 'invented', gap: '',
@@ -172,7 +171,7 @@ void test('named gaps: actor absent from access, actor without personEntity; no 
 void test('gate fails closed on shape: no executor and no gap, done without executor, unknown refs, bad owner', () => {
   const input = inputFrom(FIXTURE_TEXT);
   const { file } = planP1Backend(input);
-  const broken: P1BackendFile = {
+  const broken: PoolBackendFile = {
     ...file,
     testSupport: [
       { ...file.testSupport[0], gap: '' },
@@ -189,7 +188,7 @@ void test('gate fails closed on shape: no executor and no gap, done without exec
     'P1_BACKEND_TEST_SUPPORT_GAP',
     'P1_BACKEND_TEST_SUPPORT_REF',
   ]);
-  const missing = { ...file } as Partial<P1BackendFile>;
+  const missing = { ...file } as Partial<PoolBackendFile>;
   delete missing.testSupport;
-  assert.equal(validateP1Backend(missing as P1BackendFile, input.needs, input.ontology).ok, false);
+  assert.equal(validateP1Backend(missing as PoolBackendFile, input.needs, input.ontology).ok, false);
 });

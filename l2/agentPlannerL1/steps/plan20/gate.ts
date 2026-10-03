@@ -13,11 +13,11 @@ import {
   stampP1Backend,
   P1_TEST_SUPPORT_OWNERS,
   type P1ActorView,
-  type P1BackendFile,
   type P1EntityView,
   type P1L4DiffFile,
-  type P1NeedsFile,
+  type P1NeedsView,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import type { PoolBackendFile } from '/_102035_/l2/solution/poolPlan.js';
 
 export interface P1BackendGateIssue {
   severity: 'error' | 'warning';
@@ -34,8 +34,8 @@ export interface P1BackendGateResult {
 const ROUTE = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9_]*\.(qry|cmd)[A-Z][A-Za-z0-9]*$/;
 
 export function validateP1Backend(
-  file: P1BackendFile,
-  needs: P1NeedsFile,
+  file: PoolBackendFile,
+  needs: P1NeedsView,
   ontology: readonly P1EntityView[],
 ): P1BackendGateResult {
   const issues: P1BackendGateIssue[] = [];
@@ -193,8 +193,8 @@ export function validateP1Backend(
 /** Shape only. A gap is not an error; a missing executor without a gap is. */
 function checkTestSupport(
   issues: P1BackendGateIssue[],
-  file: P1BackendFile,
-  needs: P1NeedsFile,
+  file: PoolBackendFile,
+  needs: P1NeedsView,
   entityIds: Set<string>,
 ): void {
   if (!Array.isArray(file.testSupport)) {
@@ -232,13 +232,13 @@ function checkTestSupport(
 }
 
 export function repairP1Backend(
-  file: P1BackendFile,
-  needs: P1NeedsFile,
+  file: PoolBackendFile,
+  needs: P1NeedsView,
   ontology: readonly P1EntityView[],
   inventory: L1Inventory = { routes: [], usecases: [], ports: [], tables: [], present: false },
   l4diff: P1L4DiffFile | null = null,
   actors: readonly P1ActorView[] = [],
-): P1BackendFile {
+): PoolBackendFile {
   const mdm = new Set(ontology.filter(entity => entity.family === 'mdm' || entity.storageTarget === 'mdm').map(entity => entity.entityId));
   const usecases = file.usecases.map(usecase => ({
     ...usecase,

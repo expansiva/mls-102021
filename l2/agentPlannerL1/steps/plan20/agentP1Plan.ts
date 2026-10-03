@@ -53,13 +53,13 @@ import {
   planP1Backend,
   unwrapP1ArtifactPayload,
   type P1ActorView,
-  type P1BackendFile,
   type P1BackendResolution,
   type P1EntityView,
   type P1L4DiffFile,
-  type P1NeedsFile,
+  type P1NeedsView,
   type P1PlanBackendResult,
 } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import type { PoolBackendFile } from '/_102035_/l2/solution/poolPlan.js';
 import {
   formatP1BackendGate,
   repairP1Backend,
@@ -78,7 +78,7 @@ interface PlanArgs {
 }
 
 export interface P1PlanSources {
-  needs: P1NeedsFile;
+  needs: P1NeedsView;
   inventory: L1Inventory;
   ontology: P1EntityView[];
   pipeline: P1PipelineState;
@@ -87,7 +87,7 @@ export interface P1PlanSources {
 }
 
 export interface P1DeliverPlanResult {
-  backend: P1BackendFile;
+  backend: PoolBackendFile;
   backendPath: string;
   message: PoolMessage;
   messagePath: string;
@@ -355,7 +355,7 @@ export async function afterP1PlanPromptStep(
 
 async function commitP1Plan(
   sources: P1PlanSources,
-  backend: P1BackendFile,
+  backend: PoolBackendFile,
   now: Date,
 ): Promise<P1DeliverPlanResult> {
   const received = await readReceived(sources.pipeline);

@@ -33,6 +33,20 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import type {
+  PoolBackendEndpoint,
+  PoolBackendFile,
+  PoolBackendPort,
+  PoolBackendTable,
+  PoolBackendUsecase,
+  PoolEffortEndpoint,
+  PoolEffortFile,
+  PoolEffortScreen,
+  PoolEffortTable,
+  PoolNeedsFile,
+  PoolNeedsPage,
+  PoolRaw,
+} from '/_102035_/l2/solution/poolPlan.js';
 import { L1_OPERATIONS, collidingTransitionIds, transitionUsecaseId, type L1Operation, type L1TransitionWrite } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
@@ -55,9 +69,9 @@ export function buildD1InputSnapshot(
   const access = rec(artifacts.access);
   const integration = rec(artifacts.integration);
   const menu = rec(artifacts.menu);
-  const needs = rec(artifacts.needs);
-  const backend = rec(artifacts.backend);
-  const effort = rec(artifacts.effort);
+  const needs = rec(artifacts.needs) as PoolRaw<PoolNeedsFile>;
+  const backend = rec(artifacts.backend) as PoolRaw<PoolBackendFile>;
+  const effort = rec(artifacts.effort) as PoolRaw<PoolEffortFile>;
   const planner = rec(artifacts.planner);
 
   checkSource(problems, sources, paths.module, moduleDoc, D1_SOURCE_SCHEMAS.module, moduleName);
@@ -115,15 +129,16 @@ export function buildD1InputSnapshot(
   }
 
   const menuPages = menuPageIds(menu);
-  const needPages = indexBy(rows(needs.pages), 'pageId');
-  const effortScreens = indexBy(rows(effort.screens), 'pageId');
-  const backendEndpoints = rows(backend.endpoints);
-  const effortEndpoints = rows(effort.endpoints);
-  const backendUsecases = indexBy(rows(backend.usecases), 'usecaseId');
+  const needPages = indexBy(rows(needs.pages) as PoolRaw<PoolNeedsPage>[], 'pageId');
+  const effortScreens = indexBy(rows(effort.screens) as PoolRaw<PoolEffortScreen>[], 'pageId');
+  const backendEndpoints = rows(backend.endpoints) as PoolRaw<PoolBackendEndpoint>[];
+  const effortEndpoints = rows(effort.endpoints) as PoolRaw<PoolEffortEndpoint>[];
+  const backendUsecases = indexBy(rows(backend.usecases) as PoolRaw<PoolBackendUsecase>[], 'usecaseId');
+  // Untyped on purpose: D1 reads `transitionRef` here, which effort.json does not declare (p4_26 divergence).
   const effortUsecases = indexBy(rows(effort.usecases), 'usecaseId');
-  const backendTables = indexBy(rows(backend.tables), 'tableId');
-  const effortTables = indexBy(rows(effort.tables), 'tableId');
-  const backendPorts = rows(backend.ports);
+  const backendTables = indexBy(rows(backend.tables) as PoolRaw<PoolBackendTable>[], 'tableId');
+  const effortTables = indexBy(rows(effort.tables) as PoolRaw<PoolEffortTable>[], 'tableId');
+  const backendPorts = rows(backend.ports) as PoolRaw<PoolBackendPort>[];
 
   checkTestSupport(problems, paths, backend, effort, new Set(rows(needs.pages).flatMap(page => strings(page.actors))), new Set(entityIds));
   comparePageSets(problems, paths, menuPages, new Set(needPages.keys()), new Set(effortScreens.keys()));
@@ -1448,8 +1463,8 @@ function sortProblems(problems: D1InputProblem[]): D1InputProblem[] {
   return problems.slice().sort((left, right) => `${left.code}\0${left.path}\0${left.ownerRef || ''}`.localeCompare(`${right.code}\0${right.path}\0${right.ownerRef || ''}`));
 }
 
-function indexBy(rowsOf: Array<Record<string, unknown>>, key: string): Map<string, Record<string, unknown>> {
-  const map = new Map<string, Record<string, unknown>>();
+function indexBy<T extends Record<string, unknown>>(rowsOf: T[], key: string): Map<string, T> {
+  const map = new Map<string, T>();
   for (const row of rowsOf) {
     const id = text(row[key]);
     if (id) map.set(id, row);
