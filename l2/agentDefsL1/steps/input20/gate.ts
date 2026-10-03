@@ -164,11 +164,11 @@ export function buildD1InputSnapshot(
     const operation = text(left.operation);
     const transitionRef = text(left.transitionRef);
     const effortRef = text(right.transitionRef);
-    if (operation === 'transition' && (!transitionRef || !effortRef)) {
-      error(problems, 'TRANSITION_REF_MISSING', !transitionRef ? paths.backend : paths.effort, `Transition usecase ${usecaseId} has no transitionRef. The L4 transitionId is required; the usecaseId is not the transition.`, usecaseId);
+    if (operation === 'transition' && !transitionRef) {
+      error(problems, 'TRANSITION_REF_MISSING', paths.backend, `Transition usecase ${usecaseId} has no transitionRef. The L4 transitionId is required; the usecaseId is not the transition.`, usecaseId);
       continue;
     }
-    if (operation === 'transition' && transitionRef !== effortRef) {
+    if (operation === 'transition' && effortRef && transitionRef !== effortRef) {
       error(problems, 'DIVERGENT_SOURCE', paths.backend, `Usecase ${usecaseId} transitionRef is '${transitionRef}' in backend and '${effortRef}' in effort.`, usecaseId);
       continue;
     }
