@@ -53,6 +53,7 @@ const TIPS = [
     reachesFinalize: true,
     modelOnly: 'MDM get + collection.relatedOfMany has no output slot for the links; the body stays with the model (t1_10 r2)',
   },
+  { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];

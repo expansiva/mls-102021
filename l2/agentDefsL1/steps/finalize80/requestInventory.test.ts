@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import { loadD1Fixture, seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import {
@@ -26,6 +27,7 @@ const PROJECT = 102047;
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
   { id: 'agendaClinica-53f1f35', moduleName: 'agendaClinica', reachesFinalize: true },
+  { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
@@ -83,9 +85,12 @@ function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string
   assert.fail(`${fixtureId} stopped before finalize80: ${error}`);
 }
 
+/** One request service per contract page that declares a route; a page without routes has none. */
 function requestServicePaths(id: string, moduleName: string): string[] {
-  return Object.keys(loadD1Fixture(id))
-    .filter(file => file.startsWith(`l2/${moduleName}/web/contracts/`) && file.endsWith('.defs.ts'))
+  return Object.entries(loadD1Fixture(id))
+    .filter(([file, text]) => file.startsWith(`l2/${moduleName}/web/contracts/`) && file.endsWith('.defs.ts')
+      && parseD2ContractV2(text).routes.length > 0)
+    .map(([file]) => file)
     .map(file => file.slice(file.lastIndexOf('/') + 1, -'.defs.ts'.length))
     .sort()
     .map(pageId => `l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`);

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "reembolsoDespesas",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-10-04T03:47:13.030Z",
+      "artifactPaths": [
+        "l4/reembolsoDespesas/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-10-04T03:47:13.212Z",
+      "artifactPaths": [
+        "l4/reembolsoDespesas/pool/l2/web/backend.json",
+        "l4/reembolsoDespesas/pool/l2/20261004034713_reembolsoDespesas-20261004034655_1.json"
+      ]
+    }
+  },
+  "thread": "reembolsoDespesas-20261004034655",
+  "round": 1,
+  "messageFile": "l4/reembolsoDespesas/pool/l1/20261004034712_reembolsoDespesas-20261004034655_1.json",
+  "sourceMessages": [
+    "20261004034712_reembolsoDespesas-20261004034655_1.json"
+  ],
+  "needsFile": "l4/reembolsoDespesas/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-10-04T03:47:13.212Z",
+  "pool": [
+    {
+      "at": "2026-10-04T03:47:13.212Z",
+      "file": "l4/reembolsoDespesas/pool/l2/20261004034713_reembolsoDespesas-20261004034655_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "reembolsoDespesas-20261004034655",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-10-04T03:47:13.212Z",
+      "file": "l4/reembolsoDespesas/pool/l1/20261004034712_reembolsoDespesas-20261004034655_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "reembolsoDespesas-20261004034655",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

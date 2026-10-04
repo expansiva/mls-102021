@@ -1,0 +1,161 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "reembolsoDespesas",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "minhas_despesas",
+      "actors": [
+        "colaborador"
+      ],
+      "reads": [
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:colaboradorGerenciaPropriasDespesas",
+            "journey:consultarMinhasDespesas/consultarDespesa",
+            "journey:consultarMinhasDespesas/localizarMinhasDespesas",
+            "journey:corrigirReenviarDespesa/consultarMotivoRejeicao",
+            "journey:corrigirReenviarDespesa/corrigirDespesa",
+            "journey:corrigirReenviarDespesa/localizarDespesaRejeitada",
+            "journey:corrigirReenviarDespesa/reenviarDespesa",
+            "journey:registrarEnviarDespesa/enviarParaAprovacao",
+            "journey:registrarEnviarDespesa/registrarDespesa"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarEnviarDespesa/registrarDespesa"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "enviarParaAprovacao",
+          "from": [
+            "journey:registrarEnviarDespesa/enviarParaAprovacao"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "reenviarParaAprovacao",
+          "from": [
+            "journey:corrigirReenviarDespesa/reenviarDespesa"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:corrigirReenviarDespesa/corrigirDespesa"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "inicio",
+      "actors": [
+        "gestorEquipe"
+      ],
+      "reads": [],
+      "writes": []
+    },
+    {
+      "pageId": "despesas_da_equipe",
+      "actors": [
+        "gestorEquipe"
+      ],
+      "reads": [
+        {
+          "entity": "Colaborador",
+          "family": "mdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "grant:gestorAnalisaDespesasDaEquipe",
+            "journey:analisarDecidirDespesa/analisarDespesa",
+            "journey:analisarDecidirDespesa/localizarDespesasPendentes",
+            "relationship:Despesa/expenseCollaborator"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "grant:gestorAnalisaDespesasDaEquipe",
+            "journey:analisarDecidirDespesa/analisarDespesa",
+            "journey:analisarDecidirDespesa/localizarDespesasPendentes",
+            "relationship:Colaborador/expenseCollaborator",
+            "relationship:Despesa/expenseCollaborator"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "aprovarDespesa",
+          "from": [
+            "journey:analisarDecidirDespesa/decidirDespesa"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "rejeitarDespesa",
+          "from": [
+            "journey:analisarDecidirDespesa/decidirDespesa"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "despesas_aprovadas",
+      "actors": [
+        "financeiro"
+      ],
+      "reads": [
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "grant:financeiroConsultaEpagaDespesasAprovadas",
+            "journey:consultarDespesasAprovadas/consultarDespesaAprovada",
+            "journey:consultarDespesasAprovadas/localizarDespesasAprovadas",
+            "journey:registrarPagamentoDespesa/localizarDespesaAprovada",
+            "journey:registrarPagamentoDespesa/registrarDataPagamento"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "registrarPagamento",
+          "from": [
+            "journey:registrarPagamentoDespesa/registrarDataPagamento"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-10-04T03:47:12.510Z"
+  }
+}

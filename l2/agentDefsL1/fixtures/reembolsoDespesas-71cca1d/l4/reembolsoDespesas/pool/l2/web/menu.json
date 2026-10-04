@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "reembolsoDespesas",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "colaborador",
+      "kind": "hub",
+      "label": "Colaborador",
+      "context": "Colaborador",
+      "text": "Abre já no seu registro para você cuidar das suas despesas.",
+      "children": [
+        {
+          "id": "minhas_despesas",
+          "kind": "page",
+          "label": "Minhas despesas",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Vejo as despesas que registrei e a situação de cada uma."
+            },
+            {
+              "kind": "detail",
+              "text": "Abro a despesa para ver os dados, o comprovante, a situação e o motivo se foi rejeitada."
+            },
+            {
+              "kind": "form",
+              "text": "Preencho os dados e o comprovante para registrar uma despesa ou corrigir uma rejeitada."
+            },
+            {
+              "kind": "actions",
+              "text": "Envio a despesa para aprovação ou reenvio a que corrigi."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "inbox",
+          "text": "Vejo as despesas da equipe que estão esperando eu analisar e decidir."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "despesas_da_equipe",
+      "kind": "page",
+      "label": "Despesas da equipe",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizo as despesas pendentes da equipe."
+        },
+        {
+          "kind": "detail",
+          "text": "Analiso os dados e o comprovante da despesa."
+        },
+        {
+          "kind": "actions",
+          "text": "Aprovo a despesa ou rejeito informando o motivo."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "despesas_aprovadas",
+      "kind": "page",
+      "label": "Despesas aprovadas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo as despesas aprovadas que aguardam pagamento."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulto os dados da despesa aprovada."
+        },
+        {
+          "kind": "form",
+          "text": "Informo a data de pagamento da despesa aprovada."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:colaborador": [
+      "colaborador"
+    ],
+    "actor:gestorEquipe": [
+      "inicio",
+      "despesas_da_equipe"
+    ],
+    "actor:financeiro": [
+      "despesas_aprovadas"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registrarEnviarDespesa": [
+        "minhas_despesas"
+      ],
+      "consultarMinhasDespesas": [
+        "minhas_despesas"
+      ],
+      "corrigirReenviarDespesa": [
+        "minhas_despesas"
+      ],
+      "analisarDecidirDespesa": [
+        "despesas_da_equipe"
+      ],
+      "consultarDespesasAprovadas": [
+        "despesas_aprovadas"
+      ],
+      "registrarPagamentoDespesa": [
+        "despesas_aprovadas"
+      ]
+    },
+    "processes": {
+      "aprovarDespesaEnviada": [
+        "minhas_despesas",
+        "inicio",
+        "despesas_da_equipe"
+      ],
+      "aprovarDespesaReenviada": [
+        "minhas_despesas",
+        "inicio",
+        "despesas_da_equipe"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}

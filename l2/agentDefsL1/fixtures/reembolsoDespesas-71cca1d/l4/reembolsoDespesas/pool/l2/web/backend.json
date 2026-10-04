@@ -1,0 +1,429 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "reembolsoDespesas",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "reembolsoDespesas.despesas_aprovadas.cmdRegistrarPagamento",
+      "page": "despesas_aprovadas",
+      "kind": "cmd",
+      "usecaseRef": "registrarPagamento",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.despesas_aprovadas.qryListDespesa",
+      "page": "despesas_aprovadas",
+      "kind": "qry",
+      "usecaseRef": "listDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.despesas_da_equipe.cmdAprovarDespesa",
+      "page": "despesas_da_equipe",
+      "kind": "cmd",
+      "usecaseRef": "aprovarDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.despesas_da_equipe.cmdRejeitarDespesa",
+      "page": "despesas_da_equipe",
+      "kind": "cmd",
+      "usecaseRef": "rejeitarDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.despesas_da_equipe.qryListColaborador",
+      "page": "despesas_da_equipe",
+      "kind": "qry",
+      "usecaseRef": "listColaborador",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "reembolsoDespesas.despesas_da_equipe.qryListDespesa",
+      "page": "despesas_da_equipe",
+      "kind": "qry",
+      "usecaseRef": "listDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.minhas_despesas.cmdCreateDespesa",
+      "page": "minhas_despesas",
+      "kind": "cmd",
+      "usecaseRef": "createDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.minhas_despesas.cmdEnviarParaAprovacao",
+      "page": "minhas_despesas",
+      "kind": "cmd",
+      "usecaseRef": "enviarParaAprovacao",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.minhas_despesas.cmdReenviarParaAprovacao",
+      "page": "minhas_despesas",
+      "kind": "cmd",
+      "usecaseRef": "reenviarParaAprovacao",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.minhas_despesas.cmdUpdateDespesa",
+      "page": "minhas_despesas",
+      "kind": "cmd",
+      "usecaseRef": "updateDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "reembolsoDespesas.minhas_despesas.qryListDespesa",
+      "page": "minhas_despesas",
+      "kind": "qry",
+      "usecaseRef": "listDespesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "aprovarDespesa",
+      "entity": "Despesa",
+      "operation": "transition",
+      "transitionRef": "aprovarDespesa",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.transition",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createDespesa",
+      "entity": "Despesa",
+      "operation": "create",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.create",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "enviarParaAprovacao",
+      "entity": "Despesa",
+      "operation": "transition",
+      "transitionRef": "enviarParaAprovacao",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.transition",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listColaborador",
+      "entity": "Colaborador",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Colaborador.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listDespesa",
+      "entity": "Despesa",
+      "operation": "list",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.list",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "reenviarParaAprovacao",
+      "entity": "Despesa",
+      "operation": "transition",
+      "transitionRef": "reenviarParaAprovacao",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.transition",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "registrarPagamento",
+      "entity": "Despesa",
+      "operation": "transition",
+      "transitionRef": "registrarPagamento",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.transition",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "rejeitarDespesa",
+      "entity": "Despesa",
+      "operation": "transition",
+      "transitionRef": "rejeitarDespesa",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.transition",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateDespesa",
+      "entity": "Despesa",
+      "operation": "update",
+      "ports": [
+        "Despesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Despesa.update",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "DespesaRepository",
+      "entity": "Despesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "despesa",
+      "entity": "Despesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "despesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:Despesa",
+      "actorRefs": [
+        "colaborador",
+        "financeiro",
+        "gestorEquipe"
+      ],
+      "entityRefs": [
+        "Colaborador",
+        "Despesa"
+      ],
+      "sourceRefs": [
+        "grant:colaboradorGerenciaPropriasDespesas",
+        "grant:financeiroConsultaEpagaDespesasAprovadas",
+        "grant:gestorAnalisaDespesasDaEquipe",
+        "journey:analisarDecidirDespesa/analisarDespesa",
+        "journey:analisarDecidirDespesa/decidirDespesa",
+        "journey:analisarDecidirDespesa/localizarDespesasPendentes",
+        "journey:consultarDespesasAprovadas/consultarDespesaAprovada",
+        "journey:consultarDespesasAprovadas/localizarDespesasAprovadas",
+        "journey:consultarMinhasDespesas/consultarDespesa",
+        "journey:consultarMinhasDespesas/localizarMinhasDespesas",
+        "journey:corrigirReenviarDespesa/consultarMotivoRejeicao",
+        "journey:corrigirReenviarDespesa/corrigirDespesa",
+        "journey:corrigirReenviarDespesa/localizarDespesaRejeitada",
+        "journey:corrigirReenviarDespesa/reenviarDespesa",
+        "journey:registrarEnviarDespesa/enviarParaAprovacao",
+        "journey:registrarEnviarDespesa/registrarDespesa",
+        "journey:registrarPagamentoDespesa/localizarDespesaAprovada",
+        "journey:registrarPagamentoDespesa/registrarDataPagamento",
+        "ontology:Despesa/lifecycleStates/approved",
+        "ontology:Despesa/lifecycleStates/awaitingApproval",
+        "ontology:Despesa/lifecycleStates/draft",
+        "ontology:Despesa/lifecycleStates/rejected",
+        "relationship:Colaborador/expenseCollaborator",
+        "relationship:Despesa/expenseCollaborator"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes despesa rows by execution id"
+    },
+    {
+      "id": "identity:colaborador",
+      "actorRefs": [
+        "colaborador"
+      ],
+      "entityRefs": [
+        "Colaborador"
+      ],
+      "sourceRefs": [
+        "access:actors/colaborador",
+        "grant:colaboradorGerenciaPropriasDespesas",
+        "journey:consultarMinhasDespesas/consultarDespesa",
+        "journey:consultarMinhasDespesas/localizarMinhasDespesas",
+        "journey:corrigirReenviarDespesa/consultarMotivoRejeicao",
+        "journey:corrigirReenviarDespesa/corrigirDespesa",
+        "journey:corrigirReenviarDespesa/localizarDespesaRejeitada",
+        "journey:corrigirReenviarDespesa/reenviarDespesa",
+        "journey:registrarEnviarDespesa/enviarParaAprovacao",
+        "journey:registrarEnviarDespesa/registrarDespesa"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for colaborador bound to Colaborador"
+    },
+    {
+      "id": "identity:financeiro",
+      "actorRefs": [
+        "financeiro"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/financeiro",
+        "grant:financeiroConsultaEpagaDespesasAprovadas",
+        "journey:consultarDespesasAprovadas/consultarDespesaAprovada",
+        "journey:consultarDespesasAprovadas/localizarDespesasAprovadas",
+        "journey:registrarPagamentoDespesa/localizarDespesaAprovada",
+        "journey:registrarPagamentoDespesa/registrarDataPagamento"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor financeiro declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:gestorEquipe",
+      "actorRefs": [
+        "gestorEquipe"
+      ],
+      "entityRefs": [
+        "GestorEquipe"
+      ],
+      "sourceRefs": [
+        "access:actors/gestorEquipe",
+        "grant:gestorAnalisaDespesasDaEquipe",
+        "journey:analisarDecidirDespesa/analisarDespesa",
+        "journey:analisarDecidirDespesa/decidirDespesa",
+        "journey:analisarDecidirDespesa/localizarDespesasPendentes",
+        "relationship:Colaborador/expenseCollaborator",
+        "relationship:Despesa/expenseCollaborator"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for gestorEquipe bound to GestorEquipe"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "minhas_despesas": [
+        "reembolsoDespesas.minhas_despesas.cmdCreateDespesa",
+        "reembolsoDespesas.minhas_despesas.cmdEnviarParaAprovacao",
+        "reembolsoDespesas.minhas_despesas.cmdReenviarParaAprovacao",
+        "reembolsoDespesas.minhas_despesas.cmdUpdateDespesa",
+        "reembolsoDespesas.minhas_despesas.qryListDespesa"
+      ],
+      "inicio": [],
+      "despesas_da_equipe": [
+        "reembolsoDespesas.despesas_da_equipe.cmdAprovarDespesa",
+        "reembolsoDespesas.despesas_da_equipe.cmdRejeitarDespesa",
+        "reembolsoDespesas.despesas_da_equipe.qryListColaborador",
+        "reembolsoDespesas.despesas_da_equipe.qryListDespesa"
+      ],
+      "despesas_aprovadas": [
+        "reembolsoDespesas.despesas_aprovadas.cmdRegistrarPagamento",
+        "reembolsoDespesas.despesas_aprovadas.qryListDespesa"
+      ]
+    },
+    "generatedAt": "2026-10-04T03:47:13.209Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

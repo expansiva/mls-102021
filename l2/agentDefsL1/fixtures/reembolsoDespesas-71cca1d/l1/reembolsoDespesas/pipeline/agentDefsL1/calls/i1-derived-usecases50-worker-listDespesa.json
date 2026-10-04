@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-09-24-d1-calls-v1",
+  "kind": "derived",
+  "usecaseId": "listDespesa",
+  "planId": "usecases50-worker-listDespesa",
+  "unitAttempts": 0,
+  "invocation": 1
+}
