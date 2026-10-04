@@ -9,7 +9,7 @@ import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { domainSignature, mdmInputFields, ontologyLeaves, platformFieldPaths, writePreconditionPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { bindMdm, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { bindMdm, capabilityApplies, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps, mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
@@ -505,6 +505,82 @@ void test('a second route and a broken page contract do not change the usecase',
   assert.equal(data.routeProjections, undefined);
   assert.equal(data.functions[0].contractRefs, undefined);
   assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => file.includes('/l2/')), false);
+});
+
+const READ_ROLE = {
+  entityId: 'Record',
+  namespace: 'moduleN',
+  capabilities: ['read.byId', 'listLinks'],
+  platformFields: [] as string[],
+  inputFields: [{ path: 'id', optional: false, writePrecondition: false }],
+  operation: 'get' as const,
+};
+
+void test('a get drops listLinks when the output has no link result field', () => {
+  const mdm = mdmForOperation({
+    ...READ_ROLE,
+    outputFields: [
+      { path: 'id' },
+      { path: 'version' },
+      { path: 'details.identification.name' },
+      { path: 'details.base.relationshipRefs' },
+    ],
+  });
+  assert.deepEqual(mdm.calls.map(call => call.method), ['get']);
+  assert.equal(mdm.calls.some(call => call.method === 'relatedOfMany'), false);
+  const unused = mdm.skipped.filter(item => item.capability === 'listLinks');
+  assert.equal(unused.length, 1);
+  assert.equal(unused[0]?.code, 'RESULT_UNUSED');
+  assert.equal(mdm.gaps.some(gap => gap.capability === 'listLinks'), false);
+});
+
+void test('a get keeps listLinks when the output names a link result field', () => {
+  const mdm = mdmForOperation({
+    ...READ_ROLE,
+    outputFields: [
+      { path: 'id' },
+      { path: 'version' },
+      { path: 'details' },
+      { path: 'relationshipId' },
+    ],
+  });
+  assert.deepEqual(mdm.calls.map(call => call.method), ['get', 'relatedOfMany']);
+  assert.equal(mdm.skipped.some(item => item.code === 'RESULT_UNUSED'), false);
+});
+
+void test('findByDocument stays on createOrAttach because attachRole reads its mdmId', () => {
+  const mdm = mdmForOperation({
+    entityId: 'Record',
+    namespace: 'moduleN',
+    capabilities: ['register.createOrAttach'],
+    platformFields: ['details.identification.name'],
+    inputFields: [
+      { path: 'details.identification.name', optional: false, writePrecondition: false },
+      { path: 'details.identification.docType', optional: false, writePrecondition: false },
+      { path: 'details.identification.docId', optional: false, writePrecondition: false },
+    ],
+    outputFields: [{ path: 'unrelated' }],
+    operation: 'create',
+  });
+  assert.deepEqual(mdm.calls.map(call => call.method), ['findByDocument', 'create', 'attachRole']);
+  const attach = mdm.calls.find(call => call.method === 'attachRole');
+  assert.equal(attach?.arguments.find(arg => arg.name === 'mdmId')?.origin.calls?.includes('findDocument'), true);
+  assert.equal(mdm.skipped.some(item => item.code === 'RESULT_UNUSED'), false);
+});
+
+void test('an unread signature does not prune, and the reason is recorded', () => {
+  const mdm = mdmForOperation({ ...READ_ROLE, outputFields: null });
+  assert.deepEqual(mdm.calls.map(call => call.method), ['get', 'relatedOfMany']);
+  assert.equal(mdm.skipped.some(item => item.code === 'OUTPUT_UNREAD'), true);
+  assert.equal(mdm.skipped.some(item => item.code === 'RESULT_UNUSED'), false);
+});
+
+void test('get and list candidates come from the read table, not a list prefix', () => {
+  assert.equal(capabilityApplies('listLinks', 'get'), true);
+  assert.equal(capabilityApplies('read.byId', 'list'), true);
+  assert.equal(capabilityApplies('locate.byName', 'get'), true);
+  assert.equal(capabilityApplies('listOther', 'get'), false);
+  assert.equal(capabilityApplies('read.other', 'list'), false);
 });
 
 function one(usecaseId: string): D1UsecaseRequest {

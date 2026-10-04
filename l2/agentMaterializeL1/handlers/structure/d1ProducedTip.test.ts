@@ -4,9 +4,7 @@
  * t1_09 r2: /structure and implement over the defs the D1 tip writes in memory.
  * The compiler is the same sandbox as emittedTypecheck. synthetic-v2 reaches
  * finalize80 since t1_09 r3; agendaClinica since its P1 has transitionRef (t1_10).
- * agendaClinica has an MDM `get` that also reads `collection.relatedOfMany`: its function output
- * has no slot for the links, so no derived body returns them and the unit stays with the model
- * (`LLM_UNAVAILABLE` here). Only that unit and the units it blocks are set aside, in a visible skip.
+ * A read whose result has no consumer is not emitted (d1_59), so every unit is in UNIT_OK or UNIT_GAP.
  */
 
 import assert from 'node:assert/strict';
@@ -47,12 +45,7 @@ const UNIT_OK = new Set(['PROMOTED', 'REUSE', 'VERIFIED']);
 const UNIT_GAP = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
-  {
-    id: 'agendaClinica-53f1f35',
-    moduleName: 'agendaClinica',
-    reachesFinalize: true,
-    modelOnly: 'MDM get + collection.relatedOfMany has no output slot for the links; the body stays with the model (t1_10 r2)',
-  },
+  { id: 'agendaClinica-53f1f35', moduleName: 'agendaClinica', reachesFinalize: true },
   { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
@@ -60,7 +53,7 @@ const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70', 'finalize80'];
 
 for (const tip of TIPS) {
-  void test(`M1 structure and implement compile the defs D1 wrote (${tip.id})`, async t => {
+  void test(`M1 structure and implement compile the defs D1 wrote (${tip.id})`, async () => {
     const host = installStudio(PROJECT);
     seedD1Fixture(host, tip.id, PROJECT);
     await writeJson(pipelineFile(PROJECT, tip.moduleName), createEntryPipeline(PROJECT, tip.moduleName, new Date('2026-10-02T12:00:00.000Z')));
@@ -73,58 +66,19 @@ for (const tip of TIPS) {
     const structure = await runMaterialize(request(tip.moduleName, units, 'structure'), materialize);
     assertUnits(structure.units, 'structure');
     const implement = await runMaterialize(request(tip.moduleName, units, 'implement'), materialize);
-    const modelOnly = 'modelOnly' in tip ? getWithLinks(units) : new Set<string>();
-    const deferred = assertUnits(implement.units, 'implement', modelOnly, units);
+    assertUnits(implement.units, 'implement');
     const outbound = implement.units.find(unit => unit.defPath.endsWith('/integration/outbound.defs.ts'));
     assert.ok(outbound, implement.units.map(unit => unit.defPath).join('\n'));
     assert.equal(UNIT_GAP.has(outbound.code), true, `${outbound.code} ${outbound.detail}`);
     const diagnostics = compileProduced(store.map, tip.moduleName);
     assert.equal(diagnostics, '', diagnostics);
-    if ('modelOnly' in tip) {
-      assert.ok(deferred.length > 0, 'no unit was left to the model; drop modelOnly');
-      await t.test(`implement of ${deferred.join(', ')}`, { skip: tip.modelOnly }, () => {});
-    }
   });
 }
 
-/**
- * Units outside UNIT_OK/UNIT_GAP fail the stage, except a `modelOnly` unit refused with
- * LLM_UNAVAILABLE and a unit BLOCKED_BY one of them. Returns those set-aside def paths.
- */
-function assertUnits(
-  units: readonly UnitOutcome[],
-  stage: string,
-  modelOnly: ReadonlySet<string> = new Set(),
-  inputs: readonly PlanUnitInput[] = [],
-): string[] {
-  const deferred: string[] = [];
-  const outside = units.filter(unit => {
-    if (UNIT_OK.has(unit.code) || UNIT_GAP.has(unit.code)) return false;
-    if (unit.code === 'LLM_UNAVAILABLE' && modelOnly.has(unit.defPath)) {
-      deferred.push(unit.defPath);
-      return false;
-    }
-    const deps = inputs.find(item => item.defPath === unit.defPath)?.definition.dependencies ?? [];
-    if (unit.code === 'BLOCKED_BY' && deps.some(dep => modelOnly.has(dep))) {
-      deferred.push(unit.defPath);
-      return false;
-    }
-    return true;
-  });
+/** Units outside UNIT_OK/UNIT_GAP fail the stage. */
+function assertUnits(units: readonly UnitOutcome[], stage: string): void {
+  const outside = units.filter(unit => !UNIT_OK.has(unit.code) && !UNIT_GAP.has(unit.code));
   assert.deepEqual(outside.map(unit => `${unit.code} ${unit.defPath} ${unit.detail}`), [], stage);
-  return deferred.map(path => path.slice(path.lastIndexOf('/') + 1)).sort();
-}
-
-/** MDM `get` usecases that also call `collection.relatedOfMany`, read from the def shape. */
-function getWithLinks(units: readonly PlanUnitInput[]): Set<string> {
-  const found = new Set<string>();
-  for (const unit of units) {
-    const data = unit.definition.data;
-    if (unit.definition.artifactType !== 'usecase' || data.operation !== 'get') continue;
-    const mdm = data.mdm as { calls?: Array<{ target?: unknown; method?: unknown }> } | undefined;
-    if ((mdm?.calls ?? []).some(call => call.target === 'collection' && call.method === 'relatedOfMany')) found.add(unit.defPath);
-  }
-  return found;
 }
 
 function request(moduleName: string, units: readonly PlanUnitInput[], stage: 'structure' | 'implement') {

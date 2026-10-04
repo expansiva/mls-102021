@@ -69,8 +69,9 @@ export function capabilityApplies(name: string, operation: string): boolean {
   switch (operation) {
     case 'update': return name === 'edit.platformFields' || name.startsWith('edit.');
     case 'create': return name.startsWith('register.') || name === 'create';
+    // Candidates are the read table below, not a `list` / `read.` / `locate.` prefix.
     case 'list':
-    case 'get': return name.startsWith('read.') || name.startsWith('locate.') || name.startsWith('list');
+    case 'get': return (READ_CAPABILITIES as readonly string[]).includes(name);
     case 'transition':
     case 'delete':
     case 'custom': return false;
@@ -86,7 +87,7 @@ export function capabilityApplies(name: string, operation: string): boolean {
  * Context, worker schema and the gate all take this result. A locate the input
  * cannot feed is not offered.
  */
-export function mdmForOperation(input: MdmBindInput & { operation: string }): D1UsecaseMdm {
+export function mdmForOperation(input: MdmBindInput & { operation: string }): MdmBindResult {
   return bindMdm({
     ...input,
     selected: input.capabilities.filter(name => capabilityApplies(name, input.operation)),
@@ -202,9 +203,33 @@ export interface MdmBindInput {
   inputFields?: readonly MdmInputField[] | null;
   /** Why the contract was not read, one reason per route. Ignored when fields were read. */
   contractUnread?: string;
+  /**
+   * Output fields of the usecase signature.
+   * `null` or omitted: the signature was not read. Reads stay, and `skipped` records `OUTPUT_UNREAD`.
+   * An empty list: the signature was read and names no field.
+   */
+  outputFields?: readonly MdmOutputField[] | null;
+  /** Set by `mdmForOperation`. List places a packed read into `items`; other operations do not. */
+  operation?: string;
 }
 
-export function bindMdm(input: MdmBindInput): D1UsecaseMdm {
+/** One field of the usecase signature output. */
+export interface MdmOutputField {
+  path: string;
+}
+
+/** A read that was not emitted. Not a refusal: the call is absent and the capability is not a gap. */
+export interface MdmSkipped {
+  capability: string;
+  code: 'RESULT_UNUSED' | 'OUTPUT_UNREAD';
+  evidence: string;
+}
+
+export interface MdmBindResult extends D1UsecaseMdm {
+  skipped: MdmSkipped[];
+}
+
+export function bindMdm(input: MdmBindInput): MdmBindResult {
   const role = input.namespace && input.entityId ? `${input.namespace}.${input.entityId}` : '';
   const gaps: D1MdmGap[] = [];
   const calls: D1MdmPlannedCall[] = [];
@@ -270,22 +295,137 @@ export function bindMdm(input: MdmBindInput): D1UsecaseMdm {
     else calls.push(linkCall(fields));
   }
 
+  const skippedReads: MdmSkipped[] = [];
+  let planned = calls;
+  if (input.outputFields == null) {
+    skippedReads.push({
+      capability: '',
+      code: 'OUTPUT_UNREAD',
+      evidence: 'Signature output was not read. Reads were not pruned.',
+    });
+  } else {
+    const pruned = pruneUnusedReads(planned, input.outputFields, input.operation || '');
+    planned = pruned.calls;
+    skippedReads.push(...pruned.skipped);
+    const still = new Set(planned.flatMap(call => call.capabilities));
+    for (const entry of pruned.skipped) {
+      if (entry.capability && !still.has(entry.capability)) skipped.add(entry.capability);
+    }
+  }
+
   for (const name of input.selected) {
     if (skipped.has(name)) continue;
-    if (calls.some(call => call.capabilities.includes(name))) continue;
+    if (planned.some(call => call.capabilities.includes(name))) continue;
     if (gaps.some(gap => gap.capability === name)) continue;
     gaps.push(knownGap(name));
   }
 
-  gaps.push(...mdmFlowGaps(calls, input, gaps));
-  const executable = calls.filter(call => !call.alternative);
+  gaps.push(...mdmFlowGaps(planned, input, gaps));
+  const executable = planned.filter(call => !call.alternative);
   return {
     namespace: input.namespace,
     role,
     atomic: executable.length === 1 && gaps.length === 0,
-    calls,
+    calls: planned,
     gaps,
+    skipped: skippedReads,
   };
+}
+
+/**
+ * Where a read result lands in the function output (M1 `pack` / `chosen` / `listReturn`).
+ * A point read is packed as `{ id ← mdmId, version, details }`. On list, that pack is an `items` element.
+ * `listByType` returns those rows only on list. `relatedOfMany` is not packed (`void links`, empty list return):
+ * only a result field name is a place. A later `prior` argument or `prior` clause is the other consumer.
+ * Removing one read can drop the earlier read that existed only to feed it, so this runs until stable.
+ */
+function pruneUnusedReads(
+  calls: readonly D1MdmPlannedCall[],
+  outputFields: readonly MdmOutputField[],
+  operation: string,
+): { calls: D1MdmPlannedCall[]; skipped: MdmSkipped[] } {
+  let current = [...calls];
+  const skipped: MdmSkipped[] = [];
+  for (;;) {
+    const drop = current.filter(call => isUnusedRead(call, current, outputFields, operation));
+    if (!drop.length) break;
+    const dropIds = new Set(drop.map(call => call.id));
+    for (const call of drop) {
+      skipped.push({
+        capability: call.capabilities[0] || call.method,
+        code: 'RESULT_UNUSED',
+        evidence: `${call.id} result (${call.result.join(', ') || '(none)'}) has no output field and no later prior.`,
+      });
+    }
+    current = current.filter(call => !dropIds.has(call.id));
+  }
+  return { calls: current, skipped };
+}
+
+const PACKED_POINT_METHODS = new Set<string>(['get', 'findByDocument', 'findByContact']);
+
+function isUnusedRead(
+  call: D1MdmPlannedCall,
+  calls: readonly D1MdmPlannedCall[],
+  outputFields: readonly MdmOutputField[],
+  operation: string,
+): boolean {
+  if (!isPrunableRead(call)) return false;
+  if (citedByLater(call, calls)) return false;
+  return !outputConsumes(call, outputFields, operation);
+}
+
+function isPrunableRead(call: D1MdmPlannedCall): boolean {
+  if (PACKED_POINT_METHODS.has(call.method) || call.method === 'listByType' || call.method === 'relatedOfMany') return true;
+  return call.capabilities.some(name =>
+    name.startsWith('read.') || name.startsWith('locate.') || name === 'listLinks' || name === 'listByType');
+}
+
+function citedByLater(call: D1MdmPlannedCall, calls: readonly D1MdmPlannedCall[]): boolean {
+  const index = calls.findIndex(item => item.id === call.id);
+  for (const later of calls.slice(index + 1)) {
+    for (const arg of later.arguments) {
+      if (arg.origin.kind !== 'prior') continue;
+      if (!(arg.origin.calls || []).includes(call.id)) continue;
+      if (call.result.includes(arg.origin.path || '')) return true;
+    }
+    for (const clause of later.when) {
+      if (clause.kind === 'prior' && clause.call === call.id && call.result.includes(clause.path)) return true;
+    }
+  }
+  return false;
+}
+
+function outputConsumes(
+  call: D1MdmPlannedCall,
+  outputFields: readonly MdmOutputField[],
+  operation: string,
+): boolean {
+  return outputFields.some(field => placedPaths(call, operation).some(place =>
+    field.path === place || field.path.startsWith(`${place}.`)));
+}
+
+function placedPaths(call: D1MdmPlannedCall, operation: string): string[] {
+  if (call.method === 'relatedOfMany') return [...call.result];
+  if (call.method === 'listByType') {
+    const places = new Set<string>(call.result);
+    if (operation === 'list') {
+      places.add('items');
+      places.add('id');
+      places.add('version');
+      places.add('details');
+    }
+    return [...places];
+  }
+  if (PACKED_POINT_METHODS.has(call.method)) {
+    const places = new Set<string>();
+    if (call.result.includes('mdmId')) places.add('id');
+    if (call.result.includes('version')) places.add('version');
+    if (call.result.includes('details')) places.add('details');
+    if (operation === 'list') places.add('items');
+    return [...places];
+  }
+  return [...call.result];
 }
 
 /**

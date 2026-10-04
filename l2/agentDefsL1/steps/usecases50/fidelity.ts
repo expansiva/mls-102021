@@ -250,6 +250,7 @@ export function readUsecaseFidelity(
       preconditionsFor(files, moduleName, entityId, []),
       declaredFieldsFor(files, moduleName, entityId, []),
     );
+    const outputPaths = functionOutputPaths(data);
     const bound = mdmForOperation({
       entityId,
       namespace: namespaceOf(ontology),
@@ -257,6 +258,7 @@ export function readUsecaseFidelity(
       selected: names.filter(name => capabilityApplies(name, operation)),
       platformFields: platformFieldPaths(ontology),
       inputFields: read.fields,
+      outputFields: outputPaths ? outputPaths.map(path => ({ path })) : null,
       contractUnread: read.unread.join('; '),
       operation,
     });
@@ -508,10 +510,19 @@ function outboundMechanismProblems(files: readonly FidelityFile[]): FidelityProb
 }
 
 function functionInputPaths(data: Record<string, unknown>): string[] {
+  return functionFieldPaths(data, 'input') || [];
+}
+
+/** `null` when the def has no function output: the signature was not read. */
+function functionOutputPaths(data: Record<string, unknown>): string[] | null {
+  return functionFieldPaths(data, 'output');
+}
+
+function functionFieldPaths(data: Record<string, unknown>, key: 'input' | 'output'): string[] | null {
   const functions = Array.isArray(data.functions) ? data.functions : [];
   const first = functions.find(isRecord);
-  if (!first || !Array.isArray(first.input)) return [];
-  return first.input.flatMap(field => isRecord(field) && typeof field.name === 'string' ? [field.name] : []);
+  if (!first || !Array.isArray(first[key])) return null;
+  return first[key].flatMap(field => isRecord(field) && typeof field.name === 'string' ? [field.name] : []);
 }
 
 function readLifecycle(data: Record<string, unknown>): UsecaseBehavior['lifecycle'] {

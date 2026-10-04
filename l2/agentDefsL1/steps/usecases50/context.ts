@@ -601,8 +601,9 @@ function boundMdm(
       || entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload
       || [])
     : [];
+  const signature = domainSignature(entity, usecase.operation, payload);
   const read = mdmInputFields(
-    domainSignature(entity, usecase.operation, payload).input,
+    signature.input,
     preconditionsFor(bundle.files, bundleModule(bundle, entity), entity.entityId, entity.fields),
     declaredFieldsFor(bundle.files, bundleModule(bundle, entity), entity.entityId, entity.fields),
   );
@@ -613,6 +614,7 @@ function boundMdm(
     selected: [],
     platformFields: entity.platformFields?.length ? entity.platformFields : platformLeaves(body),
     inputFields: read.fields,
+    outputFields: signature.output.map(field => ({ path: field.name })),
     contractUnread: read.unread.join('; '),
     operation: usecase.operation,
   });

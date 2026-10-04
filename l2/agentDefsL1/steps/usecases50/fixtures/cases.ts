@@ -155,8 +155,9 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
     const payload = usecase.operation === 'transition'
       ? (entity.transitions.find(item => item.transitionId === transitionRefOf(usecase))?.payload || [])
       : [];
+    const signature = domainSignature(entity, usecase.operation, payload);
     const read = mdmInputFields(
-      domainSignature(entity, usecase.operation, payload).input,
+      signature.input,
       preconditionsFor(request.files, request.moduleName, entity.entityId, entity.fields),
       declaredFieldsFor(request.files, request.moduleName, entity.entityId, entity.fields),
     );
@@ -167,6 +168,7 @@ export function fixturePlan(request: D1UsecaseRequest, usecase: D1UsecaseSelecti
       selected: [],
       platformFields: entity.platformFields || [],
       inputFields: read.fields,
+      outputFields: signature.output.map(field => ({ path: field.name })),
       contractUnread: read.unread.join('; '),
       operation: usecase.operation,
     });

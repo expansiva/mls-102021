@@ -134,7 +134,7 @@ function planUsecase(
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
   const portCalls = resolvePorts(entity, usecase, port, steps, path, problems);
-  const mdm = resolveMdm(request, entity, usecase, input, steps, path, problems);
+  const mdm = resolveMdm(request, entity, usecase, input, signed.output, steps, path, problems);
   noteAdapter(steps, path, problems);
   noteContext(steps, path, problems);
   const boundary = resolveBoundary(portCalls, mdm, steps, path, problems);
@@ -541,6 +541,7 @@ function resolveMdm(
   entity: D1UsecaseEntity,
   usecase: D1UsecaseSelection,
   input: readonly { name: string }[],
+  output: readonly { name: string }[],
   steps: readonly D1WorkerStep[],
   path: string,
   problems: D1UsecaseProblem[],
@@ -568,6 +569,7 @@ function resolveMdm(
     selected,
     platformFields: entity.platformFields || [],
     inputFields: read.fields,
+    outputFields: output.map(field => ({ path: field.name })),
     contractUnread: read.unread.join('; '),
     operation: usecase.operation,
   });
