@@ -14,6 +14,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { domainOptionalPaths, optionalSignatureNames } from '/_102021_/l2/agentMaterializeL1/handlers/structure/domainOptional.js';
+import { pathDisclosure, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import {
   AUTHORITY_UNMAPPED,
   AUTHORITY_UNREAD,
@@ -493,18 +494,9 @@ export function qualifyFile(path: string, dependencies: readonly string[]): stri
   return project && /^l\d+\//.test(path) ? `_${project}_/${path}` : path;
 }
 
-/**
- * Whether one grant discloses an entity path: `fullRecord` all; `fieldsOnly`/`summaryOnly` the
- * `<entityId>.` allowed fields and what is under them (`whole` = false also admits an ancestor of one);
- * any other mode, or an undeclared grant (`{}`), nothing. The v2 request service reads it.
- */
-function grantDiscloses(grant: Record<string, unknown>, path: string, entityId: string, whole: boolean): boolean {
-  const mode = String(grant.disclosure ?? '');
-  if (mode === 'fullRecord') return true;
-  if (mode !== 'fieldsOnly' && mode !== 'summaryOnly') return false;
-  const prefix = `${entityId}.`;
-  const allowed = stringList(grant.allowedFields).filter(field => entityId && field.startsWith(prefix)).map(field => field.slice(prefix.length));
-  return allowed.some(field => path === field || path.startsWith(`${field}.`) || (!whole && field.startsWith(`${path}.`)));
+/** An access-scope grant as the shared rule reads it. An undeclared grant (`{}`) has no mode and discloses nothing. */
+function disclosureGrant(grant: Record<string, unknown>): DisclosureGrant {
+  return { disclosure: String(grant.disclosure ?? ''), allowedFields: stringList(grant.allowedFields), entityRefs: stringList(grant.entityRefs) };
 }
 
 /**
@@ -735,13 +727,15 @@ export async function emitRequestService(
 ): Promise<EmitResult | EmitFailure> {
   const loaded = await loadService(definition, read, registeredPortNames(moduleDefinitions));
   if ('code' in loaded) return loaded;
-  // The grant still bounds what leaves: every projected field fits what each grant of the route discloses.
+  // The grant still bounds what leaves: the shared rule (helpers/l1Defs/disclosure.ts, same as the D1 plan).
+  // A route no controller names is not exposed and has no grants to check.
   const exposed = exposedRouteGrants(moduleDefinitions);
   if ('code' in exposed) return exposed;
   for (const call of loaded) {
-    const grants = exposed.get(call.route) ?? [];
+    const grants = (exposed.get(call.route) ?? []).map(disclosureGrant);
+    if (grants.length === 0) continue;
     for (const output of call.outputs) {
-      const field = output.fields.find(path => !grants.every(grant => grantDiscloses(grant, path, output.entity, true)));
+      const field = output.fields.find(path => pathDisclosure(grants, output.entity, path) !== 'disclosed');
       if (field) return { code: 'DISCLOSURE_EXCEEDS_GRANT', detail: `DISCLOSURE_EXCEEDS_GRANT: ${call.route} ${field}` };
     }
   }

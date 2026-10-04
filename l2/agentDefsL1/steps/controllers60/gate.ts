@@ -23,7 +23,7 @@ import {
   serviceRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import type { D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
+import { pathDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { worstOfList } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
@@ -169,8 +169,7 @@ function bindAdapter(
   const attached = grantsOnPage(page, kept.grantIds, request);
   const projected: string[] = [];
   for (const output of row.outputs) {
-    const fields = output.fields.map(name => ({ name, type: 'string', optional: false }));
-    const disclosed = discloseProjection(output.entity, fields, attached);
+    const disclosed = discloseProjection(output.entity, output.fields, attached);
     projected.push(...disclosed.fields);
     if (disclosed.blocked.length || disclosed.opaque.length) {
       error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
@@ -271,26 +270,24 @@ function matchingGrants(actors: readonly string[], entity: string, grants: reado
 }
 
 /**
- * fieldsOnly addresses a path, the way the access artifact does.
- * `Entity.details.identification` covers that branch and its descendants.
- * It does not cover another field whose last segment is `identification`,
- * and it does not release the parent `details`. The projection keeps the
- * disclosed sub-paths. `fullRecord` keeps every declared field.
+ * Each projected path goes through the shared rule (`helpers/l1Defs/disclosure.ts`), the same one
+ * the M1 request service applies: only grants about this entity count, and every one of them must
+ * disclose the path. `Entity.details.identification` covers that branch and its descendants, not the
+ * parent `details` nor a sibling. The projection keeps every declared path; a refused one is reported.
  */
 function discloseProjection(
   entity: string,
-  fields: readonly D1ContractField[],
+  fields: readonly string[],
   grants: readonly D1ControllerGrant[],
 ): { fields: string[]; blocked: string[]; opaque: string[] } {
-  if (grants.some(grant => grant.disclosure === 'fullRecord')) {
-    return { fields: fields.map(field => field.name), blocked: [], opaque: [] };
-  }
-  const allowed = relativeAllowed(entity, grants);
-  const listed: string[] = [];
   const blocked: string[] = [];
   const opaque: string[] = [];
-  for (const field of fields) coverPath(field.name, field.type, allowed, listed, blocked, opaque);
-  return { fields: listed, blocked, opaque };
+  for (const field of fields) {
+    const verdict = pathDisclosure(grants, entity, field);
+    if (verdict === 'blocked') blocked.push(field);
+    else if (verdict === 'carrier') opaque.push(field);
+  }
+  return { fields: [...fields], blocked, opaque };
 }
 
 function disclosureMessage(route: string, blocked: readonly string[], opaque: readonly string[]): string {
@@ -302,186 +299,6 @@ function disclosureMessage(route: string, blocked: readonly string[], opaque: re
     parts.push(`Route ${route} projects ${opaque.join(', ')}. A grant names a sub-path, but the nested shape could not be read, so the container was not released.`);
   }
   return parts.join(' ');
-}
-
-function relativeAllowed(entity: string, grants: readonly D1ControllerGrant[]): string[] {
-  const prefix = `${entity}.`;
-  const out: string[] = [];
-  for (const grant of grants) {
-    for (const item of grant.allowedFields) {
-      if (item === entity) out.push('');
-      else if (item.startsWith(prefix)) out.push(item.slice(prefix.length));
-    }
-  }
-  return out;
-}
-
-function coverPath(
-  path: string,
-  type: string,
-  allowed: readonly string[],
-  listed: string[],
-  blocked: string[],
-  opaque: string[],
-): void {
-  if (pathDisclosed(path, allowed)) {
-    listed.push(path);
-    return;
-  }
-  const members = nestedMembers(type);
-  if (members === null) {
-    listed.push(path);
-    if (pathCarrier(path, allowed)) opaque.push(path);
-    else blocked.push(path);
-    return;
-  }
-  if (!members.length) {
-    if (!pathCarrier(path, allowed)) {
-      listed.push(path);
-      blocked.push(path);
-    }
-    return;
-  }
-  for (const member of members) coverPath(`${path}.${member.name}`, member.type, allowed, listed, blocked, opaque);
-}
-
-function pathDisclosed(path: string, allowed: readonly string[]): boolean {
-  return allowed.some(item => item === path || item === '' || (item !== '' && path.startsWith(`${item}.`)));
-}
-
-function pathCarrier(path: string, allowed: readonly string[]): boolean {
-  return allowed.some(item => item.startsWith(`${path}.`));
-}
-
-function nestedMembers(type: string): Array<{ name: string; type: string }> | null {
-  const inner = objectBody(type.trim());
-  if (inner === null) return null;
-  return objectMembers(inner);
-}
-
-function objectBody(type: string): string | null {
-  if (!type.startsWith('{')) return null;
-  let depth = 0;
-  let inString = false;
-  let quote = '';
-  let escaped = false;
-  for (let index = 0; index < type.length; index += 1) {
-    const char = type[index];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) inString = false;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      inString = true;
-      quote = char;
-      continue;
-    }
-    if (char === '{') depth += 1;
-    else if (char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        if (type.slice(index + 1).trim()) return null;
-        return type.slice(1, index);
-      }
-    }
-  }
-  return null;
-}
-
-function objectMembers(body: string): Array<{ name: string; type: string }> | null {
-  const members: Array<{ name: string; type: string }> = [];
-  let index = 0;
-  while (index < body.length) {
-    while (index < body.length && /[\s,;]/.test(body[index])) index += 1;
-    if (index >= body.length) break;
-    const mark = index;
-    const name = memberName(body, index);
-    if (!name) return null;
-    index = name.end;
-    while (index < body.length && /\s/.test(body[index])) index += 1;
-    if (body[index] === '?') {
-      index += 1;
-      while (index < body.length && /\s/.test(body[index])) index += 1;
-    }
-    if (body[index] !== ':') return null;
-    index += 1;
-    const typed = memberType(body, index);
-    if (!typed) return null;
-    index = typed.end;
-    if (index === mark) return null;
-    members.push({ name: name.text, type: typed.text });
-  }
-  return members;
-}
-
-function memberName(body: string, index: number): { text: string; end: number } | null {
-  const quote = body[index];
-  if (quote === '"' || quote === "'") {
-    let end = index + 1;
-    let escaped = false;
-    while (end < body.length) {
-      const char = body[end];
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) return { text: body.slice(index + 1, end), end: end + 1 };
-      end += 1;
-    }
-    return null;
-  }
-  const match = /^[A-Za-z_$][\w$]*/.exec(body.slice(index));
-  if (!match) return null;
-  return { text: match[0], end: index + match[0].length };
-}
-
-function memberType(body: string, start: number): { text: string; end: number } | null {
-  let index = start;
-  while (index < body.length && /\s/.test(body[index])) index += 1;
-  const from = index;
-  let depthBrace = 0;
-  let depthBracket = 0;
-  let depthParen = 0;
-  let depthAngle = 0;
-  let inString = false;
-  let quote = '';
-  let escaped = false;
-  while (index < body.length) {
-    const char = body[index];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === quote) inString = false;
-      index += 1;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      inString = true;
-      quote = char;
-      index += 1;
-      continue;
-    }
-    const flat = depthBrace === 0 && depthBracket === 0 && depthParen === 0 && depthAngle === 0;
-    if (flat && (char === ',' || char === ';')) break;
-    if (char === '{') depthBrace += 1;
-    else if (char === '}') {
-      if (depthBrace === 0) break;
-      depthBrace -= 1;
-    } else if (char === '[') depthBracket += 1;
-    else if (char === ']') {
-      if (depthBracket === 0) break;
-      depthBracket -= 1;
-    } else if (char === '(') depthParen += 1;
-    else if (char === ')') {
-      if (depthParen === 0) break;
-      depthParen -= 1;
-    } else if (char === '<') depthAngle += 1;
-    else if (char === '>' && depthAngle > 0) depthAngle -= 1;
-    index += 1;
-  }
-  const text = body.slice(from, index).replace(/\s+/g, ' ').trim();
-  if (!text) return null;
-  return { text, end: index };
 }
 
 function scopePlans(

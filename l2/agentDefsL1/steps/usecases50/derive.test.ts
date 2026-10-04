@@ -22,7 +22,7 @@ import { closedFromRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/wor
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT = 102047;
-/** Tips that reach usecases50. agendaClinica-cab144b stops at input20 (requestInventory.test.ts). */
+/** Tips that reach usecases50. agendaClinica-53f1f35 also reaches finalize80; its tips are requestInventory.test.ts (D1) and d1ProducedTip.test.ts (M1), not repeated here. */
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque' },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk' },
