@@ -169,7 +169,7 @@ function bindAdapter(
   const attached = grantsOnPage(page, kept.grantIds, request);
   const projected: string[] = [];
   for (const output of row.outputs) {
-    const disclosed = discloseProjection(output.entity, output.fields, attached);
+    const disclosed = discloseProjection(output.entity, output.fields, attached, request.ontology?.[output.entity]);
     projected.push(...disclosed.fields);
     if (disclosed.blocked.length || disclosed.opaque.length) {
       error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
@@ -279,11 +279,12 @@ function discloseProjection(
   entity: string,
   fields: readonly string[],
   grants: readonly D1ControllerGrant[],
+  entityDefinition: unknown,
 ): { fields: string[]; blocked: string[]; opaque: string[] } {
   const blocked: string[] = [];
   const opaque: string[] = [];
   for (const field of fields) {
-    const verdict = pathDisclosure(grants, entity, field);
+    const verdict = pathDisclosure(grants, entity, field, entityDefinition);
     if (verdict === 'blocked') blocked.push(field);
     else if (verdict === 'carrier') opaque.push(field);
   }

@@ -125,6 +125,44 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
   assert.equal(sibling.problems.some(item => item.code === 'DISCLOSURE' && item.path === query && item.message.includes(leaf[0])), true);
 });
 
+void test('fieldsOnly that omits the declared concurrency field still discloses it; a business field stays refused', () => {
+  const request = withVersion(seed());
+  const { pageId, query, entity } = pageWithQueryAndCommand(request);
+  const fields = buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  assert.ok(fields.includes('version'), fields.join(','));
+  const business = fields.find(field => field !== 'id' && field !== 'version');
+  assert.ok(business, fields.join(','));
+  const page = request.pages.find(item => item.pageId === pageId);
+  assert.ok(page);
+  const allowed = fields.filter(field => field !== 'version' && field !== business);
+  request.grants = [
+    grant(`${page.actors[0]}Narrow`, page.actors[0], [entity], 'fieldsOnly', allowed.map(field => `${entity}.${field}`)),
+    ...request.grants.filter(item => !item.entityRefs.includes(entity)).map(item => ({ ...item })),
+  ];
+  const build = buildD1Controllers(request);
+  const disclosed = build.problems.filter(item => item.code === 'DISCLOSURE' && item.path === query);
+  assert.equal(disclosed.some(item => item.message.includes('version')), false, errors(build));
+  assert.equal(disclosed.some(item => item.message.includes(business)), true, errors(build));
+});
+
+void test('version is refused when the entity does not declare it as a concurrency field', () => {
+  const request = withVersion(seed());
+  const { pageId, query, entity } = pageWithQueryAndCommand(request);
+  const body = request.ontology?.[entity];
+  const record = body && typeof body === 'object' && body !== null && 'record' in body ? (body as { record?: { fields?: Record<string, { derived?: boolean }> } }).record : undefined;
+  assert.ok(record?.fields?.version);
+  record.fields.version.derived = false;
+  const fields = buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const page = request.pages.find(item => item.pageId === pageId);
+  assert.ok(page);
+  request.grants = [
+    grant(`${page.actors[0]}Narrow`, page.actors[0], [entity], 'fieldsOnly', fields.filter(field => field !== 'version').map(field => `${entity}.${field}`)),
+    ...request.grants.filter(item => !item.entityRefs.includes(entity)).map(item => ({ ...item })),
+  ];
+  const build = buildD1Controllers(request);
+  assert.equal(build.problems.some(item => item.code === 'DISCLOSURE' && item.path === query && item.message.includes('version')), true, errors(build));
+});
+
 void test('an empty, unclosed or foreign contract is CONTRACT_UNPARSED and plans no handler', () => {
   for (const edit of [
     (_source: string) => '',
@@ -260,6 +298,14 @@ function withoutRoute(source: string, route: string): string {
   const end = source.indexOf('\n  };\n', start);
   assert.ok(end > start, route);
   return source.slice(0, start) + source.slice(end + '\n  };\n'.length);
+}
+
+/** Puts `version` on every output interface that already projects `id`. */
+function withVersion(request: D1ControllerRequest): D1ControllerRequest {
+  for (const contract of request.contracts) {
+    contract.source = contract.source.replaceAll('id: string;', 'id: string;\n  version: number;');
+  }
+  return request;
 }
 
 function grant(

@@ -735,7 +735,8 @@ export async function emitRequestService(
     const grants = (exposed.get(call.route) ?? []).map(disclosureGrant);
     if (grants.length === 0) continue;
     for (const output of call.outputs) {
-      const field = output.fields.find(path => pathDisclosure(grants, output.entity, path) !== 'disclosed');
+      const entityDefinition = moduleDefinitions.find(item => isRecord(item) && item.artifactType === 'domainEntity' && isRecord(item.data) && item.data.entityId === output.entity);
+      const field = output.fields.find(path => pathDisclosure(grants, output.entity, path, entityDefinition) !== 'disclosed');
       if (field) return { code: 'DISCLOSURE_EXCEEDS_GRANT', detail: `DISCLOSURE_EXCEEDS_GRANT: ${call.route} ${field}` };
     }
   }

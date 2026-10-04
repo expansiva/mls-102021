@@ -15,6 +15,7 @@ import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { defV1Detail, resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { M1_SEED_REF, type M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
+import { pathDisclosure, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { isL1Operation, L1_OPERATION_TRAITS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -181,7 +182,8 @@ function routeObligationsV2(
   const routeGrants = ref.grantIds.map(id => access.rows.find(row => row.grantId === id) ?? {});
   const disclosed = { allowed: [] as string[], forbidden: [] as string[] };
   for (const output of request.outputs) {
-    const one = disclosure(output.fields, routeGrants, output.entity);
+    const entityDefinition = [...defs.values()].find(item => item.artifactType === 'domainEntity' && item.data.entityId === output.entity);
+    const one = disclosure(output.fields, routeGrants, output.entity, entityDefinition);
     disclosed.allowed.push(...one.allowed.map(path => `${output.key}.${path}`), ...pagination(output.key));
     disclosed.forbidden.push(...one.forbidden.map(path => `${output.key}.${path}`));
   }
@@ -420,17 +422,25 @@ function splitTop(body: string): string[] {
  * contract path; `fieldsOnly`/`summaryOnly` the `<entityId>.` allowed fields and what is
  * under them; any other mode, or a grant that is not declared, discloses nothing.
  */
-export function disclosure(outputPaths: readonly string[], grants: readonly Record<string, unknown>[], entityId: string): { allowed: string[]; forbidden: string[] } {
-  const discloses = (grant: Record<string, unknown>, path: string): boolean => {
-    const mode = String(grant.disclosure ?? '');
-    if (mode === 'fullRecord') return true;
-    if (mode !== 'fieldsOnly' && mode !== 'summaryOnly' || !entityId) return false;
-    const fields = Array.isArray(grant.allowedFields) ? grant.allowedFields.filter((item): item is string => typeof item === 'string') : [];
-    return fields.some(field => field.startsWith(`${entityId}.`) && (path === field.slice(entityId.length + 1) || path.startsWith(`${field.slice(entityId.length + 1)}.`)));
-  };
-  const allowed = outputPaths.filter(path => grants.length > 0 && grants.every(grant => discloses(grant, path)));
+export function disclosure(
+  outputPaths: readonly string[],
+  grants: readonly Record<string, unknown>[],
+  entityId: string,
+  entityDefinition?: unknown,
+): { allowed: string[]; forbidden: string[] } {
+  const covering = grants.map(asDisclosureGrant);
+  const allowed = outputPaths.filter(path => pathDisclosure(covering, entityId, path, entityDefinition) === 'disclosed');
   const leaves = outputPaths.filter(path => !outputPaths.some(other => other.startsWith(`${path}.`)));
   return { allowed: sorted(allowed), forbidden: sorted(leaves.filter(path => !allowed.includes(path))) };
+}
+
+function asDisclosureGrant(grant: Record<string, unknown>): DisclosureGrant {
+  const mode = grant.disclosure;
+  return {
+    disclosure: typeof mode === 'string' ? mode : '',
+    allowedFields: Array.isArray(grant.allowedFields) ? grant.allowedFields.filter((item): item is string => typeof item === 'string') : [],
+    entityRefs: Array.isArray(grant.entityRefs) ? grant.entityRefs.filter((item): item is string => typeof item === 'string') : [],
+  };
 }
 
 /** '' when the observation meets the obligation; otherwise the first difference. */

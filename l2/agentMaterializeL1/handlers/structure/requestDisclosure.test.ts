@@ -46,6 +46,25 @@ async function emit(fields: string[], modules: unknown[], stage: 'structure' | '
 }
 const code = (result: EmitResult | EmitFailure) => 'code' in result ? result.detail : 'ok';
 
+const crate = (fields: Record<string, unknown>[]) => def('domainEntity', 'JjCrate', [], {
+  entityId: 'JjCrate', storageTarget: 'moduleDatabase', fields,
+  lifecycle: { states: [], transitions: [] }, invariants: [], imports: [],
+});
+const declared = crate([
+  { name: 'id', type: 'uuid', derived: true },
+  { name: 'version', type: 'integer', derived: true },
+  { name: 'label', type: 'string' },
+  { name: 'weight', type: 'number' },
+]);
+
+void test('a fieldsOnly grant that omits the declared concurrency field still emits; a business field does not', async () => {
+  const labelOnly = scope([grant('loaderBay', 'fieldsOnly', ['JjCrate.label'])]);
+  assert.equal(code(await emit(['label', 'version'], [declared, labelOnly, controller(['loaderBay'])])), 'ok');
+  assert.equal(code(await emit(['label', 'weight'], [declared, labelOnly, controller(['loaderBay'])])), `DISCLOSURE_EXCEEDS_GRANT: ${ROUTE} weight`);
+  const noVersion = crate([{ name: 'id', type: 'uuid', derived: true }, { name: 'label', type: 'string' }]);
+  assert.equal(code(await emit(['label', 'version'], [noVersion, labelOnly, controller(['loaderBay'])])), `DISCLOSURE_EXCEEDS_GRANT: ${ROUTE} version`);
+});
+
 const FIELDS = ['id', 'label', 'seal.code'];
 const loaderSees = scope([grant('loaderBay', 'fieldsOnly', ['JjCrate.id', 'JjCrate.label', 'JjCrate.seal'])]);
 
