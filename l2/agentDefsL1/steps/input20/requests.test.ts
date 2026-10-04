@@ -320,22 +320,6 @@ void test('a transition usecase without transitionRef is refused and not selecte
   assert.match(missing.path, /backend\.json$/);
 });
 
-void test('transitionRef on the backend without the effort field is selected from the backend', () => {
-  const close: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'close' };
-  const artifacts = deskOf([close], [cmdRoute('ledgerDesk.board.close', 'DeskNote.close')]);
-  deskTransitions(artifacts, ['close']);
-  const effort = artifacts.effort as { usecases: PoolRow[] };
-  delete effort.usecases[0].transitionRef;
-  const snapshot = deskBuild(artifacts);
-  const selected = snapshot.selection.usecases.find(item => item.usecaseId === 'close');
-  assert.equal(selected?.transitionRef, 'close');
-  assert.equal(snapshot.problems.some(item => item.code === 'TRANSITION_REF_MISSING'), false);
-  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.close')?.uses, ['close']);
-  const effortRef = '';
-  const backendRef = 'close';
-  assert.equal(!backendRef || !effortRef, true);
-});
-
 void test('transitionRef missing on the backend is TRANSITION_REF_MISSING even when effort has it', () => {
   const row: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'close' };
   const artifacts = deskOf([row], [cmdRoute('ledgerDesk.board.close', 'DeskNote.close')]);
@@ -346,16 +330,6 @@ void test('transitionRef missing on the backend is TRANSITION_REF_MISSING even w
   const missing = snapshot.problems.find(item => item.code === 'TRANSITION_REF_MISSING' && item.ownerRef === 'close');
   assert.ok(missing);
   assert.match(missing.path, /backend\.json$/);
-});
-
-void test('transitionRef that disagrees between backend and effort is DIVERGENT_SOURCE', () => {
-  const close: PoolRow = { usecaseId: 'close', entity: 'DeskNote', operation: 'transition', status: 'toCreate', existing: '', transitionRef: 'close' };
-  const artifacts = deskOf([close], [cmdRoute('ledgerDesk.board.close', 'DeskNote.close')]);
-  deskTransitions(artifacts, ['close']);
-  (artifacts.effort as { usecases: PoolRow[] }).usecases[0].transitionRef = 'archive';
-  const snapshot = deskBuild(artifacts);
-  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'close'), false);
-  assert.equal(snapshot.problems.some(item => item.code === 'DIVERGENT_SOURCE' && item.ownerRef === 'close'), true);
 });
 
 void test('a lifecycle transition the plan lacks is created from the contract and the route uses it', () => {

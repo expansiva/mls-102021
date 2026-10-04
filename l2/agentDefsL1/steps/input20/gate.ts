@@ -43,6 +43,7 @@ import type {
   PoolEffortFile,
   PoolEffortScreen,
   PoolEffortTable,
+  PoolEffortUsecase,
   PoolNeedsFile,
   PoolNeedsPage,
   PoolRaw,
@@ -134,8 +135,7 @@ export function buildD1InputSnapshot(
   const backendEndpoints = rows(backend.endpoints) as PoolRaw<PoolBackendEndpoint>[];
   const effortEndpoints = rows(effort.endpoints) as PoolRaw<PoolEffortEndpoint>[];
   const backendUsecases = indexBy(rows(backend.usecases) as PoolRaw<PoolBackendUsecase>[], 'usecaseId');
-  // Untyped on purpose: D1 reads `transitionRef` here, which effort.json does not declare (p4_26 divergence).
-  const effortUsecases = indexBy(rows(effort.usecases), 'usecaseId');
+  const effortUsecases = indexBy(rows(effort.usecases) as PoolRaw<PoolEffortUsecase>[], 'usecaseId');
   const backendTables = indexBy(rows(backend.tables) as PoolRaw<PoolBackendTable>[], 'tableId');
   const effortTables = indexBy(rows(effort.tables) as PoolRaw<PoolEffortTable>[], 'tableId');
   const backendPorts = rows(backend.ports) as PoolRaw<PoolBackendPort>[];
@@ -178,17 +178,12 @@ export function buildD1InputSnapshot(
     }
     const operation = text(left.operation);
     const transitionRef = text(left.transitionRef);
-    const effortRef = text(right.transitionRef);
     if (operation === 'transition' && !transitionRef) {
       error(problems, 'TRANSITION_REF_MISSING', paths.backend, `Transition usecase ${usecaseId} has no transitionRef. The L4 transitionId is required; the usecaseId is not the transition.`, usecaseId);
       continue;
     }
-    if (operation === 'transition' && effortRef && transitionRef !== effortRef) {
-      error(problems, 'DIVERGENT_SOURCE', paths.backend, `Usecase ${usecaseId} transitionRef is '${transitionRef}' in backend and '${effortRef}' in effort.`, usecaseId);
-      continue;
-    }
-    if (operation !== 'transition' && (transitionRef || effortRef)) {
-      error(problems, 'DIVERGENT_SOURCE', transitionRef ? paths.backend : paths.effort, `Usecase ${usecaseId} is ${operation} and must not carry transitionRef.`, usecaseId);
+    if (operation !== 'transition' && transitionRef) {
+      error(problems, 'DIVERGENT_SOURCE', paths.backend, `Usecase ${usecaseId} is ${operation} and must not carry transitionRef.`, usecaseId);
       continue;
     }
     if (!isActive(text(left.status))) continue;
