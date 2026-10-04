@@ -1,0 +1,729 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "agendaClinica.agenda_profissional.cmdRegistrarAtendimento",
+      "page": "agenda_profissional",
+      "kind": "cmd",
+      "usecaseRef": "registrarAtendimento",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.agenda_profissional.qryListConsulta",
+      "page": "agenda_profissional",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.agenda_profissional.qryListPaciente",
+      "page": "agenda_profissional",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.agenda_profissional.qryListProfissional",
+      "page": "agenda_profissional",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.cmdConfirmarConsulta",
+      "page": "consultas_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "confirmarConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.cmdCreateConsulta",
+      "page": "consultas_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.cmdRegistrarFalta",
+      "page": "consultas_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "registrarFalta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.qryListConsulta",
+      "page": "consultas_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.qryListContatoPaciente",
+      "page": "consultas_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listContatoPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.qryListPaciente",
+      "page": "consultas_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.consultas_recepcao.qryListProfissional",
+      "page": "consultas_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_profissional.cmdCreateProfissional",
+      "page": "meu_cadastro_profissional",
+      "kind": "cmd",
+      "usecaseRef": "createProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_profissional.cmdUpdateProfissional",
+      "page": "meu_cadastro_profissional",
+      "kind": "cmd",
+      "usecaseRef": "updateProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_profissional.qryListProfissional",
+      "page": "meu_cadastro_profissional",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_recepcao.cmdCreateRecepcionista",
+      "page": "meu_cadastro_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "createRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_recepcao.cmdUpdateRecepcionista",
+      "page": "meu_cadastro_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "updateRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.meu_cadastro_recepcao.qryListRecepcionista",
+      "page": "meu_cadastro_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listRecepcionista",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdConfirmarConsulta",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "confirmarConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreateConsulta",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.pacientes.cmdCreatePaciente",
+      "page": "pacientes",
+      "kind": "cmd",
+      "usecaseRef": "createPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListConsulta",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListContatoPaciente",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listContatoPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListPaciente",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.pacientes.qryListProfissional",
+      "page": "pacientes",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.profissionais_recepcao.cmdCreateConsulta",
+      "page": "profissionais_recepcao",
+      "kind": "cmd",
+      "usecaseRef": "createConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.profissionais_recepcao.qryListConsulta",
+      "page": "profissionais_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listConsulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "agendaClinica.profissionais_recepcao.qryListContatoPaciente",
+      "page": "profissionais_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listContatoPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.profissionais_recepcao.qryListPaciente",
+      "page": "profissionais_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listPaciente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "agendaClinica.profissionais_recepcao.qryListProfissional",
+      "page": "profissionais_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listProfissional",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "confirmarConsulta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "transitionRef": "confirmarConsulta",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createConsulta",
+      "entity": "Consulta",
+      "operation": "create",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.create",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createPaciente",
+      "entity": "Paciente",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "createProfissional",
+      "entity": "Profissional",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "createRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "create",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.create",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listConsulta",
+      "entity": "Consulta",
+      "operation": "list",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.list",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listContatoPaciente",
+      "entity": "ContatoPaciente",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ContatoPaciente.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listPaciente",
+      "entity": "Paciente",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Paciente.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listProfissional",
+      "entity": "Profissional",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "registrarAtendimento",
+      "entity": "Consulta",
+      "operation": "transition",
+      "transitionRef": "registrarAtendimento",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "registrarFalta",
+      "entity": "Consulta",
+      "operation": "transition",
+      "transitionRef": "registrarFalta",
+      "ports": [
+        "Consulta"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Consulta.transition",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateProfissional",
+      "entity": "Profissional",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Profissional.update",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "updateRecepcionista",
+      "entity": "Recepcionista",
+      "operation": "update",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Recepcionista.update",
+      "tableRefs": [],
+      "noTable": "mdm"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "ConsultaRepository",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "consulta",
+      "entity": "Consulta",
+      "status": "toCreate",
+      "tableRefs": [
+        "consulta"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:Consulta",
+      "actorRefs": [
+        "profissional",
+        "recepcionista"
+      ],
+      "entityRefs": [
+        "Consulta",
+        "Paciente",
+        "Profissional"
+      ],
+      "sourceRefs": [
+        "grant:consultarPropriaAgenda",
+        "grant:organizarAgenda",
+        "journey:agendarConsulta/localizarPaciente",
+        "journey:agendarConsulta/localizarProfissional",
+        "journey:agendarConsulta/registrarAgendamento",
+        "journey:agendarConsulta/verificarHorarioDisponivel",
+        "journey:cadastrarPaciente/informarDadosPaciente",
+        "journey:confirmarConsulta/consultarContatoPaciente",
+        "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+        "journey:confirmarConsulta/registrarConfirmacao",
+        "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+        "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+        "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+        "journey:registrarConsultaAtendida/registrarAtendimento",
+        "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+        "journey:registrarFalta/conferirConsultaAgendada",
+        "journey:registrarFalta/localizarConsultaDoPaciente",
+        "journey:registrarFalta/marcarFaltaPaciente",
+        "ontology:Consulta/lifecycleStates/confirmed",
+        "ontology:Consulta/lifecycleStates/scheduled",
+        "relationship:Consulta/consultaPaciente",
+        "relationship:Consulta/consultaProfissional",
+        "relationship:Paciente/consultaPaciente",
+        "relationship:Profissional/consultaProfissional"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes consulta rows by execution id"
+    },
+    {
+      "id": "identity:profissional",
+      "actorRefs": [
+        "profissional"
+      ],
+      "entityRefs": [
+        "Profissional"
+      ],
+      "sourceRefs": [
+        "access:actors/profissional",
+        "grant:consultarPacientesDaPropriaAgenda",
+        "grant:consultarPropriaAgenda",
+        "grant:consultarProprioCadastroProfissional",
+        "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+        "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+        "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+        "journey:registrarConsultaAtendida/registrarAtendimento",
+        "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+        "organism:form",
+        "relationship:Consulta/consultaPaciente",
+        "relationship:Consulta/consultaProfissional",
+        "relationship:Paciente/consultaPaciente",
+        "relationship:Profissional/consultaProfissional"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for profissional bound to Profissional"
+    },
+    {
+      "id": "identity:recepcionista",
+      "actorRefs": [
+        "recepcionista"
+      ],
+      "entityRefs": [
+        "Recepcionista"
+      ],
+      "sourceRefs": [
+        "access:actors/recepcionista",
+        "grant:cadastrarPacientes",
+        "grant:consultarCanaisDosPacientes",
+        "grant:consultarProfissionaisParaAgenda",
+        "grant:consultarProprioCadastroRecepcao",
+        "grant:organizarAgenda",
+        "journey:agendarConsulta/localizarPaciente",
+        "journey:agendarConsulta/localizarProfissional",
+        "journey:agendarConsulta/registrarAgendamento",
+        "journey:agendarConsulta/verificarHorarioDisponivel",
+        "journey:cadastrarPaciente/informarDadosPaciente",
+        "journey:confirmarConsulta/consultarContatoPaciente",
+        "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+        "journey:confirmarConsulta/registrarConfirmacao",
+        "journey:registrarFalta/conferirConsultaAgendada",
+        "journey:registrarFalta/localizarConsultaDoPaciente",
+        "journey:registrarFalta/marcarFaltaPaciente",
+        "organism:form",
+        "relationship:Consulta/consultaPaciente",
+        "relationship:Consulta/consultaProfissional",
+        "relationship:ContatoPaciente/pacienteHasContact",
+        "relationship:Paciente/consultaPaciente",
+        "relationship:Paciente/pacienteHasContact",
+        "relationship:Profissional/consultaProfissional"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for recepcionista bound to Recepcionista"
+    },
+    {
+      "id": "mdm:ContatoPaciente",
+      "actorRefs": [
+        "recepcionista"
+      ],
+      "entityRefs": [
+        "ContatoPaciente"
+      ],
+      "sourceRefs": [
+        "grant:consultarCanaisDosPacientes",
+        "journey:agendarConsulta/localizarPaciente",
+        "journey:agendarConsulta/localizarProfissional",
+        "journey:agendarConsulta/registrarAgendamento",
+        "journey:agendarConsulta/verificarHorarioDisponivel",
+        "journey:cadastrarPaciente/informarDadosPaciente",
+        "journey:confirmarConsulta/consultarContatoPaciente",
+        "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+        "journey:confirmarConsulta/registrarConfirmacao",
+        "journey:registrarFalta/conferirConsultaAgendada",
+        "journey:registrarFalta/localizarConsultaDoPaciente",
+        "journey:registrarFalta/marcarFaltaPaciente",
+        "relationship:ContatoPaciente/pacienteHasContact",
+        "relationship:Paciente/consultaPaciente",
+        "relationship:Paciente/pacienteHasContact"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes ContatoPaciente records by execution id"
+    },
+    {
+      "id": "mdm:Paciente",
+      "actorRefs": [
+        "profissional",
+        "recepcionista"
+      ],
+      "entityRefs": [
+        "Paciente"
+      ],
+      "sourceRefs": [
+        "grant:cadastrarPacientes",
+        "grant:consultarPacientesDaPropriaAgenda",
+        "journey:agendarConsulta/localizarPaciente",
+        "journey:agendarConsulta/localizarProfissional",
+        "journey:agendarConsulta/registrarAgendamento",
+        "journey:agendarConsulta/verificarHorarioDisponivel",
+        "journey:cadastrarPaciente/informarDadosPaciente",
+        "journey:confirmarConsulta/consultarContatoPaciente",
+        "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+        "journey:confirmarConsulta/registrarConfirmacao",
+        "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+        "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+        "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+        "journey:registrarConsultaAtendida/registrarAtendimento",
+        "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+        "journey:registrarFalta/conferirConsultaAgendada",
+        "journey:registrarFalta/localizarConsultaDoPaciente",
+        "journey:registrarFalta/marcarFaltaPaciente",
+        "ontology:Consulta/relationships",
+        "relationship:Consulta/consultaPaciente",
+        "relationship:ContatoPaciente/pacienteHasContact",
+        "relationship:Paciente/consultaPaciente",
+        "relationship:Paciente/pacienteHasContact"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Paciente records by execution id"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "agenda_profissional": [
+        "agendaClinica.agenda_profissional.cmdRegistrarAtendimento",
+        "agendaClinica.agenda_profissional.qryListConsulta",
+        "agendaClinica.agenda_profissional.qryListPaciente",
+        "agendaClinica.agenda_profissional.qryListProfissional"
+      ],
+      "meu_cadastro_profissional": [
+        "agendaClinica.meu_cadastro_profissional.cmdCreateProfissional",
+        "agendaClinica.meu_cadastro_profissional.cmdUpdateProfissional",
+        "agendaClinica.meu_cadastro_profissional.qryListProfissional"
+      ],
+      "consultas_recepcao": [
+        "agendaClinica.consultas_recepcao.cmdConfirmarConsulta",
+        "agendaClinica.consultas_recepcao.cmdCreateConsulta",
+        "agendaClinica.consultas_recepcao.cmdRegistrarFalta",
+        "agendaClinica.consultas_recepcao.qryListConsulta",
+        "agendaClinica.consultas_recepcao.qryListContatoPaciente",
+        "agendaClinica.consultas_recepcao.qryListPaciente",
+        "agendaClinica.consultas_recepcao.qryListProfissional"
+      ],
+      "pacientes": [
+        "agendaClinica.pacientes.cmdConfirmarConsulta",
+        "agendaClinica.pacientes.cmdCreateConsulta",
+        "agendaClinica.pacientes.cmdCreatePaciente",
+        "agendaClinica.pacientes.qryListConsulta",
+        "agendaClinica.pacientes.qryListContatoPaciente",
+        "agendaClinica.pacientes.qryListPaciente",
+        "agendaClinica.pacientes.qryListProfissional"
+      ],
+      "profissionais_recepcao": [
+        "agendaClinica.profissionais_recepcao.cmdCreateConsulta",
+        "agendaClinica.profissionais_recepcao.qryListConsulta",
+        "agendaClinica.profissionais_recepcao.qryListContatoPaciente",
+        "agendaClinica.profissionais_recepcao.qryListPaciente",
+        "agendaClinica.profissionais_recepcao.qryListProfissional"
+      ],
+      "meu_cadastro_recepcao": [
+        "agendaClinica.meu_cadastro_recepcao.cmdCreateRecepcionista",
+        "agendaClinica.meu_cadastro_recepcao.cmdUpdateRecepcionista",
+        "agendaClinica.meu_cadastro_recepcao.qryListRecepcionista"
+      ]
+    },
+    "generatedAt": "2026-10-03T22:41:00.990Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

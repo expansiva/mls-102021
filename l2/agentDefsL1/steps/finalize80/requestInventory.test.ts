@@ -25,7 +25,7 @@ import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/
 const PROJECT = 102047;
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
-  { id: 'agendaClinica-cab144b', moduleName: 'agendaClinica', reachesFinalize: false },
+  { id: 'agendaClinica-53f1f35', moduleName: 'agendaClinica', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
@@ -80,11 +80,6 @@ function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string
   const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
   assert.equal(state.steps.input20?.status, 'failed', fixtureId);
   const error = state.steps.input20?.error || '';
-  if (fixtureId === 'agendaClinica-cab144b') {
-    assert.match(error, /TRANSITION_REF_MISSING:3/);
-    assert.match(error, /REQUEST_USECASE_UNPLANNED:3/);
-    return;
-  }
   assert.fail(`${fixtureId} stopped before finalize80: ${error}`);
 }
 

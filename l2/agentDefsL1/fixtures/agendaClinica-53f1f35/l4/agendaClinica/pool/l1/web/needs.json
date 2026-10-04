@@ -1,0 +1,470 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "agendaClinica",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "agenda_profissional",
+      "actors": [
+        "profissional"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:consultarPropriaAgenda",
+            "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+            "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+            "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+            "journey:registrarConsultaAtendida/registrarAtendimento",
+            "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "grant:consultarPacientesDaPropriaAgenda",
+            "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+            "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+            "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+            "journey:registrarConsultaAtendida/registrarAtendimento",
+            "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Paciente/consultaPaciente"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:consultarProprioCadastroProfissional",
+            "journey:consultarAgendaDiaria/consultarDetalhesConsulta",
+            "journey:consultarAgendaDiaria/localizarAgendaDoDia",
+            "journey:registrarConsultaAtendida/localizarConsultaDaAgenda",
+            "journey:registrarConsultaAtendida/registrarAtendimento",
+            "journey:registrarConsultaAtendida/revisarConsultaSelecionada",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "registrarAtendimento",
+          "from": [
+            "journey:registrarConsultaAtendida/registrarAtendimento"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "meu_cadastro_profissional",
+      "actors": [
+        "profissional"
+      ],
+      "reads": [
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:consultarProprioCadastroProfissional",
+            "organism:form"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Profissional",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "consultas_recepcao",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:organizarAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "journey:registrarFalta/conferirConsultaAgendada",
+            "journey:registrarFalta/localizarConsultaDoPaciente",
+            "journey:registrarFalta/marcarFaltaPaciente",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        },
+        {
+          "entity": "ContatoPaciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarCanaisDosPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "journey:registrarFalta/conferirConsultaAgendada",
+            "journey:registrarFalta/localizarConsultaDoPaciente",
+            "journey:registrarFalta/marcarFaltaPaciente",
+            "relationship:ContatoPaciente/pacienteHasContact",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Paciente/pacienteHasContact"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:cadastrarPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "journey:registrarFalta/conferirConsultaAgendada",
+            "journey:registrarFalta/localizarConsultaDoPaciente",
+            "journey:registrarFalta/marcarFaltaPaciente",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:ContatoPaciente/pacienteHasContact",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Paciente/pacienteHasContact"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarProfissionaisParaAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "journey:registrarFalta/conferirConsultaAgendada",
+            "journey:registrarFalta/localizarConsultaDoPaciente",
+            "journey:registrarFalta/marcarFaltaPaciente",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:agendarConsulta/registrarAgendamento"
+          ]
+        },
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "confirmarConsulta",
+          "from": [
+            "journey:confirmarConsulta/registrarConfirmacao"
+          ]
+        },
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "registrarFalta",
+          "from": [
+            "journey:registrarFalta/marcarFaltaPaciente"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "pacientes",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:organizarAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:cadastrarPaciente/informarDadosPaciente",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        },
+        {
+          "entity": "ContatoPaciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarCanaisDosPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:cadastrarPaciente/informarDadosPaciente",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "relationship:ContatoPaciente/pacienteHasContact",
+            "relationship:Paciente/pacienteHasContact"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:cadastrarPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:cadastrarPaciente/informarDadosPaciente",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:ContatoPaciente/pacienteHasContact",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Paciente/pacienteHasContact"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarProfissionaisParaAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "journey:cadastrarPaciente/informarDadosPaciente",
+            "journey:confirmarConsulta/consultarContatoPaciente",
+            "journey:confirmarConsulta/localizarConsultaParaConfirmacao",
+            "journey:confirmarConsulta/registrarConfirmacao",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:agendarConsulta/registrarAgendamento"
+          ]
+        },
+        {
+          "entity": "Consulta",
+          "operation": "transition",
+          "transitionRef": "confirmarConsulta",
+          "from": [
+            "journey:confirmarConsulta/registrarConfirmacao"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:cadastrarPaciente/informarDadosPaciente"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "profissionais_recepcao",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Consulta",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:organizarAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Paciente/consultaPaciente",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        },
+        {
+          "entity": "ContatoPaciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarCanaisDosPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "relationship:ContatoPaciente/pacienteHasContact",
+            "relationship:Paciente/pacienteHasContact"
+          ]
+        },
+        {
+          "entity": "Paciente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:cadastrarPacientes",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "relationship:Consulta/consultaPaciente",
+            "relationship:Paciente/consultaPaciente"
+          ]
+        },
+        {
+          "entity": "Profissional",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:consultarProfissionaisParaAgenda",
+            "journey:agendarConsulta/localizarPaciente",
+            "journey:agendarConsulta/localizarProfissional",
+            "journey:agendarConsulta/registrarAgendamento",
+            "journey:agendarConsulta/verificarHorarioDisponivel",
+            "relationship:Consulta/consultaProfissional",
+            "relationship:Profissional/consultaProfissional"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Consulta",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:agendarConsulta/registrarAgendamento"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "meu_cadastro_recepcao",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Recepcionista",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:consultarProprioCadastroRecepcao",
+            "organism:form"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Recepcionista",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "Recepcionista",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-10-03T22:41:00.332Z"
+  }
+}

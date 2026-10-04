@@ -2,8 +2,9 @@
 
 /**
  * t1_09 r2: /structure and implement over the defs the D1 tip writes in memory.
- * The compiler is the same sandbox as emittedTypecheck. agendaClinica stays
- * skipped until its D1 reaches finalize80. synthetic-v2 reaches it (t1_09 r3).
+ * The compiler is the same sandbox as emittedTypecheck. synthetic-v2 reaches
+ * finalize80 since t1_09 r3; agendaClinica since its P1 has transitionRef (t1_10),
+ * and its M1 stays skipped while M1 refuses its defs.
  */
 
 import assert from 'node:assert/strict';
@@ -44,14 +45,20 @@ const UNIT_OK = new Set(['PROMOTED', 'REUSE', 'VERIFIED']);
 const UNIT_GAP = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
 const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
-  { id: 'agendaClinica-cab144b', moduleName: 'agendaClinica', reachesFinalize: false },
+  {
+    id: 'agendaClinica-53f1f35',
+    moduleName: 'agendaClinica',
+    reachesFinalize: true,
+    // t1_10: D1 is complete; M1 still refuses (emit.ts DISCLOSURE_EXCEEDS_GRANT on a multi-entity load, emitBehavior.ts mdmPlan get + relatedOfMany).
+    blocked: 'M1 refuses the agendaClinica defs: multi-entity load grants and MDM get with listLinks (t1_10)',
+  },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70', 'finalize80'];
 
 for (const tip of TIPS) {
-  const reason = tip.reachesFinalize ? false : 'D1 does not reach finalize80 yet (t1_09)';
+  const reason = 'blocked' in tip ? tip.blocked : false;
   void test(`M1 structure and implement compile the defs D1 wrote (${tip.id})`, { skip: reason }, async () => {
     const host = installStudio(PROJECT);
     seedD1Fixture(host, tip.id, PROJECT);
