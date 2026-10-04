@@ -44,19 +44,27 @@ export function pathDisclosure(
 }
 
 /**
- * Primary key and concurrency field of one entity. Same marks the M1 domain def already uses
- * (`identityField` / `versionField` in domainOptional) and the same marks on an ontology entity:
- * the identity is the derived `uuid`, else the first derived field; the concurrency field is the
+ * Primary key and concurrency field of one entity, for a domain def or an ontology entity.
+ * The identity is the derived `uuid`, else the first derived field; the concurrency field is the
  * single other derived integer or number. A field that is not marked is not included. Not a name list.
+ * `domainOptional` reads these two; it does not keep a second copy of the marks.
  */
-export function systemFieldPaths(entityDefinition: unknown): string[] {
+export function systemIdentity(entityDefinition: unknown): string {
   const fields = markedFields(entityDefinition);
   const uuid = fields.find(field => field.derived && field.type === 'uuid');
   const identity = uuid ?? fields.find(field => field.derived);
-  const identityName = identity && isIdent(identity.name) ? identity.name : '';
-  const versions = fields.filter(field => field.derived && field.name !== identityName && (field.type === 'integer' || field.type === 'number'));
-  const version = versions.length === 1 && isIdent(versions[0].name) ? versions[0].name : '';
-  return [identityName, version].filter(name => name.length > 0);
+  return identity && isIdent(identity.name) ? identity.name : '';
+}
+
+/** The single other derived integer or number, or '' when the entity does not declare exactly one. */
+export function systemVersion(entityDefinition: unknown, identity: string): string {
+  const versions = markedFields(entityDefinition).filter(field => field.derived && field.name !== identity && (field.type === 'integer' || field.type === 'number'));
+  return versions.length === 1 && isIdent(versions[0].name) ? versions[0].name : '';
+}
+
+export function systemFieldPaths(entityDefinition: unknown): string[] {
+  const identity = systemIdentity(entityDefinition);
+  return [identity, systemVersion(entityDefinition, identity)].filter(name => name.length > 0);
 }
 
 interface MarkedField {

@@ -8,6 +8,7 @@
  */
 
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { systemIdentity, systemVersion } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
 /**
  * Entity field paths the domain types with `?`: on a module-database entity, the fields the l4 entity
@@ -83,11 +84,7 @@ export function ontologyRequired(source: string): Set<string> | null {
 }
 
 export function identityField(entity: M1Definition): string {
-  const fields = topFields(entity);
-  const uuid = fields.find(field => field.derived && field.type === 'uuid');
-  if (uuid && isIdent(uuid.name)) return uuid.name;
-  const derived = fields.find(field => field.derived);
-  return derived && isIdent(derived.name) ? derived.name : '';
+  return systemIdentity(entity);
 }
 
 export function enumField(entity: M1Definition): string {
@@ -96,8 +93,7 @@ export function enumField(entity: M1Definition): string {
 }
 
 export function versionField(entity: M1Definition, identity: string): string {
-  const fields = topFields(entity).filter(field => field.derived && field.name !== identity && (field.type === 'integer' || field.type === 'number'));
-  return fields.length === 1 && isIdent(fields[0].name) ? fields[0].name : '';
+  return systemVersion(entity, identity);
 }
 
 export function topFields(entity: M1Definition): Array<{ name: string; type: string; derived: boolean }> {
