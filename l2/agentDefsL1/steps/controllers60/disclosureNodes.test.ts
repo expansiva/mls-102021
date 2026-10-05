@@ -15,6 +15,7 @@ import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveR
 import type { D1RequestGapAnswer } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readContractV2, serviceRowsFor } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { nodeDisclosure, outputNodes, type DisclosureGrant, type NodeDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { disclosure } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 
 const ROUTE = 'qqYard.dock.openCrate';
 
@@ -187,4 +188,17 @@ void test('without the resolve25 answer the readonly value stays calculated (clo
   assert.equal(crate.computed?.includes('tally'), true, JSON.stringify(crate));
   assert.equal(bare.unresolved.some(gap => gap.path === 'output.crate.tally' && gap.kind === 'fieldPath'), true);
   assert.equal(bare.unresolved.some(gap => gap.path === 'output.crate.ratio'), false, 'no candidate, no gap');
+});
+
+void test('the M1 oracle forbids exactly what the request service refuses on the same nodes (d1_63 r1b)', () => {
+  const output = outputOf();
+  const nodes = outputNodes(output);
+  for (const grants of [[LOADER], [grant('fullRecord', [])], [grant('fieldsOnly', ['Crate', 'Bay', 'Item'], LOADER.allowedFields)]]) {
+    const refusedLeaves = output.fields.filter(field => nodes.some(node => (node.field === field || node.field.startsWith(`${field}.`)) && nodeDisclosure(grants, node, entity => ENTITIES[entity]) !== 'disclosed'));
+    const oracle = disclosure(output, grants as unknown as Record<string, unknown>[], entity => ENTITIES[entity]);
+    assert.deepEqual(oracle.forbidden, [...refusedLeaves].sort(), JSON.stringify(grants));
+    assert.deepEqual([...oracle.allowed, ...oracle.forbidden].sort(), [...output.fields].sort());
+  }
+  // With LOADER only the calculated value is forbidden: the mapped, N:1 and relation paths are not read by their names.
+  assert.deepEqual(disclosure(output, [LOADER] as unknown as Record<string, unknown>[], entity => ENTITIES[entity]).forbidden, ['ratio']);
 });

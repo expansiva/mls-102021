@@ -189,7 +189,9 @@ void test('the run report hashes every source the authenticated oracle read, apa
   assert.deepEqual(Object.keys(oracle), refs, JSON.stringify(first.units.map(unit => `${unit.code} ${unit.detail}`)));
   assert.deepEqual(Object.entries(oracle).filter(([, hash]) => !hash.startsWith('sha256:')), []);
   // A changed contract moves its hash and not the catalog input hash.
-  texts[fx.refs.contractA] = `${texts[fx.refs.contractA]}\n// edited\n`;
+  // Edited inside the page interface: the contract still closes with `\n}\n`, as the L2 parser requires (fa8cd168).
+  texts[fx.refs.contractA] = texts[fx.refs.contractA].replace(/\n\}\n$/u, '\n  // edited\n}\n');
+  assert.notEqual(texts[fx.refs.contractA].indexOf('// edited'), -1, 'the contract was edited');
   const second = await runMaterialize(request, { ...host(world(texts), bound), io, catalogRef });
   assert.equal(second.catalog?.inputHash, first.catalog?.inputHash);
   assert.notEqual(second.catalog?.oracleSources[fx.refs.contractA], oracle[fx.refs.contractA]);

@@ -15,7 +15,7 @@ import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
 import { grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { defV1Detail, resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { M1_SEED_REF, type M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { pathDisclosure, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure, pathDisclosure, readDisclosureNodes, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { isL1Operation, L1_OPERATION_TRAITS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -127,6 +127,8 @@ interface RequestOutput {
   key: string;
   entity: string;
   fields: string[];
+  /** The classified paths controllers60 wrote (d1_63). Absent in an older def. */
+  disclosure?: DisclosureNode[];
 }
 
 interface RequestParam {
@@ -195,8 +197,8 @@ function routeObligationsV2(
   const routeGrants = ref.grantIds.map(id => access.rows.find(row => row.grantId === id) ?? {});
   const disclosed = { allowed: [] as string[], forbidden: [] as string[] };
   for (const output of request.outputs) {
-    const entityDefinition = [...defs.values()].find(item => item.artifactType === 'domainEntity' && item.data.entityId === output.entity);
-    const one = disclosure(output.fields, routeGrants, output.entity, entityDefinition);
+    const entityDefinition = (entity: string): unknown => [...defs.values()].find(item => item.artifactType === 'domainEntity' && item.data.entityId === entity);
+    const one = disclosure(output, routeGrants, entityDefinition);
     disclosed.allowed.push(...one.allowed.map(path => `${output.key}.${path}`));
     disclosed.forbidden.push(...one.forbidden.map(path => `${output.key}.${path}`));
   }
@@ -351,7 +353,9 @@ function requestRow(row: Record<string, unknown>): RequestRow | null {
   const outputs: RequestOutput[] = [];
   for (const item of row.outputs) {
     if (!isRecord(item) || typeof item.key !== 'string' || !item.key || typeof item.entity !== 'string' || !Array.isArray(item.fields)) return null;
-    outputs.push({ key: item.key, entity: item.entity, fields: item.fields.filter((field): field is string => typeof field === 'string') });
+    const nodes = readDisclosureNodes(item.disclosure);
+    if (nodes === null) return null;
+    outputs.push({ key: item.key, entity: item.entity, fields: item.fields.filter((field): field is string => typeof field === 'string'), ...(nodes ? { disclosure: nodes } : {}) });
   }
   const params: RequestParam[] = [];
   for (const item of Array.isArray(row.params) ? row.params : []) {
@@ -441,13 +445,20 @@ function splitTop(body: string): string[] {
  * under them; any other mode, or a grant that is not declared, discloses nothing.
  */
 export function disclosure(
-  outputPaths: readonly string[],
+  output: Pick<RequestOutput, 'entity' | 'fields' | 'disclosure'>,
   grants: readonly Record<string, unknown>[],
-  entityId: string,
-  entityDefinition?: unknown,
+  entityDefinition: (entity: string) => unknown = () => undefined,
 ): { allowed: string[]; forbidden: string[] } {
   const covering = grants.map(asDisclosureGrant);
-  const allowed = outputPaths.filter(path => pathDisclosure(covering, entityId, path, entityDefinition) === 'disclosed');
+  const outputPaths = output.fields;
+  // d1_63: the same rule as the request service (`nodeDisclosure`) on the nodes under each path. A path no node names
+  // (an older def, or the wrapper of a list page) is read as a path of the output entity, as before.
+  const allowed = outputPaths.filter(path => {
+    const nodes = (output.disclosure || []).filter(node => node.field === path || node.field.startsWith(`${path}.`));
+    return nodes.length
+      ? nodes.every(node => nodeDisclosure(covering, node, entityDefinition) === 'disclosed')
+      : pathDisclosure(covering, output.entity, path, entityDefinition(output.entity)) === 'disclosed';
+  });
   const leaves = outputPaths.filter(path => !outputPaths.some(other => other.startsWith(`${path}.`)));
   return { allowed: sorted(allowed), forbidden: sorted(leaves.filter(path => !allowed.includes(path))) };
 }

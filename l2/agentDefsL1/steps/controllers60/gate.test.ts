@@ -175,7 +175,7 @@ void test('an empty contract is CONTRACT_UNPARSED and plans no handler', () => {
   assert.equal(build.emit.length, 0);
 });
 
-void test('an unclosed contract is CONTRACT_UNPARSED and plans no handler', { skip: 'parser d2_78 accepts a truncated contract (l2 fromSupervisorL1_parser_aceita_contrato_cortado)' }, () => {
+void test('an unclosed contract is CONTRACT_UNPARSED and plans no handler', () => {
   const request = seed();
   const contract = request.contracts[0];
   contract.source = contract.source.slice(0, Math.floor(contract.source.length / 2));
