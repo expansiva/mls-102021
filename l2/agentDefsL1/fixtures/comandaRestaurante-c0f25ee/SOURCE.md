@@ -6,7 +6,7 @@ Included because `input20` `inputPaths` reads it: `l4/comandaRestaurante/**` mod
 
 Recorded `usecases50` call files are stored at `l1/comandaRestaurante/pipeline/agentDefsL1/calls/`. `resolve25.json` is stored next to them. `seedD1Fixture` does not write the call files: the names are not Studio paths.
 
-The five produced `l1/comandaRestaurante/layer_2_application/requests/*.defs.ts` are under `expected/requests/` as `.defs.txt` (reference only).
+- (06/10, supervisor L1: `expected/` removido; o s2 não compara a árvore, por "os defs devem ter a intenção e não o script".)
 
 Platform ontology referenced by `ontology/index` (`platformOntology`): `mls-102034` `23e09d8` `l4/ontology/mdm.defs.ts` (last changed in `b52ef78`, before `c0f25ee`), stored at `_102034_/l4/ontology/mdm.defs.txt` (same bytes as `reembolsoDespesas-71cca1d`).
 

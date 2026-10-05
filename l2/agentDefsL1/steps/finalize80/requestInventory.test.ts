@@ -21,9 +21,11 @@ import { fileKey, installStudio, type TestHost } from '/_102021_/l2/agentDefsL1/
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
+import { parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { runResolve25, type D1TestResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { D1_GAP_NONE } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { assembleD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { answersByRoute } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import { readResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
@@ -33,7 +35,20 @@ const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque', reachesFinalize: true },
   { id: 'agendaClinica-53f1f35', moduleName: 'agendaClinica', reachesFinalize: true },
   { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
+  { id: 'comandaRestaurante-c0f25ee', moduleName: 'comandaRestaurante', reachesFinalize: true, recordedResolve: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
+] as const;
+
+/**
+ * Gaps the c0f25ee bench left unresolved (ownerless Mesa and Comanda.mesa). An alarm: resolving one turns this red.
+ * Not the output tree, uses, or params — those are the materialization script, not the intention.
+ */
+const COMANDA_UNRESOLVED = [
+  ['comandaRestaurante.fechamento.carregarFechamento', 'selectedComanda.mesa', 'Interface MesaNoFechamento has no field that is not readonly, so no entity owns it.'],
+  ['comandaRestaurante.fechamento.carregarFechamento', 'selectedComanda.mesa', 'PROJECTION_FIELD_UNKNOWN: Route comandaRestaurante.fechamento.carregarFechamento projects Comanda.mesa, which is not a field of the ontology.'],
+  ['comandaRestaurante.fechamento.obterComandaParaFechamento', 'comanda.mesa', 'Interface MesaNoFechamento has no field that is not readonly, so no entity owns it.'],
+  ['comandaRestaurante.fechamento.obterComandaParaFechamento', 'comanda.mesa', 'PROJECTION_FIELD_UNKNOWN: Route comandaRestaurante.fechamento.obterComandaParaFechamento projects Comanda.mesa, which is not a field of the ontology.'],
+  ['comandaRestaurante.fechamento.fecharComandaPaga', 'comanda.mesa', 'PROJECTION_FIELD_UNKNOWN: Route comandaRestaurante.fechamento.fecharComandaPaga projects Comanda.mesa, which is not a field of the ontology.'],
 ] as const;
 const BEFORE_USECASES: D1StepId[] = ['input20', 'resolve25', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70'];
@@ -46,7 +61,7 @@ for (const tip of TIPS) {
     : `input20 stays closed before finalize80 (${tip.id})`;
   void test(title, async () => {
     const host = await readyHost(tip.id, tip.moduleName);
-    const report = await runToFinalize(host, tip.moduleName, false);
+    const report = await runToFinalize(host, tip.moduleName, false, resolverFor(tip));
     if (!report) {
       assertInputClosed(host, tip.moduleName, tip.id);
       return;
@@ -64,6 +79,10 @@ for (const tip of TIPS) {
     for (const service of services) {
       assert.equal(report.files.some(file => file.defPath === service.defPath), true, service.defPath);
     }
+    if ('recordedResolve' in tip && tip.recordedResolve) {
+      const expectedGaps = [...COMANDA_UNRESOLVED].map(gap => [...gap]).sort((a, b) => a.join('\u0000').localeCompare(b.join('\u0000')));
+      assert.deepEqual(unresolvedNodes(host, services.map(file => file.defPath)), expectedGaps);
+    }
   });
 
   const negative = tip.reachesFinalize
@@ -71,7 +90,7 @@ for (const tip of TIPS) {
     : `the same closed input20 is stable when the inventory would be dropped (${tip.id})`;
   void test(negative, async () => {
     const host = await readyHost(tip.id, tip.moduleName);
-    const report = await runToFinalize(host, tip.moduleName, true);
+    const report = await runToFinalize(host, tip.moduleName, true, resolverFor(tip));
     if (!report) {
       assertInputClosed(host, tip.moduleName, tip.id);
       return;
@@ -149,13 +168,47 @@ async function readyHost(fixtureId: string, moduleName: string): Promise<TestHos
   return host;
 }
 
-async function runToFinalize(host: TestHost, moduleName: string, dropRequestServices: boolean): Promise<D1FinalizeReport | null> {
+/** Choices recorded in the fixture `resolve25.json` (route, path, choice). No model call. */
+function recordedResolver(fixtureId: string, moduleName: string): D1TestResolver {
+  const key = `l1/${moduleName}/pipeline/agentDefsL1/resolve25.json`;
+  const text = loadD1Fixture(fixtureId)[key];
+  assert.ok(text, key);
+  const receipt = JSON.parse(text) as { routes: Array<{ route: string; answers: Array<{ path: string; choice: string }> }> };
+  const byRoute = new Map(receipt.routes.map(item => [item.route, new Map(item.answers.map(answer => [answer.path, answer.choice]))]));
+  return (route, gap) => byRoute.get(route.route)?.get(gap.path) ?? D1_GAP_NONE;
+}
+
+function resolverFor(tip: { id: string; moduleName: string; recordedResolve?: boolean }): D1TestResolver | undefined {
+  return tip.recordedResolve ? recordedResolver(tip.id, tip.moduleName) : undefined;
+}
+
+function unresolvedNodes(host: TestHost, defPaths: readonly string[]): string[][] {
+  const found: string[][] = [];
+  for (const defPath of defPaths) {
+    const name = defPath.slice(defPath.lastIndexOf('/') + 1);
+    const folder = defPath.slice('l1/'.length, defPath.lastIndexOf('/'));
+    const content = host.files[fileKey({ project: PROJECT, level: 1, folder, shortName: name.slice(0, -'.defs.ts'.length), extension: '.defs.ts' })]?.content || '';
+    const parsed = parseRendered(content);
+    assert.ok(parsed, defPath);
+    const definition = parsed.definition as {
+      data?: { requests?: Array<{ route: string; output?: Array<{ kind: string; path: string; reason?: string }> }> };
+    };
+    for (const request of definition.data?.requests || []) {
+      for (const node of request.output || []) {
+        if (node.kind === 'unresolved') found.push([request.route, node.path, node.reason || '']);
+      }
+    }
+  }
+  return found.sort((a, b) => a.join('\u0000').localeCompare(b.join('\u0000')));
+}
+
+async function runToFinalize(host: TestHost, moduleName: string, dropRequestServices: boolean, resolver?: D1TestResolver): Promise<D1FinalizeReport | null> {
   const agent = createAgent();
   const ctx = contextFor(moduleName);
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
   let order = 1;
   for (const stepId of BEFORE_USECASES) {
-    const trace = await runStep(agent, ctx, parent, moduleName, stepId, order);
+    const trace = await runStep(agent, ctx, parent, moduleName, stepId, order, resolver);
     order += 1;
     if (!isApproved(host, moduleName, stepId)) return null;
     assertApproved(host, moduleName, stepId, trace);
@@ -260,11 +313,12 @@ async function runStep(
   moduleName: string,
   stepId: D1StepId,
   order: number,
+  resolver?: D1TestResolver,
 ): Promise<string> {
   const step = createD1AgentStep(stepId, moduleName, PROJECT, 'run');
   step.stepId = order;
   const intents = stepId === 'resolve25'
-    ? await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, order)
+    ? await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, order, 'run', resolver)
     : await agent.beforePromptStep!(meta(), ctx, parent, step, order);
   return intents
     .filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status')
