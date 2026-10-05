@@ -93,12 +93,36 @@ export interface D1PlannerRun {
 }
 
 export interface D1RequestOutput {
+  /** Dotted path of the output, from the route output root (`comanda.itens`). */
   key: string;
   entity: string;
   many: boolean;
   page?: string;
   pageSize?: string;
   hasMore?: string;
+  /** Key of the page total, when the list carries one (d1_60). */
+  total?: string;
+  /** Key of the output this one is nested in, when it is a relation (d1_60). */
+  parent?: string;
+  /** L4 relationshipId that links this output to `parent` (d1_60). */
+  relationship?: string;
+  /** `readonly` field paths: calculated, not asked of the ontology; candidate rules are the route rules (d1_60). */
+  computed?: string[];
+  /** Field paths that belong to an entity linked to `entity` by one N:1 relationship (d1_60). */
+  related?: D1RequestRelatedField[];
+}
+
+export interface D1RequestRelatedField {
+  field: string;
+  entity: string;
+  relationship: string;
+}
+
+/** A part of the route the code could not derive from the types, the ontology and L4 (d1_60). Not an error. */
+export interface D1RequestUnresolved {
+  /** `output.<path>` or `input.<name>`. */
+  path: string;
+  reason: string;
 }
 
 /** `field` filters `target`. `pages` names the list organism instead of a field. */
@@ -117,6 +141,8 @@ export interface D1SelectedRequest {
   outputs: D1RequestOutput[];
   params: D1RequestParam[];
   uses: string[];
+  /** Present only when something was left unresolved (d1_60). */
+  unresolved?: D1RequestUnresolved[];
 }
 
 export interface D1SelectedUsecase {
