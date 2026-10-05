@@ -12,8 +12,7 @@ import { applyResolutions, deriveRequest, type D1DerivedRequest } from '/_102021
 /**
  * d1_60 oracle. The three fixtures whose contracts still carry `meta`: the derivation never reads it, and this test
  * does, only to compare. What it proves: where the derivation resolves, it agrees with meta; where it does not,
- * the gap is declared in `unresolved` on that path. Filter params are not compared: spec item 2 leaves non-page
- * inputs as inputs, with no deduced link.
+ * the gap is declared in `unresolved` on that path. Filter params are compared too (d1_62 r2b): target and field.
  * Same writes and the same outputs give the same usecase uses (`oneRequest` takes them from those two).
  */
 const ORACLE_FIXTURES: ReadonlyArray<[string, string]> = [
@@ -86,6 +85,15 @@ function oracleViolations(route: D2ContractV2Route, derived: D1DerivedRequest): 
       violations.push(`${route.route}: page input ${name} differs from meta.`);
     }
   }
+  for (const [name, param] of Object.entries(route.meta.params)) {
+    if (!('filters' in param)) continue;
+    const found = derived.params.find(item => item.name === name);
+    if (!found?.field) {
+      if (!declared(`input.${name}`)) violations.push(`${route.route}: filter input ${name} is neither derived nor unresolved.`);
+      continue;
+    }
+    if (found.target !== param.filters || found.field !== param.field) violations.push(`${route.route}: filter input ${name} differs from meta.`);
+  }
   return violations;
 }
 
@@ -130,7 +138,7 @@ void test('oracle control: a wrong entity or a dropped unresolved entry is caugh
 /**
  * d1_62 oracle. A test resolver answers each gap from `meta` (only this test reads it). The answers of the first
  * derivation are applied once, through `applyResolutions`, and the outputs and page inputs must come out as the
- * input20 selects them from `meta` today. Filter inputs are not compared: the derivation leaves them as inputs (d1_60 item 2).
+ * input20 selects them from `meta` today, filter inputs included (d1_62 r2b).
  */
 function metaAnswer(route: D2ContractV2Route, gap: D1RequestUnresolved): string {
   if (gap.kind === 'entity' && gap.path.startsWith('output.')) return route.meta.output[gap.path.slice('output.'.length)]?.entity ?? D1_GAP_NONE;
@@ -141,6 +149,10 @@ function metaAnswer(route: D2ContractV2Route, gap: D1RequestUnresolved): string 
   if (gap.kind === 'pageParam') {
     const param = route.meta.params[gap.path.slice('input.'.length)];
     return param && 'pages' in param ? route.meta.lists[param.pages]?.key ?? D1_GAP_NONE : D1_GAP_NONE;
+  }
+  if (gap.kind === 'filterField') {
+    const param = route.meta.params[gap.path.slice('input.'.length)];
+    return param && 'filters' in param ? `${param.filters}:${param.field}` : D1_GAP_NONE;
   }
   return D1_GAP_NONE;
 }
@@ -160,13 +172,15 @@ function selectionDiff(route: D2ContractV2Route, derived: D1DerivedRequest): str
     key: output.key, entity: output.entity, many: output.many, page: output.page, pageSize: output.pageSize, hasMore: output.hasMore,
   })).sort((left, right) => left.key.localeCompare(right.key));
   const expectedParams = Object.entries(route.meta.params)
-    .flatMap(([name, row]) => 'pages' in row ? [{ name, target: route.meta.lists[row.pages]?.key ?? '', pages: row.pages }] : [])
+    .map(([name, row]) => 'pages' in row
+      ? { name, target: route.meta.lists[row.pages]?.key ?? '', pages: row.pages, field: undefined }
+      : { name, target: row.filters, pages: undefined, field: row.field })
     .sort((left, right) => left.name.localeCompare(right.name));
-  const derivedParams = derived.params.map(param => ({ name: param.name, target: param.target, pages: param.pages }))
+  const derivedParams = derived.params.map(param => ({ name: param.name, target: param.target, pages: param.pages, field: param.field }))
     .sort((left, right) => left.name.localeCompare(right.name));
   const diff: string[] = [];
   if (JSON.stringify(derivedOutputs) !== JSON.stringify(expectedOutputs)) diff.push(`${route.route}: outputs ${JSON.stringify(derivedOutputs)} != ${JSON.stringify(expectedOutputs)}`);
-  if (JSON.stringify(derivedParams) !== JSON.stringify(expectedParams)) diff.push(`${route.route}: page inputs ${JSON.stringify(derivedParams)} != ${JSON.stringify(expectedParams)}`);
+  if (JSON.stringify(derivedParams) !== JSON.stringify(expectedParams)) diff.push(`${route.route}: inputs ${JSON.stringify(derivedParams)} != ${JSON.stringify(expectedParams)}`);
   if (derived.unresolved.length) diff.push(`${route.route}: still unresolved ${derived.unresolved.map(gap => gap.path).join('; ')}`);
   return diff;
 }
@@ -276,4 +290,38 @@ void test('resolution: closed candidates for the shapes without meta, and their 
   ]);
   assert.deepEqual(resolved.computedBy, [{ path: 'summary', rule: 'countRule' }]);
   assert.deepEqual(resolved.params, [{ name: 'page', target: 'list', pages: 'list' }, { name: 'rowsPage', target: 'cursor', pages: 'cursor' }]);
+});
+
+/** d1_62 r2b: a query input that does not page filters a root output; a command input is the payload. */
+void test('resolution: filter inputs take the ontology path with their name, else a text leaf, and none leaves no field', () => {
+  const entities = {
+    Thing: { record: { fields: { id: { type: 'string' }, name: { type: 'string' }, ownerId: { type: 'string' }, details: { type: 'object', fields: { price: { type: 'number' }, label: { type: 'string' } } } } } },
+  };
+  const definition: D2ContractV2Definition = {
+    module: 'm',
+    pageId: 'p',
+    projections: [{ name: 'Row', entityId: '', requestIds: [], body: '{ id: string; name: string; ownerId: string }' }],
+    routes: [],
+  };
+  const route: D2ContractV2Route = {
+    route: 'm.p.load',
+    kind: 'qry',
+    input: '{ ownerId?: string; search?: string }',
+    output: '{ rows: Row[] }',
+    meta: { output: {}, lists: {}, params: {} },
+    rules: [],
+    access: { actors: [], grants: [], scope: '' },
+  };
+  const first = deriveRequest(route, definition, entities);
+  assert.deepEqual(first.unresolved.map(gap => [gap.path, gap.kind, gap.candidates]), [
+    ['input.search', 'filterField', ['rows:details.label', 'rows:id', 'rows:name', 'rows:ownerId', D1_GAP_NONE]],
+  ]);
+  assert.deepEqual(first.params, [{ name: 'ownerId', target: 'rows', field: 'ownerId' }, { name: 'search', target: 'rows' }]);
+  const resolved = applyResolutions({ route, definition, entities }, [{ path: 'input.search', choice: 'rows:name' }]);
+  assert.deepEqual(resolved.unresolved, []);
+  assert.deepEqual(resolved.params[1], { name: 'search', target: 'rows', field: 'name' });
+
+  const command = deriveRequest({ ...route, kind: 'cmd' }, definition, entities);
+  assert.deepEqual(command.params, []);
+  assert.deepEqual(command.unresolved, []);
 });

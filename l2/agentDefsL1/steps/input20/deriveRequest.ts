@@ -21,6 +21,9 @@ import {
  * d1_62: each gap also carries its closed candidates, computed by code from the types, the ontology and the route,
  * with `none` last. `applyResolutions` takes answers to those gaps and derives the route again through the same code:
  * there is no second selection. An answer outside the candidates, or `none`, leaves the gap open.
+ * d1_62 r2b: a query input that does not page filters a root output. Its candidates are `<output>:<path>`, the
+ * ontology paths of the output entity whose last segment is the input name; with none, the text leaves of the entity.
+ * A command input is the payload, not a filter.
  */
 
 /** A list page: `items: X[]` and at least one of these keys. */
@@ -60,6 +63,8 @@ interface EntityLink {
 interface Context {
   projections: Map<string, string>;
   fields: Map<string, Set<string>>;
+  /** Ontology paths whose type is text: the candidates of a filter that names no field (d1_62 r2b). */
+  texts: Map<string, string[]>;
   links: Map<string, EntityLink[]>;
   rules: readonly string[];
   answers: ReadonlyMap<string, string>;
@@ -88,6 +93,7 @@ export function applyResolutions(source: D1DeriveSource, answers: readonly D1Req
   const ctx: Context = {
     projections: new Map(definition.projections.map(item => [item.name, item.body])),
     fields: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, new Set(ontologyFieldPaths(entity))])),
+    texts: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, textFieldPaths(entity)])),
     links: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, entityLinks(entity)])),
     rules: route.rules || [],
     answers: new Map(answers.map(item => [item.path, item.choice])),
@@ -106,7 +112,9 @@ export function applyResolutions(source: D1DeriveSource, answers: readonly D1Req
     visit(ctx, member.name, member.type, null);
   }
   bindFlatLists(ctx, flat, root.filter(member => !flatNames.has(member.name) && interfaceRef(ctx, member.type)?.many).map(member => member.name));
-  const params = pageParams(ctx, members(route.input));
+  const inputs = members(route.input);
+  const params = pageParams(ctx, inputs);
+  if (route.kind !== 'cmd') params.push(...filterParams(ctx, inputs, root.filter(member => !flatNames.has(member.name)).map(member => member.name)));
   return { outputs: ctx.outputs, params, unresolved: ctx.unresolved, computedBy: ctx.computedBy };
 }
 
@@ -396,6 +404,48 @@ function pageParams(ctx: Context, input: readonly Member[]): D1RequestParam[] {
   return params;
 }
 
+/**
+ * A query input that does not page filters one root output on one field of its entity. The candidates are
+ * `<output>:<path>` for the ontology paths whose last segment is the input name (the name itself included); when
+ * no output entity has one, the text leaves of those entities. An output whose entity is still a gap offers the
+ * paths of each of its candidate entities, so the answers of one pass reach the filter. One candidate on a derived
+ * output is the filter; otherwise it is a gap. With no field, the input stays a filter without `field`.
+ */
+function filterParams(ctx: Context, input: readonly Member[], rootKeys: readonly string[]): D1RequestParam[] {
+  const targets = rootKeys.map(key => {
+    const derived = ctx.outputs.find(output => output.key === key && !output.parent);
+    if (derived) return { key, entities: [derived.entity], known: true };
+    const open = ctx.unresolved.find(item => item.path === `output.${key}` && item.kind === 'entity');
+    return { key, entities: (open?.candidates || []).filter(item => item !== D1_GAP_NONE), known: false };
+  }).filter(target => target.entities.length);
+  const params: D1RequestParam[] = [];
+  for (const member of input) {
+    if (pageStem(member.name) !== null) continue;
+    const same = new Set<string>();
+    const texts = new Set<string>();
+    for (const target of targets) {
+      for (const entity of target.entities) {
+        for (const path of ctx.fields.get(entity) || []) if (path.split('.').pop() === member.name) same.add(`${target.key}:${path}`);
+        for (const path of ctx.texts.get(entity) || []) texts.add(`${target.key}:${path}`);
+      }
+    }
+    const candidates = [...(same.size ? same : texts)];
+    const only = candidates.length === 1 && targets.find(target => target.known && candidates[0].startsWith(`${target.key}:`));
+    const choice = only
+      ? candidates[0]
+      : ask(ctx, `input.${member.name}`, 'filterField', same.size
+        ? `Input ${member.name} names a field of more than one output entity; the types do not say which it filters.`
+        : `Input ${member.name} is not the last segment of any field of the output entities; it filters one of their text fields.`, candidates);
+    const split = choice ? choice.indexOf(':') : -1;
+    if (choice && split > 0) {
+      params.push({ name: member.name, target: choice.slice(0, split), field: choice.slice(split + 1) });
+      continue;
+    }
+    params.push({ name: member.name, target: targets.length === 1 ? targets[0].key : '' });
+  }
+  return params;
+}
+
 function pageStem(name: string): string | null {
   if (name === 'page' || name === 'pageSize') return '';
   if (name.endsWith('PageSize')) return name.slice(0, -'PageSize'.length);
@@ -418,6 +468,23 @@ function interfaceRef(ctx: Context, type: string): { name: string; many: boolean
   const found = /^([A-Z][A-Za-z0-9]*)(\[\])?$/u.exec(type.trim());
   if (!found || !ctx.projections.has(found[1])) return null;
   return { name: found[1], many: Boolean(found[2]) };
+}
+
+/** Ontology paths whose field type is text (`string`). */
+function textFieldPaths(entity: unknown): string[] {
+  const record = isRecord(entity) && isRecord(entity.record) ? entity.record : entity;
+  const out: string[] = [];
+  const walk = (fields: unknown, prefix: string): void => {
+    if (!isRecord(fields)) return;
+    for (const [name, value] of Object.entries(fields)) {
+      if (!isRecord(value)) continue;
+      const path = prefix ? `${prefix}.${name}` : name;
+      if (value.type === 'string') out.push(path);
+      if (value.type === 'object') walk(value.fields, path);
+    }
+  };
+  walk(isRecord(record) ? record.fields : null, '');
+  return out;
 }
 
 function entityLinks(entity: unknown): EntityLink[] {

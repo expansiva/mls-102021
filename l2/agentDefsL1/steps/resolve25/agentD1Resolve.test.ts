@@ -25,7 +25,8 @@ import { parseFanoutWorkerArg } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.
 
 /**
  * resolve25 end to end on the hooks, with a test resolver in place of the model. The resolver answers from the
- * contract `meta`, which only this test reads. controleEstoque-39a5166 leaves three open parts on one route.
+ * contract `meta`, which only this test reads. controleEstoque-39a5166 leaves four open parts on two routes: three
+ * on the movements load and, since the filter inputs are derived (d1_62 r2b), the `search` filter of the products load.
  */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ID = 'controleEstoque-39a5166';
@@ -44,6 +45,10 @@ const metaResolver: Resolver = (route, gap) => {
   if (gap.kind === 'pageParam') {
     const param = route.meta.params[gap.path.slice('input.'.length)];
     return param && 'pages' in param ? route.meta.lists[param.pages]?.key ?? D1_GAP_NONE : D1_GAP_NONE;
+  }
+  if (gap.kind === 'filterField') {
+    const param = route.meta.params[gap.path.slice('input.'.length)];
+    return param && 'filters' in param ? `${param.filters}:${param.field}` : D1_GAP_NONE;
   }
   return D1_GAP_NONE;
 };
@@ -160,51 +165,62 @@ void test('resolve25 sends one worker per route with an open part; the tool has 
   const work = await readResolveWork(PROJECT, MODULE);
   assert.ok(work);
   assert.equal(args.length, work.units.length);
-  assert.equal(work.units.length, 1);
+  assert.equal(work.units.length, 2);
+  assert.equal(work.units.reduce((sum, item) => sum + item.gaps.length, 0), 4);
   assert.equal(intents.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-barrier'), true);
 
-  const unit = work.units[0];
-  const route = await routeOf(unit.route);
-  const worker = agentStep(251, args[0]);
-  const ready = await answer(run, worker, gap => metaResolver(route, gap));
-  // Closed values: one enum per gap, candidates plus none, nothing free.
-  const tool = ready.tools?.[0] as unknown as { function: { parameters: { properties: { answers: { properties: Record<string, { enum: string[] }>; required: string[] } } } } };
-  const props = tool.function.parameters.properties.answers.properties;
-  assert.deepEqual(Object.keys(props).sort(), unit.gaps.map(gap => gap.gapId).sort());
-  for (const gap of unit.gaps) {
-    assert.deepEqual(props[gap.gapId].enum, gap.candidates);
-    assert.equal(gap.candidates[gap.candidates.length - 1], D1_GAP_NONE);
-    assert.match(ready.humanPrompt, new RegExp(`${gap.gapId}: `));
+  for (const [index, unit] of work.units.entries()) {
+    const route = await routeOf(unit.route);
+    const ready = await answer(run, agentStep(251 + index * 10, args[index]), gap => metaResolver(route, gap));
+    // Closed values: one enum per gap, candidates plus none, nothing free.
+    const tool = ready.tools?.[0] as unknown as { function: { parameters: { properties: { answers: { properties: Record<string, { enum: string[] }>; required: string[] } } } } };
+    const props = tool.function.parameters.properties.answers.properties;
+    assert.deepEqual(Object.keys(props).sort(), unit.gaps.map(gap => gap.gapId).sort());
+    for (const gap of unit.gaps) {
+      assert.deepEqual(props[gap.gapId].enum, gap.candidates);
+      assert.equal(gap.candidates[gap.candidates.length - 1], D1_GAP_NONE);
+      assert.match(ready.humanPrompt, new RegExp(`${gap.gapId}: `));
+    }
+    assert.match(ready.systemPrompt || '', /<!-- modelType: reasoning -->/);
+    assert.equal(ready.humanPrompt.includes(unit.route), true);
   }
-  assert.match(ready.systemPrompt || '', /<!-- modelType: reasoning -->/);
-  assert.equal(ready.humanPrompt.includes(unit.route), true);
 
   const barrier = agentStep(252, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier');
   const closed = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, barrier, run.seq++);
   assert.equal(closed.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), true);
   const receipt = await readResolveReceipt(PROJECT, MODULE);
   assert.ok(receipt);
-  assert.equal(receipt.llmCalls, 1);
-  assert.equal(receipt.routes.length, 1);
-  for (const item of receipt.routes[0].answers) {
-    assert.notEqual(item.choice, D1_GAP_NONE, item.path);
-    assert.equal(item.call, 'resolve25-worker-r0');
+  assert.equal(receipt.llmCalls, 2);
+  assert.equal(receipt.routes.length, 2);
+  for (const row of receipt.routes) {
+    const unitId = work.units.find(item => item.route === row.route)?.unitId;
+    for (const item of row.answers) {
+      assert.notEqual(item.choice, D1_GAP_NONE, item.path);
+      assert.equal(item.call, `resolve25-worker-${unitId}`);
+    }
   }
   const pipeline = JSON.parse(await readText(pipelineFile(PROJECT, MODULE)) || '{}') as { steps: Record<string, { status: string }> };
   assert.equal(pipeline.steps.resolve25?.status, 'approved');
 
-  // The receipt, read through the one selection, gives the route as meta selects it today.
+  // The receipt, read through the one selection, gives each route as meta selects it today.
   const artifacts = await readD1InputArtifacts(PROJECT, MODULE);
-  const definition = [...readContractV2(artifacts.contractTexts).values()].find(item => item.routes.some(r => r.route === unit.route))!;
-  const resolved = applyResolutions({ route, definition, entities: artifacts.entities }, resolveAnswers(receipt, unit.route));
-  assert.deepEqual(resolved.unresolved, []);
-  const list = Object.values(route.meta.lists)[0];
-  assert.deepEqual(
-    resolved.outputs.map(output => [output.key, output.entity, output.many, output.page, output.pageSize, output.hasMore]).sort(),
-    Object.entries(route.meta.output).map(([key, row]) => [key, row.entity, row.many, list.key === key ? list.page : undefined, list.key === key ? list.pageSize : undefined, list.key === key ? list.hasMore : undefined]).sort(),
-  );
-  // Control: the same selection without the receipt leaves the route open.
-  assert.notDeepEqual(applyResolutions({ route, definition, entities: artifacts.entities }, resolveAnswers(null, unit.route)).unresolved, []);
+  for (const unit of work.units) {
+    const route = await routeOf(unit.route);
+    const definition = [...readContractV2(artifacts.contractTexts).values()].find(item => item.routes.some(r => r.route === unit.route))!;
+    const resolved = applyResolutions({ route, definition, entities: artifacts.entities }, resolveAnswers(receipt, unit.route));
+    assert.deepEqual(resolved.unresolved, []);
+    const list = Object.values(route.meta.lists)[0];
+    assert.deepEqual(
+      resolved.outputs.map(output => [output.key, output.entity, output.many, output.page, output.pageSize, output.hasMore]).sort(),
+      Object.entries(route.meta.output).map(([key, row]) => [key, row.entity, row.many, list.key === key ? list.page : undefined, list.key === key ? list.pageSize : undefined, list.key === key ? list.hasMore : undefined]).sort(),
+    );
+    assert.deepEqual(
+      resolved.params.filter(param => param.field).map(param => [param.name, param.target, param.field]),
+      Object.entries(route.meta.params).flatMap(([name, row]) => 'filters' in row ? [[name, row.filters, row.field]] : []),
+    );
+    // Control: the same selection without the receipt leaves the route open.
+    assert.notDeepEqual(applyResolutions({ route, definition, entities: artifacts.entities }, resolveAnswers(null, unit.route)).unresolved, []);
+  }
 
   // /resume: the same snapshot keeps the receipt and calls no model.
   const again = await resolveMain(run);
@@ -218,30 +234,35 @@ void test('resolve25: an answer outside the candidates gets one repair, then the
   const intents = await resolveMain(run);
   const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout');
   const args = fanout?.executionMode?.type === 'parallel' ? fanout.executionMode.args : [];
-  await answer(run, agentStep(251, args[0]), gap => `${gap.candidates[0]}Outside`);
+  for (const [index, arg] of args.entries()) await answer(run, agentStep(251 + index * 10, arg), gap => `${gap.candidates[0]}Outside`);
   const barrier = agentStep(252, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier');
   const first = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, barrier, run.seq++);
-  const repair = first.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && /^resolve25-repair-\d+$/.test(intent.step.planning?.planId || ''));
-  assert.ok(repair, 'one repair');
+  const repairs = first.filter((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && /^resolve25-repair-\d+$/.test(intent.step.planning?.planId || ''));
+  assert.equal(repairs.length, args.length, 'one repair per route');
   assert.equal(await readResolveReceipt(PROJECT, MODULE), null, 'no receipt before the repair');
-  const repairStep = repair.step as mls.msg.AIAgentStep;
-  const ready = await answer(run, agentStep(253, repairStep.prompt, repairStep.planning?.planId), gap => `${gap.candidates[0]}Outside`);
-  assert.match(ready.humanPrompt, /was refused: .*not a candidate/);
-  const follow = first.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-barrier-1');
+  for (const [index, repair] of repairs.entries()) {
+    const repairStep = repair.step as mls.msg.AIAgentStep;
+    const ready = await answer(run, agentStep(253 + index * 10, repairStep.prompt, repairStep.planning?.planId), gap => `${gap.candidates[0]}Outside`);
+    assert.match(ready.humanPrompt, /was refused: .*not a candidate/);
+  }
+  const follow = first.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && /^resolve25-barrier-\d+$/.test(intent.step.planning?.planId || ''));
   assert.ok(follow);
-  const second = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(254, (follow.step as mls.msg.AIAgentStep).prompt, 'resolve25-barrier-1'), run.seq++);
+  const second = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(254, (follow.step as mls.msg.AIAgentStep).prompt, follow.step.planning?.planId), run.seq++);
   assert.equal(second.some(intent => intent.type === 'add-step' && /repair/.test(intent.step.planning?.planId || '')), false, 'no second repair');
   const receipt = await readResolveReceipt(PROJECT, MODULE);
   assert.ok(receipt);
-  assert.equal(receipt.llmCalls, 2);
-  for (const item of receipt.routes[0].answers) assert.deepEqual([item.choice, item.call], [D1_GAP_NONE, ''], item.path);
+  assert.equal(receipt.llmCalls, 2 * args.length);
+  for (const row of receipt.routes) for (const item of row.answers) assert.deepEqual([item.choice, item.call], [D1_GAP_NONE, ''], item.path);
 });
 
 void test('resolve25 with no open part calls no model', async () => {
-  // Host copy only: the load route keeps one list, so the flat paging and the page inputs are not open.
+  // Host copy only: the load route keeps one list, so the flat paging and the page inputs are not open; the products
+  // load has no free-text filter.
   await readyHost(host => {
     const file = contractFile(host, 'movimentacoes');
     file.content = file.content.replace(' produtos: ProdutoLoad[];', '').replace("; produtos: { entity: 'Produto'; many: true }", '');
+    const products = contractFile(host, 'produtos');
+    products.content = products.content.replace('input: { search?: string; page?: number;', 'input: { page?: number;');
   });
   const run = await throughInput();
   assert.deepEqual(resolveUnits(await readD1InputArtifacts(PROJECT, MODULE)), []);
@@ -293,10 +314,12 @@ void test('resolve25: an attempt left by an earlier run is neither an answer nor
   assert.equal(skipped.some(intent => intent.type === 'pause-or-continue'), true);
   assert.equal(await readResolveReceipt(PROJECT, MODULE), null);
 
-  // The worker runs once: one call, not two.
+  // Each worker runs once: one call each, the stale attempt adds none.
   const work = await readResolveWork(PROJECT, MODULE);
   const route = await routeOf(work!.units[0].route);
   await answer(run, agentStep(251, args[0]), gap => metaResolver(route, gap));
+  const other = await routeOf(work!.units[1].route);
+  await answer(run, agentStep(261, args[1]), gap => metaResolver(other, gap));
   await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(253, barrierPrompt, 'resolve25-barrier'), run.seq++);
-  assert.equal((await readResolveReceipt(PROJECT, MODULE))?.llmCalls, 1);
+  assert.equal((await readResolveReceipt(PROJECT, MODULE))?.llmCalls, 2);
 });

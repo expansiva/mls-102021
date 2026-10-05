@@ -134,7 +134,7 @@ export interface D1RequestRelatedField {
 }
 
 /** What a gap asks (d1_62). Each kind has its own closed candidates, computed by code. */
-export type D1RequestGapKind = 'entity' | 'relationship' | 'flatPaging' | 'pageParam' | 'pagingRole' | 'fieldPath' | 'computedRule' | 'value';
+export type D1RequestGapKind = 'entity' | 'relationship' | 'flatPaging' | 'pageParam' | 'pagingRole' | 'fieldPath' | 'computedRule' | 'value' | 'filterField';
 
 /** The answer that leaves a gap open. Always the last candidate. */
 export const D1_GAP_NONE = 'none';
