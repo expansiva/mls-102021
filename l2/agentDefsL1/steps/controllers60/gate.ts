@@ -18,13 +18,14 @@ import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js
 import {
   contractInterfaceName,
   fieldsByEntity,
+  isRouteGap,
   readContractV2,
   requestServiceProblems,
   serviceRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { nodeDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
-import { outputViews, type RequestOutputView } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
+import { elementPath, outputViews, type RequestOutputNode, type RequestOutputView } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { worstOfList } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
@@ -68,6 +69,8 @@ export function buildD1Controllers(request: D1ControllerRequest): D1ControllerBu
   const byPage = new Map<string, D1HandlerBinding[]>();
   for (const service of services) {
     for (const row of service.requests) {
+      // A route without authority is declared on the request service and has no handler (s0b).
+      if (isRouteGap(row)) continue;
       const route: D1ControllerRoute = {
         route: row.route,
         page: service.pageId,
@@ -121,6 +124,140 @@ export function grantUnionIssues(
   return issues;
 }
 
+const ROUTE_GAP_CODES = new Set(['NO_AUTHORITY', 'AUTHORITY_REQUIRED', 'CONTRACT_ACCESS_DIVERGENT']);
+
+interface SealedRoute {
+  grantIds: string[];
+  preserved: boolean;
+  projected: string[];
+}
+
+/** Grant ids already resolved while sealing the request-service row, before the handler is bound. */
+const sealedRoute = new WeakMap<D1ServiceRow, SealedRoute>();
+
+/**
+ * Route-scoped gaps (s0b), written on the row before the request service def is filled.
+ * A refused field leaves the projection and becomes `unresolved`. No authority collapses the route
+ * to one `unresolved` node and `isRouteGap` then skips the handler.
+ */
+function sealRoute(
+  request: D1ControllerRequest,
+  route: D1ControllerRoute,
+  row: D1ServiceRow,
+  problems: D1ControllerProblem[],
+): SealedRoute {
+  const path = route.route;
+  const page = pageFor(request, route.page);
+  const kind = mapKind(route.kind);
+  const contract = request.contracts.find(item => item.pageId === route.page);
+  const entities: string[] = [];
+  for (const usecaseId of row.uses) {
+    const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
+    if (usecase && !entities.includes(usecase.entity)) entities.push(usecase.entity);
+  }
+  const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
+  const routeGrants = ownerless.length ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
+  const matched: string[] = entities.length === 0 ? [...routeGrants] : [];
+  for (const entity of entities) {
+    for (const grant of matchingGrants(page.actors, entity, request.grants)) {
+      if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
+    }
+  }
+  const kept = finishGrants(
+    request,
+    route,
+    kind,
+    matched,
+    existing => existing.serviceFunction === row.route,
+    problems,
+  );
+  if (ownerless.length && !kept.grantIds.some(grantId => routeGrants.includes(grantId))) {
+    review(problems, 'NO_AUTHORITY', path, `NO_AUTHORITY: ${path} ${ownerless.join(', ')} has no entity, and no route grant valid in the L4 access artifact covers it. No permissive fallback was applied.`);
+  }
+  const ownerlessOnly = ownerless.length > 0 && entities.length === 0;
+  if (ownerlessOnly) {
+    // No entity to cover: the authority is the route grants checked above.
+  } else if (!kept.preserved) {
+    const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
+    const missing = entities.length === 0 ? [path] : uncovered;
+    for (const entity of missing) {
+      review(problems, 'AUTHORITY_REQUIRED', path, `Operation ${entity} on ${path} has no authority. No permissive fallback was applied.`);
+    }
+  } else if (kept.grantIds.length === 0) {
+    review(problems, 'AUTHORITY_REQUIRED', path, `Operation ${path} has no authority. No permissive fallback was applied.`);
+  }
+  const attached = grantsOnPage(page, kept.grantIds, request);
+  const projected: string[] = [];
+  const refused: { field: string; reason: string }[] = [];
+  for (const view of outputViews(row.output)) {
+    const disclosed = discloseProjection(view, attached, entity => request.ontology?.[entity]);
+    if (disclosed.blocked.length || disclosed.opaque.length) {
+      const message = disclosureMessage(path, disclosed.blocked, disclosed.opaque);
+      review(problems, 'DISCLOSURE', path, message);
+      for (const field of [...disclosed.blocked, ...disclosed.opaque]) refused.push({ field, reason: `DISCLOSURE: ${message}` });
+    }
+    for (const field of disclosed.computed) {
+      const message = `COMPUTED_NOT_DISCLOSED: ${path} ${field}`;
+      review(problems, 'COMPUTED_NOT_DISCLOSED', path, message);
+      refused.push({ field, reason: message });
+    }
+    const refusedFields = new Set(refused.map(item => item.field));
+    for (const field of view.fields) if (!refusedFields.has(field)) projected.push(field);
+  }
+  stripRefused(row, refused);
+  const routeGaps = problems.filter(item => item.path === path && ROUTE_GAP_CODES.has(item.code));
+  if (routeGaps.length) {
+    const reason = routeGaps.map(item => item.message.startsWith(item.code) ? item.message : `${item.code}: ${item.message}`).join(' ');
+    row.output = [{ kind: 'unresolved', path: row.route, reason }];
+  }
+  const sealed: SealedRoute = { grantIds: kept.grantIds, preserved: kept.preserved, projected: routeGaps.length ? [] : projected };
+  sealedRoute.set(row, sealed);
+  return sealed;
+}
+
+function stripRefused(row: D1ServiceRow, refused: readonly { field: string; reason: string }[]): void {
+  if (!refused.length) return;
+  const pending = new Map(refused.map(item => [item.field, item.reason]));
+  const kept: RequestOutputNode[] = [];
+  for (const node of row.output) {
+    if (node.kind === 'unresolved') {
+      kept.push(node);
+      continue;
+    }
+    if (node.kind === 'computed') {
+      const key = node.path.split('.')[0];
+      const field = pathFrom(node.path, key) || key;
+      const reason = pending.get(field);
+      if (reason) {
+        pending.delete(field);
+        kept.push({ kind: 'unresolved', path: node.path, reason });
+        continue;
+      }
+      kept.push(node);
+      continue;
+    }
+    const key = node.path.split('.')[0];
+    const prefix = pathFrom(elementPath(node), key);
+    node.fields = node.fields.filter(item => {
+      const field = prefix ? `${prefix}.${item.field}` : item.field;
+      const reason = pending.get(field);
+      if (!reason) return true;
+      pending.delete(field);
+      const path = field === key || field.startsWith(`${key}.`) ? field : `${key}.${field}`;
+      kept.push({ kind: 'unresolved', path, reason });
+      return false;
+    });
+    kept.push(node);
+  }
+  for (const [field, reason] of pending) kept.push({ kind: 'unresolved', path: field, reason });
+  row.output = kept;
+}
+
+function pathFrom(path: string, key: string): string {
+  if (path === key) return '';
+  return path.startsWith(`${key}.`) ? path.slice(key.length + 1) : path;
+}
+
 /** v2 page: the handler calls one request-service function. It does not name a usecase. */
 function bindAdapter(
   request: D1ControllerRequest,
@@ -139,56 +276,9 @@ function bindAdapter(
   if (!contractInterface) {
     error(problems, 'INVALID_REF', path, `Route ${path} has no contract interface.`);
   }
-  const entities: string[] = [];
-  for (const usecaseId of row.uses) {
-    const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
-    if (usecase && !entities.includes(usecase.entity)) entities.push(usecase.entity);
-  }
-  // d1_65: an aggregate no entity owns (a `computed` node without `entity`) takes its authority from the route's own
-  // grants that exist in the L4 access artifact. With no entity output those are the authority of the route.
-  const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
-  const routeGrants = ownerless.length ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
-  const matched: string[] = entities.length === 0 ? [...routeGrants] : [];
-  for (const entity of entities) {
-    for (const grant of matchingGrants(page.actors, entity, request.grants)) {
-      if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
-    }
-  }
-  const kept = finishGrants(
-    request,
-    route,
-    kind,
-    matched,
-    existing => existing.serviceFunction === serviceFunction,
-    problems,
-  );
-  // A route that also has entity outputs keeps the entity authority; the aggregate needs one of those grants to be a
-  // valid route grant too.
-  if (ownerless.length && !kept.grantIds.some(grantId => routeGrants.includes(grantId))) {
-    error(problems, 'NO_AUTHORITY', path, `NO_AUTHORITY: ${path} ${ownerless.join(', ')} has no entity, and no route grant valid in the L4 access artifact covers it. No permissive fallback was applied.`);
-  }
-  const ownerlessOnly = ownerless.length > 0 && entities.length === 0;
-  if (ownerlessOnly) {
-    // No entity to cover: the authority is the route grants checked above.
-  } else if (!kept.preserved) {
-    const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
-    const missing = entities.length === 0 ? [path] : uncovered;
-    for (const entity of missing) {
-      error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${entity} on ${path} has no authority. No permissive fallback was applied.`);
-    }
-  } else if (kept.grantIds.length === 0) {
-    error(problems, 'AUTHORITY_REQUIRED', path, `Operation ${path} has no authority. No permissive fallback was applied.`);
-  }
+  const kept = sealedRoute.get(row) || sealRoute(request, route, row, problems);
   const attached = grantsOnPage(page, kept.grantIds, request);
-  const projected: string[] = [];
-  for (const view of outputViews(row.output)) {
-    const disclosed = discloseProjection(view, attached, entity => request.ontology?.[entity]);
-    projected.push(...view.fields);
-    if (disclosed.blocked.length || disclosed.opaque.length) {
-      error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
-    }
-    for (const field of disclosed.computed) error(problems, 'COMPUTED_NOT_DISCLOSED', path, `COMPUTED_NOT_DISCLOSED: ${path} ${field}`);
-  }
+  const projected = kept.projected;
   return {
     route: route.route,
     pageId: route.page,
@@ -230,11 +320,11 @@ function routeGrantIds(
   for (const grantId of access.grants) {
     const grant = isSafeToken(grantId) ? request.grants.find(item => item.grantId === grantId) : undefined;
     if (!grant) {
-      error(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is not in the L4 access artifact. L4 stays the source.`);
+      review(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is not in the L4 access artifact. L4 stays the source.`);
       continue;
     }
     if (!page.actors.includes(grant.actorRef) || (actorsSplit && !access.actors.includes(grant.actorRef))) {
-      error(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is for actor ${grant.actorRef}, who is not an actor of this route and page. L4 stays the source.`);
+      review(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is for actor ${grant.actorRef}, who is not an actor of this route and page. L4 stays the source.`);
       continue;
     }
     if (!valid.includes(grantId)) valid.push(grantId);
@@ -320,7 +410,7 @@ function matchingGrants(actors: readonly string[], entity: string, grants: reado
  * the M1 request service applies, on the node the derived route classified (d1_63): an entity path by its ontology
  * path and the grants about that entity, a calculated value only under `fullRecord`, a paging key always.
  * `Entity.details.identification` covers that branch and its descendants, not the parent `details` nor a sibling.
- * The projection keeps every declared path; a refused one is reported.
+ * A refused path is not projected: it becomes an `unresolved` node (s0b).
  */
 function discloseProjection(
   output: RequestOutputView,
@@ -431,21 +521,35 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
     for (const item of pageSelected) selectedCounts.set(item.route, (selectedCounts.get(item.route) || 0) + 1);
     const built = serviceRowsFor(contract.pageId, parsed, pageSelected);
     problems.push(...built.problems);
-    const pageProblems = requestServiceProblems({
+    const check = {
       pageId: contract.pageId,
       contractRoutes: built.routes,
       requests: built.rows,
       usecaseIds,
       fieldsByEntity: knownFields,
       selectedCounts,
-    });
+    };
+    // Fields first, then authority (which may collapse the route), then the handler count, which dispenses a route gap.
+    const fieldProblems = requestServiceProblems({ ...check, part: 'fields' });
+    problems.push(...fieldProblems);
+    for (const row of built.rows) {
+      const route: D1ControllerRoute = {
+        route: row.route,
+        page: contract.pageId,
+        kind: row.kind,
+        usecaseRef: '',
+        status: routeStatus(request, row.uses),
+      };
+      sealRoute(request, route, row, problems);
+    }
+    const pageProblems = requestServiceProblems({ ...check, part: 'handlers' });
     problems.push(...pageProblems);
     const defPath = requestServiceDefPath(request.moduleName, contract.pageId);
     const item: D1RequestServiceItem = { pageId: contract.pageId, defPath, requests: built.rows, definition: null };
     if (!isSafeToken(contract.pageId)) {
       error(problems, 'PAGE_ID', contract.pageId, `Page ${contract.pageId} is not a safe token. No request service file was named.`);
     }
-    const blocked = [...built.problems, ...pageProblems].some(problem => problem.severity === 'error') || !isSafeToken(contract.pageId);
+    const blocked = [...built.problems, ...fieldProblems, ...pageProblems].some(problem => problem.severity === 'error') || !isSafeToken(contract.pageId);
     if (!blocked) fillService(request, item, problems);
     services.push(item);
   }

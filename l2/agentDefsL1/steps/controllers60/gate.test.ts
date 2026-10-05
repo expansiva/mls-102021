@@ -82,9 +82,10 @@ void test('a disclosed field the page grant does not allow is not fixed by a gra
   const bound = handler(build.controllers.flatMap(item => item.handlers), query);
   assert.deepEqual(bound.grantIds, [`${actor}Narrow`]);
   assert.deepEqual(grantUnionIssues(page.actors, ['otherActorFull'], request.grants), ['otherActorFull']);
-  assert.equal(build.problems.some(item => item.code === 'DISCLOSURE' && item.path === query && item.message.includes(hidden)), true, errors(build));
-  assert.equal(build.ok, false);
-  assert.equal(build.emit.length, 0);
+  assert.equal(build.problems.some(item => item.code === 'DISCLOSURE' && item.severity === 'review' && item.path === query && item.message.includes(hidden)), true, errors(build));
+  assert.equal(build.ok, true, errors(build));
+  assert.equal(bound.projection.fields.includes(hidden), false);
+  assert.equal(JSON.stringify(build.services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output).includes(`"field":"${hidden}"`), false);
 });
 
 void test('fieldsOnly covers a branch and its descendants, not its parent or a sibling', () => {
@@ -116,7 +117,8 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
   const cut = partial.problems.filter(item => item.code === 'DISCLOSURE' && item.path === query);
   if (leaf.length > 1) {
     assert.equal(cut.some(item => item.message.includes(leaf[1])), true, errors(partial));
-    assert.equal(partial.ok, false);
+    assert.equal(cut.every(item => item.severity === 'review'), true);
+    assert.equal(partial.ok, true, errors(partial));
   }
   assert.equal(cut.some(item => item.message.includes(leaf[0])), false);
 
@@ -220,9 +222,15 @@ void test('negatives: stale file, unreadable file, no authority', () => {
   open.pages[0].actors = [];
   const unauthorised = buildD1Controllers(open);
   const routes = (open.serviceRequests || []).filter(item => item.pageId === pageId).map(item => item.route);
-  assert.equal(unauthorised.problems.some(item => item.code === 'AUTHORITY_REQUIRED' && item.message.includes('No permissive fallback')), true);
-  for (const route of routes) assert.deepEqual(handler(unauthorised.controllers.flatMap(item => item.handlers), route).grantIds, []);
-  assert.equal(unauthorised.ok, false);
+  assert.equal(unauthorised.problems.some(item => item.code === 'AUTHORITY_REQUIRED' && item.severity === 'review' && item.message.includes('No permissive fallback')), true);
+  for (const route of routes) {
+    assert.equal(unauthorised.controllers.flatMap(item => item.handlers).some(item => item.route === route), false, route);
+    const row = unauthorised.services.flatMap(item => item.requests).find(item => item.route === route);
+    assert.equal(row?.output.length, 1);
+    assert.equal(row?.output[0].kind, 'unresolved');
+    assert.equal(row?.output[0].kind === 'unresolved' && row.output[0].path, route);
+  }
+  assert.equal(unauthorised.ok, true, errors(unauthorised));
 
   const noGrant = seed();
   noGrant.grants = [];
@@ -358,7 +366,11 @@ void test('d1_63: a calculated value leaves only under fullRecord; otherwise COM
   const closed = buildD1Controllers(withComputed('fieldsOnly'));
   assert.equal(closed.problems.some(item => item.code === 'COMPUTED_NOT_DISCLOSED' && item.path === query && item.message === `COMPUTED_NOT_DISCLOSED: ${query} ${calculated}`), true, errors(closed));
   assert.equal(closed.problems.some(item => item.code === 'DISCLOSURE' && item.path === query), false, errors(closed));
-  assert.equal(closed.ok, false);
+  assert.equal(closed.problems.find(item => item.code === 'COMPUTED_NOT_DISCLOSED')?.severity, 'review');
+  assert.equal(closed.ok, true, errors(closed));
+  const closedRow = closed.services.flatMap(item => item.requests).find(item => item.route === query);
+  assert.equal(closedRow?.output.some(node => node.kind === 'computed' && node.path.endsWith(calculated)), false);
+  assert.equal(closedRow?.output.some(node => node.kind === 'unresolved' && node.reason.includes(calculated)), true);
   const open = buildD1Controllers(withComputed('fullRecord'));
   assert.equal(open.problems.some(item => item.path === query && (item.code === 'COMPUTED_NOT_DISCLOSED' || item.code === 'DISCLOSURE')), false, errors(open));
 });

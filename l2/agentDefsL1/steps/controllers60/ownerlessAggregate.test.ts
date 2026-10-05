@@ -126,7 +126,7 @@ function request(options: { tallyGrants?: string; mixedGrants?: string; grants?:
 }
 
 const errorsOf = (build: D1ControllerBuild, route: string) => build.problems.filter(item => item.severity === 'error' && item.path === route);
-const codes = (build: D1ControllerBuild, route: string) => errorsOf(build, route).map(item => item.code);
+const codes = (build: D1ControllerBuild, route: string) => build.problems.filter(item => item.path === route).map(item => item.code);
 const handlerOf = (build: D1ControllerBuild, route: string) => build.controllers.flatMap(item => item.handlers).find(item => item.route === route);
 
 void test('an output that is only an aggregate takes its authority from the route grants in L4; the def keeps the computed node, the rules and the JSDoc', () => {
@@ -145,18 +145,23 @@ void test('an output that is only an aggregate takes its authority from the rout
 void test('a route grant the L4 does not have, or of an actor the page does not have, is an error on that route; with no valid grant, NO_AUTHORITY', () => {
   const ghost = buildD1Controllers(request({ routes: [TALLY], tallyGrants: `'loaderDock', 'ghostDock'` }));
   assert.deepEqual(codes(ghost, TALLY), ['CONTRACT_ACCESS_DIVERGENT']);
-  assert.equal(errorsOf(ghost, TALLY)[0].message.includes('ghostDock'), true);
-  assert.equal(ghost.ok, false);
+  assert.equal(ghost.problems.find(item => item.code === 'CONTRACT_ACCESS_DIVERGENT')?.severity, 'review');
+  assert.equal(ghost.problems.find(item => item.path === TALLY)?.message.includes('ghostDock'), true);
+  assert.equal(handlerOf(ghost, TALLY), undefined);
+  assert.equal(ghost.ok, true, JSON.stringify(errorsOf(ghost, TALLY)));
 
   const otherActor = buildD1Controllers(request({ routes: [TALLY], grants: [...L4_GRANTS, grant('clerkDock', 'clerk', ['Crate'], 'fullRecord', [])], tallyGrants: `'clerkDock'` }));
   assert.deepEqual(codes(otherActor, TALLY).sort(), ['COMPUTED_NOT_DISCLOSED', 'CONTRACT_ACCESS_DIVERGENT', 'NO_AUTHORITY']);
-  assert.deepEqual(handlerOf(otherActor, TALLY)?.grantIds, []);
+  assert.equal(handlerOf(otherActor, TALLY), undefined);
+  assert.equal(otherActor.services.flatMap(item => item.requests).find(item => item.route === TALLY)?.output[0].kind, 'unresolved');
 
-  // No grant at all: the aggregate is not disclosed either (closed by default).
+  // No grant at all: the aggregate is not disclosed either (closed by default). The gap is declared; nothing is emitted as a handler.
   const none = buildD1Controllers(request({ routes: [TALLY], tallyGrants: `'ghostDock'` }));
   assert.deepEqual(codes(none, TALLY).sort(), ['COMPUTED_NOT_DISCLOSED', 'CONTRACT_ACCESS_DIVERGENT', 'NO_AUTHORITY']);
   assert.equal(none.problems.some(item => item.code === 'AUTHORITY_REQUIRED'), false);
-  assert.equal(none.emit.length, 0);
+  assert.equal(handlerOf(none, TALLY), undefined);
+  assert.equal(none.services.flatMap(item => item.requests).find(item => item.route === TALLY)?.output[0].kind, 'unresolved');
+  assert.equal(none.emit.some(item => item.definition.artifactType === 'httpController'), false);
 });
 
 void test('a route with an entity output and an aggregate keeps the entity authority; the aggregate needs a valid route grant among it', () => {
@@ -169,7 +174,9 @@ void test('a route with an entity output and an aggregate keeps the entity autho
   // The route names a grant the L4 has, but of no actor of the page: the entity grants hold, the aggregate does not.
   const uncovered = buildD1Controllers(request({ grants: [...L4_GRANTS, grant('clerkDock', 'clerk', ['Crate'], 'fullRecord', [])], mixedGrants: `'clerkDock'` }));
   assert.deepEqual(codes(uncovered, MIXED), ['CONTRACT_ACCESS_DIVERGENT', 'NO_AUTHORITY']);
-  assert.equal(uncovered.ok, false);
+  assert.equal(handlerOf(uncovered, MIXED), undefined);
+  assert.equal(uncovered.services.flatMap(item => item.requests).find(item => item.route === MIXED)?.output[0].kind, 'unresolved');
+  assert.equal(uncovered.ok, true, JSON.stringify(errorsOf(uncovered, MIXED)));
 });
 
 const def = (artifactType: string, artifactId: string, dependencies: string[], data: Record<string, unknown>): M1Definition =>

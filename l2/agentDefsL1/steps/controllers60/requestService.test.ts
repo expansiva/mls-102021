@@ -64,8 +64,12 @@ void test('projection outside the ontology, a missing usecase, and two handlers 
   load.source = load.source.replace('id: string;', 'id: string;\n  ghost: string;');
   const projected = buildD1Controllers(request);
   const unknown = projected.problems.filter(item => item.code === 'PROJECTION_FIELD_UNKNOWN');
-  assert.equal(unknown.some(item => item.message.includes('ghost')), true, unknown.map(item => item.message).join('; '));
-  assert.equal(projected.services.find(item => item.pageId === 'movimentacoes')?.definition, null);
+  assert.equal(unknown.some(item => item.severity === 'review' && item.message.includes('ghost')), true, unknown.map(item => item.message).join('; '));
+  const movimentacoes = projected.services.find(item => item.pageId === 'movimentacoes');
+  assert.equal(movimentacoes?.definition?.artifactType, 'requestService');
+  const ghostRow = movimentacoes?.requests.find(item => item.output.some(node => node.kind === 'unresolved' && node.reason.includes('ghost')));
+  assert.ok(ghostRow, 'ghost is an unresolved field, not a projected one');
+  assert.equal(JSON.stringify(ghostRow.output).includes('"field":"ghost"'), false);
   assert.equal(projected.services.find(item => item.pageId === 'produtos')?.definition?.artifactType, 'requestService');
 
   const missing = seedControllerRequest('controleEstoque-39a5166', 'controleEstoque');

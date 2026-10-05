@@ -21,6 +21,11 @@ export interface RequestServiceCheck {
   fieldsByEntity: ReadonlyMap<string, ReadonlySet<string>>;
   /** Selected rows per route. Defaults to the built rows. */
   selectedCounts?: ReadonlyMap<string, number>;
+  /**
+   * `fields` checks the rows already built. `handlers` checks route coverage and dispenses a route
+   * gap (s0b), so it runs after authority has marked those rows. Default `all`.
+   */
+  part?: 'fields' | 'handlers' | 'all';
 }
 
 /** The controllers60 view of one selected request: the derived outputs with their classification, and the params. */
@@ -49,6 +54,14 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
   };
 }
 
+/**
+ * A route the controller must not handle (s0b): authority or access failed, so the request service
+ * carries one `unresolved` node whose path is the route. The handler check dispenses that route.
+ */
+export function isRouteGap(row: { route: string; output: readonly { kind: string; path: string }[] }): boolean {
+  return row.output.length === 1 && row.output[0]?.kind === 'unresolved' && row.output[0].path === row.route;
+}
+
 /** Leaf paths of a contract interface body. Containers are not paths. */
 export function interfaceFieldPaths(body: string): string[] | null {
   const paths: string[] = [];
@@ -73,24 +86,33 @@ export function ontologyFieldPaths(entity: unknown): string[] {
  */
 export function requestServiceProblems(input: RequestServiceCheck): D1ControllerProblem[] {
   const problems: D1ControllerProblem[] = [];
-  const byRoute = new Map<string, number>();
-  if (input.selectedCounts) {
-    for (const [route, count] of input.selectedCounts) byRoute.set(route, count);
-  } else {
-    for (const row of input.requests) byRoute.set(row.route, (byRoute.get(row.route) || 0) + 1);
-  }
-  const contract = new Set(input.contractRoutes);
-  for (const route of [...input.contractRoutes].sort()) {
-    const found = byRoute.get(route) || 0;
-    if (found !== 1) {
-      error(problems, 'REQUEST_HANDLER', route, `Route ${route} has ${found} request handlers. The contract route needs one.`);
+  const part = input.part || 'all';
+  if (part !== 'fields') {
+    const gaps = new Set(input.requests.filter(isRouteGap).map(row => row.route));
+    const byRoute = new Map<string, number>();
+    if (input.selectedCounts) {
+      for (const [route, count] of input.selectedCounts) if (!gaps.has(route)) byRoute.set(route, count);
+    } else {
+      for (const row of input.requests) {
+        if (gaps.has(row.route)) continue;
+        byRoute.set(row.route, (byRoute.get(row.route) || 0) + 1);
+      }
+    }
+    const contract = new Set(input.contractRoutes);
+    for (const route of [...input.contractRoutes].sort()) {
+      if (gaps.has(route)) continue;
+      const found = byRoute.get(route) || 0;
+      if (found !== 1) {
+        error(problems, 'REQUEST_HANDLER', route, `Route ${route} has ${found} request handlers. The contract route needs one.`);
+      }
+    }
+    for (const route of [...byRoute.keys()].sort()) {
+      if (!contract.has(route)) {
+        error(problems, 'REQUEST_HANDLER', route, `Route ${route} is not a contract route.`);
+      }
     }
   }
-  for (const route of [...byRoute.keys()].sort()) {
-    if (!contract.has(route)) {
-      error(problems, 'REQUEST_HANDLER', route, `Route ${route} is not a contract route.`);
-    }
-  }
+  if (part === 'handlers') return problems;
   for (const row of input.requests) {
     const expected = row.kind === 'cmd' ? 'single' : 'none';
     if (row.transaction !== expected) {
@@ -104,13 +126,18 @@ export function requestServiceProblems(input: RequestServiceCheck): D1Controller
     }
     // The fields of an entity or list node, by the ontology path each stands for. Computed, related, paging and nested
     // relation paths are other nodes, checked by their classification.
+    // A field the ontology does not have is not projected (s0b). The route stays; the field is a declared gap.
     for (const node of row.output) {
-      if (node.kind !== 'entity' && node.kind !== 'list') continue;
+      if (node.kind !== 'entity' && node.kind !== 'list' && node.kind !== 'related') continue;
       const known = input.fieldsByEntity.get(node.entity);
-      for (const field of node.fields) {
-        if (known?.has(field.path)) continue;
-        error(problems, 'PROJECTION_FIELD_UNKNOWN', row.route, `Route ${row.route} projects ${node.entity}.${field.path}, which is not a field of the ontology.`);
-      }
+      const prefix = node.kind === 'list' && node.items ? `${node.path}.${node.items}` : node.path;
+      node.fields = node.fields.filter(field => {
+        if (known?.has(field.path)) return true;
+        const message = `Route ${row.route} projects ${node.entity}.${field.path}, which is not a field of the ontology.`;
+        review(problems, 'PROJECTION_FIELD_UNKNOWN', row.route, message);
+        row.output.push({ kind: 'unresolved', path: `${prefix}.${field.field}`, reason: `PROJECTION_FIELD_UNKNOWN: ${message}` });
+        return false;
+      });
     }
   }
   return problems;
@@ -179,9 +206,12 @@ function outputTree(
     const element = page ? { path: `${path}.${page.name}`, body: page.body } : body === null ? null : { path, body };
     const leaves = element ? interfaceFieldPaths(element.body) : null;
     if (!element || !leaves) {
-      error(problems, 'CONTRACT_UNPARSED', route.route, parent
+      // One output node that does not assemble is a declared gap (s0b). The rest of the route continues.
+      const message = parent
         ? `Route ${route.route} output ${path} nests a relation with no readable interface.`
-        : `Route ${route.route} output ${path} has no readable interface.`);
+        : `Route ${route.route} output ${path} has no readable interface.`;
+      review(problems, 'CONTRACT_UNPARSED', route.route, message);
+      nodes.push({ kind: 'unresolved', path, reason: `CONTRACT_UNPARSED: ${message}` });
       continue;
     }
     elements.set(derived.key, element);
