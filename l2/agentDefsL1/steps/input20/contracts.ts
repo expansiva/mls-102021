@@ -110,6 +110,21 @@ export interface D1RequestOutput {
   computed?: string[];
   /** Field paths that belong to an entity linked to `entity` by one N:1 relationship (d1_60). */
   related?: D1RequestRelatedField[];
+  /** Contract fields that name an ontology path by a resolution, not by their own path (d1_62). */
+  mapped?: D1RequestMappedField[];
+}
+
+export interface D1RequestMappedField {
+  /** Field path as the contract writes it. */
+  field: string;
+  /** Ontology path of the entity it stands for. */
+  path: string;
+}
+
+/** A readonly value tied to one of the route rules by a resolution (d1_62). */
+export interface D1RequestComputedBy {
+  path: string;
+  rule: string;
 }
 
 export interface D1RequestRelatedField {
@@ -118,11 +133,26 @@ export interface D1RequestRelatedField {
   relationship: string;
 }
 
+/** What a gap asks (d1_62). Each kind has its own closed candidates, computed by code. */
+export type D1RequestGapKind = 'entity' | 'relationship' | 'flatPaging' | 'pageParam' | 'pagingRole' | 'fieldPath' | 'computedRule' | 'value';
+
+/** The answer that leaves a gap open. Always the last candidate. */
+export const D1_GAP_NONE = 'none';
+
 /** A part of the route the code could not derive from the types, the ontology and L4 (d1_60). Not an error. */
 export interface D1RequestUnresolved {
-  /** `output.<path>` or `input.<name>`. */
+  /** `output.<path>` or `input.<name>`. Also the key of its answer. */
   path: string;
   reason: string;
+  kind: D1RequestGapKind;
+  /** Closed choices computed by code, sorted, with `none` last (d1_62). */
+  candidates: string[];
+}
+
+/** One answer to one gap (d1_62). A choice outside the gap candidates, or `none`, leaves the gap open. */
+export interface D1RequestGapAnswer {
+  path: string;
+  choice: string;
 }
 
 /** `field` filters `target`. `pages` names the list organism instead of a field. */
