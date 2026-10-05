@@ -44,7 +44,7 @@ export async function beforeD1DomainPromptStep(
   const checkpointFile = pipelineFile(prompt.project, prompt.moduleName);
   const raw = await readText(checkpointFile);
   const pipeline = raw ? parsePipelineDocument(raw) : null;
-  if (!pipeline || pipeline.project !== prompt.project || pipeline.moduleName !== prompt.moduleName || pipeline.steps.input20?.status !== 'approved') {
+  if (!pipeline || pipeline.project !== prompt.project || pipeline.moduleName !== prompt.moduleName || pipeline.steps.resolve25?.status !== 'approved') {
     return refuse(context, parentStep, step, hookSequential, 'Checkpoint is not intact. domain30 wrote nothing.');
   }
 

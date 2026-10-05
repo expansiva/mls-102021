@@ -42,8 +42,9 @@ English, no model, no writes:
 |---|---|
 | `l1/<module>/pipeline/agentDefsL1/pipeline.json` | written on the first `/run` |
 | `l1/<module>/pipeline/pipeline.json` | planner file. Never written or removed |
-| `l1/<module>/pipeline/agentDefsL1/input.json` | written by input20. Same bytes are not rewritten |
-| `l1/<module>/pipeline/agentDefsL1/resolve25.json` | written by resolve25: one answer per open part of a contract route. Kept while the snapshot hash is the same |
+| `l1/<module>/pipeline/agentDefsL1/input20.json` | written by input20: the derivation with its gaps, its problems and the source key. Same bytes are not rewritten |
+| `l1/<module>/pipeline/agentDefsL1/resolve25.json` | written by resolve25: one answer per open part of a contract route. Kept while the source key is the same |
+| `l1/<module>/pipeline/agentDefsL1/input.json` | written by resolve25: the final inventory with the answers. Same bytes are not rewritten |
 | `l1/<module>/pipeline/agentDefsL1/drafts/domain30.json` | written by domain30. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/drafts/persistence40.json` | written by persistence40. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/traces/<step><unit>.json` | progress of one unit: previous hash, draft hash, and each file. Not a transaction |
@@ -74,7 +75,7 @@ It approves
 itself and mints `input20-done` only when consumer phases are released. A missing
 contract or a missing required source sets `awaitingStep` to `input20` and
 records the blocking codes and counts on `steps.input20` (`failed`, not
-`approved`). The problem list stays in `input.json`. The waiting task steps are
+`approved`). The problem list stays in `input20.json`. The waiting task steps are
 stopped so the run ends. A later hook does not rewrite that checkpoint.
 `/resume` on that held checkpoint does not recompute the reason, does not
 rewrite the file, and does not approve `input20`.

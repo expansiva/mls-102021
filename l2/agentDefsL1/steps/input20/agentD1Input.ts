@@ -2,8 +2,8 @@
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
+  derivationFile,
   displayPath,
-  inputFile,
   parseD1StepPrompt,
   pipelineFile,
   taskModule,
@@ -20,7 +20,7 @@ import {
 import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { assembleD1Input, persistD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { assembleD1Input, d1SourceKey, persistD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 export async function beforeD1InputPromptStep(
   _agent: IAgentMeta,
@@ -59,9 +59,12 @@ export async function beforeD1InputPromptStep(
     );
   }
 
+  // d1_62: input20 records the derivation with its gaps in input20.json, keyed by its sources. The final input.json
+  // is resolve25's, with the answers.
   const snapshot = await assembleD1Input(prompt.project, prompt.moduleName);
-  await persistD1Input(prompt.project, prompt.moduleName, snapshot);
-  const artifact = displayPath(inputFile(prompt.project, prompt.moduleName));
+  const sourceKey = await d1SourceKey(prompt, await readD1InputArtifacts(prompt.project, prompt.moduleName));
+  await persistD1Derivation(prompt.project, prompt.moduleName, snapshot, sourceKey);
+  const artifact = displayPath(derivationFile(prompt.project, prompt.moduleName));
   const reason = snapshot.consumersReleased ? '' : blockingReason(snapshot);
   const held = snapshot.consumersReleased
     ? ''
@@ -187,7 +190,7 @@ function doneAnchor(
     project,
     moduleName,
     completedStep: 'input20' as const,
-    nextStep: 'domain30' as const,
+    nextStep: 'resolve25' as const,
     artifact,
   };
   return {

@@ -154,7 +154,8 @@ void test('run bootstraps without a model, records identity, and tells the truth
     assert.match(stop.traceMsg || '', /stopped: consumer phases are not released/);
     assert.doesNotMatch(stop.traceMsg || '', /success/i);
   }
-  const parsedInventory = JSON.parse(host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input', extension: '.json' })]?.content || '{}') as {
+  // d1_62: a held input20 keeps its problems in its own receipt, input20.json.
+  const parsedInventory = JSON.parse(host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input20', extension: '.json' })]?.content || '{}') as {
     problems?: Array<{ severity?: string; code?: string }>;
   };
   const counts = new Map<string, number>();
@@ -175,7 +176,7 @@ void test('run bootstraps without a model, records identity, and tells the truth
   assert.notEqual(after.steps.input20?.status, 'approved');
   assert.equal(after.steps.input20?.error, reason);
   assert.equal(after.steps.domain30, undefined);
-  const inventory = host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input', extension: '.json' })];
+  const inventory = host.files[fileKey({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline/agentDefsL1`, shortName: 'input20', extension: '.json' })];
   assert.ok(inventory);
   assert.match(inventory.content, /SOURCE_MISSING/);
   assert.equal(draft.content, DRAFT);

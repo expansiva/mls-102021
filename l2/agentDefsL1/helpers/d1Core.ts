@@ -198,13 +198,27 @@ export function displayPath(file: D1FileInfo): string {
   return `_${file.project}_/l${file.level}/${folder}${file.shortName}${file.extension}`;
 }
 
-/** `l1/<module>/pipeline/agentDefsL1/input.json` — the input20 receipt. */
+/** `l1/<module>/pipeline/agentDefsL1/input.json` — the final inventory, written by resolve25 with the answers (d1_62). */
 export function inputFile(project: number, moduleName: string): D1FileInfo {
   return {
     project,
     level: 1,
     folder: `${moduleName}/pipeline/agentDefsL1`,
     shortName: 'input',
+    extension: '.json',
+  };
+}
+
+/**
+ * `l1/<module>/pipeline/agentDefsL1/input20.json` — the input20 receipt (d1_62): the derivation with its gaps, its
+ * problems and the source key. The final `input.json` is written by resolve25.
+ */
+export function derivationFile(project: number, moduleName: string): D1FileInfo {
+  return {
+    project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName: 'input20',
     extension: '.json',
   };
 }

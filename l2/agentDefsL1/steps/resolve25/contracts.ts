@@ -26,7 +26,8 @@ export interface D1ResolveWork {
   schemaVersion: typeof D1_RESOLVE_VERSION;
   project: number;
   moduleName: string;
-  snapshotHash: string;
+  /** `d1SourceKey` of the sources input20 derived from (d1_62). */
+  sourceKey: string;
   units: D1ResolveUnit[];
   repairs: number;
 }
@@ -56,7 +57,8 @@ export interface D1ResolveReceipt {
   schemaVersion: typeof D1_RESOLVE_VERSION;
   project: number;
   moduleName: string;
-  snapshotHash: string;
+  /** `d1SourceKey` of the sources input20 derived from (d1_62). */
+  sourceKey: string;
   llmCalls: number;
   routes: Array<{ route: string; pageId: string; answers: D1ResolveAnswer[] }>;
 }

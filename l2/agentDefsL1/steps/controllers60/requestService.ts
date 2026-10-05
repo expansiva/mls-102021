@@ -3,6 +3,7 @@
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
+import type { D1SelectedRequest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import type {
   D1ControllerProblem,
   D1ControllerRequest,
@@ -20,6 +21,35 @@ export interface RequestServiceCheck {
   fieldsByEntity: ReadonlyMap<string, ReadonlySet<string>>;
   /** Selected rows per route. Defaults to the built rows. */
   selectedCounts?: ReadonlyMap<string, number>;
+  /**
+   * Per `<route>\n<output key>`, the projected paths that are entity fields, as ontology paths (d1_62). Computed,
+   * related, paging and nested relation fields are checked by their classification, not here. Defaults to `fields`.
+   */
+  entityPaths?: ReadonlyMap<string, readonly string[]>;
+}
+
+/** The controllers60 view of one selected request: the derived outputs with their classification, and the params. */
+export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSource {
+  return {
+    route: request.route,
+    pageId: request.pageId,
+    kind: request.kind,
+    uses: [...request.uses],
+    outputs: request.outputs.map(output => {
+      const out: D1ServiceRequestSource['outputs'][number] = { key: output.key, entity: output.entity };
+      for (const key of ['parent', 'page', 'pageSize', 'hasMore', 'total'] as const) if (output[key]) out[key] = output[key];
+      if (output.computed?.length) out.computed = [...output.computed];
+      if (output.related?.length) out.related = output.related.map(item => ({ ...item }));
+      if (output.mapped?.length) out.mapped = output.mapped.map(item => ({ ...item }));
+      return out;
+    }),
+    params: request.params.map(param => ({
+      name: param.name,
+      target: param.target,
+      ...(param.field ? { field: param.field } : {}),
+      ...(param.pages ? { pages: param.pages } : {}),
+    })),
+  };
 }
 
 /** Leaf paths of a contract interface body. Containers are not paths. */
@@ -77,7 +107,7 @@ export function requestServiceProblems(input: RequestServiceCheck): D1Controller
     }
     for (const output of row.outputs) {
       const known = input.fieldsByEntity.get(output.entity);
-      for (const field of output.fields) {
+      for (const field of input.entityPaths?.get(`${row.route}\n${output.key}`) ?? output.fields) {
         if (known?.has(field)) continue;
         error(problems, 'PROJECTION_FIELD_UNKNOWN', row.route, `Route ${row.route} projects ${output.entity}.${field}, which is not a field of the ontology.`);
       }
@@ -90,25 +120,41 @@ export function serviceRowsFor(
   pageId: string,
   definition: D2ContractV2Definition,
   selected: readonly D1ServiceRequestSource[],
-): { routes: string[]; rows: D1ServiceRow[]; problems: D1ControllerProblem[] } {
+): { routes: string[]; rows: D1ServiceRow[]; problems: D1ControllerProblem[]; entityPaths: Map<string, string[]> } {
   const problems: D1ControllerProblem[] = [];
   const routes = definition.routes.map(route => route.route);
   const rows: D1ServiceRow[] = [];
+  const entityPaths = new Map<string, string[]>();
   for (const route of definition.routes) {
     const matches = selected.filter(item => item.route === route.route);
     if (matches.length !== 1) continue;
     const source = matches[0];
     const outputs: D1ServiceOutput[] = [];
-    for (const [key, meta] of Object.entries(route.meta.output)) {
+    // d1_62: the outputs are the derived ones (input20 + resolve25), not `meta`. A nested relation is a field of its parent.
+    for (const derived of source.outputs.filter(item => !item.parent)) {
+      const key = derived.key;
       const typeName = outputTypeName(route.output, key);
       const projection = typeName ? definition.projections.find(item => item.name === typeName) : undefined;
       const fields = projection ? interfaceFieldPaths(projection.body) : null;
       if (!typeName || !fields) {
         error(problems, 'CONTRACT_UNPARSED', route.route, `Route ${route.route} output ${key} has no readable interface.`);
-        outputs.push({ key, entity: meta.entity, fields: [] });
+        outputs.push({ key, entity: derived.entity, fields: [] });
         continue;
       }
-      outputs.push({ key, entity: meta.entity, fields });
+      outputs.push({ key, entity: derived.entity, fields });
+      // A list page (`{ items: Row[]; total; ... }`) is checked on the fields of its items; the wrapper is paging.
+      const items = derived.page || derived.pageSize || derived.hasMore || derived.total ? pageItemsBody(projection?.body || '', definition) : null;
+      const checked = items === null ? fields : interfaceFieldPaths(items) || [];
+      entityPaths.set(`${route.route}\n${key}`, entityFieldPaths(derived, checked, source.outputs));
+    }
+    const params: D1ServiceParam[] = [];
+    for (const param of source.params) {
+      if (!param.field && !param.pages) {
+        // d1_62: a filter input left without a field (resolve25 answered none) is not applied. Said, not dropped silently.
+        review(problems, 'FILTER_UNRESOLVED', route.route, `Route ${route.route} input ${param.name} filters no derived field. The request service does not apply it.`);
+        continue;
+      }
+      params.push(copyParam(param));
     }
     rows.push({
       route: route.route,
@@ -116,10 +162,40 @@ export function serviceRowsFor(
       uses: [...source.uses],
       transaction: route.kind === 'cmd' ? 'single' : 'none',
       outputs,
-      params: source.params.map(copyParam),
+      params,
     });
   }
-  return { routes, rows, problems };
+  return { routes, rows, problems, entityPaths };
+}
+
+/** The body of the one interface array of a list page wrapper, or null when the wrapper has not exactly one. */
+function pageItemsBody(body: string, definition: D2ContractV2Definition): string | null {
+  const arrays = [...body.matchAll(/(?:^|[;\n{])\s*(?:readonly\s+)?[A-Za-z_][A-Za-z0-9_]*\??\s*:\s*([A-Z][A-Za-z0-9]*)\[\]/gu)]
+    .map(match => definition.projections.find(item => item.name === match[1]))
+    .filter((item): item is D2ContractV2Definition['projections'][number] => Boolean(item));
+  return arrays.length === 1 ? arrays[0].body : null;
+}
+
+/**
+ * The projected paths of one output that are fields of its entity, as ontology paths. A readonly value, a field of
+ * an N:1 entity, a paging key and a nested relation are verified by their classification; a mapped field is checked
+ * by the ontology path it stands for.
+ */
+function entityFieldPaths(
+  output: D1ServiceRequestSource['outputs'][number],
+  fields: readonly string[],
+  all: D1ServiceRequestSource['outputs'],
+): string[] {
+  const skip = new Set<string>([
+    ...(output.computed || []),
+    ...(output.related || []).map(item => item.field),
+    ...[output.page, output.pageSize, output.hasMore, output.total].filter((item): item is string => Boolean(item)),
+  ]);
+  const nested = all.filter(item => item.parent === output.key).map(item => item.key.slice(output.key.length + 1));
+  const mapped = new Map((output.mapped || []).map(item => [item.field, item.path]));
+  return fields
+    .filter(field => !skip.has(field) && !nested.some(child => field === child || field.startsWith(`${child}.`)))
+    .map(field => mapped.get(field) ?? field);
 }
 
 export function fieldsByEntity(ontology: Readonly<Record<string, unknown>>): Map<string, Set<string>> {
@@ -240,4 +316,8 @@ function skip(source: string, index: number): number {
 
 function error(problems: D1ControllerProblem[], code: string, path: string, message: string): void {
   problems.push({ severity: 'error', code, path, message });
+}
+
+function review(problems: D1ControllerProblem[], code: string, path: string, message: string): void {
+  problems.push({ severity: 'review', code, path, message });
 }

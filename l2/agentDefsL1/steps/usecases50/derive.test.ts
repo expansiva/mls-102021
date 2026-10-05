@@ -19,6 +19,7 @@ import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispat
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { attemptFile, readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { closedFromRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
+import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT = 102047;
@@ -27,7 +28,7 @@ const TIPS = [
   { id: 'controleEstoque-39a5166', moduleName: 'controleEstoque' },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk' },
 ] as const;
-const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
+const BEFORE_USECASES: D1StepId[] = ['input20', 'resolve25', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70', 'finalize80'];
 
 void test('a port call with no rule, effect or transition is context then port; any of them returns the model', () => {
@@ -197,6 +198,11 @@ async function openUsecases(fixtureId: string, moduleName: string): Promise<{
   parent.nextSteps = [usecases];
   let order = 1;
   for (const stepId of BEFORE_USECASES) {
+    if (stepId === 'resolve25') {
+      await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, order);
+      order += 1;
+      continue;
+    }
     const step = createD1AgentStep(stepId, moduleName, PROJECT, 'run');
     step.stepId = order * 10;
     await agent.beforePromptStep!(meta(), ctx, parent, step, order);

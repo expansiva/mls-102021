@@ -36,6 +36,7 @@ import type { PlanUnitInput } from '/_102021_/l2/agentMaterializeL1/planner/plan
 import { runMaterialize, type MaterializeRunHost, type UnitOutcome } from '/_102021_/l2/agentMaterializeL1/run/execute.js';
 import type { MaterializeStateStore } from '/_102021_/l2/agentMaterializeL1/core/state.js';
 import { parseDefinitionSource, readDefinition, receiptPathFor, type MaterializationReceipt } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '../../../../..');
@@ -49,7 +50,7 @@ const TIPS = [
   { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
-const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
+const BEFORE_USECASES: D1StepId[] = ['input20', 'resolve25', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70', 'finalize80'];
 
 for (const tip of TIPS) {
@@ -309,6 +310,10 @@ async function runStep(
   stepId: D1StepId,
   order: number,
 ): Promise<void> {
+  if (stepId === 'resolve25') {
+    await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, order);
+    return;
+  }
   const step = createD1AgentStep(stepId, moduleName, PROJECT, 'run');
   step.stepId = order;
   await agent.beforePromptStep!(meta(), ctx, parent, step, order);

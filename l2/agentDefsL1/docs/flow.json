@@ -58,6 +58,7 @@
   },
   "writes": [
     "l1/{module}/pipeline/agentDefsL1/pipeline.json",
+    "l1/{module}/pipeline/agentDefsL1/input20.json",
     "l1/{module}/pipeline/agentDefsL1/input.json",
     "l1/{module}/pipeline/agentDefsL1/resolve25.json",
     "l1/{module}/pipeline/agentDefsL1/report.json"
@@ -98,6 +99,7 @@
   "artifacts": {
     "pipeline": "l1/{module}/pipeline/agentDefsL1/pipeline.json",
     "plannerPipeline": "l1/{module}/pipeline/pipeline.json",
+    "derivation": "l1/{module}/pipeline/agentDefsL1/input20.json",
     "input": "l1/{module}/pipeline/agentDefsL1/input.json",
     "resolve": "l1/{module}/pipeline/agentDefsL1/resolve25.json",
     "draft": "l1/{module}/pipeline/agentDefsL1/drafts/{step}.json",
@@ -120,8 +122,8 @@
       "implemented": true,
       "dependsOn": ["entry10-done"],
       "doneAnchor": "input20-done",
-      "artifact": "l1/{module}/pipeline/agentDefsL1/input.json",
-      "goal": "Coherent snapshot, source hashes, and the file closure. No .defs.ts. Consumer phases stay locked when a contract or a required source is missing."
+      "artifact": "l1/{module}/pipeline/agentDefsL1/input20.json",
+      "goal": "Coherent snapshot, source hashes, the route derivation with its gaps, the source key, and the file closure. No .defs.ts. Consumer phases stay locked when a contract or a required source is missing."
     },
     {
       "id": "resolve25",
@@ -132,7 +134,7 @@
       "modelAlias": "reasoning",
       "parallel": "parallel_dynamic",
       "artifact": "l1/{module}/pipeline/agentDefsL1/resolve25.json",
-      "goal": "The open parts the input20 derivation leaves in the contract routes. No open part, no model call. One worker per route with an open part; the tool offers only the closed candidates plus none, the gate accepts only a candidate, one repair, then none. The receipt keeps route, path, choice and call, and /resume keeps it while the snapshot hash is the same."
+      "goal": "The open parts the input20 derivation leaves in the contract routes. No open part, no model call. One worker per route with an open part; the tool offers only the closed candidates plus none, the gate accepts only a candidate, one repair, then none. The receipt keeps route, path, choice and call, and /resume keeps it while the source key is the same. Then the final input.json is built with the answers and the previous input.json; the step is held when it does not release the consumer phases."
     },
     {
       "id": "domain30",

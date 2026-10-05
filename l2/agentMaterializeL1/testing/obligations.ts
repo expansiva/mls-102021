@@ -18,7 +18,7 @@ import { M1_SEED_REF, type M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/
 import { pathDisclosure, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { isL1Operation, L1_OPERATION_TRAITS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
+import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
 
 /** Runtime proof: credential -> actor -> personEntity and the test identities are the runtime's. */
 export const M1_OBLIGATION_BLOCKER = 'RUNTIME_IDENTITY_PENDING' as const;
@@ -129,10 +129,18 @@ interface RequestOutput {
   fields: string[];
 }
 
+interface RequestParam {
+  name: string;
+  target: string;
+  field?: string;
+}
+
 interface RequestRow {
   kind: 'qry' | 'cmd';
   uses: string[];
   outputs: RequestOutput[];
+  /** The requestService params (d1_62): a filter names its target output and the entity field. */
+  params: RequestParam[];
 }
 
 /**
@@ -169,30 +177,36 @@ function routeObligationsV2(
   if (route.kind !== request.kind) return { gap: `REQUEST_UNREAD: ${ref.route} is ${request.kind} in the requestService and ${route.kind} in the contract` };
   const input = literalMembers(route.input);
   if (!input) return { gap: `CONTRACT_UNREAD: the input of ${ref.route} in ${ref.contractPath} was not read` };
-  const missing = request.outputs.find(output => !route.meta.output[output.key]);
-  if (missing) return { gap: `CONTRACT_UNREAD: output ${missing.key} of ${ref.route} is not in the contract meta` };
+  // d1_62: the outputs are the ones D1 derived into the requestService; the contract output type is the check.
+  const outputMembers = literalMembers(route.output);
+  if (!outputMembers) return { gap: `CONTRACT_UNREAD: the output of ${ref.route} in ${ref.contractPath} was not read` };
+  const rootMembers = outputMembers.allowedPaths.filter(path => !path.includes('.'));
+  const missing = request.outputs.find(output => !rootMembers.includes(output.key));
+  if (missing) return { gap: `CONTRACT_UNREAD: output ${missing.key} of ${ref.route} is not in the contract output` };
   const access = routeAccess(ref, defs);
   if ('gap' in access) return access;
-  const pagination = (key: string): string[] => Object.values(route.meta.lists)
-    .filter(list => list.key === key)
-    .flatMap(list => [list.page, list.pageSize, list.hasMore]);
-  const allowedPaths = sorted([...new Set(request.outputs.flatMap(output => [
-    output.key, ...output.fields.map(field => `${output.key}.${field}`), ...pagination(output.key),
-  ]))]);
+  // The other members of the contract output (the flat paging values of a list) are part of the response as declared.
+  const outputKeys = new Set(request.outputs.map(output => output.key));
+  const declaredValues = rootMembers.filter(path => !outputKeys.has(path));
+  const allowedPaths = sorted([...new Set([
+    ...request.outputs.flatMap(output => [output.key, ...output.fields.map(field => `${output.key}.${field}`)]),
+    ...declaredValues,
+  ])]);
   const routeGrants = ref.grantIds.map(id => access.rows.find(row => row.grantId === id) ?? {});
   const disclosed = { allowed: [] as string[], forbidden: [] as string[] };
   for (const output of request.outputs) {
     const entityDefinition = [...defs.values()].find(item => item.artifactType === 'domainEntity' && item.data.entityId === output.entity);
     const one = disclosure(output.fields, routeGrants, output.entity, entityDefinition);
-    disclosed.allowed.push(...one.allowed.map(path => `${output.key}.${path}`), ...pagination(output.key));
+    disclosed.allowed.push(...one.allowed.map(path => `${output.key}.${path}`));
     disclosed.forbidden.push(...one.forbidden.map(path => `${output.key}.${path}`));
   }
+  disclosed.allowed.push(...declaredValues);
   const tail = ref.route.split('.').pop() || ref.route;
   const command = request.kind === 'cmd';
   const optional = input.allowedPaths.filter(path => !input.required.includes(path));
   const positive: M1ObligationIdentity = access.ownField ? 'owner' : 'member';
   const sources = sorted([`${ref.defPath}#${ref.route}`, serviceEntry[0], contractRef, ...access.sources]);
-  const stored = storedFieldRefs(request, route, defs);
+  const stored = storedFieldRefs(request, defs);
   const make = (
     kind: M1ObligationKind,
     caseId: string,
@@ -301,19 +315,18 @@ function seedParams(
 }
 
 /**
- * `<Entity>.<field>` for an input path the source links to a stored row: a contract meta filter,
- * or a usecase `uses` path whose operation addresses a record. Nothing is chosen by name.
+ * `<Entity>.<field>` for an input path the source links to a stored row: a requestService filter
+ * (the field D1 derived, d1_62), or a usecase `uses` path whose operation addresses a record. Nothing is chosen by name.
  */
 function storedFieldRefs(
   request: RequestRow,
-  route: D2ContractV2Route,
   defs: ReadonlyMap<string, M1Definition>,
 ): Map<string, string> {
   const refs = new Map<string, string>();
-  for (const [name, param] of Object.entries(route.meta.params)) {
-    if (!('field' in param) || !param.field) continue;
-    const entity = route.meta.output[param.filters]?.entity;
-    if (entity) refs.set(name, `${entity}.${param.field}`);
+  for (const param of request.params) {
+    if (!param.field) continue;
+    const entity = request.outputs.find(output => output.key === param.target)?.entity;
+    if (entity) refs.set(param.name, `${entity}.${param.field}`);
   }
   for (const useId of request.uses) {
     const usecase = [...defs.values()].find(item => item.artifactType === 'usecase' && item.artifactId === useId);
@@ -340,7 +353,12 @@ function requestRow(row: Record<string, unknown>): RequestRow | null {
     if (!isRecord(item) || typeof item.key !== 'string' || !item.key || typeof item.entity !== 'string' || !Array.isArray(item.fields)) return null;
     outputs.push({ key: item.key, entity: item.entity, fields: item.fields.filter((field): field is string => typeof field === 'string') });
   }
-  return { kind, uses, outputs };
+  const params: RequestParam[] = [];
+  for (const item of Array.isArray(row.params) ? row.params : []) {
+    if (!isRecord(item) || typeof item.name !== 'string' || typeof item.target !== 'string') continue;
+    params.push({ name: item.name, target: item.target, ...(typeof item.field === 'string' && item.field ? { field: item.field } : {}) });
+  }
+  return { kind, uses, outputs, params };
 }
 
 /**

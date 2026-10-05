@@ -22,6 +22,8 @@ import type { D1ResolveGap } from '/_102021_/l2/agentDefsL1/steps/resolve25/cont
 import { checkResolveReply, resolveAnswers, resolveUnits } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import { readResolveReceipt, readResolveWork, writeResolveAttempt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
 import { parseFanoutWorkerArg } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
+import { metaResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 /**
  * resolve25 end to end on the hooks, with a test resolver in place of the model. The resolver answers from the
@@ -32,26 +34,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ID = 'controleEstoque-39a5166';
 const MODULE = 'controleEstoque';
 const PROJECT = 102047;
-
-type Resolver = (route: D2ContractV2Route, gap: D1ResolveGap) => string;
-
-/** The test resolver: the answer `meta` gives for a gap, or none. */
-const metaResolver: Resolver = (route, gap) => {
-  if (gap.kind === 'entity') return route.meta.output[gap.path.slice('output.'.length)]?.entity ?? D1_GAP_NONE;
-  if (gap.kind === 'flatPaging') {
-    const names = gap.path.slice('output.'.length).split(', ');
-    return Object.values(route.meta.lists).find(list => names.includes(list.page))?.key ?? D1_GAP_NONE;
-  }
-  if (gap.kind === 'pageParam') {
-    const param = route.meta.params[gap.path.slice('input.'.length)];
-    return param && 'pages' in param ? route.meta.lists[param.pages]?.key ?? D1_GAP_NONE : D1_GAP_NONE;
-  }
-  if (gap.kind === 'filterField') {
-    const param = route.meta.params[gap.path.slice('input.'.length)];
-    return param && 'filters' in param ? `${param.filters}:${param.field}` : D1_GAP_NONE;
-  }
-  return D1_GAP_NONE;
-};
 
 function context(): mls.msg.ExecutionContext {
   const root: mls.msg.AIAgentStep = {
@@ -201,6 +183,10 @@ void test('resolve25 sends one worker per route with an open part; the tool has 
   }
   const pipeline = JSON.parse(await readText(pipelineFile(PROJECT, MODULE)) || '{}') as { steps: Record<string, { status: string }> };
   assert.equal(pipeline.steps.resolve25?.status, 'approved');
+  // resolve25 writes the final input.json with the answers: the routes are closed and the consumers released.
+  const final = await readD1Input(PROJECT, MODULE);
+  assert.equal(final?.consumersReleased, true);
+  for (const unit of work.units) assert.equal(final?.selection.requests.find(item => item.route === unit.route)?.unresolved, undefined, unit.route);
 
   // The receipt, read through the one selection, gives each route as meta selects it today.
   const artifacts = await readD1InputArtifacts(PROJECT, MODULE);
@@ -281,6 +267,13 @@ void test('resolve25 refuses sources that changed after input20 sealed them', as
   const intents = await resolveMain(run);
   const failed = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.status === 'failed');
   assert.match(failed?.traceMsg || '', /Sources changed after input20/);
+  assert.equal(await readResolveReceipt(PROJECT, MODULE), null);
+  // The same with /resume: the key of the derivation no longer matches the sources.
+  const resume = createD1AgentStep('resolve25', MODULE, PROJECT, 'resume');
+  resume.stepId = 26;
+  const resumed = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, resume, run.seq++);
+  const refused = resumed.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.status === 'failed');
+  assert.match(refused?.traceMsg || '', /Sources changed after input20/);
   assert.equal(await readResolveReceipt(PROJECT, MODULE), null);
 });
 

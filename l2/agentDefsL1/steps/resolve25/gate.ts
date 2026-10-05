@@ -109,7 +109,7 @@ export function buildResolveReceipt(work: D1ResolveWork, attempts: readonly D1Re
     schemaVersion: D1_RESOLVE_VERSION,
     project: work.project,
     moduleName: work.moduleName,
-    snapshotHash: work.snapshotHash,
+    sourceKey: work.sourceKey,
     llmCalls,
     routes,
   };
@@ -119,6 +119,11 @@ export function buildResolveReceipt(work: D1ResolveWork, attempts: readonly D1Re
 export function resolveAnswers(receipt: D1ResolveReceipt | null, route: string): D1RequestGapAnswer[] {
   const row = receipt?.routes.find(item => item.route === route);
   return row ? row.answers.map(item => ({ path: item.path, choice: item.choice })) : [];
+}
+
+/** Every route's answers, as `buildD1InputSnapshot` takes them. No receipt gives no answer. */
+export function answersByRoute(receipt: D1ResolveReceipt | null): Map<string, D1RequestGapAnswer[]> {
+  return new Map((receipt?.routes || []).map(row => [row.route, resolveAnswers(receipt, row.route)]));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

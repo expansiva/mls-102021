@@ -20,6 +20,7 @@ import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 
 const FIXTURE_ID = 'controleEstoque-39a5166';
 const MODULE = 'controleEstoque';
@@ -70,6 +71,7 @@ void test('controllers60 writes one controller per page and does not rewrite the
   const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
   input.stepId = 20;
   await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  await runResolve25(agent, meta(), ctx, parent, PROJECT, MODULE, 25);
   const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as D1InputSnapshot;
   assert.equal(snapshot.consumersReleased, true, JSON.stringify(snapshot.problems));
   const pages = [...new Set(snapshot.selection.requests.map(item => item.pageId))];

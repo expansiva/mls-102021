@@ -160,6 +160,7 @@ void test('product sources have no filesystem, console log, todo path or Portugu
   const hits: string[] = [];
   for (const file of files) {
     if (file.endsWith(`${path.sep}d1TestHost.ts`)) continue;
+    if (file.endsWith(`${path.sep}d1TestResolver.ts`)) continue;
     const rel = relAgent(file);
     if (rel.startsWith(`fixtures${path.sep}`) || rel.startsWith('fixtures/')) continue;
     const source = readFileSync(file, 'utf8');
@@ -169,4 +170,23 @@ void test('product sources have no filesystem, console log, todo path or Portugu
     if (/[À-ÿ]/.test(source)) hits.push(`${rel}: non-English text`);
   }
   assert.deepEqual(hits, []);
+});
+
+/** d1_62: the route comes from the derivation (input20 + resolve25). No product source of the three L1 agents reads the contract `meta`. */
+const META_READ = /\.meta\.(?:output|lists|params)\b/;
+
+function metaReaders(files: ReadonlyArray<{ rel: string; source: string }>): string[] {
+  return files.filter(file => META_READ.test(stripComments(file.source))).map(file => file.rel);
+}
+
+void test('no product source of agentDefsL1, agentMaterializeL1 or agentPlannerL1 reads the contract meta', () => {
+  const files: string[] = [];
+  for (const agent of ['agentDefsL1', 'agentMaterializeL1', 'agentPlannerL1']) walkTs(path.resolve(AGENT_ROOT, '..', agent), files);
+  const product = files
+    .filter(file => !file.split(path.sep).includes('fixtures') && !file.endsWith(`${path.sep}d1TestResolver.ts`))
+    .map(file => ({ rel: path.relative(path.resolve(AGENT_ROOT, '..'), file).replace(/\\/g, '/'), source: readFileSync(file, 'utf8') }));
+  assert.ok(product.length > 50, 'the three agents were read');
+  assert.deepEqual(metaReaders(product), []);
+  // Control: a reader of meta is caught.
+  assert.deepEqual(metaReaders([{ rel: 'x.ts', source: 'const rows = route.meta.output;' }]), ['x.ts']);
 });

@@ -34,7 +34,7 @@ export const PHASE_OF_TYPE: Record<D1ArtifactType, D1StepId> = {
   integrationOutbound: 'support70',
 };
 
-export const CHAIN_STEP_IDS = ['entry10', 'input20', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const;
+export const CHAIN_STEP_IDS = ['entry10', 'input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const;
 
 export interface D1FinalizeChild {
   planId: string;

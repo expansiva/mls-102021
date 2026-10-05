@@ -390,6 +390,7 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
       usecaseIds,
       fieldsByEntity: knownFields,
       selectedCounts,
+      entityPaths: built.entityPaths,
     });
     problems.push(...pageProblems);
     const defPath = requestServiceDefPath(request.moduleName, contract.pageId);

@@ -17,10 +17,12 @@ Pool messages are not read. Statuses in the pool are not changed.
 
 ## Output
 
-`l1/<module>/pipeline/agentDefsL1/input.json` records source hashes, the selected
-ids, the planned files (`ownerRefs`, `dependsOn`, action) and problems. The same
-snapshot hash does not rewrite the file. Reading that file back is the resume
-input; the task memory is not.
+`l1/<module>/pipeline/agentDefsL1/input20.json` records source hashes, the selected
+ids, the planned files (`ownerRefs`, `dependsOn`, action), problems, the derivation of
+each contract route with its gaps (`selection.requests[].unresolved`, review
+`OUTPUT_UNRESOLVED`), and `sourceKey`: the hash of the snapshot built from the sources
+alone (d1_62). The route is derived from its types and the ontology; `meta` is not read.
+The final `input.json` is written by resolve25 with the answers; input20 does not write it.
 
 `input20-done` is minted only when `consumersReleased` is true. A missing L2
 contract (`CONTRACT_ABSENT`), an unreadable L2 contract (`CONTRACT_UNPARSED`),

@@ -3,6 +3,8 @@
 import { loadD1Artifacts } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { resolverAnswers } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import type {
   D1ControllerGrant,
   D1ControllerRelationship,
@@ -12,10 +14,10 @@ import type {
 
 export { contractSources } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/v1Contracts.js';
 
-/** input20 over a stored v2 seed. */
+/** input20 and resolve25 over a stored v2 seed, with the test resolver in place of the model (d1_62). */
 export function seedSnapshot(id: string, moduleName: string): { snapshot: D1InputSnapshot; artifacts: D1InputArtifacts } {
   const artifacts = loadD1Artifacts(id, moduleName);
-  return { snapshot: buildD1InputSnapshot({ project: 102047, moduleName }, artifacts, null), artifacts };
+  return { snapshot: buildD1InputSnapshot({ project: 102047, moduleName }, artifacts, null, resolverAnswers(artifacts)), artifacts };
 }
 
 /**
@@ -25,19 +27,7 @@ export function seedSnapshot(id: string, moduleName: string): { snapshot: D1Inpu
 export function seedControllerRequest(id: string, moduleName: string): D1ControllerRequest {
   const { snapshot, artifacts } = seedSnapshot(id, moduleName);
   const usecasePath = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
-  const serviceRequests: D1ServiceRequestSource[] = snapshot.selection.requests.map(item => ({
-    route: item.route,
-    pageId: item.pageId,
-    kind: item.kind,
-    uses: [...item.uses],
-    outputs: item.outputs.map(output => ({ key: output.key, entity: output.entity })),
-    params: item.params.map(param => ({
-      name: param.name,
-      target: param.target,
-      ...(param.field ? { field: param.field } : {}),
-      ...(param.pages ? { pages: param.pages } : {}),
-    })),
-  }));
+  const serviceRequests: D1ServiceRequestSource[] = snapshot.selection.requests.map(serviceSourceOf);
   const actors = pageActors(artifacts.needs);
   const pageIds = [...new Set(snapshot.selection.requests.map(request => request.pageId))].sort();
   return {

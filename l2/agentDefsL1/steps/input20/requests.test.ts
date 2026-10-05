@@ -8,6 +8,8 @@ import { D1_FLOW_ID, D1_FLOW_VERSION, D1_PIPELINE_SCHEMA, type D1PipelineState }
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
+import { resolverAnswers } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { fieldsByEntity, readContractV2 as readContractV2Source, requestServiceProblems, serviceRowsFor, serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { CHAIN_STEP_IDS } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -58,7 +60,8 @@ function artifactsOf(id: string, moduleName: string): D1InputArtifacts {
 }
 
 function build(id: string, moduleName: string): D1InputSnapshot {
-  return buildD1InputSnapshot({ project: 102047, moduleName }, artifactsOf(id, moduleName), null);
+  const artifacts = artifactsOf(id, moduleName);
+  return buildD1InputSnapshot({ project: 102047, moduleName }, artifacts, null, resolverAnswers(artifacts));
 }
 
 function usecaseId(snapshot: D1InputSnapshot, entity: string, operation: string): string {
@@ -103,7 +106,7 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   ];
   (artifacts.backend as Record<string, unknown>).usecases = pool;
   (artifacts.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
-  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null);
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null, resolverAnswers(artifacts));
   const get = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.get');
   const save = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.save');
   const move = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.move');
@@ -130,7 +133,7 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   };
   (mixed.backend as Record<string, unknown>).usecases = pool;
   (mixed.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
-  const mixedSnapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, mixed, null);
+  const mixedSnapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, mixed, null, resolverAnswers(mixed));
   assert.equal(mixedSnapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), true);
 });
 
@@ -138,7 +141,7 @@ void test('contract access that disagrees with L4 is a review and does not gate'
   const artifacts = artifactsOf('controleEstoque-39a5166', 'controleEstoque');
   const access = artifacts.access as { grants: Array<{ grantId: string }> };
   access.grants = access.grants.filter(grant => grant.grantId !== 'gerenciarEstoque');
-  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'controleEstoque' }, artifacts, null);
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'controleEstoque' }, artifacts, null, resolverAnswers(artifacts));
   const review = snapshot.problems.filter(item => item.code === 'CONTRACT_ACCESS_DIVERGENT');
   assert.ok(review.length > 0);
   assert.equal(review.every(item => item.severity === 'review'), true);
@@ -177,7 +180,10 @@ export interface BoardContracts {
 ${routes.join('\n')}
 }
 
-export interface NoteSave { id: string; version: number; }
+export interface NoteSave {
+  id: string;
+  version: number;
+}
 `;
 }
 
@@ -191,7 +197,7 @@ function deskOf(pool: PoolRow[], routes: string[] | null): D1InputArtifacts {
 }
 
 function deskBuild(artifacts: D1InputArtifacts): D1InputSnapshot {
-  return buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null);
+  return buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null, resolverAnswers(artifacts));
 }
 
 const listNote: PoolRow = { usecaseId: 'listNote', entity: 'DeskNote', operation: 'list', status: 'toCreate', existing: '' };
@@ -260,7 +266,8 @@ void test('a write the plan lacks is created; an unknown transition and a foreig
   assert.ok(snapshot.selection.usecases.some(item => item.usecaseId === 'createDeskNote' && item.operation === 'create'));
   const unplanned = snapshot.problems.filter(item => item.code === 'REQUEST_USECASE_UNPLANNED');
   assert.ok(unplanned.some(item => item.ownerRef === 'ledgerDesk.board.reopen' && item.severity === 'error' && item.message.includes("'reopen' is not in the L4 lifecycle")));
-  assert.ok(unplanned.some(item => item.ownerRef === 'ledgerDesk.board.ghost' && item.severity === 'error' && item.message.includes('GhostCard is not in the module ontology')));
+  // d1_62: the entity comes from the ontology, so an entity outside it is never derived. The route stays a gap (review).
+  assert.ok(snapshot.problems.some(item => item.code === 'OUTPUT_UNRESOLVED' && item.ownerRef === 'ledgerDesk.board.ghost' && item.severity === 'review'));
   assert.equal(snapshot.selection.usecases.some(item => item.entity === 'GhostCard'), false);
 });
 
@@ -390,7 +397,7 @@ void test('a pruned usecase with a previous receipt is removed and inventoried',
   };
   const artifacts = deskOf([listNote, spare], [qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true)]);
   artifacts.presentDefs = [{ path: planned.defPath, sha256: hash }];
-  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, previous);
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, previous, resolverAnswers(artifacts));
   assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === 'spareNote'), false);
   assert.deepEqual(snapshot.removed.find(item => item.kind === 'usecase' && item.id === 'spareNote'), {
     kind: 'usecase',
@@ -453,4 +460,112 @@ void test('a pruned usecase with a previous receipt is removed and inventoried',
   assert.ok(removedFile);
   assert.equal(removedFile.action, 'removed');
   assert.equal(report.findings.some(finding => finding.code === 'EXTRA_FILE'), false);
+});
+
+/**
+ * d1_62: a contract without meta goes through the derivation and the answers, and controllers60 checks only the
+ * entity fields: a list with total, an N:1 field, a readonly value and a nested relation are classified, not refused.
+ */
+void test('a contract without meta: list with total, N:1 field, readonly value and relation are derived and checked by kind', () => {
+  const artifacts = deskOf([listNote], null);
+  (artifacts.entities.DeskNote as Record<string, unknown>).relationships = { itemCard: { to: 'ItemCard', relationshipId: 'noteItemCard', cardinality: 'N:1' } };
+  (artifacts.entities.Slip as Record<string, unknown>).relationships = { notes: { to: 'DeskNote', relationshipId: 'slipNotes', cardinality: '1:N' } };
+  const contract = `/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/board.defs.ts" enhancement="_blank"/>
+
+export interface BoardContracts {
+  'ledgerDesk.board.load': {
+    kind: 'qry';
+    input: { page?: number; pageSize?: number; itemCardId?: string };
+    output: { notes: NotePage };
+    meta: { output: {}; lists: {}; params: {} };
+    rules: ['labelRule'];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+  'ledgerDesk.board.slip': {
+    kind: 'qry';
+    input: { id: string };
+    output: { slip: SlipView };
+    meta: { output: {}; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };
+}
+
+export interface NoteRow {
+  id: string;
+  version: number;
+  itemCardId: string;
+  state: string;
+  details: { identification: { name: string } };
+  readonly label: string;
+}
+
+export interface NotePage {
+  items: NoteRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SlipView {
+  id: string;
+  version: number;
+  state: string;
+  notes: NoteRow[];
+}
+`;
+  artifacts.contractTexts = { board: contract };
+  // Slip and DeskNote both carry id, version and state: that one gap is the resolve25 answer. Nothing else is asked.
+  const answers = new Map([['ledgerDesk.board.slip', [{ path: 'output.slip', choice: 'Slip' }]]]);
+  const snapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null, answers);
+  assert.equal(snapshot.problems.some(item => item.code === 'OUTPUT_UNRESOLVED'), false, JSON.stringify(snapshot.problems.filter(item => item.code === 'OUTPUT_UNRESOLVED')));
+  const load = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.load');
+  assert.deepEqual(load?.outputs, [{
+    key: 'notes', entity: 'DeskNote', many: true, page: 'page', pageSize: 'pageSize', total: 'total', computed: ['label'],
+    related: [{ field: 'details.identification.name', entity: 'ItemCard', relationship: 'noteItemCard' }],
+  }]);
+  assert.deepEqual(load?.params, [
+    { name: 'page', target: 'notes', pages: 'notes' },
+    { name: 'pageSize', target: 'notes', pages: 'notes' },
+    { name: 'itemCardId', target: 'notes', field: 'itemCardId' },
+  ]);
+  const slip = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.slip');
+  assert.deepEqual(slip?.outputs.map(item => [item.key, item.entity, item.many, item.parent, item.relationship]), [
+    ['slip', 'Slip', false, undefined, undefined],
+    ['slip.notes', 'DeskNote', true, 'slip', 'slipNotes'],
+  ]);
+  assert.deepEqual(slip?.params, [{ name: 'id', target: 'slip', field: 'id' }]);
+
+  // controllers60 checks only the entity fields; the classified ones pass by their kind.
+  const definition = readContractV2Source(contract);
+  assert.ok(definition);
+  const sources = snapshot.selection.requests.map(serviceSourceOf);
+  const built = serviceRowsFor('board', definition, sources);
+  const check = (entityPaths: ReadonlyMap<string, readonly string[]>) => requestServiceProblems({
+    pageId: 'board',
+    contractRoutes: built.routes,
+    requests: built.rows,
+    usecaseIds: new Set(snapshot.selection.usecases.map(item => item.usecaseId)),
+    fieldsByEntity: fieldsByEntity(artifacts.entities),
+    entityPaths,
+  }).filter(problem => problem.code === 'PROJECTION_FIELD_UNKNOWN');
+  assert.deepEqual(built.problems, []);
+  assert.deepEqual(check(built.entityPaths), []);
+  // Control: without the readonly and N:1 classification, those fields are refused as unknown entity fields.
+  const unclassified = serviceRowsFor('board', definition, sources.map(item => ({
+    ...item,
+    outputs: item.outputs.map(output => ({ ...output, computed: undefined, related: undefined })),
+  })));
+  const refused = check(unclassified.entityPaths).map(problem => problem.message);
+  assert.ok(refused.some(message => message.includes('DeskNote.label')), refused.join(' | '));
+  assert.ok(refused.some(message => message.includes('DeskNote.details.identification.name')), refused.join(' | '));
+  // A filter resolve25 left at none has no field: controllers60 says so and does not plan it (no silent filter).
+  const unanswered = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, artifacts, null, new Map([
+    ['ledgerDesk.board.slip', [{ path: 'output.slip', choice: 'none' }]],
+  ]));
+  const open = unanswered.selection.requests.find(item => item.route === 'ledgerDesk.board.slip');
+  assert.deepEqual(open?.params, [{ name: 'id', target: 'slip' }]);
+  const openRows = serviceRowsFor('board', definition, unanswered.selection.requests.map(serviceSourceOf));
+  assert.ok(openRows.problems.some(problem => problem.code === 'FILTER_UNRESOLVED' && problem.severity === 'review' && problem.message.includes('input id')));
+  assert.deepEqual(openRows.rows.find(row => row.route === 'ledgerDesk.board.slip')?.params ?? [], []);
 });

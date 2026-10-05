@@ -6,9 +6,9 @@ computed by code, and `none` last. This step asks the model only for those gaps.
 
 ## Input
 
-The step prompt with `planId: resolve25`. `input20` approved and `input.json` present. The contracts and the
-ontology are read with `readD1InputArtifacts`, the same loader as input20, and their digests must equal the
-snapshot `sources`; otherwise the step stops and writes nothing.
+The step prompt with `planId: resolve25`. `input20` approved and `input20.json` present. The sources are read
+with `readD1InputArtifacts`, the same loader as input20, and their `d1SourceKey` must equal the `sourceKey` of
+`input20.json`; otherwise the step stops and writes nothing.
 
 ## Flow
 
@@ -22,7 +22,12 @@ snapshot `sources`; otherwise the step stops and writes nothing.
 
 ## Output
 
-`l1/<module>/pipeline/agentDefsL1/resolve25.json`: `snapshotHash`, `llmCalls`, and per route the answers
+`l1/<module>/pipeline/agentDefsL1/resolve25.json`: `sourceKey`, `llmCalls`, and per route the answers
 (`path`, `kind`, `choice`, `call`). `call` is the plan id that gave the choice, empty for `none` without an
-accepted answer. `/resume` keeps a receipt with the same snapshot hash and calls no model.
-`resolveAnswers(receipt, route)` is what `applyResolutions` takes.
+accepted answer. `/resume` (and a second `/run`) keeps a receipt with the same source key and calls no model.
+
+Then the step builds the final inventory, `input.json`, through the same `buildD1InputSnapshot` with the
+answers (`answersByRoute`) and the `input.json` of the run before as previous, so a def already written for a
+usecase an answer brought keeps its inventory. When that inventory does not release the consumer phases, the
+step is held (`awaitingStep: resolve25`, the codes on `steps.resolve25.error`), as input20 holds. `domain30`
+needs `resolve25` approved.

@@ -19,6 +19,7 @@ import {
   type D1ExistingHandler,
   type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
 export async function assembleD1Controllers(
@@ -161,19 +162,7 @@ async function controllerRequest(
     accessRead: isRecord(access),
     actorsRead: isRecord(needs),
     removedRoutes: removedRoutesOf(snapshot.removed),
-    serviceRequests: (snapshot.selection.requests || []).map(item => ({
-      route: item.route,
-      pageId: item.pageId,
-      kind: item.kind,
-      uses: [...item.uses],
-      outputs: item.outputs.map(output => ({ key: output.key, entity: output.entity })),
-      params: item.params.map(param => ({
-        name: param.name,
-        target: param.target,
-        ...(param.field ? { field: param.field } : {}),
-        ...(param.pages ? { pages: param.pages } : {}),
-      })),
-    })),
+    serviceRequests: (snapshot.selection.requests || []).map(serviceSourceOf),
     ontology: await ontologyOf(project, moduleName, index),
   };
 }

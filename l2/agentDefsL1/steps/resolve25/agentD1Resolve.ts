@@ -3,6 +3,7 @@
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   displayPath,
+  inputFile,
   parseD1StepPrompt,
   pipelineFile,
   resolveFile,
@@ -32,12 +33,12 @@ import {
   unwrapToolPayload,
   type D1FanoutConfig,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
-import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
+import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { readD1Input, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
-import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
-import { buildResolveReceipt, checkResolveReply, resolveUnits, sourcesDrift } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
+import { answersByRoute, buildResolveReceipt, checkResolveReply, resolveUnits, sourcesDrift } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
   readResolveReceipt,
@@ -50,7 +51,9 @@ import { RESOLVE_TOOL_NAME, resolveHumanPrompt, resolveTool } from '/_102021_/l2
 
 /**
  * resolve25 (d1_62): between input20 and domain30. No gap, no model call. One worker per route with a gap, on the
- * shared fan-out, barrier and repair (`helpers/d1Fanout.ts`). The receipt `resolve25.json` is the step artifact.
+ * shared fan-out, barrier and repair (`helpers/d1Fanout.ts`). The receipt `resolve25.json` is keyed by the source
+ * key of the input20 derivation. With the answers, resolve25 builds and writes the final `input.json` through the
+ * same `buildD1InputSnapshot`, with the `input.json` of the run before as previous.
  */
 export const RESOLVE_FANOUT: D1FanoutConfig = {
   stepId: 'resolve25',
@@ -87,22 +90,24 @@ export async function beforeD1ResolvePromptStep(
   if (!pipeline || pipeline.steps.input20?.status !== 'approved') {
     return stopStep(context, parentStep, step, hookSequential, 'Checkpoint is not intact. resolve25 wrote nothing.');
   }
-  const snapshot = await readD1Input(project, moduleName);
-  if (!snapshot?.snapshotHash) return stopStep(context, parentStep, step, hookSequential, 'input.json is missing. resolve25 wrote nothing.');
-  const kept = await readResolveReceipt(project, moduleName);
-  if (kept && kept.snapshotHash === snapshot.snapshotHash) {
-    return finish(context, parentStep, step, hookSequential, pipeline, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
-  }
+  const derivation = await readD1Derivation(project, moduleName);
+  if (!derivation?.sourceKey) return stopStep(context, parentStep, step, hookSequential, 'input20.json is missing. resolve25 wrote nothing.');
   const artifacts = await readD1InputArtifacts(project, moduleName);
-  const drift = sourcesDrift(snapshot.sources, artifacts.sources);
-  if (drift.length) {
-    return stopStep(context, parentStep, step, hookSequential, `Sources changed after input20 sealed the snapshot: ${drift.join(', ')}. resolve25 wrote nothing. Run /run again.`);
+  const sourceKey = await d1SourceKey({ project, moduleName }, artifacts);
+  if (sourceKey !== derivation.sourceKey) {
+    const drift = sourcesDrift(derivation.sources, artifacts.sources);
+    return stopStep(context, parentStep, step, hookSequential, `Sources changed after input20 sealed the snapshot${drift.length ? `: ${drift.join(', ')}` : ''}. resolve25 wrote nothing. Run /run again.`);
+  }
+  const kept = await readResolveReceipt(project, moduleName);
+  if (kept && kept.sourceKey === sourceKey) {
+    return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
   }
   const units = resolveUnits(artifacts);
-  const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, snapshotHash: snapshot.snapshotHash, units, repairs: 0 };
+  const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, sourceKey, units, repairs: 0 };
   if (!units.length) {
-    await writeResolveReceipt(buildResolveReceipt(work, []));
-    return finish(context, parentStep, step, hookSequential, pipeline, `resolve25 found no open part in the contract routes of ${moduleName}. No model was called.`, 0);
+    const receipt = buildResolveReceipt(work, []);
+    await writeResolveReceipt(receipt);
+    return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 found no open part in the contract routes of ${moduleName}. No model was called.`, 0);
   }
   await writeResolveWork(work);
   // Each dispatch starts its units from zero: an attempt of an earlier run is neither an answer nor a call of this one.
@@ -293,25 +298,45 @@ async function barrier(
   const message = `resolve25 recorded ${receipt.routes.length} routes with ${receipt.llmCalls} model calls; ${open} open parts stay none.${exhausted ? ` ${exhausted}` : ''}`;
   const pipeline = await readPipeline(prompt.project, prompt.moduleName);
   if (!pipeline) return [updateStatus(context, parentStep, step, hookSequential, 'completed', `${message} The checkpoint is missing.`)];
-  const intents = await finish(context, parentStep, step, hookSequential, pipeline, message, receipt.llmCalls);
+  const intents = await finish(context, parentStep, step, hookSequential, pipeline, receipt, message, receipt.llmCalls);
   const main = findPlanStep(context, 'resolve25');
   if (main && main.stepId !== step.stepId && main.status !== 'completed' && main.status !== 'failed') {
-    intents.push(updateStatus(context, findOpenParent(context, parentStep), main, hookSequential, 'completed', message));
+    const held = intents.some(intent => intent.type === 'update-status' && intent.status === 'failed');
+    intents.push(updateStatus(context, findOpenParent(context, parentStep), main, hookSequential, held ? 'failed' : 'completed', message));
   }
   return intents;
 }
 
-/** Approves the step on the checkpoint and mints `resolve25-done` once. */
+/**
+ * Builds the final inventory with the answers and writes `input.json`. When it does not release the consumer phases
+ * the step is held with the reason, as input20 holds. Otherwise approves the step and mints `resolve25-done` once.
+ */
 async function finish(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
   pipeline: D1PipelineState,
+  receipt: D1ResolveReceipt,
   message: string,
   llmCalls: number,
 ): Promise<mls.msg.AgentIntent[]> {
+  const final = await assembleD1Input(pipeline.project, pipeline.moduleName, answersByRoute(receipt));
+  await persistD1Input(pipeline.project, pipeline.moduleName, final);
   const artifact = displayPath(resolveFile(pipeline.project, pipeline.moduleName));
+  if (!final.consumersReleased) {
+    const reason = blockingReason(final);
+    const held = withResolveHeld(pipeline, artifact, reason, new Date().toISOString());
+    if (JSON.stringify(held) !== JSON.stringify(pipeline)) {
+      const issues = pipelineIssues(held);
+      if (issues.length > 0) throw new Error(`Checkpoint schema refused: ${issues[0]}`);
+      await writeJson(pipelineFile(pipeline.project, pipeline.moduleName), held);
+    }
+    const trace = `${message} The final ${displayPath(inputFile(pipeline.project, pipeline.moduleName))} does not release the consumer phases.${reason ? ` ${reason}` : ''}`;
+    return stopStep(context, findOpenParent(context, parentStep), step, hookSequential, trace, {
+      drainTrace: `stopped: consumer phases are not released.${reason ? ` ${reason}` : ''}`,
+    });
+  }
   const approved = withResolveApproved(pipeline, artifact, new Date().toISOString());
   if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(pipelineFile(pipeline.project, pipeline.moduleName), approved);
   const parent = findOpenParent(context, parentStep);
@@ -330,6 +355,28 @@ async function finish(
   }
   intents.push(updateStatus(context, parent, step, hookSequential, 'completed', message));
   return intents;
+}
+
+/** Error-severity codes and counts, the shape input20 holds with. The paths stay in input.json. */
+function blockingReason(snapshot: { problems: ReadonlyArray<{ severity: string; code: string }> }): string {
+  const counts = new Map<string, number>();
+  for (const problem of snapshot.problems) {
+    if (problem.severity !== 'error' || !problem.code) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+  }
+  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+}
+
+function withResolveHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
+  const current = pipeline.steps.resolve25;
+  if (pipeline.status === 'awaitingStep' && pipeline.awaitingStep === 'resolve25' && current?.status === 'failed' && (current.error || '') === reason) return pipeline;
+  return {
+    ...pipeline,
+    status: 'awaitingStep',
+    awaitingStep: 'resolve25',
+    steps: { ...pipeline.steps, resolve25: { status: 'failed', updatedAt: now, artifactPaths: [artifact], ...(reason ? { error: reason } : {}) } },
+    updatedAt: now,
+  };
 }
 
 function withResolveApproved(pipeline: D1PipelineState, artifact: string, now: string): D1PipelineState {

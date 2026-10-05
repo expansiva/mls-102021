@@ -8,7 +8,7 @@ import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import {
   createD1AgentStep,
   createEntryPipeline,
-  inputFile,
+  derivationFile,
   pipelineFile,
   type D1PipelineState,
   type D1StepId,
@@ -45,7 +45,8 @@ void test('a v2 seed with an older backend plan is refused at input20 and later 
   const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
   const inputTrace = await runStep(agent, ctx, parent, 'input20', 20);
   assert.match(inputTrace, /Consumer phases are not released/);
-  const snapshot = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as {
+  // d1_62: a held input20 keeps its problems in its own receipt, input20.json.
+  const snapshot = JSON.parse(host.files[fileKey(derivationFile(PROJECT, MODULE))]?.content || '{}') as {
     consumersReleased?: boolean;
     problems?: Array<{ severity: string; code: string; path: string; message: string }>;
   };

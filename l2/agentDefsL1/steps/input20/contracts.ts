@@ -171,6 +171,8 @@ export interface D1SelectedRequest {
   outputs: D1RequestOutput[];
   params: D1RequestParam[];
   uses: string[];
+  /** Readonly values tied to a route rule by a resolve25 answer (d1_62). Present only when there is one. */
+  computedBy?: D1RequestComputedBy[];
   /** Present only when something was left unresolved (d1_60). */
   unresolved?: D1RequestUnresolved[];
 }

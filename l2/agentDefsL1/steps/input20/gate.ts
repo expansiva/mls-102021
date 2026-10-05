@@ -24,8 +24,7 @@ import {
   type D1InputSnapshot,
   type D1PlannedFile,
   type D1RemovedItem,
-  type D1RequestOutput,
-  type D1RequestParam,
+  type D1RequestGapAnswer,
   type D1SelectedPort,
   type D1SelectedRequest,
   type D1SelectedTable,
@@ -33,6 +32,7 @@ import {
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -52,10 +52,15 @@ import { L1_OPERATIONS, collidingTransitionIds, transitionUsecaseId, type L1Oper
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
 
+/**
+ * The inventory. `answers` are the resolve25 answers per route (d1_62): without them the requests keep the gaps of
+ * the derivation (the input20 view); with them the same derivation gives the final selection (the resolve25 view).
+ */
 export function buildD1InputSnapshot(
   identity: { project: number; moduleName: string },
   artifacts: D1InputArtifacts,
   previous: D1InputSnapshot | null,
+  answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
 ): D1InputSnapshot {
   const moduleName = identity.moduleName;
   const paths = inputPaths(moduleName);
@@ -259,6 +264,7 @@ export function buildD1InputSnapshot(
     artifacts.entities,
     access,
     planned,
+    answers,
   );
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
@@ -896,6 +902,7 @@ function contractRequests(
   entities: Record<string, unknown>,
   access: Record<string, unknown>,
   planned: PlannedIds,
+  answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]>,
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   const pageIds = [...pages.keys()].sort();
@@ -906,7 +913,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, usecases, tables, entityKind, entities, planned, colliding));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, tables, entityKind, entities, planned, colliding, answers.get(route.route) || []));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -935,15 +942,21 @@ function oneRequest(
   path: string,
   pageId: string,
   route: D2ContractV2Route,
+  definition: D2ContractV2Definition,
   usecases: D1SelectedUsecase[],
   tables: D1SelectedTable[],
   entityKind: Map<string, string>,
   entities: Record<string, unknown>,
   planned: PlannedIds,
   colliding: ReadonlySet<string>,
+  answers: readonly D1RequestGapAnswer[],
 ): D1SelectedRequest {
-  const outputs = requestOutputs(route);
-  const params = requestParams(route);
+  // d1_60/d1_62: the route is derived from its types, the ontology and the resolve25 answers. `meta` is not read.
+  const derived = applyResolutions({ route, definition, entities }, answers);
+  const { outputs, params } = derived;
+  for (const gap of derived.unresolved) {
+    review(problems, 'OUTPUT_UNRESOLVED', path, `Route ${route.route} ${gap.path} is not derived: ${gap.reason}`, route.route);
+  }
   const uses: string[] = [];
   const take = (entity: string, operation: string, transitionKey = ''): void => {
     const match = transitionKey
@@ -1000,7 +1013,10 @@ function oneRequest(
   } else {
     for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
   }
-  return { route: route.route, pageId, kind: route.kind, writes: route.writes ?? '', outputs, params, uses };
+  const request: D1SelectedRequest = { route: route.route, pageId, kind: route.kind, writes: route.writes ?? '', outputs, params, uses };
+  if (derived.computedBy.length) request.computedBy = derived.computedBy;
+  if (derived.unresolved.length) request.unresolved = derived.unresolved;
+  return request;
 }
 
 /** Why a contract request may not create the usecase it needs, or '' when it may. */
@@ -1036,28 +1052,6 @@ function lifecycleHasId(entities: Record<string, unknown>, entity: string, trans
 function isLocalEntity(entity: string, tables: D1SelectedTable[], entities: Record<string, unknown>): boolean {
   if (tables.some(table => table.entity === entity)) return true;
   return text(rec(rec(entities[entity]).storage).target) === 'moduleDatabase';
-}
-
-function requestOutputs(route: D2ContractV2Route): D1RequestOutput[] {
-  const lists = Object.values(route.meta.lists);
-  return Object.entries(route.meta.output).map(([key, row]) => {
-    const list = lists.find(item => item.key === key);
-    const output: D1RequestOutput = { key, entity: row.entity, many: row.many };
-    if (list) {
-      output.page = list.page;
-      output.pageSize = list.pageSize;
-      output.hasMore = list.hasMore;
-    }
-    return output;
-  });
-}
-
-function requestParams(route: D2ContractV2Route): D1RequestParam[] {
-  return Object.entries(route.meta.params).map(([name, row]) => {
-    if ('filters' in row) return { name, target: row.filters, field: row.field };
-    const list = route.meta.lists[row.pages];
-    return { name, target: list?.key ?? '', pages: row.pages };
-  });
 }
 
 function noteContractAccess(

@@ -2,7 +2,7 @@
 
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1ActiveStatus, D1RequestOutput } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
 export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-adapter' as const;
 
@@ -113,7 +113,8 @@ export interface D1ServiceRequestSource {
   pageId: string;
   kind: 'qry' | 'cmd';
   uses: string[];
-  outputs: Array<{ key: string; entity: string }>;
+  /** The derived outputs (d1_62): the classification says which projected fields are entity fields. */
+  outputs: Array<Pick<D1RequestOutput, 'key' | 'entity' | 'parent' | 'computed' | 'related' | 'mapped' | 'page' | 'pageSize' | 'hasMore' | 'total'>>;
   params: Array<{ name: string; target: string; field?: string; pages?: string }>;
 }
 

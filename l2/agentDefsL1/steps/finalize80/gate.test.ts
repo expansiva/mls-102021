@@ -334,7 +334,7 @@ function normalization(code: string): { code: string; path: string; detail: stri
 
 function pipeline(): D1PipelineState {
   const state = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-22T12:00:00.000Z'));
-  for (const stepId of ['input20', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const) {
+  for (const stepId of ['input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const) {
     state.steps[stepId] = { status: 'approved', updatedAt: state.updatedAt, artifactPaths: [] };
   }
   return state;

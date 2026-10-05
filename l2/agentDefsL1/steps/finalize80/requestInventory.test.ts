@@ -10,6 +10,7 @@ import { loadD1Fixture, seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/
 import {
   createD1AgentStep,
   createEntryPipeline,
+  derivationFile,
   inputFile,
   pipelineFile,
   reportFile,
@@ -22,6 +23,10 @@ import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/con
 import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import { readD1UsecaseWork, writeAttempt } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
+import { assembleD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { answersByRoute } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { readResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
 
 const PROJECT = 102047;
 const TIPS = [
@@ -30,7 +35,7 @@ const TIPS = [
   { id: 'reembolsoDespesas-71cca1d', moduleName: 'reembolsoDespesas', reachesFinalize: true },
   { id: 'synthetic-v2', moduleName: 'ledgerDesk', reachesFinalize: true },
 ] as const;
-const BEFORE_USECASES: D1StepId[] = ['input20', 'domain30', 'persistence40'];
+const BEFORE_USECASES: D1StepId[] = ['input20', 'resolve25', 'domain30', 'persistence40'];
 const AFTER_USECASES: D1StepId[] = ['controllers60', 'support70'];
 
 for (const tip of TIPS) {
@@ -76,6 +81,47 @@ for (const tip of TIPS) {
     assert.deepEqual(extras.map(finding => finding.path).sort(), expected);
   });
 }
+
+/**
+ * d1_62 R2b-1. After a whole run, a second /run with the same sources: resolve25 keeps its answers (no model call)
+ * and the defs of the usecases an answer brought, now on disk, are planned again without a conflict. Control: the final
+ * snapshot built on the input20 derivation as previous (the hole the source key closes) refuses those defs.
+ */
+void test('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
+  const moduleName = 'agendaClinica';
+  const host = await readyHost('agendaClinica-53f1f35', moduleName);
+  const report = await runToFinalize(host, moduleName, false);
+  assert.equal(report?.outcome, 'complete');
+  const derivation = JSON.parse(host.files[fileKey(derivationFile(PROJECT, moduleName))]?.content || '{}') as D1InputSnapshot;
+  const first = readSnapshot(host, moduleName);
+  const fromInput = new Set(derivation.selection.usecases.map(item => item.usecaseId));
+  const answered = first.selection.usecases.filter(item => !fromInput.has(item.usecaseId)).map(item => item.usecaseId);
+  assert.ok(answered.length > 0, 'some usecase enters only through a resolve25 answer');
+  const answeredFiles = first.files.filter(file => file.artifactType === 'usecase' && answered.includes(file.identity));
+  assert.equal(answeredFiles.length, answered.length);
+  for (const file of answeredFiles) assert.ok(Object.values(host.files).some(item => `l1/${item.folder}/${item.shortName}${item.extension}` === file.defPath), file.defPath);
+
+  const agent = createAgent();
+  const ctx = contextFor(moduleName);
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  await runStep(agent, ctx, parent, moduleName, 'input20', 1);
+  assertApproved(host, moduleName, 'input20', '');
+  const resolve = await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, 2);
+  assert.equal(resolve.some(intent => intent.type === 'prompt_ready' || (intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout')), false);
+  assert.match(JSON.stringify(resolve), /kept the answers/);
+  assertApproved(host, moduleName, 'resolve25', '');
+  const second = readSnapshot(host, moduleName);
+  assert.equal(second.consumersReleased, true, JSON.stringify(second.problems.filter(item => item.severity === 'error')));
+  const again = second.files.filter(item => answered.includes(item.identity) && item.artifactType === 'usecase');
+  assert.equal(again.length, answered.length);
+  for (const file of again) assert.notEqual(file.action, 'conflict', file.defPath);
+
+  // Control: with the derivation as previous, the same answers make those defs a conflict.
+  await writeJson(inputFile(PROJECT, moduleName), derivation);
+  const onDerivation = await assembleD1Input(PROJECT, moduleName, answersByRoute(await readResolveReceipt(PROJECT, moduleName)));
+  assert.ok(onDerivation.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && answeredFiles.some(file => file.defPath === item.path)));
+  assert.equal(onDerivation.consumersReleased, false);
+});
 
 /** Frozen plans that input20 refuses never reach finalize80. The refusal is the closed result. */
 function assertInputClosed(host: TestHost, moduleName: string, fixtureId: string): void {
@@ -217,7 +263,9 @@ async function runStep(
 ): Promise<string> {
   const step = createD1AgentStep(stepId, moduleName, PROJECT, 'run');
   step.stepId = order;
-  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, order);
+  const intents = stepId === 'resolve25'
+    ? await runResolve25(agent, meta(), ctx, parent, PROJECT, moduleName, order)
+    : await agent.beforePromptStep!(meta(), ctx, parent, step, order);
   return intents
     .filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status')
     .map(intent => intent.traceMsg || '')

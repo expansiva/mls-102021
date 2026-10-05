@@ -18,6 +18,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { commitD1Unit } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { runResolve25 } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { artifactFile } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
@@ -91,6 +92,7 @@ void test('usecases50 dispatches one worker per selected usecase and a worker do
   const releasedUpdates = released.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
   assert.equal(releasedUpdates.find(intent => intent.stepId === 20)?.status, 'completed');
   assert.equal(releasedUpdates.some(intent => intent.status === 'failed'), false);
+  await runResolve25(agent, meta(), ctx, parent, PROJECT, MODULE, 25);
   const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
   domain.stepId = 30;
   await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
@@ -191,6 +193,7 @@ void test('resume after persistence40 dispatches the same fan-out and does not r
   const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
   input.stepId = 20;
   await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  await runResolve25(agent, meta(), ctx, parent, PROJECT, MODULE, 25);
   const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
   domain.stepId = 30;
   await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
@@ -334,6 +337,7 @@ async function openUsecases(): Promise<{
   const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
   input.stepId = 20;
   await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  await runResolve25(agent, meta(), ctx, parent, PROJECT, MODULE, 25);
   const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
   domain.stepId = 30;
   await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);

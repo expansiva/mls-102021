@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/io.ts" enhancement="_blank"/>
 
 import {
+  derivationFile,
   displayPath,
   inputFile,
   type D1FileInfo,
@@ -18,6 +19,7 @@ import {
   type D1InputArtifacts,
   type D1InputSnapshot,
   type D1PresentDef,
+  type D1RequestGapAnswer,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot, contractPageIds } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
@@ -85,18 +87,29 @@ export async function readD1Input(project: number, moduleName: string): Promise<
   return snapshot;
 }
 
-/** Reads the snapshot inputs and returns the inventory. Writes nothing. */
-export async function assembleD1Input(project: number, moduleName: string): Promise<D1InputSnapshot> {
+/** The input20 receipt: the snapshot without answers, and the key of its sources (d1_62). */
+export type D1InputDerivation = D1InputSnapshot & { sourceKey: string };
+
+/**
+ * Reads the snapshot inputs and returns the inventory. Writes nothing. `previous` is the final `input.json` on disk.
+ * Without `answers` it is the input20 view (the gaps stay); with the resolve25 answers it is the final inventory.
+ */
+export async function assembleD1Input(
+  project: number,
+  moduleName: string,
+  answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
+): Promise<D1InputSnapshot> {
   const previous = await readD1Input(project, moduleName);
   const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
   const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
-  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
+  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
     artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
     previous,
+    answers,
   ));
   sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
   return sealed;
@@ -109,6 +122,39 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
 export async function readD1InputArtifacts(project: number, moduleName: string): Promise<D1InputArtifacts> {
   const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
   return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
+}
+
+/**
+ * The key of the input20 and resolve25 receipts (d1_62): the hash of the snapshot built from the sources alone,
+ * without the present defs, the writer receipts, a previous snapshot or answers. Same sources, same key.
+ */
+export async function d1SourceKey(identity: { project: number; moduleName: string }, artifacts: D1InputArtifacts): Promise<string> {
+  const bare: D1InputArtifacts = { ...artifacts, presentDefs: [], writerReceipts: [] };
+  return sha256Text(stableStringify(withoutHash(seal(buildD1InputSnapshot(identity, bare, null)))));
+}
+
+export async function readD1Derivation(project: number, moduleName: string): Promise<D1InputDerivation | null> {
+  const raw = await readText(derivationFile(project, moduleName));
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const derivation = parsed as D1InputDerivation;
+  if (derivation.schemaVersion !== D1_INPUT_VERSION || typeof derivation.sourceKey !== 'string') return null;
+  if (derivation.project !== project || derivation.moduleName !== moduleName) return null;
+  return derivation;
+}
+
+/** Writes `input20.json` unless the same snapshot with the same key is there. */
+export async function persistD1Derivation(project: number, moduleName: string, snapshot: D1InputSnapshot, sourceKey: string): Promise<{ reused: boolean }> {
+  const existing = await readD1Derivation(project, moduleName);
+  if (existing && existing.sourceKey === sourceKey && existing.snapshotHash === snapshot.snapshotHash) return { reused: true };
+  await writeJson(derivationFile(project, moduleName), { ...snapshot, sourceKey });
+  return { reused: false };
 }
 
 async function loadInputSources(project: number, moduleName: string): Promise<{

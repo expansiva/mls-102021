@@ -48,7 +48,7 @@ export async function readResolveReceipt(project: number, moduleName: string): P
   const parsed = await readParsed(resolveFile(project, moduleName));
   if (!isRecord(parsed) || parsed.schemaVersion !== D1_RESOLVE_VERSION) return null;
   if (parsed.project !== project || parsed.moduleName !== moduleName) return null;
-  if (typeof parsed.snapshotHash !== 'string' || typeof parsed.llmCalls !== 'number' || !Array.isArray(parsed.routes)) return null;
+  if (typeof parsed.sourceKey !== 'string' || typeof parsed.llmCalls !== 'number' || !Array.isArray(parsed.routes)) return null;
   return parsed as unknown as D1ResolveReceipt;
 }
 
