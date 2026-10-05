@@ -1,0 +1,745 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "comandaRestaurante",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "comandaRestaurante.atendimento.cmdCancelarItemComanda",
+      "page": "atendimento",
+      "kind": "cmd",
+      "usecaseRef": "cancelarItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.cmdCreateComanda",
+      "page": "atendimento",
+      "kind": "cmd",
+      "usecaseRef": "createComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.cmdCreateItemComanda",
+      "page": "atendimento",
+      "kind": "cmd",
+      "usecaseRef": "createItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.qryListComanda",
+      "page": "atendimento",
+      "kind": "qry",
+      "usecaseRef": "listComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.qryListItemCardapio",
+      "page": "atendimento",
+      "kind": "qry",
+      "usecaseRef": "listItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.qryListItemComanda",
+      "page": "atendimento",
+      "kind": "qry",
+      "usecaseRef": "listItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.atendimento.qryListMesa",
+      "page": "atendimento",
+      "kind": "qry",
+      "usecaseRef": "listMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.cardapio.cmdCreateItemCardapio",
+      "page": "cardapio",
+      "kind": "cmd",
+      "usecaseRef": "createItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.cardapio.cmdUpdateItemCardapio",
+      "page": "cardapio",
+      "kind": "cmd",
+      "usecaseRef": "updateItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.cardapio.qryListItemCardapio",
+      "page": "cardapio",
+      "kind": "qry",
+      "usecaseRef": "listItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.fechamento.cmdFecharComanda",
+      "page": "fechamento",
+      "kind": "cmd",
+      "usecaseRef": "fecharComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.fechamento.qryListComanda",
+      "page": "fechamento",
+      "kind": "qry",
+      "usecaseRef": "listComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.fechamento.qryListItemCardapio",
+      "page": "fechamento",
+      "kind": "qry",
+      "usecaseRef": "listItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.fechamento.qryListItemComanda",
+      "page": "fechamento",
+      "kind": "qry",
+      "usecaseRef": "listItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.fechamento.qryListMesa",
+      "page": "fechamento",
+      "kind": "qry",
+      "usecaseRef": "listMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.inicio.qryListComanda",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.inicio.qryListItemComanda",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.inicio.qryListMesa",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.mesas.cmdCreateMesa",
+      "page": "mesas",
+      "kind": "cmd",
+      "usecaseRef": "createMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.mesas.cmdUpdateMesa",
+      "page": "mesas",
+      "kind": "cmd",
+      "usecaseRef": "updateMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "comandaRestaurante.mesas.qryListMesa",
+      "page": "mesas",
+      "kind": "qry",
+      "usecaseRef": "listMesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "cancelarItemComanda",
+      "entity": "ItemComanda",
+      "operation": "transition",
+      "transitionRef": "cancelarItemComanda",
+      "ports": [
+        "ItemComanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemComanda.transition",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createComanda",
+      "entity": "Comanda",
+      "operation": "create",
+      "ports": [
+        "Comanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Comanda.create",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createItemCardapio",
+      "entity": "ItemCardapio",
+      "operation": "create",
+      "ports": [
+        "ItemCardapio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemCardapio.create",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createItemComanda",
+      "entity": "ItemComanda",
+      "operation": "create",
+      "ports": [
+        "ItemComanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemComanda.create",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createMesa",
+      "entity": "Mesa",
+      "operation": "create",
+      "ports": [
+        "Mesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Mesa.create",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "fecharComanda",
+      "entity": "Comanda",
+      "operation": "transition",
+      "transitionRef": "fecharComanda",
+      "ports": [
+        "Comanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Comanda.transition",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listComanda",
+      "entity": "Comanda",
+      "operation": "list",
+      "ports": [
+        "Comanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Comanda.list",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listItemCardapio",
+      "entity": "ItemCardapio",
+      "operation": "list",
+      "ports": [
+        "ItemCardapio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemCardapio.list",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listItemComanda",
+      "entity": "ItemComanda",
+      "operation": "list",
+      "ports": [
+        "ItemComanda"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemComanda.list",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listMesa",
+      "entity": "Mesa",
+      "operation": "list",
+      "ports": [
+        "Mesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Mesa.list",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateItemCardapio",
+      "entity": "ItemCardapio",
+      "operation": "update",
+      "ports": [
+        "ItemCardapio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for ItemCardapio.update",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateMesa",
+      "entity": "Mesa",
+      "operation": "update",
+      "ports": [
+        "Mesa"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Mesa.update",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "ComandaRepository",
+      "entity": "Comanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "ItemCardapioRepository",
+      "entity": "ItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "ItemComandaRepository",
+      "entity": "ItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "portId": "MesaRepository",
+      "entity": "Mesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "comanda",
+      "entity": "Comanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "comanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "itemCardapio",
+      "entity": "ItemCardapio",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemCardapio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "itemComanda",
+      "entity": "ItemComanda",
+      "status": "toCreate",
+      "tableRefs": [
+        "itemComanda"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "tableId": "mesa",
+      "entity": "Mesa",
+      "status": "toCreate",
+      "tableRefs": [
+        "mesa"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:Comanda",
+      "actorRefs": [
+        "caixa",
+        "garcom"
+      ],
+      "entityRefs": [
+        "Comanda",
+        "Mesa"
+      ],
+      "sourceRefs": [
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:abrirComanda/criarComanda",
+        "journey:abrirComanda/localizarMesaDisponivel",
+        "journey:cancelarItemComanda/cancelarItemErrado",
+        "journey:cancelarItemComanda/conferirItemLancado",
+        "journey:cancelarItemComanda/localizarComandaParaCorrecao",
+        "journey:fecharComanda/conferirTotalComanda",
+        "journey:fecharComanda/fecharComandaPaga",
+        "journey:fecharComanda/localizarComandaParaFechamento",
+        "journey:lancarItemComanda/adicionarItemComanda",
+        "journey:lancarItemComanda/consultarItemCardapio",
+        "journey:lancarItemComanda/localizarComandaAberta",
+        "ontology:Comanda/lifecycleStates/open",
+        "organism:highlights",
+        "relationship:Comanda/comandaMesa",
+        "relationship:Comanda/itemComandaComanda",
+        "relationship:ItemComanda/itemComandaComanda",
+        "relationship:Mesa/comandaMesa"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes comanda rows by execution id"
+    },
+    {
+      "id": "data:ItemCardapio",
+      "actorRefs": [
+        "caixa",
+        "garcom"
+      ],
+      "entityRefs": [
+        "ItemCardapio"
+      ],
+      "sourceRefs": [
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:abrirComanda/criarComanda",
+        "journey:abrirComanda/localizarMesaDisponivel",
+        "journey:cancelarItemComanda/cancelarItemErrado",
+        "journey:cancelarItemComanda/conferirItemLancado",
+        "journey:cancelarItemComanda/localizarComandaParaCorrecao",
+        "journey:fecharComanda/conferirTotalComanda",
+        "journey:fecharComanda/fecharComandaPaga",
+        "journey:fecharComanda/localizarComandaParaFechamento",
+        "journey:lancarItemComanda/adicionarItemComanda",
+        "journey:lancarItemComanda/consultarItemCardapio",
+        "journey:lancarItemComanda/localizarComandaAberta",
+        "organism:form",
+        "relationship:Comanda/itemComandaComanda",
+        "relationship:ItemCardapio/itemComandaItemCardapio",
+        "relationship:ItemComanda/itemComandaItemCardapio"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes itemCardapio rows by execution id"
+    },
+    {
+      "id": "data:ItemComanda",
+      "actorRefs": [
+        "caixa",
+        "garcom"
+      ],
+      "entityRefs": [
+        "Comanda",
+        "ItemCardapio",
+        "ItemComanda"
+      ],
+      "sourceRefs": [
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:abrirComanda/criarComanda",
+        "journey:abrirComanda/localizarMesaDisponivel",
+        "journey:cancelarItemComanda/cancelarItemErrado",
+        "journey:cancelarItemComanda/conferirItemLancado",
+        "journey:cancelarItemComanda/localizarComandaParaCorrecao",
+        "journey:fecharComanda/conferirTotalComanda",
+        "journey:fecharComanda/fecharComandaPaga",
+        "journey:fecharComanda/localizarComandaParaFechamento",
+        "journey:lancarItemComanda/adicionarItemComanda",
+        "journey:lancarItemComanda/consultarItemCardapio",
+        "journey:lancarItemComanda/localizarComandaAberta",
+        "ontology:ItemComanda/lifecycleStates/launched",
+        "organism:highlights",
+        "relationship:Comanda/itemComandaComanda",
+        "relationship:ItemCardapio/itemComandaItemCardapio",
+        "relationship:ItemComanda/itemComandaComanda",
+        "relationship:ItemComanda/itemComandaItemCardapio"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes itemComanda rows by execution id"
+    },
+    {
+      "id": "data:Mesa",
+      "actorRefs": [
+        "caixa",
+        "garcom"
+      ],
+      "entityRefs": [
+        "Mesa"
+      ],
+      "sourceRefs": [
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:abrirComanda/criarComanda",
+        "journey:abrirComanda/localizarMesaDisponivel",
+        "journey:cancelarItemComanda/cancelarItemErrado",
+        "journey:cancelarItemComanda/conferirItemLancado",
+        "journey:cancelarItemComanda/localizarComandaParaCorrecao",
+        "journey:fecharComanda/conferirTotalComanda",
+        "journey:fecharComanda/fecharComandaPaga",
+        "journey:fecharComanda/localizarComandaParaFechamento",
+        "journey:lancarItemComanda/adicionarItemComanda",
+        "journey:lancarItemComanda/consultarItemCardapio",
+        "journey:lancarItemComanda/localizarComandaAberta",
+        "organism:form",
+        "organism:highlights",
+        "relationship:Comanda/comandaMesa",
+        "relationship:Mesa/comandaMesa"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes mesa rows by execution id"
+    },
+    {
+      "id": "identity:caixa",
+      "actorRefs": [
+        "caixa"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/caixa",
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:fecharComanda/conferirTotalComanda",
+        "journey:fecharComanda/fecharComandaPaga",
+        "journey:fecharComanda/localizarComandaParaFechamento",
+        "organism:form",
+        "organism:highlights",
+        "relationship:Comanda/comandaMesa",
+        "relationship:Comanda/itemComandaComanda",
+        "relationship:ItemCardapio/itemComandaItemCardapio",
+        "relationship:ItemComanda/itemComandaComanda",
+        "relationship:ItemComanda/itemComandaItemCardapio",
+        "relationship:Mesa/comandaMesa"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor caixa declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:garcom",
+      "actorRefs": [
+        "garcom"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/garcom",
+        "grant:caixaFechamentoEcadastroOperacional",
+        "grant:garcomAtendimentoComandas",
+        "journey:abrirComanda/criarComanda",
+        "journey:abrirComanda/localizarMesaDisponivel",
+        "journey:cancelarItemComanda/cancelarItemErrado",
+        "journey:cancelarItemComanda/conferirItemLancado",
+        "journey:cancelarItemComanda/localizarComandaParaCorrecao",
+        "journey:lancarItemComanda/adicionarItemComanda",
+        "journey:lancarItemComanda/consultarItemCardapio",
+        "journey:lancarItemComanda/localizarComandaAberta",
+        "organism:highlights",
+        "relationship:Comanda/comandaMesa",
+        "relationship:Comanda/itemComandaComanda",
+        "relationship:ItemCardapio/itemComandaItemCardapio",
+        "relationship:ItemComanda/itemComandaComanda",
+        "relationship:ItemComanda/itemComandaItemCardapio",
+        "relationship:Mesa/comandaMesa"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor garcom declares no personEntity; the test identity cannot be bound"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "inicio": [
+        "comandaRestaurante.inicio.qryListComanda",
+        "comandaRestaurante.inicio.qryListItemComanda",
+        "comandaRestaurante.inicio.qryListMesa"
+      ],
+      "atendimento": [
+        "comandaRestaurante.atendimento.cmdCancelarItemComanda",
+        "comandaRestaurante.atendimento.cmdCreateComanda",
+        "comandaRestaurante.atendimento.cmdCreateItemComanda",
+        "comandaRestaurante.atendimento.qryListComanda",
+        "comandaRestaurante.atendimento.qryListItemCardapio",
+        "comandaRestaurante.atendimento.qryListItemComanda",
+        "comandaRestaurante.atendimento.qryListMesa"
+      ],
+      "fechamento": [
+        "comandaRestaurante.fechamento.cmdFecharComanda",
+        "comandaRestaurante.fechamento.qryListComanda",
+        "comandaRestaurante.fechamento.qryListItemCardapio",
+        "comandaRestaurante.fechamento.qryListItemComanda",
+        "comandaRestaurante.fechamento.qryListMesa"
+      ],
+      "mesas": [
+        "comandaRestaurante.mesas.cmdCreateMesa",
+        "comandaRestaurante.mesas.cmdUpdateMesa",
+        "comandaRestaurante.mesas.qryListMesa"
+      ],
+      "cardapio": [
+        "comandaRestaurante.cardapio.cmdCreateItemCardapio",
+        "comandaRestaurante.cardapio.cmdUpdateItemCardapio",
+        "comandaRestaurante.cardapio.qryListItemCardapio"
+      ]
+    },
+    "generatedAt": "2026-10-04T06:10:28.470Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}

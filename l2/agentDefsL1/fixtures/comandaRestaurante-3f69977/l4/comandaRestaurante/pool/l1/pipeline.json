@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "2026-09-20-p1-pipeline-v1",
+  "flowId": "agentPlannerL1",
+  "moduleName": "comandaRestaurante",
+  "status": "complete",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-10-04T06:10:28.290Z",
+      "artifactPaths": [
+        "l4/comandaRestaurante/pool/l1/pipeline.json"
+      ]
+    },
+    "plan20": {
+      "status": "approved",
+      "updatedAt": "2026-10-04T06:10:28.475Z",
+      "artifactPaths": [
+        "l4/comandaRestaurante/pool/l2/web/backend.json",
+        "l4/comandaRestaurante/pool/l2/20261004061028_comandaRestaurante-20261004060939_1.json"
+      ]
+    }
+  },
+  "thread": "comandaRestaurante-20261004060939",
+  "round": 1,
+  "messageFile": "l4/comandaRestaurante/pool/l1/20261004061027_comandaRestaurante-20261004060939_1.json",
+  "sourceMessages": [
+    "20261004061027_comandaRestaurante-20261004060939_1.json"
+  ],
+  "needsFile": "l4/comandaRestaurante/pool/l1/web/needs.json",
+  "inventory": {
+    "routes": [],
+    "usecases": [],
+    "ports": [],
+    "tables": [],
+    "present": false
+  },
+  "updatedAt": "2026-10-04T06:10:28.475Z",
+  "pool": [
+    {
+      "at": "2026-10-04T06:10:28.475Z",
+      "file": "l4/comandaRestaurante/pool/l2/20261004061028_comandaRestaurante-20261004060939_1.json",
+      "from": "l1",
+      "to": "l2",
+      "thread": "comandaRestaurante-20261004060939",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "delivered"
+    },
+    {
+      "at": "2026-10-04T06:10:28.475Z",
+      "file": "l4/comandaRestaurante/pool/l1/20261004061027_comandaRestaurante-20261004060939_1.json",
+      "from": "l2",
+      "to": "l1",
+      "thread": "comandaRestaurante-20261004060939",
+      "round": 1,
+      "mode": "estimate",
+      "outcome": "processed"
+    }
+  ]
+}

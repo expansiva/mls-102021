@@ -1,5 +1,9 @@
 # input20
 
+## 2026-10-05 (t1_13 s0)
+
+- List pages, wrappers, named `details`, optionals and relation `items` are classified at any depth, not only at the route-output root. Oracle fixtures with `meta` are unchanged.
+
 ## 2026-10-02 (d1_47)
 
 - The v2 contract defines the usecases. A request that needs a `get`/`list`/`create`/`update`/`delete` the plan lacks creates `<operation><Entity>` (`toCreate`, same shape as a planned one) with a `USECASE_FROM_CONTRACT` review. It stays `REQUEST_USECASE_UNPLANNED` for an entity outside the ontology, a transition or custom operation, an id the plan already names, or a removed id.

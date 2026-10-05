@@ -325,3 +325,41 @@ void test('resolution: filter inputs take the ontology path with their name, els
   assert.deepEqual(command.params, []);
   assert.deepEqual(command.unresolved, []);
 });
+
+const OWNERLESS_ROUTE = 'comandaRestaurante.inicio.carregarResumoOperacional';
+
+/** Nested list, wrapper, named `details`, optional, and `items` as a relation: the five final-contract shapes (t1_13 s0). */
+void test('final contract 3f69977: the 19 routes derive uses; nested lists and relation items', () => {
+  const artifacts = loadD1Artifacts('comandaRestaurante-3f69977', 'comandaRestaurante');
+  const routes: Array<{ route: D2ContractV2Route; definition: D2ContractV2Definition }> = [];
+  for (const source of Object.values(artifacts.contractTexts || {})) {
+    const definition = parseD2ContractV2(source);
+    for (const route of definition.routes) routes.push({ route, definition });
+  }
+  assert.equal(routes.length, 20, 'five pages, twenty routes');
+  const emptyUses: string[] = [];
+  const byRoute = new Map<string, D1DerivedRequest>();
+  for (const item of routes) {
+    const derived = deriveRequest(item.route, item.definition, artifacts.entities);
+    byRoute.set(item.route.route, derived);
+    const uses = derived.outputs.length > 0 || Boolean(item.route.writes);
+    if (!uses) emptyUses.push(item.route.route);
+  }
+  assert.deepEqual(emptyUses, [OWNERLESS_ROUTE]);
+  const locate = byRoute.get('comandaRestaurante.atendimento.atualizarLocalizacaoAtendimento');
+  assert.ok(locate);
+  const lists = locate.outputs.filter(output => output.many && output.page && output.pageSize && output.hasMore);
+  assert.deepEqual(lists.map(output => [output.key, output.entity]).sort(), [
+    ['contextoAtendimento.comandasAbertas', 'Comanda'],
+    ['contextoAtendimento.itensCardapio', 'ItemCardapio'],
+    ['contextoAtendimento.mesasDisponiveis', 'Mesa'],
+  ]);
+  const fechamento = byRoute.get('comandaRestaurante.fechamento.obterComandaParaFechamento');
+  assert.ok(fechamento);
+  const items = fechamento.outputs.find(output => output.key === 'comanda.items');
+  assert.equal(items?.entity, 'ItemComanda');
+  assert.equal(items?.many, true);
+  assert.equal(items?.parent, 'comanda');
+  assert.equal(items?.relationship, 'itemComandaComanda');
+  assert.equal(items?.page, undefined);
+});

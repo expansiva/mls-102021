@@ -288,6 +288,10 @@ function collect(
 ): void {
   for (const member of list) {
     const path = prefix ? `${prefix}.${member.name}` : member.name;
+    if (member.name === 'details') {
+      collectDetails(ctx, member.type, path, leaves, computed, nested);
+      continue;
+    }
     if (interfaceRef(ctx, member.type)) {
       nested.push({ path, type: member.type });
       continue;
@@ -297,9 +301,57 @@ function collect(
       continue;
     }
     const type = member.type.trim();
-    if (type.startsWith('{')) collect(ctx, members(type), path, leaves, computed, nested);
-    else leaves.push(path);
+    if (type.startsWith('{')) {
+      const inner = members(type);
+      if (canonicalList(ctx, inner)) nested.push({ path, type });
+      else collect(ctx, inner, path, leaves, computed, nested);
+    } else leaves.push(path);
   }
+}
+
+/**
+ * `details` (inline or a named interface) is a path of the same entity (`details.*`), not a relation.
+ * A named details type that itself wraps `details: { … }` is unwrapped once, so `DetalhesItemCardapio`
+ * and `ItemComandaDetailsParaFechamento` map to the ontology `details.*` fields.
+ */
+function collectDetails(
+  ctx: Context,
+  type: string,
+  path: string,
+  leaves: string[],
+  computed: string[],
+  nested: Array<{ path: string; type: string }>,
+): void {
+  const body = typeBody(ctx, type);
+  const inner = members(body);
+  const wrapped = inner.find(member => member.name === 'details' && isObjectType(ctx, member.type));
+  if (wrapped) {
+    for (const member of inner) {
+      if (member.name === 'details') collect(ctx, members(typeBody(ctx, member.type)), path, leaves, computed, nested);
+      else collect(ctx, [member], path, leaves, computed, nested);
+    }
+    return;
+  }
+  collect(ctx, inner, path, leaves, computed, nested);
+}
+
+function typeBody(ctx: Context, type: string): string {
+  const ref = interfaceRef(ctx, type);
+  if (ref) return ctx.projections.get(ref.name) || '';
+  return type.trim();
+}
+
+function isObjectType(ctx: Context, type: string): boolean {
+  if (type.trim().startsWith('{')) return true;
+  const ref = interfaceRef(ctx, type);
+  return Boolean(ref && !ref.many);
+}
+
+/** List page at any depth: `items: T[]` together with `page`, `pageSize` and `hasMore`. */
+function canonicalList(ctx: Context, list: readonly Member[]): boolean {
+  const names = new Set(list.map(member => member.name));
+  const items = list.find(member => member.name === LIST_ITEMS);
+  return Boolean(items && interfaceRef(ctx, items.type)?.many && names.has('page') && names.has('pageSize') && names.has('hasMore'));
 }
 
 interface EntityMatch {
