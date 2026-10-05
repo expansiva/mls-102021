@@ -37,7 +37,7 @@ import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
-import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
+import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
 import { answersByRoute, buildResolveReceipt, checkResolveReply, resolveUnits, sourcesDrift } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
@@ -99,10 +99,12 @@ export async function beforeD1ResolvePromptStep(
     return stopStep(context, parentStep, step, hookSequential, `Sources changed after input20 sealed the snapshot${drift.length ? `: ${drift.join(', ')}` : ''}. resolve25 wrote nothing. Run /run again.`);
   }
   const kept = await readResolveReceipt(project, moduleName);
-  if (kept && kept.sourceKey === sourceKey) {
+  const units = resolveUnits(artifacts);
+  // d1_63: the receipt is kept only when it answers the gaps the derivation opens now. A generator change can open
+  // a gap the receipt never asked; reusing it would leave that gap `none` without a call.
+  if (kept && kept.sourceKey === sourceKey && receiptAnswersUnits(kept, units)) {
     return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
   }
-  const units = resolveUnits(artifacts);
   const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, sourceKey, units, repairs: 0 };
   if (!units.length) {
     const receipt = buildResolveReceipt(work, []);
@@ -406,3 +408,11 @@ D1_STEP_HOOKS.resolve25 = {
   beforePromptStep: beforeD1ResolvePromptStep,
   afterPromptStep: afterD1ResolvePromptStep,
 };
+
+/** True when the receipt has, per route, exactly the gap paths of the units. */
+function receiptAnswersUnits(receipt: D1ResolveReceipt, units: readonly D1ResolveUnit[]): boolean {
+  const asked = (paths: readonly string[]): string => [...paths].sort().join('\n');
+  const kept = new Map(receipt.routes.filter(row => row.answers.length).map(row => [row.route, asked(row.answers.map(item => item.path))]));
+  if (kept.size !== units.length) return false;
+  return units.every(unit => kept.get(unit.route) === asked(unit.gaps.map(gap => gap.path)));
+}

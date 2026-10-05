@@ -14,7 +14,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { domainOptionalPaths, optionalSignatureNames } from '/_102021_/l2/agentMaterializeL1/handlers/structure/domainOptional.js';
-import { pathDisclosure, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure, outputNodes, readDisclosureNodes, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import {
   AUTHORITY_UNMAPPED,
   AUTHORITY_UNREAD,
@@ -694,6 +694,8 @@ interface ServiceOutput {
   key: string;
   entity: string;
   fields: string[];
+  /** The classified paths written by controllers60 (d1_63). Absent in an older def. */
+  disclosure?: DisclosureNode[];
   page: string;
   pageSize: string;
   hasMore: string;
@@ -734,10 +736,13 @@ export async function emitRequestService(
   for (const call of loaded) {
     const grants = (exposed.get(call.route) ?? []).map(disclosureGrant);
     if (grants.length === 0) continue;
+    const entityDefinition = (entity: string): unknown => moduleDefinitions.find(item => isRecord(item) && item.artifactType === 'domainEntity' && isRecord(item.data) && item.data.entityId === entity);
     for (const output of call.outputs) {
-      const entityDefinition = moduleDefinitions.find(item => isRecord(item) && item.artifactType === 'domainEntity' && isRecord(item.data) && item.data.entityId === output.entity);
-      const field = output.fields.find(path => pathDisclosure(grants, output.entity, path, entityDefinition) !== 'disclosed');
-      if (field) return { code: 'DISCLOSURE_EXCEEDS_GRANT', detail: `DISCLOSURE_EXCEEDS_GRANT: ${call.route} ${field}` };
+      for (const node of outputNodes(output)) {
+        const verdict = nodeDisclosure(grants, node, entityDefinition);
+        if (verdict === 'computed') return { code: 'COMPUTED_NOT_DISCLOSED', detail: `COMPUTED_NOT_DISCLOSED: ${call.route} ${node.field}` };
+        if (verdict !== 'disclosed') return { code: 'DISCLOSURE_EXCEEDS_GRANT', detail: `DISCLOSURE_EXCEEDS_GRANT: ${call.route} ${node.field}` };
+      }
     }
   }
   const behavior = stage === 'implement';
@@ -858,7 +863,9 @@ function loadOutputs(route: string, value: unknown): ServiceOutput[] | EmitFailu
     if ([page, pageSize, hasMore].some(name => name && !IDENT.test(name))) {
       return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has a pagination key that is not an identifier.` };
     }
-    outputs.push({ key, entity, fields, page, pageSize, hasMore });
+    const disclosure = readDisclosureNodes(row.disclosure);
+    if (disclosure === null) return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} output ${key} has a disclosure node that is not a classified path.` };
+    outputs.push({ key, entity, fields, ...(disclosure ? { disclosure } : {}), page, pageSize, hasMore });
   }
   return outputs;
 }

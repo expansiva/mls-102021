@@ -336,3 +336,28 @@ function handler(handlers: D1HandlerBinding[], route: string): D1HandlerBinding 
   assert.ok(found, route);
   return found;
 }
+
+void test('d1_63: a calculated value leaves only under fullRecord; otherwise COMPUTED_NOT_DISCLOSED names route and path', () => {
+  const base = seed();
+  const { pageId, query, entity } = pageWithQueryAndCommand(base);
+  const fields = buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const actor = base.pages.find(item => item.pageId === pageId)?.actors[0] || '';
+  const calculated = fields[fields.length - 1];
+  const withComputed = (mode: 'fieldsOnly' | 'fullRecord'): D1ControllerRequest => {
+    const request = seed();
+    const row = (request.serviceRequests || []).find(item => item.route === query);
+    assert.ok(row, query);
+    row.outputs[0].computed = [calculated];
+    request.grants = [
+      grant('only', actor, [entity], mode, mode === 'fieldsOnly' ? [entity] : []),
+      ...request.grants.filter(item => !item.entityRefs.includes(entity)).map(item => ({ ...item })),
+    ];
+    return request;
+  };
+  const closed = buildD1Controllers(withComputed('fieldsOnly'));
+  assert.equal(closed.problems.some(item => item.code === 'COMPUTED_NOT_DISCLOSED' && item.path === query && item.message === `COMPUTED_NOT_DISCLOSED: ${query} ${calculated}`), true, errors(closed));
+  assert.equal(closed.problems.some(item => item.code === 'DISCLOSURE' && item.path === query), false, errors(closed));
+  assert.equal(closed.ok, false);
+  const open = buildD1Controllers(withComputed('fullRecord'));
+  assert.equal(open.problems.some(item => item.path === query && (item.code === 'COMPUTED_NOT_DISCLOSED' || item.code === 'DISCLOSURE')), false, errors(open));
+});

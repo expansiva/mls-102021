@@ -20,7 +20,7 @@ import { readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.
 import { RESOLVE_FANOUT } from '/_102021_/l2/agentDefsL1/steps/resolve25/agentD1Resolve.js';
 import type { D1ResolveGap } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
 import { checkResolveReply, resolveAnswers, resolveUnits } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
-import { readResolveReceipt, readResolveWork, writeResolveAttempt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
+import { readResolveReceipt, readResolveWork, writeResolveAttempt, writeResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
 import { parseFanoutWorkerArg } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
 import { metaResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -212,6 +212,12 @@ void test('resolve25 sends one worker per route with an open part; the tool has 
   const again = await resolveMain(run);
   assert.equal(again.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), false);
   assert.match(JSON.stringify(again), /kept the answers/);
+
+  // d1_63: a receipt of the same sources that does not answer a gap the derivation opens now is not kept.
+  await writeResolveReceipt({ ...receipt, routes: receipt.routes.map((row, index) => index === 0 ? { ...row, answers: row.answers.slice(1) } : row) });
+  const stale = await resolveMain(run);
+  assert.equal(stale.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), true);
+  assert.doesNotMatch(JSON.stringify(stale), /kept the answers/);
 });
 
 void test('resolve25: an answer outside the candidates gets one repair, then the gap stays none', async () => {

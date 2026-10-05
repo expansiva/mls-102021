@@ -23,7 +23,7 @@ import {
   serviceRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import { pathDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure, outputNodes } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { worstOfList } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
@@ -169,11 +169,12 @@ function bindAdapter(
   const attached = grantsOnPage(page, kept.grantIds, request);
   const projected: string[] = [];
   for (const output of row.outputs) {
-    const disclosed = discloseProjection(output.entity, output.fields, attached, request.ontology?.[output.entity]);
-    projected.push(...disclosed.fields);
+    const disclosed = discloseProjection(output, attached, entity => request.ontology?.[entity]);
+    projected.push(...output.fields);
     if (disclosed.blocked.length || disclosed.opaque.length) {
       error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
     }
+    for (const field of disclosed.computed) error(problems, 'COMPUTED_NOT_DISCLOSED', path, `COMPUTED_NOT_DISCLOSED: ${path} ${field}`);
   }
   return {
     route: route.route,
@@ -271,24 +272,26 @@ function matchingGrants(actors: readonly string[], entity: string, grants: reado
 
 /**
  * Each projected path goes through the shared rule (`helpers/l1Defs/disclosure.ts`), the same one
- * the M1 request service applies: only grants about this entity count, and every one of them must
- * disclose the path. `Entity.details.identification` covers that branch and its descendants, not the
- * parent `details` nor a sibling. The projection keeps every declared path; a refused one is reported.
+ * the M1 request service applies, on the node the derived route classified (d1_63): an entity path by its ontology
+ * path and the grants about that entity, a calculated value only under `fullRecord`, a paging key always.
+ * `Entity.details.identification` covers that branch and its descendants, not the parent `details` nor a sibling.
+ * The projection keeps every declared path; a refused one is reported.
  */
 function discloseProjection(
-  entity: string,
-  fields: readonly string[],
+  output: D1ServiceRow['outputs'][number],
   grants: readonly D1ControllerGrant[],
-  entityDefinition: unknown,
-): { fields: string[]; blocked: string[]; opaque: string[] } {
+  entityDefinition: (entity: string) => unknown,
+): { blocked: string[]; opaque: string[]; computed: string[] } {
   const blocked: string[] = [];
   const opaque: string[] = [];
-  for (const field of fields) {
-    const verdict = pathDisclosure(grants, entity, field, entityDefinition);
-    if (verdict === 'blocked') blocked.push(field);
-    else if (verdict === 'carrier') opaque.push(field);
+  const computed: string[] = [];
+  for (const node of outputNodes(output)) {
+    const verdict = nodeDisclosure(grants, node, entityDefinition);
+    if (verdict === 'blocked') blocked.push(node.field);
+    else if (verdict === 'carrier') opaque.push(node.field);
+    else if (verdict === 'computed') computed.push(node.field);
   }
-  return { fields: [...fields], blocked, opaque };
+  return { blocked, opaque, computed };
 }
 
 function disclosureMessage(route: string, blocked: readonly string[], opaque: readonly string[]): string {

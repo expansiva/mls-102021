@@ -87,3 +87,26 @@ void test('grant modes keep the v1 rule: fullRecord all, no allowedFields nothin
   // A route with grants and no access scope in the module is not read as open.
   assert.equal('code' in await emit(['id'], [controller(['loaderBay'])]) && (await emit(['id'], [controller(['loaderBay'])]) as EmitFailure).code, 'GRANT_UNREAD');
 });
+
+/** d1_63: the def carries the nodes controllers60 classified; the request service applies the same rule on them. */
+const classified = (disclosure: unknown) => def('requestService', 'bay', [UC], {
+  pageId: 'bay',
+  requests: [{ route: ROUTE, kind: 'qry', uses: ['listJjCrate'], transaction: 'none', outputs: [{ key: 'crates', entity: 'JjCrate', fields: ['label', 'tally', 'ratio'], disclosure }], params: [] }],
+});
+const nodes = [
+  { kind: 'entity', field: 'label', entity: 'JjCrate', path: 'label' },
+  { kind: 'entity', field: 'tally', entity: 'JjCrate', path: 'details.tally' },
+  { kind: 'computed', field: 'ratio', entity: 'JjCrate' },
+];
+
+void test('d1_63: a mapped path is checked on its ontology path; a calculated value needs fullRecord (COMPUTED_NOT_DISCLOSED)', async () => {
+  const sees = scope([grant('loaderBay', 'fieldsOnly', ['JjCrate.label', 'JjCrate.details.tally'])]);
+  const run = async (disclosure: unknown, modules: unknown[]) => code(await emitRequestService(classified(disclosure), OUT, read, modules, 'structure'));
+  assert.equal(await run(nodes.slice(0, 2), [declared, sees, controller(['loaderBay'])]), 'ok');
+  assert.equal(await run(nodes, [declared, sees, controller(['loaderBay'])]), `COMPUTED_NOT_DISCLOSED: ${ROUTE} ratio`);
+  assert.equal(await run(nodes, [declared, scope([grant('loaderBay', 'fullRecord')]), controller(['loaderBay'])]), 'ok');
+  const byName = scope([grant('loaderBay', 'fieldsOnly', ['JjCrate.label', 'JjCrate.tally'])]);
+  assert.equal(await run(nodes.slice(0, 2), [declared, byName, controller(['loaderBay'])]), `DISCLOSURE_EXCEEDS_GRANT: ${ROUTE} tally`);
+  const bad = await emitRequestService(classified([{ kind: 'entity', field: 'label' }]), OUT, read, [declared, sees, controller(['loaderBay'])], 'structure');
+  assert.equal('code' in bad && bad.code, 'PROJECTION_FIELD_UNKNOWN');
+});

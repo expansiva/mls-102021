@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/contracts.ts" enhancement="_blank"/>
 
+import type { DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import type { D1ActiveStatus, D1RequestOutput } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
@@ -122,6 +123,11 @@ export interface D1ServiceOutput {
   key: string;
   entity: string;
   fields: string[];
+  /**
+   * Each projected path classified by the ontology (d1_63), read by the D1 plan and by the M1 request service through
+   * `nodeDisclosure`. Absent in a def written before d1_63: the paths are then read as entity paths (`outputNodes`).
+   */
+  disclosure?: DisclosureNode[];
 }
 
 export interface D1ServiceParam {

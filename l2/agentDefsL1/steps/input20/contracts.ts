@@ -106,7 +106,7 @@ export interface D1RequestOutput {
   parent?: string;
   /** L4 relationshipId that links this output to `parent` (d1_60). */
   relationship?: string;
-  /** `readonly` field paths: calculated, not asked of the ontology; candidate rules are the route rules (d1_60). */
+  /** `readonly` field paths that are no field of `entity`, direct or mapped: calculated (d1_60, d1_63). */
   computed?: string[];
   /** Field paths that belong to an entity linked to `entity` by one N:1 relationship (d1_60). */
   related?: D1RequestRelatedField[];

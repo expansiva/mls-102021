@@ -1,8 +1,9 @@
 /// <mls fileReference="_102021_/l2/helpers/l1Defs/disclosure.ts" enhancement="_blank"/>
 
 /**
- * The one disclosure rule for a projected entity path (t1_10 r2), read by the D1 controller plan
- * (controllers60) and by the M1 request service (emit.ts). Every path rule lives in `pathDisclosure`.
+ * The one disclosure rule for a projected path (t1_10 r2, d1_63), read by the D1 controller plan
+ * (controllers60) and by the M1 request service (emit.ts) through `nodeDisclosure`. Every entity path rule lives in
+ * `pathDisclosure`.
  */
 
 export interface DisclosureGrant {
@@ -41,6 +42,61 @@ export function pathDisclosure(
   const refusing = covering.filter(grant => !grantDiscloses(grant, entity, path));
   if (refusing.length === 0) return 'disclosed';
   return refusing.every(grant => allowedOf(grant, entity).some(item => item.startsWith(`${path}.`))) ? 'carrier' : 'blocked';
+}
+
+/**
+ * One projected contract path, classified by what it is in the ontology (d1_63). The D1 plan (controllers60) builds
+ * the nodes from the derived route; the M1 request service reads the same nodes from the request service def.
+ * - `entity`: a field of `entity` at the ontology `path` (direct, mapped, a field of an N:1 entity, or a field of a
+ *   nested relation, whose `entity` is the related one). Checked by `pathDisclosure`.
+ * - `computed`: a readonly value that is no ontology path of `entity`, the entity that owns the output.
+ * - `paging`: a paging key of a list page. Not entity data.
+ */
+export type DisclosureNode =
+  | { kind: 'entity'; field: string; entity: string; path: string }
+  | { kind: 'computed'; field: string; entity: string }
+  | { kind: 'paging'; field: string };
+
+/** The nodes of one output. A def without `disclosure` (before d1_63) reads each path as a path of its entity. */
+export function outputNodes(output: { entity: string; fields: readonly string[]; disclosure?: readonly DisclosureNode[] }): DisclosureNode[] {
+  return output.disclosure
+    ? [...output.disclosure]
+    : output.fields.map(field => ({ kind: 'entity' as const, field, entity: output.entity, path: field }));
+}
+
+/** The `disclosure` of a def read back: undefined when absent, null when any node is not a node (fail closed). */
+export function readDisclosureNodes(value: unknown): DisclosureNode[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const nodes: DisclosureNode[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.field !== 'string' || !item.field) return null;
+    if (item.kind === 'paging') nodes.push({ kind: 'paging', field: item.field });
+    else if (item.kind === 'computed' && typeof item.entity === 'string' && item.entity) nodes.push({ kind: 'computed', field: item.field, entity: item.entity });
+    else if (item.kind === 'entity' && typeof item.entity === 'string' && item.entity && typeof item.path === 'string' && item.path) {
+      nodes.push({ kind: 'entity', field: item.field, entity: item.entity, path: item.path });
+    } else return null;
+  }
+  return nodes;
+}
+
+/** `computed`: a calculated value without a `fullRecord` grant of its entity (`COMPUTED_NOT_DISCLOSED`). */
+export type NodeDisclosure = PathDisclosure | 'computed';
+
+/**
+ * The one rule for a classified path. An entity path goes through `pathDisclosure` on its ontology path. A paging key
+ * leaves. A calculated value leaves only when every grant that covers its entity is `fullRecord`, and there is one:
+ * an aggregate of records may reveal what the fields do not, so it is closed by default.
+ */
+export function nodeDisclosure(
+  grants: readonly DisclosureGrant[],
+  node: DisclosureNode,
+  entityDefinition: (entity: string) => unknown,
+): NodeDisclosure {
+  if (node.kind === 'paging') return 'disclosed';
+  if (node.kind === 'entity') return pathDisclosure(grants, node.entity, node.path, entityDefinition(node.entity));
+  const covering = coveringGrants(grants, node.entity);
+  return covering.length > 0 && covering.every(grant => grant.disclosure === 'fullRecord') ? 'disclosed' : 'computed';
 }
 
 /**

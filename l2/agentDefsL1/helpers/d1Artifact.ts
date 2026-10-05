@@ -9,6 +9,7 @@ import {
   type M1Status,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
+import { readDisclosureNodes } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
 export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
 export type { M1Status, M1Status as D1DefinitionStatus };
@@ -1055,10 +1056,11 @@ function outputIssues(output: unknown, path: string, issues: string[]): void {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(output, ['key', 'entity', 'fields'], path, issues);
+  unknownKeys(output, ['key', 'entity', 'fields', 'disclosure'], path, issues);
   needString(output, 'key', path, issues);
   needString(output, 'entity', path, issues);
   stringList(output.fields, `${path}.fields`, issues);
+  if (readDisclosureNodes(output.disclosure) === null) issues.push(`Invalid field ${path}.disclosure: each node is a classified path (d1_63).`);
 }
 
 function paramIssues(param: unknown, path: string, issues: string[]): void {

@@ -12,6 +12,7 @@ import type {
   D1ServiceRequestSource,
   D1ServiceRow,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import type { DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
 export interface RequestServiceCheck {
   pageId: string;
@@ -141,10 +142,16 @@ export function serviceRowsFor(
         outputs.push({ key, entity: derived.entity, fields: [] });
         continue;
       }
-      outputs.push({ key, entity: derived.entity, fields });
       // A list page (`{ items: Row[]; total; ... }`) is checked on the fields of its items; the wrapper is paging.
-      const items = derived.page || derived.pageSize || derived.hasMore || derived.total ? pageItemsBody(projection?.body || '', definition) : null;
+      const items = isPage(derived) ? pageItemsBody(projection?.body || '', definition) : null;
       const checked = items === null ? fields : interfaceFieldPaths(items) || [];
+      const disclosure = disclosureNodes(derived, items ?? projection?.body ?? '', checked, '', source.outputs, definition);
+      if (disclosure === null) {
+        error(problems, 'CONTRACT_UNPARSED', route.route, `Route ${route.route} output ${key} nests a relation with no readable interface.`);
+        outputs.push({ key, entity: derived.entity, fields });
+      } else {
+        outputs.push({ key, entity: derived.entity, fields, disclosure });
+      }
       entityPaths.set(`${route.route}\n${key}`, entityFieldPaths(derived, checked, source.outputs));
     }
     const params: D1ServiceParam[] = [];
@@ -196,6 +203,49 @@ function entityFieldPaths(
   return fields
     .filter(field => !skip.has(field) && !nested.some(child => field === child || field.startsWith(`${child}.`)))
     .map(field => mapped.get(field) ?? field);
+}
+
+function isPage(output: D1ServiceRequestSource['outputs'][number]): boolean {
+  return Boolean(output.page || output.pageSize || output.hasMore || output.total);
+}
+
+/**
+ * Each projected path of one output, classified by the derived route (d1_63): a paging key; a readonly value that is
+ * no ontology path (`computed`); a field of an N:1 entity, checked on that entity; a mapped field, checked on the
+ * ontology path it stands for; a nested relation, whose fields are classified the same way on the related entity.
+ * Null when a nested relation has no readable interface.
+ */
+function disclosureNodes(
+  output: D1ServiceRequestSource['outputs'][number],
+  body: string,
+  fields: readonly string[],
+  prefix: string,
+  all: D1ServiceRequestSource['outputs'],
+  definition: D2ContractV2Definition,
+): DisclosureNode[] | null {
+  const nodes: DisclosureNode[] = [output.page, output.pageSize, output.hasMore, output.total]
+    .filter((item): item is string => Boolean(item))
+    .map(item => ({ kind: 'paging' as const, field: `${prefix}${item}` }));
+  const computed = new Set(output.computed || []);
+  const related = new Map((output.related || []).map(item => [item.field, item.entity]));
+  const mapped = new Map((output.mapped || []).map(item => [item.field, item.path]));
+  const children = all.filter(item => item.parent === output.key).map(item => ({ item, path: item.key.slice(output.key.length + 1) }));
+  for (const field of fields) {
+    if (children.some(child => field === child.path || field.startsWith(`${child.path}.`))) continue;
+    if (computed.has(field)) nodes.push({ kind: 'computed', field: `${prefix}${field}`, entity: output.entity });
+    else nodes.push({ kind: 'entity', field: `${prefix}${field}`, entity: related.get(field) ?? output.entity, path: mapped.get(field) ?? field });
+  }
+  for (const child of children) {
+    const typeName = outputTypeName(body, child.path.split('.').pop() || '');
+    const projection = typeName ? definition.projections.find(item => item.name === typeName) : undefined;
+    const childBody = projection ? (isPage(child.item) ? pageItemsBody(projection.body, definition) : projection.body) : null;
+    const childFields = childBody === null ? null : interfaceFieldPaths(childBody);
+    if (childBody === null || childFields === null) return null;
+    const nested = disclosureNodes(child.item, childBody, childFields, `${prefix}${child.path}.`, all, definition);
+    if (nested === null) return null;
+    nodes.push(...nested);
+  }
+  return nodes;
 }
 
 export function fieldsByEntity(ontology: Readonly<Record<string, unknown>>): Map<string, Set<string>> {

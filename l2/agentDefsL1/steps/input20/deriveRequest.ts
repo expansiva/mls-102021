@@ -167,6 +167,7 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
     return choice;
   });
   if (open) {
+    readonlyFields(ctx, key, typeName, computed, null);
     shadowNested(ctx, key, nested);
     return;
   }
@@ -177,6 +178,7 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
     chosen = match.found.find(item => item.entity === entity) || null;
   }
   if (!chosen) {
+    readonlyFields(ctx, key, typeName, computed, null);
     shadowNested(ctx, key, nested);
     return;
   }
@@ -190,10 +192,44 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
       : ask(ctx, `output.${key}`, 'relationship', `${chosen.entity} inside ${parent.entity} needs one L4 relationship between them; found ${ids.length}.`, ids);
     if (relationship) output.relationship = relationship;
   }
-  if (computed.length) output.computed = computed;
+  const readonly = readonlyFields(ctx, key, typeName, computed, chosen.entity);
+  mapped.push(...readonly.mapped);
+  const calculated = readonly.calculated;
+  if (calculated.length) output.computed = calculated;
   if (chosen.related.length) output.related = chosen.related;
   if (mapped.length) output.mapped = mapped;
   for (const item of nested) visit(ctx, `${key}.${item.path}`, item.type, output);
+}
+
+/**
+ * d1_63: `readonly` says only that the page does not write the value. A readonly value that is a field of the entity is
+ * that field. One whose last segment names other ontology paths asks which (the `fieldPath` gap of a flattened field),
+ * so it is asked in the same pass as the other gaps: with the entity still open (`entity` null) the candidates are the
+ * paths of any entity, as for a flattened field; once the entity is known, only its own paths are accepted. What is
+ * neither, and a gap left open or `none`, stays calculated (closed at disclosure). No choice is made by name.
+ */
+function readonlyFields(
+  ctx: Context,
+  key: string,
+  typeName: string,
+  computed: readonly string[],
+  entity: string | null,
+): { mapped: D1RequestMappedField[]; calculated: string[] } {
+  const mapped: D1RequestMappedField[] = [];
+  const calculated: string[] = [];
+  const own = entity === null ? null : ctx.fields.get(entity) || new Set<string>();
+  for (const path of computed) {
+    if (own ? own.has(path) : ownedByAny(ctx, path)) continue;
+    const candidates = own
+      ? [...own].filter(item => item !== path && item.split('.').pop() === path.split('.').pop())
+      : pathsEndingIn(ctx, path.split('.').pop() || path);
+    const choice = candidates.length
+      ? ask(ctx, `output.${key}.${path}`, 'fieldPath', `Interface ${typeName}: readonly ${path} is not a field of ${entity ?? 'the output entity'}; it may stand for one of its paths.`, candidates)
+      : null;
+    if (choice) mapped.push({ field: path, path: choice });
+    else calculated.push(path);
+  }
+  return { mapped, calculated };
 }
 
 /**
