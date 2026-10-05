@@ -144,7 +144,11 @@ function bindAdapter(
     const usecase = request.usecases.find(item => item.usecaseId === usecaseId);
     if (usecase && !entities.includes(usecase.entity)) entities.push(usecase.entity);
   }
-  const matched: string[] = [];
+  // d1_65: an aggregate no entity owns (a `computed` node without `entity`) takes its authority from the route's own
+  // grants that exist in the L4 access artifact. With no entity output those are the authority of the route.
+  const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
+  const routeGrants = ownerless.length ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
+  const matched: string[] = entities.length === 0 ? [...routeGrants] : [];
   for (const entity of entities) {
     for (const grant of matchingGrants(page.actors, entity, request.grants)) {
       if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
@@ -158,7 +162,15 @@ function bindAdapter(
     existing => existing.serviceFunction === serviceFunction,
     problems,
   );
-  if (!kept.preserved) {
+  // A route that also has entity outputs keeps the entity authority; the aggregate needs one of those grants to be a
+  // valid route grant too.
+  if (ownerless.length && !kept.grantIds.some(grantId => routeGrants.includes(grantId))) {
+    error(problems, 'NO_AUTHORITY', path, `NO_AUTHORITY: ${path} ${ownerless.join(', ')} has no entity, and no route grant valid in the L4 access artifact covers it. No permissive fallback was applied.`);
+  }
+  const ownerlessOnly = ownerless.length > 0 && entities.length === 0;
+  if (ownerlessOnly) {
+    // No entity to cover: the authority is the route grants checked above.
+  } else if (!kept.preserved) {
     const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
     const missing = entities.length === 0 ? [path] : uncovered;
     for (const entity of missing) {
@@ -196,6 +208,38 @@ function bindAdapter(
     steps: HANDLER_STEPS,
     scopePlan: scopePlans(attached, request.relationships, problems, path),
   };
+}
+
+/**
+ * The grants a route declares (`access.grants`) that the L4 access artifact has, for an actor of this page and of the
+ * route. L4 stays the source: a route grant it does not have, or of an actor that does not match, is an error here
+ * (`CONTRACT_ACCESS_DIVERGENT`). The actor list is compared only when the parser split it into ids (as input20 does);
+ * a grant id that is not an id is refused.
+ */
+function routeGrantIds(
+  request: D1ControllerRequest,
+  source: string,
+  path: string,
+  page: D1ControllerPage,
+  problems: D1ControllerProblem[],
+): string[] {
+  const access = readContractV2(source)?.routes.find(item => item.route === path)?.access;
+  if (!access) return [];
+  const actorsSplit = access.actors.every(actor => isSafeToken(actor));
+  const valid: string[] = [];
+  for (const grantId of access.grants) {
+    const grant = isSafeToken(grantId) ? request.grants.find(item => item.grantId === grantId) : undefined;
+    if (!grant) {
+      error(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is not in the L4 access artifact. L4 stays the source.`);
+      continue;
+    }
+    if (!page.actors.includes(grant.actorRef) || (actorsSplit && !access.actors.includes(grant.actorRef))) {
+      error(problems, 'CONTRACT_ACCESS_DIVERGENT', path, `CONTRACT_ACCESS_DIVERGENT: ${path} grant ${grantId} is for actor ${grant.actorRef}, who is not an actor of this route and page. L4 stays the source.`);
+      continue;
+    }
+    if (!valid.includes(grantId)) valid.push(grantId);
+  }
+  return valid;
 }
 
 function grantsOnPage(

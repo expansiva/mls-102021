@@ -49,7 +49,8 @@ export function pathDisclosure(
  * the M1 request service take them from the request tree of the def (`requestTree.ts` `outputViews`, d1_61).
  * - `entity`: a field of `entity` at the ontology `path` (direct, mapped, a field of an N:1 entity, or a field of a
  *   nested relation, whose `entity` is the related one). Checked by `pathDisclosure`.
- * - `computed`: a readonly value that is no ontology path of `entity`, the entity that owns the output.
+ * - `computed`: a readonly value that is no ontology path of `entity`, the entity that owns the output. `entity` is
+ *   empty for an aggregate no entity owns (d1_65).
  * - `paging`: a paging key of a list page. Not entity data.
  */
 export type DisclosureNode =
@@ -82,6 +83,11 @@ export function nodeDisclosure(
 ): NodeDisclosure {
   if (node.kind === 'paging') return 'disclosed';
   if (node.kind === 'entity') return pathDisclosure(grants, node.entity, node.path, entityDefinition(node.entity));
+  // d1_65: an aggregate no entity owns has no entity field to check. It leaves to whoever holds the route authority
+  // (`grants` are the grants of the route), and is closed without one, or when a grant has no declared mode (an
+  // undeclared grant read as `{}`). Alpha risk: a count or a sum may reveal records whose fields the actor does not
+  // see; the L4 reviewer chooses the page grants.
+  if (!node.entity) return grants.length > 0 && grants.every(grant => DECLARED_MODES.includes(grant.disclosure)) ? 'disclosed' : 'computed';
   const covering = coveringGrants(grants, node.entity);
   return covering.length > 0 && covering.every(grant => grant.disclosure === 'fullRecord') ? 'disclosed' : 'computed';
 }
@@ -148,6 +154,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isIdent(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 }
+
+/** The disclosure modes a grant may declare. */
+const DECLARED_MODES: readonly string[] = ['fullRecord', 'fieldsOnly', 'summaryOnly'];
 
 function grantDiscloses(grant: DisclosureGrant, entity: string, path: string): boolean {
   if (grant.disclosure === 'fullRecord') return true;

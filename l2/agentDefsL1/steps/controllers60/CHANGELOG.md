@@ -1,5 +1,10 @@
 # controllers60
 
+## 2026-10-05 (d1_65)
+
+- An aggregate no entity owns (a `computed` node without `entity`) takes its authority from the route `access.grants` the L4 access artifact has, for an actor of the page (and of the route, when the parser split the actors). A route grant L4 does not have, or of another actor, is `CONTRACT_ACCESS_DIVERGENT` (error); no valid one is `NO_AUTHORITY`. A route that also reads an entity keeps the entity authority and needs a valid route grant among it.
+- `nodeDisclosure` discloses that aggregate to the route grants (D1 and M1), closed without one.
+
 ## 2026-10-01 (d1_45 r2)
 
 - A v2 page controller is an adapter: one request-service function per handler, contract path and `<Page>Contracts`, no usecase dependency.
