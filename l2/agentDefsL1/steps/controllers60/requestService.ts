@@ -276,17 +276,54 @@ function docOf(route: D2ContractV2Route): RequestDoc | null {
 function memberBody(body: string, path: string, definition: D2ContractV2Definition): string | null {
   let current = body;
   for (const segment of path.split('.')) {
+    if (!segment) return null;
     // An optional member (`selectedComanda?: ComandaForClosing`) is read as a required one.
-    const typeName = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u').exec(current)?.[1] || '';
+    const named = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u').exec(current);
+    const typeName = named?.[1] || '';
     if (typeName) {
       const projection = definition.projections.find(item => item.name === typeName);
       if (!projection) return null;
       current = projection.body;
       continue;
     }
-    if (!new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*\\{`, 'u').test(current)) return null;
+    const inline = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*\\{`, 'u').exec(current);
+    if (!inline) return null;
+    const open = inline.index + inline[0].length - 1;
+    const inner = braceInner(current, open);
+    if (inner === null) return null;
+    current = inner;
   }
   return current;
+}
+
+/** Text inside the `{` at `open`, or null when the brace does not close. */
+function braceInner(source: string, open: number): string | null {
+  let depth = 0;
+  let quote = '';
+  for (let i = open; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === '\\') {
+        i += 1;
+        continue;
+      }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '\'' || ch === '"' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '{') {
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, i);
+    }
+  }
+  return null;
 }
 
 /** The one interface array of a list page wrapper, or null when the wrapper has not exactly one. */
