@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "2026-10-04-d1-resolve-v1",
+  "project": 102047,
+  "moduleName": "comandaRestaurante",
+  "sourceKey": "sha256:94998228fba9c1af2c224292a871f60388f54dd7a0b6ff8085faab30ae49e4f1",
+  "llmCalls": 9,
+  "routes": [
+    {
+      "route": "comandaRestaurante.atendimento.atualizarLocalizacaoAtendimento",
+      "pageId": "atendimento",
+      "answers": [
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "none",
+          "call": "resolve25-worker-r0"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "none",
+          "call": "resolve25-worker-r0"
+        },
+        {
+          "path": "input.mesaTermo",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r0"
+        },
+        {
+          "path": "input.comandaNumero",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r0"
+        },
+        {
+          "path": "input.itemTermo",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r0"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.atendimento.carregarAtendimento",
+      "pageId": "atendimento",
+      "answers": [
+        {
+          "path": "input.page",
+          "kind": "pageParam",
+          "choice": "none",
+          "call": "resolve25-worker-r1"
+        },
+        {
+          "path": "input.pageSize",
+          "kind": "pageParam",
+          "choice": "none",
+          "call": "resolve25-worker-r1"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.atendimento.obterComandaAtendimento",
+      "pageId": "atendimento",
+      "answers": [
+        {
+          "path": "input.comandaId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r2"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.fechamento.buscarComandasAbertas",
+      "pageId": "fechamento",
+      "answers": [
+        {
+          "path": "input.mesaCode",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r3"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.fechamento.carregarFechamento",
+      "pageId": "fechamento",
+      "answers": [
+        {
+          "path": "output.selectedComanda.mesa",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r4"
+        },
+        {
+          "path": "input.comandaId",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r4"
+        },
+        {
+          "path": "input.number",
+          "kind": "filterField",
+          "choice": "openComandas:number",
+          "call": "resolve25-worker-r4"
+        },
+        {
+          "path": "input.mesaCode",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r4"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.fechamento.carregarMaisComandasAbertas",
+      "pageId": "fechamento",
+      "answers": [
+        {
+          "path": "input.mesaCode",
+          "kind": "filterField",
+          "choice": "none",
+          "call": "resolve25-worker-r5"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.fechamento.fecharComandaPaga",
+      "pageId": "fechamento",
+      "answers": [
+        {
+          "path": "output.comanda.mesa",
+          "kind": "computedRule",
+          "choice": "fechamentoLiberaMesa",
+          "call": "resolve25-worker-r6"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.fechamento.obterComandaParaFechamento",
+      "pageId": "fechamento",
+      "answers": [
+        {
+          "path": "output.comanda.mesa",
+          "kind": "computedRule",
+          "choice": "none",
+          "call": "resolve25-worker-r7"
+        }
+      ]
+    },
+    {
+      "route": "comandaRestaurante.inicio.carregarResumoOperacional",
+      "pageId": "inicio",
+      "answers": [
+        {
+          "path": "output.resumoOperacional",
+          "kind": "computedRule",
+          "choice": "subtotalComandaCalculado",
+          "call": "resolve25-worker-r8"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "comandaRestaurante",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Vejo quais mesas estão disponíveis e os totais das comandas em aberto."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "atendimento",
+      "kind": "page",
+      "label": "Atendimento",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizo mesas disponíveis, comandas abertas e itens do cardápio."
+        },
+        {
+          "kind": "detail",
+          "text": "Vejo a comanda, os itens lançados, o subtotal e o total."
+        },
+        {
+          "kind": "form",
+          "text": "Informo o item do cardápio, a quantidade e a observação para lançar na comanda."
+        },
+        {
+          "kind": "actions",
+          "text": "Abro a comanda da mesa, lanço o item e cancelo o item lançado por engano."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "fechamento",
+      "kind": "page",
+      "label": "Fechamento",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localizo a comanda que vou fechar."
+        },
+        {
+          "kind": "detail",
+          "text": "Confero os itens, o subtotal e o total da comanda."
+        },
+        {
+          "kind": "form",
+          "text": "Registro o desconto e o pagamento."
+        },
+        {
+          "kind": "actions",
+          "text": "Fecho a comanda paga e libero a mesa."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "mesas",
+      "kind": "page",
+      "label": "Mesas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo as mesas da casa e se estão disponíveis."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastro e atualizo as mesas usadas na operação."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "cardapio",
+      "kind": "page",
+      "label": "Cardápio",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo os itens do cardápio."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastro e atualizo os itens do cardápio usados na operação."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:garcom": [
+      "inicio",
+      "atendimento"
+    ],
+    "actor:caixa": [
+      "inicio",
+      "fechamento",
+      "mesas",
+      "cardapio"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "abrirComanda": [
+        "atendimento"
+      ],
+      "lancarItemComanda": [
+        "atendimento"
+      ],
+      "cancelarItemComanda": [
+        "atendimento"
+      ],
+      "fecharComanda": [
+        "fechamento"
+      ]
+    },
+    "processes": {},
+    "records": {
+      "Mesa": [
+        "mesas"
+      ],
+      "ItemCardapio": [
+        "cardapio"
+      ]
+    },
+    "removed": []
+  }
+}

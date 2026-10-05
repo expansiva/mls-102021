@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-09-24-d1-calls-v1",
+  "kind": "derived",
+  "usecaseId": "listItemComanda",
+  "planId": "usecases50-worker-listItemComanda",
+  "unitAttempts": 0,
+  "invocation": 1
+}

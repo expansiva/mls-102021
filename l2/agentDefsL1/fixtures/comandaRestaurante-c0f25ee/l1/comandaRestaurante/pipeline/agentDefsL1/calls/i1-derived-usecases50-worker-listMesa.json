@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "2026-09-24-d1-calls-v1",
+  "kind": "derived",
+  "usecaseId": "listMesa",
+  "planId": "usecases50-worker-listMesa",
+  "unitAttempts": 0,
+  "invocation": 1
+}
