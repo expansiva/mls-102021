@@ -1,7 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import {
   displayPath,
   draftFile,
@@ -34,6 +33,7 @@ import {
   recordCallEvent,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import {
+  USECASES_FANOUT,
   barrierStep,
   decideRepairs,
   fanoutExecution,
@@ -57,6 +57,17 @@ import {
   writeD1UsecaseWork,
   writePromptEvidence,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import {
+  addStepIntent as addStep,
+  findOpenParent,
+  findPlanStep,
+  isFanoutBarrier,
+  parseFanoutBarrier,
+  planIdFromText,
+  planPresent,
+  fanoutRepairOpen,
+  unwrapToolPayload,
+} from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
 import { deriveUsecaseSteps } from '/_102021_/l2/agentDefsL1/steps/usecases50/derive.js';
 import { closedFromRequest, parseWorkerReply, usecaseHumanPrompt, usecaseTool, workerStepShape } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 
@@ -72,7 +83,7 @@ export async function beforeD1UsecasesPromptStep(
   if (planId === 'usecases50-fanout') {
     return [updateStatus(context, parentStep, step, hookSequential, 'in_progress', 'usecases50 fan-out is waiting for workers.')];
   }
-  if (isBarrierPlan(planId)) return barrier(context, parentStep, step, hookSequential);
+  if (isFanoutBarrier(USECASES_FANOUT, planId)) return barrier(context, parentStep, step, hookSequential);
   if (planId.startsWith('usecases50-worker-') || planId.startsWith('usecases50-repair-')) {
     return prepareWorker(context, parentStep, step, hookSequential, args || step.prompt || '');
   }
@@ -102,7 +113,7 @@ export async function beforeD1UsecasesPromptStep(
     if (JSON.stringify(approved) !== JSON.stringify(pipeline)) await writeJson(checkpointFile, approved);
     const mutationParent = findOpenParent(context, parentStep);
     const kept = `usecases50 kept the defs for ${parsed.prompt.moduleName}. No model was called.`;
-    if (anchorPresent(context)) {
+    if (planPresent(context, 'usecases50-done')) {
       return [updateStatus(context, mutationParent, step, hookSequential, 'completed', kept)];
     }
     await openCallResume(parsed.prompt.project, parsed.prompt.moduleName);
@@ -149,7 +160,7 @@ export async function afterD1UsecasesPromptStep(
   if (planId === 'usecases50-fanout') {
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'usecases50 fan-out closed. The barrier step decides repair.')];
   }
-  if (isBarrierPlan(planId)) {
+  if (isFanoutBarrier(USECASES_FANOUT, planId)) {
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'usecases50 barrier already decided.')];
   }
   if (planId.startsWith('usecases50-worker-') || planId.startsWith('usecases50-repair-')) {
@@ -273,7 +284,7 @@ async function finishWorker(
 ): Promise<mls.msg.AgentIntent[]> {
   const arg = parseWorkerArg(prompt);
   if (!arg) return completeOnly(context, parentStep, step, hookSequential, 'Worker args are not a usecase id.');
-  const payload = unwrapPayload(step);
+  const payload = unwrapToolPayload(step, 'steps');
   const parsed = !payload.present
     ? { steps: null, problems: [{ code: 'OPERATIONAL', message: 'The model reply did not arrive.' }] }
     : payload.value === undefined
@@ -311,7 +322,7 @@ async function barrier(
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  const prompt = parseBarrier(step.prompt || '');
+  const prompt = parseFanoutBarrier(USECASES_FANOUT, step.prompt || '');
   if (!prompt) return completeOnly(context, parentStep, step, hookSequential, 'Barrier prompt is not a usecase dispatch.');
   const work = await readD1UsecaseWork(prompt.project, prompt.moduleName);
   if (!work) return completeOnly(context, parentStep, step, hookSequential, 'usecases50 work file is missing.');
@@ -325,7 +336,7 @@ async function barrier(
     globalAttempts: work.repairs,
     feedbackFor: usecaseId => classified.find(item => item.usecaseId === usecaseId)?.trace || '',
   });
-  const fresh = decision.repairs.filter(order => !repairOpen(context, order.usecaseId));
+  const fresh = decision.repairs.filter(order => !fanoutRepairOpen(USECASES_FANOUT, context, order.usecaseId));
   if (decision.repairs.length) {
     if (!fresh.length) {
       return completeOnly(context, parentStep, step, hookSequential, 'barrier left repairs already open.');
@@ -380,9 +391,9 @@ async function barrier(
   }
   const mutationParent = findOpenParent(context, parentStep);
   const calls = accountCalls(await readCallLog(prompt.project, prompt.moduleName));
-  const anchor = anchorPresent(context) ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, calls)];
+  const anchor = planPresent(context, 'usecases50-done') ? [] : [doneAnchor(context, mutationParent, prompt.project, prompt.moduleName, artifact, calls)];
   const message = `usecases50 wrote ${committed.written.length} usecase defs.`;
-  const usecases = usecasesStep(context);
+  const usecases = findPlanStep(context, 'usecases50');
   return [
     ...anchor,
     updateStatus(context, mutationParent, step, hookSequential, 'completed', message),
@@ -407,68 +418,6 @@ function classify(usecaseId: string, attempts: readonly D1AttemptTrace[], build:
   const errors = build.problems.filter(problem => problem.severity === 'error' && problem.path === usecaseId);
   if (!errors.length) return attempt;
   return { ...attempt, status: 'repairable', trace: errors.map(problem => problem.message).join(' ') };
-}
-
-function unwrapPayload(step: mls.msg.AIAgentStep): { present: boolean; value: unknown } {
-  const first = step.interaction?.payload?.[0];
-  if (first === undefined || first === null) return { present: false, value: undefined };
-  return { present: true, value: unwrapValue(first) };
-}
-
-function unwrapValue(value: unknown): unknown {
-  if (typeof value === 'string') {
-    try {
-      return unwrapValue(JSON.parse(value) as unknown);
-    } catch {
-      return undefined;
-    }
-  }
-  if (!isRecord(value)) return undefined;
-  if ('steps' in value) return value;
-  if (typeof value.args === 'string') return unwrapValue(value.args);
-  if (value.arguments !== undefined) return unwrapValue(value.arguments);
-  if (isRecord(value.function) && value.function.arguments !== undefined) return unwrapValue(value.function.arguments);
-  if (value.result !== undefined) return unwrapValue(value.result);
-  return undefined;
-}
-
-function parseBarrier(prompt: string): { project: number; moduleName: string } | null {
-  try {
-    const parsed = JSON.parse(prompt) as unknown;
-    if (!isRecord(parsed) || typeof parsed.planId !== 'string' || !isBarrierPlan(parsed.planId)) return null;
-    if (typeof parsed.project !== 'number' || typeof parsed.moduleName !== 'string') return null;
-    return { project: parsed.project, moduleName: parsed.moduleName };
-  } catch {
-    return null;
-  }
-}
-
-function isBarrierPlan(planId: string): boolean {
-  return planId === 'usecases50-barrier' || /^usecases50-barrier-\d+$/.test(planId);
-}
-
-function repairOpen(context: mls.msg.ExecutionContext, usecaseId: string): boolean {
-  return allSteps(context).some(item => {
-    if (item.type !== 'agent') return false;
-    if (item.status === 'completed' || item.status === 'failed') return false;
-    const arg = parseWorkerArg(item.prompt || '');
-    return arg?.usecaseId === usecaseId && arg.planId.startsWith('usecases50-repair-');
-  });
-}
-
-function usecasesStep(context: mls.msg.ExecutionContext): mls.msg.AIAgentStep | null {
-  const found = allSteps(context).find(item => item.type === 'agent' && item.planning?.planId === 'usecases50');
-  return found?.type === 'agent' ? found : null;
-}
-
-function planIdFromText(prompt: string): string {
-  try {
-    const parsed = JSON.parse(prompt) as unknown;
-    if (!isRecord(parsed) || typeof parsed.planId !== 'string') return '';
-    return parsed.planId;
-  } catch {
-    return '';
-  }
 }
 
 function agentFile(folder: string, shortName: string): D1FileInfo {
@@ -510,7 +459,7 @@ async function closeUnresolved(
     : `Wrote ${committed.written.length} usecase defs.`;
   const trace = `usecases50 closed. ${writeNote} Unresolved: ${named}. ${reason}. The next phase is not released.`;
   const stopped = `stopped: usecases50 is held.${reason ? ` ${reason}` : ''}`;
-  const usecases = usecasesStep(context);
+  const usecases = findPlanStep(context, 'usecases50');
   const intents: mls.msg.AgentIntent[] = [];
   if (usecases && usecases.stepId !== step.stepId && usecases.status !== 'completed' && usecases.status !== 'failed') {
     intents.push(updateStatus(context, findOpenParent(context, parentStep), usecases, hookSequential, 'completed', trace));
@@ -615,21 +564,6 @@ function refuse(
   return stopStep(context, parentStep, step, hookSequential, message);
 }
 
-function addStep(
-  context: mls.msg.ExecutionContext,
-  parentStep: mls.msg.AIAgentStep,
-  step: mls.msg.AIPayload,
-): mls.msg.AgentIntentAddStep {
-  return {
-    type: 'add-step',
-    messageId: context.message.orderAt,
-    threadId: context.message.threadId,
-    taskId: context.task?.PK || '',
-    parentStepId: parentStep.stepId,
-    step,
-  };
-}
-
 function doneAnchor(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -657,30 +591,6 @@ function doneAnchor(
     }),
     planning: { planId: 'usecases50-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
-}
-
-function findOpenParent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep): mls.msg.AIAgentStep {
-  const current = allSteps(context).find(item => item.stepId === parentStep.stepId);
-  if (current?.type === 'agent' && current.status !== 'completed' && current.status !== 'failed') return current;
-  const root = context.task?.iaCompressed?.nextSteps?.[0];
-  return root?.type === 'agent' ? root : parentStep;
-}
-
-function anchorPresent(context: mls.msg.ExecutionContext): boolean {
-  return allSteps(context).some(item => planIdOf(item as mls.msg.AIAgentStep) === 'usecases50-done');
-}
-
-function allSteps(context: mls.msg.ExecutionContext): mls.msg.AIPayload[] {
-  const root = context.task?.iaCompressed?.nextSteps || [];
-  const out: mls.msg.AIPayload[] = [];
-  const walk = (steps: mls.msg.AIPayload[]) => {
-    for (const step of steps) {
-      out.push(step);
-      if (step.nextSteps?.length) walk(step.nextSteps);
-    }
-  };
-  walk(root);
-  return out;
 }
 
 D1_STEP_HOOKS.usecases50 = {

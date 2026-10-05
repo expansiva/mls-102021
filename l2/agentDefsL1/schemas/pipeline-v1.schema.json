@@ -23,7 +23,7 @@
     "status": { "type": "string", "enum": ["inProgress", "awaitingStep", "complete", "failed"] },
     "awaitingStep": {
       "type": "string",
-      "enum": ["entry10", "input20", "domain30", "persistence40", "usecases50", "controllers60", "support70", "finalize80"]
+      "enum": ["entry10", "input20", "resolve25", "domain30", "persistence40", "usecases50", "controllers60", "support70", "finalize80"]
     },
     "command": { "type": "string", "enum": ["run", "resume"] },
     "steps": {
@@ -32,6 +32,7 @@
       "properties": {
         "entry10": { "$ref": "#/$defs/stepState" },
         "input20": { "$ref": "#/$defs/stepState" },
+        "resolve25": { "$ref": "#/$defs/stepState" },
         "domain30": { "$ref": "#/$defs/stepState" },
         "persistence40": { "$ref": "#/$defs/stepState" },
         "usecases50": { "$ref": "#/$defs/stepState" },

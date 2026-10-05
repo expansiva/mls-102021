@@ -2,18 +2,28 @@
 
 import type { D1PromptEvidence } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import {
-  D1_AGENT_NAME,
-  D1_MAX_PARALLEL,
-  D1_REPAIR_GLOBAL_MAX,
-  D1_REPAIR_PER_UNIT,
-  dynamicPlanId,
-  repairAllowed,
-} from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+  barrierStepFor,
+  decideFanoutRepairs,
+  fanoutExecution as sharedFanoutExecution,
+  fanoutStepFor,
+  fanoutWorkerArg,
+  firstFanoutWorkerArg,
+  parseFanoutWorkerArg,
+  repairStepFor,
+  FANOUT_TITLE as SHARED_FANOUT_TITLE,
+  type D1FanoutConfig,
+} from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
 
-export const FANOUT_TITLE = 'Generating {{completed}}/{{total}} items, failed {{failed}}';
+/** usecases50 on the shared fan-out (`helpers/d1Fanout.ts`): one worker per selected usecase. */
+export const USECASES_FANOUT: D1FanoutConfig = {
+  stepId: 'usecases50',
+  unitKey: 'usecaseId',
+  after: 'persistence40-done',
+  noun: 'workers',
+  barrierTitle: 'Usecases barrier',
+};
 
-const ARG_KEYS = ['attempt', 'feedback', 'globalAttempts', 'moduleName', 'planId', 'project', 'unitAttempts', 'usecaseId'];
+export const FANOUT_TITLE = SHARED_FANOUT_TITLE;
 
 export interface D1WorkerArg {
   planId: string;
@@ -54,196 +64,54 @@ export interface D1BarrierDecision {
 
 /** Compact, stable JSON. One arg is one usecase. */
 export function workerArg(arg: D1WorkerArg): string {
-  const body: Record<string, string | number> = {
-    attempt: arg.attempt,
-    globalAttempts: arg.globalAttempts,
-    moduleName: arg.moduleName,
-    planId: arg.planId,
-    project: arg.project,
-    unitAttempts: arg.unitAttempts,
-    usecaseId: arg.usecaseId,
-  };
-  if (arg.feedback) body.feedback = arg.feedback;
-  return JSON.stringify(body);
+  const { usecaseId, ...rest } = arg;
+  return fanoutWorkerArg(USECASES_FANOUT, { ...rest, unitId: usecaseId });
 }
 
 export function parseWorkerArg(value: string): D1WorkerArg | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    return null;
-  }
-  if (!isRecord(parsed)) return null;
-  for (const key of Object.keys(parsed)) {
-    if (!ARG_KEYS.includes(key)) return null;
-  }
-  const planId = typeof parsed.planId === 'string' ? parsed.planId : '';
-  const moduleName = typeof parsed.moduleName === 'string' ? parsed.moduleName : '';
-  const usecaseId = typeof parsed.usecaseId === 'string' ? parsed.usecaseId : '';
-  const project = parsed.project;
-  if (!planId || !moduleName || !usecaseId) return null;
-  if (typeof project !== 'number' || !Number.isInteger(project) || project <= 0) return null;
-  const workerId = planId === `usecases50-worker-${usecaseId}`;
-  const repairId = /^usecases50-repair-\d+$/.test(planId);
-  if (!workerId && !repairId) return null;
-  return {
-    planId,
-    moduleName,
-    project,
-    usecaseId,
-    attempt: numberOr(parsed.attempt),
-    unitAttempts: numberOr(parsed.unitAttempts),
-    globalAttempts: numberOr(parsed.globalAttempts),
-    feedback: typeof parsed.feedback === 'string' ? parsed.feedback : '',
-  };
+  const parsed = parseFanoutWorkerArg(USECASES_FANOUT, value);
+  if (!parsed) return null;
+  const { unitId, ...rest } = parsed;
+  return { ...rest, usecaseId: unitId };
 }
 
 export function firstWorkerArg(project: number, moduleName: string, usecaseId: string): string {
-  return workerArg({
-    planId: dynamicPlanId('usecases50', 'worker', usecaseId),
-    moduleName,
-    project,
-    usecaseId,
-    attempt: 0,
-    unitAttempts: 0,
-    globalAttempts: 0,
-    feedback: '',
-  });
+  return firstFanoutWorkerArg(USECASES_FANOUT, project, moduleName, usecaseId);
 }
 
 export function fanoutStep(project: number, moduleName: string, args: readonly string[]): mls.msg.AIAgentStep {
-  return {
-    type: 'agent',
-    stepId: 0,
-    // Same parent interaction as agentNewSolution5 parallelEntityStep. The host
-    // refuses a parallel child update-status, and will not start the child LLM,
-    // when this step has progress and no interaction.
-    interaction: {
-      input: [{ type: 'system', content: '<!-- modelType: reasoning -->' }],
-      cost: 0,
-      trace: [`queued ${args.length} usecases50 workers with maxParallel=${D1_MAX_PARALLEL}`],
-      payload: null,
-    },
-    stepTitle: FANOUT_TITLE,
-    status: 'in_progress',
-    nextSteps: [],
-    agentName: D1_AGENT_NAME,
-    prompt: JSON.stringify({ planId: dynamicPlanId('usecases50', 'fanout', ''), moduleName, project, command: 'run' }),
-    rags: [],
-    onFailure: 'continue',
-    progress: { total: args.length, completed: 0, failed: 0, templateTitle: FANOUT_TITLE },
-    planning: {
-      planId: dynamicPlanId('usecases50', 'fanout', ''),
-      dependsOn: ['persistence40-done'],
-      executionMode: 'parallel_dynamic',
-      executionHost: 'client',
-    },
-  };
+  return fanoutStepFor(USECASES_FANOUT, project, moduleName, args);
 }
 
 export function fanoutExecution(args: readonly string[]): mls.msg.ExecutionMode {
-  return { type: 'parallel', args: [...args], maxParallel: D1_MAX_PARALLEL };
+  return sharedFanoutExecution(args);
 }
 
-/**
- * The host marks a parallel parent completed and does not call its afterPrompt.
- * This step depends on the fan-out, so the host unlocks it and runs beforePrompt.
- * A later round depends on the repair plan ids from the round it follows.
- */
 export function barrierStep(project: number, moduleName: string, dependsOn: readonly string[], round: string): mls.msg.AIAgentStep {
-  const planId = dynamicPlanId('usecases50', 'barrier', round);
-  return {
-    type: 'agent',
-    stepId: 0,
-    interaction: null,
-    stepTitle: round ? `Usecases barrier ${round}` : 'Usecases barrier',
-    status: 'waiting_dependency',
-    nextSteps: [],
-    agentName: D1_AGENT_NAME,
-    prompt: JSON.stringify({ planId, moduleName, project, command: 'run' }),
-    rags: [],
-    onFailure: 'continue',
-    planning: {
-      planId,
-      dependsOn: [...dependsOn],
-      executionMode: 'sequential',
-      executionHost: 'client',
-    },
-  };
+  return barrierStepFor(USECASES_FANOUT, project, moduleName, dependsOn, round);
 }
 
-/**
- * One repair per usecase, and no more than the global ceiling.
- * An operational failure is identified and does not take a repair.
- * A missing trace is still identified.
- */
+/** One repair per usecase, and no more than the global ceiling. Same rule as every fan-out step. */
 export function decideRepairs(input: {
   expected: readonly string[];
   attempts: readonly D1AttemptTrace[];
   globalAttempts: number;
   feedbackFor: (usecaseId: string) => string;
 }): D1BarrierDecision {
-  const repairs: D1RepairOrder[] = [];
-  const identified: D1BarrierDecision['identified'] = [];
-  let pause = false;
-  let global = input.globalAttempts;
-  for (const usecaseId of input.expected) {
-    const attempt = input.attempts.find(item => item.usecaseId === usecaseId);
-    const trace = attempt?.trace?.trim() ? attempt.trace : 'missing trace';
-    if (!attempt || attempt.status === 'operational') {
-      identified.push({ usecaseId, trace, code: 'OPERATIONAL' });
-      pause = true;
-      continue;
-    }
-    if (attempt.status === 'parsed') continue;
-    const unitAttempts = attempt.unitAttempts;
-    if (!repairAllowed(unitAttempts, global) || unitAttempts >= D1_REPAIR_PER_UNIT || global >= D1_REPAIR_GLOBAL_MAX) {
-      identified.push({ usecaseId, trace, code: 'REPAIR_EXHAUSTED' });
-      continue;
-    }
-    global += 1;
-    repairs.push({
-      usecaseId,
-      unitAttempts: unitAttempts + 1,
-      globalAttempts: global,
-      planId: dynamicPlanId('usecases50', 'repair', String(global)),
-      feedback: input.feedbackFor(usecaseId),
-    });
-  }
-  return { repairs, identified, pause };
-}
-
-export function repairStep(project: number, moduleName: string, order: D1RepairOrder): mls.msg.AIAgentStep {
+  const decision = decideFanoutRepairs(USECASES_FANOUT, {
+    expected: input.expected,
+    attempts: input.attempts.map(item => ({ unitId: item.usecaseId, status: item.status, trace: item.trace, unitAttempts: item.unitAttempts })),
+    globalAttempts: input.globalAttempts,
+    feedbackFor: input.feedbackFor,
+  });
   return {
-    type: 'agent',
-    stepId: 0,
-    interaction: null,
-    stepTitle: `Repair ${order.usecaseId}`,
-    status: 'waiting_human_input',
-    nextSteps: [],
-    agentName: D1_AGENT_NAME,
-    prompt: workerArg({
-      planId: order.planId,
-      moduleName,
-      project,
-      usecaseId: order.usecaseId,
-      attempt: order.unitAttempts,
-      unitAttempts: order.unitAttempts,
-      globalAttempts: order.globalAttempts,
-      feedback: order.feedback,
-    }),
-    rags: [],
-    onFailure: 'continue',
-    planning: {
-      planId: order.planId,
-      dependsOn: [dynamicPlanId('usecases50', 'fanout', '')],
-      executionMode: 'sequential',
-      executionHost: 'client',
-    },
+    repairs: decision.repairs.map(({ unitId, ...rest }) => ({ usecaseId: unitId, ...rest })),
+    identified: decision.identified.map(({ unitId, ...rest }) => ({ usecaseId: unitId, ...rest })),
+    pause: decision.pause,
   };
 }
 
-function numberOr(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
+export function repairStep(project: number, moduleName: string, order: D1RepairOrder): mls.msg.AIAgentStep {
+  const { usecaseId, ...rest } = order;
+  return repairStepFor(USECASES_FANOUT, project, moduleName, { ...rest, unitId: usecaseId });
 }

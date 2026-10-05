@@ -33,6 +33,7 @@ import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
+import '/_102021_/l2/agentDefsL1/steps/resolve25/agentD1Resolve.js';
 import '/_102021_/l2/agentDefsL1/steps/domain30/agentD1Domain.js';
 import '/_102021_/l2/agentDefsL1/steps/persistence40/agentD1Persistence.js';
 import '/_102021_/l2/agentDefsL1/steps/usecases50/agentD1Usecases.js';
@@ -46,7 +47,7 @@ export function createAgent(): IAgentAsync {
     agentName: D1_AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentDefsL1',
-    agentDescription: 'L1 defs agent — checkpoint, input inventory, domain defs, persistence defs, usecase plans, page controllers, access scope, repository registry and the finalize report. usecases50 calls a model for operation steps only. finalize80 does not.',
+    agentDescription: 'L1 defs agent — checkpoint, input inventory, the open parts of the contract routes, domain defs, persistence defs, usecase plans, page controllers, access scope, repository registry and the finalize report. resolve25 calls a model only for the open parts of a contract route, among closed candidates. usecases50 calls a model for operation steps only. finalize80 does not.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,

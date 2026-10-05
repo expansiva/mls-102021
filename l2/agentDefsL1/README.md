@@ -43,6 +43,7 @@ English, no model, no writes:
 | `l1/<module>/pipeline/agentDefsL1/pipeline.json` | written on the first `/run` |
 | `l1/<module>/pipeline/pipeline.json` | planner file. Never written or removed |
 | `l1/<module>/pipeline/agentDefsL1/input.json` | written by input20. Same bytes are not rewritten |
+| `l1/<module>/pipeline/agentDefsL1/resolve25.json` | written by resolve25: one answer per open part of a contract route. Kept while the snapshot hash is the same |
 | `l1/<module>/pipeline/agentDefsL1/drafts/domain30.json` | written by domain30. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/drafts/persistence40.json` | written by persistence40. A draft does not approve a step |
 | `l1/<module>/pipeline/agentDefsL1/traces/<step><unit>.json` | progress of one unit: previous hash, draft hash, and each file. Not a transaction |
@@ -85,6 +86,12 @@ A changed hash is not overwritten. A future `.ts` path is reported and not
 deleted. mtime is not a version, and an approved checkpoint is not proof that
 the bytes are still there. The same snapshot with intact outputs does not call
 the model.
+
+`resolve25` reads the contract routes from the sources input20 sealed (a changed digest stops it) and
+lists the parts the derivation leaves open, each with closed candidates and `none`. No open part, no model
+call. Otherwise one worker per route, on the shared fan-out (`helpers/d1Fanout.ts`); the tool offers one
+`enum` per part, the gate accepts only a candidate, one repair, then `none`. Until the input20 selection
+reads `resolve25.json` (d1_62 r2 item 2), the answers are recorded and not consumed.
 
 `domain30` writes one domain def per selected entity that is not `preserve`, and
 a value object only when a record reference names it. It approves itself and

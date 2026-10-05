@@ -8,6 +8,7 @@ export const D1_AGENT_NAME = 'agentDefsL1' as const;
 export const D1_FLOW_STEP_IDS = [
   'entry10',
   'input20',
+  'resolve25',
   'domain30',
   'persistence40',
   'usecases50',
@@ -19,11 +20,12 @@ export const D1_FLOW_STEP_IDS = [
 export type D1StepId = typeof D1_FLOW_STEP_IDS[number];
 
 /** Steps that have a hook in this delivery. The flow lists the rest as not implemented. */
-export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80'] as const;
+export const D1_IMPLEMENTED_STEP_IDS = ['entry10', 'input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80'] as const;
 
 export const D1_STEP_TITLES: Record<D1StepId, string> = {
   entry10: 'Entry',
   input20: 'Input',
+  resolve25: 'Resolve',
   domain30: 'Domain',
   persistence40: 'Persistence',
   usecases50: 'Usecases',
@@ -36,7 +38,8 @@ export const D1_STEP_TITLES: Record<D1StepId, string> = {
 export const D1_STEP_DEPENDS_ON: Record<D1StepId, readonly string[]> = {
   entry10: [],
   input20: ['entry10-done'],
-  domain30: ['input20-done'],
+  resolve25: ['input20-done'],
+  domain30: ['resolve25-done'],
   persistence40: ['domain30-done'],
   usecases50: ['persistence40-done'],
   controllers60: ['usecases50-done'],
@@ -217,6 +220,17 @@ export function draftFile(project: number, moduleName: string, step: D1StepId): 
   };
 }
 
+/** `l1/<module>/pipeline/agentDefsL1/resolve25.json` — the resolve25 receipt: one answer per derivation gap (d1_62). */
+export function resolveFile(project: number, moduleName: string): D1FileInfo {
+  return {
+    project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName: 'resolve25',
+    extension: '.json',
+  };
+}
+
 /** `l1/<module>/pipeline/agentDefsL1/report.json` — the finalize80 receipt. */
 export function reportFile(project: number, moduleName: string): D1FileInfo {
   return {
@@ -314,7 +328,7 @@ export function helpText(moduleName: string, project: number): string {
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,
-    'domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript. controllers60 writes one controller def per page and does not call a model. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan, and does not call a model. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle.',
+    'resolve25 asks a model only for the parts of a contract route the code could not derive, choosing among closed candidates, and calls no model when nothing is open. domain30 writes domain defs. persistence40 writes ports, tables and adapters. usecases50 asks a model for operation steps only and does not write TypeScript. controllers60 writes one controller def per page and does not call a model. support70 writes the access scope, the authority map, the repository registry, the seed plan and the effect plan, and does not call a model. finalize80 checks what was persisted and writes the report. It does not call a model and it does not open a repair cycle.',
     pending.length ? `Steps not implemented yet: ${pending.join(', ')}.` : 'Every declared step has a hook.',
   ].join('\n');
 }

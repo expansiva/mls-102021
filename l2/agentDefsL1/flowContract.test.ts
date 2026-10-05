@@ -113,7 +113,7 @@ void test('the pipeline schema is the document the writer enforces', () => {
   assert.deepEqual(Object.keys(schema.properties), [...PIPELINE_KEYS]);
 });
 
-void test('implemented steps are registered, and only usecases50 calls a model', () => {
+void test('implemented steps are registered, and only resolve25 and usecases50 call a model', () => {
   createAgent();
   for (const id of D1_IMPLEMENTED_STEP_IDS) {
     assert.equal(typeof D1_STEP_HOOKS[id]?.beforePromptStep, 'function', id);
@@ -122,7 +122,7 @@ void test('implemented steps are registered, and only usecases50 calls a model',
     if ((D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id)) continue;
     assert.equal(D1_STEP_HOOKS[id], undefined, id);
   }
-  const llmSteps = new Set(['usecases50']);
+  const llmSteps = new Set(['resolve25', 'usecases50']);
   for (const id of D1_IMPLEMENTED_STEP_IDS) {
     const folder = path.join(HERE, 'steps', id);
     const names = readdirSync(folder);

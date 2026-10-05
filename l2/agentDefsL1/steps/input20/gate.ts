@@ -871,7 +871,7 @@ interface PlannedIds {
   removed: Set<string>;
 }
 
-function readContractV2(texts: Record<string, string> | undefined): Map<string, D2ContractV2Definition> {
+export function readContractV2(texts: Record<string, string> | undefined): Map<string, D2ContractV2Definition> {
   const parsed = new Map<string, D2ContractV2Definition>();
   if (!texts) return parsed;
   for (const [pageId, source] of Object.entries(texts)) {

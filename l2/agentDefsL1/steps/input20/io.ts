@@ -88,6 +88,36 @@ export async function readD1Input(project: number, moduleName: string): Promise<
 /** Reads the snapshot inputs and returns the inventory. Writes nothing. */
 export async function assembleD1Input(project: number, moduleName: string): Promise<D1InputSnapshot> {
   const previous = await readD1Input(project, moduleName);
+  const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
+  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
+  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
+  const writerReceipts = await readWriterReceipts(project, moduleName);
+  const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
+  const sealed = seal(buildD1InputSnapshot(
+    { project, moduleName },
+    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
+    previous,
+  ));
+  sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
+  return sealed;
+}
+
+/**
+ * The same sources input20 reads, as artifacts, without the present defs. A later step compares their digests with
+ * the snapshot `sources` to know it reads what input20 sealed (d1_62).
+ */
+export async function readD1InputArtifacts(project: number, moduleName: string): Promise<D1InputArtifacts> {
+  const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
+  return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
+}
+
+async function loadInputSources(project: number, moduleName: string): Promise<{
+  known: Loaded[];
+  loaded: Loaded[];
+  parsed: Map<string, unknown>;
+  contractMap: Record<string, D1ContractAst | null>;
+  contractTexts: Record<string, string>;
+}> {
   const fixed = await Promise.all(fixedPaths(moduleName).map(path => loadOne(project, path)));
   const byPath = new Map(fixed.map(item => [item.path, item]));
   const journeyIndex = rec(byPath.get(inputPaths(moduleName).journeyIndex)?.parsed);
@@ -117,19 +147,7 @@ export async function assembleD1Input(project: number, moduleName: string): Prom
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
     if (contract.loaded.text != null) contractTexts[contract.pageId] = contract.loaded.text;
   }
-
-  const loaded = contracts.map(item => item.loaded);
-  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
-  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous));
-  const writerReceipts = await readWriterReceipts(project, moduleName);
-  const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
-  const sealed = seal(buildD1InputSnapshot(
-    { project, moduleName },
-    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
-    previous,
-  ));
-  sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
-  return sealed;
+  return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts };
 }
 
 export async function persistD1Input(project: number, moduleName: string, snapshot: D1InputSnapshot): Promise<{ reused: boolean }> {
