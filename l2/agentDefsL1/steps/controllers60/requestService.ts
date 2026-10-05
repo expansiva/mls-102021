@@ -2,17 +2,16 @@
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
+import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 import type { D1SelectedRequest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import type {
   D1ControllerProblem,
   D1ControllerRequest,
-  D1ServiceOutput,
   D1ServiceParam,
   D1ServiceRequestSource,
   D1ServiceRow,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
-import type { DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import type { RequestDoc, RequestOutputNode, RequestTreeField } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 
 export interface RequestServiceCheck {
   pageId: string;
@@ -22,11 +21,6 @@ export interface RequestServiceCheck {
   fieldsByEntity: ReadonlyMap<string, ReadonlySet<string>>;
   /** Selected rows per route. Defaults to the built rows. */
   selectedCounts?: ReadonlyMap<string, number>;
-  /**
-   * Per `<route>\n<output key>`, the projected paths that are entity fields, as ontology paths (d1_62). Computed,
-   * related, paging and nested relation fields are checked by their classification, not here. Defaults to `fields`.
-   */
-  entityPaths?: ReadonlyMap<string, readonly string[]>;
 }
 
 /** The controllers60 view of one selected request: the derived outputs with their classification, and the params. */
@@ -37,8 +31,8 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
     kind: request.kind,
     uses: [...request.uses],
     outputs: request.outputs.map(output => {
-      const out: D1ServiceRequestSource['outputs'][number] = { key: output.key, entity: output.entity };
-      for (const key of ['parent', 'page', 'pageSize', 'hasMore', 'total'] as const) if (output[key]) out[key] = output[key];
+      const out: D1ServiceRequestSource['outputs'][number] = { key: output.key, entity: output.entity, many: output.many };
+      for (const key of ['parent', 'relationship', 'page', 'pageSize', 'hasMore', 'total'] as const) if (output[key]) out[key] = output[key];
       if (output.computed?.length) out.computed = [...output.computed];
       if (output.related?.length) out.related = output.related.map(item => ({ ...item }));
       if (output.mapped?.length) out.mapped = output.mapped.map(item => ({ ...item }));
@@ -50,6 +44,8 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
       ...(param.field ? { field: param.field } : {}),
       ...(param.pages ? { pages: param.pages } : {}),
     })),
+    ...(request.computedBy?.length ? { computedBy: request.computedBy.map(item => ({ ...item })) } : {}),
+    ...(request.unresolved?.length ? { unresolved: request.unresolved.map(item => ({ path: item.path, reason: item.reason })) } : {}),
   };
 }
 
@@ -106,11 +102,14 @@ export function requestServiceProblems(input: RequestServiceCheck): D1Controller
         error(problems, 'INVALID_REF', row.route, `Route ${row.route} uses ${usecaseId}, which has no usecase def.`);
       }
     }
-    for (const output of row.outputs) {
-      const known = input.fieldsByEntity.get(output.entity);
-      for (const field of input.entityPaths?.get(`${row.route}\n${output.key}`) ?? output.fields) {
-        if (known?.has(field)) continue;
-        error(problems, 'PROJECTION_FIELD_UNKNOWN', row.route, `Route ${row.route} projects ${output.entity}.${field}, which is not a field of the ontology.`);
+    // The fields of an entity or list node, by the ontology path each stands for. Computed, related, paging and nested
+    // relation paths are other nodes, checked by their classification.
+    for (const node of row.output) {
+      if (node.kind !== 'entity' && node.kind !== 'list') continue;
+      const known = input.fieldsByEntity.get(node.entity);
+      for (const field of node.fields) {
+        if (known?.has(field.path)) continue;
+        error(problems, 'PROJECTION_FIELD_UNKNOWN', row.route, `Route ${row.route} projects ${node.entity}.${field.path}, which is not a field of the ontology.`);
       }
     }
   }
@@ -121,39 +120,15 @@ export function serviceRowsFor(
   pageId: string,
   definition: D2ContractV2Definition,
   selected: readonly D1ServiceRequestSource[],
-): { routes: string[]; rows: D1ServiceRow[]; problems: D1ControllerProblem[]; entityPaths: Map<string, string[]> } {
+): { routes: string[]; rows: D1ServiceRow[]; problems: D1ControllerProblem[] } {
   const problems: D1ControllerProblem[] = [];
   const routes = definition.routes.map(route => route.route);
   const rows: D1ServiceRow[] = [];
-  const entityPaths = new Map<string, string[]>();
   for (const route of definition.routes) {
     const matches = selected.filter(item => item.route === route.route);
     if (matches.length !== 1) continue;
     const source = matches[0];
-    const outputs: D1ServiceOutput[] = [];
-    // d1_62: the outputs are the derived ones (input20 + resolve25), not `meta`. A nested relation is a field of its parent.
-    for (const derived of source.outputs.filter(item => !item.parent)) {
-      const key = derived.key;
-      const typeName = outputTypeName(route.output, key);
-      const projection = typeName ? definition.projections.find(item => item.name === typeName) : undefined;
-      const fields = projection ? interfaceFieldPaths(projection.body) : null;
-      if (!typeName || !fields) {
-        error(problems, 'CONTRACT_UNPARSED', route.route, `Route ${route.route} output ${key} has no readable interface.`);
-        outputs.push({ key, entity: derived.entity, fields: [] });
-        continue;
-      }
-      // A list page (`{ items: Row[]; total; ... }`) is checked on the fields of its items; the wrapper is paging.
-      const items = isPage(derived) ? pageItemsBody(projection?.body || '', definition) : null;
-      const checked = items === null ? fields : interfaceFieldPaths(items) || [];
-      const disclosure = disclosureNodes(derived, items ?? projection?.body ?? '', checked, '', source.outputs, definition);
-      if (disclosure === null) {
-        error(problems, 'CONTRACT_UNPARSED', route.route, `Route ${route.route} output ${key} nests a relation with no readable interface.`);
-        outputs.push({ key, entity: derived.entity, fields });
-      } else {
-        outputs.push({ key, entity: derived.entity, fields, disclosure });
-      }
-      entityPaths.set(`${route.route}\n${key}`, entityFieldPaths(derived, checked, source.outputs));
-    }
+    const output = outputTree(route, source, definition, problems);
     const params: D1ServiceParam[] = [];
     for (const param of source.params) {
       if (!param.field && !param.pages) {
@@ -163,89 +138,137 @@ export function serviceRowsFor(
       }
       params.push(copyParam(param));
     }
+    const doc = docOf(route);
     rows.push({
       route: route.route,
       kind: route.kind,
       uses: [...source.uses],
       transaction: route.kind === 'cmd' ? 'single' : 'none',
-      outputs,
+      output,
       params,
+      rules: [...(route.rules || [])],
+      ...(doc ? { doc } : {}),
     });
   }
-  return { routes, rows, problems, entityPaths };
-}
-
-/** The body of the one interface array of a list page wrapper, or null when the wrapper has not exactly one. */
-function pageItemsBody(body: string, definition: D2ContractV2Definition): string | null {
-  const arrays = [...body.matchAll(/(?:^|[;\n{])\s*(?:readonly\s+)?[A-Za-z_][A-Za-z0-9_]*\??\s*:\s*([A-Z][A-Za-z0-9]*)\[\]/gu)]
-    .map(match => definition.projections.find(item => item.name === match[1]))
-    .filter((item): item is D2ContractV2Definition['projections'][number] => Boolean(item));
-  return arrays.length === 1 ? arrays[0].body : null;
+  return { routes, rows, problems };
 }
 
 /**
- * The projected paths of one output that are fields of its entity, as ontology paths. A readonly value, a field of
- * an N:1 entity, a paging key and a nested relation are verified by their classification; a mapped field is checked
- * by the ontology path it stands for.
+ * The classified output of one route (d1_61), from the derived outputs (input20 + resolve25, d1_62) and the contract
+ * types: one node per output, at its contract path (`contextoAtendimento.comandasAbertas` when an output sits in a
+ * group of outputs; the item array of its parent for a nested relation). The fields of an output split by what the
+ * derivation says they are: its own (direct or mapped, d1_63), N:1 fields of a related entity, readonly values that are
+ * no ontology path. A value tied to a rule in a group and every `output.` gap left open are nodes too. Nothing is
+ * classified here a second time.
  */
-function entityFieldPaths(
-  output: D1ServiceRequestSource['outputs'][number],
-  fields: readonly string[],
-  all: D1ServiceRequestSource['outputs'],
-): string[] {
-  const skip = new Set<string>([
-    ...(output.computed || []),
-    ...(output.related || []).map(item => item.field),
-    ...[output.page, output.pageSize, output.hasMore, output.total].filter((item): item is string => Boolean(item)),
-  ]);
-  const nested = all.filter(item => item.parent === output.key).map(item => item.key.slice(output.key.length + 1));
-  const mapped = new Map((output.mapped || []).map(item => [item.field, item.path]));
-  return fields
-    .filter(field => !skip.has(field) && !nested.some(child => field === child || field.startsWith(`${child}.`)))
-    .map(field => mapped.get(field) ?? field);
+function outputTree(
+  route: D2ContractV2Route,
+  source: D1ServiceRequestSource,
+  definition: D2ContractV2Definition,
+  problems: D1ControllerProblem[],
+): RequestOutputNode[] {
+  const nodes: RequestOutputNode[] = [];
+  const elements = new Map<string, { path: string; body: string }>();
+  for (const derived of source.outputs) {
+    const parent = derived.parent ? elements.get(derived.parent) : undefined;
+    if (derived.parent && !parent) continue;
+    const relative = parent ? derived.key.slice((derived.parent || '').length + 1) : derived.key;
+    const path = parent ? `${parent.path}.${relative}` : derived.key;
+    const body = memberBody(parent ? parent.body : route.output, relative, definition);
+    const page = body !== null && isPage(derived) ? pageItems(body, definition) : null;
+    const element = page ? { path: `${path}.${page.name}`, body: page.body } : body === null ? null : { path, body };
+    const leaves = element ? interfaceFieldPaths(element.body) : null;
+    if (!element || !leaves) {
+      error(problems, 'CONTRACT_UNPARSED', route.route, parent
+        ? `Route ${route.route} output ${path} nests a relation with no readable interface.`
+        : `Route ${route.route} output ${path} has no readable interface.`);
+      continue;
+    }
+    elements.set(derived.key, element);
+    const nested = source.outputs.filter(item => item.parent === derived.key).map(item => item.key.slice(derived.key.length + 1));
+    const computed = derived.computed || [];
+    const related = new Map((derived.related || []).map(item => [item.field, item]));
+    const mapped = new Map((derived.mapped || []).map(item => [item.field, item.path]));
+    const own: RequestTreeField[] = [];
+    const byRelation = new Map<string, Extract<RequestOutputNode, { kind: 'related' }>>();
+    for (const field of leaves) {
+      if (nested.some(child => field === child || field.startsWith(`${child}.`))) continue;
+      if (computed.some(item => field === item || field.startsWith(`${item}.`))) continue;
+      const leaf = { field, path: mapped.get(field) ?? field };
+      const link = related.get(field);
+      if (!link) {
+        own.push(leaf);
+        continue;
+      }
+      const groupKey = `${link.entity}\n${link.relationship}`;
+      const group = byRelation.get(groupKey) ?? { kind: 'related', path: element.path, entity: link.entity, relationship: link.relationship, fields: [] };
+      group.fields.push(leaf);
+      byRelation.set(groupKey, group);
+    }
+    if (parent) {
+      nodes.push({ kind: 'related', path, entity: derived.entity, ...(derived.relationship ? { relationship: derived.relationship } : {}), fields: own });
+    } else if (derived.many || isPage(derived)) {
+      // Inside a page wrapper the paging keys are its members; flat paging keys are members of the route output.
+      const paging: Partial<Record<'page' | 'pageSize' | 'hasMore' | 'total', string>> = {};
+      for (const key of ['page', 'pageSize', 'hasMore', 'total'] as const) {
+        const name = derived[key];
+        if (name) paging[key] = page ? `${path}.${name}` : name;
+      }
+      nodes.push({ kind: 'list', path, entity: derived.entity, items: page ? page.name : '', ...paging, fields: own });
+    } else {
+      nodes.push({ kind: 'entity', path, entity: derived.entity, fields: own });
+    }
+    nodes.push(...byRelation.values());
+    for (const item of computed) nodes.push({ kind: 'computed', path: `${element.path}.${item}`, entity: derived.entity, rules: [...(route.rules || [])] });
+  }
+  for (const item of source.computedBy || []) {
+    if (!nodes.some(node => node.path === item.path)) nodes.push({ kind: 'computed', path: item.path, rules: [item.rule] });
+  }
+  for (const gap of source.unresolved || []) {
+    if (gap.path.startsWith('output.')) nodes.push({ kind: 'unresolved', path: gap.path.slice('output.'.length), reason: gap.reason });
+  }
+  return nodes;
+}
+
+/** The route JSDoc as the parser read it: the raw text and the sections it recognized. */
+function docOf(route: D2ContractV2Route): RequestDoc | null {
+  const jsdoc = route.jsdoc;
+  if (!jsdoc || !jsdoc.raw) return null;
+  const doc: RequestDoc = { raw: jsdoc.raw };
+  for (const key of ['purpose', 'input', 'processing', 'output'] as const) if (jsdoc[key]) doc[key] = jsdoc[key];
+  return doc;
+}
+
+/**
+ * The interface body of the member at `path` (dotted) inside `body`: each segment names an interface, or an inline
+ * object whose members stay in the same text. Null when a segment is neither.
+ */
+function memberBody(body: string, path: string, definition: D2ContractV2Definition): string | null {
+  let current = body;
+  for (const segment of path.split('.')) {
+    // An optional member (`selectedComanda?: ComandaForClosing`) is read as a required one.
+    const typeName = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u').exec(current)?.[1] || '';
+    if (typeName) {
+      const projection = definition.projections.find(item => item.name === typeName);
+      if (!projection) return null;
+      current = projection.body;
+      continue;
+    }
+    if (!new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*\\{`, 'u').test(current)) return null;
+  }
+  return current;
+}
+
+/** The one interface array of a list page wrapper, or null when the wrapper has not exactly one. */
+function pageItems(body: string, definition: D2ContractV2Definition): { name: string; body: string } | null {
+  const arrays = [...body.matchAll(/(?:^|[;\n{])\s*(?:readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)\??\s*:\s*([A-Z][A-Za-z0-9]*)\[\]/gu)]
+    .map(match => ({ name: match[1], projection: definition.projections.find(item => item.name === match[2]) }))
+    .filter((item): item is { name: string; projection: D2ContractV2Definition['projections'][number] } => Boolean(item.projection));
+  return arrays.length === 1 ? { name: arrays[0].name, body: arrays[0].projection.body } : null;
 }
 
 function isPage(output: D1ServiceRequestSource['outputs'][number]): boolean {
   return Boolean(output.page || output.pageSize || output.hasMore || output.total);
-}
-
-/**
- * Each projected path of one output, classified by the derived route (d1_63): a paging key; a readonly value that is
- * no ontology path (`computed`); a field of an N:1 entity, checked on that entity; a mapped field, checked on the
- * ontology path it stands for; a nested relation, whose fields are classified the same way on the related entity.
- * Null when a nested relation has no readable interface.
- */
-function disclosureNodes(
-  output: D1ServiceRequestSource['outputs'][number],
-  body: string,
-  fields: readonly string[],
-  prefix: string,
-  all: D1ServiceRequestSource['outputs'],
-  definition: D2ContractV2Definition,
-): DisclosureNode[] | null {
-  const nodes: DisclosureNode[] = [output.page, output.pageSize, output.hasMore, output.total]
-    .filter((item): item is string => Boolean(item))
-    .map(item => ({ kind: 'paging' as const, field: `${prefix}${item}` }));
-  const computed = new Set(output.computed || []);
-  const related = new Map((output.related || []).map(item => [item.field, item.entity]));
-  const mapped = new Map((output.mapped || []).map(item => [item.field, item.path]));
-  const children = all.filter(item => item.parent === output.key).map(item => ({ item, path: item.key.slice(output.key.length + 1) }));
-  for (const field of fields) {
-    if (children.some(child => field === child.path || field.startsWith(`${child.path}.`))) continue;
-    if (computed.has(field)) nodes.push({ kind: 'computed', field: `${prefix}${field}`, entity: output.entity });
-    else nodes.push({ kind: 'entity', field: `${prefix}${field}`, entity: related.get(field) ?? output.entity, path: mapped.get(field) ?? field });
-  }
-  for (const child of children) {
-    const typeName = outputTypeName(body, child.path.split('.').pop() || '');
-    const projection = typeName ? definition.projections.find(item => item.name === typeName) : undefined;
-    const childBody = projection ? (isPage(child.item) ? pageItemsBody(projection.body, definition) : projection.body) : null;
-    const childFields = childBody === null ? null : interfaceFieldPaths(childBody);
-    if (childBody === null || childFields === null) return null;
-    const nested = disclosureNodes(child.item, childBody, childFields, `${prefix}${child.path}.`, all, definition);
-    if (nested === null) return null;
-    nodes.push(...nested);
-  }
-  return nodes;
 }
 
 export function fieldsByEntity(ontology: Readonly<Record<string, unknown>>): Map<string, Set<string>> {

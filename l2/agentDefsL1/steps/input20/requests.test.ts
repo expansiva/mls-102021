@@ -541,22 +541,21 @@ export interface SlipView {
   assert.ok(definition);
   const sources = snapshot.selection.requests.map(serviceSourceOf);
   const built = serviceRowsFor('board', definition, sources);
-  const check = (entityPaths: ReadonlyMap<string, readonly string[]>) => requestServiceProblems({
+  const check = (rows: typeof built.rows) => requestServiceProblems({
     pageId: 'board',
     contractRoutes: built.routes,
-    requests: built.rows,
+    requests: rows,
     usecaseIds: new Set(snapshot.selection.usecases.map(item => item.usecaseId)),
     fieldsByEntity: fieldsByEntity(artifacts.entities),
-    entityPaths,
   }).filter(problem => problem.code === 'PROJECTION_FIELD_UNKNOWN');
   assert.deepEqual(built.problems, []);
-  assert.deepEqual(check(built.entityPaths), []);
+  assert.deepEqual(check(built.rows), []);
   // Control: without the readonly and N:1 classification, those fields are refused as unknown entity fields.
   const unclassified = serviceRowsFor('board', definition, sources.map(item => ({
     ...item,
     outputs: item.outputs.map(output => ({ ...output, computed: undefined, related: undefined })),
   })));
-  const refused = check(unclassified.entityPaths).map(problem => problem.message);
+  const refused = check(unclassified.rows).map(problem => problem.message);
   assert.ok(refused.some(message => message.includes('DeskNote.label')), refused.join(' | '));
   assert.ok(refused.some(message => message.includes('DeskNote.details.identification.name')), refused.join(' | '));
   // A filter resolve25 left at none has no field: controllers60 says so and does not plan it (no silent filter).

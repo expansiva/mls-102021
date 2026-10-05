@@ -12,10 +12,10 @@
 
 import { isRecord, parseDefinitionSource, readDefinition, semanticHash, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { contentHash } from '/_102021_/l2/agentMaterializeL1/core/io.js';
-import { grantsOf, qualifyFile } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
+import { grantsOf, qualifyFile, readServiceOutputs } from '/_102021_/l2/agentMaterializeL1/handlers/structure/emit.js';
 import { defV1Detail, resolveGrant } from '/_102021_/l2/agentMaterializeL1/handlers/structure/gate.js';
 import { M1_SEED_REF, type M1CaseCaller } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
-import { nodeDisclosure, pathDisclosure, readDisclosureNodes, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure, pathDisclosure, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { isL1Operation, L1_OPERATION_TRAITS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition } from '/_102020_/l2/helpers/contractV2/types.js';
@@ -127,7 +127,7 @@ interface RequestOutput {
   key: string;
   entity: string;
   fields: string[];
-  /** The classified paths controllers60 wrote (d1_63). Absent in an older def. */
+  /** The classified paths of the request tree (d1_61). Absent in a def with the flat `outputs`. */
   disclosure?: DisclosureNode[];
 }
 
@@ -161,8 +161,10 @@ function routeObligationsV2(
   const requests = serviceEntry && Array.isArray(serviceEntry[1].data.requests) ? serviceEntry[1].data.requests.filter(isRecord) : [];
   const found = requests.find(row => row.route === ref.route);
   if (!serviceEntry || !found) return { gap: `REQUEST_UNREAD: no requestService request of page ${String(ref.controller.data.pageId ?? '')} has route ${ref.route}` };
-  const request = requestRow(found);
+  const request = requestRow(ref.route, found);
   if (!request) return { gap: `REQUEST_UNREAD: the request of ${ref.route} has no kind, uses or outputs` };
+  // d1_61: the same reader as the request service emitter; a shape it refuses is no case.
+  if ('code' in request) return { gap: request.detail };
   // Same key the catalog loader reads it under (run/execute.ts prepareCatalog).
   const contractRef = qualifyFile(ref.contractPath, ref.controller.dependencies);
   const text = texts[contractRef] ?? '';
@@ -346,17 +348,14 @@ function storedFieldRefs(
   return refs;
 }
 
-function requestRow(row: Record<string, unknown>): RequestRow | null {
+function requestRow(route: string, row: Record<string, unknown>): RequestRow | { code: string; detail: string } | null {
   const kind = row.kind === 'qry' || row.kind === 'cmd' ? row.kind : null;
   const uses = Array.isArray(row.uses) ? row.uses.filter((item): item is string => typeof item === 'string' && item !== '') : [];
-  if (!kind || uses.length === 0 || !Array.isArray(row.outputs)) return null;
-  const outputs: RequestOutput[] = [];
-  for (const item of row.outputs) {
-    if (!isRecord(item) || typeof item.key !== 'string' || !item.key || typeof item.entity !== 'string' || !Array.isArray(item.fields)) return null;
-    const nodes = readDisclosureNodes(item.disclosure);
-    if (nodes === null) return null;
-    outputs.push({ key: item.key, entity: item.entity, fields: item.fields.filter((field): field is string => typeof field === 'string'), ...(nodes ? { disclosure: nodes } : {}) });
-  }
+  if (!kind || uses.length === 0 || (!Array.isArray(row.output) && !Array.isArray(row.outputs))) return null;
+  const read = readServiceOutputs(route, row);
+  if ('code' in read) return null;
+  if (read.unsupported.length) return { code: 'REQUEST_SHAPE_UNSUPPORTED', detail: read.unsupported.join('\n') };
+  const outputs: RequestOutput[] = read.outputs.map(item => ({ key: item.key, entity: item.entity, fields: [...item.fields], ...(item.disclosure ? { disclosure: item.disclosure } : {}) }));
   const params: RequestParam[] = [];
   for (const item of Array.isArray(row.params) ? row.params : []) {
     if (!isRecord(item) || typeof item.name !== 'string' || typeof item.target !== 'string') continue;

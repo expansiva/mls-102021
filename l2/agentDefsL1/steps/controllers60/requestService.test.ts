@@ -7,6 +7,7 @@ import { seedControllerRequest, seedSnapshot } from '/_102021_/l2/agentDefsL1/st
 import type { D1ServiceRow } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { fieldsByEntity, requestServiceProblems } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import { outputViews } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 
 void test('a contract v2 page controller is an adapter over one request service function', () => {
   for (const [id, moduleName] of [['controleEstoque-39a5166', 'controleEstoque'], ['ledgerBin-39a5166', 'ledgerBin']] as const) {
@@ -25,7 +26,7 @@ void test('a contract v2 page controller is an adapter over one request service 
         const source = selected.find(item => item.route === row.route);
         assert.deepEqual(row.uses, source?.uses, `${id} ${row.route}`);
         assert.equal(row.transaction, row.kind === 'cmd' ? 'single' : 'none');
-        assert.equal(row.outputs.every(output => output.fields.length > 0), true, row.route);
+        assert.equal(outputViews(row.output).every(output => output.fields.length > 0), true, row.route);
       }
       const dependencies = service.definition?.dependencies || [];
       assert.equal(dependencies.every(path => path.includes('/usecases/')), true, dependencies.join(','));
@@ -89,8 +90,9 @@ void test('a command whose transaction is not single fails the gate', () => {
     kind: 'cmd',
     uses: ['writeItem'],
     transaction: 'none',
-    outputs: [{ key: 'card', entity: 'ItemCard', fields: ['id'] }],
+    output: [{ kind: 'entity', path: 'card', entity: 'ItemCard', fields: [{ field: 'id', path: 'id' }] }],
     params: [],
+    rules: [],
   };
   const problems = requestServiceProblems({
     pageId: 'cards',

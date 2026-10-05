@@ -385,24 +385,56 @@
     "serviceRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["route", "kind", "uses", "transaction", "outputs", "params"],
+      "required": ["route", "kind", "uses", "transaction", "output", "params", "rules"],
       "properties": {
         "route": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "enum": ["qry", "cmd"] },
         "uses": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "transaction": { "type": "string", "enum": ["single", "none"] },
-        "outputs": { "type": "array", "items": { "$ref": "#/$defs/serviceOutput" } },
-        "params": { "type": "array", "items": { "$ref": "#/$defs/serviceParam" } }
+        "output": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/serviceOutputNode" } },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/serviceParam" } },
+        "rules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "doc": { "$ref": "#/$defs/serviceDoc" }
       }
     },
-    "serviceOutput": {
+    "serviceOutputNode": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "entity", "fields"],
+      "required": ["kind", "path"],
       "properties": {
-        "key": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["entity", "list", "related", "computed", "unresolved"] },
+        "path": { "type": "string", "minLength": 1 },
         "entity": { "type": "string", "minLength": 1 },
-        "fields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "relationship": { "type": "string", "minLength": 1 },
+        "items": { "type": "string" },
+        "page": { "type": "string", "minLength": 1 },
+        "pageSize": { "type": "string", "minLength": 1 },
+        "hasMore": { "type": "string", "minLength": 1 },
+        "total": { "type": "string", "minLength": 1 },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/serviceOutputField" } },
+        "rules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "serviceOutputField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "path"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "serviceDoc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw"],
+      "properties": {
+        "raw": { "type": "string" },
+        "purpose": { "type": "string" },
+        "input": { "type": "string" },
+        "processing": { "type": "string" },
+        "output": { "type": "string" }
       }
     },
     "serviceParam": {

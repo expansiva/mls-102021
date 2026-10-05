@@ -27,7 +27,7 @@ function def(ids: Ids, artifactType: string, artifactId: string, data: Record<st
   return { schemaVersion: SCHEMA, artifactType, artifactId, moduleName: ids.mod, status: 'generated', dependencies, data } as unknown as M1Definition;
 }
 
-function fixture(ids: Ids, options: { dropRoute?: string; noService?: boolean; noContract?: boolean } = {}): { units: PlanUnitInput[]; texts: Record<string, string> } {
+function fixture(ids: Ids, options: { dropRoute?: string; noService?: boolean; noContract?: boolean; tree?: 'plain' | 'related' } = {}): { units: PlanUnitInput[]; texts: Record<string, string> } {
   const r = (name: string): string => `${ids.mod}.${ids.page}.${name}`;
   const contractPath = `l2/${ids.mod}/web/contracts/${ids.page}.defs.ts`;
   const contractInterface = `${pascal(ids.page)}Contracts`;
@@ -72,17 +72,24 @@ function fixture(ids: Ids, options: { dropRoute?: string; noService?: boolean; n
       mapId: 'authorityMap', entries: [{ grantId: ids.grant, actorRef: ids.actor }],
     }) },
   ];
+  // d1_61: the same rows written as the request tree; `related` adds an N:1 field the M1 does not project.
+  const asTree = (row: Record<string, unknown>): Record<string, unknown> => {
+    const { outputs, ...rest } = row as { outputs: Array<{ key: string; entity: string; fields: string[] }> };
+    const output: unknown[] = outputs.map(item => ({ kind: 'entity', path: item.key, entity: item.entity, fields: item.fields.map(field => ({ field, path: field })) }));
+    if (options.tree === 'related' && row.route === r('r1')) output.push({ kind: 'related', path: 'a1', entity: ids.e2, relationship: 'rel', fields: [{ field: 'y1', path: 'y1' }] });
+    return { ...rest, output, rules: [] };
+  };
   if (!options.noService) {
     units.push({ defPath: `${prefix}/layer_2_application/requests/${ids.page}.defs.ts`, definition: def(ids, 'requestService', ids.page, {
       pageId: ids.page,
-      requests: [
+      requests: ([
         { route: r('r1'), kind: 'qry', uses: [ids.uc1, ids.uc2], transaction: 'none', params: [],
           outputs: [{ key: 'a1', entity: ids.e1, fields: ['id', 'x1'] }, { key: 'a2', entity: ids.e2, fields: ['id', 'y1'] }] },
         { route: r('r2'), kind: 'cmd', uses: [ids.uc1, ids.uc3], transaction: 'single', params: [],
           outputs: [{ key: 'b1', entity: ids.e1, fields: ['id', 'x1'] }] },
         { route: r('r3'), kind: 'cmd', uses: [ids.uc2], transaction: 'single', params: [],
           outputs: [{ key: 'c1', entity: ids.e2, fields: ['id'] }] },
-      ],
+      ] as Record<string, unknown>[]).map(row => options.tree ? asTree(row) : row),
     }) });
   }
   const texts: Record<string, string> = options.noContract ? {} : { [`_${ids.project}_/${contractPath}`]: contract };
@@ -169,6 +176,14 @@ void test('m1_40: an unread source is a visible gap, never an invented case', ()
     assert.equal(reasons.length, 3, code);
     assert.equal(reasons.every(reason => reason.startsWith(`${code}:`)), true, code);
   }
+});
+
+void test('d1_61: the obligations read the request tree with the emitter reader; a node it does not project is a named gap', () => {
+  assert.deepEqual(shape(derive(BASE, { tree: 'plain' }), BASE), shape(derive(BASE), BASE));
+  const related = derive(BASE, { tree: 'related' });
+  assert.equal(related.obligations.some(item => item.routine === 'mxq.pgA.r1'), false);
+  assert.equal(related.obligations.some(item => item.routine === 'mxq.pgA.r2'), true);
+  assert.deepEqual(related.gaps.filter(gap => gap.reason.startsWith('REQUEST_SHAPE_UNSUPPORTED')).map(gap => gap.reason), ['REQUEST_SHAPE_UNSUPPORTED: mxq.pgA.r1 a1.y1 related']);
 });
 
 void test('m1_40: inline contract input members', () => {

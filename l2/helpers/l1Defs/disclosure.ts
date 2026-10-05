@@ -45,8 +45,8 @@ export function pathDisclosure(
 }
 
 /**
- * One projected contract path, classified by what it is in the ontology (d1_63). The D1 plan (controllers60) builds
- * the nodes from the derived route; the M1 request service reads the same nodes from the request service def.
+ * One projected contract path, classified by what it is in the ontology (d1_63). Both the D1 plan (controllers60) and
+ * the M1 request service take them from the request tree of the def (`requestTree.ts` `outputViews`, d1_61).
  * - `entity`: a field of `entity` at the ontology `path` (direct, mapped, a field of an N:1 entity, or a field of a
  *   nested relation, whose `entity` is the related one). Checked by `pathDisclosure`.
  * - `computed`: a readonly value that is no ontology path of `entity`, the entity that owns the output.
@@ -57,27 +57,14 @@ export type DisclosureNode =
   | { kind: 'computed'; field: string; entity: string }
   | { kind: 'paging'; field: string };
 
-/** The nodes of one output. A def without `disclosure` (before d1_63) reads each path as a path of its entity. */
+/**
+ * The nodes of one output. A view of the request tree (`requestTree.ts` `outputViews`, d1_61) carries them; a def
+ * written before the tree (`outputs`) has none, and each path is read as a path of its entity.
+ */
 export function outputNodes(output: { entity: string; fields: readonly string[]; disclosure?: readonly DisclosureNode[] }): DisclosureNode[] {
   return output.disclosure
     ? [...output.disclosure]
     : output.fields.map(field => ({ kind: 'entity' as const, field, entity: output.entity, path: field }));
-}
-
-/** The `disclosure` of a def read back: undefined when absent, null when any node is not a node (fail closed). */
-export function readDisclosureNodes(value: unknown): DisclosureNode[] | null | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) return null;
-  const nodes: DisclosureNode[] = [];
-  for (const item of value) {
-    if (!isRecord(item) || typeof item.field !== 'string' || !item.field) return null;
-    if (item.kind === 'paging') nodes.push({ kind: 'paging', field: item.field });
-    else if (item.kind === 'computed' && typeof item.entity === 'string' && item.entity) nodes.push({ kind: 'computed', field: item.field, entity: item.entity });
-    else if (item.kind === 'entity' && typeof item.entity === 'string' && item.entity && typeof item.path === 'string' && item.path) {
-      nodes.push({ kind: 'entity', field: item.field, entity: item.entity, path: item.path });
-    } else return null;
-  }
-  return nodes;
 }
 
 /** `computed`: a calculated value without a `fullRecord` grant of its entity (`COMPUTED_NOT_DISCLOSED`). */

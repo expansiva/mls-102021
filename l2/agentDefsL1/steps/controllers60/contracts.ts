@@ -1,9 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/controllers60/contracts.ts" enhancement="_blank"/>
 
-import type { DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import type { RequestDoc, RequestOutputNode } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
-import type { D1ActiveStatus, D1RequestOutput } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import type { D1ActiveStatus, D1RequestComputedBy, D1RequestOutput, D1RequestUnresolved } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
 export const D1_CONTROLLER_VERSION = '2026-10-01-d1-controllers-adapter' as const;
 
@@ -115,19 +115,12 @@ export interface D1ServiceRequestSource {
   kind: 'qry' | 'cmd';
   uses: string[];
   /** The derived outputs (d1_62): the classification says which projected fields are entity fields. */
-  outputs: Array<Pick<D1RequestOutput, 'key' | 'entity' | 'parent' | 'computed' | 'related' | 'mapped' | 'page' | 'pageSize' | 'hasMore' | 'total'>>;
+  outputs: Array<Pick<D1RequestOutput, 'key' | 'entity' | 'many' | 'parent' | 'relationship' | 'computed' | 'related' | 'mapped' | 'page' | 'pageSize' | 'hasMore' | 'total'>>;
   params: Array<{ name: string; target: string; field?: string; pages?: string }>;
-}
-
-export interface D1ServiceOutput {
-  key: string;
-  entity: string;
-  fields: string[];
-  /**
-   * Each projected path classified by the ontology (d1_63), read by the D1 plan and by the M1 request service through
-   * `nodeDisclosure`. Absent in a def written before d1_63: the paths are then read as entity paths (`outputNodes`).
-   */
-  disclosure?: DisclosureNode[];
+  /** Readonly values a resolution tied to a route rule (d1_62). */
+  computedBy?: D1RequestComputedBy[];
+  /** What the derivation left open (d1_60). The `output.` ones become `unresolved` nodes of the tree (d1_61). */
+  unresolved?: Array<Pick<D1RequestUnresolved, 'path' | 'reason'>>;
 }
 
 export interface D1ServiceParam {
@@ -142,8 +135,13 @@ export interface D1ServiceRow {
   kind: 'qry' | 'cmd';
   uses: string[];
   transaction: 'single' | 'none';
-  outputs: D1ServiceOutput[];
+  /** The classified output tree (d1_61). It replaces the flat `outputs` of earlier defs. */
+  output: RequestOutputNode[];
   params: D1ServiceParam[];
+  /** The contract route rules. */
+  rules: string[];
+  /** The route JSDoc the contract parser read. Absent when the route has none. */
+  doc?: RequestDoc;
 }
 
 export interface D1RequestServiceItem {

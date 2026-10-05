@@ -14,7 +14,8 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M1_STUB_ERROR, M1_STUB_STATUS } from '/_102021_/l2/agentMaterializeL1/testing/catalog.js';
 import { domainOptionalPaths, optionalSignatureNames } from '/_102021_/l2/agentMaterializeL1/handlers/structure/domainOptional.js';
-import { nodeDisclosure, outputNodes, readDisclosureNodes, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure, outputNodes, type DisclosureGrant, type DisclosureNode } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { elementPath, outputViews, readOutputTree, type RequestOutputNode } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import {
   AUTHORITY_UNMAPPED,
   AUTHORITY_UNREAD,
@@ -690,11 +691,11 @@ interface ServiceUse {
   ports: ServicePort[];
 }
 
-interface ServiceOutput {
+export interface ServiceOutput {
   key: string;
   entity: string;
   fields: string[];
-  /** The classified paths written by controllers60 (d1_63). Absent in an older def. */
+  /** The classified paths of the request tree (d1_61). Absent in a def with the flat `outputs`. */
   disclosure?: DisclosureNode[];
   page: string;
   pageSize: string;
@@ -713,6 +714,8 @@ interface ServiceCall {
   uses: ServiceUse[];
   outputs: ServiceOutput[];
   params: ServiceParam[];
+  /** `REQUEST_SHAPE_UNSUPPORTED` lines of the tree (d1_61). The unit is refused after the disclosure check. */
+  unsupported: string[];
 }
 
 /**
@@ -745,6 +748,10 @@ export async function emitRequestService(
       }
     }
   }
+  // d1_61: what the grants release but this emitter does not project as the contract shape is refused by name, never
+  // emitted as a wrong projection.
+  const unsupported = loaded.flatMap(call => call.unsupported);
+  if (unsupported.length) return { code: 'REQUEST_SHAPE_UNSUPPORTED', detail: unsupported.join('\n') };
   const behavior = stage === 'implement';
   const uses = loaded.flatMap(call => call.uses);
   const specifiers = unique(uses.map(use => use.specifier));
@@ -786,10 +793,15 @@ async function loadService(
     }
     const uses = await loadUses(definition, route, stringList(row.uses), read, registered);
     if ('code' in uses) return uses;
-    const outputs = loadOutputs(route, row.outputs);
-    if ('code' in outputs) return outputs;
+    const shape = readServiceOutputs(route, row);
+    if ('code' in shape) return shape;
+    const { outputs, unsupported } = shape;
     const params = loadParams(route, row.params);
     if ('code' in params) return params;
+    if (unsupported.length) {
+      calls.push({ route, transaction, uses, outputs, params, unsupported });
+      continue;
+    }
     for (const output of outputs) {
       if (!uses.some(use => use.entityId === output.entity)) {
         return { code: 'USECASE_UNBOUND', detail: `${route} projects ${output.entity}, which is not a used usecase.` };
@@ -801,7 +813,7 @@ async function loadService(
         return { code: 'PAGINATION_UNBOUND', detail: `${route} output ${output.key} names ${output.pageSize} and has no pageSize param.` };
       }
     }
-    calls.push({ route, transaction, uses, outputs, params });
+    calls.push({ route, transaction, uses, outputs, params, unsupported: [] });
   }
   return calls;
 }
@@ -846,7 +858,61 @@ async function loadUses(
   return uses;
 }
 
-function loadOutputs(route: string, value: unknown): ServiceOutput[] | EmitFailure {
+/**
+ * The outputs of one request row, the one M1 reader (emit and obligations). A def with the classified tree (`output`,
+ * d1_61) is projected only when every node is one this emitter projects as it is: an `entity` or a flat `list` (no
+ * `total`, no page wrapper) at a root member, whose fields are their own ontology paths. Every other node is a named
+ * refusal, one line per path in `unsupported`: `REQUEST_SHAPE_UNSUPPORTED: <route> <path> <type>`. The outputs still
+ * carry every classified node, so the disclosure check reads the entity, related and computed paths first. The flat
+ * paging keys of a list are not projected, as with the flat `outputs`. A def written before the tree (`outputs`) is
+ * read by name, as before.
+ */
+export function readServiceOutputs(route: string, row: Record<string, unknown>): { outputs: ServiceOutput[]; unsupported: string[] } | EmitFailure {
+  if (row.output === undefined) {
+    const flat = loadFlatOutputs(route, row.outputs);
+    return 'code' in flat ? flat : { outputs: flat, unsupported: [] };
+  }
+  if (row.outputs !== undefined) return { code: 'PROJECTION_UNDECLARED', detail: `${route} declares both output and outputs.` };
+  const tree = readOutputTree(row.output);
+  if (!tree) return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has an output node that is not a classified path.` };
+  if (tree.length === 0) return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
+  const unsupported = unsupportedShapes(tree).map(item => `REQUEST_SHAPE_UNSUPPORTED: ${route} ${item.path} ${item.type}`);
+  const outputs: ServiceOutput[] = [];
+  for (const view of outputViews(tree)) {
+    if (!unsupported.length && (!IDENT.test(view.key) || !IDENT.test(view.entity) || view.fields.length === 0 || view.fields.some(field => !FIELD_PATH.test(field)))) {
+      return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has an output projection that is not a field path.` };
+    }
+    outputs.push({ key: view.key, entity: view.entity, fields: view.fields, disclosure: view.disclosure, page: '', pageSize: '', hasMore: '' });
+  }
+  return { outputs, unsupported };
+}
+
+/** The nodes of a tree this emitter does not project, with the type the refusal names. */
+export function unsupportedShapes(tree: readonly RequestOutputNode[]): Array<{ path: string; type: string }> {
+  const out: Array<{ path: string; type: string }> = [];
+  tree.forEach((node, index) => {
+    if (node.kind === 'related') {
+      // N:1 fields sit on the records of an owner written before them, and are named one by one; a nested relation is
+      // named by its path.
+      const owned = tree.slice(0, index).some(other => other.kind !== 'computed' && other.kind !== 'unresolved' && elementPath(other) === node.path);
+      if (!owned) out.push({ path: node.path, type: node.kind });
+      else for (const field of node.fields) out.push({ path: `${node.path}.${field.field}`, type: node.kind });
+      return;
+    }
+    if (node.kind !== 'entity' && node.kind !== 'list') {
+      out.push({ path: node.path, type: node.kind });
+      return;
+    }
+    // Nested in a group of outputs, or a page wrapper: the projection would not be the contract shape.
+    if (!IDENT.test(node.path) || (node.kind === 'list' && node.items)) out.push({ path: node.path, type: node.kind });
+    if (node.kind === 'list' && node.total) out.push({ path: node.total, type: 'list' });
+    // A field that stands for another ontology path would be projected by its contract name, which the record lacks.
+    for (const field of node.fields) if (field.field !== field.path) out.push({ path: `${elementPath(node)}.${field.field}`, type: 'mapped' });
+  });
+  return out;
+}
+
+function loadFlatOutputs(route: string, value: unknown): ServiceOutput[] | EmitFailure {
   const rows = Array.isArray(value) ? value.filter(isRecord) : [];
   if (rows.length === 0) return { code: 'PROJECTION_UNDECLARED', detail: `${route} has no output projection.` };
   const outputs: ServiceOutput[] = [];
@@ -863,9 +929,7 @@ function loadOutputs(route: string, value: unknown): ServiceOutput[] | EmitFailu
     if ([page, pageSize, hasMore].some(name => name && !IDENT.test(name))) {
       return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} has a pagination key that is not an identifier.` };
     }
-    const disclosure = readDisclosureNodes(row.disclosure);
-    if (disclosure === null) return { code: 'PROJECTION_FIELD_UNKNOWN', detail: `${route} output ${key} has a disclosure node that is not a classified path.` };
-    outputs.push({ key, entity, fields, ...(disclosure ? { disclosure } : {}), page, pageSize, hasMore });
+    outputs.push({ key, entity, fields, page, pageSize, hasMore });
   }
   return outputs;
 }

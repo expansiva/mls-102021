@@ -15,6 +15,7 @@ import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveR
 import type { D1RequestGapAnswer } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readContractV2, serviceRowsFor } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { nodeDisclosure, outputNodes, type DisclosureGrant, type NodeDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { outputViews } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import { disclosure } from '/_102021_/l2/agentMaterializeL1/testing/obligations.js';
 
 const ROUTE = 'qqYard.dock.openCrate';
@@ -127,7 +128,7 @@ function outputOf() {
   const result = derived();
   const built = serviceRowsFor('dock', definition, [{ route: ROUTE, pageId: 'dock', kind: 'cmd', uses: [], outputs: result.outputs, params: [] }]);
   assert.deepEqual(built.problems.filter(item => item.severity === 'error'), []);
-  const output = built.rows[0]?.outputs[0];
+  const output = outputViews(built.rows[0]?.output ?? [])[0];
   assert.ok(output, 'one output row');
   return output;
 }

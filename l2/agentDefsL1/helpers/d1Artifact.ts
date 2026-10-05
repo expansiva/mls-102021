@@ -9,7 +9,7 @@ import {
   type M1Status,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
-import { readDisclosureNodes } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { readOutputTree, readRequestDoc } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 
 export const D1_DEFINITION_SCHEMA = M1_DEFINITION_SCHEMA;
 export type { M1Status, M1Status as D1DefinitionStatus };
@@ -1038,29 +1038,20 @@ function requestRowIssues(row: unknown, path: string, issues: string[]): void {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'outputs', 'params'], path, issues);
+  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'output', 'params', 'rules', 'doc'], path, issues);
   needString(row, 'route', path, issues);
   const kind = needString(row, 'kind', path, issues);
   oneOf(kind, ['qry', 'cmd'], `${path}.kind`, issues);
   stringList(row.uses, `${path}.uses`, issues);
   const transaction = needString(row, 'transaction', path, issues);
   oneOf(transaction, ['single', 'none'], `${path}.transaction`, issues);
-  if (!Array.isArray(row.outputs)) issues.push(`Missing field ${path}.outputs.`);
-  else row.outputs.forEach((output, index) => outputIssues(output, `${path}.outputs.${index}`, issues));
+  // d1_61: the classified output tree. It replaces the flat `outputs`, which this schema no longer accepts.
+  if (!Array.isArray(row.output) || row.output.length === 0) issues.push(`Missing field ${path}.output.`);
+  else if (readOutputTree(row.output) === null) issues.push(`Invalid field ${path}.output: each node is a classified contract path (entity, list, related, computed or unresolved).`);
+  stringList(row.rules, `${path}.rules`, issues);
+  if (readRequestDoc(row.doc) === null) issues.push(`Invalid field ${path}.doc: raw text and the recognized sections.`);
   if (!Array.isArray(row.params)) issues.push(`Missing field ${path}.params.`);
   else row.params.forEach((param, index) => paramIssues(param, `${path}.params.${index}`, issues));
-}
-
-function outputIssues(output: unknown, path: string, issues: string[]): void {
-  if (!isRecord(output)) {
-    issues.push(`Missing field ${path}.`);
-    return;
-  }
-  unknownKeys(output, ['key', 'entity', 'fields', 'disclosure'], path, issues);
-  needString(output, 'key', path, issues);
-  needString(output, 'entity', path, issues);
-  stringList(output.fields, `${path}.fields`, issues);
-  if (readDisclosureNodes(output.disclosure) === null) issues.push(`Invalid field ${path}.disclosure: each node is a classified path (d1_63).`);
 }
 
 function paramIssues(param: unknown, path: string, issues: string[]): void {

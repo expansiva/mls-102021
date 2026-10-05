@@ -5,6 +5,7 @@ import test from 'node:test';
 
 import { seedControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { buildD1Controllers, grantUnionIssues } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
+import { outputViews } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import type { D1ControllerBuild, D1ControllerGrant, D1ControllerRequest, D1HandlerBinding } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
 /** The frozen v2 seed and its renamed copy. Ids are read from the request, never named here. */
@@ -66,7 +67,7 @@ void test('a disclosed field the page grant does not allow is not fixed by a gra
   const request = seed();
   const { pageId, query, entity } = pageWithQueryAndCommand(request);
   const row = (request.serviceRequests || []).find(item => item.route === query);
-  const fields = buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const fields = outputViews(buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output ?? [])[0]?.fields || [];
   assert.ok(row && fields.length >= 2, query);
   const hidden = fields[fields.length - 1];
   const page = request.pages.find(item => item.pageId === pageId);
@@ -90,7 +91,7 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
   const base = seed();
   const { query, entity } = pageWithQueryAndCommand(base);
   const pageId = (base.serviceRequests || []).find(item => item.route === query)?.pageId || '';
-  const fields = buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const fields = outputViews(buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output ?? [])[0]?.fields || [];
   const nested = fields.filter(field => field.split('.').length >= 3);
   assert.ok(nested.length >= 2, fields.join(','));
   const branch = nested[0].split('.').slice(0, 2).join('.');
@@ -128,7 +129,7 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
 void test('fieldsOnly that omits the declared concurrency field still discloses it; a business field stays refused', () => {
   const request = withVersion(seed());
   const { pageId, query, entity } = pageWithQueryAndCommand(request);
-  const fields = buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const fields = outputViews(buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output ?? [])[0]?.fields || [];
   assert.ok(fields.includes('version'), fields.join(','));
   const business = fields.find(field => field !== 'id' && field !== 'version');
   assert.ok(business, fields.join(','));
@@ -152,7 +153,7 @@ void test('version is refused when the entity does not declare it as a concurren
   const record = body && typeof body === 'object' && body !== null && 'record' in body ? (body as { record?: { fields?: Record<string, { derived?: boolean }> } }).record : undefined;
   assert.ok(record?.fields?.version);
   record.fields.version.derived = false;
-  const fields = buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const fields = outputViews(buildD1Controllers(request).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output ?? [])[0]?.fields || [];
   const page = request.pages.find(item => item.pageId === pageId);
   assert.ok(page);
   request.grants = [
@@ -340,7 +341,7 @@ function handler(handlers: D1HandlerBinding[], route: string): D1HandlerBinding 
 void test('d1_63: a calculated value leaves only under fullRecord; otherwise COMPUTED_NOT_DISCLOSED names route and path', () => {
   const base = seed();
   const { pageId, query, entity } = pageWithQueryAndCommand(base);
-  const fields = buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.outputs[0]?.fields || [];
+  const fields = outputViews(buildD1Controllers(seed()).services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output ?? [])[0]?.fields || [];
   const actor = base.pages.find(item => item.pageId === pageId)?.actors[0] || '';
   const calculated = fields[fields.length - 1];
   const withComputed = (mode: 'fieldsOnly' | 'fullRecord'): D1ControllerRequest => {

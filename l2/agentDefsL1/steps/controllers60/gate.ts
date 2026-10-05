@@ -23,7 +23,8 @@ import {
   serviceRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import { nodeDisclosure, outputNodes } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { nodeDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { outputViews, type RequestOutputView } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 import type { D1ActiveStatus } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { worstOfList } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
@@ -168,9 +169,9 @@ function bindAdapter(
   }
   const attached = grantsOnPage(page, kept.grantIds, request);
   const projected: string[] = [];
-  for (const output of row.outputs) {
-    const disclosed = discloseProjection(output, attached, entity => request.ontology?.[entity]);
-    projected.push(...output.fields);
+  for (const view of outputViews(row.output)) {
+    const disclosed = discloseProjection(view, attached, entity => request.ontology?.[entity]);
+    projected.push(...view.fields);
     if (disclosed.blocked.length || disclosed.opaque.length) {
       error(problems, 'DISCLOSURE', path, disclosureMessage(path, disclosed.blocked, disclosed.opaque));
     }
@@ -278,14 +279,14 @@ function matchingGrants(actors: readonly string[], entity: string, grants: reado
  * The projection keeps every declared path; a refused one is reported.
  */
 function discloseProjection(
-  output: D1ServiceRow['outputs'][number],
+  output: RequestOutputView,
   grants: readonly D1ControllerGrant[],
   entityDefinition: (entity: string) => unknown,
 ): { blocked: string[]; opaque: string[]; computed: string[] } {
   const blocked: string[] = [];
   const opaque: string[] = [];
   const computed: string[] = [];
-  for (const node of outputNodes(output)) {
+  for (const node of output.disclosure) {
     const verdict = nodeDisclosure(grants, node, entityDefinition);
     if (verdict === 'blocked') blocked.push(node.field);
     else if (verdict === 'carrier') opaque.push(node.field);
@@ -393,7 +394,6 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
       usecaseIds,
       fieldsByEntity: knownFields,
       selectedCounts,
-      entityPaths: built.entityPaths,
     });
     problems.push(...pageProblems);
     const defPath = requestServiceDefPath(request.moduleName, contract.pageId);
