@@ -23,7 +23,7 @@ import { checkResolveReply, resolveAnswers, resolveUnits } from '/_102021_/l2/ag
 import { readResolveReceipt, readResolveWork, writeResolveAttempt, writeResolveReceipt } from '/_102021_/l2/agentDefsL1/steps/resolve25/io.js';
 import { parseFanoutWorkerArg } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
 import { metaResolver } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
-import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { readD1Derivation, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 /**
  * resolve25 end to end on the hooks, with a test resolver in place of the model. The resolver answers from the
@@ -296,6 +296,109 @@ void test('the gate accepts only candidates, every gap, and no extra key', () =>
   assert.equal(checkResolveReply(unit, { answers: {} }).problems.length, 1);
   assert.equal(checkResolveReply(unit, { answers: { g0: 'A', g9: 'A' } }).problems.length, 1);
   assert.equal(checkResolveReply(unit, { steps: [] }).problems.length, 1);
+});
+
+function workerArgsOf(intents: mls.msg.AgentIntent[]): string[] {
+  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout');
+  const mode = fanout?.executionMode;
+  if (mode?.type === 'parallel' || mode?.type === 'sequential') return mode.args;
+  return [];
+}
+
+async function reinput(run: Run): Promise<void> {
+  const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
+  input.stepId = 21;
+  const released = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, input, run.seq++);
+  assert.equal(released.some(intent => intent.type === 'update-status' && intent.status === 'failed'), false);
+}
+
+void test('resolve25 keeps every answered route when the sources change and the gaps do not', async () => {
+  const host = await readyHost();
+  const run = await throughInput();
+  const intents = await resolveMain(run);
+  const args = workerArgsOf(intents);
+  const work = await readResolveWork(PROJECT, MODULE);
+  assert.ok(work);
+  for (const [index, unit] of work.units.entries()) {
+    const route = await routeOf(unit.route);
+    await answer(run, agentStep(251 + index * 10, args[index]), gap => metaResolver(route, gap));
+  }
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(290, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const previous = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(previous);
+  const before = await readD1Derivation(PROJECT, MODULE);
+  const produtos = contractFile(host, 'produtos');
+  produtos.content = produtos.content.replace(
+    "rules: ['quantidadeMinimaValida', 'saldoAtualProduto', 'avisoSaldoMinimoProduto'];",
+    "rules: ['saldoAtualProduto', 'quantidadeMinimaValida', 'avisoSaldoMinimoProduto'];",
+  );
+  await reinput(run);
+  const after = await readD1Derivation(PROJECT, MODULE);
+  assert.notEqual(after?.sourceKey, before?.sourceKey);
+  const again = await resolveMain(run);
+  assert.equal(again.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), false);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  assert.equal(receipt.llmCalls, 0);
+  assert.notEqual(receipt.sourceKey, previous.sourceKey);
+  assert.deepEqual(
+    receipt.routes.map(row => [row.route, row.answers.map(item => [item.path, item.choice])]),
+    previous.routes.map(row => [row.route, row.answers.map(item => [item.path, item.choice])]),
+  );
+});
+
+void test('resolve25 asks only the route whose gaps are not on the previous receipt', async () => {
+  const host = await readyHost();
+  const run = await throughInput();
+  const intents = await resolveMain(run);
+  const args = workerArgsOf(intents);
+  const work = await readResolveWork(PROJECT, MODULE);
+  assert.ok(work);
+  for (const [index, unit] of work.units.entries()) {
+    const route = await routeOf(unit.route);
+    await answer(run, agentStep(251 + index * 10, args[index]), gap => metaResolver(route, gap));
+  }
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(290, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const previous = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(previous);
+  const file = contractFile(host, 'produtos');
+  file.content = file.content.replace(
+    '  };\n}',
+    `  };
+  'controleEstoque.produtos.extra': {
+    kind: 'qry';
+    input: { search?: string };
+    output: { produtos: ProdutoLoad[] };
+    meta: { output: { produtos: { entity: 'Produto'; many: true } }; lists: {}; params: {} };
+    rules: ['quantidadeMinimaValida'];
+    access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
+  };
+}`,
+  );
+  await reinput(run);
+  const again = await resolveMain(run);
+  const asked = workerArgsOf(again);
+  assert.equal(asked.length, 1);
+  const arg = parseFanoutWorkerArg(RESOLVE_FANOUT, asked[0]);
+  const open = await readResolveWork(PROJECT, MODULE);
+  const unit = open?.units.find(item => item.unitId === arg?.unitId);
+  assert.equal(unit?.route, 'controleEstoque.produtos.extra');
+  assert.equal(open?.units.length, previous.routes.length + 1);
+  const route = await routeOf(unit!.route);
+  await answer(run, agentStep(351, asked[0]), gap => metaResolver(route, gap));
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(390, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  assert.equal(receipt.llmCalls, 1);
+  for (const row of previous.routes) {
+    const next = receipt.routes.find(item => item.route === row.route);
+    assert.ok(next, row.route);
+    assert.deepEqual(next.answers.map(item => [item.path, item.choice]), row.answers.map(item => [item.path, item.choice]));
+  }
+  const extra = receipt.routes.find(item => item.route === 'controleEstoque.produtos.extra');
+  assert.ok(extra);
+  assert.equal(extra.answers.length > 0, true);
+  assert.equal(extra.answers.every(item => item.call === `resolve25-worker-${unit!.unitId}`), true);
 });
 
 void test('resolve25: an attempt left by an earlier run is neither an answer nor a call of this one', async () => {
