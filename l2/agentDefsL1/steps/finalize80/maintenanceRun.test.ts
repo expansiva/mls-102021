@@ -58,8 +58,12 @@ void test('a maintenance plan regenerates only what it marks (comandaRestaurante
   }
 
   assert.equal(second.resolve.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), false);
-  assert.match(JSON.stringify(second.resolve), /kept the answers/);
-  assert.deepEqual(second.dispatched, [USECASE]);
+  assert.match(JSON.stringify(second.resolve), /kept the answered routes/);
+  const expectedDispatch = snapshot.files
+    .filter(file => file.artifactType === 'usecase' && MAY_CHANGE.has(file.action))
+    .map(file => file.identity)
+    .sort();
+  assert.deepEqual([...second.dispatched].sort(), expectedDispatch);
 });
 
 async function readyHost(fixtureId: string, moduleName: string): Promise<TestHost> {
