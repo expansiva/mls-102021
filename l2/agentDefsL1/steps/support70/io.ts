@@ -7,6 +7,7 @@ import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpe
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -198,7 +199,7 @@ async function receiptFiles(
       defPath: file.defPath,
       action: file.action,
       contentHash: file.contentHash || '',
-      currentHash: text == null ? '' : await sha256Text(text),
+      currentHash: text == null ? '' : await sourceIdentityHash(text),
     });
   }
   return files;

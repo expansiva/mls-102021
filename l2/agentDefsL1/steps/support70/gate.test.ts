@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url';
 
 import { D1_MEASURED_PUBLISH, reconstructAccessPolicy, seedScenarioIssues, type D1PolicyUnit } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { readFixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
+import { M1_DEFINITION_SCHEMA, renderDefinition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
+import { draftFile, inputFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { D1_INPUT_VERSION } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
+import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
@@ -887,4 +895,73 @@ void test('an inbound transition binds the usecase of its entity transitionRef (
   const problems: D1SupportProblem[] = [];
   emitEffects(request, problems);
   assert.equal(problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'wvIn'), true);
+});
+
+void test('a support receipt matches the identity hash of the bytes on disk', async () => {
+  const project = 102066;
+  const moduleName = 'zzReceipt';
+  const logical = `l1/${moduleName}/layer_1_external/adapters/persistence/registerRepositories.defs.ts`;
+  const rendered = renderDefinition({
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'repositoryRegistration',
+    artifactId: 'registerRepositories',
+    moduleName,
+    status: 'pending',
+    dependencies: [],
+    data: {
+      registrationId: 'registerRepositories',
+      adapters: [{ portId: 'ItemRepository', adapterArtifactId: 'ItemRepositoryAdapter' }],
+    },
+  }, `_${project}_/${logical}`);
+  assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('; ') : '');
+  if (!('source' in rendered)) return;
+  const host = installStudio(project);
+  const info = fileInfoFromDisplay(project, logical);
+  assert.ok(info);
+  seed(host, info, rendered.source);
+  const contentHash = await sourceIdentityHash(rendered.source);
+  const snapshot = {
+    schemaVersion: D1_INPUT_VERSION,
+    project,
+    moduleName,
+    device: 'web' as const,
+    plannerRun: null,
+    sources: [],
+    selection: { pages: [], requests: [], usecases: [], ports: [], tables: [], entities: [], outbound: [] },
+    files: [{
+      id: 'registerRepositories',
+      artifactType: 'repositoryRegistration',
+      defPath: logical,
+      action: 'preserve',
+      identity: 'registerRepositories',
+      ownerRefs: [],
+      dependsOn: [],
+      contentHash,
+    }],
+    removed: [],
+    problems: [],
+    consumersReleased: true,
+    snapshotHash: 'sha256:test',
+  };
+  await writeJson(inputFile(project, moduleName), snapshot);
+  for (const [step, schemaVersion] of [
+    ['controllers60', D1_CONTROLLER_VERSION],
+    ['persistence40', D1_PERSISTENCE_VERSION],
+    ['domain30', D1_DOMAIN_VERSION],
+  ] as const) {
+    await writeJson(draftFile(project, moduleName, step), { schemaVersion, project, moduleName });
+  }
+  const matched = await assembleD1Support(project, moduleName);
+  assert.equal('build' in matched, true, 'refusal' in matched ? matched.refusal : '');
+  if (!('build' in matched)) return;
+  assert.equal(matched.files[0]?.currentHash, contentHash);
+  assert.equal(matched.build.problems.some(item => item.code === 'RECEIPT_MISMATCH'), false);
+
+  const changed = rendered.source.replace('ItemRepository', 'ItemRepositoryB');
+  seed(host, info, changed);
+  const drifted = await assembleD1Support(project, moduleName);
+  assert.equal('build' in drifted, true, 'refusal' in drifted ? drifted.refusal : '');
+  if (!('build' in drifted)) return;
+  assert.notEqual(await sourceIdentityHash(changed), contentHash);
+  assert.equal(drifted.build.problems.some(item => item.code === 'RECEIPT_MISMATCH' && item.path === logical), true);
 });
