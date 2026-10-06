@@ -7,6 +7,7 @@ import {
   D1_RESOLVE_VERSION,
   type D1ResolveAnswer,
   type D1ResolveAttempt,
+  type D1ResolveGap,
   type D1ResolveReceipt,
   type D1ResolveUnit,
   type D1ResolveWork,
@@ -101,6 +102,7 @@ export function buildResolveReceipt(work: D1ResolveWork, attempts: readonly D1Re
         kind: gap.kind,
         choice: accepted ? choice : D1_GAP_NONE,
         call: accepted && attempt ? attempt.planId : '',
+        gapKey: resolveGapKey(unit.route, gap),
       };
     });
     return { route: unit.route, pageId: unit.pageId, answers };
@@ -113,6 +115,35 @@ export function buildResolveReceipt(work: D1ResolveWork, attempts: readonly D1Re
     llmCalls,
     routes,
   };
+}
+
+/**
+ * Routes whose every gap still has an answer on the receipt with the same route and the same `gapKey`.
+ * The value is the previous choices by gap id. A route with any new or changed gap is left out.
+ */
+export function keptRoutes(receipt: D1ResolveReceipt, units: readonly D1ResolveUnit[]): Map<string, Record<string, string>> {
+  const kept = new Map<string, Record<string, string>>();
+  for (const unit of units) {
+    const row = receipt.routes.find(item => item.route === unit.route);
+    if (!row) continue;
+    const answers: Record<string, string> = {};
+    let all = true;
+    for (const gap of unit.gaps) {
+      const match = row.answers.find(answer => answer.gapKey === resolveGapKey(unit.route, gap));
+      if (!match) {
+        all = false;
+        break;
+      }
+      answers[gap.gapId] = match.choice;
+    }
+    if (all) kept.set(unit.unitId, answers);
+  }
+  return kept;
+}
+
+/** Identity of one gap. Synchronous, not a hash. */
+function resolveGapKey(route: string, gap: Pick<D1ResolveGap, 'path' | 'kind' | 'reason' | 'candidates'>): string {
+  return JSON.stringify([route, gap.path, gap.kind, gap.reason, [...gap.candidates].sort()]);
 }
 
 /** The answers of one route, as `applyResolutions` takes them. No receipt or no route gives none. */

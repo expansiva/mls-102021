@@ -2,7 +2,7 @@
 
 import type { D1RequestGapKind } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 
-export const D1_RESOLVE_VERSION = '2026-10-04-d1-resolve-v1' as const;
+export const D1_RESOLVE_VERSION = '2026-10-06-d1-resolve-v1' as const;
 
 /** One derivation gap as the worker sees it. `gapId` is the tool property; `path` is the answer key. */
 export interface D1ResolveGap {
@@ -50,6 +50,8 @@ export interface D1ResolveAnswer {
   choice: string;
   /** Plan id of the call that gave the choice. Empty when the gap stayed `none` without an accepted answer. */
   call: string;
+  /** Identity of the gap: route, path, kind, reason, candidates sorted. Not a secret. */
+  gapKey: string;
 }
 
 /** `pipeline/agentDefsL1/resolve25.json`. */
