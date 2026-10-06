@@ -26,7 +26,7 @@ import { D1_REPAIR_PER_UNIT } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { parseWorkerArg } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 import { accountCalls, openCallDispatch, readCallLog, recordCallEvent } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
-import { attemptFile, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
+import { attemptFile, loadD1UsecaseWork, readD1UsecaseWork, writeAttempt, writeD1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import { parseWorkerReply } from '/_102021_/l2/agentDefsL1/steps/usecases50/worker.js';
 import { domainSignature, mdmInputFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
@@ -736,6 +736,127 @@ void test('the shared MDM usecase does not take its input from a page contract',
   const request = { ...work.request, usecases: [usecase], plans: [fixturePlan(work.request, usecase)] };
   const build = buildD1Usecases(request);
   assert.equal(build.problems.some(item => item.code === 'MDM_CONTRACT_UNREAD' || item.code === 'L2_DEPENDENCY'), false, build.problems.map(item => `${item.code} ${item.message}`).join('; '));
+});
+
+async function readyToDispatch() {
+  const host = await readyHost();
+  const agent = createAgent();
+  const ctx = context();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const usecases = createD1AgentStep('usecases50', MODULE, PROJECT, 'run');
+  usecases.stepId = 50;
+  parent.nextSteps = [usecases];
+  const input = createD1AgentStep('input20', MODULE, PROJECT, 'run');
+  input.stepId = 20;
+  await agent.beforePromptStep!(meta(), ctx, parent, input, 1);
+  await runResolve25(agent, meta(), ctx, parent, PROJECT, MODULE, 25);
+  const domain = createD1AgentStep('domain30', MODULE, PROJECT, 'run');
+  domain.stepId = 30;
+  await agent.beforePromptStep!(meta(), ctx, parent, domain, 2);
+  const persistence = createD1AgentStep('persistence40', MODULE, PROJECT, 'run');
+  persistence.stepId = 40;
+  await agent.beforePromptStep!(meta(), ctx, parent, persistence, 3);
+  return { host, agent, ctx, parent, usecases };
+}
+
+function markUsecaseActions(host: ReturnType<typeof installStudio>, actions: Record<string, string>): void {
+  const key = fileKey(inputFile(PROJECT, MODULE));
+  const snapshot = JSON.parse(host.files[key]?.content || '{}') as { files: { artifactType: string; identity: string; action: string }[] };
+  for (const file of snapshot.files) {
+    if (file.artifactType === 'usecase' && actions[file.identity]) file.action = actions[file.identity];
+  }
+  host.files[key]!.content = `${JSON.stringify(snapshot, null, 2)}\n`;
+}
+
+function plantDef(host: ReturnType<typeof installStudio>, defPath: string, bytes: string): void {
+  const info = artifactFile(PROJECT, defPath);
+  assert.ok(info, defPath);
+  seed(host, info, bytes, 'defs');
+}
+
+void test('a preserve usecase with a parsed attempt is not dispatched and its def stays byte for byte', async () => {
+  const preserveId = LOCAL_LIST;
+  const updateId = MDM_CREATE;
+  const { host, agent, ctx, parent, usecases } = await readyToDispatch();
+  const loaded = await loadD1UsecaseWork(PROJECT, MODULE);
+  assert.equal('work' in loaded, true);
+  if (!('work' in loaded)) return;
+  const actions: Record<string, string> = {};
+  for (const usecase of loaded.work.request.usecases) actions[usecase.usecaseId] = usecase.usecaseId === updateId ? 'update' : 'preserve';
+  markUsecaseActions(host, actions);
+  const before = new Map<string, string>();
+  for (const usecase of loaded.work.request.usecases) {
+    if (usecase.usecaseId === updateId) continue;
+    await writeAttempt(PROJECT, MODULE, {
+      usecaseId: usecase.usecaseId,
+      status: 'parsed',
+      trace: `usecases50 recorded steps for ${usecase.usecaseId}.`,
+      unitAttempts: 0,
+      reply: fixturePlan(loaded.work.request, usecase).steps,
+    });
+    const bytes = `export const definition = { "artifactId": "${usecase.usecaseId}" } as const;\n`;
+    plantDef(host, usecase.defPath, bytes);
+    before.set(usecase.defPath, bytes);
+  }
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, usecases, 4);
+  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
+    intent.type === 'add-step' && intent.step.planning?.planId === 'usecases50-fanout');
+  assert.ok(fanout);
+  assert.equal(fanout.executionMode?.args.length, 1);
+  assert.match(fanout.executionMode?.args[0] || '', new RegExp(updateId));
+  assert.equal((fanout.executionMode?.args || []).some(arg => arg.includes(preserveId)), false);
+  const update = loaded.work.request.usecases.find(item => item.usecaseId === updateId);
+  assert.ok(update);
+  await agent.afterPromptStep!(meta(), ctx, parent, replied(fanout.executionMode?.args[0] || '', { steps: fixturePlan(loaded.work.request, update).steps }, 51), 5);
+  const barrier = addedStep(intents, 'usecases50-barrier');
+  const closed = await agent.beforePromptStep!(meta(), ctx, parent, barrier, 6);
+  const failed = closed.filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.status === 'failed');
+  assert.equal(failed.length, 0, failed.map(intent => intent.traceMsg).join(' | '));
+  const closedTrace = closed.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status');
+  const approved = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as { steps?: { usecases50?: { status?: string } } };
+  assert.equal(approved.steps?.usecases50?.status, 'approved', closedTrace?.traceMsg);
+  const draft = JSON.parse(host.files[fileKey(draftFile(PROJECT, MODULE, 'usecases50'))]?.content || '{}') as { usecases?: { usecaseId?: string }[] };
+  assert.equal(draft.usecases?.some(item => item.usecaseId === preserveId), true);
+  assert.equal(draft.usecases?.some(item => item.usecaseId === updateId), true);
+  for (const [defPath, bytes] of before) {
+    const info = artifactFile(PROJECT, defPath);
+    assert.ok(info);
+    assert.equal(host.files[fileKey(info)]?.content, bytes, defPath);
+  }
+});
+
+void test('when every usecase is preserve with a parsed attempt, usecases50 approves without a fan-out', async () => {
+  const { host, agent, ctx, parent, usecases } = await readyToDispatch();
+  const loaded = await loadD1UsecaseWork(PROJECT, MODULE);
+  assert.equal('work' in loaded, true);
+  if (!('work' in loaded)) return;
+  const actions: Record<string, string> = {};
+  const before = new Map<string, string>();
+  for (const usecase of loaded.work.request.usecases) {
+    actions[usecase.usecaseId] = 'preserve';
+    await writeAttempt(PROJECT, MODULE, {
+      usecaseId: usecase.usecaseId,
+      status: 'parsed',
+      trace: `usecases50 recorded steps for ${usecase.usecaseId}.`,
+      unitAttempts: 0,
+      reply: fixturePlan(loaded.work.request, usecase).steps,
+    });
+    const bytes = `export const definition = { "artifactId": "${usecase.usecaseId}" } as const;\n`;
+    plantDef(host, usecase.defPath, bytes);
+    before.set(usecase.defPath, bytes);
+  }
+  markUsecaseActions(host, actions);
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, usecases, 4);
+  assert.equal(intents.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'usecases50-fanout'), false);
+  const trace = intents.find((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status' && intent.stepId === 50);
+  assert.equal(trace?.status, 'completed', trace?.traceMsg);
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as { steps?: { usecases50?: { status?: string } } };
+  assert.equal(pipeline.steps?.usecases50?.status, 'approved', trace?.traceMsg);
+  for (const [defPath, bytes] of before) {
+    const info = artifactFile(PROJECT, defPath);
+    assert.ok(info);
+    assert.equal(host.files[fileKey(info)]?.content, bytes, defPath);
+  }
 });
 
 function firstPrompt(intents: mls.msg.AgentIntent[], usecaseId: string): string {

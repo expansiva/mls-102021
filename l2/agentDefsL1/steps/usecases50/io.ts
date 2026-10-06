@@ -136,6 +136,26 @@ export async function readPromptEvidence(project: number, moduleName: string, us
   }
 }
 
+/** Usecase defs the plan marks `preserve`. The commit does not send them. */
+export function preservedDefPaths(snapshot: D1InputSnapshot | null): Set<string> {
+  return new Set(preservedUsecaseFiles(snapshot).map(file => file.defPath));
+}
+
+/** Usecase ids the plan marks `preserve`. */
+export function preservedUsecaseIds(snapshot: D1InputSnapshot | null): Set<string> {
+  return new Set(preservedUsecaseFiles(snapshot).map(file => file.identity));
+}
+
+/** Emit paths are `_project_/l1/...`; the plan stores `l1/...`. */
+function logicalDefPath(defPath: string): string {
+  const at = defPath.indexOf('/l1/');
+  return at >= 0 ? defPath.slice(at + 1) : defPath;
+}
+
+function preservedUsecaseFiles(snapshot: D1InputSnapshot | null): D1InputSnapshot['files'] {
+  return (snapshot?.files || []).filter(file => file.artifactType === 'usecase' && file.action === 'preserve');
+}
+
 export async function readAttempts(project: number, moduleName: string, usecaseIds: readonly string[]): Promise<D1AttemptTrace[]> {
   const out: D1AttemptTrace[] = [];
   for (const usecaseId of usecaseIds) {
@@ -160,7 +180,10 @@ export async function commitD1Usecases(project: number, build: D1UsecaseBuild): 
     if (!build.ok) return { written: [], issues: build.problems.filter(problem => problem.severity === 'error').map(problem => problem.message) };
     return { written: [], issues: [] };
   }
-  const rendered = renderParts(project, build.emit);
+  const snapshot = await readD1Input(project, build.moduleName);
+  const preserved = preservedDefPaths(snapshot);
+  const writable = build.emit.filter(part => !preserved.has(logicalDefPath(part.pipeline[0]?.defPath || '')));
+  const rendered = writable.length > 0 ? renderParts(project, writable) : { parts: [], issues: [] };
   if (rendered.issues.length > 0) return { written: [], issues: rendered.issues };
   const committed = await commitD1Unit({
     project,

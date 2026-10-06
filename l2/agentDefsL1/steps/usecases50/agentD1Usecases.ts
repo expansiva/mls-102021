@@ -48,6 +48,7 @@ import {
   commitD1Usecases,
   holdUnresolvedBuild,
   loadD1UsecaseWork,
+  preservedUsecaseIds,
   readAttempts,
   readD1UsecaseWork,
   derivedTrace,
@@ -126,7 +127,15 @@ export async function beforeD1UsecasesPromptStep(
   const loaded = await loadD1UsecaseWork(parsed.prompt.project, parsed.prompt.moduleName);
   if ('refusal' in loaded) return refuse(context, parentStep, step, hookSequential, loaded.refusal);
   await writeD1UsecaseWork(parsed.prompt.project, loaded.work);
-  const ids = loaded.work.request.usecases.map(usecase => usecase.usecaseId);
+  const allIds = loaded.work.request.usecases.map(usecase => usecase.usecaseId);
+  const live = await readD1Input(parsed.prompt.project, parsed.prompt.moduleName);
+  const preserve = preservedUsecaseIds(live);
+  const prior = await readAttempts(parsed.prompt.project, parsed.prompt.moduleName, allIds);
+  const keptParsed = new Set(prior.filter(attempt => attempt.status === 'parsed' && preserve.has(attempt.usecaseId)).map(attempt => attempt.usecaseId));
+  const ids = allIds.filter(usecaseId => !keptParsed.has(usecaseId));
+  if (ids.length === 0) {
+    return settle(context, parentStep, step, hookSequential, { project: parsed.prompt.project, moduleName: parsed.prompt.moduleName }, loaded.work);
+  }
   const workerArgs = ids.map(usecaseId => firstWorkerArg(parsed.prompt.project, parsed.prompt.moduleName, usecaseId));
   const fanout = fanoutStep(parsed.prompt.project, parsed.prompt.moduleName, workerArgs);
   // The host completes a parallel parent without calling its afterPrompt.
@@ -326,6 +335,17 @@ async function barrier(
   if (!prompt) return completeOnly(context, parentStep, step, hookSequential, 'Barrier prompt is not a usecase dispatch.');
   const work = await readD1UsecaseWork(prompt.project, prompt.moduleName);
   if (!work) return completeOnly(context, parentStep, step, hookSequential, 'usecases50 work file is missing.');
+  return settle(context, parentStep, step, hookSequential, prompt, work);
+}
+
+async function settle(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  prompt: { project: number; moduleName: string },
+  work: NonNullable<Awaited<ReturnType<typeof readD1UsecaseWork>>>,
+): Promise<mls.msg.AgentIntent[]> {
   const ids = work.request.usecases.map(usecase => usecase.usecaseId);
   const attempts = await readAttempts(prompt.project, prompt.moduleName, ids);
   const probed = buildFromWork(work, attempts, attempts.filter(item => item.status === 'parsed').length);
