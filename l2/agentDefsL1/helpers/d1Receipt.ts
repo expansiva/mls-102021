@@ -227,7 +227,10 @@ export async function commitD1Unit(input: D1CommitUnitInput): Promise<D1CommitUn
   }
   const reported = reportedOf(planned);
   const existing = await readProgress(input.project, input.moduleName, input.step, input.unitId);
-  if (existing && existing.runId !== runId && !existing.invalidated) {
+  // A finished unit from another snapshot is not this run's owner. A live snapshot
+  // invalidates that run on its next mutation, so this commit may replace it.
+  const superseded = !!existing && existing.snapshotHash !== snapshotHash;
+  if (existing && existing.runId !== runId && !existing.invalidated && !superseded) {
     if (await sameQuietResult(existing, planned, snapshotHash)) {
       return { ...empty, reported: existing.reported, finalized: true };
     }

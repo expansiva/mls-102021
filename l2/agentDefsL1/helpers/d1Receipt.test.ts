@@ -12,7 +12,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { pendingDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { pipelineFile, plannerPipelineFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
-import { hashesAgree } from '/_102021_/l2/helpers/l1Defs/identity.js';
+import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import {
   commitD1Unit,
@@ -188,6 +188,57 @@ void test('an older run does not overwrite a newer one, and a drifted snapshot i
   assert.equal(host.files[fileKey(beta)]?.content, 'BETA-OLD');
   assert.equal(host.files[fileKey(beta)]?.updatedAt, 'beta-mtime');
   assert.equal(await unitIsIntact(PROJECT, MODULE, 'domain30', 'race', SNAPSHOT), false);
+});
+
+void test('a finalized unit from another snapshot is not the owner of this one', async () => {
+  const host = await hostWith('sha256:snapshot-a');
+  const file = info(defPath('alpha'));
+  const first = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'alpha',
+    draftText: 'draft-a',
+    snapshotHash: 'sha256:snapshot-a',
+    parts: [part('alpha', 'FROM-A')],
+  });
+  assert.equal(first.finalized, true);
+  assert.deepEqual(first.issues, []);
+
+  const onDisk = host.files[fileKey(file)]?.content || '';
+  assert.equal(onDisk, 'FROM-A');
+  const receipt = await sourceIdentityHash(onDisk);
+  host.files[fileKey(inputFile(PROJECT, MODULE))]!.content = inputBody('sha256:snapshot-b');
+  const next = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'alpha',
+    draftText: 'draft-b',
+    snapshotHash: 'sha256:snapshot-b',
+    parts: [part('alpha', 'FROM-B', receipt)],
+  });
+  assert.equal(next.finalized, true);
+  assert.deepEqual(next.issues, []);
+  assert.equal(next.written.length, 1);
+  assert.ok(next.written[0]?.endsWith('/alpha.defs.ts'));
+  assert.equal(host.files[fileKey(file)]?.content, 'FROM-B');
+  assert.equal((next.issues.join('\n')).includes('Concurrent run'), false);
+
+  host.files[fileKey(inputFile(PROJECT, MODULE))]!.content = inputBody('sha256:snapshot-c');
+  const sameBytes = await commitD1Unit({
+    project: PROJECT,
+    moduleName: MODULE,
+    step: 'domain30',
+    unitId: 'alpha',
+    draftText: 'draft-c',
+    snapshotHash: 'sha256:snapshot-c',
+    parts: [part('alpha', 'FROM-B', await sourceIdentityHash('FROM-B'))],
+  });
+  assert.equal(sameBytes.finalized, true);
+  assert.deepEqual(sameBytes.issues, []);
+  assert.deepEqual(sameBytes.written, []);
+  assert.equal(host.files[fileKey(file)]?.content, 'FROM-B');
 });
 
 void test('removal stops halfway, keeps the other file, and does not delete the ts output', async () => {
