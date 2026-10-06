@@ -10,7 +10,7 @@ import ts from 'typescript';
 import { readContractAst, symbolFields, type D1ContractAst, type D1ContractField, type D1ContractSymbol, type D1RouteBinding } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PLANNER_CONTRACTS = path.resolve(HERE, '../../../../../mls-102020/l2/agentPlannerL2/steps/contracts30/fixtures/contracts');
+const PLANNER_CONTRACTS = path.resolve(HERE, 'fixtures/plannerContracts');
 
 const SAMPLES = [
   `
@@ -67,10 +67,10 @@ const SAMPLES = [
 ];
 
 void test('the scanner matches the typescript reader on contract shapes', () => {
-  const files = readdirSync(PLANNER_CONTRACTS).filter(name => name.endsWith('.defs.ts')).sort();
+  const files = readdirSync(PLANNER_CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();
   const sources = [
     ...SAMPLES.map((source, index) => ({ fileName: `sample-${index}.defs.ts`, source })),
-    ...files.map(name => ({ fileName: name, source: readFileSync(path.join(PLANNER_CONTRACTS, name), 'utf8') })),
+    ...files.map(name => ({ fileName: name.replace(/\.txt$/, ''), source: readFileSync(path.join(PLANNER_CONTRACTS, name), 'utf8') })),
   ];
   const mismatches: string[] = [];
   for (const item of sources) {
