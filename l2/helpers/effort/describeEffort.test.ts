@@ -78,6 +78,36 @@ void test('regra inexistente abend', () => {
   assert.equal(answer.abend?.reason, 'nenhum def aplica o id');
 });
 
+function fieldChange(before: Record<string, unknown>, after: Record<string, unknown>): L4DiffItem {
+  return {
+    changeId: 'field:details.attendanceNote',
+    kind: 'field',
+    op: 'changed',
+    entity: 'Consulta',
+    source: 'l4',
+    before,
+    after,
+  };
+}
+
+void test('field só com title diferente é computed vazio, mesmo sem defs', () => {
+  const item = fieldChange({ title: 'Nota', type: 'string' }, { title: 'Anotação', type: 'string' });
+  for (const defs of [AGENDA, {}]) {
+    const answer = describeEffortFrom(input(item), defs);
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(answer.regenerateDefs, []);
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(answer.runAgents, []);
+  }
+});
+
+void test('field com type diferente segue a classificação de hoje', () => {
+  const item = fieldChange({ title: 'Nota', type: 'string' }, { title: 'Nota', type: 'text' });
+  const answer = describeEffortFrom(input(item), AGENDA);
+  assert.equal(answer.status, 'abend');
+  assert.equal(answer.abend?.reason, 'kind/op fora da v1: field changed');
+});
+
 void test('field, grant e task added abend', () => {
   const cases: L4DiffItem[] = [
     { changeId: 'field:attendanceNote', kind: 'field', op: 'changed', entity: 'Consulta', source: 'l4' },

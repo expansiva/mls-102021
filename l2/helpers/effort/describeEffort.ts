@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { isTextOnlyChange } from '/_102035_/l2/solution/poolPlan.js';
 import type { EffortAnswer, EffortInput, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102021', kind: 'l1', device: 'web' } as const;
@@ -95,6 +96,7 @@ function kindOf(artifactType: string): EffortUnitRef['kind'] | null {
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
+  if (isTextOnlyChange(input.item)) return computed(item, []);
   const paths = Object.keys(defs);
   if (paths.length === 0) return abend(item, NO_DEFS);
   if (input.item.kind !== 'rule' || input.item.op !== 'changed') {
