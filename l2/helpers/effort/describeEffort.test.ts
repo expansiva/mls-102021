@@ -136,3 +136,15 @@ void test('describeEffort sem arquivos de produto abend', async () => {
     (globalThis as { mls?: unknown }).mls = previous;
   }
 });
+
+void test('describeEffort só importa helpers e solution, e não escreve nem busca rede', () => {
+  const source = readFileSync(join(HERE, 'describeEffort.ts'), 'utf8');
+  const specs = [...source.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)].map(match => match[1]);
+  assert.ok(specs.length > 0);
+  const allowed = (spec: string) =>
+    spec.startsWith('/_102021_/l2/helpers/') || spec.startsWith('/_102035_/l2/solution/');
+  for (const spec of specs) assert.equal(allowed(spec), true, spec);
+  for (const banned of ['writeFile', 'writeJson', 'writeText', 'saveFile', 'fetch']) {
+    assert.equal(source.includes(banned), false, banned);
+  }
+});
