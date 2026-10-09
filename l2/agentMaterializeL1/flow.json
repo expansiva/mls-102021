@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "2026-10-05-m12-flow-v1",
+  "flowId": "agentMaterializeL1",
+  "source": "mls-102047/materializadorL1.md (briefing of 05/10/2026). The recipes are copies of agentMaterializeL1 (emitters/), not imports.",
+  "invocation": "@@agentMaterializeL1 | {\"scope\":\"<l1 folder prefix>\"} | {\"target\":\"<fileRef of one .defs.ts or its .ts>\"} [+ \"force\": true] | /help",
+  "inputs": [
+    "l1/<module>/**/*.defs.ts (defs v2 of agentDefsL1)",
+    "l2/<module>/web/contracts/<pageId>.defs.ts (the contract a controller types against; the monitor cases read it)",
+    "l4/<module>/rules.defs.ts and ontology (rule texts, enums, optional fields)",
+    "_102034_/l1/server/** (platform contracts, repository registry, data runtime)",
+    "l5/project.json (appEnv; the backend registration)"
+  ],
+  "steps": [
+    {
+      "planId": "domain10-<module>",
+      "agentName": "agentM12Domain",
+      "llm": false,
+      "types": [
+        "domainEntity",
+        "valueObject",
+        "repositoryPort",
+        "accessScope",
+        "authorityMap"
+      ],
+      "goal": "Emit each unit with its copied recipe, write it in memory, run the gates, record its status."
+    },
+    {
+      "planId": "persistence20-<module>",
+      "agentName": "agentM12Persistence",
+      "llm": false,
+      "types": [
+        "table",
+        "repositoryAdapter",
+        "repositoryRegistration",
+        "persistenceSeeds",
+        "integrationOutbound"
+      ],
+      "goal": "Same loop. An outbound event without a runtime mechanism is a declared gap (MECHANISM_UNBOUND), not a failure."
+    },
+    {
+      "planId": "usecases40-<module>",
+      "agentName": "agentM12Usecases",
+      "llm": "always (every usecase)",
+      "types": [
+        "usecase"
+      ],
+      "goal": "Every usecase goes to one agentM12UsecaseUnit worker: the recipe attempt (source or refusal) is in the prompt as a draft; the model writes the file.",
+      "worker": {
+        "agentName": "agentM12UsecaseUnit",
+        "planIdPattern": "usecases40-<module>-<usecaseId>-<attempt>",
+        "prompt": "steps/usecases40/prompt.md",
+        "context": "def, scaffold signature, recipe attempt, dependency exports, rule texts, a sibling, platform signatures",
+        "tool": "writeUsecase { code, notApplicable[] }",
+        "gate": "header, exported function, imports only /_102034_/l1/ and the module and existing files, no node:/fetch/storage/empty catch, every rule id of the rulePlan as a literal or declared notApplicable with a reason",
+        "repairBudget": 2
+      }
+    },
+    {
+      "planId": "requests50-<module>",
+      "agentName": "agentM12Requests",
+      "llm": "always (every page)",
+      "types": [
+        "requestService"
+      ],
+      "goal": "Every request service goes to one agentM12RequestService worker: contract, JSDoc, request def, recipe attempt, the generated usecases and the rule texts are in the prompt; the model writes requests/<pageId>.ts (one function per contract route; compositions, filters, calculations, paging; commands atomic).",
+      "worker": {
+        "agentName": "agentM12RequestService",
+        "planIdPattern": "requests50-<module>-<pageId>-<attempt>",
+        "prompt": "steps/requests50/prompt.md",
+        "tool": "writeRequestService { code, notApplicable[] }",
+        "gate": "header, export const requests with exactly the contract routes, commands in runInTransaction, every route rule named or declared notApplicable, imports only platform/module/contracts and existing files",
+        "repairBudget": 2
+      }
+    },
+    {
+      "planId": "controllers30-<module>",
+      "agentName": "agentM12Controllers",
+      "llm": false,
+      "types": [
+        "httpController"
+      ],
+      "goal": "One controller per page: route, grant, input validation, the request-service function."
+    },
+    {
+      "planId": "tests60-<module>",
+      "agentName": "agentM12Tests",
+      "llm": "one worker per page",
+      "goal": "For each page whose controller is ready, one agentM12TestsPage worker proposes the monitor cases from the contract; a gate checks them; code renders <controllers>/<pageId>.test.ts (skills/monitorTests.md, export pageTests).",
+      "worker": {
+        "agentName": "agentM12TestsPage",
+        "planIdPattern": "tests60-<module>-<pageId>-<attempt>",
+        "prompt": "steps/tests60/prompt.md",
+        "tool": "proposeMonitorCases { cases[] }",
+        "gate": "routine is a contract route, mutating = cmd, seed markers carry paramFieldRefs of a module entity, .required only on an input field, every route has a positive case",
+        "repairBudget": 2
+      }
+    },
+    {
+      "planId": "register70-<module>",
+      "agentName": "agentM12Register",
+      "llm": false,
+      "when": "the request selects the whole module (no target, scope = module or empty)",
+      "goal": "The copied reconcileL5 on the units in place, under the l5 project lock; backend.pageTests lists the ready test files."
+    },
+    {
+      "planId": "finalize80-<module>",
+      "agentName": "agentM12Finalize",
+      "llm": false,
+      "goal": "Read every selected unit status, write pipeline/agentMaterializeL1/report.json, emit the summary result step."
+    }
+  ],
+  "unitStatus": "l1/<module>/pipeline/agentMaterializeL1/<layer>/<unitId>.json — done | reused | blocked | gap | failed | skipped, with a code and a diagnostic. One owner per file.",
+  "invariants": [
+    "Rule (05/10/2026): a type the recipe derives only sometimes always goes to the model — usecases and request services. Domain, persistence and controllers are recipes.",
+    "Source and hints (materializadorL1.md §2.1): the source is the page contract (types, JSDoc, rules, access), the l4 (ontology, rule texts) and the def inventory (which units exist, the authority of each route). The def's implementation fields (uses, params, output tree, rulePlan, usecase input/output lists, sequence) are hints shown to the model as such; where they diverge, the contract and the l4 win, and an empty or unresolved field means decide by them.",
+    "Order is domain -> persistence (recipes) -> usecases -> requests (model) -> controllers (recipe) -> tests (model): a unit whose same-or-earlier-layer dependency has no file is blocked (BLOCKED_BY). A controller imports its request service, so it is proven by the compiler after the service exists. Step and folder numbers are names, not the order (controllers30 runs after requests50): renaming them would leave stale copies with the same agent name in the Studio stor.",
+    "Proof is the Studio compiler. An unavailable compiler is a failure; a file that does not compile gets its previous bytes back (or is removed).",
+    "Writes stay in memory: the file is registered with mls.stor.addOrUpdateFile and serves its bytes through getContent; no libStor, no localStor.setContent, no editor model. The Studio saves.",
+    "Proof is the Studio compiler, for l1 too: the model is created by libModel.createModel (the Studio's own l1 path) and compiled with mls.l2.typescript.compile under a 60 s deadline. Compiler errors fail the unit (previous bytes restored; a model unit repairs with them). A worker that stops answering trips a breaker for the page: the remaining units end done COMPILE_UNAVAILABLE_L1 with the cause, listed apart in the report.",
+    "A usecase whose generated source does not name a rule of its rulePlan is blocked (RULE_NOT_EMITTED); the file stays, the unit is not generated. Never silent.",
+    "An output this agent did not write, or edited since, is never overwritten without \"force\": true or a target.",
+    "Workers never fail the task: the unit status records the failure; the run goes on.",
+    "Nothing outside this folder imports it, and it imports no other agent's folder (skills/agentCodeIsPrivate.md)."
+  ],
+  "outOfScope": [
+    "Carrying backend.pageTests into the runtime config: the publish composer (agentMaterializeL1/nodejsSaveConfigJson.ts) composes only backendControllers and tableDefsDir.",
+    "Writing the def status field: the status lives in the unit status files."
+  ]
+}
