@@ -21,6 +21,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
 export async function assembleD1Controllers(
   project: number,
@@ -138,6 +139,7 @@ async function controllerRequest(
     const parsed = text == null ? null : existingController(pageId, text);
     if (parsed) existing.push(parsed);
   }
+  const ontology = await ontologyOf(project, moduleName, index);
   return {
     project,
     moduleName,
@@ -154,7 +156,7 @@ async function controllerRequest(
       functionName: functions.get(usecase.usecaseId) || '',
       defPath: usecasePath.get(usecase.identity) || usecasePath.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),
-    grants: grantsOf(access),
+    grants: grantsOf(access, ontology),
     relationships: relationshipsOf(index),
     contracts,
     existing,
@@ -163,7 +165,7 @@ async function controllerRequest(
     actorsRead: isRecord(needs),
     removedRoutes: removedRoutesOf(snapshot.removed),
     serviceRequests: (snapshot.selection.requests || []).map(serviceSourceOf),
-    ontology: await ontologyOf(project, moduleName, index),
+    ontology,
   };
 }
 
@@ -229,7 +231,7 @@ function actorsOf(needs: unknown): Map<string, string[]> {
   return out;
 }
 
-function grantsOf(access: unknown): D1ControllerGrant[] {
+function grantsOf(access: unknown, ontology: Record<string, unknown>): D1ControllerGrant[] {
   if (!isRecord(access) || !Array.isArray(access.grants)) return [];
   const out: D1ControllerGrant[] = [];
   for (const grant of access.grants) {
@@ -238,12 +240,21 @@ function grantsOf(access: unknown): D1ControllerGrant[] {
     const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
     const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
     if (!mode) continue;
+    const entityRefs = stringList(grant.entityRefs);
+    const allowedFields = stringList(disclosure.allowedFields);
     out.push({
       grantId: grant.grantId,
       actorRef: grant.actorRef,
-      entityRefs: stringList(grant.entityRefs),
+      entityRefs,
       disclosure: mode,
-      allowedFields: stringList(disclosure.allowedFields),
+      allowedFields: mode === 'fieldsOnly'
+        ? resolveAllowedFields({
+          grantId: grant.grantId,
+          entityRefs,
+          allowedFields: Array.isArray(disclosure.allowedFields) ? allowedFields : undefined,
+          deniedFields: stringList(disclosure.deniedFields),
+        }, ontology)
+        : allowedFields,
       anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
     });
