@@ -7,6 +7,7 @@ import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpe
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
@@ -65,7 +66,8 @@ export async function assembleD1Support(
   const previousText = await readText(draftFile(project, moduleName, 'support70'));
   const previous = previousText ? parseObject(previousText) : null;
   const files = await receiptFiles(project, snapshot.files);
-  const grants = grantsOf(access);
+  const entities = await entitiesOf(project, moduleName, index);
+  const grants = grantsOf(access, entities);
   const models = modelsOf(domain, index);
   const selected = snapshot.selection.usecases;
   const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
@@ -284,7 +286,7 @@ function parseObject(text: string): Record<string, unknown> | null {
   }
 }
 
-function grantsOf(access: unknown): D1ControllerGrant[] {
+function grantsOf(access: unknown, entities: Record<string, unknown>): D1ControllerGrant[] {
   if (!isRecord(access) || !Array.isArray(access.grants)) return [];
   const out: D1ControllerGrant[] = [];
   for (const grant of access.grants) {
@@ -293,15 +295,36 @@ function grantsOf(access: unknown): D1ControllerGrant[] {
     const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
     const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
     if (!mode) continue;
+    const entityRefs = stringList(grant.entityRefs);
+    const allowedFields = stringList(disclosure.allowedFields);
     out.push({
       grantId: grant.grantId,
       actorRef: grant.actorRef,
-      entityRefs: stringList(grant.entityRefs),
+      entityRefs,
       disclosure: mode,
-      allowedFields: stringList(disclosure.allowedFields),
+      allowedFields: mode === 'fieldsOnly'
+        ? resolveAllowedFields({
+          grantId: grant.grantId,
+          entityRefs,
+          allowedFields: Array.isArray(disclosure.allowedFields) ? allowedFields : undefined,
+          deniedFields: stringList(disclosure.deniedFields),
+        }, entities)
+        : allowedFields,
       anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
     });
+  }
+  return out;
+}
+
+async function entitiesOf(project: number, moduleName: string, index: unknown): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  if (!isRecord(index) || !Array.isArray(index.entities)) return out;
+  for (const entity of index.entities) {
+    if (!isRecord(entity) || typeof entity.entityId !== 'string') continue;
+    const text = await readLogical(project, entityPath(moduleName, entity.entityId));
+    const parsed = text ? parseD1Source(text, 'defs') : null;
+    if (isRecord(parsed)) out[entity.entityId] = parsed;
   }
   return out;
 }
