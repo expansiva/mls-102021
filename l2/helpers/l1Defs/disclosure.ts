@@ -174,3 +174,72 @@ function allowedOf(grant: DisclosureGrant, entity: string): string[] {
   }
   return out;
 }
+
+export interface DenialGrant {
+  grantId: string;
+  entityRefs: readonly string[];
+  allowedFields?: readonly string[];
+  deniedFields?: readonly string[];
+}
+
+/**
+ * `fieldsOnly` read as an explicit allow-list. No `deniedFields`: `allowedFields` as declared.
+ * With denials, each `entityRefs` entry is walked on `record.fields` (tree order, no repeats).
+ * A ref under a denial drops; an ancestor is replaced by its children; the bare entity never
+ * stays (it becomes its first-level fields). A denial of the entity drops it. No `record.fields` throws.
+ */
+export function resolveAllowedFields(grant: DenialGrant, entities: Record<string, unknown>): string[] {
+  const denied = grant.deniedFields ?? [];
+  if (denied.length === 0) return [...(grant.allowedFields ?? [])];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entity of grant.entityRefs) {
+    const fields = recordFieldMap(entities[entity]);
+    if (!fields) throw new Error(`D1_GRANT_DENIED_UNRESOLVED: ${grant.grantId} ${entity} has no record.fields`);
+    if (denied.some(item => item === entity)) continue;
+    const seeds = grant.allowedFields == null
+      ? [entity]
+      : grant.allowedFields.filter(item => item === entity || item.startsWith(`${entity}.`));
+    for (const seed of seeds) walkAllowed(entity, seed, fields, denied, out, seen);
+  }
+  return out;
+}
+
+function walkAllowed(
+  entity: string,
+  ref: string,
+  fields: Record<string, unknown>,
+  denied: readonly string[],
+  out: string[],
+  seen: Set<string>,
+): void {
+  if (denied.some(item => ref === item || ref.startsWith(`${item}.`))) return;
+  if (ref === entity || denied.some(item => item.startsWith(`${ref}.`))) {
+    for (const child of childRefs(entity, ref, fields)) walkAllowed(entity, child, fields, denied, out, seen);
+    return;
+  }
+  if (seen.has(ref)) return;
+  seen.add(ref);
+  out.push(ref);
+}
+
+function childRefs(entity: string, ref: string, fields: Record<string, unknown>): string[] {
+  const relative = ref === entity ? '' : ref.slice(entity.length + 1);
+  let node = fields;
+  if (relative.length > 0) {
+    for (const part of relative.split('.')) {
+      const child = node[part];
+      if (!isRecord(child) || !isRecord(child.fields)) return [];
+      node = child.fields;
+    }
+  }
+  const prefix = relative.length === 0 ? entity : `${entity}.${relative}`;
+  return Object.keys(node).map(name => `${prefix}.${name}`);
+}
+
+function recordFieldMap(entityDefinition: unknown): Record<string, unknown> | null {
+  if (!isRecord(entityDefinition)) return null;
+  const data = isRecord(entityDefinition.data) ? entityDefinition.data : entityDefinition;
+  const record = isRecord(data.record) ? data.record : null;
+  return record && isRecord(record.fields) ? record.fields : null;
+}

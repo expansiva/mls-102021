@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { coveringGrants, pathDisclosure, systemFieldPaths, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { coveringGrants, pathDisclosure, resolveAllowedFields, systemFieldPaths, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
 const grant = (disclosure: string, entityRefs: string[], allowedFields: string[] = []): DisclosureGrant => ({ disclosure, entityRefs, allowedFields });
 
@@ -70,4 +70,45 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
   assert.equal(pathDisclosure(grants, 'Client', 'details'), 'carrier');
   assert.equal(pathDisclosure(grants, 'Client', 'details.identificationX'), 'blocked');
   assert.equal(pathDisclosure([grant('fieldsOnly', ['Client'], ['Client'])], 'Client', 'details'), 'disclosed');
+});
+
+const branch = (names: Record<string, Record<string, unknown>>) => ({ record: { fields: names } });
+const leaf = { type: 'string' };
+const treeA = branch({
+  a: leaf,
+  b: leaf,
+  details: { type: 'object', fields: { x: leaf, y: leaf } },
+});
+const treeB = branch({ p: leaf, q: leaf });
+
+void test('resolveAllowedFields turns a denial into an explicit allow-list', () => {
+  const entities = { A: treeA, B: treeB };
+  assert.deepEqual(
+    resolveAllowedFields({ grantId: 'g', entityRefs: ['A'], deniedFields: ['A.details.y'] }, entities),
+    ['A.a', 'A.b', 'A.details.x'],
+  );
+  assert.deepEqual(
+    resolveAllowedFields({ grantId: 'g', entityRefs: ['A'], allowedFields: ['A'], deniedFields: ['A.b'] }, entities),
+    ['A.a', 'A.details'],
+  );
+  assert.deepEqual(
+    resolveAllowedFields({ grantId: 'g', entityRefs: ['A'], allowedFields: ['A.a', 'A.details'], deniedFields: ['A.details.x'] }, entities),
+    ['A.a', 'A.details.y'],
+  );
+  assert.deepEqual(
+    resolveAllowedFields({ grantId: 'g', entityRefs: ['A'], allowedFields: ['A', 'A.a'] }, entities),
+    ['A', 'A.a'],
+  );
+  assert.throws(
+    () => resolveAllowedFields({ grantId: 'g1', entityRefs: ['A'], deniedFields: ['A.a'] }, { A: { record: {} } }),
+    (error: unknown) => error instanceof Error && error.message.startsWith('D1_GRANT_DENIED_UNRESOLVED: g1 A'),
+  );
+  assert.deepEqual(
+    resolveAllowedFields({ grantId: 'g', entityRefs: ['A', 'B'], deniedFields: ['A.b'] }, entities),
+    ['A.a', 'A.details', 'B.p', 'B.q'],
+  );
+  const allowed = resolveAllowedFields({ grantId: 'g', entityRefs: ['A'], deniedFields: ['A.details.y'] }, entities);
+  const grants = [grant('fieldsOnly', ['A'], allowed)];
+  assert.equal(pathDisclosure(grants, 'A', 'details.x'), 'disclosed');
+  assert.equal(pathDisclosure(grants, 'A', 'details.y'), 'blocked');
 });
