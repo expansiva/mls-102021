@@ -13,6 +13,7 @@ import { emitDomain, membersOfType, namedMemberType, ontologyCollections, unopen
 import { derivedReadProblems, inputMembers, listFilterProblems, parentRuleProblems, repositoryProblems, transitionTargetProblems, undeclaredInputProblems, usesNodeBuiltin, testsGate, usecaseGate, usecaseParameterCount, versionProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitted, rulesToEnforce, unitInputHash, unitNeedsLlm, writeAndProve } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 import { citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
@@ -702,4 +703,26 @@ test('a usecase reads only the input it declares (createComanda required an unde
   assert.deepEqual(undeclaredInputProblems(`${head}\nconst raw: Record<string, unknown> = input;\nconst m = raw.mesaId;`), [], 'an alias reading a declared member');
   assert.equal(undeclaredInputProblems(`${head}\nconst raw = input;\nconst n = raw['number'];`).length, 1, 'an alias reading an undeclared member');
   assert.deepEqual(undeclaredInputProblems('const n = input.number;'), [], 'no Input interface, nothing to compare');
+});
+
+test('an MDM link is read under its compact key, on each side (a manager never saw his team)', () => {
+  const mdm = readFileSync(path.join(ROOT, 'mls-102034', 'l4', 'ontology', 'mdm.defs.ts'), 'utf8');
+  const onto = (entityId: string, relationships: Record<string, unknown>) => ({ entityId, source: 'export const x = ' + JSON.stringify({ entityId, relationships }) + ' as const;' });
+  const links = mdmLinks([
+    onto('Colaborador', { gestorResponsavel: { to: 'GestorEquipe', via: 'ReportsTo', cardinality: 'N:1' } }),
+    onto('GestorEquipe', { colaboradores: { to: 'Colaborador', via: 'ReportsTo', cardinality: '1:N', direction: 'to' }, despesasDaEquipe: { to: 'Despesa', via: 'Despesa', mode: 'throughTable' } }),
+  ], mdm);
+  assert.deepEqual(links, [{ type: 'ReportsTo', from: { entityId: 'Colaborador', key: 'reportManagers' }, to: { entityId: 'GestorEquipe', key: 'reports' } }], 'one link, both sides, a module table via is not an MDM link');
+  const text = mdmLinksSection(links);
+  assert.ok(text.includes('On a Colaborador: `relationshipRefs.reportManagers` = ids of its GestorEquipe') && text.includes('On a GestorEquipe: `relationshipRefs.reports`'), text);
+  assert.equal(mdmLinksSection([]), '', 'no MDM link, no section');
+});
+
+test('a repository is never typed inline nor named outside the ports of the module (ColaboradorRepository)', () => {
+  const shipped = "const colaboradorRepository = resolveRepository<{ get(id: string): Promise<Colaborador> }>(ctx, 'ColaboradorRepository');";
+  const problems = repositoryProblems(shipped, ['DespesaRepository']);
+  assert.ok(problems.some(p => p.includes('Do not type a repository inline')), problems.join('\n'));
+  assert.ok(problems.some(p => p.includes("ColaboradorRepository is not a repository port of this module (its ports: DespesaRepository)")), problems.join('\n'));
+  const ok = "import type { DespesaRepository } from '/_102047_/l1/reembolsoDespesas/layer_2_application/ports/despesaRepository.js';\nconst r = resolveRepository<DespesaRepository>(ctx, 'DespesaRepository');";
+  assert.deepEqual(repositoryProblems(ok, ['DespesaRepository']), []);
 });

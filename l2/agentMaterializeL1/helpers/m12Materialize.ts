@@ -27,7 +27,7 @@ import { fileRef, rulesFile, type M12FileInfo } from '/_102021_/l2/agentMaterial
 import { moduleDefinitions, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 
 /** Raised when a recipe or a check of this agent changes: an older status is a new input. */
-export const M12_RECIPE_VERSION = '2026-10-06-m12-recipe-v20';
+export const M12_RECIPE_VERSION = '2026-10-06-m12-recipe-v21';
 
 /** Declared platform gaps: nothing is written and the app still boots (closed list, as agentMaterializeL1 m1_47). */
 const PLATFORM_GAPS = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);

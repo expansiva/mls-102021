@@ -10,6 +10,7 @@ import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 
@@ -239,6 +240,8 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
       .filter(ruleId => ruleId.startsWith('rule-'));
     parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)])));
   }
+  const links = await moduleMdmLinksSection(ctx);
+  if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
@@ -409,6 +412,6 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId) }),
   ];
 }

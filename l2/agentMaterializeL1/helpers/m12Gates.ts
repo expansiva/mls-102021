@@ -17,6 +17,8 @@ export interface M12CodeGateInput {
   parentRules?: readonly M12ParentRule[];
   /** For a transition usecase: its id and the state it leads to, from the l4 lifecycle. */
   transition?: { transitionId: string; to: string };
+  /** The repository ports of the module (`DespesaRepository`); a name outside them is refused. */
+  ports?: readonly string[];
 }
 
 /**
@@ -180,8 +182,19 @@ export function portImports(code: string): Set<string> {
  * from a port. Either one hides the entity's field names from the compiler (fecharComanda read `item.quantity`
  * through its own `ItemComandaRepository`; the field is `details.quantidade`).
  */
-export function repositoryProblems(code: string): string[] {
+export function repositoryProblems(code: string, knownPorts?: readonly string[]): string[] {
   const problems: string[] = [];
+  // aprovarDespesa typed `resolveRepository<{ get(id: string): … }>(ctx, 'ColaboradorRepository')`: an inline type
+  // escapes the port check below, and that port does not exist (Colaborador lives in the MDM), so every call threw.
+  if (/\bresolveRepository\s*<\s*\{/u.test(code)) {
+    problems.push('Do not type a repository inline (`resolveRepository<{ … }>`): use a port of this module, imported from layer_2_application/ports. An entity kept in the platform MDM has no port: read it with `ctx.mdm.entity.get`.');
+  }
+  if (knownPorts) {
+    // Lazy up to the call: the type argument may itself hold `<…>` (`Promise<Colaborador>`).
+    for (const match of code.matchAll(/\bresolveRepository\b[^;]*?\(\s*[A-Za-z_$][\w$]*\s*,\s*['"]([^'"]+)['"]/gu)) {
+      if (!knownPorts.includes(match[1])) problems.push(`\`resolveRepository(ctx, '${match[1]}')\`: ${match[1]} is not a repository port of this module (its ports: ${knownPorts.join(', ') || 'none'}). An entity kept in the platform MDM is read with \`ctx.mdm.entity.get\`.`);
+    }
+  }
   for (const match of code.matchAll(/^\s*(?:export\s+)?(?:interface|type)\s+([A-Za-z0-9_]*Repository)\b/gmu)) {
     problems.push(`Do not declare the repository type \`${match[1]}\`: import the port from \`/_<project>_/l1/<module>/layer_2_application/ports/…\` and type the records with its entity.`);
   }
@@ -288,7 +301,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) {
     problems.push('No `as unknown as` and no `as any`: they hide from the compiler an output that differs from the declared type (a list usecase returned a bare array while declaring { items, hasMore }). Return a value built with the declared type.');
   }
-  problems.push(...repositoryProblems(code));
+  problems.push(...repositoryProblems(code, input.ports));
   problems.push(...versionProblems(code));
   problems.push(...derivedReadProblems(code, input.derivedPaths ?? []));
   if (input.operation === 'list') problems.push(...listFilterProblems(code));

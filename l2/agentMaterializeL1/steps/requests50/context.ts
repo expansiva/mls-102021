@@ -7,6 +7,7 @@
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { importSpecifiers, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -92,6 +93,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     const fields = Array.isArray(item.definition.data.fields) ? item.definition.data.fields.filter(isRecord).map(field => `${String(field.name ?? '')}${field.derived ? ' (derived)' : ''}`) : [];
     return `- ${String(item.definition.data.entityId ?? item.definition.artifactId)}: ${fields.join(', ')}`;
   }).join('\n')));
+  const links = await moduleMdmLinksSection(ctx);
+  if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
