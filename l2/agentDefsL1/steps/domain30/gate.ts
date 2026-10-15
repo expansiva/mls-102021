@@ -794,8 +794,8 @@ function readTransition(
   const from = stringItems(entry.from);
   const by = stringItems(entry.by);
   const ruleRefs = stringItems(entry.ruleRefs);
-  if (!from || !by || !ruleRefs || from.length === 0 || by.length === 0) {
-    error(problems, 'TRANSITION_SHAPE', path, `Transition ${transitionId} has an empty from, by or a non-string rule ref.`);
+  if (!from || !by || !ruleRefs || from.length === 0) {
+    error(problems, 'TRANSITION_SHAPE', path, `Transition ${transitionId} has an empty from or a non-string rule ref.`);
     blocked.add(entityId);
     return null;
   }

@@ -363,6 +363,38 @@ void test('a preserved domain file is not part of the write set', () => {
   assert.ok(build.entities[0].definition);
 });
 
+void test('a system transition keeps an empty by and an empty from stays TRANSITION_SHAPE', () => {
+  const rules = { rules: { ordemChegadaListaEspera: 'queue', promoverPrimeiroListaEsperaAoCancelar: 'promote' } };
+  const body = {
+    entityId: 'Inscricao',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { id: { type: 'uuid', derived: true } } },
+    lifecycleStates: [
+      { state: 'waitlisted', reachedBy: 'command' },
+      { state: 'confirmed', reachedBy: 'command' },
+    ],
+    transitions: [{
+      transitionId: 'promover',
+      from: ['waitlisted'],
+      to: 'confirmed',
+      by: [] as string[],
+      ruleRefs: ['ordemChegadaListaEspera', 'promoverPrimeiroListaEsperaAoCancelar'],
+    }],
+  };
+  const kept = buildD1Domain(requestFrom({ Inscricao: body }, rules));
+  assert.equal(codes(kept, 'error').includes('TRANSITION_SHAPE'), false);
+  assert.equal(kept.ok, true, JSON.stringify(kept.problems));
+  assert.ok(kept.entities[0].definition);
+  assert.deepEqual(dataOf(kept.entities[0]).lifecycle.transitions[0].by, []);
+
+  const emptyFrom = buildD1Domain(requestFrom({
+    Inscricao: { ...body, transitions: [{ ...body.transitions[0], from: [] }] },
+  }, rules));
+  assert.equal(codes(emptyFrom, 'error').includes('TRANSITION_SHAPE'), true);
+  assert.equal(emptyFrom.entities[0].definition, null);
+});
+
 function agendaBuild(artifacts: D1InputArtifacts, snapshot: D1InputSnapshot): D1DomainBuild {
   return buildD1Domain({
     project: PROJECT,
