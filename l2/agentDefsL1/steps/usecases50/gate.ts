@@ -210,8 +210,8 @@ function noteUnparsedContracts(request: D1UsecaseRequest, problems: D1UsecasePro
 
 /**
  * Identity may filter a read or select an update/transition. It is not assigned.
- * A nested derived field on a read is a filter, matched by its full path.
- * `details.id` is not identity, and a nested `version` is not concurrency.
+ * A derived input on a read is a filter, with or without a dot.
+ * `id` on a read stays a filter; `version` is concurrency only on update or transition.
  * Other derived fields stay writes, except declared concurrency (`version`).
  * The d1_13g rule that treated every derived input as DERIVED_EDITABLE is replaced.
  */
@@ -340,16 +340,8 @@ function derivedRole(
     if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
     return 'write';
   }
-  if (READ_OPERATIONS.has(operation) && nestedReadFilter(field.name)) return 'filter';
+  if (source === 'input' && READ_OPERATIONS.has(operation)) return 'filter';
   return 'write';
-}
-
-/** A dotted path on a read. The leaf `id` is a homonym, not the identity field. */
-function nestedReadFilter(name: string): boolean {
-  const dot = name.lastIndexOf('.');
-  if (dot <= 0) return false;
-  const leaf = name.slice(dot + 1);
-  return leaf !== 'id' && leaf !== 'version';
 }
 
 function noteRequiredNotes(

@@ -345,16 +345,8 @@ function derivedRole(
     if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
     return 'write';
   }
-  if (READ_OPERATIONS.has(operation) && nestedReadFilter(fieldName)) return 'filter';
+  if (source === 'input' && READ_OPERATIONS.has(operation)) return 'filter';
   return 'write';
-}
-
-/** A dotted path on a read. The leaf `id` is a homonym, not the identity field. */
-function nestedReadFilter(name: string): boolean {
-  const dot = name.lastIndexOf('.');
-  if (dot <= 0) return false;
-  const leaf = name.slice(dot + 1);
-  return leaf !== 'id' && leaf !== 'version';
 }
 
 function useKey(use: D1FieldUse): string {

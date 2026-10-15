@@ -631,7 +631,8 @@ void test('assigning a derived field stays an error, including a nested homonym 
     { path: 'details.id', type: 'string', optional: false },
   ])];
   const homonym = buildD1Usecases(nested);
-  assert.equal(homonym.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field details.id is assigned by listConsulta.'), true);
+  assert.equal(homonym.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, homonym.problems.map(item => item.message).join('; '));
+  assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.details.id'), true);
   assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
   assert.equal(homonym.problems.some(item => item.message.includes('Derived field id is assigned')), false);
 
@@ -677,7 +678,8 @@ void test('assigning a derived field stays an error, including a nested homonym 
   if (patientId) patientId.derived = true;
   else entity.fields.push({ name: 'patientId', type: 'uuid', derived: true });
   const byName = buildD1Usecases(suffix);
-  assert.equal(byName.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field patientId is assigned by listConsulta.'), true);
+  assert.equal(byName.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, byName.problems.map(item => item.message).join('; '));
+  assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.patientId'), true);
   assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
 
   const unknown = singleRouteRequest(
@@ -796,6 +798,56 @@ void test('a nested derived list field is a filter, a transition id is a selecto
   const fromInput = buildD1Usecases(authority);
   assert.equal(fromInput.problems.some(item => item.code === 'ACTOR_FROM_INPUT'), true);
   assert.equal(fromInput.emit.length, 0);
+});
+
+void test('a top-level derived input on a list is a filter, and the same field on create stays editable', () => {
+  const listedRequest = singleRouteRequest(
+    'listConsulta',
+    'consultas',
+    'agendaClinica.consultas.qryListConsulta',
+    'qry',
+    `
+      export interface ListConsultaInput { receivedAt: string; }
+      export interface ListConsultaOutput { id: string; }
+      export const listConsultaRoute = "agendaClinica.consultas.qryListConsulta" as const;
+    `,
+  );
+  const listedEntity = listedRequest.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(listedEntity);
+  listedEntity.fields.push({ name: 'receivedAt', type: 'string', derived: true });
+  listedRequest.contexts = [inputContext('listConsulta', 'agendaClinica.consultas.qryListConsulta', [
+    { path: 'receivedAt', type: 'string', optional: false },
+  ])];
+  const listed = buildD1Usecases(listedRequest);
+  assert.equal(listed.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, listed.problems.map(item => item.message).join('; '));
+  assert.equal(listed.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.receivedAt'), true);
+
+  const createdRequest = singleRouteRequest(
+    'createConsulta',
+    'consultas',
+    'agendaClinica.consultas.cmdCreateConsulta',
+    'cmd',
+    `
+      export interface CreateConsultaInput { receivedAt: string; }
+      export interface CreateConsultaOutput { id: string; }
+      export const createConsultaRoute = "agendaClinica.consultas.cmdCreateConsulta" as const;
+    `,
+  );
+  const createdEntity = createdRequest.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(createdEntity);
+  createdEntity.fields.push({ name: 'receivedAt', type: 'string', derived: true });
+  createdRequest.contexts = [inputContext('createConsulta', 'agendaClinica.consultas.cmdCreateConsulta', [
+    { path: 'receivedAt', type: 'string', optional: false },
+  ])];
+  createdRequest.plans = [{
+    usecaseId: 'createConsulta',
+    steps: [
+      ...(createdRequest.plans[0]?.steps || []),
+      { kind: 'transition', transitionId: 'createConsulta', payload: ['receivedAt'] },
+    ],
+  }];
+  const created = buildD1Usecases(createdRequest);
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field receivedAt is assigned by createConsulta.'), true);
 });
 
 function stepProperty(tool: ReturnType<typeof usecaseTool>, kind: string, key: string): { enum?: unknown[]; const?: unknown } {
