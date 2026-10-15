@@ -170,95 +170,15 @@
     "usecase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["usecaseId", "entityId", "operation", "ports", "rulesApplied", "functions", "portCalls", "transactional", "effects", "sequence", "uses", "rules", "transaction"],
+      "required": ["usecaseId", "entityId", "operation", "rulesApplied", "effects"],
       "properties": {
         "usecaseId": { "type": "string", "minLength": 1 },
         "entityId": { "type": "string", "minLength": 1 },
         "operation": { "type": "string", "minLength": 1 },
-        "ports": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "rulePlan": { "type": "array", "items": { "$ref": "#/$defs/rulePlanRow" } },
-        "functions": { "type": "array", "items": { "$ref": "#/$defs/usecaseFunction" } },
-        "portCalls": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "transactional": { "type": "boolean" },
-        "effects": { "type": "array", "items": { "$ref": "#/$defs/effectRef" } },
-        "sequence": { "type": "array", "items": { "$ref": "#/$defs/usecaseStep" } },
-        "uses": { "type": "array", "items": { "$ref": "#/$defs/fieldUse" } },
-        "rules": { "type": "array", "items": { "$ref": "#/$defs/ruleRef" } },
-        "transaction": { "$ref": "#/$defs/transactionBoundary" },
         "transitionRef": { "type": "string", "minLength": 1 },
-        "lifecycle": { "$ref": "#/$defs/lifecycleRef" },
+        "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/effectRef" } },
         "mdm": { "$ref": "#/$defs/mdmBinding" }
-      }
-    },
-    "usecaseStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind"],
-      "properties": {
-        "kind": { "type": "string", "enum": ["port", "rule", "mdm", "transition", "effect", "transaction", "context"] },
-        "call": { "type": "string", "minLength": 1 },
-        "port": { "type": "string", "minLength": 1 },
-        "ruleId": { "type": "string", "minLength": 1 },
-        "namespace": { "type": "string", "minLength": 1 },
-        "entity": { "type": "string", "minLength": 1 },
-        "capability": { "type": "string", "minLength": 1 },
-        "transitionId": { "type": "string", "minLength": 1 },
-        "payload": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "eventId": { "type": "string", "minLength": 1 },
-        "boundary": { "type": "string", "enum": ["local", "external"] },
-        "source": { "type": "string", "enum": ["ctx"] }
-      }
-    },
-    "fieldUse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "role", "source"],
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "role": { "type": "string", "enum": ["filter", "selector", "concurrency", "write"] },
-        "source": { "type": "string", "enum": ["input", "payload"] }
-      }
-    },
-    "rulePlanRow": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ruleId", "origin", "consumer", "enforcement", "gap"],
-      "properties": {
-        "ruleId": { "type": "string" },
-        "origin": { "type": "string", "minLength": 1 },
-        "consumer": { "type": "string", "minLength": 1 },
-        "enforcement": { "type": "string", "enum": ["local", "delegated", "pending"] },
-        "gap": { "type": "string" }
-      }
-    },
-    "ruleRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ruleId", "path", "symbol"],
-      "properties": {
-        "ruleId": { "type": "string", "minLength": 1 },
-        "path": { "type": "string", "minLength": 1 },
-        "symbol": { "type": "string", "minLength": 1 }
-      }
-    },
-    "transactionBoundary": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["boundary"],
-      "properties": {
-        "boundary": { "type": "string", "enum": ["local", "none"] }
-      }
-    },
-    "lifecycleRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["transitionId", "payload", "sourcePath", "symbol"],
-      "properties": {
-        "transitionId": { "type": "string", "minLength": 1 },
-        "payload": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-        "sourcePath": { "type": "string", "minLength": 1 },
-        "symbol": { "type": "string", "minLength": 1 }
       }
     },
     "mdmBinding": {
@@ -321,26 +241,6 @@
         "path": { "type": "string", "minLength": 1 },
         "calls": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "evidence": { "type": "string", "minLength": 1 }
-      }
-    },
-    "usecaseFunction": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["functionName", "input", "output"],
-      "properties": {
-        "functionName": { "type": "string", "minLength": 1 },
-        "input": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } },
-        "output": { "type": "array", "items": { "$ref": "#/$defs/projectionField" } }
-      }
-    },
-    "projectionField": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name"],
-      "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "type": { "type": "string", "minLength": 1 },
-        "fieldRef": { "type": "string", "minLength": 1 }
       }
     },
     "effectRef": {

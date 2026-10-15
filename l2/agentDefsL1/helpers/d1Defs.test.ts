@@ -18,7 +18,6 @@ import {
   adapterLinkIssues,
   authorityGrantIssues,
   definitionIssues,
-  derivedFieldIssues,
   domainImportIssues,
   integrationMechanismIssues,
   pendingDefinition,
@@ -351,12 +350,6 @@ void test('naming the measured queue is an incompatible mechanism, not a missing
   const fictional = integrationMechanismIssues(data);
   assert.equal(fictional.some(issue => issue.startsWith('FICTIONAL_API:')), true);
   assert.equal(fictional.some(issue => issue.startsWith('MECHANISM_INCOMPATIBLE:')), false);
-});
-
-void test('a derived field is rejected as a usecase input', () => {
-  const entity = { fields: [{ name: 'id', type: 'string', derived: true }] };
-  const usecase = { functions: [{ input: [{ name: 'id' }] }] };
-  assert.equal(derivedFieldIssues(entity, [usecase]).some(issue => issue.includes('Derived field id')), true);
 });
 
 void test('a duplicate def path writes nothing', async () => {

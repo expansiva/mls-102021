@@ -447,29 +447,6 @@ export function recordFieldIssues(data: unknown): string[] {
   return issues;
 }
 
-export function derivedFieldIssues(entity: unknown, usecases: readonly unknown[]): string[] {
-  const issues: string[] = [];
-  if (!isRecord(entity) || !Array.isArray(entity.fields)) return issues;
-  const derived = new Set<string>();
-  for (const field of entity.fields) {
-    if (!isRecord(field) || field.derived !== true || typeof field.name !== 'string') continue;
-    derived.add(field.name);
-  }
-  usecases.forEach((usecase, usecaseIndex) => {
-    if (!isRecord(usecase) || !Array.isArray(usecase.functions)) return;
-    usecase.functions.forEach((fn, fnIndex) => {
-      if (!isRecord(fn) || !Array.isArray(fn.input)) return;
-      fn.input.forEach((input, inputIndex) => {
-        if (!isRecord(input) || typeof input.name !== 'string') return;
-        if (derived.has(input.name)) {
-          issues.push(`Derived field ${input.name} is an input of usecases.${usecaseIndex}.functions.${fnIndex}.input.${inputIndex}.`);
-        }
-      });
-    });
-  });
-  return issues;
-}
-
 export function storageTargetIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.storageTarget.'];
   const issues: string[] = [];
