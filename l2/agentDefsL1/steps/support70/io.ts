@@ -17,6 +17,7 @@ import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persisten
 import {
   D1_SUPPORT_VERSION,
   transitionUsecaseFor,
+  operationUsecasesOf,
   transitionUsecasesOf,
   type D1EffectEvent,
   type D1EffectOperation,
@@ -72,6 +73,7 @@ export async function assembleD1Support(
   const selected = snapshot.selection.usecases;
   const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
   const transitionUsecases = transitionUsecasesOf(selected);
+  const operationUsecases = operationUsecasesOf(selected);
   const linked = await effectsOf(project, moduleName, selected);
   const request: D1SupportRequest = {
     project,
@@ -98,6 +100,7 @@ export async function assembleD1Support(
     selectedEventIds: [...snapshot.selection.outbound].sort(),
     usecaseIds,
     transitionUsecases,
+    operationUsecases,
     operations: linked.operations,
     enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };

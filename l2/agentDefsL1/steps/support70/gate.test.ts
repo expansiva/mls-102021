@@ -890,6 +890,64 @@ void test('an outbound event binds the usecase of its entity transition, not a u
   assert.equal(missingProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'inscricaoPromovida'), true);
 });
 
+void test('an outbound event on an entity operation binds that usecase, or keeps the operation name', () => {
+  const model = {
+    entityId: 'X', storageTarget: 'local' as const, kind: 'entity' as const, namespace: '', fields: [],
+    states: [], initialState: '', uniqueKeys: [], noteField: '', transitions: [],
+  };
+
+  const linked = effectsRequest();
+  linked.models = [model];
+  linked.usecaseIds = ['createX'];
+  linked.operationUsecases = [{ entity: 'X', operation: 'create', usecaseId: 'createX' }];
+  linked.selectedEventIds = ['xCreated'];
+  linked.outbound = [{ eventId: 'xCreated', on: 'X.create', mechanism: '', payloadDeclared: false }];
+  const linkedProblems: D1SupportProblem[] = [];
+  const linkedResult = emitEffects(linked, linkedProblems);
+  assert.equal(linkedProblems.some(item => item.severity === 'error'), false, JSON.stringify(linkedProblems));
+  const linkedOutbound = linkedResult.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  const linkedEvents = (linkedOutbound?.definition.data as { events: Array<{ consumer: string }> }).events;
+  assert.deepEqual(linkedEvents.map(item => item.consumer), ['createX']);
+  const linkedDepends = linkedOutbound?.pipeline.flatMap(item => item.dependsFiles) || [];
+  assert.equal(linkedDepends.some(item => item.includes('usecases/createX.defs.ts')), true);
+
+  const absent = effectsRequest();
+  absent.models = [model];
+  absent.selectedEventIds = ['xCreated'];
+  absent.outbound = [{ eventId: 'xCreated', on: 'X.create', mechanism: '', payloadDeclared: false }];
+  const absentProblems: D1SupportProblem[] = [];
+  const absentResult = emitEffects(absent, absentProblems);
+  assert.equal(absentProblems.some(item => item.code === 'INTEGRATION_LINK'), false, JSON.stringify(absentProblems));
+  assert.equal(absentProblems.some(item => item.code === 'POOL_ABSENT' && item.severity === 'review'), true);
+  const absentOutbound = absentResult.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  const absentEvents = (absentOutbound?.definition.data as { events: Array<{ consumer: string }> }).events;
+  assert.deepEqual(absentEvents.map(item => item.consumer), ['X.create']);
+  const absentDepends = absentOutbound?.pipeline.flatMap(item => item.dependsFiles) || [];
+  assert.equal(absentDepends.some(item => item.includes('.defs.ts')), false);
+  assert.deepEqual(absentOutbound?.pipeline.flatMap(item => item.dependsOn), []);
+
+  const unknown = effectsRequest();
+  unknown.models = [model];
+  unknown.selectedEventIds = ['xFoo'];
+  unknown.outbound = [{ eventId: 'xFoo', on: 'X.foo', mechanism: '', payloadDeclared: false }];
+  const unknownProblems: D1SupportProblem[] = [];
+  emitEffects(unknown, unknownProblems);
+  assert.equal(unknownProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'xFoo'), true);
+
+  const ambiguous = effectsRequest();
+  ambiguous.models = [model];
+  ambiguous.usecaseIds = ['createX', 'createXAgain'];
+  ambiguous.operationUsecases = [
+    { entity: 'X', operation: 'create', usecaseId: 'createX' },
+    { entity: 'X', operation: 'create', usecaseId: 'createXAgain' },
+  ];
+  ambiguous.selectedEventIds = ['xCreated'];
+  ambiguous.outbound = [{ eventId: 'xCreated', on: 'X.create', mechanism: '', payloadDeclared: false }];
+  const ambiguousProblems: D1SupportProblem[] = [];
+  emitEffects(ambiguous, ambiguousProblems);
+  assert.equal(ambiguousProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'xCreated'), true);
+});
+
 void test('a local table outside every journey owns its dataset by a token scenario id (t1_09 r3)', () => {
   const request = effectsRequest();
   request.tables = [{ tableId: 'qxRow', entityId: 'Qx', action: 'create', defPath: 'l1/zzMod/layer_3_infra/tables/qxRow.defs.ts', uniqueKeys: [] }];

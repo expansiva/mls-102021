@@ -273,6 +273,22 @@ export function transitionUsecaseFor(list: readonly D1TransitionUsecase[], entit
   return match ? match.usecaseId : '';
 }
 
+/** A selected usecase that is not a transition. */
+export interface D1OperationUsecase {
+  entity: string;
+  operation: string;
+  usecaseId: string;
+}
+
+/** Selected usecases whose operation is not `transition`. `usecaseId` is `identity` when set. */
+export function operationUsecasesOf(
+  selected: readonly { usecaseId: string; entity: string; operation: string; identity: string }[],
+): D1OperationUsecase[] {
+  return selected.flatMap(item => item.operation !== 'transition'
+    ? [{ entity: item.entity, operation: item.operation, usecaseId: item.identity || item.usecaseId }]
+    : []);
+}
+
 export interface D1EffectEvent {
   eventId: string;
   on: string;
@@ -362,6 +378,11 @@ export interface D1SupportRequest {
   usecaseIds: string[];
   /** Selected transition usecases by entity and L4 transitionRef. An outbound event binds one of these. */
   transitionUsecases: D1TransitionUsecase[];
+  /**
+   * Selected non-transition usecases. Absent on a fixture built before this list existed.
+   * An outbound `Entidade.<op>` binds one of these when it is not a transition.
+   */
+  operationUsecases?: D1OperationUsecase[];
   /** Processes, inbound and plugins. A workflow does not become an endpoint. */
   operations: D1EffectOperation[];
 }

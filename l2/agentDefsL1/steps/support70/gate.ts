@@ -20,6 +20,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { planFixture } from '/_102021_/l2/helpers/l1Defs/fixture.js';
+import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import type { D1ControllerGrant, D1ControllerRelationship } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import {
   D1_SUPPORT_VERSION,
@@ -51,6 +52,7 @@ import { transitionUsecaseFor } from '/_102021_/l2/agentDefsL1/steps/support70/c
 import { lifecyclePath, projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
 
 const LIVE_ACTIONS = new Set(['create', 'update', 'recompose', 'preserve']);
+const L1_OPERATION_EVENTS = new Set<string>(L1_OPERATIONS.filter(operation => operation !== 'transition'));
 const WRITE_ACTIONS = new Set(['create', 'update', 'recompose']);
 const FORM_IDENTITY = new Set(['actorId', 'userId', 'sessionId', 'scope']);
 const APPLICATION = new Set(['usecase', 'httpController', 'accessScope', 'authorityMap', 'repositoryPort']);
@@ -879,9 +881,18 @@ export function emitEffects(
     const transition = parts[1] || '';
     const linked = Boolean(event.eventId) && Boolean(entityId) && Boolean(transition) && parts.length === 2;
     const usecaseId = linked ? transitionUsecaseFor(request.transitionUsecases, entityId, transition) : '';
-    const onEntity = linked && request.models.some(model =>
-      model.entityId === entityId && model.transitions.some(item => item.transitionId === transition));
-    if (!linked || (!usecaseId && !onEntity)) {
+    const model = request.models.find(item => item.entityId === entityId);
+    const onEntity = linked && Boolean(model?.transitions.some(item => item.transitionId === transition));
+    const operationName = linked && !usecaseId && !onEntity && L1_OPERATION_EVENTS.has(transition) && model ? transition : '';
+    const operationMatches = operationName
+      ? (request.operationUsecases ?? []).filter(item => item.entity === entityId && item.operation === operationName)
+      : [];
+    if (operationName && operationMatches.length > 1) {
+      error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
+      continue;
+    }
+    const operationUsecase = operationMatches.length === 1 ? operationMatches[0]?.usecaseId || '' : '';
+    if (!linked || (!usecaseId && !onEntity && !operationName)) {
       error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
       continue;
     }
@@ -896,8 +907,8 @@ export function emitEffects(
         `Transition ${transition} cites ${rules.join(', ')} and declares no payload. No payload was invented.`,
       );
     }
-    const consumer = usecaseId || `${entityId}.${transition}`;
-    if (!usecaseId) {
+    const consumer = usecaseId || operationUsecase || `${entityId}.${transition}`;
+    if (!usecaseId && !operationUsecase) {
       review(
         problems,
         'POOL_ABSENT',

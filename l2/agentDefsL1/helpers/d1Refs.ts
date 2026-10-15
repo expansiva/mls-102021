@@ -11,9 +11,12 @@ import {
   isArtifactType,
   isRecord,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 export const D1_OUTPUT_AVAILABILITY = ['future', 'present'] as const;
 export type D1OutputAvailability = typeof D1_OUTPUT_AVAILABILITY[number];
+
+const L1_OPERATION_EVENTS = new Set<string>(L1_OPERATIONS.filter(operation => operation !== 'transition'));
 
 const ITEM_KEYS = [
   'id', 'type', 'defPath', 'outputPath', 'outputAvailability', 'dependsFiles', 'dependsOn', 'skills', 'routes',
@@ -479,23 +482,41 @@ export function effectCoverageIssues(usecases: readonly { effects?: Array<{ even
   return issues;
 }
 
-/** An outbound event binds the usecase of its entity and transitionRef, never a usecase named like the transition. */
+/** An outbound event binds the usecase of its entity and transitionRef, or of its entity and L1 operation. */
 export function integrationLinkIssues(
   events: readonly { eventId: string; on: string; consumer?: string }[],
   transitionUsecases: readonly { entity: string; transitionRef: string; usecaseId: string }[],
+  operationUsecases: readonly { entity: string; operation: string; usecaseId: string }[] = [],
 ): string[] {
   const issues: string[] = [];
   for (const event of events) {
     const parts = event.on.split('.');
     const entity = parts[0] || '';
-    const transition = parts[1] || '';
-    const match = transitionUsecases.find(item => item.entity === entity && item.transitionRef === transition);
+    const name = parts[1] || '';
+    const match = transitionUsecases.find(item => item.entity === entity && item.transitionRef === name);
     const usecaseId = match ? match.usecaseId : '';
-    const namedTransition = parts.length === 2 && Boolean(entity) && Boolean(transition) && event.consumer === `${entity}.${transition}`;
-    if (!usecaseId && !namedTransition) issues.push(`Outbound ${event.eventId} does not name a selected transition usecase.`);
-    if (usecaseId && event.consumer !== undefined && event.consumer !== usecaseId) {
-      issues.push(`Outbound ${event.eventId} consumer does not match ${usecaseId}.`);
+    const named = parts.length === 2 && Boolean(entity) && Boolean(name) && event.consumer === `${entity}.${name}`;
+    if (usecaseId) {
+      if (event.consumer !== undefined && event.consumer !== usecaseId) {
+        issues.push(`Outbound ${event.eventId} consumer does not match ${usecaseId}.`);
+      }
+      continue;
     }
+    if (parts.length === 2 && L1_OPERATION_EVENTS.has(name)) {
+      const ops = operationUsecases.filter(item => item.entity === entity && item.operation === name);
+      if (ops.length > 1) {
+        issues.push(`Outbound ${event.eventId} does not name a selected usecase.`);
+        continue;
+      }
+      const operationUsecase = ops[0]?.usecaseId || '';
+      if (operationUsecase) {
+        if (event.consumer !== undefined && event.consumer !== operationUsecase) {
+          issues.push(`Outbound ${event.eventId} consumer does not match ${operationUsecase}.`);
+        }
+        continue;
+      }
+    }
+    if (!named) issues.push(`Outbound ${event.eventId} does not name a selected transition usecase.`);
   }
   return issues;
 }
