@@ -220,13 +220,8 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(registrar.includes('eval('), false);
 
   const attendance = behaviorOf(registrar, files);
-  assert.equal(attendance.lifecycle?.payload.includes('details.attendanceNote'), true);
-  assert.equal(attendance.sequence.some(step => step.kind === 'transition' && step.payload.includes('details.attendanceNote')), true);
-  assert.equal(attendance.uses.some(use => use.path === 'id' && use.role === 'selector' && use.source === 'input'), true);
-  assert.equal(attendance.uses.some(use => use.path === 'details.attendanceNote' && use.role === 'write' && use.source === 'payload'), true);
   assert.equal(attendance.rules.some(rule => rule.ruleId === 'attendanceNoteRequired' && rule.path === RULES && rule.symbol === 'attendanceNoteRequired'), true);
   assert.equal(attendance.effects.some(effect => effect.eventId === 'atendimentoRegistrado' && effect.path === INTEGRATION && effect.symbol === 'atendimentoRegistrado'), true);
-  assert.equal(attendance.transaction, 'none');
   assert.deepEqual(attendance.routes, []);
   const parsed = parseRendered(registrar);
   const depends = ((parsed?.definition as { dependencies?: string[] } | undefined)?.dependencies || [])
@@ -237,15 +232,11 @@ void test('serialized defs recover behavior without the draft', () => {
   assert.equal(depends.some(path => path.includes('/l2/')), false);
 
   const listed = behaviorOf(list, files);
-  assert.equal(listed.uses.some(use => use.path === 'id' && use.role === 'filter'), true);
+  assert.equal(listed.operation, 'list');
   assert.deepEqual(listed.routes, []);
-  const listData = parseRendered(list)?.definition as { data?: { functions?: Array<{ output?: Array<{ name?: string }> }> } } | undefined;
-  assert.deepEqual(listData?.data?.functions?.[0]?.output?.map(field => field.name), ['items', 'hasMore']);
   assert.equal(listed.mdm, null);
 
   const editedProfessional = behaviorOf(update, files);
-  assert.equal(editedProfessional.uses.some(use => use.path === 'id' && use.role === 'selector'), true);
-  assert.equal(editedProfessional.uses.some(use => use.path === 'version' && use.role === 'concurrency'), true);
   assert.equal(editedProfessional.mdm?.calls.some(call => call.method === 'update' && call.shape === 'write'), true);
   assert.equal(editedProfessional.mdm?.calls.some(call => call.method === 'attachRole'), false);
 });
@@ -256,25 +247,21 @@ void test('removing payload, a rule or an MDM call fails specifically, and a con
   const list = renderedOf(request, 'listConsulta');
   const update = renderedOf(request, 'updateProfissional');
 
-  const withoutPayload = edited(registrar, definition => {
-    const data = definition.data as {
-      lifecycle: { payload: string[] };
-      sequence: Array<{ kind: string; payload?: string[] }>;
-    };
-    data.lifecycle.payload = [];
-    const step = data.sequence.find(item => item.kind === 'transition');
-    if (step) step.payload = [];
+  const withoutEvent = edited(registrar, definition => {
+    const effects = definition.data.effects as Array<{ symbol: string }>;
+    effects[0].symbol = 'notAnEvent';
   });
-  const payload = readUsecaseFidelity(withoutPayload, files);
-  assert.equal(payload.behavior, null);
-  assert.equal(payload.problems.some(item => item.code === 'PAYLOAD_MISSING'), true);
+  const lost = readUsecaseFidelity(withoutEvent, files);
+  assert.equal(lost.behavior, null);
+  assert.equal(lost.problems.some(item => item.code === 'EVENT_LOST'), true);
 
   const withoutRef = edited(registrar, definition => {
-    definition.data.rules = [];
+    const applied = definition.data.rulesApplied as string[];
+    definition.data.rulesApplied = applied.map(id => id === 'attendanceNoteRequired' ? 'attendanceNoteMissing' : id);
   });
   const ref = readUsecaseFidelity(withoutRef, files);
   assert.equal(ref.behavior, null);
-  assert.equal(ref.problems.some(item => item.code === 'RULE_REF_MISSING' && item.message.includes('attendanceNoteRequired')), true);
+  assert.equal(ref.problems.some(item => item.code === 'RULE_TEXT_ABSENT' && item.message.includes('attendanceNoteMissing')), true);
 
   const withoutText = files.map(file => file.path === RULES
     ? { ...file, text: defs('rules', JSON.stringify({ rules: { consultationTransitionFlow: 'moves', professionalOwnAppointment: 'own' } })) }
@@ -368,7 +355,8 @@ void test('the inventory still reads the serialized usecase and the test does no
   const inventory = await readL1Inventory(102047, 'agendaClinica');
   const usecase = inventory.usecases.find(item => item.usecaseId === 'registrarAtendimento');
   assert.equal(inventory.present, true);
-  assert.equal(usecase?.functions[0]?.name, 'registrarAtendimento');
+  assert.equal(usecase?.usecaseId, 'registrarAtendimento');
+  assert.equal(usecase?.functions.length, 0);
   assert.equal(usecase?.rulesApplied.includes('attendanceNoteRequired'), true);
   assert.equal(host.writes.length, 0);
 });

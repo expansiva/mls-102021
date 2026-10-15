@@ -1,13 +1,13 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/fidelity.ts" enhancement="_blank"/>
 
-import { integrationMechanismIssues, isRecord, isStorageConstraintRow } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { integrationMechanismIssues, isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { declaredDependencyPaths, readDefinitionExport } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
-import { readContractAst, type D1ContractAst, type D1ContractField } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import {
   capabilityApplies,
   capabilityNames,
   declaredFieldsFor,
+  domainSignature,
   mdmInputFields,
   namespaceOf,
   ontologyTransitions,
@@ -15,9 +15,7 @@ import {
   preconditionsFor,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
-import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
-import type { D1RulePlanRow } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import type { D1MdmArgument, D1MdmClause, D1MdmOrigin, D1MdmPlannedCall, D1UsecaseMdm, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import type { D1MdmArgument, D1MdmClause, D1MdmOrigin, D1MdmPlannedCall, D1UsecaseEntity, D1UsecaseField, D1UsecaseMdm } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 export interface FidelityFile {
@@ -40,12 +38,8 @@ export interface D1FieldUse {
 export interface UsecaseBehavior {
   usecaseId: string;
   operation: string;
-  sequence: D1WorkerStep[];
-  uses: D1FieldUse[];
   mdm: D1UsecaseMdm | null;
-  lifecycle: { transitionId: string; payload: string[]; sourcePath: string; symbol: string } | null;
   rules: Array<{ ruleId: string; path: string; symbol: string }>;
-  transaction: 'local' | 'none';
   effects: Array<{ eventId: string; path: string; symbol: string }>;
   routes: Array<{ route: string; contractPath: string; symbol: string; outputFields: string[] }>;
 }
@@ -124,133 +118,44 @@ export function readUsecaseFidelity(
   if (ontologyText != null && !ontology) {
     fail(problems, 'SOURCE_CHANGED', usecaseId, `Ontology ${ontologyPath} did not parse.`);
   }
-  if (!hasDep(dependsFiles, ontologyPath)) {
+  if (operation === 'transition' && !hasDep(dependsFiles, ontologyPath)) {
     fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Ontology ${ontologyPath} is not in dependencies.`);
   }
 
-  const fields = ontology ? recordFields(ontology) : [];
   const transitionRef = typeof data.transitionRef === 'string' ? data.transitionRef : '';
   const transition = ontology
     ? ontologyTransitions(ontology).find(entry => entry.transitionId === transitionRef) || null
     : null;
-  const lifecycle = readLifecycle(data);
-  if (operation === 'transition') {
-    if (ontology && !transition) {
-      fail(problems, 'TRANSITION_UNKNOWN', usecaseId, `Transition '${transitionRef || '(missing)'}' of ${usecaseId} is not in the ${entityId} lifecycle of ${ontologyPath}.`);
-    }
-    const expected = transition?.payload || [];
-    const actual = lifecycle?.payload || [];
-    for (const path of expected) {
-      if (!actual.includes(path)) {
-        fail(problems, 'PAYLOAD_MISSING', usecaseId, `Payload ${path} is on ${usecaseId} and is not in the serialized lifecycle.`);
-      }
-    }
-    if (lifecycle && !sameList(actual, expected)) {
-      fail(problems, 'PAYLOAD_MISSING', usecaseId, `Lifecycle payload of ${usecaseId} is not the ontology payload.`);
-    }
-    if (!lifecycle) fail(problems, 'PAYLOAD_MISSING', usecaseId, `Transition ${usecaseId} has no lifecycle reference.`);
+  if (operation === 'transition' && ontology && !transition) {
+    fail(problems, 'TRANSITION_UNKNOWN', usecaseId, `Transition '${transitionRef || '(missing)'}' of ${usecaseId} is not in the ${entityId} lifecycle of ${ontologyPath}.`);
   }
 
-  const sequence = readSequence(data);
-  if (Array.isArray(data.sequence) && sequence.length !== data.sequence.length) {
-    fail(problems, 'DEFINITION', usecaseId, `A step of ${usecaseId} did not parse.`);
-  }
-  if (operation === 'transition' && !sequence.some(step => step.kind === 'transition')) {
-    fail(problems, 'PAYLOAD_MISSING', usecaseId, `Transition ${usecaseId} has no transition step.`);
-  }
-  for (const step of sequence) {
-    if (step.kind !== 'transition') continue;
-    const expected = transition?.payload || lifecycle?.payload || [];
-    for (const path of expected) {
-      if (!step.payload.includes(path)) {
-        fail(problems, 'PAYLOAD_MISSING', usecaseId, `Payload ${path} is not in the serialized transition step.`);
-      }
-    }
-  }
-
-  const inputPaths = functionInputPaths(data);
-  const expectedUses = fieldUses({
-    operation,
-    fields,
-    inputPaths,
-    payloadPaths: transition?.payload || [],
-  });
-  const actualUses = readUses(data);
-  for (const use of expectedUses) {
-    if (!actualUses.some(item => item.path === use.path && item.role === use.role && item.source === use.source)) {
-      fail(problems, 'USE_MISSING', usecaseId, `Use ${use.role} of ${use.path} is not in the serialized def.`);
-    }
-  }
-
-  const requiredRules = new Set<string>([
-    ...(transition?.ruleRefs || []),
-    ...stringList(data.rulesApplied),
-  ]);
-  const ruleRefs = readRuleRefs(data);
-  for (const ruleId of requiredRules) {
-    const ref = ruleRefs.find(item => item.ruleId === ruleId);
-    if (!ref) {
-      fail(problems, 'RULE_REF_MISSING', usecaseId, `Rule ${ruleId} is only a name. It has no source path and symbol.`);
+  const ruleRefs: UsecaseBehavior['rules'] = [];
+  for (const ruleId of stringList(data.rulesApplied)) {
+    const located = locateRule(files, ruleId);
+    if (!located) {
+      fail(problems, 'RULE_TEXT_ABSENT', usecaseId, `Rule ${ruleId} has no text in the L4 sources.`);
       continue;
     }
-    if (!hasDep(dependsFiles, ref.path)) {
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Rule source ${ref.path} is not in dependencies.`);
+    if (!hasDep(dependsFiles, located.path)) {
+      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Rule source ${located.path} is not in dependencies.`);
     }
-    const text = fileText(files, ref.path);
-    if (text == null) {
-      fail(problems, 'SOURCE_ABSENT', usecaseId, `Rule source ${ref.path} is absent.`);
+    if (!located.text) {
+      fail(problems, 'RULE_TEXT_ABSENT', usecaseId, `Rule ${ruleId} has no text in ${located.path}.`);
       continue;
     }
-    const body = parseD1Source(text, 'defs');
-    const content = ruleText(body, ref.symbol);
-    if (!content) {
-      fail(problems, 'RULE_TEXT_ABSENT', usecaseId, `Rule ${ref.symbol} has no text in ${ref.path}.`);
-    }
-  }
-
-  const actualPlan = readRulePlan(data);
-  if (!actualPlan) {
-    fail(problems, 'RULE_COVERAGE', usecaseId, `Usecase ${usecaseId} has no applicability plan. A rule name is not coverage.`);
-  } else if (ontology) {
-    const expected = rulePlanForUsecase({
-      moduleName,
-      entityId,
-      usecaseId,
-      operation,
-      transitionRef: operation === 'transition' ? transitionRef : '',
-      files,
-      entity: {
-        rules: [],
-        transitions: [],
-        namespace: '',
-        storageTarget: '',
-      },
-      routes: [],
-    });
-    if (!samePlan(actualPlan, expected)) {
-      fail(problems, 'RULE_COVERAGE', usecaseId, `Applicability of ${usecaseId} does not match its sources.`);
-    }
-    const applied = stringList(data.rulesApplied);
-    const enforced = enforcedRuleIds(expected);
-    if (!sameStrings(applied, enforced)) {
-      fail(problems, 'RULE_COVERAGE', usecaseId, `rulesApplied of ${usecaseId} is not the enforced applicability set.`);
-    }
-    for (const row of expected) {
-      const file = originFile(row.origin);
-      if (!file || hasDep(dependsFiles, file)) continue;
-      fail(problems, 'DEPENDENCY_MISSING', usecaseId, `Applicability source ${file} is not in dependencies.`);
-    }
+    ruleRefs.push({ ruleId, path: located.path, symbol: ruleId });
   }
 
   const mdm = readMdm(data);
   if (ontology && isMdmOntology(ontology)) {
     const names = capabilityNames(ontology);
+    const signed = domainSignature(entityForMdm(ontology, entityId), operation, transition?.payload || []);
     const read = mdmInputFields(
-      functionInputPaths(data).map(name => ({ name })),
+      signed.input,
       preconditionsFor(files, moduleName, entityId, []),
       declaredFieldsFor(files, moduleName, entityId, []),
     );
-    const outputPaths = functionOutputPaths(data);
     const bound = mdmForOperation({
       entityId,
       namespace: namespaceOf(ontology),
@@ -258,7 +163,7 @@ export function readUsecaseFidelity(
       selected: names.filter(name => capabilityApplies(name, operation)),
       platformFields: platformFieldPaths(ontology),
       inputFields: read.fields,
-      outputFields: outputPaths ? outputPaths.map(path => ({ path })) : null,
+      outputFields: signed.output.map(field => ({ path: field.name })),
       contractUnread: read.unread.join('; '),
       operation,
     });
@@ -297,25 +202,13 @@ export function readUsecaseFidelity(
     }
   }
 
-  const transaction = readTransaction(data);
-  if (!transaction) {
-    fail(problems, 'TRANSACTION_BOUNDARY', usecaseId, `Usecase ${usecaseId} has no transaction boundary.`);
-  } else if (transaction === 'local' && !sequence.some(step => step.kind === 'transaction' && step.boundary === 'local')) {
-    fail(problems, 'TRANSACTION_BOUNDARY', usecaseId, `Usecase ${usecaseId} says the boundary is local and the sequence has no local transaction step.`);
-  } else if (transaction === 'none' && sequence.some(step => step.kind === 'transaction')) {
-    fail(problems, 'TRANSACTION_BOUNDARY', usecaseId, `Usecase ${usecaseId} says there is no boundary and the sequence has a transaction step.`);
-  }
-  if (!problems.length && transaction && lifecycleMatches(operation, lifecycle)) {
+  if (!problems.length) {
     return {
       behavior: {
         usecaseId,
         operation,
-        sequence,
-        uses: actualUses,
         mdm,
-        lifecycle,
         rules: ruleRefs,
-        transaction,
         effects,
         routes: [],
       },
@@ -325,8 +218,53 @@ export function readUsecaseFidelity(
   return { behavior: null, problems };
 }
 
-function lifecycleMatches(operation: string, lifecycle: UsecaseBehavior['lifecycle']): boolean {
-  return operation === 'transition' ? lifecycle !== null : true;
+/** The serialized usecase no longer carries a signature. MDM is rebound from the ontology the def depends on. */
+function entityForMdm(ontology: unknown, entityId: string): D1UsecaseEntity {
+  return {
+    entityId,
+    storageTarget: isMdmOntology(ontology) ? 'mdm' : 'moduleDatabase',
+    defPath: '',
+    namespace: namespaceOf(ontology),
+    fields: ontologyEntityFields(ontology),
+    transitions: [],
+    rules: [],
+    enumerations: [],
+    capabilities: capabilityNames(ontology),
+    platformFields: platformFieldPaths(ontology),
+  };
+}
+
+function ontologyEntityFields(body: unknown): D1UsecaseField[] {
+  if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
+  const out: D1UsecaseField[] = [];
+  walkEntityFields(body.record.fields, '', out);
+  return out;
+}
+
+function walkEntityFields(fields: Record<string, unknown>, prefix: string, out: D1UsecaseField[]): void {
+  for (const [key, raw] of Object.entries(fields)) {
+    if (!isRecord(raw)) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (isRecord(raw.fields)) {
+      walkEntityFields(raw.fields, path, out);
+      continue;
+    }
+    out.push({
+      name: path,
+      type: typeof raw.type === 'string' && raw.type ? raw.type : 'string',
+      derived: raw.derived === true,
+      ...(raw.writePrecondition === true ? { writePrecondition: true } : {}),
+    });
+  }
+}
+
+function locateRule(files: readonly FidelityFile[], ruleId: string): { path: string; text: string } | null {
+  for (const file of files) {
+    const body = parseD1Source(file.text, 'defs');
+    const text = ruleText(body, ruleId);
+    if (text) return { path: file.path, text };
+  }
+  return null;
 }
 
 function derivedRole(
@@ -388,90 +326,15 @@ function unqualified(path: string): string {
   return path.replace(/^\/?_\d+_\/+/, '');
 }
 
-function sameList(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
-}
-
-function sameStrings(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) return false;
-  const seen = new Set(left);
-  return right.every(item => seen.has(item));
-}
-
-function readRulePlan(data: Record<string, unknown>): D1RulePlanRow[] | null {
-  if (!Array.isArray(data.rulePlan)) return null;
-  const out: D1RulePlanRow[] = [];
-  for (const item of data.rulePlan) {
-    if (!isRecord(item)) return null;
-    const enforcement = item.enforcement;
-    if (enforcement !== 'local' && enforcement !== 'delegated' && enforcement !== 'pending') return null;
-    if (typeof item.ruleId !== 'string') return null;
-    if (typeof item.origin !== 'string' || !item.origin) return null;
-    if (typeof item.consumer !== 'string' || !item.consumer) return null;
-    if (typeof item.gap !== 'string') return null;
-    if (enforcement === 'pending' && !item.gap) return null;
-    if (enforcement !== 'pending' && item.gap) return null;
-    const row: D1RulePlanRow = {
-      ruleId: item.ruleId,
-      origin: item.origin,
-      consumer: item.consumer,
-      enforcement,
-      gap: item.gap,
-    };
-    if (!row.ruleId && !isStorageConstraintRow(row)) return null;
-    out.push(row);
-  }
-  return out;
-}
-
-function samePlan(left: readonly D1RulePlanRow[], right: readonly D1RulePlanRow[]): boolean {
-  const key = (row: D1RulePlanRow) => `${row.consumer}\u0000${row.ruleId}\u0000${row.origin}\u0000${row.enforcement}\u0000${row.gap}`;
-  const a = [...left].map(key).sort();
-  const b = [...right].map(key).sort();
-  return a.length === b.length && a.every((item, index) => item === b[index]);
-}
-
-function recordFields(body: unknown): Array<{ name: string; derived: boolean }> {
-  if (!isRecord(body) || !isRecord(body.record) || !isRecord(body.record.fields)) return [];
-  const out: Array<{ name: string; derived: boolean }> = [];
-  walkFields(body.record.fields, '', out);
-  return out;
-}
-
-function walkFields(fields: Record<string, unknown>, prefix: string, out: Array<{ name: string; derived: boolean }>): void {
-  for (const [key, raw] of Object.entries(fields)) {
-    if (!isRecord(raw)) continue;
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (isRecord(raw.fields)) {
-      walkFields(raw.fields, path, out);
-      continue;
-    }
-    out.push({ name: path, derived: raw.derived === true });
-  }
 }
 
 function isMdmOntology(body: unknown): boolean {
   if (!isRecord(body)) return false;
   if (isRecord(body.storage) && body.storage.target === 'mdm') return true;
   return body.kind === 'role' && typeof body.roleTag === 'string' && body.roleTag.length > 0;
-}
-
-function contractedFields(ast: D1ContractAst, symbol: string): D1ContractField[] | null {
-  const found = ast.symbols.filter(item => item.name === symbol);
-  if (found.length !== 1) return null;
-  const item = found[0];
-  if (item.shape === 'array' && item.fields.length === 0 && item.element) {
-    const inner = ast.symbols.filter(entry => entry.name === item.element);
-    if (inner.length !== 1) return null;
-    return inner[0].fields;
-  }
-  if (item.shape === 'array' && item.fields.length === 0) return null;
-  return item.fields;
 }
 
 function ruleText(body: unknown, symbol: string): string {
@@ -499,82 +362,6 @@ function outboundMechanismProblems(files: readonly FidelityFile[]): FidelityProb
     }
   }
   return problems;
-}
-
-function functionInputPaths(data: Record<string, unknown>): string[] {
-  return functionFieldPaths(data, 'input') || [];
-}
-
-/** `null` when the def has no function output: the signature was not read. */
-function functionOutputPaths(data: Record<string, unknown>): string[] | null {
-  return functionFieldPaths(data, 'output');
-}
-
-function functionFieldPaths(data: Record<string, unknown>, key: 'input' | 'output'): string[] | null {
-  const functions = Array.isArray(data.functions) ? data.functions : [];
-  const first = functions.find(isRecord);
-  if (!first || !Array.isArray(first[key])) return null;
-  return first[key].flatMap(field => isRecord(field) && typeof field.name === 'string' ? [field.name] : []);
-}
-
-function readLifecycle(data: Record<string, unknown>): UsecaseBehavior['lifecycle'] {
-  if (!isRecord(data.lifecycle)) return null;
-  const transitionId = typeof data.lifecycle.transitionId === 'string' ? data.lifecycle.transitionId : '';
-  const sourcePath = typeof data.lifecycle.sourcePath === 'string' ? data.lifecycle.sourcePath : '';
-  const symbol = typeof data.lifecycle.symbol === 'string' ? data.lifecycle.symbol : '';
-  if (!transitionId || !sourcePath || !symbol) return null;
-  return { transitionId, payload: stringList(data.lifecycle.payload), sourcePath, symbol };
-}
-
-function readSequence(data: Record<string, unknown>): D1WorkerStep[] {
-  if (!Array.isArray(data.sequence)) return [];
-  const steps: D1WorkerStep[] = [];
-  for (const raw of data.sequence) {
-    const step = asStep(raw);
-    if (step) steps.push(step);
-  }
-  return steps;
-}
-
-function asStep(value: unknown): D1WorkerStep | null {
-  if (!isRecord(value) || typeof value.kind !== 'string') return null;
-  if (value.kind === 'port' && typeof value.call === 'string' && typeof value.port === 'string') {
-    return { kind: 'port', call: value.call, port: value.port };
-  }
-  if (value.kind === 'rule' && typeof value.ruleId === 'string') return { kind: 'rule', ruleId: value.ruleId };
-  if (value.kind === 'mdm' && typeof value.namespace === 'string' && typeof value.call === 'string' && typeof value.entity === 'string' && typeof value.capability === 'string') {
-    return { kind: 'mdm', namespace: value.namespace, call: value.call, entity: value.entity, capability: value.capability };
-  }
-  if (value.kind === 'transition' && typeof value.transitionId === 'string') {
-    return { kind: 'transition', transitionId: value.transitionId, payload: stringList(value.payload) };
-  }
-  if (value.kind === 'effect' && typeof value.eventId === 'string') return { kind: 'effect', eventId: value.eventId };
-  if (value.kind === 'transaction' && (value.boundary === 'local' || value.boundary === 'external')) {
-    return { kind: 'transaction', boundary: value.boundary };
-  }
-  if (value.kind === 'context' && value.source === 'ctx') return { kind: 'context', source: 'ctx' };
-  return null;
-}
-
-function readUses(data: Record<string, unknown>): D1FieldUse[] {
-  if (!Array.isArray(data.uses)) return [];
-  const uses: D1FieldUse[] = [];
-  for (const raw of data.uses) {
-    if (!isRecord(raw) || typeof raw.path !== 'string') continue;
-    if (raw.role !== 'filter' && raw.role !== 'selector' && raw.role !== 'concurrency' && raw.role !== 'write') continue;
-    if (raw.source !== 'input' && raw.source !== 'payload') continue;
-    uses.push({ path: raw.path, role: raw.role, source: raw.source });
-  }
-  uses.sort((left, right) => useKey(left).localeCompare(useKey(right)));
-  return uses;
-}
-
-function readRuleRefs(data: Record<string, unknown>): UsecaseBehavior['rules'] {
-  if (!Array.isArray(data.rules)) return [];
-  return data.rules.flatMap(raw => {
-    if (!isRecord(raw) || typeof raw.ruleId !== 'string' || typeof raw.path !== 'string' || typeof raw.symbol !== 'string') return [];
-    return [{ ruleId: raw.ruleId, path: raw.path, symbol: raw.symbol }];
-  });
 }
 
 function readMdm(data: Record<string, unknown>): D1UsecaseMdm | null {
@@ -693,8 +480,3 @@ function readEffects(data: Record<string, unknown>): UsecaseBehavior['effects'] 
   });
 }
 
-function readTransaction(data: Record<string, unknown>): 'local' | 'none' | null {
-  if (!isRecord(data.transaction)) return null;
-  if (data.transaction.boundary === 'local' || data.transaction.boundary === 'none') return data.transaction.boundary;
-  return null;
-}
