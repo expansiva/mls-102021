@@ -874,6 +874,57 @@ void test('the contract route set and the handler route set must be equal', () =
   assert.equal(buildD1Finalize(request()).findings.some(item => item.code === 'CONTRACT_DIVERGENT'), false);
 });
 
+void test('a contract route with no handler is unresolved only when the request service gaps the route itself', () => {
+  const extra = `${ROUTE}Csv`;
+  const reason = 'AUTHORITY_REQUIRED: Operation agendaClinica.consultas.cmdRegistrarAtendimentoCsv on agendaClinica.consultas.cmdRegistrarAtendimentoCsv has no authority. No permissive fallback was applied.';
+  const withRoute = (output: unknown[]): D1FinalizeRequest => {
+    const input = request();
+    const logical = `l1/${MODULE}/layer_2_application/requests/consultas.defs.ts`;
+    const text = sourceOf(definition('requestService', 'consultas', {
+      pageId: 'consultas',
+      requests: [{ route: extra, kind: 'qry', uses: [], transaction: 'none', rules: [], params: [], output }],
+    }), pipe('httpController', 'consultas', logical, []));
+    input.observed = [...input.observed, {
+      defPath: logical,
+      text,
+      currentHash: 'sha256:same',
+      receiptHash: 'sha256:same',
+      action: 'create',
+      ownerRefs: [],
+      unitDone: false,
+    }];
+    input.contracts.consultas = {
+      ...input.contracts.consultas,
+      text: CONTRACT_TEXT.replace('export interface ConsultasContracts {', [
+        'export interface ConsultasContracts {',
+        `  '${extra}': {`,
+        `    kind: 'qry';`,
+        `    input: {};`,
+        `    output: { result: Out0 };`,
+        `    meta: { output: { result: { entity: 'Consulta'; many: false } }; lists: {}; params: {} };`,
+        `    rules: [];`,
+        `    access: { actors: []; grants: []; scope: 'organization' };`,
+        '  };',
+      ].join('\n')),
+    };
+    return input;
+  };
+
+  const gapped = buildD1Finalize(withRoute([{ kind: 'unresolved', path: extra, reason }]));
+  const review = gapped.findings.find(item => item.code === 'ROUTE_UNRESOLVED');
+  assert.equal(review?.severity, 'review');
+  assert.equal(review?.message, `Route ${extra} has no handler; the request service declares it unresolved: ${reason}.`);
+  assert.equal(gapped.findings.some(item => item.code === 'CONTRACT_DIVERGENT' && item.message.includes(extra)), false, JSON.stringify(gapped.findings));
+
+  const bare = buildD1Finalize(withRoute([{ kind: 'entity', path: 'result', entity: 'Consulta', fields: [{ field: 'id', path: 'id' }] }]));
+  assert.equal(bare.findings.some(item => item.code === 'CONTRACT_DIVERGENT' && item.message.includes(extra) && item.message.includes('no handler')), true, JSON.stringify(bare.findings));
+  assert.equal(bare.findings.some(item => item.code === 'ROUTE_UNRESOLVED'), false);
+
+  const fieldGap = buildD1Finalize(withRoute([{ kind: 'unresolved', path: 'nomeArquivo', reason: 'DISCLOSURE: nomeArquivo' }]));
+  assert.equal(fieldGap.findings.some(item => item.code === 'CONTRACT_DIVERGENT' && item.message.includes(extra) && item.message.includes('no handler')), true, JSON.stringify(fieldGap.findings));
+  assert.equal(fieldGap.findings.some(item => item.code === 'ROUTE_UNRESOLVED'), false);
+});
+
 void test('a read source is opened from the project the path names', async () => {
   const host = installStudio(PROJECT);
   const state = createEntryPipeline(PROJECT, MODULE, new Date('2026-09-23T12:00:00.000Z'));

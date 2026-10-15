@@ -400,6 +400,28 @@ function allowedDependency(from: string, to: string): boolean {
   return DEPENDS_ALLOWED[from].includes(to);
 }
 
+/** Routes a request service left unresolved for the whole route (path equals the route). A field gap does not count. */
+function unresolvedRoutes(parsed: readonly ParsedDef[]): Map<string, Map<string, string>> {
+  const byPage = new Map<string, Map<string, string>>();
+  for (const item of parsed) {
+    if (item.definition.artifactType !== 'requestService') continue;
+    const data = item.definition.data;
+    if (!isRecord(data)) continue;
+    const pageId = typeof data.pageId === 'string' && data.pageId ? data.pageId : item.definition.artifactId;
+    const requests = Array.isArray(data.requests) ? data.requests : [];
+    const gaps = byPage.get(pageId) || new Map<string, string>();
+    for (const row of requests) {
+      if (!isRecord(row) || typeof row.route !== 'string' || !row.route) continue;
+      const output = Array.isArray(row.output) ? row.output : [];
+      const node = output.find(entry => isRecord(entry) && entry.kind === 'unresolved' && entry.path === row.route);
+      if (!isRecord(node)) continue;
+      gaps.set(row.route, typeof node.reason === 'string' ? node.reason : '');
+    }
+    byPage.set(pageId, gaps);
+  }
+  return byPage;
+}
+
 function routesOf(definition: D1Definition): string[] {
   const handlers = definition.data.handlers;
   if (!Array.isArray(handlers)) return [];
@@ -605,9 +627,15 @@ function checkContract(request: D1FinalizeRequest, parsed: ParsedDef[], findings
       continue;
     }
     const handlers = new Set(handlersByPage.get(pageId) || []);
+    const unresolved = unresolvedRoutes(parsed).get(pageId) || new Map<string, string>();
     const declaredSet = new Set(declared);
     for (const route of [...declaredSet].sort()) {
       if (handlers.has(route)) continue;
+      const reason = unresolved.get(route);
+      if (reason != null) {
+        review(findings, 'ROUTE_UNRESOLVED', path, `Route ${route} has no handler; the request service declares it unresolved: ${reason}.`, route);
+        continue;
+      }
       error(findings, 'CONTRACT_DIVERGENT', path, `L2 contract for ${pageId} declares route ${route}, which has no handler.`, route);
     }
     for (const route of [...handlers].sort()) {
