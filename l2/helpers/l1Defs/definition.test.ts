@@ -46,6 +46,24 @@ import {
   withStatus,
 } from '/_102021_/l2/agentMaterializeL1/fixtures/cases.js';
 
+/** Fixture usecases still carry the script keys until s8. Validators only accept the intention. */
+function asIntention(definition: M1Definition): M1Definition {
+  if (definition.artifactType !== 'usecase') return definition;
+  const data = definition.data;
+  const next: Record<string, unknown> = {
+    usecaseId: data.usecaseId,
+    entityId: data.entityId,
+    operation: data.operation,
+    rulesApplied: data.rulesApplied ?? [],
+    effects: data.effects ?? [],
+  };
+  if (data.transitionRef !== undefined) next.transitionRef = data.transitionRef;
+  if (data.mdm !== undefined) next.mdm = data.mdm;
+  return { ...definition, data: next };
+}
+
+const listBuoy = asIntention(listBuoyPending);
+
 void test('d1_31 import surface is this module', () => {
   assert.equal(D1_31_IMPORT, '/_102021_/l2/helpers/l1Defs/definition.js');
   assert.deepEqual(D1_31_EXPORTS, [
@@ -87,7 +105,7 @@ void test('receipt path follows the def, so the same id and case do not collide'
 void test('each artifact type has a valid pending definition', async () => {
   assert.deepEqual([...M1_ARTIFACT_TYPES], Object.keys(definitionsByType));
   for (const type of M1_ARTIFACT_TYPES) {
-    const definition = definitionsByType[type];
+    const definition = asIntention(definitionsByType[type]);
     assert.deepEqual(definitionIssues(definition), [], type);
     assert.equal(definition.status, 'pending');
     assert.equal(await generatedAllowsSkip(definition, null), false, type);
@@ -95,7 +113,7 @@ void test('each artifact type has a valid pending definition', async () => {
 });
 
 void test('serialized list usecase example parses without eval and without pipeline', () => {
-  const rendered = renderDefinition(listBuoyPending, LIST);
+  const rendered = renderDefinition(listBuoy, LIST);
   assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
   if (!('source' in rendered)) return;
   assert.equal(rendered.source.includes('export const pipeline'), false);
@@ -103,15 +121,15 @@ void test('serialized list usecase example parses without eval and without pipel
   const parsed = parseDefinitionSource(rendered.source);
   assert.equal('definition' in parsed, true, 'issues' in parsed ? parsed.issues.join('\n') : '');
   if (!('definition' in parsed)) return;
-  assert.deepEqual(parsed.definition, listBuoyPending);
+  assert.deepEqual(parsed.definition, listBuoy);
   assert.equal(JSON.parse(LIST_BUOY_EXAMPLE).schemaVersion, M1_DEFINITION_SCHEMA);
   assert.equal(JSON.parse(LIST_BUOY_EXAMPLE).status, 'pending');
 });
 
 void test('parser closes on the final as const of the export', () => {
   const definition: M1Definition = {
-    ...listBuoyPending,
-    data: { ...listBuoyPending.data, operation: 'list as const; kept' },
+    ...listBuoy,
+    data: { ...listBuoy.data, operation: 'list as const; kept' },
   };
   const rendered = renderDefinition(definition, LIST);
   assert.equal('source' in rendered, true, 'issues' in rendered ? rendered.issues.join('\n') : '');
@@ -123,7 +141,7 @@ void test('parser closes on the final as const of the export', () => {
 });
 
 void test('parser refuses pipeline, agent, eval and a missing export', () => {
-  const rendered = renderDefinition(listBuoyPending, LIST);
+  const rendered = renderDefinition(listBuoy, LIST);
   assert.equal('source' in rendered, true);
   if (!('source' in rendered)) return;
   const withPipeline = `${rendered.source}\nexport const pipeline = [] as const;\n`;
@@ -143,14 +161,14 @@ void test('parser refuses pipeline, agent, eval and a missing export', () => {
 });
 
 void test('D1 writer accepts v2 and does not export pipeline', () => {
-  const rendered = renderDefinition(listBuoyPending, LIST);
+  const rendered = renderDefinition(listBuoy, LIST);
   assert.equal('source' in rendered, true);
   if (!('source' in rendered)) return;
   const parsed = parseRendered(rendered.source);
   assert.ok(parsed);
-  assert.deepEqual(parsed?.definition, listBuoyPending);
+  assert.deepEqual(parsed?.definition, listBuoy);
   assert.equal(rendered.source.includes('export const pipeline'), false);
-  const issues = d1DefinitionIssues(listBuoyPending);
+  const issues = d1DefinitionIssues(listBuoy);
   assert.equal(issues.some(item => item.includes('schemaVersion') || item.includes('status is invalid')), false);
 });
 
@@ -166,29 +184,21 @@ void test('old version, invalid status and unknown data are refused', () => {
 });
 
 void test('missing and ambiguous references are reported', () => {
-  const missing = referenceIssues(listBuoyPending, { files: listBuoyPending.dependencies, artifacts: [] });
-  const entityId = String(listBuoyPending.data.entityId);
-  const portId = String((listBuoyPending.data.ports as string[])[0]);
+  const missing = referenceIssues(listBuoy, { files: listBuoy.dependencies, artifacts: [] });
+  const entityId = String(listBuoy.data.entityId);
   assert.equal(missing.some(item => item.includes(`Missing reference domainEntity:${entityId}`)), true);
-  const ambiguous = referenceIssues(listBuoyPending, {
-    files: fixtureIndex.files,
-    artifacts: [
-      ...fixtureIndex.artifacts,
-      { artifactType: 'repositoryPort', artifactId: portId, defPath: `${LIST}.other` },
-    ],
-  });
-  assert.equal(ambiguous.some(item => item.includes(`Ambiguous reference repositoryPort:${portId}`)), true);
-  assert.deepEqual(referenceIssues(listBuoyPending, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
+  assert.deepEqual(referenceIssues(listBuoy, fixtureIndex).filter(item => item.includes('Ambiguous') || item.includes('Missing')), []);
   const contract = `_${M1_FIXTURE_PROJECT}_/l4/${M1_FIXTURE_MODULE}/divers.defs.ts`;
   const catalog = '_102034_/l4/ontology/mdm.defs.ts';
+  const effect = { eventId: 'enrollIt', path: `l4/${M1_FIXTURE_MODULE}/divers.defs.ts`, symbol: 'enrollIt' };
   const mixed = {
-    ...listBuoyPending,
-    dependencies: [...new Set([...listBuoyPending.dependencies, catalog, contract])].sort(),
+    ...listBuoy,
+    dependencies: [...new Set([...listBuoy.dependencies, catalog, contract])].sort(),
     data: {
-      ...listBuoyPending.data,
-      rules: [
-        ...(Array.isArray(listBuoyPending.data.rules) ? listBuoyPending.data.rules : []),
-        { ruleId: 'enrollIt', path: `l4/${M1_FIXTURE_MODULE}/divers.defs.ts`, symbol: 'enrollIt' },
+      ...listBuoy.data,
+      effects: [
+        ...(Array.isArray(listBuoy.data.effects) ? listBuoy.data.effects : []),
+        effect,
       ],
     },
   };
@@ -226,21 +236,22 @@ void test('missing and ambiguous references are reported', () => {
 
 void test('traversal orders dependencies and reports a cycle', () => {
   const known = fixtureIndex.files.filter(path => !indexedUnits.some(unit => unit.defPath === path));
-  const walked = traverseDefinitions(indexedUnits, known);
+  const units = indexedUnits.map(unit => ({ ...unit, definition: asIntention(unit.definition) }));
+  const walked = traverseDefinitions(units, known);
   assert.deepEqual(walked.issues, []);
   assert.equal(walked.order.indexOf(indexedUnits[0].defPath) < walked.order.indexOf(LIST), true);
   assert.equal(walked.order.indexOf(LIST) < walked.order.indexOf(indexedUnits.find(unit => unit.definition.artifactType === 'httpController')!.defPath), true);
   const a = defPathOf('usecase', 'a');
   const b = defPathOf('repositoryPort', 'b');
   const cycle = traverseDefinitions([
-    { defPath: a, definition: { ...listBuoyPending, dependencies: [b] } },
+    { defPath: a, definition: { ...listBuoy, dependencies: [b] } },
     { defPath: b, definition: { ...portClone(), dependencies: [a] } },
   ], known);
   assert.equal(cycle.issues.some(item => item.includes('Cycle')), true);
 });
 
 void test('semantic hash ignores status and formatting and changes with rule, signature or dependency', async () => {
-  const pending = listBuoyPending;
+  const pending = listBuoy;
   const generated = withStatus(pending, 'generated');
   const compact: M1Definition = JSON.parse(JSON.stringify(pending));
   assert.deepEqual(canonicalProjection(pending), canonicalProjection(generated));
@@ -260,19 +271,13 @@ void test('semantic hash ignores status and formatting and changes with rule, si
 
   const ruleChanged: M1Definition = {
     ...pending,
-    data: {
-      ...pending.data,
-      rules: [{ ruleId: 'otherRule', path: `l4/${M1_FIXTURE_MODULE}/rules.defs.ts`, symbol: 'otherRule' }],
-    },
+    data: { ...pending.data, rulesApplied: ['otherRule'] },
   };
   const signatureChanged: M1Definition = {
     ...pending,
     data: {
       ...pending.data,
-      functions: [{
-        ...(pending.data.functions as Array<Record<string, unknown>>)[0],
-        input: [{ name: 'id', type: 'uuid' }],
-      }],
+      effects: [{ eventId: 'buoyListed', path: `l4/${M1_FIXTURE_MODULE}/rules.defs.ts`, symbol: 'buoyListed' }],
     },
   };
   const dependencyChanged: M1Definition = {
@@ -286,21 +291,21 @@ void test('semantic hash ignores status and formatting and changes with rule, si
 });
 
 void test('status fixtures do not claim generation without a receipt', async () => {
-  const hash = await semanticHash(listBuoyPending);
+  const hash = await semanticHash(listBuoy);
   const receipt = listBuoyReceipt(hash);
   const current = receipt.dependencyHashes;
-  assert.equal(await generatedAllowsSkip(listBuoyPending, null), false);
-  assert.deepEqual(await statusEvidenceIssues(listBuoyPending, null), []);
-  const generatedBare = withStatus(listBuoyPending, 'generated');
+  assert.equal(await generatedAllowsSkip(listBuoy, null), false);
+  assert.deepEqual(await statusEvidenceIssues(listBuoy, null), []);
+  const generatedBare = withStatus(listBuoy, 'generated');
   assert.equal(await generatedAllowsSkip(generatedBare, null), false);
   assert.match((await statusEvidenceIssues(generatedBare, null)).join('\n'), /generated requires a receipt/);
-  const generatedOk = withStatus(listBuoyPending, 'generated');
+  const generatedOk = withStatus(listBuoy, 'generated');
   assert.deepEqual(await statusEvidenceIssues(generatedOk, receipt, current), []);
   assert.equal(await generatedAllowsSkip(generatedOk, receipt, current), true);
-  const blocked = withStatus(listBuoyPending, 'blocked');
+  const blocked = withStatus(listBuoy, 'blocked');
   assert.equal(await generatedAllowsSkip(blocked, blockedReceipt()), false);
   assert.deepEqual(await statusEvidenceIssues(blocked, blockedReceipt()), []);
-  const failed = withStatus(listBuoyPending, 'failed');
+  const failed = withStatus(listBuoy, 'failed');
   assert.equal(await generatedAllowsSkip(failed, failedReceipt()), false);
   assert.deepEqual(await statusEvidenceIssues(failed, failedReceipt()), []);
   const diagnosis = await diagnoseUnit({
@@ -345,3 +350,13 @@ void test('generated skip compares the semantic hash and each dependency hash', 
 function portClone(): M1Definition {
   return definitionsByType.repositoryPort;
 }
+
+void test('usecase keeps the intention and refuses the script', () => {
+  assert.deepEqual(definitionIssues(listBuoy), []);
+  assert.deepEqual(d1DefinitionIssues(listBuoy), []);
+  const script: M1Definition = { ...listBuoy, data: { ...listBuoy.data, sequence: [] } };
+  assert.match(definitionIssues(script).join('\n'), /Unknown field data\.sequence\./);
+  assert.match(d1DefinitionIssues(script).join('\n'), /Unknown field data\.sequence\./);
+  const transition: M1Definition = { ...listBuoy, data: { ...listBuoy.data, operation: 'transition' } };
+  assert.match(d1DefinitionIssues(transition).join('\n'), /Missing field data\.transitionRef\./);
+});

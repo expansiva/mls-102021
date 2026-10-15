@@ -154,29 +154,9 @@ export interface D1UsecaseData {
   usecaseId: string;
   entityId: string;
   operation: string;
-  ports: string[];
   rulesApplied: string[];
-  /** Present on defs written after applicability is planned. Older examples omit it. */
-  rulePlan?: Array<{
-    ruleId: string;
-    origin: string;
-    consumer: string;
-    enforcement: 'local' | 'delegated' | 'pending';
-    gap: string;
-  }>;
-  functions: Array<{
-    functionName: string;
-    input: D1ProjectionField[];
-    output: D1ProjectionField[];
-  }>;
-  portCalls: string[];
-  transactional: boolean;
   effects: Array<{ eventId: string; path: string; symbol: string }>;
-  sequence: Array<Record<string, unknown>>;
-  uses: Array<{ path: string; role: 'filter' | 'selector' | 'concurrency' | 'write'; source: 'input' | 'payload' }>;
-  rules: Array<{ ruleId: string; path: string; symbol: string }>;
-  transaction: { boundary: 'local' | 'none' };
-  lifecycle?: { transitionId: string; payload: string[]; sourcePath: string; symbol: string };
+  transitionRef?: string;
   mdm?: {
     namespace: string;
     role: string;
@@ -736,16 +716,6 @@ export function usecaseV1Issues(data: unknown): string[] {
   return issues;
 }
 
-const SEQUENCE_FIELDS: Record<string, readonly string[]> = {
-  port: ['kind', 'call', 'port'],
-  rule: ['kind', 'ruleId'],
-  mdm: ['kind', 'namespace', 'call', 'entity', 'capability'],
-  transition: ['kind', 'transitionId', 'payload'],
-  effect: ['kind', 'eventId'],
-  transaction: ['kind', 'boundary'],
-  context: ['kind', 'source'],
-};
-
 export function usecaseIssues(data: unknown): string[] {
   if (!isRecord(data)) return ['Missing field data.'];
   const issues: string[] = [];
@@ -753,21 +723,7 @@ export function usecaseIssues(data: unknown): string[] {
   needString(data, 'usecaseId', 'data', issues);
   needString(data, 'entityId', 'data', issues);
   const operation = needString(data, 'operation', 'data', issues);
-  stringList(data.ports, 'data.ports', issues);
   stringList(data.rulesApplied, 'data.rulesApplied', issues);
-  rulePlanIssues(data.rulePlan, issues);
-  stringList(data.portCalls, 'data.portCalls', issues);
-  needBoolean(data, 'transactional', 'data', issues);
-  if (!Array.isArray(data.functions) || data.functions.length === 0) issues.push('Missing field data.functions.');
-  else data.functions.forEach((fn, index) => {
-    const path = `data.functions.${index}`;
-    if (!isRecord(fn)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    unknownKeys(fn, ['functionName', 'input', 'output'], path, issues);
-    needString(fn, 'functionName', path, issues);
-  });
   if (!Array.isArray(data.effects)) issues.push('Missing field data.effects.');
   else data.effects.forEach((effect, index) => {
     const path = `data.effects.${index}`;
@@ -780,105 +736,15 @@ export function usecaseIssues(data: unknown): string[] {
     needString(effect, 'path', path, issues);
     needString(effect, 'symbol', path, issues);
   });
-  sequenceIssues(data.sequence, issues);
-  useIssues(data.uses, issues);
-  ruleRefIssues(data.rules, issues);
-  transactionIssues(data, issues);
   if (operation === 'transition') {
     if (typeof data.transitionRef !== 'string' || !data.transitionRef.trim()) issues.push('Missing field data.transitionRef.');
-    if (!isRecord(data.lifecycle)) issues.push('Missing field data.lifecycle.');
-    else lifecycleRefIssues(data.lifecycle, issues);
-  } else if (data.lifecycle !== undefined) {
-    issues.push('data.lifecycle is only valid on a transition.');
-  }
-  if (operation !== 'transition' && data.transitionRef !== undefined) {
+  } else if (data.transitionRef !== undefined) {
     issues.push('data.transitionRef is only valid on a transition.');
   }
   if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
   issues.push(...projectionIssues(data));
   issues.push(...usecaseV1Issues(data));
   return issues;
-}
-
-function sequenceIssues(value: unknown, issues: string[]): void {
-  if (!Array.isArray(value)) {
-    issues.push('Missing field data.sequence.');
-    return;
-  }
-  value.forEach((step, index) => {
-    const path = `data.sequence.${index}`;
-    if (!isRecord(step)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    const kind = typeof step.kind === 'string' ? step.kind : '';
-    const fields = SEQUENCE_FIELDS[kind];
-    if (!fields) {
-      issues.push(`${path}.kind is invalid.`);
-      return;
-    }
-    unknownKeys(step, fields, path, issues);
-    for (const key of fields) {
-      if (key === 'kind' || key === 'payload') continue;
-      needString(step, key, path, issues);
-    }
-    if (kind === 'transition') stringList(step.payload, `${path}.payload`, issues);
-    if (kind === 'context' && step.source !== 'ctx') issues.push(`${path}.source is not ctx.`);
-    if (kind === 'transaction' && step.boundary !== 'local' && step.boundary !== 'external') {
-      issues.push(`${path}.boundary is invalid.`);
-    }
-  });
-}
-
-function useIssues(value: unknown, issues: string[]): void {
-  if (!Array.isArray(value)) {
-    issues.push('Missing field data.uses.');
-    return;
-  }
-  value.forEach((use, index) => {
-    const path = `data.uses.${index}`;
-    if (!isRecord(use)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    unknownKeys(use, ['path', 'role', 'source'], path, issues);
-    needString(use, 'path', path, issues);
-    const role = typeof use.role === 'string' ? use.role : '';
-    oneOf(role, ['filter', 'selector', 'concurrency', 'write'], `${path}.role`, issues);
-    if (!role) issues.push(`Missing field ${path}.role.`);
-    const source = typeof use.source === 'string' ? use.source : '';
-    oneOf(source, ['input', 'payload'], `${path}.source`, issues);
-    if (!source) issues.push(`Missing field ${path}.source.`);
-  });
-}
-
-function rulePlanIssues(value: unknown, issues: string[]): void {
-  if (value === undefined) return;
-  if (!Array.isArray(value)) {
-    issues.push('Missing field data.rulePlan.');
-    return;
-  }
-  value.forEach((row, index) => {
-    const path = `data.rulePlan.${index}`;
-    if (!isRecord(row)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    unknownKeys(row, ['ruleId', 'origin', 'consumer', 'enforcement', 'gap'], path, issues);
-    const ruleId = typeof row.ruleId === 'string' ? row.ruleId : '';
-    const origin = typeof row.origin === 'string' ? row.origin : '';
-    const consumer = typeof row.consumer === 'string' ? row.consumer : '';
-    const enforcement = typeof row.enforcement === 'string' ? row.enforcement : '';
-    const gap = typeof row.gap === 'string' ? row.gap : '';
-    const storage = isStorageConstraintRow({ ruleId, origin, consumer, enforcement, gap });
-    if (typeof row.ruleId !== 'string' || (!ruleId.trim() && !storage)) issues.push(`Missing field ${path}.ruleId.`);
-    needString(row, 'origin', path, issues);
-    needString(row, 'consumer', path, issues);
-    oneOf(enforcement, ['local', 'delegated', 'pending'], `${path}.enforcement`, issues);
-    if (typeof row.gap !== 'string') issues.push(`Missing field ${path}.gap.`);
-    else if (enforcement === 'pending' && !row.gap) issues.push(`${path}.gap is required when enforcement is pending.`);
-    else if (enforcement && enforcement !== 'pending' && row.gap) issues.push(`${path}.gap must be empty when enforcement is ${enforcement}.`);
-  });
 }
 
 /** The unique-key line. It is not a business rule, so `ruleId` stays empty. */
@@ -894,47 +760,6 @@ export function isStorageConstraintRow(row: {
     && row.gap === ''
     && row.consumer.startsWith('operation:')
     && (row.origin.endsWith('#uniqueKeys') || row.origin.endsWith('#capabilities.uniqueKey'));
-}
-
-function ruleRefIssues(value: unknown, issues: string[]): void {
-  if (!Array.isArray(value)) {
-    issues.push('Missing field data.rules.');
-    return;
-  }
-  value.forEach((rule, index) => {
-    const path = `data.rules.${index}`;
-    if (!isRecord(rule)) {
-      issues.push(`Missing field ${path}.`);
-      return;
-    }
-    unknownKeys(rule, ['ruleId', 'path', 'symbol'], path, issues);
-    needString(rule, 'ruleId', path, issues);
-    needString(rule, 'path', path, issues);
-    needString(rule, 'symbol', path, issues);
-  });
-}
-
-function transactionIssues(data: Record<string, unknown>, issues: string[]): void {
-  if (!isRecord(data.transaction)) {
-    issues.push('Missing field data.transaction.');
-    return;
-  }
-  unknownKeys(data.transaction, ['boundary'], 'data.transaction', issues);
-  const boundary = typeof data.transaction.boundary === 'string' ? data.transaction.boundary : '';
-  oneOf(boundary, ['local', 'none'], 'data.transaction.boundary', issues);
-  if (!boundary) issues.push('Missing field data.transaction.boundary.');
-  if (typeof data.transactional === 'boolean' && boundary) {
-    const local = boundary === 'local';
-    if (data.transactional !== local) issues.push('data.transaction.boundary does not match data.transactional.');
-  }
-}
-
-function lifecycleRefIssues(lifecycle: Record<string, unknown>, issues: string[]): void {
-  unknownKeys(lifecycle, ['transitionId', 'payload', 'sourcePath', 'symbol'], 'data.lifecycle', issues);
-  needString(lifecycle, 'transitionId', 'data.lifecycle', issues);
-  stringList(lifecycle.payload, 'data.lifecycle.payload', issues);
-  needString(lifecycle, 'sourcePath', 'data.lifecycle', issues);
-  needString(lifecycle, 'symbol', 'data.lifecycle', issues);
 }
 
 function clauseList(value: unknown, path: string, issues: string[]): void {

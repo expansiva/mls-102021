@@ -76,9 +76,9 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   table: { required: ['tableId', 'entityId', 'physicalName', 'primaryKey', 'uniqueKeys', 'indexes'], optional: [], nonempty: ['primaryKey'] },
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
-    required: ['usecaseId', 'entityId', 'operation', 'ports', 'rulesApplied', 'functions', 'portCalls', 'transactional', 'effects', 'sequence', 'uses', 'rules', 'transaction'],
-    optional: ['lifecycle', 'mdm', 'rulePlan', 'transitionRef'],
-    nonempty: ['functions'],
+    required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],
+    optional: ['transitionRef', 'mdm'],
+    nonempty: [],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
   requestService: { required: ['pageId', 'requests'], optional: [], nonempty: ['requests'] },
@@ -579,9 +579,6 @@ function collectIdentityRefs(definition: M1Definition): Array<{ type: M1Artifact
   if (typeof data.entityId === 'string' && definition.artifactType !== 'domainEntity') {
     push('domainEntity', data.entityId, 'data.entityId');
   }
-  if (Array.isArray(data.ports)) {
-    data.ports.forEach((port, index) => push('repositoryPort', port, `data.ports.${index}`));
-  }
   if (typeof data.portId === 'string') push('repositoryPort', data.portId, 'data.portId');
   if (typeof data.tableId === 'string' && definition.artifactType !== 'table') {
     push('table', data.tableId, 'data.tableId');
@@ -617,18 +614,10 @@ function collectFileRefs(definition: M1Definition): Array<{ path: string; field:
     if (typeof path !== 'string' || !path) return;
     refs.push({ path: normalizeFileRef(path, definition.dependencies), field });
   };
-  if (Array.isArray(data.rules)) {
-    data.rules.forEach((rule, index) => {
-      if (isRecord(rule)) push(rule.path, `data.rules.${index}.path`);
-    });
-  }
   if (Array.isArray(data.effects)) {
     data.effects.forEach((effect, index) => {
       if (isRecord(effect)) push(effect.path, `data.effects.${index}.path`);
     });
-  }
-  if (isRecord(data.lifecycle) && typeof data.lifecycle.sourcePath === 'string') {
-    push(data.lifecycle.sourcePath, 'data.lifecycle.sourcePath');
   }
   return refs;
 }
