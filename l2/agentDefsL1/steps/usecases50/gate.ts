@@ -16,8 +16,8 @@ import {
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { authorizedPayloadNames, declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
-import { enforcedRuleIds, originFile, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
-import { fieldUses, readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
+import { enforcedRuleIds, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
+import { readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { capabilityApplies, mdmForOperation, isForeignMdmPatchKey, isMdmFacadeCall } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import {
   D1_USECASE_VERSION,
@@ -27,7 +27,6 @@ import {
   type D1UsecaseBuild,
   type D1UsecaseEntity,
   type D1UsecaseEnumeration,
-  type D1UsecaseField,
   type D1UsecaseItem,
   type D1MdmArgument,
   type D1MdmPlannedCall,
@@ -42,21 +41,6 @@ import {
   type D1UsecaseSelection,
   type D1WorkerStep,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import { L1_OPERATIONS, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
-
-const READ: Record<L1Operation, boolean> = {
-  list: true, get: true, create: false, update: false, transition: false, delete: false, custom: false,
-};
-const READ_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => READ[operation]));
-const UPDATE: Record<L1Operation, boolean> = {
-  list: false, get: false, create: false, update: true, transition: false, delete: false, custom: false,
-};
-const CREATE: Record<L1Operation, boolean> = {
-  list: false, get: false, create: true, update: false, transition: false, delete: false, custom: false,
-};
-const UPDATE_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => UPDATE[operation]));
-const CREATE_OPERATIONS = new Set<string>(L1_OPERATIONS.filter(operation => CREATE[operation]));
-
 interface ProjectionField {
   name: string;
   /** Absent when the routes that declare this name do not agree on one type. */
@@ -125,12 +109,10 @@ function planUsecase(
     : [];
   const signed = domainSignature(entity, usecase.operation, sourcePayload);
   const input = signed.input;
-  noteDerived(request, entity, usecase, input, steps, path, problems, normalizations);
   noteRequiredNotes(entity, usecase, input, path, problems);
   const transitionOk = noteTransition(request, entity, usecase, steps, input, path, problems);
   const decided = decideRules(request, entity, usecase, steps, path, problems, normalizations);
-  const rules = decided.rules;
-  const sequenceSteps = decided.steps;
+  const rulesApplied = appliedRuleIds(decided.plan);
   const effects = resolveEffects(request, entity, usecase, steps, path, problems);
   const port = request.ports.find(item => item.entityId === entity.entityId) || null;
   const portCalls = resolvePorts(entity, usecase, port, steps, path, problems);
@@ -142,49 +124,15 @@ function planUsecase(
     return { ...blank, mdm, transactionBoundary: boundary, steps };
   }
 
-  const ontologyPath = `l4/${request.moduleName}/ontology/${entity.entityId}.defs.ts`;
   const integrationPath = `l4/${request.moduleName}/integration.defs.ts`;
   const transitionRef = transitionRefOf(usecase);
-  const lifecycle = usecase.operation === 'transition'
-    ? {
-      transitionId: transitionRef,
-      payload: sourcePayload,
-      sourcePath: ontologyPath,
-      symbol: transitionRef,
-    }
-    : undefined;
   const data = {
     usecaseId: usecase.usecaseId,
     entityId: entity.entityId,
     operation: usecase.operation,
-    ports: port && entity.storageTarget === 'moduleDatabase' ? [port.portId] : [],
-    rulesApplied: rules,
-    functions: [{
-      functionName: usecase.usecaseId,
-      input,
-      output: signed.output,
-    }],
-    portCalls,
-    transactional: boundary === 'local',
+    rulesApplied,
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
-    sequence: sequenceSteps.map(step => step.kind === 'transition'
-      ? { kind: 'transition' as const, transitionId: step.transitionId, payload: [...sourcePayload] }
-      : step),
-    uses: fieldUses({
-      operation: usecase.operation,
-      fields: entity.fields,
-      inputPaths: input.map(field => field.name),
-      payloadPaths: sourcePayload,
-    }),
-    rules: rules.map(ruleId => ({
-      ruleId,
-      path: ruleSourcePath(request, entity, usecase.usecaseId, ruleId),
-      symbol: ruleId,
-    })),
-    rulePlan: decided.plan,
-    transaction: { boundary: boundary === 'local' ? 'local' as const : 'none' as const },
     ...(transitionRef ? { transitionRef } : {}),
-    ...(lifecycle ? { lifecycle } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
   };
   const definition = pendingDefinition('usecase', usecase.usecaseId, request.moduleName, data);
@@ -206,142 +154,6 @@ function noteUnparsedContracts(request: D1UsecaseRequest, problems: D1UsecasePro
     const ast = readContractAst(contract.source, fileName);
     for (const detail of ast.unparsed) error(problems, 'CONTRACT_UNPARSED', fileName, detail);
   }
-}
-
-/**
- * Identity may filter a read or select an update/transition. It is not assigned.
- * A derived input on a read is a filter, with or without a dot.
- * `id` on a read stays a filter; `version` is concurrency only on update or transition.
- * Other derived fields stay writes, except declared concurrency (`version`).
- * The d1_13g rule that treated every derived input as DERIVED_EDITABLE is replaced.
- */
-function noteDerived(
-  request: D1UsecaseRequest,
-  entity: D1UsecaseEntity,
-  usecase: D1UsecaseSelection,
-  input: ProjectionField[],
-  steps: readonly D1WorkerStep[],
-  path: string,
-  problems: D1UsecaseProblem[],
-  normalizations: D1UsecaseNormalization[],
-): void {
-  const inputPaths = new Set(input.map(field => field.name));
-  const payloadPaths = new Set<string>();
-  for (const step of steps) {
-    if (step.kind === 'transition') step.payload.forEach(name => payloadPaths.add(name));
-  }
-  const seen = new Set<string>();
-  for (const contractPath of inputPaths) {
-    classifyDerivedUse(entity, usecase, input, contractPath, 'input', path, problems, normalizations, seen);
-  }
-  for (const contractPath of payloadPaths) {
-    classifyDerivedUse(entity, usecase, input, contractPath, 'payload', path, problems, normalizations, seen);
-  }
-}
-
-function contractInputPaths(
-  request: D1UsecaseRequest,
-  usecase: D1UsecaseSelection,
-  input: readonly ProjectionField[],
-): Set<string> {
-  const paths = new Set<string>();
-  for (const field of input) paths.add(field.name);
-  const context = request.contexts?.find(item => item.usecaseId === usecase.usecaseId);
-  for (const route of context?.routes || []) {
-    for (const field of route.inputFields) paths.add(field.path);
-  }
-  return paths;
-}
-
-function classifyDerivedUse(
-  entity: D1UsecaseEntity,
-  usecase: D1UsecaseSelection,
-  input: readonly ProjectionField[],
-  contractPath: string,
-  source: 'input' | 'payload',
-  path: string,
-  problems: D1UsecaseProblem[],
-  normalizations: D1UsecaseNormalization[],
-  seen: Set<string>,
-): void {
-  const bound = bindDomainField(entity, contractPath, input.find(item => item.name === contractPath));
-  if (bound === 'ambiguous') {
-    const key = `${contractPath}\u0000ambiguous\u0000${source}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    error(
-      problems,
-      'DERIVED_AMBIGUOUS',
-      path,
-      `Derived field ${contractPath} is ambiguous on ${path}: it does not bind to one field of ${entity.entityId}.`,
-    );
-    return;
-  }
-  if (!bound?.derived) return;
-  const role = derivedRole(usecase.operation, bound, source);
-  const key = `${bound.name}\u0000${role}\u0000${source}`;
-  if (seen.has(key)) return;
-  seen.add(key);
-  if (role === 'ambiguous') {
-    error(
-      problems,
-      'DERIVED_AMBIGUOUS',
-      path,
-      `Derived field ${entity.entityId}.${bound.name} is ambiguous on ${path}: operation ${usecase.operation} does not classify it.`,
-    );
-    return;
-  }
-  if (role === 'write') {
-    error(problems, 'DERIVED_EDITABLE', path, `Derived field ${bound.name} is assigned by ${path}.`);
-    return;
-  }
-  const code = role === 'filter' ? 'DERIVED_FILTER' : role === 'selector' ? 'DERIVED_SELECTOR' : 'DERIVED_CONCURRENCY';
-  normalizations.push({
-    code,
-    path: `${path}.${bound.name}`,
-    detail: `${entity.entityId}.${bound.name} is a ${role} of ${path}.`,
-  });
-}
-
-function bindDomainField(
-  entity: D1UsecaseEntity,
-  contractPath: string,
-  projected?: ProjectionField,
-): D1UsecaseField | 'ambiguous' | undefined {
-  const exact = entity.fields.filter(item => item.name === contractPath);
-  if (exact.length > 1) return 'ambiguous';
-  if (exact.length === 1) return exact[0];
-  const fieldRef = projected?.fieldRef;
-  const prefix = `${entity.entityId}.`;
-  if (fieldRef && fieldRef.startsWith(prefix)) {
-    const name = fieldRef.slice(prefix.length);
-    const found = entity.fields.filter(item => item.name === name);
-    if (found.length > 1) return 'ambiguous';
-    if (found.length === 1) return found[0];
-  }
-  return undefined;
-}
-
-function derivedRole(
-  operation: string,
-  field: D1UsecaseField,
-  source: 'input' | 'payload',
-): 'filter' | 'selector' | 'concurrency' | 'write' | 'ambiguous' {
-  if (source === 'payload') return 'write';
-  const identity = field.name === 'id';
-  const concurrency = field.name === 'version';
-  if (identity) {
-    if (READ_OPERATIONS.has(operation)) return 'filter';
-    if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'selector';
-    if (CREATE_OPERATIONS.has(operation)) return 'write';
-    return 'ambiguous';
-  }
-  if (concurrency) {
-    if (UPDATE_OPERATIONS.has(operation) || operation === 'transition') return 'concurrency';
-    return 'write';
-  }
-  if (source === 'input' && READ_OPERATIONS.has(operation)) return 'filter';
-  return 'write';
 }
 
 function noteRequiredNotes(
@@ -456,6 +268,16 @@ function decideRules(
     normalizations.push({ code: 'RULE_RESTORED', path, detail: ruleId });
   }
   return { rules: prescribed, plan, steps: alignRuleSteps(steps, prescribed) };
+}
+
+/** Local enforced ids, then pending RULE_UNBOUND ids. The plan itself is not stored. */
+function appliedRuleIds(plan: readonly D1RulePlanRow[]): string[] {
+  const applied = enforcedRuleIds(plan);
+  for (const row of plan) {
+    if (row.enforcement !== 'pending' || row.gap !== 'RULE_UNBOUND' || !row.ruleId) continue;
+    if (!applied.includes(row.ruleId)) applied.push(row.ruleId);
+  }
+  return applied;
 }
 
 function alignRuleSteps(steps: readonly D1WorkerStep[], prescribed: readonly string[]): D1WorkerStep[] {
@@ -746,29 +568,23 @@ function storedArgument(arg: D1MdmArgument): D1MdmArgument {
   return stored;
 }
 
-function dependencyPaths(moduleName: string, item: D1UsecaseItem): string[] {
+function dependencyPaths(request: D1UsecaseRequest, item: D1UsecaseItem): string[] {
   const data = item.definition && isRecord(item.definition.data) ? item.definition.data : {};
   const paths = new Set<string>();
-  paths.add(`l4/${moduleName}/ontology/${item.entityId}.defs.ts`);
-  if (Array.isArray(data.rules)) {
-    for (const rule of data.rules) {
-      if (isRecord(rule) && typeof rule.path === 'string' && rule.path) paths.add(rule.path);
-    }
+  if (typeof data.transitionRef === 'string' && data.transitionRef) {
+    paths.add(`l4/${request.moduleName}/ontology/${item.entityId}.defs.ts`);
   }
-  if (Array.isArray(data.rulePlan)) {
-    for (const row of data.rulePlan) {
-      if (!isRecord(row) || typeof row.origin !== 'string') continue;
-      const file = originFile(row.origin);
-      if (file) paths.add(file);
+  const entity = request.entities.find(entry => entry.entityId === item.entityId);
+  if (entity && Array.isArray(data.rulesApplied)) {
+    for (const ruleId of data.rulesApplied) {
+      if (typeof ruleId !== 'string' || !ruleId) continue;
+      paths.add(ruleSourcePath(request, entity, item.usecaseId, ruleId));
     }
   }
   if (Array.isArray(data.effects)) {
     for (const effect of data.effects) {
       if (isRecord(effect) && typeof effect.path === 'string' && effect.path) paths.add(effect.path);
     }
-  }
-  if (isRecord(data.lifecycle) && typeof data.lifecycle.sourcePath === 'string' && data.lifecycle.sourcePath) {
-    paths.add(data.lifecycle.sourcePath);
   }
   return [...paths].sort();
 }
@@ -829,11 +645,11 @@ function pipelineFor(request: D1UsecaseRequest, item: D1UsecaseItem): D1Pipeline
   const port = request.ports.find(entry => entry.entityId === item.entityId);
   const dependsOn = [pipelineId(request.project, request.moduleName, 'domainEntity', item.entityId)];
   const dependsFiles = entity?.defPath ? [qualifyDefPath(request.project, entity.defPath)] : [];
-  if (port && item.definition && isRecord(item.definition.data) && Array.isArray(item.definition.data.ports) && item.definition.data.ports.length) {
+  if (port && entity?.storageTarget === 'moduleDatabase') {
     dependsOn.push(pipelineId(request.project, request.moduleName, 'repositoryPort', port.portId));
     if (port.defPath) dependsFiles.push(qualifyDefPath(request.project, port.defPath));
   }
-  for (const path of dependencyPaths(request.moduleName, item)) {
+  for (const path of dependencyPaths(request, item)) {
     if (!dependsFiles.includes(path)) dependsFiles.push(path);
   }
   return {

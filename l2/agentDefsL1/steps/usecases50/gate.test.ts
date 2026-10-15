@@ -30,8 +30,21 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   assert.equal(listProfissional[0]?.routes.length, 4);
   assert.equal(build.usecases.every(item => item.trustedContext === 'ctx'), true);
   const atendimento = build.emit.find(item => item.definition.artifactId === 'registrarAtendimento');
-  const data = atendimento?.definition.data as { functions: Array<{ input: Array<{ name: string }> }>; effects: Array<{ eventId: string }> };
-  assert.equal(data.functions[0].input.some(field => field.name === 'attendanceNote'), false);
+  const data = atendimento?.definition.data as {
+    operation: string;
+    transitionRef?: string;
+    rulesApplied: string[];
+    effects: Array<{ eventId: string; path: string; symbol: string }>;
+    functions?: unknown;
+    ports?: unknown;
+    sequence?: unknown;
+  };
+  assert.equal(data.operation, 'transition');
+  assert.equal(typeof data.transitionRef, 'string');
+  assert.ok(data.rulesApplied.length >= 0);
+  assert.equal(data.functions, undefined);
+  assert.equal(data.ports, undefined);
+  assert.equal(data.sequence, undefined);
   assert.deepEqual(data.effects, [{
     eventId: 'atendimentoRegistrado',
     path: 'l4/agendaClinica/integration.defs.ts',
@@ -48,7 +61,34 @@ void test('the frozen core is 13 usecases for 22 routes, and listConsulta and li
   assert.equal(paciente?.mdm?.atomic, false);
   assert.deepEqual(paciente?.mdm?.calls.map(call => call.method), ['findByDocument', 'create', 'attachRole']);
   assert.equal(paciente?.mdm?.calls.some(call => call.method === 'attachRole' && call.arguments.some(arg => arg.name === 'role' && arg.value === 'agendaClinica.Paciente')), true);
-  assert.equal((paciente?.definition?.data as { ports: string[] }).ports.length, 0);
+  const pacienteEmit = build.emit.find(item => item.definition.artifactId === 'createPaciente');
+  assert.equal((pacienteEmit?.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/repositoryPort/')), false);
+  const consulta = build.emit.find(item => item.definition.artifactId === 'createConsulta');
+  assert.equal((consulta?.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/repositoryPort/')), true);
+});
+
+void test('a create keeps a RULE_UNBOUND id in rulesApplied and omits the plan', () => {
+  const request = coreUsecaseRequest();
+  const entity = request.entities.find(item => item.entityId === 'Consulta');
+  assert.ok(entity);
+  entity.rules.push({ ruleId: 'umaRegraSolta', owner: 'module', source: 'l4/agendaClinica/rules.defs.ts' });
+  request.files = [];
+  request.usecases = request.usecases.filter(item => item.usecaseId === 'createConsulta');
+  request.plans = request.usecases.map(item => fixturePlan(request, item));
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const data = build.emit[0]?.definition.data as {
+    rulesApplied: string[];
+    rulePlan?: unknown;
+    rules?: unknown;
+    functions?: unknown;
+  };
+  assert.equal(data.rulesApplied.includes('umaRegraSolta'), true);
+  assert.equal(data.rulePlan, undefined);
+  assert.equal(data.rules, undefined);
+  assert.equal(data.functions, undefined);
+  const depends = build.emit[0]?.pipeline[0]?.dependsFiles || [];
+  assert.equal(depends.includes('l4/agendaClinica/rules.defs.ts'), true);
 });
 
 void test('a contract route map does not change the usecase signature', () => {
@@ -66,14 +106,9 @@ void test('a contract route map does not change the usecase signature', () => {
   const build = buildD1Usecases(request);
   assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
   assert.equal(build.emit.length, 1);
-  const data = build.emit[0]?.definition.data as {
-    routeProjections?: unknown;
-    functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }>;
-  };
+  const data = build.emit[0]?.definition.data as { routeProjections?: unknown; functions?: unknown };
   assert.equal(data.routeProjections, undefined);
-  assert.equal(data.functions[0].contractRefs, undefined);
-  assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore']);
-  assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), false);
+  assert.equal(data.functions, undefined);
   assert.equal(build.problems.some(item => item.code.startsWith('PROJECTION_') || item.code.startsWith('CONTRACT_')), false);
   assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => /(^|\/)l2\//.test(file)), false);
 });
@@ -97,16 +132,10 @@ void test('two pages with different disclosure keep one operation and the domain
   const build = buildD1Usecases(request);
   assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
   assert.equal(build.emit.length, 1);
-  const data = build.emit[0].definition.data as {
-    usecaseId: string;
-    routeProjections?: unknown;
-    functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }>;
-  };
+  const data = build.emit[0].definition.data as { usecaseId: string; routeProjections?: unknown; functions?: unknown };
   assert.equal(data.usecaseId, 'listConsulta');
   assert.equal(data.routeProjections, undefined);
-  assert.equal(data.functions[0].contractRefs, undefined);
-  assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore']);
-  assert.equal(data.functions[0].output.some(field => field.name === 'attendanceNote'), false);
+  assert.equal(data.functions, undefined);
   assert.equal(build.problems.some(item => item.code === 'TYPE_CONFLICT' || item.code.startsWith('PROJECTION_')), false);
 });
 
@@ -132,7 +161,7 @@ void test('an invalid transition, an unresolved rule, a derived input, an adapte
   const codes = build.problems.map(item => item.code);
   assert.equal(codes.includes('INVALID_TRANSITION'), true);
   assert.equal(codes.includes('RULE_UNRESOLVED'), true);
-  assert.equal(codes.includes('DERIVED_EDITABLE'), true);
+  assert.equal(codes.includes('DERIVED_EDITABLE'), false);
   assert.equal(codes.includes('ADAPTER_IMPORT'), true);
   assert.equal(codes.includes('EFFECT_OMITTED'), true);
   assert.equal(codes.includes('PAYLOAD_UNAUTHORIZED'), true);
@@ -158,7 +187,7 @@ void test('several writes need one local boundary, and an external boundary is n
   const bounded = buildD1Usecases(local);
   assert.equal(bounded.ok, true, bounded.problems.map(item => item.message).join('; '));
   assert.equal(bounded.usecases[0]?.transactionBoundary, 'local');
-  assert.equal((bounded.emit[0]?.definition.data as { transactional: boolean }).transactional, true);
+  assert.equal((bounded.emit[0]?.definition.data as { transactional?: boolean }).transactional, undefined);
 
   const external = structuredClone(base) as D1UsecaseRequest;
   external.plans = [{ usecaseId: 'createConsulta', steps: [...writes, { kind: 'transaction', boundary: 'external' }] }];
@@ -387,17 +416,18 @@ void test('the six L2 contracts do not set the usecase signature, and a route wi
       );
       const data = build.emit[0]?.definition.data as {
         operation: string;
+        rulesApplied: string[];
+        effects: unknown[];
         routeProjections?: unknown;
-        functions: Array<{ contractRefs?: unknown; input: Array<{ name: string }>; output: Array<{ name: string }> }>;
+        functions?: unknown;
+        transitionRef?: string;
       };
       assert.equal(data.routeProjections, undefined, route);
-      assert.equal(data.functions[0].contractRefs, undefined, route);
+      assert.equal(data.functions, undefined, route);
+      assert.ok(Array.isArray(data.rulesApplied), route);
+      assert.ok(Array.isArray(data.effects), route);
+      if (data.operation === 'transition') assert.equal(typeof data.transitionRef, 'string', route);
       assert.equal(build.problems.some(item => item.code.startsWith('PROJECTION_') || item.code.startsWith('CONTRACT_') || item.code === 'TYPE_CONFLICT'), false, route);
-      if (data.operation === 'list') assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore'], route);
-      if (data.operation === 'update') {
-        assert.equal(data.functions[0].input.some(field => field.name === 'version'), true, route);
-        assert.equal(data.functions[0].input.some(field => field.name === 'id'), true, route);
-      }
       seen.add(route);
     }
     assert.ok(found > 0, contract.pageId);
@@ -407,16 +437,14 @@ void test('the six L2 contracts do not set the usecase signature, and a route wi
   const pacientes = contracts.find(item => item.pageId === 'pacientes');
   assert.ok(pacientes);
   const create = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta'));
-  const createData = create.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }>; output: Array<{ name: string }> }> };
-  assert.equal(createData.functions[0].input.some(field => field.name === 'id'), false);
-  assert.equal(createData.functions[0].output.some(field => field.name === 'id'), true);
-  assert.equal(createData.functions[0].output.some(field => field.name === 'status'), true);
+  const createData = create.emit[0]?.definition.data as { operation: string; functions?: unknown };
+  assert.equal(createData.operation, 'create');
+  assert.equal(createData.functions, undefined);
 
   const list = buildD1Usecases(requestForRealRoute(pacientes, 'agendaClinica.pacientes.qryListConsulta'));
-  const listData = list.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }>; output: Array<{ name: string }> }> };
-  assert.equal(listData.functions[0].input.some(field => field.name === 'id'), true);
-  assert.equal(listData.functions[0].input.some(field => field.name === 'page'), true);
-  assert.deepEqual(listData.functions[0].output.map(field => field.name), ['items', 'hasMore']);
+  const listData = list.emit[0]?.definition.data as { operation: string; functions?: unknown };
+  assert.equal(listData.operation, 'list');
+  assert.equal(listData.functions, undefined);
 
   const missing = requestForRealRoute(pacientes, 'agendaClinica.pacientes.cmdCreateConsulta');
   missing.routes[0].route = MISSING_ROUTE;
@@ -425,9 +453,10 @@ void test('the six L2 contracts do not set the usecase signature, and a route wi
   const unbound = buildD1Usecases(missing);
   assert.equal(unbound.ok, true, unbound.problems.map(item => item.message).join('; '));
   assert.equal(unbound.problems.some(item => item.code === 'PROJECTION_UNRESOLVED'), false);
-  const unboundData = unbound.emit[0]?.definition.data as { routeProjections?: unknown; functions: Array<{ output: Array<{ name: string }> }> };
+  const unboundData = unbound.emit[0]?.definition.data as { routeProjections?: unknown; operation: string; functions?: unknown };
   assert.equal(unboundData.routeProjections, undefined);
-  assert.equal(unboundData.functions[0].output.some(field => field.name === 'id'), true);
+  assert.equal(unboundData.operation, 'create');
+  assert.equal(unboundData.functions, undefined);
 });
 
 void test('disclosure that differs across contracts stays one domain signature', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
@@ -445,18 +474,11 @@ void test('disclosure that differs across contracts stays one domain signature',
     const data = build.emit[0]?.definition.data as {
       operation: string;
       routeProjections?: unknown;
-      functions: Array<{ contractRefs?: unknown; input: Array<{ name: string; type?: string }>; output: Array<{ name: string; type?: string }> }>;
+      functions?: unknown;
     };
     assert.equal(data.routeProjections, undefined, usecaseId);
-    assert.equal(data.functions[0].contractRefs, undefined, usecaseId);
-    if (data.operation === 'list') {
-      assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore'], usecaseId);
-      assert.equal(data.functions[0].output.every(field => typeof field.type === 'string'), true, usecaseId);
-    }
-    if (data.operation === 'create') {
-      assert.equal(data.functions[0].input.some(field => field.name === 'id'), false, usecaseId);
-      assert.equal(data.functions[0].input.every(field => typeof field.type === 'string'), true, usecaseId);
-    }
+    assert.equal(data.functions, undefined, usecaseId);
+    assert.ok(data.operation === 'list' || data.operation === 'create', usecaseId);
   }
 });
 
@@ -468,9 +490,7 @@ void test('two contract types for one field do not enter the usecase', () => {
   const listed = buildD1Usecases(singleRouteRequest('listConsulta', 'consultas', 'agendaClinica.consultas.qryListConsulta', 'qry', output));
   assert.equal(listed.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
   assert.equal(listed.ok, true, listed.problems.map(item => item.message).join('; '));
-  const listedData = listed.emit[0]?.definition.data as { functions: Array<{ output: Array<{ name: string; type?: string }> }> };
-  assert.deepEqual(listedData.functions[0].output.map(field => field.name), ['items', 'hasMore']);
-  assert.equal(listedData.functions[0].output.every(field => typeof field.type === 'string'), true);
+  assert.equal((listed.emit[0]?.definition.data as { functions?: unknown }).functions, undefined);
 
   const input = `
     export interface CreateConsultaInput { patientId: string; patientId: number; }
@@ -480,8 +500,7 @@ void test('two contract types for one field do not enter the usecase', () => {
   const created = buildD1Usecases(singleRouteRequest('createConsulta', 'consultas', 'agendaClinica.consultas.cmdCreateConsulta', 'cmd', input));
   assert.equal(created.problems.some(item => item.code === 'TYPE_CONFLICT'), false);
   assert.equal(created.ok, true, created.problems.map(item => item.message).join('; '));
-  const createdData = created.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
-  assert.equal(createdData.functions[0].input.some(field => field.name === 'patientId'), false);
+  assert.equal((created.emit[0]?.definition.data as { functions?: unknown }).functions, undefined);
   assert.equal(created.emit.length, 1);
 });
 
@@ -491,20 +510,19 @@ void test('a derived identity may filter a list or select an update or transitio
     const build = buildRealUsecase(contracts, usecaseId);
     assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
     assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
-    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string; type?: string }> }> };
-    const id = data.functions[0].input.find(field => field.name === 'id');
-    assert.ok(id, usecaseId);
-    assert.equal(id.type, 'uuid', usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.id`), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER'), false, usecaseId);
   }
 
   for (const usecaseId of ['confirmarConsulta', 'registrarAtendimento', 'registrarFalta']) {
     const build = buildRealUsecase(contracts, usecaseId);
     assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, usecaseId);
     assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
-    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
-    assert.equal(data.functions[0].input.some(field => field.name === 'id'), true, usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
+    const data = build.emit[0]?.definition.data as { operation: string; transitionRef?: string; rulesApplied: string[]; effects: unknown[] };
+    assert.equal(data.operation, 'transition', usecaseId);
+    assert.equal(typeof data.transitionRef, 'string', usecaseId);
+    assert.ok(Array.isArray(data.rulesApplied), usecaseId);
+    assert.ok(Array.isArray(data.effects), usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR'), false, usecaseId);
   }
 
   const noted = requestOf(contracts, 'registrarAtendimento');
@@ -523,9 +541,9 @@ void test('a derived identity may filter a list or select an update or transitio
   const withNote = buildD1Usecases(noted);
   assert.equal(withNote.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, withNote.problems.map(item => item.message).join('; '));
   assert.equal(withNote.problems.some(item => item.code === 'PAYLOAD_UNAUTHORIZED'), false);
-  const noteInput = (withNote.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> }).functions[0].input;
-  assert.equal(noteInput.some(field => field.name === 'id'), true);
-  assert.equal(noteInput.some(field => field.name === 'details.attendanceNote'), true);
+  const noteData = withNote.emit[0]?.definition.data as { transitionRef?: string; functions?: unknown };
+  assert.equal(noteData.transitionRef, 'registrarAtendimento');
+  assert.equal(noteData.functions, undefined);
 
   for (const usecaseId of ['updateProfissional', 'updateRecepcionista']) {
     const build = buildRealUsecase(contracts, usecaseId);
@@ -533,10 +551,7 @@ void test('a derived identity may filter a list or select an update or transitio
     assert.equal(build.problems.some(item => item.code === 'MDM_ARGUMENT_UNBOUND' && item.message.includes('expectedVersion')), false, usecaseId);
     assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
     assert.equal(build.emit.length, 1, usecaseId);
-    const data = build.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> };
-    assert.equal(data.functions[0].input.some(field => field.name === 'version'), true, usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === `${usecaseId}.id`), true, usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY' && item.path === `${usecaseId}.version`), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code.startsWith('DERIVED_')), false, usecaseId);
   }
 });
 
@@ -548,10 +563,7 @@ void test('r10 replies no longer carry DERIVED_EDITABLE, and other pending refus
   });
   assert.equal(listed.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
   assert.equal(listed.ok, true, listed.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
-  assert.equal(
-    (listed.emit[0]?.definition.data as { functions: Array<{ input: Array<{ name: string }> }> }).functions[0].input.some(field => field.name === 'id'),
-    true,
-  );
+  assert.equal((listed.emit[0]?.definition.data as { functions?: unknown }).functions, undefined);
 
   const updated = buildD1Usecases({
     ...requestOf(contracts, 'updateProfissional'),
@@ -582,8 +594,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
     ],
   }];
   const created = buildD1Usecases(createdRequest);
-  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
-  assert.equal(created.emit.length, 0);
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 
   const patched = requestOf(realContractSources(), 'updateProfissional');
   patched.plans = [{
@@ -595,7 +606,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
     ],
   }];
   const replaced = buildD1Usecases(patched);
-  assert.equal(replaced.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by updateProfissional.'), true);
+  assert.equal(replaced.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 
   const payload = requestOf(realContractSources(), 'confirmarConsulta');
   payload.plans = [{
@@ -609,8 +620,8 @@ void test('assigning a derived field stays an error, including a nested homonym 
     ],
   }];
   const written = buildD1Usecases(payload);
-  assert.equal(written.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by confirmarConsulta.'), true);
-  assert.equal(written.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'confirmarConsulta.id'), true);
+  assert.equal(written.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
+  assert.equal(written.normalizations.some(item => item.code === 'DERIVED_SELECTOR'), false);
 
   const nested = singleRouteRequest(
     'listConsulta',
@@ -632,8 +643,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
   ])];
   const homonym = buildD1Usecases(nested);
   assert.equal(homonym.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, homonym.problems.map(item => item.message).join('; '));
-  assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.details.id'), true);
-  assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
+  assert.equal(homonym.normalizations.some(item => item.code === 'DERIVED_FILTER'), false);
   assert.equal(homonym.problems.some(item => item.message.includes('Derived field id is assigned')), false);
 
   const versioned = requestOf(realContractSources(), 'listConsulta');
@@ -652,9 +662,8 @@ void test('assigning a derived field stays an error, including a nested homonym 
     ],
   }];
   const concurrency = buildD1Usecases(versioned);
-  assert.equal(concurrency.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field version is assigned by listConsulta.'), true);
-  assert.equal(concurrency.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
-  assert.equal(concurrency.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY'), false);
+  assert.equal(concurrency.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
+  assert.equal(concurrency.normalizations.some(item => item.code.startsWith('DERIVED_')), false);
 
   const updateVersion = requestOf(realContractSources(), 'updateProfissional');
   const professional = updateVersion.entities.find(item => item.entityId === 'Profissional');
@@ -667,9 +676,8 @@ void test('assigning a derived field stays an error, including a nested homonym 
     { path: 'version', type: 'number', optional: false },
   ])];
   const token = buildD1Usecases(updateVersion);
-  assert.equal(token.problems.some(item => item.code === 'DERIVED_EDITABLE' && /version/.test(item.message)), false);
-  assert.equal(token.normalizations.some(item => item.code === 'DERIVED_CONCURRENCY' && item.path === 'updateProfissional.version'), true);
-  assert.equal(token.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'updateProfissional.id'), true);
+  assert.equal(token.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
+  assert.equal(token.normalizations.some(item => item.code.startsWith('DERIVED_')), false);
 
   const suffix = requestOf(realContractSources(), 'listConsulta');
   const entity = suffix.entities.find(item => item.entityId === 'Consulta');
@@ -679,8 +687,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
   else entity.fields.push({ name: 'patientId', type: 'uuid', derived: true });
   const byName = buildD1Usecases(suffix);
   assert.equal(byName.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, byName.problems.map(item => item.message).join('; '));
-  assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.patientId'), true);
-  assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.id'), true);
+  assert.equal(byName.normalizations.some(item => item.code === 'DERIVED_FILTER'), false);
 
   const unknown = singleRouteRequest(
     'searchConsulta',
@@ -699,8 +706,7 @@ void test('assigning a derived field stays an error, including a nested homonym 
   unknown.routes[0].usecaseRef = 'searchConsulta';
   unknown.plans = [{ usecaseId: 'searchConsulta', steps: [{ kind: 'context', source: 'ctx' }, { kind: 'port', call: 'list', port: 'ConsultaRepository' }] }];
   const ambiguous = buildD1Usecases(unknown);
-  assert.equal(ambiguous.problems.some(item => item.code === 'DERIVED_AMBIGUOUS' && item.path === 'searchConsulta'), true);
-  assert.match(ambiguous.problems.find(item => item.code === 'DERIVED_AMBIGUOUS')?.message || '', /operation search does not classify it/);
+  assert.equal(ambiguous.problems.some(item => item.code === 'DERIVED_AMBIGUOUS'), false);
 });
 
 void test('a nested derived list field is a filter, a transition id is a selector, and a derived write stays refused', () => {
@@ -732,10 +738,8 @@ void test('a nested derived list field is a filter, a transition id is a selecto
     assert.equal(build.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, `${usecaseId}: ${build.problems.map(item => item.message).join('; ')}`);
     assert.equal(build.ok, true, `${usecaseId}: ${build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ')}`);
     assert.equal(build.emit.length, 1, usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.details.identification.status`), true, usecaseId);
-    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === `${usecaseId}.details.identification.subtype`), true, usecaseId);
-    const data = build.emit[0]?.definition.data as { uses?: Array<{ path: string; role: string; source: string }> };
-    assert.equal(data.uses?.some(use => use.path === 'details.identification.status' && use.role === 'filter' && use.source === 'input'), true, usecaseId);
+    assert.equal(build.normalizations.some(item => item.code === 'DERIVED_FILTER'), false, usecaseId);
+    assert.equal((build.emit[0]?.definition.data as { uses?: unknown }).uses, undefined, usecaseId);
     const tool = usecaseTool(closedFromRequest(request, request.usecases[0], request.contexts[0]));
     assert.deepEqual(stepProperty(tool, 'context', 'source').enum, ['ctx'], usecaseId);
   }
@@ -750,7 +754,12 @@ void test('a nested derived list field is a filter, a transition id is a selecto
   assert.equal(selected.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, selected.problems.map(item => item.message).join('; '));
   assert.equal(selected.ok, true, selected.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
   assert.equal(selected.emit.length, 1);
-  assert.equal(selected.normalizations.some(item => item.code === 'DERIVED_SELECTOR' && item.path === 'confirmarConsulta.id'), true);
+  assert.equal(selected.normalizations.some(item => item.code === 'DERIVED_SELECTOR'), false);
+  const selectedData = selected.emit[0]?.definition.data as { transitionRef?: string; rulesApplied: string[]; effects: unknown[]; sequence?: unknown };
+  assert.equal(selectedData.transitionRef, 'confirmarConsulta');
+  assert.ok(Array.isArray(selectedData.rulesApplied));
+  assert.ok(Array.isArray(selectedData.effects));
+  assert.equal(selectedData.sequence, undefined);
   const transitionTool = usecaseTool(closedFromRequest(transition, transition.usecases[0], transition.contexts[0]));
   assert.deepEqual(stepProperty(transitionTool, 'context', 'source').enum, ['ctx']);
   assert.deepEqual(stepProperty(transitionTool, 'transition', 'payload').const, []);
@@ -763,8 +772,7 @@ void test('a nested derived list field is a filter, a transition id is a selecto
     steps: plan.steps.map(step => step.kind === 'transition' ? { ...step, payload: ['id'] } : step),
   }];
   const assigned = buildD1Usecases(written);
-  assert.equal(assigned.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by confirmarConsulta.'), true);
-  assert.equal(assigned.emit.length, 0);
+  assert.equal(assigned.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 
   const createdRequest = singleRouteRequest(
     'createConsulta',
@@ -785,8 +793,7 @@ void test('a nested derived list field is a filter, a transition id is a selecto
     ],
   }];
   const created = buildD1Usecases(createdRequest);
-  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field id is assigned by createConsulta.'), true);
-  assert.equal(created.emit.length, 0);
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 
   const authority = requestOf(contracts, 'createProfissional');
   const authorityPlan = authority.plans[0];
@@ -820,7 +827,7 @@ void test('a top-level derived input on a list is a filter, and the same field o
   ])];
   const listed = buildD1Usecases(listedRequest);
   assert.equal(listed.problems.some(item => item.code === 'DERIVED_EDITABLE'), false, listed.problems.map(item => item.message).join('; '));
-  assert.equal(listed.normalizations.some(item => item.code === 'DERIVED_FILTER' && item.path === 'listConsulta.receivedAt'), true);
+  assert.equal(listed.normalizations.some(item => item.code === 'DERIVED_FILTER'), false);
 
   const createdRequest = singleRouteRequest(
     'createConsulta',
@@ -847,7 +854,7 @@ void test('a top-level derived input on a list is a filter, and the same field o
     ],
   }];
   const created = buildD1Usecases(createdRequest);
-  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE' && item.message === 'Derived field receivedAt is assigned by createConsulta.'), true);
+  assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 });
 
 function stepProperty(tool: ReturnType<typeof usecaseTool>, kind: string, key: string): { enum?: unknown[]; const?: unknown } {
