@@ -486,10 +486,13 @@ export function integrationLinkIssues(
 ): string[] {
   const issues: string[] = [];
   for (const event of events) {
-    const [entity = '', transition = ''] = event.on.split('.');
+    const parts = event.on.split('.');
+    const entity = parts[0] || '';
+    const transition = parts[1] || '';
     const match = transitionUsecases.find(item => item.entity === entity && item.transitionRef === transition);
     const usecaseId = match ? match.usecaseId : '';
-    if (!usecaseId) issues.push(`Outbound ${event.eventId} does not name a selected transition usecase.`);
+    const namedTransition = parts.length === 2 && Boolean(entity) && Boolean(transition) && event.consumer === `${entity}.${transition}`;
+    if (!usecaseId && !namedTransition) issues.push(`Outbound ${event.eventId} does not name a selected transition usecase.`);
     if (usecaseId && event.consumer !== undefined && event.consumer !== usecaseId) {
       issues.push(`Outbound ${event.eventId} consumer does not match ${usecaseId}.`);
     }

@@ -858,6 +858,36 @@ void test('an outbound event binds the usecase of its entity transition, not a u
   const unknownProblems: D1SupportProblem[] = [];
   emitEffects(unknown, unknownProblems);
   assert.equal(unknownProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'zyApproved'), true);
+
+  const system = effectsRequest();
+  system.models = [{
+    entityId: 'Inscricao', storageTarget: 'local', kind: 'entity', namespace: '', fields: [],
+    states: [], initialState: '', uniqueKeys: [], noteField: '',
+    transitions: [{ transitionId: 'promover', to: 'confirmed', ruleRefs: [] }],
+  }];
+  system.selectedEventIds = ['inscricaoPromovida'];
+  system.outbound = [{ eventId: 'inscricaoPromovida', on: 'Inscricao.promover', mechanism: '', payloadDeclared: false }];
+  const systemProblems: D1SupportProblem[] = [];
+  const kept = emitEffects(system, systemProblems);
+  assert.equal(systemProblems.some(item => item.code === 'INTEGRATION_LINK'), false, JSON.stringify(systemProblems));
+  assert.equal(systemProblems.some(item => item.code === 'POOL_ABSENT' && item.severity === 'review'), true);
+  const keptOutbound = kept.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  const keptEvents = (keptOutbound?.definition.data as { events: Array<{ consumer: string }> }).events;
+  assert.deepEqual(keptEvents.map(item => item.consumer), ['Inscricao.promover']);
+  const depends = keptOutbound?.pipeline.flatMap(item => item.dependsFiles) || [];
+  assert.equal(depends.some(item => item.includes('promover.defs.ts')), false);
+  assert.deepEqual(keptOutbound?.pipeline.flatMap(item => item.dependsOn), []);
+
+  const missing = effectsRequest();
+  missing.models = [{
+    entityId: 'Inscricao', storageTarget: 'local', kind: 'entity', namespace: '', fields: [],
+    states: [], initialState: '', uniqueKeys: [], noteField: '', transitions: [],
+  }];
+  missing.selectedEventIds = ['inscricaoPromovida'];
+  missing.outbound = [{ eventId: 'inscricaoPromovida', on: 'Inscricao.promover', mechanism: '', payloadDeclared: false }];
+  const missingProblems: D1SupportProblem[] = [];
+  emitEffects(missing, missingProblems);
+  assert.equal(missingProblems.some(item => item.code === 'INTEGRATION_LINK' && item.path === 'inscricaoPromovida'), true);
 });
 
 void test('a local table outside every journey owns its dataset by a token scenario id (t1_09 r3)', () => {

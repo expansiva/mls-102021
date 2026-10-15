@@ -877,8 +877,11 @@ export function emitEffects(
     const parts = event.on.split('.');
     const entityId = parts[0] || '';
     const transition = parts[1] || '';
-    const usecaseId = transitionUsecaseFor(request.transitionUsecases, entityId, transition);
-    if (!event.eventId || !entityId || !transition || parts.length !== 2 || !usecaseId) {
+    const linked = Boolean(event.eventId) && Boolean(entityId) && Boolean(transition) && parts.length === 2;
+    const usecaseId = linked ? transitionUsecaseFor(request.transitionUsecases, entityId, transition) : '';
+    const onEntity = linked && request.models.some(model =>
+      model.entityId === entityId && model.transitions.some(item => item.transitionId === transition));
+    if (!linked || (!usecaseId && !onEntity)) {
       error(problems, 'INTEGRATION_LINK', event.eventId || event.on, `Outbound ${event.eventId || event.on} does not name a selected usecase.`);
       continue;
     }
@@ -893,12 +896,21 @@ export function emitEffects(
         `Transition ${transition} cites ${rules.join(', ')} and declares no payload. No payload was invented.`,
       );
     }
+    const consumer = usecaseId || `${entityId}.${transition}`;
+    if (!usecaseId) {
+      review(
+        problems,
+        'POOL_ABSENT',
+        event.eventId,
+        `Outbound ${event.eventId} fires on ${entityId}.${transition}, which no selected usecase runs. It was kept for the materializer.`,
+      );
+    }
     const row: Record<string, unknown> = {
       eventId: event.eventId,
       on: event.on,
       entityId,
       mechanism: resolved.mechanism,
-      consumer: usecaseId,
+      consumer,
     };
     if (resolved.mechanismRef) row.mechanismRef = resolved.mechanismRef;
     events.push(row);
@@ -946,7 +958,7 @@ export function emitEffects(
     return { emit: [], report: { phase: 'plan', executed: false, capability: capabilityOf(false) } };
   }
   const defPath = filePath(request, 'integrationOutbound', OUTBOUND_PATH(request.moduleName));
-  const consumers = events.map(event => String(event.consumer));
+  const consumers = events.map(event => String(event.consumer)).filter(id => known.has(id));
   const gap = integrationGap(data);
   const definition = definitionFor(request, 'integrationOutbound', 'outbound', data, gap ? 'blocked' : 'pending');
   const emit: D1SupportEmit[] = [];
