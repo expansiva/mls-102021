@@ -12,6 +12,8 @@ export interface DisclosureGrant {
   allowedFields: readonly string[];
   /** Entities the grant is about. Empty: the grant is about every entity of the route. */
   entityRefs: readonly string[];
+  /** Actor the grant belongs to. Absent: every such grant is the same single actor. */
+  actorRef?: string;
 }
 
 /** `disclosed`; `carrier` = a grant names a sub-path of it (the container is not released); `blocked`. */
@@ -23,9 +25,12 @@ export function coveringGrants<T extends DisclosureGrant>(grants: readonly T[], 
 }
 
 /**
- * A path leaves only when every covering grant discloses it. No covering grant is `blocked`
- * (fail closed). `fullRecord` discloses all; `fieldsOnly`/`summaryOnly` the `<entity>.` allowed
- * fields and what is under them; any other mode nothing.
+ * Covering grants are grouped by `actorRef` (absent is one actor). Inside an actor a path leaves
+ * only when every grant of that actor discloses it. Across actors the path is `disclosed` when
+ * some actor discloses it, `carrier` when none does and some actor holds it as a container, else
+ * `blocked`. An actor with no grant on the entity is not in the group and does not block.
+ * `fullRecord` discloses all; `fieldsOnly`/`summaryOnly` the `<entity>.` allowed fields and what
+ * is under them; any other mode nothing.
  * The entity's system paths (primary key and declared concurrency field) leave with any covering
  * grant. They are not business data, so `allowedFields` does not have to name them. A grant that
  * does not cover the entity still discloses nothing.
@@ -39,9 +44,13 @@ export function pathDisclosure(
   const covering = coveringGrants(grants, entity);
   if (covering.length === 0) return 'blocked';
   if (systemFieldPaths(entityDefinition).includes(path)) return 'disclosed';
-  const refusing = covering.filter(grant => !grantDiscloses(grant, entity, path));
-  if (refusing.length === 0) return 'disclosed';
-  return refusing.every(grant => allowedOf(grant, entity).some(item => item.startsWith(`${path}.`))) ? 'carrier' : 'blocked';
+  let carrier = false;
+  for (const group of grantsByActor(covering).values()) {
+    const verdict = actorPathDisclosure(group, entity, path);
+    if (verdict === 'disclosed') return 'disclosed';
+    if (verdict === 'carrier') carrier = true;
+  }
+  return carrier ? 'carrier' : 'blocked';
 }
 
 /**
@@ -73,8 +82,9 @@ export type NodeDisclosure = PathDisclosure | 'computed';
 
 /**
  * The one rule for a classified path. An entity path goes through `pathDisclosure` on its ontology path. A paging key
- * leaves. A calculated value leaves only when every grant that covers its entity is `fullRecord`, and there is one:
- * an aggregate of records may reveal what the fields do not, so it is closed by default.
+ * leaves. A calculated value leaves when some actor's grants on its entity are all `fullRecord`, and there is one:
+ * an aggregate of records may reveal what the fields do not, so it is closed by default. An actor with no grant
+ * on the entity does not block the others.
  */
 export function nodeDisclosure(
   grants: readonly DisclosureGrant[],
@@ -89,7 +99,29 @@ export function nodeDisclosure(
   // see; the L4 reviewer chooses the page grants.
   if (!node.entity) return grants.length > 0 && grants.every(grant => DECLARED_MODES.includes(grant.disclosure)) ? 'disclosed' : 'computed';
   const covering = coveringGrants(grants, node.entity);
-  return covering.length > 0 && covering.every(grant => grant.disclosure === 'fullRecord') ? 'disclosed' : 'computed';
+  for (const group of grantsByActor(covering).values()) {
+    if (group.every(grant => grant.disclosure === 'fullRecord')) return 'disclosed';
+  }
+  return 'computed';
+}
+
+/** Absent `actorRef` is one actor. Callers that pass the whole grant keep its actor. */
+function grantsByActor(grants: readonly DisclosureGrant[]): Map<string, DisclosureGrant[]> {
+  const groups = new Map<string, DisclosureGrant[]>();
+  for (const grant of grants) {
+    const key = grant.actorRef ?? '';
+    const group = groups.get(key);
+    if (group) group.push(grant);
+    else groups.set(key, [grant]);
+  }
+  return groups;
+}
+
+/** Today's rule, for the grants of one actor. */
+function actorPathDisclosure(grants: readonly DisclosureGrant[], entity: string, path: string): PathDisclosure {
+  const refusing = grants.filter(grant => !grantDiscloses(grant, entity, path));
+  if (refusing.length === 0) return 'disclosed';
+  return refusing.every(grant => allowedOf(grant, entity).some(item => item.startsWith(`${path}.`))) ? 'carrier' : 'blocked';
 }
 
 /**

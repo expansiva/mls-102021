@@ -5,7 +5,9 @@ import test from 'node:test';
 
 import { coveringGrants, pathDisclosure, resolveAllowedFields, systemFieldPaths, type DisclosureGrant } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
-const grant = (disclosure: string, entityRefs: string[], allowedFields: string[] = []): DisclosureGrant => ({ disclosure, entityRefs, allowedFields });
+const grant = (disclosure: string, entityRefs: string[], allowedFields: string[] = [], actorRef?: string): DisclosureGrant => ({
+  disclosure, entityRefs, allowedFields, ...(actorRef == null ? {} : { actorRef }),
+});
 
 void test('a multi-entity route: each output is bounded only by the grants about its entity', () => {
   const own = grant('fullRecord', ['Visit']);
@@ -28,11 +30,22 @@ void test('no grant about the entity is blocked; a grant without entityRefs spea
   assert.equal(pathDisclosure([grant('', [])], 'Client', 'id'), 'blocked');
 });
 
-void test('every grant about the entity must disclose the path (two actors, one response)', () => {
-  const wide = grant('fullRecord', ['Client']);
-  const narrow = grant('summaryOnly', ['Client'], ['Client.id']);
+void test('a path leaves when some actor discloses it; one actor still needs every grant of his', () => {
+  // (a) A fullRecord and B fieldsOnly without x: x leaves because A discloses it.
+  const wide = grant('fullRecord', ['Client'], [], 'A');
+  const narrow = grant('fieldsOnly', ['Client'], ['Client.id'], 'B');
+  assert.equal(pathDisclosure([wide, narrow], 'Client', 'x'), 'disclosed');
   assert.equal(pathDisclosure([wide, narrow], 'Client', 'id'), 'disclosed');
-  assert.equal(pathDisclosure([wide, narrow], 'Client', 'details'), 'blocked');
+  // (b) Two grants of the same actor: one without x blocks x inside that actor.
+  const sameWide = grant('fullRecord', ['Client'], [], 'A');
+  const sameNarrow = grant('fieldsOnly', ['Client'], ['Client.id'], 'A');
+  assert.equal(pathDisclosure([sameWide, sameNarrow], 'Client', 'x'), 'blocked');
+  assert.equal(pathDisclosure([sameWide, sameNarrow], 'Client', 'id'), 'disclosed');
+  // Absent actorRef is that one actor too.
+  assert.equal(pathDisclosure([grant('fullRecord', ['Client']), grant('summaryOnly', ['Client'], ['Client.id'])], 'Client', 'details'), 'blocked');
+  // (c) An actor with no grant on the entity does not block the other.
+  const other = grant('fieldsOnly', ['Visit'], ['Visit.id'], 'C');
+  assert.equal(pathDisclosure([wide, other], 'Client', 'x'), 'disclosed');
 });
 
 const marked = (fields: Record<string, { type: string; derived?: boolean }>) => ({ record: { fields } });
