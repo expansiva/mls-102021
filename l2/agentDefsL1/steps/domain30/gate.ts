@@ -371,6 +371,7 @@ function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values
     const depends: string[] = [];
     for (const field of fields) {
       if (!isRecord(field) || field.type !== 'record' || typeof field.ref !== 'string') continue;
+      if (field.ref === plan.entityId) continue;
       if (entityById.has(field.ref)) depends.push(pipelineId(request.project, request.moduleName, 'domainEntity', field.ref));
       else if (valueById.has(field.ref)) depends.push(pipelineId(request.project, request.moduleName, 'valueObject', field.ref));
     }
@@ -485,6 +486,7 @@ function structuralCycles(
   for (const ref of refs) {
     const resolved = resolutions.get(refKey(ref));
     if (!resolved) continue;
+    if (resolved.kind === 'entity' && resolved.id === ref.entityId) continue;
     link(ref.entityId, resolved.kind === 'entity' ? resolved.id : `value:${resolved.id}`);
   }
   for (const [key, voId] of extracted) {

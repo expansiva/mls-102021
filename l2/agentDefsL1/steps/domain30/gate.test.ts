@@ -26,6 +26,7 @@ import {
   nestedEnumEntity,
   ns4Entity,
   platformRole,
+  selfReferenceEntity,
   sharedCatalog,
   suffixEntities,
   timeEntity,
@@ -260,6 +261,20 @@ void test('a missing reference, an ambiguous target, a structural cycle and a na
 
   const fields = buildD1Domain(requestFrom(fieldCollisionEntity));
   assert.equal(codes(fields, 'error').includes('NAME_COLLISION'), true);
+});
+
+void test('a record that names its own entity is not a structural cycle', () => {
+  const built = buildD1Domain(requestFrom(selfReferenceEntity));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  assert.equal(codes(built, 'error').includes('STRUCTURAL_CYCLE'), false);
+  const part = built.emit.find(item => item.pipeline.some(row => row.id.endsWith('/domainEntity/Tarefa')));
+  assert.ok(part);
+  const fields = (part.definition.data as unknown as EntityData).fields;
+  assert.deepEqual(fields.find(field => field.name === 'tarefaPaiId'), { name: 'tarefaPaiId', type: 'record', ref: 'Tarefa' });
+  assert.equal(part.definition.dependencies.some(file => file.endsWith('/lista.defs.ts')), true);
+  assert.equal(part.definition.dependencies.some(file => file.endsWith('/tarefa.defs.ts')), false);
+  const dependsOn = part.pipeline[0]?.dependsOn || [];
+  assert.deepEqual(dependsOn, ['102047/sampleModule/domainEntity/Lista']);
 });
 
 void test('a nested record stays nested, a one-value enum stays an enum, and Id is not a reference', () => {

@@ -2,6 +2,27 @@
 
 /** Synthetic ontologies. They are not a product module. Ids are exact and local to each case. */
 
+/** A parent row in the same table is not an order between defs. */
+export const selfReferenceEntity = {
+  Tarefa: {
+    entityId: 'Tarefa',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: {
+      fields: {
+        tarefaPaiId: { type: 'record', to: ['Tarefa'] },
+        listaId: { type: 'record', to: ['Lista'] },
+      },
+    },
+  },
+  Lista: {
+    entityId: 'Lista',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { id: { type: 'uuid', derived: true } } },
+  },
+};
+
 export const cycleEntities = {
   Alpha: {
     entityId: 'Alpha',
