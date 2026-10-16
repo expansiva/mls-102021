@@ -576,7 +576,7 @@ function entityPaths(
   });
 }
 
-/** Shortest chain of relationships that declare a field. An Id suffix is not a field. */
+/** Shortest chain of relationships that declare a field. An Id suffix is not a field. A direct edge wins over a reverse edge of the same length. */
 function pathToAnchor(
   entityRefs: readonly string[],
   anchor: string,
@@ -594,21 +594,36 @@ function pathToAnchor(
   while (queue.length) {
     const current = queue.shift();
     if (!current) break;
-    for (const edge of edges) {
-      if (edge.from !== current.at) continue;
-      const steps = [...current.steps, {
-        relationshipId: edge.relationshipId,
-        from: edge.from,
-        to: edge.to,
-        field: edge.field,
-      }];
-      if (edge.to === anchor) return steps;
-      if (seen.has(edge.to)) continue;
-      seen.add(edge.to);
-      queue.push({ at: edge.to, steps });
-    }
+    const extended = walkEdges(edges, current, anchor, seen, queue, 'direct')
+      ?? walkEdges(edges, current, anchor, seen, queue, 'reverse');
+    if (extended) return extended;
   }
   return [];
+}
+
+function walkEdges(
+  edges: readonly D1ControllerRelationship[],
+  current: { at: string; steps: D1SupportJoinStep[] },
+  anchor: string,
+  seen: Set<string>,
+  queue: Array<{ at: string; steps: D1SupportJoinStep[] }>,
+  direction: 'direct' | 'reverse',
+): D1SupportJoinStep[] | undefined {
+  for (const edge of edges) {
+    const next = direction === 'direct' ? edge.to : edge.from;
+    if ((direction === 'direct' ? edge.from : edge.to) !== current.at) continue;
+    const steps = [...current.steps, {
+      relationshipId: edge.relationshipId,
+      from: current.at,
+      to: next,
+      field: edge.field,
+    }];
+    if (next === anchor) return steps;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    queue.push({ at: next, steps });
+  }
+  return undefined;
 }
 
 function shareHelpers(resolutions: readonly D1ScopeResolution[]): D1SupportHelper[] {

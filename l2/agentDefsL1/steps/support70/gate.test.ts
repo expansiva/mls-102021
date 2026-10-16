@@ -194,6 +194,73 @@ void test('a missing grant and an anchor without a path stay diagnoses', { skip:
   assert.notEqual(serialized?.scopeMode, 'public');
 });
 
+void test('an own grant reaches the anchor through one reverse relationship that names a field', () => {
+  const request = effectsRequest();
+  request.grants.push({
+    grantId: 'publicoMinhasInscricoes',
+    actorRef: 'participante',
+    entityRefs: ['Inscricao', 'Evento'],
+    disclosure: 'fullRecord',
+    allowedFields: [],
+    anchorEntity: 'Participante',
+    scopeMode: 'own',
+  });
+  request.relationships.push(
+    {
+      relationshipId: 'inscricaoEvento',
+      from: 'Inscricao',
+      to: 'Evento',
+      field: 'Inscricao.eventoId',
+      required: true,
+    },
+    {
+      relationshipId: 'inscricaoParticipante',
+      from: 'Inscricao',
+      to: 'Participante',
+      field: 'Inscricao.participanteId',
+      required: true,
+    },
+    {
+      relationshipId: 'catalogoSemCampo',
+      from: 'Inscricao',
+      to: 'Participante',
+      field: '',
+      required: false,
+    },
+  );
+  const build = buildD1Support(request);
+  const grant = (build.emit.find(item => item.definition.artifactType === 'accessScope')?.definition.data as { grants: SerializedGrant[] }).grants
+    .find(item => item.grantId === 'publicoMinhasInscricoes');
+  const inscricao = grant?.path.find(item => item.entityId === 'Inscricao');
+  const evento = grant?.path.find(item => item.entityId === 'Evento');
+  assert.deepEqual(inscricao?.steps, [{
+    relationshipId: 'inscricaoParticipante',
+    from: 'Inscricao',
+    to: 'Participante',
+    field: 'Inscricao.participanteId',
+  }]);
+  assert.equal(inscricao?.pending, '');
+  assert.deepEqual(evento?.steps, [
+    {
+      relationshipId: 'inscricaoEvento',
+      from: 'Evento',
+      to: 'Inscricao',
+      field: 'Inscricao.eventoId',
+    },
+    {
+      relationshipId: 'inscricaoParticipante',
+      from: 'Inscricao',
+      to: 'Participante',
+      field: 'Inscricao.participanteId',
+    },
+  ]);
+  assert.equal(evento?.pending, '');
+  const helper = build.helpers.find(item => item.helperId === 'join:inscricaoEvento>inscricaoParticipante');
+  assert.ok(helper);
+  assert.deepEqual(helper.consumers, ['publicoMinhasInscricoes']);
+  assert.equal(build.helpers.some(item => item.helperId.includes('catalogoSemCampo')), false);
+});
+
 void test('own and organization stay distinct and a multi-hop path is not just the anchor name', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const controllers = buildD1Controllers(coreControllerRequest());
   const request = coreSupportRequest();

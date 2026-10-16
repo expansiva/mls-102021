@@ -26,7 +26,8 @@ A removed adapter is not listed. Application defs do not depend on the
 registry or on an adapter.
 
 A grant is copied with the anchor the access artifact declared. A join is a
-chain of relationships that name a field. A field is not inferred from an
+chain of relationships that name a field. The chain may walk a relationship
+in reverse; the `field` stays on the owning side. A field is not inferred from an
 `Id` suffix. The session on every resolution is `verified`. A form field is
 not authentication.
 
