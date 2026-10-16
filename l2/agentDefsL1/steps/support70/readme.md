@@ -51,10 +51,15 @@ call it. `RequestContext` has no `publishEvent` or `emitEvent`. A transition
 that cites a unique rule and declares no payload stays `PAYLOAD_UNDECLARED`.
 No payload object is added.
 
-Processes, inbound items and plugins are copied as operations. A workflow
-does not become an endpoint. An operation outside the selected usecases is
-`POOL_ABSENT` and stays on the def. A scheduled trigger is
-`SCHEDULER_NOT_WRITTEN`. No scheduler file is written.
+A workflow process is its own `workflowProcess` def under
+`layer_2_application/workflows/<processId>.defs.ts`. The data names the
+process, the trigger, the functions, and the operations with the journey or
+task step that reaches each one. `occurrence` is present only when the plan
+derived the record. A missing occurrence is `PROCESS_OCCURRENCE_UNDECLARED`.
+An operation that was not selected is `POOL_ABSENT` and stays on the def.
+The def stays `pending`. Inbound items and plugins stay on the outbound def.
+An operation outside the selected usecases is `POOL_ABSENT` and stays on
+that def. No scheduler file is written.
 
 Nothing is written under l5 or to a database. No external integration runs.
 

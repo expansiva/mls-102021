@@ -62,6 +62,7 @@ const AUTH_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/aut
 const REGISTRY_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/persistence/registerRepositories.defs.ts`;
 const SEEDS_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/persistence/seeds.defs.ts`;
 const OUTBOUND_PATH = (moduleName: string) => `l1/${moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`;
+const PROCESS_PATH = (moduleName: string, processId: string) => `l1/${moduleName}/layer_2_application/workflows/${processId}.defs.ts`;
 const NOTE_RULE = 'attendanceNoteRequired';
 
 /**
@@ -83,11 +84,12 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
   const registry = emitRegistry(request, problems, normalizations);
   const seeds = emitSeeds(request, problems, normalizations);
   const effects = emitEffects(request, problems);
+  const processes = emitProcesses(request, problems);
   noteInverted(request, scope.emit, registry.emit, problems);
-  noteDag(request, scope.emit, registry.emit, seeds.emit, effects.emit, registry.live, problems);
+  noteDag(request, scope.emit, registry.emit, seeds.emit, [...effects.emit, ...processes.emit], registry.live, problems);
 
   const errored = problems.some(problem => problem.severity === 'error');
-  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit];
+  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit, ...processes.emit];
   for (const part of emit) {
     const item = part.pipeline[0];
     part.definition = stampDefinition(part.definition, item?.defPath || '', item?.dependsFiles || []);
@@ -860,7 +862,7 @@ function classifyEnumerations(request: D1SupportRequest, citations: readonly D1S
  * One outbound def. An event's consumer is the usecase of its entity and transitionRef.
  * An empty mechanism stays empty. publishEvent and emitEvent are refused.
  * IQueueRuntime.publish is evidence, not an approved binding.
- * Processes, inbound and plugins stay operations. A scheduled trigger writes no scheduler.
+ * Inbound items and plugins stay operations. A workflow process is its own def.
  */
 export function emitEffects(
   request: D1SupportRequest,
@@ -927,7 +929,6 @@ export function emitEffects(
     events.push(row);
   }
 
-  const processes: Array<Record<string, unknown>> = [];
   const inbound: Array<Record<string, unknown>> = [];
   const plugins: Array<Record<string, unknown>> = [];
   const gaps: Array<Record<string, unknown>> = [];
@@ -944,24 +945,19 @@ export function emitEffects(
         `${operation.kind} ${operation.id} is not in the selected pool. It was kept and no endpoint was added.`,
       );
     }
-    if (operation.scheduled) {
-      review(problems, 'SCHEDULER_NOT_WRITTEN', operation.id, `${operation.kind} ${operation.id} declares a scheduled trigger. No runtime scheduler was written.`);
-    }
     const row = {
       operations: [...operation.operations],
       mechanism: resolved.mechanism,
       consumer: operation.consumer || operation.id,
     };
-    if ((operation.kind as string) === 'process') processes.push({ processId: operation.id, ...row });
-    else if (operation.kind === 'inbound') inbound.push({ inboundId: operation.id, ...row });
+    if (operation.kind === 'inbound') inbound.push({ inboundId: operation.id, ...row });
     else plugins.push({ pluginId: operation.id, ...row });
   }
 
   if (problems.some(problem => problem.severity === 'error')) return empty;
-  if (!events.length && !processes.length && !inbound.length && !plugins.length) return empty;
+  if (!events.length && !inbound.length && !plugins.length) return empty;
 
   const data: Record<string, unknown> = { integrationId: 'outbound', events };
-  if (processes.length) data.processes = processes;
   if (inbound.length) data.inbound = inbound;
   if (plugins.length) data.plugins = plugins;
   if (gaps.length) data.gaps = gaps.sort((left, right) => String(left.itemId).localeCompare(String(right.itemId)));
@@ -1023,6 +1019,110 @@ function inPool(operation: string, usecaseIds: ReadonlySet<string>): boolean {
   return head.length > 0 && usecaseIds.has(head);
 }
 
+/**
+ * One workflowProcess def per plan. Occurrence is omitted when the plan did not derive one.
+ * A gap stays a review. The def is pending. The declared set is workflows, human journeys,
+ * the occurrence ontology, then selected usecases. definitionIssues and stampDefinition
+ * require that set sorted, and that sorted order is what enters the hash.
+ */
+export function emitProcesses(
+  request: D1SupportRequest,
+  problems: D1SupportProblem[],
+): { emit: D1SupportEmit[] } {
+  const emit: D1SupportEmit[] = [];
+  for (const plan of [...request.processes].sort((left, right) => left.processId.localeCompare(right.processId))) {
+    if (!plan.occurrence) {
+      review(
+        problems,
+        'PROCESS_OCCURRENCE_UNDECLARED',
+        plan.processId,
+        `Process ${plan.processId} does not name the occurrence record.`,
+      );
+    }
+    const usecaseIds: string[] = [];
+    for (const operation of plan.operations) {
+      if (operation.selected) {
+        const usecaseId = usecaseOfOperation(request, operation.operation);
+        if (usecaseId) usecaseIds.push(usecaseId);
+        continue;
+      }
+      review(
+        problems,
+        'POOL_ABSENT',
+        operation.operation,
+        `${operation.operation} is not in the selected pool. It was kept on the process.`,
+      );
+    }
+    const logical = PROCESS_PATH(request.moduleName, plan.processId);
+    // An inventoried run emits only a file input20 planned. Otherwise finalize80 reports EXTRA_FILE (s5).
+    const listed = request.files.some(item => item.artifactType === 'workflowProcess' && (item.defPath === logical || item.defPath.endsWith(`/${plan.processId}.defs.ts`)));
+    if (request.files.length > 0 && !listed) continue;
+    if (!writableAt(request, logical, problems)) continue;
+    const data: Record<string, unknown> = {
+      processId: plan.processId,
+      trigger: triggerOf(plan.trigger),
+      functions: [...plan.functions],
+      operations: plan.operations.map(operation => ({ operation: operation.operation, steps: [...operation.steps] })),
+    };
+    if (plan.occurrence) data.occurrence = { entityId: plan.occurrence };
+    const journeys = [...new Set(plan.humanJourneys)].sort();
+    const dependencies = [
+      `l4/${request.moduleName}/workflows.defs.ts`,
+      ...journeys.map(journeyId => `l4/${request.moduleName}/journeys/${journeyId}.defs.ts`),
+      ...(plan.occurrence ? [`l4/${request.moduleName}/ontology/${plan.occurrence}.defs.ts`] : []),
+    ].map(path => qualifyDefPath(request.project, path)).sort();
+    const definition = definitionFor(request, 'workflowProcess', plan.processId, data, 'pending');
+    definition.dependencies = dependencies;
+    pushDefinition(emit, definition, processPipeline(request, plan.processId, logical, usecaseIds), logical, problems);
+  }
+  return { emit };
+}
+
+function triggerOf(
+  trigger: D1SupportRequest['processes'][number]['trigger'],
+): Record<string, string> {
+  if (trigger.kind === 'manual') return trigger.actorRef ? { kind: 'manual', actorRef: trigger.actorRef } : { kind: 'manual' };
+  if (trigger.kind === 'event') return trigger.event ? { kind: 'event', event: trigger.event } : { kind: 'event' };
+  return trigger.schedule ? { kind: 'scheduled', schedule: trigger.schedule } : { kind: 'scheduled' };
+}
+
+function usecaseOfOperation(request: D1SupportRequest, operation: string): string {
+  const dot = operation.indexOf('.');
+  if (dot < 1) return '';
+  const entity = operation.slice(0, dot);
+  const name = operation.slice(dot + 1);
+  const transition = request.transitionUsecases.find(item => item.entity === entity && item.transitionRef === name);
+  if (transition?.usecaseId) return transition.usecaseId;
+  const match = (request.operationUsecases ?? []).find(item => item.entity === entity && item.operation === name);
+  return match?.usecaseId || '';
+}
+
+function writableAt(request: D1SupportRequest, defPath: string, problems: D1SupportProblem[]): boolean {
+  const file = request.files.find(item => item.defPath === defPath);
+  if (!file) return true;
+  if (problems.some(problem => problem.severity === 'error' && problem.code === 'RECEIPT_MISMATCH' && problem.path === file.defPath)) {
+    return false;
+  }
+  if (file.action === 'preserve' || file.action === 'conflict') return false;
+  if (file.action === 'remove') return false;
+  return WRITE_ACTIONS.has(file.action);
+}
+
+function processPipeline(request: D1SupportRequest, processId: string, defPath: string, consumers: readonly string[]): D1PipelineItem {
+  const qualified = qualifyDefPath(request.project, defPath);
+  const usecases = [...new Set(consumers)].filter(Boolean).sort();
+  return {
+    id: pipelineId(request.project, request.moduleName, 'workflowProcess', processId),
+    type: 'workflowProcess',
+    defPath: qualified,
+    outputPath: futureOutputPath(qualified),
+    outputAvailability: 'future',
+    dependsFiles: usecases.map(id => qualifyDefPath(request.project, `l1/${request.moduleName}/layer_2_application/usecases/${id}.defs.ts`)),
+    dependsOn: usecases.map(id => pipelineId(request.project, request.moduleName, 'usecase', id)),
+    skills: skillPaths('workflowProcess'),
+  };
+}
+
 function effectsPipeline(
   request: D1SupportRequest,
   defPath: string,
@@ -1079,7 +1179,7 @@ function laterOf(moduleName: string, seedPlan: D1SeedReport, effectPlan: D1Effec
     later.push({
       artifactType: 'integrationOutbound',
       defPath: OUTBOUND_PATH(moduleName),
-      reason: 'No outbound event, process, inbound item or plugin was declared. This step did not write an integration def.',
+      reason: 'No outbound event, inbound item or plugin was declared. This step did not write an integration def.',
     });
   }
   return later;
@@ -1090,6 +1190,7 @@ function registersOf(artifactType: string): string {
   if (artifactType === 'authorityMap') return 'authority entries';
   if (artifactType === 'persistenceSeeds') return 'seed plan';
   if (artifactType === 'integrationOutbound') return 'outbound events';
+  if (artifactType === 'workflowProcess') return 'workflow process';
   return 'scope grants';
 }
 

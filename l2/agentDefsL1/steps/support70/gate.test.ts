@@ -561,29 +561,27 @@ void test('naming the measured MDM queue is not a module binding', { skip: 'agen
   assert.equal(JSON.stringify(build.emit).includes('publishEvent'), false);
 });
 
-void test('processes, inbound and plugins stay operations and a missing pool item stays a gap', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
+void test('inbound and plugins stay operations and a missing pool item stays a gap', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.operations = [
-    { id: 'confirmacao', kind: 'process' as 'inbound', operations: ['confirmarConsulta'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
     { id: 'lembrete', kind: 'plugin', operations: ['confirmarConsulta.ligar'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
     { id: 'retorno', kind: 'inbound', operations: ['registrarFalta'], mechanism: '', consumer: 'registrarFalta', scheduled: false },
-    { id: 'cobranca', kind: 'process' as 'inbound', operations: ['cobrar'], mechanism: '', consumer: 'cobranca', scheduled: true },
+    { id: 'cobranca', kind: 'inbound', operations: ['cobrar'], mechanism: '', consumer: 'cobranca', scheduled: true },
   ];
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
   const data = build.emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
-    processes: Array<{ processId: string; operations: string[] }>;
     plugins: Array<{ pluginId: string; operations: string[] }>;
     inbound: Array<{ inboundId: string; operations: string[] }>;
     gaps: Array<{ itemId: string; kind: string; code: string }>;
+    processes?: unknown;
   };
-  assert.deepEqual(data.processes.map(item => item.processId), ['cobranca', 'confirmacao']);
+  assert.equal(data.processes, undefined);
   assert.deepEqual(data.plugins.map(item => item.pluginId), ['lembrete']);
-  assert.deepEqual(data.inbound.map(item => item.inboundId), ['retorno']);
-  assert.deepEqual(data.gaps, [{ itemId: 'cobranca', kind: 'process', code: 'POOL_ABSENT' }]);
+  assert.deepEqual(data.inbound.map(item => item.inboundId), ['cobranca', 'retorno']);
+  assert.deepEqual(data.gaps, [{ itemId: 'cobranca', kind: 'inbound', code: 'POOL_ABSENT' }]);
   assert.equal(build.problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'cobranca'), true);
-  assert.equal(build.problems.some(item => item.code === 'SCHEDULER_NOT_WRITTEN' && item.path === 'cobranca'), true);
-  assert.equal(build.problems.some(item => item.code === 'POOL_ABSENT' && item.path === 'confirmacao'), false);
+  assert.equal(build.problems.some(item => item.code === 'SCHEDULER_NOT_WRITTEN'), false);
   assert.equal(build.emit.some(item => item.definition.artifactType === 'httpController'), false);
   assert.equal(JSON.stringify(build.emit).includes('scheduler'), false);
   assert.equal(build.effectPlan.executed, false);
@@ -826,6 +824,122 @@ function effectsRequest(): D1SupportRequest {
     outbound: [], selectedEventIds: [], usecaseIds: [], transitionUsecases: [], operations: [], processes: [],
   };
 }
+
+void test('a manual process with a create journey writes occurrence, functions and a pool gap only on the unselected operation', () => {
+  const request = effectsRequest();
+  request.moduleName = 'tarefas';
+  request.operationUsecases = [{ entity: 'Tarefa', operation: 'create', usecaseId: 'criarTarefaUc' }];
+  request.transitionUsecases = [
+    { entity: 'Tarefa', transitionRef: 'iniciar', usecaseId: 'iniciarUc' },
+    { entity: 'Tarefa', transitionRef: 'aceitar', usecaseId: 'aceitarUc' },
+  ];
+  request.processes = [{
+    processId: 'cicloTarefa',
+    trigger: { kind: 'manual', actorRef: 'membroEquipe' },
+    occurrence: 'Tarefa',
+    functions: ['abrirOcorrenciaTarefa', 'avancarEtapaTarefa', 'reatribuirQuemAge', 'resolverQuemAgeAgora'],
+    humanJourneys: ['executarTarefa', 'criarTarefa'],
+    operations: [
+      { operation: 'Tarefa.create', steps: ['journey:criarTarefa/preencherTarefa'], selected: true },
+      { operation: 'Tarefa.iniciar', steps: ['journey:executarTarefa/iniciarTarefa'], selected: true },
+      { operation: 'Tarefa.aceitar', steps: ['journey:revisarTarefa/aceitarTarefa'], selected: true },
+      { operation: 'ItemChecklist.update', steps: ['journey:executarTarefa/marcarChecklist'], selected: false },
+    ],
+  }];
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  assert.equal(build.problems.some(item => item.severity === 'error'), false);
+  const part = build.emit.find(item => item.definition.artifactType === 'workflowProcess');
+  assert.equal(part?.definition.artifactId, 'cicloTarefa');
+  assert.equal(part?.definition.status, 'pending');
+  assert.equal(part?.pipeline[0]?.defPath, '_102047_/l1/tarefas/layer_2_application/workflows/cicloTarefa.defs.ts');
+  const data = part?.definition.data as {
+    processId: string;
+    trigger: { kind: string; actorRef?: string };
+    occurrence?: { entityId: string };
+    functions: string[];
+    operations: Array<{ operation: string; steps: string[] }>;
+  };
+  assert.equal(data.processId, 'cicloTarefa');
+  assert.deepEqual(data.trigger, { kind: 'manual', actorRef: 'membroEquipe' });
+  assert.deepEqual(data.occurrence, { entityId: 'Tarefa' });
+  assert.deepEqual(data.functions, ['abrirOcorrenciaTarefa', 'avancarEtapaTarefa', 'reatribuirQuemAge', 'resolverQuemAgeAgora']);
+  assert.deepEqual(data.operations, [
+    { operation: 'Tarefa.create', steps: ['journey:criarTarefa/preencherTarefa'] },
+    { operation: 'Tarefa.iniciar', steps: ['journey:executarTarefa/iniciarTarefa'] },
+    { operation: 'Tarefa.aceitar', steps: ['journey:revisarTarefa/aceitarTarefa'] },
+    { operation: 'ItemChecklist.update', steps: ['journey:executarTarefa/marcarChecklist'] },
+  ]);
+  const pool = build.problems.filter(item => item.code === 'POOL_ABSENT');
+  assert.deepEqual(pool.map(item => item.path), ['ItemChecklist.update']);
+  assert.equal(pool.every(item => item.severity === 'review'), true);
+  assert.equal(build.problems.some(item => item.code === 'PROCESS_OCCURRENCE_UNDECLARED'), false);
+  assert.deepEqual(part?.pipeline[0]?.dependsOn, [
+    pipelineId(102047, 'tarefas', 'usecase', 'aceitarUc'),
+    pipelineId(102047, 'tarefas', 'usecase', 'criarTarefaUc'),
+    pipelineId(102047, 'tarefas', 'usecase', 'iniciarUc'),
+  ]);
+  assert.deepEqual(part?.definition.dependencies, [
+    '_102047_/l1/tarefas/layer_2_application/usecases/aceitarUc.defs.ts',
+    '_102047_/l1/tarefas/layer_2_application/usecases/criarTarefaUc.defs.ts',
+    '_102047_/l1/tarefas/layer_2_application/usecases/iniciarUc.defs.ts',
+    '_102047_/l4/tarefas/journeys/criarTarefa.defs.ts',
+    '_102047_/l4/tarefas/journeys/executarTarefa.defs.ts',
+    '_102047_/l4/tarefas/ontology/Tarefa.defs.ts',
+    '_102047_/l4/tarefas/workflows.defs.ts',
+  ]);
+});
+
+void test('a scheduled process with only an alert omits occurrence and stays pending', () => {
+  const request = effectsRequest();
+  request.processes = [{
+    processId: 'avisoDiario',
+    trigger: { kind: 'scheduled', schedule: '0 8 * * *' },
+    occurrence: '',
+    functions: ['gerarAvisosDiarios'],
+    operations: [],
+    humanJourneys: [],
+  }];
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const part = build.emit.find(item => item.definition.artifactType === 'workflowProcess');
+  assert.equal(part?.definition.status, 'pending');
+  const data = part?.definition.data as { trigger: { kind: string; schedule?: string }; occurrence?: unknown; functions: string[] };
+  assert.deepEqual(data.trigger, { kind: 'scheduled', schedule: '0 8 * * *' });
+  assert.equal(data.occurrence, undefined);
+  assert.deepEqual(data.functions, ['gerarAvisosDiarios']);
+  assert.equal(build.problems.some(item => item.code === 'PROCESS_OCCURRENCE_UNDECLARED' && item.severity === 'review' && item.path === 'avisoDiario'), true);
+  assert.equal(build.problems.some(item => item.code === 'SCHEDULER_NOT_WRITTEN'), false);
+  assert.equal(build.problems.some(item => item.severity === 'error'), false);
+});
+
+void test('a module with a process and an event keeps only events on the outbound def', () => {
+  const request = effectsRequest();
+  request.usecaseIds = ['approveQx'];
+  request.transitionUsecases = [{ entity: 'Qx', transitionRef: 'approve', usecaseId: 'approveQx' }];
+  request.selectedEventIds = ['qxApproved'];
+  request.outbound = [{ eventId: 'qxApproved', on: 'Qx.approve', mechanism: '', payloadDeclared: false }];
+  request.processes = [{
+    processId: 'ciclo',
+    trigger: { kind: 'event', event: 'Qx.approve' },
+    occurrence: 'Qx',
+    functions: [],
+    operations: [{ operation: 'Qx.approve', steps: ['task:aprovar'], selected: true }],
+    humanJourneys: [],
+  }];
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const outbound = build.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  assert.equal(outbound?.pipeline[0]?.defPath, '_102047_/l1/zzMod/layer_1_external/adapters/integration/outbound.defs.ts');
+  const data = outbound?.definition.data as { events: Array<{ eventId: string }>; processes?: unknown; gaps?: unknown };
+  assert.deepEqual(data.events.map(item => item.eventId), ['qxApproved']);
+  assert.equal(data.processes, undefined);
+  assert.equal(data.gaps, undefined);
+  assert.equal(Object.keys(data).includes('processes'), false);
+  const process = build.emit.find(item => item.definition.artifactType === 'workflowProcess');
+  assert.equal(process?.definition.artifactId, 'ciclo');
+  assert.deepEqual((process?.definition.data as { occurrence: { entityId: string } }).occurrence, { entityId: 'Qx' });
+});
 
 void test('an outbound event binds the usecase of its entity transition, not a usecase named like the transition (t1_09 r3)', () => {
   const request = effectsRequest();
