@@ -564,10 +564,10 @@ void test('naming the measured MDM queue is not a module binding', { skip: 'agen
 void test('processes, inbound and plugins stay operations and a missing pool item stays a gap', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = agendaSeedRequest();
   request.operations = [
-    { id: 'confirmacao', kind: 'process', operations: ['confirmarConsulta'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
+    { id: 'confirmacao', kind: 'process' as 'inbound', operations: ['confirmarConsulta'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
     { id: 'lembrete', kind: 'plugin', operations: ['confirmarConsulta.ligar'], mechanism: '', consumer: 'confirmarConsulta', scheduled: false },
     { id: 'retorno', kind: 'inbound', operations: ['registrarFalta'], mechanism: '', consumer: 'registrarFalta', scheduled: false },
-    { id: 'cobranca', kind: 'process', operations: ['cobrar'], mechanism: '', consumer: 'cobranca', scheduled: true },
+    { id: 'cobranca', kind: 'process' as 'inbound', operations: ['cobrar'], mechanism: '', consumer: 'cobranca', scheduled: true },
   ];
   const build = buildD1Support(request);
   assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
@@ -823,7 +823,7 @@ function effectsRequest(): D1SupportRequest {
     project: 102047, moduleName: 'zzMod', grants: [], relationships: [], scopePlans: [], citedGrantIds: [], adapters: [],
     files: [], existingHelpers: [], applicationEdges: [], formFields: [], enumerations: [], tables: [], models: [],
     journeys: [], missingJourneys: [], roleTags: [], seedRefs: [], existingDatasets: [], maintenance: null,
-    outbound: [], selectedEventIds: [], usecaseIds: [], transitionUsecases: [], operations: [],
+    outbound: [], selectedEventIds: [], usecaseIds: [], transitionUsecases: [], operations: [], processes: [],
   };
 }
 

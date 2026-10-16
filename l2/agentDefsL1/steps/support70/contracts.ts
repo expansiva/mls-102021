@@ -297,15 +297,25 @@ export interface D1EffectEvent {
   payloadDeclared: boolean;
 }
 
-/** A process, inbound item or plugin. Operations are not routes. */
+/** An inbound item or plugin. A workflow process is a `D1ProcessPlan`, not an operation. */
 export interface D1EffectOperation {
   id: string;
-  kind: 'process' | 'inbound' | 'plugin';
+  kind: 'inbound' | 'plugin';
   operations: string[];
   mechanism: string;
   consumer: string;
   /** A scheduled trigger is preserved as a review. This step does not write a scheduler. */
   scheduled: boolean;
+}
+
+/** One workflow process read from the L4. `occurrence` is empty when the initial stage does not name an entity. */
+export interface D1ProcessPlan {
+  processId: string;
+  trigger: { kind: 'manual' | 'event' | 'scheduled'; actorRef?: string; event?: string; schedule?: string };
+  occurrence: string;
+  functions: string[];
+  operations: Array<{ operation: string; steps: string[]; selected: boolean }>;
+  humanJourneys: string[];
 }
 
 /** The measured publish API as evidence. Naming it does not bind or execute an effect. */
@@ -383,8 +393,10 @@ export interface D1SupportRequest {
    * An outbound `Entidade.<op>` binds one of these when it is not a transition.
    */
   operationUsecases?: D1OperationUsecase[];
-  /** Processes, inbound and plugins. A workflow does not become an endpoint. */
+  /** Inbound and plugins. A workflow does not become an endpoint. */
   operations: D1EffectOperation[];
+  /** One plan per L4 process. The def is not emitted here. */
+  processes: D1ProcessPlan[];
 }
 
 export interface D1SupportEmit {

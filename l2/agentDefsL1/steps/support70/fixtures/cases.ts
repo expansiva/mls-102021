@@ -64,6 +64,7 @@ export function coreSupportRequest(): D1SupportRequest {
     usecaseIds: [],
     transitionUsecases: [],
     operations: [],
+    processes: [],
   };
 }
 

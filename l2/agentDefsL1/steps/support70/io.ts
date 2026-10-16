@@ -21,6 +21,7 @@ import {
   transitionUsecasesOf,
   type D1EffectEvent,
   type D1EffectOperation,
+  type D1ProcessPlan,
   type D1SeedDataset,
   type D1SeedJourney,
   type D1SeedModel,
@@ -33,7 +34,7 @@ import {
 import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1ControllerGrant, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound']);
+const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound', 'workflowProcess']);
 
 export async function assembleD1Support(
   project: number,
@@ -75,6 +76,7 @@ export async function assembleD1Support(
   const transitionUsecases = transitionUsecasesOf(selected);
   const operationUsecases = operationUsecasesOf(selected);
   const linked = await effectsOf(project, moduleName, selected);
+  const processes = await processesOf(project, moduleName, selected);
   const request: D1SupportRequest = {
     project,
     moduleName,
@@ -102,6 +104,7 @@ export async function assembleD1Support(
     transitionUsecases,
     operationUsecases,
     operations: linked.operations,
+    processes,
     enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };
   const testSupport = await testSupportOf(project, snapshot, paths.backend);
@@ -657,11 +660,8 @@ async function effectsOf(
 ): Promise<{ outbound: D1EffectEvent[]; operations: D1EffectOperation[] }> {
   const paths = inputPaths(moduleName);
   const integrationText = await readLogical(project, paths.integration);
-  const workflowText = await readLogical(project, paths.workflows);
   const integration = integrationText ? parseD1Source(integrationText, 'defs') : null;
-  const workflows = workflowText ? parseD1Source(workflowText, 'defs') : null;
   const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
-  const transitions = transitionUsecasesOf(selected);
   const payloadCache = new Map<string, unknown>();
   const outbound: D1EffectEvent[] = [];
   if (isRecord(integration)) {
@@ -697,33 +697,129 @@ async function effectsOf(
       });
     }
   }
-  if (isRecord(workflows)) {
-    for (const row of arrayOf(workflows.processes)) {
-      if (!isRecord(row) || typeof row.processId !== 'string' || !row.processId) continue;
-      const planned: string[] = [];
-      for (const task of arrayOf(row.tasks)) {
-        if (!isRecord(task)) continue;
-        if (typeof task.journeyRef === 'string' && task.journeyRef && !planned.includes(task.journeyRef)) planned.push(task.journeyRef);
-        if (typeof task.transitionRef === 'string' && task.transitionRef) {
-          const entity = typeof task.entityRef === 'string' ? task.entityRef : '';
-          // Unselected: the entity transition stays named, and the pool check reports it.
-          const operation = transitionUsecaseFor(transitions, entity, task.transitionRef) || `${entity}.${task.transitionRef}`;
-          if (!planned.includes(operation)) planned.push(operation);
-        }
-      }
-      const trigger = isRecord(row.trigger) ? row.trigger : {};
-      const consumer = planned.find(item => known.has(item)) || row.processId;
-      operations.push({
-        id: row.processId,
-        kind: 'process',
-        operations: planned,
-        mechanism: '',
-        consumer,
-        scheduled: trigger.kind === 'scheduled',
-      });
-    }
-  }
   return { outbound, operations };
+}
+
+interface D1ProcessAct {
+  stepId: string;
+  entity: string;
+  effect: string;
+  transitionRef: string;
+}
+
+/** L4 processes as plans. Occurrence and operations follow the workflowProcess rule. No def is written. */
+export async function processesOf(
+  project: number,
+  moduleName: string,
+  selected: readonly D1SelectedUsecase[],
+): Promise<D1ProcessPlan[]> {
+  const text = await readLogical(project, inputPaths(moduleName).workflows);
+  const workflows = text ? parseD1Source(text, 'defs') : null;
+  if (!isRecord(workflows)) return [];
+  const transitions = transitionUsecasesOf(selected);
+  const operationUsecases = operationUsecasesOf(selected);
+  const decisions = arrayOf(workflows.journeyDecisions).flatMap(row => {
+    if (!isRecord(row) || row.inProcess !== true || typeof row.journeyId !== 'string' || !row.journeyId) return [];
+    if (typeof row.processId !== 'string' || !row.processId) return [];
+    return [{ journeyId: row.journeyId, processId: row.processId }];
+  });
+  const acts = new Map<string, D1ProcessAct[]>();
+  for (const journeyId of [...new Set(decisions.map(item => item.journeyId))]) {
+    acts.set(journeyId, await journeyActs(project, moduleName, journeyId));
+  }
+  const plans: D1ProcessPlan[] = [];
+  for (const row of arrayOf(workflows.processes)) {
+    if (!isRecord(row) || typeof row.processId !== 'string' || !row.processId) continue;
+    const tasks = arrayOf(row.tasks).filter(isRecord);
+    const first = tasks[0];
+    if (first && first.kind === 'human' && typeof first.journeyRef === 'string' && first.journeyRef && !acts.has(first.journeyRef)) {
+      acts.set(first.journeyRef, await journeyActs(project, moduleName, first.journeyRef));
+    }
+    const humanJourneys = decisions.filter(item => item.processId === row.processId).map(item => item.journeyId);
+    const lines = new Map<string, { operation: string; steps: string[]; selected: boolean }>();
+    const add = (entity: string, effect: string, transitionRef: string, step: string) => {
+      const name = effect === 'transition' ? transitionRef : effect;
+      if (!entity || !name || (effect !== 'create' && effect !== 'update' && effect !== 'transition')) return;
+      const operation = `${entity}.${name}`;
+      const picked = effect === 'transition'
+        ? transitionUsecaseFor(transitions, entity, transitionRef) !== ''
+        : operationUsecases.some(item => item.entity === entity && item.operation === effect);
+      const line = lines.get(operation) || { operation, steps: [], selected: picked };
+      if (!line.steps.includes(step)) line.steps.push(step);
+      lines.set(operation, line);
+    };
+    for (const journeyId of humanJourneys) {
+      for (const act of acts.get(journeyId) || []) {
+        add(act.entity, act.effect, act.transitionRef, `journey:${journeyId}/${act.stepId}`);
+      }
+    }
+    for (const task of tasks) {
+      if (task.kind !== 'mechanical' && task.kind !== 'llm') continue;
+      const taskId = typeof task.taskId === 'string' ? task.taskId : '';
+      if (!taskId) continue;
+      add(
+        typeof task.entityRef === 'string' ? task.entityRef : '',
+        typeof task.effect === 'string' ? task.effect : '',
+        typeof task.transitionRef === 'string' ? task.transitionRef : '',
+        `task:${taskId}`,
+      );
+    }
+    const functions = arrayOf(row.functions).flatMap(item => (
+      isRecord(item) && typeof item.functionId === 'string' && item.functionId ? [item.functionId] : []
+    ));
+    plans.push({
+      processId: row.processId,
+      trigger: triggerOf(isRecord(row.trigger) ? row.trigger : {}),
+      occurrence: occurrenceOf(isRecord(row.trigger) ? row.trigger : {}, tasks, acts),
+      functions: [...new Set(functions)],
+      operations: [...lines.values()].sort((left, right) => left.operation.localeCompare(right.operation)),
+      humanJourneys: [...new Set(humanJourneys)],
+    });
+  }
+  return plans;
+}
+
+function triggerOf(row: Record<string, unknown>): D1ProcessPlan['trigger'] {
+  const kind = row.kind === 'event' || row.kind === 'scheduled' ? row.kind : 'manual';
+  if (kind === 'event') return typeof row.event === 'string' && row.event ? { kind, event: row.event } : { kind };
+  if (kind === 'scheduled') return typeof row.schedule === 'string' && row.schedule ? { kind, schedule: row.schedule } : { kind };
+  return typeof row.actorRef === 'string' && row.actorRef ? { kind, actorRef: row.actorRef } : { kind };
+}
+
+function occurrenceOf(
+  trigger: Record<string, unknown>,
+  tasks: Record<string, unknown>[],
+  acts: ReadonlyMap<string, D1ProcessAct[]>,
+): string {
+  if (trigger.kind === 'event' && typeof trigger.event === 'string' && trigger.event.includes('.')) {
+    return trigger.event.split('.')[0] || '';
+  }
+  const task = tasks[0];
+  if (!task) return '';
+  if ((task.kind === 'mechanical' || task.kind === 'llm') && typeof task.entityRef === 'string') return task.entityRef;
+  if (task.kind !== 'human' || typeof task.journeyRef !== 'string') return '';
+  const steps = acts.get(task.journeyRef) || [];
+  const created = steps.find(step => step.effect === 'create');
+  return (created || steps[0])?.entity || '';
+}
+
+async function journeyActs(project: number, moduleName: string, journeyId: string): Promise<D1ProcessAct[]> {
+  const text = await readLogical(project, journeyPath(moduleName, journeyId));
+  const parsed = text ? parseD1Source(text, 'defs') : null;
+  if (!isRecord(parsed)) return [];
+  const business = isRecord(parsed.business) ? parsed.business : parsed;
+  const acts: D1ProcessAct[] = [];
+  for (const step of arrayOf(business.steps)) {
+    if (!isRecord(step) || step.kind !== 'act' || typeof step.stepId !== 'string' || !step.stepId) continue;
+    if (typeof step.entity !== 'string' || !step.entity) continue;
+    acts.push({
+      stepId: step.stepId,
+      entity: step.entity,
+      effect: typeof step.effect === 'string' ? step.effect : '',
+      transitionRef: typeof step.transitionRef === 'string' ? step.transitionRef : '',
+    });
+  }
+  return acts;
 }
 
 async function payloadOf(

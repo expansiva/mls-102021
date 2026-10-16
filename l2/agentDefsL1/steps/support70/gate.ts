@@ -952,7 +952,7 @@ export function emitEffects(
       mechanism: resolved.mechanism,
       consumer: operation.consumer || operation.id,
     };
-    if (operation.kind === 'process') processes.push({ processId: operation.id, ...row });
+    if ((operation.kind as string) === 'process') processes.push({ processId: operation.id, ...row });
     else if (operation.kind === 'inbound') inbound.push({ inboundId: operation.id, ...row });
     else plugins.push({ pluginId: operation.id, ...row });
   }
