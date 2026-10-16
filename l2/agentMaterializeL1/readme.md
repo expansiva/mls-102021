@@ -43,7 +43,7 @@ Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests5
   and `mls.l2.typescript.compile` runs under a 60 s deadline. Compiler errors fail the unit and feed the repair of
   a model unit. A worker that stops answering trips a breaker: the rest of the run ends `done COMPILE_UNAVAILABLE_L1`
   with the cause, and the l5 registration stays at phase `structure`.
-- Never silent: a rule of the rulePlan that the generated code does not name blocks the unit (`RULE_NOT_EMITTED`);
+- Never silent: a rule of `rulesApplied` that the generated code does not name blocks the unit (`RULE_NOT_EMITTED`);
   every unit ends with a status file (`done`, `reused`, `blocked`, `gap`, `failed`, `skipped`), a code and a
   diagnostic, and the report lists every one that is not generated.
 - Reuse: same inputs and untouched outputs → nothing is written and no model is called.

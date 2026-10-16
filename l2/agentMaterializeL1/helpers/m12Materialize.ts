@@ -27,7 +27,7 @@ import { fileRef, rulesFile, type M12FileInfo } from '/_102021_/l2/agentMaterial
 import { moduleDefinitions, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 
 /** Raised when a recipe or a check of this agent changes: an older status is a new input. */
-export const M12_RECIPE_VERSION = '2026-10-06-m12-recipe-v21';
+export const M12_RECIPE_VERSION = '2026-10-16-m12-recipe-v22';
 
 /** Declared platform gaps: nothing is written and the app still boots (closed list, as agentMaterializeL1 m1_47). */
 const PLATFORM_GAPS = new Set(['MECHANISM_UNBOUND', 'NO_CONSUMER']);
@@ -67,7 +67,7 @@ export function createContext(run: M12RunArgs, units: readonly M12Unit[], appEnv
  * recipe cannot bind) and request services (outputs it cannot project) are written by the model, with the
  * recipe's attempt as a draft; every other type is a recipe.
  */
-export const MODEL_TYPES: ReadonlySet<string> = new Set(['usecase', 'requestService']);
+export const MODEL_TYPES: ReadonlySet<string> = new Set(['usecase', 'requestService', 'workflowProcess']);
 
 export function unitNeedsLlm(unit: M12Unit): boolean {
   return MODEL_TYPES.has(unit.definition.artifactType);
@@ -81,6 +81,7 @@ export function recipeWouldAskModel(unit: M12Unit): boolean {
 /** What the recipe produces for a model unit: its source as a draft, or the reason it refuses. Writes nothing. */
 export async function recipeDraft(ctx: M12Context, unit: M12Unit): Promise<{ source: string } | { refusal: string }> {
   if (recipeWouldAskModel(unit)) return { refusal: 'NEEDS_LLM: the copied routing (behaviorNeedsLlm) does not derive this usecase.' };
+  if (unit.definition.artifactType === 'workflowProcess') return { refusal: 'NO_RECIPE: the workflow service is written from the l4 prose of its functions (§11).' };
   try {
     const emitted = await emitUnit(ctx, unit);
     if ('code' in emitted) return { refusal: `${emitted.code}: ${emitted.detail}` };
@@ -104,7 +105,7 @@ export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted 
   const output = unit.outputRef;
   if (!recipe) return { code: 'NO_NAMED_HANDLER', detail: `${unit.definition.artifactType} has no recipe.` };
   let produced: EmitResult | PersistenceEmit | EmitFailure;
-  if (recipe.startsWith('persistence.')) produced = await emitPersistence(recipe, unit.definition, output, ctx.read);
+  if (recipe.startsWith('persistence.')) produced = await emitPersistence(recipe, unit.definition, output, ctx.read, ctx.units.map(item => item.definition));
   else if (recipe === 'structure.valueObject') produced = emitValueObject(unit.definition, output);
   else if (recipe === 'structure.httpController') produced = await emitController(unit.definition, output, ctx.read);
   else produced = await emitBehavior(recipe, unit.definition, output, ctx.read, definitions);
@@ -164,6 +165,10 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
     parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
   }
   if (unit.definition.artifactType === 'usecase') parts.push((await readOptional(rulesFile(ctx.run.project, ctx.run.module))) ?? '');
+  // A port and its adapter also carry the methods the workflow processes apply through them (§11).
+  if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
+    parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));
+  }
   parts.push(...extra);
   return hashParts(parts);
 }

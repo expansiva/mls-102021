@@ -7,6 +7,7 @@
  * destructive step is a block, never a DROP. The plan is not an applied migration.
  */
 
+import { withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import {
   isRecord,
   outputPathFromDefPath,
@@ -17,7 +18,7 @@ import {
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
-import { auditImports, importSpecifier, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
@@ -172,9 +173,10 @@ export async function emitPersistence(
   definition: M1Definition,
   output: string,
   read: StructureRead,
+  moduleDefinitions: readonly M1Definition[] = [],
 ): Promise<PersistenceEmit | EmitFailure> {
   if (id === 'persistence.table') return emitTable(definition, output, read);
-  if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read);
+  if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read, moduleDefinitions);
   if (id === 'persistence.repositoryRegistration') return emitRegistration(definition, output, read);
   if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output);
   if (id === 'persistence.integrationOutbound') return emitOutbound(definition);
@@ -204,7 +206,7 @@ async function emitTable(definition: M1Definition, output: string, read: Structu
   };
 }
 
-async function emitAdapter(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
+async function emitAdapter(definition: M1Definition, output: string, read: StructureRead, moduleDefinitions: readonly M1Definition[]): Promise<PersistenceEmit | EmitFailure> {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No adapter was written.` };
   const table = await dependencyDefinition(definition, read, 'table');
@@ -215,12 +217,20 @@ async function emitAdapter(definition: M1Definition, output: string, read: Struc
   if ('code' in entity) return entity;
   const built = buildLocalTable(table.definition, entity);
   if ('code' in built) return built;
-  const declared = declaredBindings(definition);
-  if ('code' in declared) return declared;
+  const declaredRows = declaredBindings(definition);
+  if ('code' in declaredRows) return declaredRows;
+  // A collection of objects (l4 `collection: true` with fields) is stored whole at its path: one value, a list. Bound
+  // field by field it kept one item and lost the rest (the daily notice of two tasks kept one, tarefas 16/10).
+  const collections = ontologyCollections(await read(ontologyRef(entity, output)));
+  built.bindings = collapseCollections(built.bindings, collections);
+  const declared = collapseCollections(declaredRows, collections);
   const drift = bindingDrift(built.bindings, declared);
   if (drift) return { code: 'DIVERGENT_BINDING', detail: drift };
   const uniqueKeys = normalizeKeys(table.definition.data.uniqueKeys) ?? [];
-  const source = renderAdapter(output, port.path, port.definition, built, uniqueKeys);
+  // The methods a workflow process or a route applies through the port (§11, children written with their parent) are
+  // the adapter's too: the module's port def carries them when the run loaded it.
+  const inModule = moduleDefinitions.find(item => item.artifactType === 'repositoryPort' && text(item.data.interfaceName) === text(port.definition.data.interfaceName));
+  const source = renderAdapter(output, port.path, inModule ?? withProcessMethods(port.definition, moduleDefinitions), built, uniqueKeys);
   if ('code' in source) return source;
   return { ...source, seeds: false, evidences: [] };
 }
@@ -785,6 +795,19 @@ function declaredBindings(definition: M1Definition): ColumnBinding[] | EmitFailu
     bindings.push({ field, column: name, nullable: placement === 'json' && field !== 'version', placement });
   }
   return bindings;
+}
+
+/** The bindings with each collection of objects bound once, whole, at its path (json), instead of field by field. */
+export function collapseCollections(bindings: readonly ColumnBinding[], collections: ReadonlySet<string>): ColumnBinding[] {
+  let out = [...bindings];
+  for (const path of [...collections].sort((left, right) => left.length - right.length)) {
+    const inner = out.filter(binding => binding.field.startsWith(`${path}.`));
+    if (inner.length === 0 || inner.some(binding => binding.placement === 'column')) continue;
+    const at = out.indexOf(inner[0]);
+    out = out.filter(binding => !binding.field.startsWith(`${path}.`) && binding.field !== path);
+    out.splice(Math.min(at, out.length), 0, { field: path, column: `${JSON_PREFIX}${path}`, nullable: true, placement: 'json' });
+  }
+  return out;
 }
 
 function bindingDrift(built: readonly ColumnBinding[], declared: readonly ColumnBinding[]): string {

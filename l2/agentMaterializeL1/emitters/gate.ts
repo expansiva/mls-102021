@@ -49,6 +49,10 @@ export interface StructureGrant {
   disclosure: string;
   /** Record field taken from the grant path. Empty when that path does not resolve. */
   recordField?: string;
+  /** Per entity of an own grant, the column that holds the anchor id (one direct step). */
+  recordFields?: Readonly<Record<string, string>>;
+  entityRefs?: readonly string[];
+  selfAnchored?: boolean;
 }
 
 export interface GateInput {
@@ -75,7 +79,7 @@ export function resolveGrant(grants: readonly StructureGrant[], grantId: string)
   if (grant.pending) return { code: grant.pending, detail: `Grant ${grantId} is pending ${grant.pending}.` };
   if (grant.session !== 'verified') return { code: SESSION_UNVERIFIED, detail: `Grant ${grantId} session is not verified.` };
   if (!grant.scopeMode) return { code: SCOPE_UNBOUND, detail: `Grant ${grantId} has no scope mode.` };
-  if (grant.scopeMode === 'own' && !grant.recordField) {
+  if (grant.scopeMode === 'own' && !grant.selfAnchored && Object.keys(grant.recordFields ?? (grant.recordField ? { _: grant.recordField } : {})).length === 0) {
     return { code: 'ACCESS_ANCHOR', detail: `Grant ${grantId} has no resolved scope path.` };
   }
   return grant;
@@ -94,17 +98,20 @@ export function decideRoute(input: GateInput): GateDecision {
   if (input.source === 'http' && input.authorities.length === 0) {
     return { ok: false, status: 403, errorCode: FORBIDDEN_ACTOR, reachedUsecase: false };
   }
-  for (const grantId of input.grantIds) {
-    const resolved = resolveGrant(input.grants, grantId);
-    if (!('grantId' in resolved)) {
-      return { ok: false, status: 403, errorCode: resolved.code, reachedUsecase: false };
+  // §9: one grant of the route, of a role the caller holds, is enough.
+  if (input.grantIds.length > 0) {
+    let held = 0;
+    let refused = '';
+    for (const grantId of input.grantIds) {
+      const actorRef = input.authority.find(entry => entry.grantId === grantId)?.actorRef ?? '';
+      if (!actorRef) { refused = AUTHORITY_UNMAPPED; continue; }
+      const authorities = input.authorities;
+      if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(`:${actorRef}`))) continue;
+      const resolved = resolveGrant(input.grants, grantId);
+      if (!('grantId' in resolved)) { refused = resolved.code; continue; }
+      held += 1;
     }
-    const actorRef = input.authority.find(entry => entry.grantId === grantId)?.actorRef ?? '';
-    if (!actorRef) return { ok: false, status: 403, errorCode: AUTHORITY_UNMAPPED, reachedUsecase: false };
-    const authorities = input.authorities;
-    if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(`:${actorRef}`))) {
-      return { ok: false, status: 403, errorCode: FORBIDDEN_ACTOR, reachedUsecase: false };
-    }
+    if (held === 0) return { ok: false, status: 403, errorCode: refused || FORBIDDEN_ACTOR, reachedUsecase: false };
   }
   if (missingField(input.params, input.requiredFields)) {
     return { ok: false, status: 400, errorCode: VALIDATION_ERROR, reachedUsecase: false };

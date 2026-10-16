@@ -6,6 +6,7 @@
  * is a named failure, not an import of a file that does not exist.
  */
 
+import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
   isRecord,
   outputPathFromDefPath,
@@ -56,6 +57,8 @@ interface FieldRow {
 
 interface Tree {
   ts: string;
+  /** `collection: true` in the l4 on a group with fields: a list of that object (`details.tarefas` of a notice). */
+  collection?: boolean;
   children: Map<string, Tree>;
   optional?: boolean;
 }
@@ -155,6 +158,11 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
       '  pending: string;',
       '  disclosure: string;',
       '  recordField: string;',
+      '  /** Per entity of an own grant, the column that holds the anchor id (one direct step); a longer chain is a join. */',
+      '  recordFields: Readonly<Record<string, string>>;',
+      '  entityRefs: readonly string[];',
+      '  /** An own grant over the anchor itself (the person\'s own record): resolved with no column. */',
+      '  selfAnchored: boolean;',
       '}',
       '',
       `export const ${grantsName}: readonly StructureGrant[] = [`,
@@ -167,7 +175,7 @@ export function emitAccess(definition: M1Definition, output: string): EmitResult
       '  if (grant.pending) return { code: grant.pending, detail: `Grant ${grantId} is pending ${grant.pending}.` };',
       `  if (grant.session !== 'verified') return { code: '${SESSION_UNVERIFIED}', detail: \`Grant \${grantId} session is not verified.\` };`,
       `  if (!grant.scopeMode) return { code: '${SCOPE_UNBOUND}', detail: \`Grant \${grantId} has no scope mode.\` };`,
-      '  if (grant.scopeMode === \'own\' && !grant.recordField) return { code: \'ACCESS_ANCHOR\', detail: `Grant ${grantId} has no resolved scope path.` };',
+      '  if (grant.scopeMode === \'own\' && Object.keys(grant.recordFields).length === 0 && !grant.selfAnchored) return { code: \'ACCESS_ANCHOR\', detail: `Grant ${grantId} has no resolved scope path.` };',
       '  return grant;',
       '}',
       '',
@@ -239,7 +247,10 @@ async function emitDomainUsecase(
   // Optional is what the domain types with `?`: same entity def, same l4 entity, same criterion.
   // Unreadable l4 entity: the domain unit is refused on its own (ONTOLOGY_UNREAD); nothing is optional here.
   const entity = entityText === null ? null : parseDefinitionExport(entityText);
-  const domainOptional = entity && entityDep ? domainOptionalPaths(entity, await read(ontologyRef(entity, entityDep))) ?? new Set<string>() : new Set<string>();
+  const ontologySource = entity && entityDep ? await read(ontologyRef(entity, entityDep)) : null;
+  const domainOptional = entity && entityDep ? domainOptionalPaths(entity, ontologySource) ?? new Set<string>() : new Set<string>();
+  // An l4 collection is a list in the usecase signature too, as in the entity (details.tarefas of a notice).
+  const collections = ontologyCollections(ontologySource);
   const rawFn = Array.isArray(definition.data.functions) && isRecord(definition.data.functions[0]) ? definition.data.functions[0] : {};
   const inputOptional = optionalSignatureNames(Array.isArray(rawFn.input) ? rawFn.input : [], entityName, domainOptional);
   // Every filter of a list is optional: a caller passes only the filters it means. Required filters made the request
@@ -269,8 +280,8 @@ async function emitDomainUsecase(
       portImport,
       '',
       // The service asserts this to and from a record. The index is what makes that assertion legal.
-      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), inputOptional, aliases), '')}`,
-      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), outputOptional, aliases), '')}`,
+      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), inputOptional, aliases, collections), '')}`,
+      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), outputOptional, aliases, collections), '')}`,
       '',
       `export async function ${fnName}(input: ${inputType}, ctx: RequestContext${portArg}): Promise<${outputType}> {`,
       '  void input;',
@@ -343,7 +354,7 @@ async function emitAdapter(
   }
   const routes: AdapterRoute[] = [];
   const contracts = new Map<string, { specifier: string; iface: string }>();
-  for (const handler of handlers) {
+  for (const handler of [...handlers, ...await unlistedContractRoutes(definition, handlers, read)]) {
     const resolved = await resolveAdapterRoute(definition, handler, read);
     if ('code' in resolved) return resolved;
     routes.push(resolved.route);
@@ -382,6 +393,39 @@ async function emitAdapter(
       '',
     ].join('\n'),
   };
+}
+
+/**
+ * The routes of the page contract the controller def does not list. The D1 leaves a route it cannot bind to a
+ * usecase out of the controller (`ROUTE_UNRESOLVED`, materializadorL1.md §12: qryExportarInscritosCsv); the route is
+ * still the page's, and its handler follows the contract like any other: the request service has its function, the
+ * authority is the route's `access.grants`. A route whose contract names no grant is not exposed: no permissive
+ * fallback.
+ */
+async function unlistedContractRoutes(
+  definition: M1Definition,
+  handlers: readonly Record<string, unknown>[],
+  read: StructureRead,
+): Promise<Record<string, unknown>[]> {
+  const first = handlers.find(handler => typeof handler.contractPath === 'string' && typeof handler.contractInterface === 'string');
+  const pageId = typeof definition.data.pageId === 'string' ? definition.data.pageId : '';
+  if (!first || !pageId) return [];
+  const text = await read(qualifyFile(String(first.contractPath), definition.dependencies));
+  if (text === null) return [];
+  const listed = new Set(handlers.map(handler => String(handler.route ?? '')));
+  const prefix = `${definition.moduleName}.${pageId}.`.replace(/\./gu, '\\.');
+  const out: Record<string, unknown>[] = [];
+  for (const match of text.matchAll(new RegExp(`'(${prefix}[A-Za-z0-9_]+)'\\s*:`, 'gu'))) {
+    const route = match[1];
+    if (listed.has(route)) continue;
+    listed.add(route);
+    const clause = routeClause(text, route) ?? '';
+    const grants = /\bgrants\s*:\s*\[([^\]]*)\]/u.exec(clause)?.[1] ?? '';
+    const grantIds = [...grants.matchAll(/['"]([A-Za-z0-9_]+)['"]/gu)].map(item => item[1]);
+    if (grantIds.length === 0) continue;
+    out.push({ route, serviceFunction: route, contractPath: first.contractPath, contractInterface: first.contractInterface, grantIds });
+  }
+  return out;
 }
 
 /** Grant and required fields of one v2 route. The adapter names a service function, not a usecase. */
@@ -448,11 +492,13 @@ function renderAdapter(route: AdapterRoute): string {
   const outputType = `${route.contractInterface}['${route.route}']['output']`;
   return [
     `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse<${outputType}>> {`,
-    `  const denied = authorize(input.request, [${grants}]);`,
-    '  if (denied) throw denied;',
-    `  const invalid = validateInput(input.request.params, [${required}], [${allowed}], [${nullable}]);`,
+    `  const held = authorize(input.request, [${grants}]);`,
+    '  if (held instanceof AppError) throw held;',
+    // The scope field is the server's: it is set before the validation, so the page is never asked for it.
+    `  const scoped = scopeParams(input.request.params, input.ctx, held, [${allowed}]);`,
+    `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}]);`,
     '  if (invalid) throw invalid;',
-    `  const params = scopeParams(input.request.params, input.ctx, [${grants}]) as ${inputType};`,
+    `  const params = scoped as ${inputType};`,
     // The request takes the contract input type: no cast, so a wrong input path is a compile error there.
     `  const data = await requests[${JSON.stringify(route.serviceFunction)}](params, input.ctx);`,
     `  return { ok: true, data: data as ${outputType}, error: null };`,
@@ -479,7 +525,7 @@ export function membersOfType(source: string, typeText: string): { requiredField
   return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: nullable };
 }
 
-function routeClause(source: string, route: string): string | null {
+export function routeClause(source: string, route: string): string | null {
   const at = source.indexOf(`'${route}':`);
   if (at < 0) return null;
   const open = source.indexOf('{', at);
@@ -496,7 +542,7 @@ function routeClause(source: string, route: string): string | null {
   return null;
 }
 
-function clauseValue(clause: string, name: 'input' | 'output'): string | null {
+export function clauseValue(clause: string, name: 'input' | 'output'): string | null {
   const match = new RegExp(`(?:^|\\n)\\s*${name}: ([\\s\\S]*?);\\n`).exec(`\n${clause}\n`);
   return match ? match[1].trim() : null;
 }
@@ -539,16 +585,23 @@ export function exposedRouteGrants(moduleDefinitions: readonly unknown[]): Map<s
 }
 
 function scopeSource(): string {
+  // §9 and the own scope per entity: own applies only to the grants the caller holds, and not to an entity a broader
+  // grant the caller holds also covers (organization, related); the field goes in only where the route input declares
+  // it (the request reads the session otherwise). It runs before the validation: the page is never asked for it.
   return [
-    'function scopeParams(params: unknown, ctx: { sessionContext?: { actorId?: string } }, grantIds: readonly string[]): Record<string, unknown> {',
+    'function scopeParams(params: unknown, ctx: { sessionContext?: { actorId?: string } }, held: readonly string[], allowed: readonly string[]): Record<string, unknown> {',
     '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? { ...(params as Record<string, unknown>) } : {};',
-    '  for (const grantId of grantIds) {',
-    '    const resolved = resolveGrant(grantId);',
-    '    if (!(\'grantId\' in resolved) || resolved.scopeMode !== \'own\' || !resolved.recordField) continue;',
-    '    const actorId = ctx.sessionContext?.actorId ?? \'\';',
-    `    if (!actorId) throw new AppError('${FORBIDDEN_ACTOR}', 'You have no identity for this scope.', 403);`,
+    '  const grants = held.map(grantId => resolveGrant(grantId)).filter((grant): grant is Exclude<ReturnType<typeof resolveGrant>, { code: string }> => \'grantId\' in grant);',
+    '  const broader = new Set(grants.filter(grant => grant.scopeMode !== \'own\').flatMap(grant => grant.entityRefs));',
+    '  const fields = new Set(grants.filter(grant => grant.scopeMode === \'own\')',
+    '    .flatMap(grant => Object.entries(grant.recordFields).filter(([entityId]) => !broader.has(entityId)).map(([, field]) => field)));',
+    '  if (fields.size === 0) return body;',
+    '  const actorId = ctx.sessionContext?.actorId ?? \'\';',
+    `  if (!actorId) throw new AppError('${FORBIDDEN_ACTOR}', 'You have no identity for this scope.', 403);`,
+    '  for (const field of fields) {',
+    '    if (!allowed.includes(field)) continue;',
     '    // enforce:scope',
-    '    body[resolved.recordField] = actorId;',
+    '    body[field] = actorId;',
     '  }',
     '  return body;',
     '}',
@@ -561,30 +614,34 @@ function authorizeSource(mapped: boolean): string {
   const actorLine = mapped
     ? '    const actorRef = actorRefFor(grantId);'
     : '    const actorRef = null as string | null;';
+  // §9: a page of several roles. The caller needs ONE grant of the route, of a role they hold; the result is the
+  // grants they hold, which scope the call. A route with no grant is open, as before.
   return [
-    'function authorize(request: BffRequest, grantIds: readonly string[]): AppError | null {',
+    'function authorize(request: BffRequest, grantIds: readonly string[]): AppError | string[] {',
     '  const source = request.meta?.source ?? \'http\';',
     '  const authorities = request.meta?.verifiedAuthorities ?? [];',
     `  if (source === 'http' && authorities.length === 0) {`,
     `    return new AppError('${FORBIDDEN_ACTOR}', 'You have no authority to call this routine.', 403);`,
     '  }',
+    '  if (grantIds.length === 0) return [];',
+    '  const held: string[] = [];',
+    '  let refused: AppError | null = null;',
     '  for (const grantId of grantIds) {',
-    '    const resolved = resolveGrant(grantId);',
-    '    if (!(\'grantId\' in resolved)) return new AppError(resolved.code, resolved.detail, 403);',
-    '    if (resolved.pending) return new AppError(resolved.pending, `Grant ${grantId} is pending ${resolved.pending}.`, 403);',
     actorLine,
-    `    if (!actorRef) return new AppError('${AUTHORITY_UNMAPPED}', \`Grant \${grantId} has no actor in the authority map.\`, 403);`,
-    '    if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(\':\' + actorRef))) {',
-    `      return new AppError('${FORBIDDEN_ACTOR}', 'You have no authority to call this routine.', 403);`,
-    '    }',
+    `    if (!actorRef) { refused = new AppError('${AUTHORITY_UNMAPPED}', \`Grant \${grantId} has no actor in the authority map.\`, 403); continue; }`,
+    '    if (authorities.length > 0 && !authorities.some(item => item === actorRef || item.endsWith(\':\' + actorRef))) continue;',
+    '    const resolved = resolveGrant(grantId);',
+    '    if (!(\'grantId\' in resolved)) { refused = new AppError(resolved.code, resolved.detail, 403); continue; }',
+    '    held.push(grantId);',
     '  }',
-    '  return null;',
+    '  if (held.length > 0) return held;',
+    `  return refused ?? new AppError('${FORBIDDEN_ACTOR}', 'You have no authority to call this routine.', 403);`,
     '}',
     '',
   ].join('\n');
 }
 
-function validateSource(): string {
+export function validateSource(): string {
   return [
     '// `null` is accepted only where the contract type declares it; elsewhere it is refused, never read as absent.',
     'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = []): AppError | null {',
@@ -604,17 +661,19 @@ function validateSource(): string {
     `  const invalid = invalidPath(body, ''); if (invalid) return new AppError('${VALIDATION_ERROR}', invalid, 400);`,
     '  for (const field of fields) {',
     '    // A required member of an absent optional parent is not required; a required parent has its own entry.',
-    '    const parts = field.split(\'.\');',
-    '    let value: unknown = body;',
-    '    let parentAbsent = false;',
-    '    for (const [index, part] of parts.entries()) {',
-    '      if (index > 0 && (value === undefined || value === null)) { parentAbsent = true; break; }',
-    '      value = value && typeof value === \'object\' ? (value as Record<string, unknown>)[part] : undefined;',
-    '    }',
-    '    if (parentAbsent) continue;',
-    '    if (value === undefined || (value === null && !nullable.includes(field)) || value === \'\') {',
-    `      return new AppError('${VALIDATION_ERROR}', \`\${field} is required.\`, 400);`,
-    '    }',
+    '    // A list on the way applies the rest of the path to each of its items: an empty list requires nothing.',
+    '    const missing = (value: unknown, parts: readonly string[], path: string, top: boolean): string => {',
+    '      if (parts.length === 0) return value === undefined || (value === null && !nullable.includes(field)) || value === \'\' ? path : \'\';',
+    '      if (!top && (value === undefined || value === null)) return \'\';',
+    '      if (Array.isArray(value)) {',
+    '        for (const [index, item] of value.entries()) { const found = missing(item, parts, `${path}[${index}]`, false); if (found) return found; }',
+    '        return \'\';',
+    '      }',
+    '      const next = value && typeof value === \'object\' ? (value as Record<string, unknown>)[parts[0]] : undefined;',
+    '      return missing(next, parts.slice(1), path ? `${path}.${parts[0]}` : parts[0], false);',
+    '    };',
+    '    const found = missing(body, field.split(\'.\'), \'\', true);',
+    `    if (found) return new AppError('${VALIDATION_ERROR}', \`\${found} is required.\`, 400);`,
     '  }',
     '  return null;',
     '}',
@@ -850,8 +909,12 @@ async function loadUses(
     if (!dep) return { code: 'USECASE_UNBOUND', detail: `${route} has no dependency on ${usecaseId}.` };
     const text = await read(dep);
     if (text === null) return { code: 'USECASE_UNBOUND', detail: `${dep} could not be read.` };
-    const parsed = parseDefinitionExport(text);
-    if (!parsed) return { code: 'USECASE_UNBOUND', detail: `${dep} is not a definition.` };
+    const declared = parseDefinitionExport(text);
+    if (!declared) return { code: 'USECASE_UNBOUND', detail: `${dep} is not a definition.` };
+    // The usecase def carries only its intent (§10): its function and port follow from the operation and the entity.
+    const plan = await usecasePlan(declared, read);
+    if (plan.detail) return { code: 'FUNCTION_MISSING', detail: plan.detail };
+    const parsed = plan.definition;
     const fn = readFunction(parsed);
     const entityId = typeof parsed.data.entityId === 'string' ? parsed.data.entityId : '';
     const operation = typeof parsed.data.operation === 'string' ? parsed.data.operation : '';
@@ -1068,39 +1131,73 @@ export function grantsOf(data: Record<string, unknown>): StructureGrant[] {
     pending: String(grant.pending ?? ''),
     disclosure: String(grant.disclosure ?? ''),
     recordField: recordFieldFromGrant(grant),
+    recordFields: recordFieldsFromGrant(grant),
+    entityRefs: stringList(grant.entityRefs),
+    // The person's own record: the anchor is one of the grant's entities (publicoMeuCadastro on Participante).
+    selfAnchored: String(grant.scopeMode ?? '') === 'own' && !!String(grant.anchorEntity ?? '') && stringList(grant.entityRefs).includes(String(grant.anchorEntity ?? '')),
   })).filter(grant => grant.grantId);
 }
 
-/** The single path hop of the one non-anchor entity names the record field. A missing or contradictory path does not. */
-export function recordFieldFromGrant(grant: Record<string, unknown>): string {
-  if (String(grant.scopeMode ?? '') !== 'own') return '';
-  const hops = recordHops(grant);
-  if (hops.length !== 1) return '';
-  const hop = hops[0];
-  const from = String(hop.from ?? '');
-  const to = String(hop.to ?? '');
-  const field = String(hop.field ?? '');
+/**
+ * Own scope read per entity (the team's notice of 16/10): each entry of the grant `path` is one entity of the grant and
+ * its chain to the anchor. One direct step (`Inscricao.participanteId` → Participante) is a column filter: the entity's
+ * record field. A longer chain with an inverse step (Evento ← Inscricao.eventoId, Inscricao.participanteId → Participante)
+ * is a join the request service applies. The anchor's own entry and a pending entry name no field.
+ */
+export function recordFieldsFromGrant(grant: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (String(grant.scopeMode ?? '') !== 'own') return out;
   const anchor = String(grant.anchorEntity ?? '');
-  if (!from || !to || !field || (anchor && to !== anchor)) return '';
+  for (const entry of scopeEntries(grant)) {
+    if (entry.pending || (anchor && entry.entityId === anchor) || entry.steps.length !== 1) continue;
+    const leaf = directLeaf(entry.steps[0], entry.entityId, anchor);
+    if (leaf) out[entry.entityId] = leaf;
+  }
+  return out;
+}
+
+/** The record field of `entityId` in an own grant: its direct step to the anchor; '' when it has none. */
+export function recordFieldFor(grant: Record<string, unknown>, entityId: string): string {
+  return recordFieldsFromGrant(grant)[entityId] ?? '';
+}
+
+/** The one record field every directly anchored entity of an own grant shares; '' when there is none or they differ. */
+export function recordFieldFromGrant(grant: Record<string, unknown>): string {
+  const fields = [...new Set(Object.values(recordFieldsFromGrant(grant)))];
+  return fields.length === 1 ? fields[0] : '';
+}
+
+/** The entities of an own grant reached through more than one step, with their chain: the join the request applies. */
+export function scopeJoins(grant: Record<string, unknown>): Array<{ entityId: string; steps: string[] }> {
+  if (String(grant.scopeMode ?? '') !== 'own') return [];
+  const anchor = String(grant.anchorEntity ?? '');
+  return scopeEntries(grant)
+    .filter(entry => !entry.pending && entry.entityId !== anchor && entry.steps.length > 1)
+    .map(entry => ({ entityId: entry.entityId, steps: entry.steps.map(step => `${String(step.from ?? '')} → ${String(step.to ?? '')} by ${String(step.field ?? '')}`) }));
+}
+
+function directLeaf(step: Record<string, unknown>, entityId: string, anchor: string): string {
+  const from = String(step.from ?? '');
+  const to = String(step.to ?? '');
+  const field = String(step.field ?? '');
+  if (!from || !to || !field || from !== entityId || (anchor && to !== anchor)) return '';
   const prefix = `${from}.`;
   if (!field.startsWith(prefix)) return '';
   const leaf = field.slice(prefix.length);
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(leaf)) return '';
-  return leaf;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(leaf) ? leaf : '';
 }
 
-function recordHops(grant: Record<string, unknown>): Array<Record<string, unknown>> {
+/** The grant path as entries; a path of bare hops (one chain, no entries) is read as the entry of its first entity. */
+function scopeEntries(grant: Record<string, unknown>): Array<{ entityId: string; steps: Record<string, unknown>[]; pending: string }> {
   const path = Array.isArray(grant.path) ? grant.path.filter(isRecord) : [];
-  const entries = path.filter(item => Array.isArray(item.steps));
-  if (!entries.length) return path;
-  const anchor = String(grant.anchorEntity ?? '');
-  const chains = entries.filter(item => {
-    if (String(item.pending ?? '')) return false;
-    if (anchor && String(item.entityId ?? '') === anchor) return false;
-    return (item.steps as unknown[]).length > 0;
-  });
-  if (chains.length !== 1) return chains.length === 0 ? [] : [{}, {}];
-  return (chains[0].steps as unknown[]).filter(isRecord);
+  if (path.length && path.every(item => !Array.isArray(item.steps))) {
+    return [{ entityId: String(path[0].from ?? ''), steps: path, pending: '' }];
+  }
+  return path.filter(item => Array.isArray(item.steps)).map(item => ({
+    entityId: String(item.entityId ?? ''),
+    steps: (item.steps as unknown[]).filter(isRecord),
+    pending: String(item.pending ?? ''),
+  }));
 }
 
 export function contractMembers(source: string, name: string): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[] } | null {
@@ -1208,22 +1305,6 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
     depth += opens - closes;
   }
   return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)], nullablePaths: [...new Set(nullablePaths)] };
-}
-
-function parseDefinitionExport(source: string): M1Definition | null {
-  const marker = 'export const definition = ';
-  const at = source.indexOf(marker);
-  if (at < 0) return null;
-  const start = source.indexOf('{', at);
-  const end = source.lastIndexOf(' as const;');
-  if (start < 0 || end < start) return null;
-  try {
-    const value = JSON.parse(source.slice(start, end)) as M1Definition;
-    if (!value || !Array.isArray(value.dependencies) || !isRecord(value.data)) return null;
-    return value;
-  } catch {
-    return null;
-  }
 }
 
 interface UsecaseFunction {
@@ -1339,6 +1420,7 @@ function nest(
         child.ts = collections.has(field.name) && !ts.endsWith('[]') ? (ts.includes('|') ? `Array<${ts}>` : `${ts}[]`) : ts;
       }
       if (optional.has(parts.slice(0, index + 1).join('.'))) child.optional = true;
+      if (collections.has(parts.slice(0, index + 1).join('.'))) child.collection = true;
       node = child;
     });
   }
@@ -1360,7 +1442,8 @@ function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<s
 function renderType(node: Tree, indent: string): string {
   if (node.children.size === 0) return node.ts;
   const lines = [...node.children].map(([key, child]) => `${indent}  ${key}${child.optional ? '?' : ''}: ${renderType(child, `${indent}  `)};`);
-  return `{\n${lines.join('\n')}\n${indent}}`;
+  // A collection with fields is a list of that object; the leaf marker of `nest` would be lost under its children.
+  return `{\n${lines.join('\n')}\n${indent}}${node.collection ? '[]' : ''}`;
 }
 
 function header(output: string): string {

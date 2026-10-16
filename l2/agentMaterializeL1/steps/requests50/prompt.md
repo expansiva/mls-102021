@@ -31,6 +31,10 @@ leaves. You do not decide business: you do not invent a route, a field, a rule o
   Build the usecase input field by field from the contract input (`{ id: String(input.id), details: { … } }`); never
   pass the contract input as it is with a cast (`input as Parameters<typeof createX>[0]`): the shapes differ and the
   cast hides it until the usecase reads a field that is not there.
+- Two exceptions, each with its own section: an entity kept in the platform MDM that no usecase owns ("MDM entities
+  with no usecase"), read and written here through `ctx.mdm`; and the children a route writes with its parent and no
+  usecase writes ("<Entity> written with its parent"), through the port of the child that section gives. Never declare
+  a repository type of your own: a method the port does not have does not exist at run time.
 
 ## What each function does
 

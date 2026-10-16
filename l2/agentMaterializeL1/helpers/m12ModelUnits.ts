@@ -43,7 +43,9 @@ export interface M12Repair {
 export interface M12ModelLayerSpec {
   /** A mechanical fix of the answer before the gate (type annotations and type imports only, never logic). */
   normalize?(ctx: M12Context, unit: M12Unit, code: string): Promise<string>;
-  layer: Extract<M12Layer, 'usecases' | 'requests'>;
+  layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests'>;
+  /** Module-wide files the layer's units import, written before any worker is dispatched; the trace lines. */
+  prepare?(ctx: M12Context, units: readonly M12Unit[]): Promise<string[]>;
   workerAgentName: string;
   folder: string;
   toolName: string;
@@ -101,7 +103,9 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
       const { ctx, selected } = await loadRun(run);
       const lines: string[] = [];
       const workers: mls.msg.AgentIntent[] = [];
-      for (const unit of orderWithinLayer(layerUnits(selected, spec.layer))) {
+      const layerOf = orderWithinLayer(layerUnits(selected, spec.layer));
+      if (spec.prepare && layerOf.length) lines.push(...await spec.prepare(ctx, layerOf));
+      for (const unit of layerOf) {
         const base = { layer: spec.layer, unitId: unit.unitId, defRef: unit.defRef, attempt: 0 };
         const waiting = await blockingDependencies(ctx, unit);
         if (waiting.length) {

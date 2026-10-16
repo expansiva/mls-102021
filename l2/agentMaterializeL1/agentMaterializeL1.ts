@@ -9,6 +9,8 @@ import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
 import '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
 import '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
+import '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12Workflows.js';
+import '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
 import '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12Requests.js';
 import '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
 import '/_102021_/l2/agentMaterializeL1/steps/controllers30/agentM12Controllers.js';

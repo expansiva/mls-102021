@@ -51,7 +51,25 @@
         "prompt": "steps/usecases40/prompt.md",
         "context": "def, scaffold signature, recipe attempt, dependency exports, rule texts, a sibling, platform signatures",
         "tool": "writeUsecase { code, notApplicable[] }",
-        "gate": "header, exported function, imports only /_102034_/l1/ and the module and existing files, no node:/fetch/storage/empty catch, every rule id of the rulePlan as a literal or declared notApplicable with a reason",
+        "gate": "header, exported function, imports only /_102034_/l1/ and the module and existing files, no node:/fetch/storage/empty catch, every rule id of rulesApplied as a literal or declared notApplicable with a reason",
+        "repairBudget": 2
+      }
+    },
+    {
+      "planId": "workflows45-<module>",
+      "agentName": "agentM12Workflows",
+      "llm": "always (every workflowProcess)",
+      "types": [
+        "workflowProcess"
+      ],
+      "goal": "The workflow service of the module (materializadorL1.md §11): first the Task adapter (layer_1_external/adapters/workflow/taskOccurrence.ts, mechanical, in memory with TASK_ADAPTER_PENDING until the collab-messages contract exists), then one agentM12WorkflowUnit worker per process writes layer_2_application/workflows/<processId>.ts, one function per functionId from the l4 prose. A scheduled process also exports onTick; register70 writes layer_1_external/adapters/persistence/moduleTick.ts over them.",
+      "worker": {
+        "agentName": "agentM12WorkflowUnit",
+        "planIdPattern": "workflows45-<module>-<processId>-<attempt>",
+        "prompt": "steps/workflows45/prompt.md",
+        "context": "def, the l4 process (source), the operations and their usecases, the occurrence entity with its port and l4 ontology, the module rules, the Task adapter, platform signatures (evaluateSchedule when scheduled)",
+        "tool": "writeWorkflowService { code, notApplicable[] }",
+        "gate": "header, every functionId exported, onTick + evaluateSchedule when scheduled, taskOccurrence when the process keeps an occurrence, ports of the module only, imports only /_102034_/l1/ and the module, no node:/fetch/storage/empty catch/as any",
         "repairBudget": 2
       }
     },
@@ -112,12 +130,12 @@
   "unitStatus": "l1/<module>/pipeline/agentMaterializeL1/<layer>/<unitId>.json — done | reused | blocked | gap | failed | skipped, with a code and a diagnostic. One owner per file.",
   "invariants": [
     "Rule (05/10/2026): a type the recipe derives only sometimes always goes to the model — usecases and request services. Domain, persistence and controllers are recipes.",
-    "Source and hints (materializadorL1.md §2.1): the source is the page contract (types, JSDoc, rules, access), the l4 (ontology, rule texts) and the def inventory (which units exist, the authority of each route). The def's implementation fields (uses, params, output tree, rulePlan, usecase input/output lists, sequence) are hints shown to the model as such; where they diverge, the contract and the l4 win, and an empty or unresolved field means decide by them.",
+    "Source and hints (materializadorL1.md §2.1): the source is the page contract (types, JSDoc, rules, access), the l4 (ontology, rule texts) and the def inventory (which units exist, the authority of each route). The def's implementation fields (uses, params, output tree) are hints shown to the model as such; where they diverge, the contract and the l4 win, and an empty or unresolved field means decide by them. The usecase def carries only its intent (§10: entity, operation, transitionRef, rulesApplied, effects, mdm): its signature, port, selector and transition payload follow from the operation, the entity and the l4 (emitters/usecaseIntent.ts).",
     "Order is domain -> persistence (recipes) -> usecases -> requests (model) -> controllers (recipe) -> tests (model): a unit whose same-or-earlier-layer dependency has no file is blocked (BLOCKED_BY). A controller imports its request service, so it is proven by the compiler after the service exists. Step and folder numbers are names, not the order (controllers30 runs after requests50): renaming them would leave stale copies with the same agent name in the Studio stor.",
     "Proof is the Studio compiler. An unavailable compiler is a failure; a file that does not compile gets its previous bytes back (or is removed).",
     "Writes stay in memory: the file is registered with mls.stor.addOrUpdateFile and serves its bytes through getContent; no libStor, no localStor.setContent, no editor model. The Studio saves.",
     "Proof is the Studio compiler, for l1 too: the model is created by libModel.createModel (the Studio's own l1 path) and compiled with mls.l2.typescript.compile under a 60 s deadline. Compiler errors fail the unit (previous bytes restored; a model unit repairs with them). A worker that stops answering trips a breaker for the page: the remaining units end done COMPILE_UNAVAILABLE_L1 with the cause, listed apart in the report.",
-    "A usecase whose generated source does not name a rule of its rulePlan is blocked (RULE_NOT_EMITTED); the file stays, the unit is not generated. Never silent.",
+    "A usecase whose generated source does not name a rule of its rulesApplied is blocked (RULE_NOT_EMITTED); the file stays, the unit is not generated. Never silent.",
     "An output this agent did not write, or edited since, is never overwritten without \"force\": true or a target.",
     "Workers never fail the task: the unit status records the failure; the run goes on.",
     "Nothing outside this folder imports it, and it imports no other agent's folder (skills/agentCodeIsPrivate.md)."

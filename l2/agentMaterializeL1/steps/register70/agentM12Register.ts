@@ -3,7 +3,10 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_REGISTER_AGENT_NAME, clip, errorText, parseM12StepInvocation, type M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { readOptional, readUnitStatus, removeStorFile, stateReady, unproven, usable, writeJson, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readOptional, readUnitStatus, removeStorFile, stateReady, unproven, usable, writeJson, writeSource, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { moduleTickFile, moduleTickSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { fileRef, infoOfRef, pageTestsFile, projectJsonFile, registrationFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { loadRegistrationFiles, projectLockRef, reconcileL5Backend, runtimeProjectJsonRef, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
@@ -37,6 +40,33 @@ function withPageTests(text: string, moduleName: string, pageTests: readonly str
   return text.endsWith('\n') ? `${body}\n` : body;
 }
 
+/**
+ * The module tick (§11): the scheduled processes whose workflow service is in place run on the minute the platform
+ * lends, through `moduleTick.ts` in the persistence folder (next to the composition root the runtime already loads).
+ * '' when the module has no scheduled process.
+ */
+async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string> {
+  const scheduled: string[] = [];
+  for (const unit of ctx.units.filter(item => item.definition.artifactType === 'workflowProcess')) {
+    const trigger = unit.definition.data.trigger;
+    if (!trigger || typeof trigger !== 'object' || (trigger as { kind?: unknown }).kind !== 'scheduled') continue;
+    if (usable(await readUnitStatus(run.project, run.module, 'workflows', unit.unitId))) scheduled.push(String(unit.definition.data.processId ?? unit.unitId));
+  }
+  if (!scheduled.length) return '';
+  const info = moduleTickFile(run.project, run.module);
+  const source = moduleTickSource(run.project, run.module, scheduled.sort());
+  if (await readOptional(info) === source) return `tick: ${scheduled.join(', ')} (unchanged)`;
+  const stored = await writeSource(info, source);
+  const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
+  const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
+  const errors = unavailable ? [] : compileDiagnostics(results);
+  // The platform loads onTick from the persistenceEntrypoint only (102034 registry.ts loadModuleTickHandlers); a
+  // module on tableDefsDir is not woken until it also looks in that folder. Named, never silent.
+  return errors.length
+    ? `tick: COMPILE_FAILED ${clip(errors.join(' | '), 400)}`
+    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (the platform must load onTick from the tableDefsDir folder: TICK_LOADER_PENDING)`;
+}
+
 async function register(run: M12RunArgs): Promise<string> {
   const { ctx } = await loadRun(run);
   const { project, module: moduleName } = run;
@@ -55,6 +85,7 @@ async function register(run: M12RunArgs): Promise<string> {
     if (!usable(await readUnitStatus(project, moduleName, 'controllers', unit.unitId))) missingControllers.push(unit.unitId);
   }
   if (missingControllers.length) return `pending: controller(s) not generated: ${missingControllers.join(', ')}; the module was not registered.`;
+  const tick = await writeModuleTick(ctx, run);
   const files = await loadRegistrationFiles(project, moduleName, ready, ctx.read);
   const lock = infoOfRef(projectLockRef(project), project)!;
   if (await readOptional(lock) !== null) return `pending: ${projectLockRef(project)} is held (${clip((await readOptional(lock)) ?? '', 200)}). If no run is active, remove it and run again.`;
@@ -92,7 +123,7 @@ async function register(run: M12RunArgs): Promise<string> {
     const expected = result.effectiveSource === 'l5/runtime.project.json' ? runtimeProjectJson : projectJson;
     if (current !== expected) return 'pending: l5 changed during the registration. The concurrent bytes were kept.';
     if (next !== current) await writeText(target, next);
-    return `${next === current ? 'unchanged' : 'patch'}: ${result.detail}${pendings.length ? `\n${pendings.join('\n')}` : ''}`;
+    return `${next === current ? 'unchanged' : 'patch'}: ${result.detail}${tick ? `\n${tick}` : ''}${pendings.length ? `\n${pendings.join('\n')}` : ''}`;
   } finally {
     await removeStorFile(lock);
   }

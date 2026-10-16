@@ -1,0 +1,289 @@
+/// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/workflows45/context.ts" enhancement="_blank"/>
+
+// What the model sees to write the workflow service of one process (materializadorL1.md §11): the def (trigger,
+// occurrence, functions, operations), the l4 prose of each function (the source), the usecases the operations reach,
+// the occurrence entity and its port, the Task adapter and the platform signatures. And the gate of its answer.
+
+import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
+import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { moduleSpecifier, taskOccurrenceFile, taskOccurrenceSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
+import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { readOptional, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { missingImports, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { allRuleIds, citedEntities, entityNames, exportSignatures, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+
+export const M12_WORKFLOW_TOOL = 'writeWorkflowService' as const;
+export const M12_WORKFLOW_TOOL_DESCRIPTION = 'Return the whole workflow service TypeScript file of the process';
+export const EVALUATE_SCHEDULE_REF = '_102034_/l1/server/layer_2_application/schedule/evaluateSchedule.ts';
+
+function section(title: string, body: string): string {
+  return `## ${title}\n\n${body.trim()}\n`;
+}
+
+function fence(lang: string, text: string): string {
+  return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** The facts of a workflowProcess def the context and the gate read. */
+export interface M12WorkflowFacts {
+  processId: string;
+  trigger: { kind: string; actorRef: string; event: string; schedule: string };
+  occurrence: string;
+  functions: string[];
+  operations: Array<{ operation: string; steps: string[] }>;
+}
+
+export function workflowFacts(unit: M12Unit): M12WorkflowFacts {
+  const data = unit.definition.data;
+  const trigger = isRecord(data.trigger) ? data.trigger : {};
+  return {
+    processId: text(data.processId) || unit.unitId,
+    trigger: { kind: text(trigger.kind), actorRef: text(trigger.actorRef), event: text(trigger.event), schedule: text(trigger.schedule) },
+    occurrence: isRecord(data.occurrence) ? text(data.occurrence.entityId) : '',
+    functions: Array.isArray(data.functions) ? data.functions.map(String).filter(Boolean) : [],
+    operations: Array.isArray(data.operations)
+      ? data.operations.filter(isRecord).map(row => ({ operation: text(row.operation), steps: Array.isArray(row.steps) ? row.steps.map(String) : [] }))
+      : [],
+  };
+}
+
+/** The process `processId` of an l4 workflows source, as JSON text; '' when it is not there. */
+export function l4Process(source: string | null, processId: string): string {
+  if (!source) return '';
+  const match = /=\s*(\{[\s\S]*\})\s*as const/u.exec(source);
+  if (!match) return '';
+  try {
+    const value = JSON.parse(match[1]) as Record<string, unknown>;
+    const found: unknown[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) { node.forEach(walk); return; }
+      if (!isRecord(node)) return;
+      if (node.processId === processId) found.push(node);
+      Object.values(node).forEach(walk);
+    };
+    walk(value);
+    return found.length ? JSON.stringify(found[0], null, 2) : '';
+  } catch {
+    return '';
+  }
+}
+
+/** The usecase that runs one operation (`Entidade.<op>` or `Entidade.<transição>`), among the units of the module. */
+export function operationUsecase(units: readonly M12Unit[], operation: string): M12Unit | undefined {
+  const [entityId, op] = operation.split('.');
+  return units.find(unit => unit.definition.artifactType === 'usecase'
+    && String(unit.definition.data.entityId ?? '') === entityId
+    && (String(unit.definition.data.operation ?? '') === op || String(unit.definition.data.transitionRef ?? '') === op));
+}
+
+/**
+ * The Task adapter of the module, written and compiled before any workflow worker runs (every process imports it).
+ * A copy someone edited by hand is kept. The lines go to the phase trace.
+ */
+export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {
+  const info = taskOccurrenceFile(ctx.run.project, ctx.run.module);
+  const source = taskOccurrenceSource(ctx.run.project, ctx.run.module);
+  const current = await readOptional(info);
+  if (current !== null && current !== source && !current.includes('Generated by agentMaterializeL1')) {
+    return [`taskOccurrence: kept, ${moduleSpecifier(info)} was edited locally`];
+  }
+  if (current === source) return ['taskOccurrence: up to date'];
+  const stored = await writeSource(info, source);
+  const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
+  const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
+  const errors = unavailable ? [] : compileDiagnostics(results);
+  return [errors.length ? `taskOccurrence: COMPILE_FAILED ${clip(errors.join(' | '), 400)}` : 'taskOccurrence: written'];
+}
+
+export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<{ header: string; facts: M12WorkflowFacts; human: string }> {
+  const { project, module: moduleName } = ctx.run;
+  const facts = workflowFacts(unit);
+  const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+  const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
+  const process = l4Process(await ctx.read(l4Ref), facts.processId);
+  if (!process) throw new Error(`PROCESS_UNREAD: ${l4Ref} has no process ${facts.processId}.`);
+
+  const parts: string[] = [];
+  parts.push(section('Task', [
+    `Write the workflow service of process \`${facts.processId}\` of module ${moduleName}, file \`${unit.outputRef}\`.`,
+    `It exports one async function per function of the process: ${facts.functions.map(name => `\`${name}\``).join(', ')}, each \`(input, ctx: RequestContext)\`, with its input and output interfaces exported as \`<Function>Input\` / \`<Function>Output\` (PascalCase). What each one receives, checks, writes, tells and returns, and what happens when it runs twice, is the prose of that function in the l4 process below: the source.`,
+    facts.trigger.kind === 'scheduled'
+      ? `The process is scheduled ("${facts.trigger.schedule}"): also export \`onTick(ctx: RequestContext, now: Date): Promise<void>\`, which asks \`evaluateSchedule\` whether an occurrence is due and, when it is, runs the function that does the scheduled work. The module tick calls it every minute.`
+      : `The process is started by ${facts.trigger.kind === 'event' ? `the event ${facts.trigger.event}` : `the actor ${facts.trigger.actorRef || 'of its journeys'}`}: the request service of the page calls these functions.`,
+  ].join('\n')));
+  parts.push(section(`Definition ${unit.defRef} (the intent: trigger, occurrence, functions, the entity operations the process reaches)`, fence('json', JSON.stringify(unit.declared.data, null, 2))));
+  parts.push(section(`l4 process ${facts.processId} (${l4Ref}, the source)`, fence('json', process.slice(0, 30000))));
+
+  // The operations: the usecase each one runs, or none (a system transition the function applies through the port).
+  const lines: string[] = [];
+  for (const row of facts.operations) {
+    const usecase = operationUsecase(ctx.units, row.operation);
+    lines.push(`- ${row.operation} (${row.steps.join(', ')}): ${usecase ? `usecase \`${usecase.unitId}\`` : 'no usecase: the function applies it through the entity port (POOL_ABSENT)'}`);
+  }
+  if (lines.length) parts.push(section('Operations of the process', lines.join('\n')));
+
+  const sent = new Set<string>();
+  for (const dep of dependencyUnits(ctx, unit)) {
+    const generated = await readOptional(dep.output);
+    if (!generated) continue;
+    sent.add(dep.defRef);
+    parts.push(section(`Usecase ${dep.unitId}`, [`Import from \`/${dep.outputRef.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(generated))].join('\n\n')));
+  }
+  // The entity of the occurrence and of every operation, with its port: a system transition and the occurrence
+  // record are read and written through them. And every entity the prose of the process names: the daily notice
+  // reads the open tasks, and without the Tarefa entity the model guessed its states (todo, inProgress).
+  const titles = (await entityNames(ctx)).flatMap(names => [{ entityId: names.entityId, title: names.title }, { entityId: names.entityId, title: names.entityId }]);
+  const entities = new Set([facts.occurrence, ...facts.operations.map(row => row.operation.split('.')[0]), ...citedEntities(process, titles)].filter(Boolean));
+  for (const item of ctx.units) {
+    const kind = item.definition.artifactType;
+    if ((kind !== 'domainEntity' && kind !== 'repositoryPort') || !entities.has(String(item.definition.data.entityId ?? ''))) continue;
+    const generated = await readOptional(item.output);
+    parts.push(section(`${kind} ${item.definition.artifactId}`, [
+      `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.${kind === 'repositoryPort' ? ` Resolve it with \`resolveRepository<${String(item.definition.data.interfaceName ?? '')}>(ctx, '${String(item.definition.data.interfaceName ?? '')}')\`.` : ''}`,
+      generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(item.definition.data)),
+    ].join('\n\n')));
+    if (kind === 'domainEntity') {
+      const ontology = await ctx.read(ontologyRef(item.definition, item.outputRef));
+      if (ontology) parts.push(section(`l4 ontology of ${item.definition.artifactId} (source: states, transitions, derived fields)`, fence('ts', ontology.slice(0, 20000))));
+    }
+  }
+  const rulesSource = await readOptional(rulesFile(project, moduleName));
+  const rules = ruleTexts(rulesSource, allRuleIds(rulesSource));
+  if (rules.length) parts.push(section('Rules of the module (l4 text)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+
+  const adapter = taskOccurrenceFile(project, moduleName);
+  const adapterSource = await readOptional(adapter);
+  if (adapterSource) parts.push(section('The Task of an occurrence', [`Import from \`${moduleSpecifier(adapter)}\`.`, fence('ts', exportSignatures(adapterSource))].join('\n\n')));
+  const platform = [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
+  for (const ref of platform) {
+    const source = await ctx.read(ref);
+    if (source) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(source))].join('\n\n')));
+  }
+  if (repair) {
+    parts.push(section('Repair', [
+      'The previous answer was refused. Fix exactly these problems and return the whole file again:',
+      ...repair.problems.map(problem => `- ${problem}`),
+      repair.previous ? `\nPrevious answer:\n${fence('ts', repair.previous)}` : '',
+    ].join('\n')));
+  }
+  return { header, facts, human: parts.join('\n') };
+}
+
+/** Transition id → the state it leads to, from the lifecycle of every entity of the module. */
+export function transitionTargets(units: readonly M12Unit[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const unit of units.filter(item => item.definition.artifactType === 'domainEntity')) {
+    const lifecycle = unit.definition.data.lifecycle;
+    const transitions = isRecord(lifecycle) && Array.isArray(lifecycle.transitions) ? lifecycle.transitions.filter(isRecord) : [];
+    for (const transition of transitions) {
+      const id = text(transition.transitionId);
+      const to = text(transition.to);
+      if (id && to) out.set(id, to);
+    }
+  }
+  return out;
+}
+
+/** The top-level arguments of every `.transition(…)` call: read by brackets and quotes, never by a fixed shape. */
+export function transitionCalls(code: string): Array<{ record: string; transitionId: string }> {
+  const out: Array<{ record: string; transitionId: string }> = [];
+  for (const match of code.matchAll(/\.transition\s*\(/gu)) {
+    const args: string[] = [];
+    let depth = 0;
+    let quote = '';
+    let current = '';
+    let at = (match.index ?? 0) + match[0].length;
+    for (; at < code.length; at += 1) {
+      const char = code[at];
+      if (quote) {
+        current += char;
+        if (char === '\\') { current += code[at + 1] ?? ''; at += 1; } else if (char === quote) quote = '';
+        continue;
+      }
+      if (char === '\'' || char === '"' || char === '`') { quote = char; current += char; continue; }
+      if (char === '(' || char === '{' || char === '[') depth += 1;
+      if (char === ')' || char === '}' || char === ']') {
+        if (depth === 0) break;
+        depth -= 1;
+      }
+      if (char === ',' && depth === 0) { args.push(current.trim()); current = ''; continue; }
+      current += char;
+    }
+    if (current.trim()) args.push(current.trim());
+    const id = /^['"`]([A-Za-z_$][\w$]*)['"`]$/u.exec(args[args.length - 1] ?? '')?.[1];
+    if (id && args.length >= 2) out.push({ record: args[0], transitionId: id });
+  }
+  return out;
+}
+
+/**
+ * A port `transition(record, '<id>')` whose record never takes the state the transition leads to. The adapter stores
+ * the record as given (the id is a label): the daily notice called concluirAviso and stayed `pending` (tarefas, 16/10),
+ * first with a variable, then with the object built inside the call. The state must be written on a field
+ * (`status: '<to>'`): inside the object when the call builds it, anywhere in the file when it passes a variable. A bare
+ * `return '<to>'` is not a write. The states come from the module lifecycles: nothing here names one.
+ */
+export function workflowTransitionProblems(code: string, targets: ReadonlyMap<string, string>): string[] {
+  const problems: string[] = [];
+  const reported = new Set<string>();
+  for (const call of transitionCalls(code)) {
+    const to = targets.get(call.transitionId);
+    if (!to) continue;
+    const written = new RegExp(`[A-Za-z_$][\\w$]*\\s*:\\s*['"\`]${to}['"\`]`, 'u');
+    const scope = call.record.startsWith('{') ? call.record : code;
+    if (written.test(scope)) continue;
+    if (reported.has(call.transitionId)) continue;
+    reported.add(call.transitionId);
+    problems.push(`Transition ${call.transitionId} leads to '${to}', and the record passed to \`transition(record, '${call.transitionId}')\` never takes that state: set it on the record (\`status: '${to}'\`, with the payload fields). The port stores the record as given.`);
+  }
+  return problems;
+}
+
+/** Problems of a model-written workflow service. Empty = the gate passes. */
+export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; targets?: ReadonlyMap<string, string> }): string[] {
+  const problems: string[] = [];
+  if (input.targets) problems.push(...workflowTransitionProblems(code, input.targets));
+  if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
+  for (const name of input.facts.functions) {
+    if (!new RegExp(`export\\s+async\\s+function\\s+${name}\\s*\\(`, 'u').test(code)) problems.push(`The process function \`${name}\` must be exported as \`export async function ${name}(input, ctx: RequestContext)\`.`);
+  }
+  if (input.facts.trigger.kind === 'scheduled') {
+    if (!/export\s+async\s+function\s+onTick\s*\(/u.test(code)) problems.push('A scheduled process exports `onTick(ctx: RequestContext, now: Date): Promise<void>`: the module tick calls it every minute.');
+    if (!/\bevaluateSchedule\s*\(/u.test(code)) problems.push('`onTick` asks `evaluateSchedule(schedule, now, lastRun)` whether an occurrence is due: never a hard-coded hour.');
+  }
+  if (input.facts.occurrence && !code.includes(moduleSpecifier(taskOccurrenceFile(input.project, input.moduleName)))) {
+    problems.push(`The process keeps an occurrence of ${input.facts.occurrence}: open and advance it through \`taskOccurrence\` (${moduleSpecifier(taskOccurrenceFile(input.project, input.moduleName))}), never in a table of your own.`);
+  }
+  if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
+  problems.push(...repositoryProblems(code, input.ports));
+  const ownL1 = `/_${input.project}_/l1/${input.moduleName}/`;
+  for (const specifier of importSpecifiers(code)) {
+    if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+  }
+  if (usesNodeBuiltin(code)) problems.push('No node: import.');
+  if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
+  if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
+  if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
+  return problems;
+}
+
+export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, _notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
+  const facts = workflowFacts(unit);
+  const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+  const ports = ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => String(item.definition.data.interfaceName ?? item.definition.artifactId));
+  return [
+    ...workflowGate(code, { header, facts, project: ctx.run.project, moduleName: ctx.run.module, ports, targets: transitionTargets(ctx.units) }),
+    ...await missingImports(ctx, code),
+  ];
+}

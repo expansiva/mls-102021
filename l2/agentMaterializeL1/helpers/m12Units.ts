@@ -6,7 +6,9 @@
 import { parseDefinitionSource, readDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { LAYER_OF_TYPE, M12_LAYERS, type M12Layer, type M12Request } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { defOfRef, fileRef, outputOfDef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { defOfRef, fileRef, infoOfRef, outputOfDef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
+import { childWriteMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 
 export interface M12StorEntry {
   project: number;
@@ -24,7 +26,12 @@ export interface M12Unit {
   defRef: string;
   output: M12FileInfo;
   outputRef: string;
+  /** The def as the recipes read it: for a usecase, the declared intent plus what its operation and entity fix (§10). */
   definition: M1Definition;
+  /** The def as it was declared: what the prompt shows. */
+  declared: M1Definition;
+  /** Why the plan of a usecase could not be derived ('' when it was, or the unit is not a usecase). */
+  planIssue: string;
   /** The def text, part of the unit's input hash. */
   text: string;
 }
@@ -77,9 +84,20 @@ export async function loadModuleUnits(project: number, moduleName: string, entri
     const layer = LAYER_OF_TYPE[read.artifactType];
     if (!layer) { problems.push({ defRef, code: 'TYPE_UNPLANNED', detail: `${read.artifactType} has no layer in this agent.` }); continue; }
     const output = outputOfDef(def);
-    units.push({ layer, unitId: def.shortName, def, defRef, output, outputRef: fileRef(output), definition: read, text });
+    const plan = read.artifactType === 'usecase'
+      ? await usecasePlan(read, async ref => { const info = infoOfRef(ref, project); return info ? readOptional(info) : null; })
+      : { definition: read, detail: '' };
+    units.push({ layer, unitId: def.shortName, def, defRef, output, outputRef: fileRef(output), definition: plan.definition, declared: read, planIssue: plan.detail, text });
   }
   units.sort((left, right) => left.defRef < right.defRef ? -1 : left.defRef > right.defRef ? 1 : 0);
+  // A port also carries the methods a workflow process applies through it and no usecase brings (§11), and the ones
+  // a route needs to write the children it carries with their parent (the checklist items of a task).
+  const declared = units.map(unit => unit.declared);
+  const readRef = async (ref: string): Promise<string | null> => { const info = infoOfRef(ref, project); return info ? readOptional(info) : null; };
+  const children = childWriteMethods(await routeChildWrites(declared, readRef, project, moduleName));
+  for (const unit of units) {
+    if (unit.definition.artifactType === 'repositoryPort') unit.definition = withProcessMethods(unit.definition, declared, children);
+  }
   return { units, problems };
 }
 

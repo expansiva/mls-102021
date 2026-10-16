@@ -38,7 +38,7 @@ import {
   emitUsecase,
   exposedRouteGrants,
   importSpecifier,
-  recordFieldFromGrant,
+  recordFieldFor,
   type EmitFailure,
   type EmitResult,
   type StructureRead,
@@ -174,7 +174,7 @@ export function withoutVersionChecks(source: string): { source: string; removed:
 }
 
 export function withoutScopeChecks(source: string): { source: string; removed: number } {
-  const pattern = /([ \t]*)\/\/ enforce:scope\r?\n\1body\[resolved\.recordField\] = actorId;\r?\n/g;
+  const pattern = /([ \t]*)\/\/ enforce:scope\r?\n\1body\[(?:resolved\.recordField|field)\] = actorId;\r?\n/g;
   let removed = 0;
   const next = source.replace(pattern, (_match, indent: string) => {
     removed += 1;
@@ -1476,7 +1476,9 @@ async function readUniqueKeys(definition: M1Definition, read: StructureRead): Pr
   const row = ruleRows(definition).find(isStorageRow);
   if (!row) return [];
   const originPath = row.origin.split('#')[0] ?? '';
-  const dep = definition.dependencies.find(path => path === originPath || path.endsWith(`/${originPath}`));
+  // Since §10 the row points at the table def (qualified), which is not a dependency of the usecase.
+  const dep = definition.dependencies.find(path => path === originPath || path.endsWith(`/${originPath}`))
+    ?? (/^_\d+_\//u.test(originPath) ? originPath : undefined);
   if (!dep) return { code: 'UNIQUE_KEYS_UNREAD', detail: `${originPath || row.origin} is not a dependency.` };
   const text = await read(dep);
   if (text === null) return { code: 'UNIQUE_KEYS_UNREAD', detail: `${dep} could not be read.` };
@@ -1521,11 +1523,12 @@ function constraintRuleId(definition: M1Definition): string {
   return pending.length === 1 ? pending[0].ruleId : '';
 }
 
-/** Pending gap, scope mode and own-scope record field of the grants matched for one route. */
-function grantFacts(matched: readonly Record<string, unknown>[]): GrantFacts {
+/** Pending gap, scope mode and own-scope record field of the grants matched for one route, for the usecase's entity. */
+function grantFacts(matched: readonly Record<string, unknown>[], entityId: string): GrantFacts {
   let pending = matched.map(grant => text(grant.pending)).find(Boolean) ?? '';
   const scopeMode = text(matched.find(grant => text(grant.pending) === pending)?.scopeMode);
-  const field = matched.length === 1 ? recordFieldFromGrant(matched[0]) : '';
+  // The field of this entity (its direct step to the anchor): a grant over several entities binds one per entity.
+  const field = matched.length === 1 ? recordFieldFor(matched[0], entityId) : '';
   if (!pending && scopeMode === 'own' && !field) pending = 'ACCESS_ANCHOR';
   return { pending, scopeMode, unread: false, recordField: scopeMode === 'own' && !pending ? field : '' };
 }
@@ -1554,7 +1557,7 @@ async function usecaseRouteGrants(
     const grants = exposed.get(route);
     if (!grants) continue;
     const declared = grants.length > 0 && grants.every(grant => text(grant.grantId) !== '');
-    routes.push({ route, grant: declared ? grantFacts(grants) : unread });
+    routes.push({ route, grant: declared ? grantFacts(grants, text(definition.data.entityId)) : unread });
   }
   return routes;
 }

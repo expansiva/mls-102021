@@ -4,20 +4,27 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import { fileURLToPath } from 'node:url';
 
 import { buildM12PlannedSteps, parseM12MessageInvocation, parseM12StepInvocation } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { defOfRef, fileRef, infoOfRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { loadModuleUnits, orderWithinLayer, registersModule, requestModules, selectUnits, selectedLayers, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { emitDomain, membersOfType, namedMemberType, ontologyCollections, unopenedNamedMembers } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { type M12Unit, loadModuleUnits, orderWithinLayer, registersModule, requestModules, selectUnits, selectedLayers, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { validateSource, emitDomain, recordFieldFromGrant, recordFieldsFromGrant, scopeJoins, membersOfType, namedMemberType, ontologyCollections, unopenedNamedMembers } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { derivedReadProblems, inputMembers, listFilterProblems, parentRuleProblems, repositoryProblems, transitionTargetProblems, undeclaredInputProblems, usesNodeBuiltin, testsGate, usecaseGate, usecaseParameterCount, versionProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitted, rulesToEnforce, unitInputHash, unitNeedsLlm, writeAndProve } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
+import { moduleTickSource, taskOccurrenceSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
+import { l4Process, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 import { citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
-import { delegatedRuleProblems, normalizeRequestsTyping, requestGate, requestsTypeOf, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { delegatedRuleProblems, mdmInputProblems, mdmInputRoutes, normalizeRequestsTyping, requestGate, requestsTypeOf, unownedMdmEntities, unownedMdmSection, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { buildM12PlannedSteps as planSteps, runArgsJson, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { createAgent as domainAgent } from '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import { createAgent as persistenceAgent } from '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
@@ -36,6 +43,14 @@ const ROOT = path.resolve(HERE, '../../..');
 const PROJECT = 102047;
 const MODULE = 'comandaRestaurante';
 const HAS_BENCH = existsSync(path.join(ROOT, `mls-${PROJECT}`, 'l1', MODULE));
+// The usecase def carries only its intent since 15/10 (§10) and the shared validator refuses the older format: a bench
+// whose defs still name their function waits for the module to be regenerated.
+const BENCH_USECASE = path.join(ROOT, `mls-${PROJECT}`, 'l1', MODULE, 'layer_2_application', 'usecases', 'createComanda.defs.ts');
+const BENCH_SKIP: string | boolean = !HAS_BENCH
+  ? true
+  : existsSync(BENCH_USECASE) && readFileSync(BENCH_USECASE, 'utf8').includes('"functions"')
+    ? `${MODULE} defs predate the usecase intent (materializadorL1.md §10): regenerate them`
+    : false;
 
 // ---- an in-memory Studio stor over the real files ----
 
@@ -289,7 +304,7 @@ void test('the request gate holds the contract routes, the atomic command and th
 void test('every prompt declares a model type the Collab LLM proxy knows (no default "cost" alias)', () => {
   const steps = path.join(HERE, 'steps');
   const prompts = readdirSync(steps).map(step => path.join(steps, step, 'prompt.md')).filter(file => existsSync(file));
-  assert.equal(prompts.length, 3, 'usecases40, requests50 and tests60 call the model');
+  assert.equal(prompts.length, 4, 'usecases40, workflows45, requests50 and tests60 call the model');
   for (const file of prompts) {
     const second = readFileSync(file, 'utf8').split('\n')[1] ?? '';
     assert.match(second, /^<!-- modelType: (code|design|reasoning) -->$/u, `${path.relative(HERE, file)} line 2`);
@@ -362,7 +377,7 @@ void test('the contract routes of the bench are read with kind, inputs, actors a
   assert.ok(close.rules.includes('pagamentoObrigatorioNoFechamento'));
 });
 
-void test('the bench: recipes for domain and persistence, real prompts and gates for every model unit', { skip: !HAS_BENCH }, async () => {
+void test('the bench: recipes for domain and persistence, real prompts and gates for every model unit', { skip: BENCH_SKIP }, async () => {
   const files = installStor();
   seedTree(files, PROJECT, 1, MODULE, name => name.endsWith('.defs.ts')); // the defs only: a generated output on disk would be reused
   seedTree(files, PROJECT, 2, `${MODULE}/web/contracts`);
@@ -378,7 +393,7 @@ void test('the bench: recipes for domain and persistence, real prompts and gates
   assert.equal(selected.length, loaded.units.length);
   assert.deepEqual(selectedLayers(selected), ['domain', 'persistence', 'usecases', 'requests', 'controllers', 'tests']);
   // Rule of 05/10/2026: a type the recipe derives only sometimes always goes to the model.
-  for (const unit of selected) assert.equal(unitNeedsLlm(unit), unit.layer === 'usecases' || unit.layer === 'requests', unit.defRef);
+  for (const unit of selected) assert.equal(unitNeedsLlm(unit), unit.layer === 'usecases' || unit.layer === 'workflows' || unit.layer === 'requests', unit.defRef);
   const ctx = createContext(run, loaded.units, 'presentation', BYTES_COMPILER);
   const outcome: Record<string, string> = {};
   const record = async (layer: M12Layer, unitId: string): Promise<void> => {
@@ -460,7 +475,7 @@ void test('the bench: recipes for domain and persistence, real prompts and gates
   console.log(JSON.stringify(outcome, null, 2));
 });
 
-void test('the phase agents run in order: recipes write domain and persistence, then every usecase goes to a model worker', { skip: !HAS_BENCH }, async () => {
+void test('the phase agents run in order: recipes write domain and persistence, then every usecase goes to a model worker', { skip: BENCH_SKIP }, async () => {
   const files = installStor();
   // As a Studio whose addOrUpdateFile hands back a copy: the index keeps an object with no content of ours.
   const stor = (mls as unknown as { stor: { addOrUpdateFile: (info: M12FileInfo) => Promise<FakeFile> } }).stor;
@@ -725,4 +740,249 @@ test('a repository is never typed inline nor named outside the ports of the modu
   assert.ok(problems.some(p => p.includes("ColaboradorRepository is not a repository port of this module (its ports: DespesaRepository)")), problems.join('\n'));
   const ok = "import type { DespesaRepository } from '/_102047_/l1/reembolsoDespesas/layer_2_application/ports/despesaRepository.js';\nconst r = resolveRepository<DespesaRepository>(ctx, 'DespesaRepository');";
   assert.deepEqual(repositoryProblems(ok, ['DespesaRepository']), []);
+});
+
+test('an MDM entity no usecase owns is written by the request, the own anchor being the session actor (inscricaoEvento had no way to the participant)', () => {
+  const unit = (artifactType: string, data: Record<string, unknown>): M12Unit => ({ definition: { artifactType, artifactId: String(data.entityId ?? data.usecaseId ?? artifactType), data, dependencies: [] } } as unknown as M12Unit);
+  const units = [
+    unit('domainEntity', { entityId: 'Participante', storageTarget: 'mdm' }),
+    unit('domainEntity', { entityId: 'Colaborador', storageTarget: 'mdm' }),
+    unit('domainEntity', { entityId: 'Inscricao', storageTarget: 'moduleDatabase' }),
+    unit('usecase', { usecaseId: 'getColaborador', entityId: 'Colaborador' }),
+    unit('usecase', { usecaseId: 'createInscricao', entityId: 'Inscricao' }),
+    unit('accessScope', { grants: [{ grantId: 'publicoMinhasInscricoes', scopeMode: 'own', anchorEntity: 'Participante', path: [{ entityId: 'Inscricao', steps: [{ from: 'Inscricao', to: 'Participante', field: 'Inscricao.participanteId' }], pending: '' }] }] }),
+  ];
+  const unowned = unownedMdmEntities(units);
+  assert.deepEqual(unowned, [{ entityId: 'Participante', key: 'participante', anchor: { grantIds: ['publicoMinhasInscricoes'], recordField: 'participanteId' } }], 'a usecase owns Colaborador; a table entity is not MDM');
+  const text = unownedMdmSection('inscricaoEvento', unowned);
+  assert.ok(text.includes('`ctx.sessionContext.actorId`') && text.includes('into `participanteId`') && text.includes("attachRole(mdmId, 'inscricaoEvento.Participante')"), text);
+  const routes = [
+    { route: 'inscricaoEvento.eventos_abertos.inscreverEmEvento', kind: 'cmd' as const, inputFields: ['eventoId', 'participante'], actors: ['publico'], rules: [] },
+    { route: 'inscricaoEvento.eventos_abertos.obterEventoPublico', kind: 'qry' as const, inputFields: ['eventoId'], actors: ['publico'], rules: [] },
+  ];
+  const inputs = mdmInputRoutes(routes, unowned);
+  assert.deepEqual(inputs.map(item => item.route), ['inscricaoEvento.eventos_abertos.inscreverEmEvento']);
+  assert.equal(mdmInputProblems('await createInscricao({ eventoId, participanteId: ctx.sessionContext.actorId }, bound);', inputs).length, 1, 'the participant was dropped');
+  assert.deepEqual(mdmInputProblems('await bound.mdm.entity.update({ mdmId, expectedVersion: found.version, patch });', inputs), []);
+  assert.equal(unownedMdmSection('m', []), '', 'no unowned MDM entity, no section');
+});
+
+test('a usecase def with only its intent gets its function, port, selector, payload and rules from the operation, the entity and the l4 (§10)', async () => {
+  const def = (ref: string, artifactType: string, data: Record<string, unknown>, dependencies: string[] = []) => [ref, `export const definition = ${JSON.stringify({ schemaVersion: '2026-09-24-d1-definition-v2', artifactType, artifactId: String(data.usecaseId ?? data.entityId ?? data.interfaceName ?? 'x'), moduleName: 'tarefas', status: 'pending', dependencies, data })} as const;`] as const;
+  const P = '_102047_/l1/tarefas';
+  const files = new Map<string, string>([
+    def(`${P}/layer_3_domain/entities/tarefa.defs.ts`, 'domainEntity', { entityId: 'Tarefa', storageTarget: 'moduleDatabase', fields: [
+      { name: 'id', type: 'uuid', derived: true }, { name: 'version', type: 'integer', derived: true }, { name: 'titulo', type: 'string' },
+      { name: 'status', type: 'enum' }, { name: 'details', type: 'object' }, { name: 'details.motivoDevolucao', type: 'text' }, { name: 'details.atrasada', type: 'boolean', derived: true }] }),
+    def(`${P}/layer_2_application/ports/tarefaRepository.defs.ts`, 'repositoryPort', { entityId: 'Tarefa', interfaceName: 'TarefaRepository', methods: ['get'] }),
+    def(`${P}/layer_1_external/adapters/persistence/tarefa.defs.ts`, 'table', { tableId: 'tarefa', entityId: 'Tarefa', physicalName: 't', primaryKey: ['id'], uniqueKeys: [['chaveCriacao']], indexes: [] }),
+    ['_102047_/l4/tarefas/ontology/Tarefa.defs.ts', 'export const tarefa = ' + JSON.stringify({ lifecycle: { transitions: [{ transitionId: 'devolver', from: ['emRevisao'], to: 'devolvida', payload: ['details.motivoDevolucao'] }] } }) + ' as const;'],
+  ]);
+  const read = async (ref: string) => files.get(ref) ?? null;
+  const deps = [`${P}/layer_2_application/ports/tarefaRepository.defs.ts`, `${P}/layer_3_domain/entities/tarefa.defs.ts`, '_102047_/l4/tarefas/ontology/Tarefa.defs.ts'];
+  const intent = (usecaseId: string, operation: string, extra: Record<string, unknown> = {}) => parseIntent(def(`${P}/layer_2_application/usecases/${usecaseId}.defs.ts`, 'usecase', { usecaseId, entityId: 'Tarefa', operation, rulesApplied: [], effects: [], ...extra }, deps)[1]);
+  const parseIntent = (source: string) => JSON.parse(/export const definition = (\{[\s\S]*\}) as const;/u.exec(source)![1]);
+  const names = (rows: unknown) => (rows as Array<{ name: string }>).map(row => row.name);
+
+  const devolver = (await usecasePlan(intent('devolver', 'transition', { transitionRef: 'devolver', rulesApplied: ['somenteCriadorRevisa'] }), read)).definition.data;
+  const fn = (devolver.functions as Array<{ functionName: string; input: unknown; output: unknown }>)[0];
+  assert.equal(fn.functionName, 'devolver');
+  assert.deepEqual(names(fn.input), ['id', 'version', 'details.motivoDevolucao'], 'selector, concurrency and the l4 payload');
+  assert.deepEqual(devolver.ports, ['TarefaRepository']);
+  assert.deepEqual(devolver.portCalls, ['transition']);
+  assert.deepEqual((devolver.lifecycle as { payload: string[] }).payload, ['details.motivoDevolucao']);
+  assert.deepEqual(rulesToEnforce({ data: devolver } as never), ['somenteCriadorRevisa'], 'rulesApplied is the list the code must enforce');
+
+  const create = (await usecasePlan(intent('createTarefa', 'create'), read)).definition.data;
+  assert.deepEqual(names((create.functions as Array<{ input: unknown }>)[0].input), ['titulo', 'status', 'details', 'details.motivoDevolucao'], 'no derived field is an input');
+  assert.ok((create.rulePlan as Array<{ origin: string }>).some(row => row.origin === `${P}/layer_1_external/adapters/persistence/tarefa.defs.ts#uniqueKeys`), 'the unique keys come from the table def');
+
+  const list = (await usecasePlan(intent('listTarefa', 'list'), read)).definition.data;
+  const listFn = (list.functions as Array<{ input: unknown; output: unknown }>)[0];
+  assert.deepEqual(names(listFn.output), ['items', 'hasMore']);
+  assert.ok(names(listFn.input).includes('page') && !names(listFn.input).includes('version'));
+
+  const missing = await usecasePlan(intent('devolver', 'transition', { transitionRef: 'naoExiste' }), read);
+  assert.match(missing.detail, /has no transition naoExiste/u, 'a transition the l4 does not have is named, not guessed');
+  assert.equal(transitionPayload(files.get('_102047_/l4/tarefas/ontology/Tarefa.defs.ts')!, 'devolver')!.join(), 'details.motivoDevolucao');
+});
+
+test('an own grant is read per entity: a direct step is a column, a longer chain is a join (membroTarefasProprias had two chains and read empty)', () => {
+  const grant = {
+    grantId: 'membroTarefasProprias', scopeMode: 'own', anchorEntity: 'MembroEquipe', entityRefs: ['Tarefa', 'ItemChecklist'],
+    path: [
+      { entityId: 'Tarefa', steps: [{ relationshipId: 'tarefaCriador', from: 'Tarefa', to: 'MembroEquipe', field: 'Tarefa.criadorId' }], pending: '' },
+      { entityId: 'ItemChecklist', steps: [
+        { relationshipId: 'itemTarefa', from: 'ItemChecklist', to: 'Tarefa', field: 'ItemChecklist.tarefaId' },
+        { relationshipId: 'tarefaCriador', from: 'Tarefa', to: 'MembroEquipe', field: 'Tarefa.criadorId' }], pending: '' },
+    ],
+  };
+  assert.deepEqual(recordFieldsFromGrant(grant), { Tarefa: 'criadorId' });
+  assert.equal(recordFieldFromGrant(grant), 'criadorId', 'the one direct field, read before as empty for two chains');
+  assert.deepEqual(scopeJoins(grant).map(join => join.entityId), ['ItemChecklist']);
+  assert.deepEqual(recordFieldsFromGrant({ ...grant, scopeMode: 'organization' }), {}, 'only an own grant binds a field');
+  const pending = { ...grant, path: [grant.path[0], { entityId: 'Evento', steps: [], pending: 'ANCHOR_UNRESOLVED' }] };
+  assert.deepEqual(recordFieldsFromGrant(pending), { Tarefa: 'criadorId' }, 'an entity with no path names no field and does not void the others');
+});
+
+test('a workflowProcess is a model unit between the usecases and the request services (§11)', () => {
+  const steps = planSteps(102047, { project: 102047, module: '', scope: 'tarefas', target: '', force: false } as never, [{ module: 'tarefas', layers: ['usecases', 'workflows', 'requests'], register: false }]);
+  const titles = steps.map(step => step.stepTitle);
+  const at = (text: string) => titles.findIndex(title => title.startsWith(text));
+  assert.ok(at('Materialize usecases') < at('Materialize the workflow service') && at('Materialize the workflow service') < at('Materialize request services'), titles.join(' | '));
+});
+
+test('the workflow service: its facts, its l4 process, the usecase of each operation and the gate of its answer (§11)', () => {
+  const unit = (artifactType: string, unitId: string, data: Record<string, unknown>): M12Unit => ({ unitId, definition: { artifactType, artifactId: unitId, data, dependencies: [] }, declared: { data } } as unknown as M12Unit);
+  const avisos = unit('workflowProcess', 'avisoDiario', { processId: 'avisoDiario', trigger: { kind: 'scheduled', schedule: 'Todo dia às 8h' }, functions: ['gerarAvisosDiarios'], operations: [{ operation: 'AvisoVencimento.create', steps: ['task:gerarAvisos'] }], occurrence: { entityId: 'AvisoVencimento' } });
+  const ciclo = unit('workflowProcess', 'cicloTarefa', { processId: 'cicloTarefa', trigger: { kind: 'manual', actorRef: 'membroEquipe' }, functions: ['abrirOcorrenciaTarefa', 'avancarEtapaTarefa'], operations: [{ operation: 'Tarefa.aceitar', steps: ['journey:revisarTarefa/aceitarTarefa'] }, { operation: 'Tarefa.create', steps: ['journey:criarTarefa/preencherTarefa'] }] });
+  const units = [avisos, ciclo,
+    unit('usecase', 'aceitar', { entityId: 'Tarefa', operation: 'transition', transitionRef: 'aceitar' }),
+    unit('usecase', 'createTarefa', { entityId: 'Tarefa', operation: 'create' }),
+    unit('usecase', 'listTarefa', { entityId: 'Tarefa', operation: 'list' })];
+  const facts = workflowFacts(avisos);
+  assert.deepEqual([facts.trigger.kind, facts.occurrence, facts.functions.join()], ['scheduled', 'AvisoVencimento', 'gerarAvisosDiarios']);
+  assert.equal(operationUsecase(units, 'Tarefa.aceitar')?.unitId, 'aceitar', 'a transition is reached by its transitionRef');
+  assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
+  const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
+  assert.ok(l4Process(l4, 'avisoDiario').includes('Gera um aviso por responsável'));
+  assert.equal(l4Process(l4, 'outro'), '');
+
+  const header = '/// <mls fileReference="_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.ts" enhancement="_blank"/>';
+  const empty = workflowGate(`${header}\nexport async function gerarAvisosDiarios(input: unknown, ctx: unknown) {}`, { header, facts, project: 102047, moduleName: 'tarefas', ports: [] });
+  assert.ok(empty.some(problem => problem.includes('onTick')) && empty.some(problem => problem.includes('taskOccurrence')), empty.join('\n'));
+  const good = [header,
+    "import { evaluateSchedule } from '/_102034_/l1/server/layer_2_application/schedule/evaluateSchedule.js';",
+    "import { taskOccurrence } from '/_102047_/l1/tarefas/layer_1_external/adapters/workflow/taskOccurrence.js';",
+    'export async function gerarAvisosDiarios(input: unknown, ctx: unknown) { void taskOccurrence; }',
+    "export async function onTick(ctx: unknown, now: Date) { if (evaluateSchedule('Todo dia às 8h', now, null)) await gerarAvisosDiarios({}, ctx); }"].join('\n');
+  assert.deepEqual(workflowGate(good, { header, facts, project: 102047, moduleName: 'tarefas', ports: [] }), []);
+
+  const routes = workflowRoutes(units, { requests: [{ route: 'tarefas.minhas_tarefas.aceitarEntrega', uses: ['aceitar'] }, { route: 'tarefas.minhas_tarefas.minhasTarefas', uses: ['listTarefa'] }] }, 102047, 'tarefas');
+  assert.deepEqual(routes.map(item => `${item.route}:${item.processId}:${item.operation}`), ['tarefas.minhas_tarefas.aceitarEntrega:cicloTarefa:Tarefa.aceitar'], 'a list outside the process does not go through it');
+  assert.equal(workflowRouteProblems("import { aceitar } from '/_102047_/l1/tarefas/layer_2_application/usecases/aceitar.js';", routes).length, 1);
+  assert.deepEqual(workflowRouteProblems("import { avancarEtapaTarefa } from '/_102047_/l1/tarefas/layer_2_application/workflows/cicloTarefa.js';", routes), []);
+});
+
+test('the Task adapter and the module tick are mechanical and name what is pending (§11)', () => {
+  const adapter = taskOccurrenceSource(102047, 'tarefas');
+  assert.ok(adapter.startsWith('/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/adapters/workflow/taskOccurrence.ts"'));
+  assert.ok(adapter.includes('TASK_ADAPTER_PENDING') && adapter.includes('export const taskOccurrence: TaskOccurrencePort'));
+  const tick = moduleTickSource(102047, 'tarefas', ['avisoDiario']);
+  assert.ok(tick.includes("import { onTick as avisoDiarioTick } from '/_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.js';"));
+  assert.ok(tick.includes('export async function onTick(ctx: RequestContext, now: Date)') && tick.includes('TICK_FAILED'), 'one failing process does not stop the others');
+});
+
+test('a port carries the methods a process applies through it and no usecase brings (the daily notice could not create an aviso)', () => {
+  const def = (artifactType: string, data: Record<string, unknown>) => ({ artifactType, artifactId: 'x', data, dependencies: [] }) as never;
+  const defs = [
+    def('domainEntity', { entityId: 'AvisoVencimento', lifecycle: { transitions: [
+      { transitionId: 'concluirAviso', from: ['pending'], to: 'completed', by: [] },
+      { transitionId: 'arquivar', from: ['completed'], to: 'archived', by: ['gestor'] }] } }),
+    def('usecase', { usecaseId: 'getAvisoVencimento', entityId: 'AvisoVencimento', operation: 'get' }),
+    def('usecase', { usecaseId: 'aceitar', entityId: 'Tarefa', operation: 'transition', transitionRef: 'aceitar' }),
+    def('workflowProcess', { processId: 'avisoDiario', occurrence: { entityId: 'AvisoVencimento' }, operations: [{ operation: 'AvisoVencimento.create' }, { operation: 'Tarefa.aceitar' }] }),
+  ];
+  const needed = processPortMethods(defs);
+  assert.deepEqual(needed.get('AvisoVencimento')?.map(item => item.name), ['create', 'transition'], 'a create with no usecase and a system transition (by: [])');
+  assert.equal(needed.get('Tarefa'), undefined, 'an operation a usecase runs brings its own method');
+  const port = def('repositoryPort', { entityId: 'AvisoVencimento', interfaceName: 'AvisoVencimentoRepository', methods: [{ name: 'list', params: ['AvisoVencimentoFilter'], returns: 'AvisoVencimento[]' }, { name: 'get', params: ['id'], returns: 'AvisoVencimento' }] });
+  const methods = ((withProcessMethods(port, defs) as { data: { methods: Array<{ name: string; params: string[] }> } }).data.methods);
+  assert.deepEqual(methods.map(item => item.name), ['list', 'get', 'create', 'transition']);
+  assert.deepEqual(methods.find(item => item.name === 'transition')?.params, ['AvisoVencimento', 'transitionId'], 'the shape the adapter renders');
+  assert.equal(withProcessMethods(port, defs.slice(0, 3)), port, 'no process, the port is the def');
+});
+
+test('a collection of objects is a list in the entity and is stored whole (the daily notice of two tasks kept one)', () => {
+  const entity = { artifactType: 'domainEntity', artifactId: 'AvisoVencimento', data: { entityId: 'AvisoVencimento', fields: [
+    { name: 'id', type: 'uuid' }, { name: 'details', type: 'object' }, { name: 'details.tarefas', type: 'object' },
+    { name: 'details.tarefas.tarefaId', type: 'record' }, { name: 'details.tarefas.prazo', type: 'date' }, { name: 'details.quantidadeTarefas', type: 'integer' }] }, dependencies: [] } as never;
+  const source = emitDomain(entity, '_102047_/l1/tarefas/layer_3_domain/entities/avisoVencimento.ts', new Set(), new Map(), new Set(['details.tarefas'])).source;
+  assert.match(source.replace(/\s+/gu, ' '), /tarefas: \{ tarefaId: string; prazo: string; \}\[\];/u, source);
+  const leaf = emitDomain(entity, 'x', new Set(), new Map(), new Set(['details.quantidadeTarefas'])).source;
+  assert.ok(leaf.includes('quantidadeTarefas: number[];') && !leaf.includes('[][]'), 'a leaf collection keeps its single marker');
+  const json = (field: string) => ({ field, column: `json:${field}`, nullable: true, placement: 'json' as const });
+  const collapsed = collapseCollections([{ field: 'id', column: 'id', nullable: false, placement: 'column' }, json('details.tarefas.tarefaId'), json('details.tarefas.prazo'), json('details.quantidadeTarefas')], new Set(['details.tarefas']));
+  assert.deepEqual(collapsed.map(binding => binding.column), ['id', 'json:details.tarefas', 'json:details.quantidadeTarefas']);
+  assert.equal(collapseCollections(collapsed, new Set(['details.base.contacts'])).length, 3, 'a collection with no inner binding changes nothing');
+});
+
+test('a workflow transition writes the state it leads to on the record (the daily notice stayed pending)', () => {
+  const targets = new Map([['concluirAviso', 'completed'], ['falharAviso', 'failed']]);
+  const shipped = "const concluido = { ...aviso, details: { ...aviso.details, finalizadoEm } };\nawait repository.transition(concluido, 'concluirAviso');\nreturn 'completed';";
+  const problems = workflowTransitionProblems(shipped, targets);
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.ok(problems[0].includes("leads to 'completed'"), 'a bare return of the state is not a write');
+  assert.deepEqual(workflowTransitionProblems("const concluido = { ...aviso, status: 'completed' };\nawait repository.transition(concluido, 'concluirAviso');", targets), []);
+  assert.deepEqual(workflowTransitionProblems("await repository.transition(x, 'outra');", targets), [], 'a transition the module does not declare is not judged here');
+  // The object built inside the call (the second generation of the daily notice): the call is read by its brackets.
+  const inline = "await repo.transition(\n  { ...aviso, details: { ...aviso.details, finalizadoEm: ctx.clock.nowIso() } },\n  'concluirAviso',\n);";
+  assert.equal(workflowTransitionProblems(inline, targets).length, 1, 'an inline record with no state');
+  assert.deepEqual(workflowTransitionProblems("await repo.transition({ ...aviso, status: 'completed', details: { motivo: 'a, b (c)' } }, 'concluirAviso');", targets), []);
+  assert.equal(workflowTransitionProblems("const outro = { status: 'completed' };\nawait repo.transition({ ...aviso }, 'concluirAviso');", targets).length, 1, 'the state written elsewhere does not count for an inline record');
+});
+
+test('the emitted input validator is run on every shape a contract has: nested, optional parent, list of objects, null', () => {
+  // The validator is copied into every controller; reading its text proved nothing. Run it (tarefas 16/10: editing a
+  // task always failed with "checklist.ordem is required", the list was read as if it were one item).
+  const js = ts.transpileModule(`${validateSource()}\nreturn validateInput;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  class AppError extends Error { constructor(public code: string, message: string) { super(message); } }
+  const validateInput = new Function('AppError', js)(AppError) as (params: unknown, fields: string[], allowed: string[], nullable?: string[]) => AppError | null;
+  const fields = ['id', 'checklist.ordem', 'checklist.details', 'checklist.details.details', 'checklist.details.details.descricao', 'details', 'details.motivo'];
+  const allowed = ['id', 'checklist', 'checklist.id', 'checklist.ordem', 'checklist.details', 'checklist.details.details', 'checklist.details.details.descricao', 'details', 'details.motivo', 'details.nota'];
+  const item = (ordem?: number) => ({ ...(ordem === undefined ? {} : { ordem }), details: { details: { descricao: 'x' } } });
+  const run = (body: unknown, nullable: string[] = []) => validateInput(body, fields, allowed, nullable)?.message ?? 'ok';
+  assert.equal(run({ id: '1', checklist: [item(1), item(2)], details: { motivo: 'm' } }), 'ok', 'every item has its required members');
+  assert.equal(run({ id: '1', checklist: [], details: { motivo: 'm' } }), 'ok', 'an empty list requires nothing');
+  assert.equal(run({ id: '1', details: { motivo: 'm' } }), 'ok', 'an absent optional list requires nothing');
+  assert.equal(run({ id: '1', checklist: [item(1), item()], details: { motivo: 'm' } }), 'checklist[1].ordem is required.', 'the item is named');
+  assert.equal(run({ id: '1', checklist: [item(1)], details: {} }), 'details.motivo is required.');
+  assert.equal(run({ checklist: [], details: { motivo: 'm' } }), 'id is required.');
+  assert.equal(run({ id: '1', checklist: [{ ...item(1), extra: 1 }], details: { motivo: 'm' } }), 'checklist.extra is not permitted.');
+  assert.equal(run({ id: '1', details: { motivo: null } }), 'details.motivo must not be null.');
+  assert.equal(run({ id: '1', details: { motivo: null } }, ['details.motivo']), 'ok', 'null where the contract allows it');
+});
+
+test('a child a route writes with its parent is found by its fields and gets its port methods (repo.create is not a function)', async () => {
+  const def = (artifactType: string, data: Record<string, unknown>) => ({ artifactType, artifactId: 'x', data, dependencies: [] }) as never;
+  const defs = [
+    def('domainEntity', { entityId: 'Pedido', fields: [{ name: 'id' }, { name: 'cliente' }, { name: 'details' }, { name: 'details.obs' }] }),
+    def('domainEntity', { entityId: 'LinhaPedido', fields: [{ name: 'id' }, { name: 'pedidoId' }, { name: 'quantidade' }, { name: 'details' }, { name: 'details.produto' }] }),
+    def('requestService', { pageId: 'pedidos', requests: [{ route: 'vendas.pedidos.salvar' }, { route: 'vendas.pedidos.editar' }] }),
+  ];
+  // The shape agentDefsL2 writes: one member per line, a named type per level (ItemChecklistEntradaDetalhes).
+  const contract = `export interface ItemEntradaDetalhes {
+  details: {
+    produto: string;
+  };
+}
+
+export interface ItemEntrada {
+  id?: string;
+  quantidade: number;
+  details: ItemEntradaDetalhes;
+}
+
+export interface PedidosContracts {
+  'vendas.pedidos.salvar': {
+    kind: 'cmd';
+    writes: 'Pedido.create';
+    input: { cliente: string; details: { obs?: string }; itens?: ItemEntrada[] };
+    output: {};
+  };
+  'vendas.pedidos.editar': {
+    kind: 'cmd';
+    writes: 'Pedido.update';
+    input: { id: string; itens: ItemEntrada[] };
+    output: {};
+  };
+}`;
+  const ontology = 'export const pedido = ' + JSON.stringify({ relationships: { linhasDoPedido: { to: 'LinhaPedido', via: 'LinhaPedido.pedidoId', cardinality: '1:N' } } }) + ' as const;';
+  const files = new Map([['_1_/l2/vendas/web/contracts/pedidos.defs.ts', contract], ['_1_/l4/vendas/ontology/Pedido.defs.ts', ontology]]);
+  const writes = await routeChildWrites(defs, async ref => files.get(ref) ?? null, 1, 'vendas');
+  assert.deepEqual(writes.map(item => `${item.route}:${item.inputKey}->${item.child}.${item.foreignKey}`),
+    ['vendas.pedidos.salvar:itens->LinhaPedido.pedidoId', 'vendas.pedidos.editar:itens->LinhaPedido.pedidoId'], 'matched by fields: the member is itens, the relationship linhasDoPedido; details is the parent\'s own field');
+  assert.deepEqual(childWriteMethods(writes).get('LinhaPedido')?.map(item => item.name), ['create', 'update', 'delete'], 'an edit replaces the list');
+  const port = def('repositoryPort', { entityId: 'LinhaPedido', interfaceName: 'LinhaPedidoRepository', methods: [{ name: 'list', params: ['LinhaPedidoFilter'], returns: 'LinhaPedido[]' }] });
+  assert.deepEqual(((withProcessMethods(port, defs, childWriteMethods(writes)) as { data: { methods: Array<{ name: string }> } }).data.methods).map(item => item.name), ['list', 'create', 'update', 'delete']);
 });

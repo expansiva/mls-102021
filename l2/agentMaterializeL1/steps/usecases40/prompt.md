@@ -9,9 +9,10 @@ the reason the recipe could not derive it (a rule it cannot bind, more than one 
 derived ones). You write the whole file.
 
 The source is the l4: the ontology of the entity (its fields, which are derived, its states) and the text of the
-rules. The definition says which usecase exists (entity + operation) and gives hints: its input and output lists,
-its rulePlan and its sequence. Where a hint diverges from the l4, the l4 wins (materializadorL1.md §2.1). You do not
-decide business: you do not invent a field, a route, a rule, an operation, a port or a type.
+rules. The definition carries only the intent (materializadorL1.md §10): the entity, the operation, the transition
+(`transitionRef`), the rules this usecase must apply (`rulesApplied`) and the effects. The how — the input, the port,
+the order of the checks — follows from the operation, the entity and the l4. You do not decide business: you do not
+invent a field, a route, a rule, an operation, a port or a type.
 
 ## How to read the context
 
@@ -26,13 +27,12 @@ Each section of the prompt answers one question. When two sections disagree, the
 | Rules (l4 text) | source | what to check, and the error when it is broken |
 | Entity cited by a rule / Dependency | source | the exact field names and the port of another entity |
 | The platform MDM (only for an entity kept in the MDM) | source | how the engine stores and returns that entity TODAY (flat `details`, list rows without `version`); it wins over the grouped shape of the entity ontology for what you read from and write to `ctx.mdm` |
-| Definition (`uses`, `rulePlan`, `sequence`, input and output lists) | hint | a first guess: where it leaves out or contradicts the ontology, follow the ontology |
+| Definition (`operation`, `transitionRef`, `rulesApplied`, `effects`) | intent | which usecase this is and the rules it must apply; it says nothing about how |
 | Scaffold | contract | the exported names and the input and output interfaces |
 | Recipe attempt | draft | keep what is right, fix what the sections above contradict |
 
 For a list: every filter the scaffold's input declares is applied (a filter absent from the call does not narrow).
-The filters come from the `capabilities` — the foreign key of `listByForeignKey` and the columns of `locate.*` —
-even when the definition's `uses` lists fewer (`uses` with `role: "filter"` is a hint and may be incomplete). A
+The filters come from the `capabilities` — the foreign key of `listByForeignKey` and the columns of `locate.*`. A
 declared filter that is never applied returns the records of every parent (the items of every comanda).
 
 ## The file
@@ -52,13 +52,13 @@ declared filter that is never applied returns the records of every parent (the i
 - Imports start with `/` and end with `.js`: the platform files and the dependency files given in the prompt.
   Nothing else: no `node:`, no npm package, no `fetch`, no `localStorage`, no other module.
 - The usecase is independent of any page: it accepts what the entity accepts and returns the entity record.
-- Read and write only through repository ports of this module, resolved the way the example does: the ports of
-  the definition first; another port of the module only when a listed rule needs its records (e.g. the items of
-  a comanda to compare a discount with the subtotal). The entity and port of another entity a rule names come under
+- Read and write only through repository ports of this module, resolved the way the example does: the port of
+  this entity first (the scaffold names it); another port of the module only when a listed rule needs its records
+  (e.g. the items of a comanda to compare a discount with the subtotal). The entity and port of another entity a rule names come under
   "Entity cited by a rule": import that port, type its records with that entity and read its fields by those names.
   Never declare a repository type of your own and never guess a field name.
-- When the definition asks for more than one write, keep them inside one transaction boundary, as the
-  definition's `transaction` says.
+- A usecase does one operation on its entity. A command that writes more than one record runs in the transaction
+  the request service opens (it passes a bound ctx): do not open another one here.
 
 ## Rules
 
@@ -72,9 +72,9 @@ declared filter that is never applied returns the records of every parent (the i
 - A record that is not found is `new AppError('NOT_FOUND', …, 404)`.
 - No silent fallback: no empty `catch`, no invented default value. An error names its cause.
 
-- A rule the definition attaches to this usecase whose text is about another operation or entity (attached here
-  by mistake) is not checked: list it in `notApplicable` with the reason. A rule of the module whose text is about
-  this entity and operation is enforced even when the definition did not attach it.
+- The rules under "Rules this usecase must apply" are the def's `rulesApplied`: a commitment. One whose text is
+  plainly about another operation or entity is not checked: list it in `notApplicable` with the reason. A rule of
+  the module whose text is about this entity and operation is enforced even when the definition did not attach it.
 
 ## Typing (no compiler checks this file before it runs: write it so it compiles under `strict`)
 

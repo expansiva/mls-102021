@@ -1,8 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/usecases40/context.ts" enhancement="_blank"/>
 
 // What the model sees for one usecase (materializadorL1.md §2.1): the source (the l4 ontology of the entity and
-// the text of every rule of the module) and the def as inventory and hints (its input/output lists, rulePlan and
-// sequence are hints; where they diverge from the l4, the l4 wins), plus the recipe attempt and platform signatures.
+// the text of every rule of the module) and the def as the intent (entity, operation, transition, rulesApplied, effects:
+// materializadorL1.md §10), plus the recipe attempt and platform signatures.
 
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
@@ -141,7 +141,7 @@ export function ontologyNames(entityId: string, source: string | null): M12Entit
 }
 
 /** The names of each entity of the module, read from its l4 ontology. */
-async function entityNames(ctx: M12Context): Promise<M12EntityNames[]> {
+export async function entityNames(ctx: M12Context): Promise<M12EntityNames[]> {
   const out: M12EntityNames[] = [];
   for (const item of ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity')) {
     const entityId = String(item.definition.data.entityId ?? item.definition.artifactId);
@@ -170,7 +170,7 @@ function fence(lang: string, text: string): string {
 
 export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<M12UsecaseContext> {
   const [functionName] = emittedValueExports(unit.definition);
-  if (!functionName) throw new Error(`FUNCTION_MISSING: ${unit.defRef} has no function.`);
+  if (!functionName) throw new Error(`FUNCTION_MISSING: ${unit.defRef} has no function.${unit.planIssue ? ` ${unit.planIssue}` : ''}`);
   const scaffoldResult = await emitUsecase(unit.definition, unit.outputRef, ctx.read);
   if ('code' in scaffoldResult) throw new Error(`${scaffoldResult.code}: ${scaffoldResult.detail}`);
   const scaffold = scaffoldResult.source;
@@ -182,7 +182,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const parts: string[] = [];
   parts.push(section('Task', [
     `Write the usecase \`${functionName}\` of module ${ctx.run.module}, file \`${unit.outputRef}\`.`,
-    `Keep the exported function name and the exported type names of the scaffold. Its input members come from the def's input list, which is a hint: the input accepts what the entity accepts by the l4, so a field the system sets (the initial state, a number from a sequence, a field of another operation, a value a rule copies) is not an input and is set here.`,
+    `Keep the exported function name and the exported type names of the scaffold. Its input members follow from the operation and the entity, and are a hint: the input accepts what the entity accepts by the l4, so a field the system sets (the initial state, a number from a sequence, a field of another operation, a value a rule copies) is not an input and is set here.`,
     ruleIds.length
       ? `Enforce every rule listed under "Rules". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A listed rule that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense.`
       : 'The def has no rule to enforce beyond its operation. Return notApplicable: [].',
@@ -190,13 +190,14 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const entityRef = ontologyRef(unit.definition, unit.outputRef);
   const ontology = await ctx.read(entityRef);
   if (ontology) parts.push(section(`l4 ontology of the entity ${entityRef} (source)`, fence('ts', ontology.slice(0, 30000))));
-  parts.push(section('Definition (inventory and hints: its input/output lists, rulePlan and sequence are hints; where they diverge from the l4, the l4 wins)', fence('json', JSON.stringify(unit.definition, null, 2))));
+  // The def carries the intent only (§10): entity, operation, transition, the rules to apply and the effects.
+  parts.push(section('Definition (the intent: entity, operation, transitionRef, rulesApplied, effects; the how is yours, by the l4)', fence('json', JSON.stringify(unit.declared, null, 2))));
   parts.push(section('Scaffold (keep the exported names; the input members are a hint)', fence('ts', scaffold)));
   const draft = await recipeDraft(ctx, unit);
   parts.push(section('Recipe attempt', 'source' in draft
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this usecase: ${draft.refusal.slice(0, 16000)}`));
-  if (rules.length) parts.push(section('Rules the def attaches to this usecase (hint; enforce each one, or declare it notApplicable with the reason)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+  if (rules.length) parts.push(section('Rules this usecase must apply (rulesApplied, with the l4 text; enforce each one, or declare it notApplicable with the reason)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
   const others = ruleTexts(rulesSource, allRuleIds(rulesSource).filter(ruleId => !ruleIds.includes(ruleId)));
   if (others.length) parts.push(section('Other rules of the module (l4 text: a rule about this entity and operation that the def missed is enforced here too)', others.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
   const dependencies = dependencyUnits(ctx, unit);
@@ -260,7 +261,8 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
 export async function transitionOf(ctx: M12Context, unit: M12Unit): Promise<{ transitionId: string; to: string } | undefined> {
   if (String(unit.definition.data.operation ?? '') !== 'transition') return undefined;
   const lifecycle = unit.definition.data.lifecycle;
-  const transitionId = lifecycle && typeof lifecycle === 'object' ? String((lifecycle as { transitionId?: unknown }).transitionId ?? '') : '';
+  const transitionId = String(unit.definition.data.transitionRef ?? '')
+    || (lifecycle && typeof lifecycle === 'object' ? String((lifecycle as { transitionId?: unknown }).transitionId ?? '') : '');
   if (!transitionId) return undefined;
   const source = await ctx.read(ontologyRef(unit.definition, unit.outputRef));
   return transitionTarget(source, transitionId);
@@ -304,8 +306,10 @@ export async function parentRulesOf(ctx: M12Context, unit: M12Unit, entities: re
 export const MDM_ONTOLOGY_REF = '_102034_/l4/ontology/mdm.defs.ts';
 export const MDM_FACADE_REF = '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts';
 
-/** A usecase of an entity kept in the platform MDM: its def depends on the MDM ontology or calls `ctx.mdm`. */
+/** A usecase of an entity kept in the platform MDM: its def has `mdm` (§10), depends on the MDM ontology or calls `ctx.mdm`. */
 export function usesMdm(unit: M12Unit): boolean {
+  const mdm = unit.definition.data.mdm;
+  if (!!mdm && typeof mdm === 'object' && Object.keys(mdm).length > 0) return true;
   const sequence = Array.isArray(unit.definition.data.sequence) ? unit.definition.data.sequence : [];
   return unit.definition.dependencies.some(ref => ref.endsWith('/l4/ontology/mdm.defs.ts'))
     || sequence.some(step => !!step && typeof step === 'object' && (step as { kind?: unknown }).kind === 'mdm');
