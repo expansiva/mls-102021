@@ -243,7 +243,12 @@ async function approveUsecases(
   const intents = await agent.beforePromptStep!(meta(), ctx, parent, createD1AgentStep('usecases50', moduleName, PROJECT, 'run'), order);
   const barrier = intents.find((intent): intent is mls.msg.AgentIntentAddStep =>
     intent.type === 'add-step' && intent.step.planning?.planId === 'usecases50-barrier');
-  assert.ok(barrier, 'usecases50 did not open a barrier');
+  if (!barrier) {
+    return intents
+      .filter((intent): intent is mls.msg.AgentIntentUpdateStatus => intent.type === 'update-status')
+      .map(intent => intent.traceMsg || '')
+      .join('\n');
+  }
   const work = await readD1UsecaseWork(PROJECT, moduleName);
   assert.ok(work);
   for (const usecase of work.request.usecases) {

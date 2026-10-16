@@ -97,7 +97,7 @@
 
 ## 2026-09-22 (d1_13d)
 
-- `planUsecaseSteps` is an `anyOf` of one closed object per `kind`, built from `STEP_KEYS`. A branch requires only that kind's keys, and `kind` is `const`. `parseStep` is unchanged.
+- The step tool was an `anyOf` of one closed object per `kind`, built from `STEP_KEYS`. A branch required only that kind's keys, and `kind` was `const`.
 
 ## 2026-09-22 (d1_13c)
 

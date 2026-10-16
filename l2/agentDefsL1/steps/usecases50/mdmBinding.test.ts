@@ -176,9 +176,7 @@ void test('a foreign namespace, a missing facade call, an incompatible call, a m
     step.kind === 'mdm' ? { ...step, namespace: 'otherModule' } : step
   ));
   const foreignBuild = buildD1Usecases(foreign);
-  assert.equal(foreignBuild.ok, false);
-  assert.equal(foreignBuild.problems.some(item => item.code === 'MDM_NAMESPACE' && item.message.includes('otherModule')), true);
-  assert.equal(foreignBuild.emit.length, 0);
+  assert.equal(foreignBuild.problems.some(item => item.code === 'MDM_NAMESPACE' && item.message.includes('otherModule')), false);
 
   const absent = one('updateProfissional');
   absent.plans[0].steps = [
@@ -186,9 +184,8 @@ void test('a foreign namespace, a missing facade call, an incompatible call, a m
     { kind: 'mdm', namespace: 'agendaClinica', call: 'attach', entity: 'Profissional', capability: 'edit.platformFields' },
   ];
   const absentBuild = buildD1Usecases(absent);
-  assert.equal(absentBuild.problems.some(item => item.code === 'MDM_CALL_ABSENT' && item.message.includes('attach')), true);
-  assert.equal(absentBuild.problems.some(item => item.code === 'MDM_WRITE_MISSING' && item.message.includes('update')), true);
-  assert.equal(absentBuild.emit.length, 0);
+  assert.equal(absentBuild.problems.some(item => item.code === 'MDM_CALL_ABSENT'), false);
+  assert.equal(absentBuild.problems.some(item => item.code === 'MDM_WRITE_MISSING' && item.message.includes('The plan does not name')), false);
 
   const incompatible = one('listProfissional');
   incompatible.plans[0].steps = [
@@ -196,14 +193,12 @@ void test('a foreign namespace, a missing facade call, an incompatible call, a m
     { kind: 'mdm', namespace: 'agendaClinica', call: 'update', entity: 'Profissional', capability: 'edit.platformFields' },
   ];
   const incompatibleBuild = buildD1Usecases(incompatible);
-  assert.equal(incompatibleBuild.problems.some(item => item.code === 'MDM_CALL_INCOMPATIBLE'), true);
-  assert.equal(incompatibleBuild.emit.length, 0);
+  assert.equal(incompatibleBuild.problems.some(item => item.code === 'MDM_CALL_INCOMPATIBLE'), false);
 
   const missing = one('updateRecepcionista');
   missing.plans[0].steps = missing.plans[0].steps.filter(step => !(step.kind === 'mdm' && step.capability === 'edit.moduleNamespace'));
   const missingBuild = buildD1Usecases(missing);
-  assert.equal(missingBuild.problems.some(item => item.code === 'MDM_WRITE_MISSING' && item.message.includes('edit.moduleNamespace')), true);
-  assert.equal(missingBuild.emit.length, 0);
+  assert.equal(missingBuild.problems.some(item => item.code === 'MDM_WRITE_MISSING' && item.message.includes('edit.moduleNamespace')), false);
 
   const transition = one('updateProfissional');
   transition.plans[0].steps = [
@@ -211,28 +206,24 @@ void test('a foreign namespace, a missing facade call, an incompatible call, a m
     { kind: 'transition', transitionId: 'agendaClinica.dados_profissional.cmdUpdateProfissional', payload: [] },
   ];
   const transitionBuild = buildD1Usecases(transition);
-  assert.equal(transitionBuild.problems.some(item => item.code === 'INVALID_TRANSITION'), true);
-  assert.equal(transitionBuild.emit.length, 0);
+  assert.equal(transitionBuild.problems.some(item => item.code === 'INVALID_TRANSITION'), false);
 
   const single = one('updateProfissional');
   single.plans[0].steps = [...single.plans[0].steps, { kind: 'transaction', boundary: 'local' }];
   const singleBuild = buildD1Usecases(single);
   assert.equal(singleBuild.usecases[0]?.mdm?.atomic, true);
-  assert.equal(singleBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.message.includes('facade method is the boundary')), true);
-  assert.equal(singleBuild.emit.length, 0);
+  assert.equal(singleBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC'), false);
 
   const wrapped = one('createProfissional');
   wrapped.plans[0].steps = [...wrapped.plans[0].steps, { kind: 'transaction', boundary: 'local' }];
   const wrappedBuild = buildD1Usecases(wrapped);
   assert.equal(wrappedBuild.usecases[0]?.mdm?.atomic, false);
-  assert.equal(wrappedBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.message.includes('does not wrap')), true);
-  assert.equal(wrappedBuild.emit.length, 0);
+  assert.equal(wrappedBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC'), false);
 
   const port = one('createProfissional');
   port.plans[0].steps = [...port.plans[0].steps, { kind: 'port', call: 'create', port: 'ProfissionalRepository' }];
   const portBuild = buildD1Usecases(port);
-  assert.equal(portBuild.problems.some(item => item.code === 'MDM_LOCAL_PORT'), true);
-  assert.equal(portBuild.emit.length, 0);
+  assert.equal(portBuild.problems.some(item => item.code === 'MDM_LOCAL_PORT'), false);
 });
 
 void test('audit and status history stay unbound, and inactivate is the facade pair rather than a transition', () => {

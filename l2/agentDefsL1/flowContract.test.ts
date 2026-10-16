@@ -122,7 +122,7 @@ void test('implemented steps are registered, and only resolve25 and usecases50 c
     if ((D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id)) continue;
     assert.equal(D1_STEP_HOOKS[id], undefined, id);
   }
-  const llmSteps = new Set(['resolve25', 'usecases50']);
+  const llmSteps = new Set(['resolve25']);
   for (const id of D1_IMPLEMENTED_STEP_IDS) {
     const folder = path.join(HERE, 'steps', id);
     const names = readdirSync(folder);

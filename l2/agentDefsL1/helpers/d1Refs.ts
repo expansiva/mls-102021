@@ -141,10 +141,9 @@ export function futureOutputPath(defPath: string): string {
 }
 
 export function skillPaths(type: string): string[] {
-  return [
-    '_102021_/l2/agentDefsL1/skills/architecture.md',
-    `_102021_/l2/agentDefsL1/skills/${type}.md`,
-  ];
+  const names = ['architecture.md'];
+  if (type !== 'usecase') names.push(`${type}.md`);
+  return names.map(name => `_102021_/l2/agentDefsL1/skills/${name}`);
 }
 
 export function catalogFromPlan(

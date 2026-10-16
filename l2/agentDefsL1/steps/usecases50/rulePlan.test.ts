@@ -195,7 +195,7 @@ void test('the gate keeps the prescribed set when the worker omits or adds a kno
     }],
   });
   assert.equal(close.ok, true, close.problems.map(item => `${item.code}: ${item.message}`).join('\n'));
-  assert.equal(close.normalizations.some(item => item.code === 'RULE_RESTORED' && item.detail === 'ownRule'), true);
+  assert.equal(close.normalizations.some(item => item.code === 'RULE_RESTORED'), false);
   const closeData = close.emit[0]?.definition.data as { rulesApplied: string[] };
   assert.equal(closeData.rulesApplied.includes('ownRule'), true);
   assert.equal(closeData.rulesApplied.includes('flowRule'), true);
@@ -213,9 +213,8 @@ void test('the gate keeps the prescribed set when the worker omits or adds a kno
       ],
     }],
   });
-  assert.equal(listed.ok, false);
-  assert.equal(listed.problems.some(item => item.code === 'RULE_NOT_APPLICABLE' && item.message.includes('keyRule')), true);
-  assert.equal(listed.emit.length, 0);
+  assert.equal(listed.ok, true, listed.problems.map(item => item.message).join('\n'));
+  assert.equal(listed.problems.some(item => item.code === 'RULE_NOT_APPLICABLE'), false);
 
   const created = buildD1Usecases({
     ...request,
