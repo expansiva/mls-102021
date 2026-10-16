@@ -48,6 +48,7 @@ const STRUCTURE: Record<M1ArtifactType, MaterializeHandler> = {
   ]),
   persistenceSeeds: handler('persistence.persistenceSeeds', 'persistenceSeeds', 'structure', ['tableDefinition']),
   integrationOutbound: handler('persistence.integrationOutbound', 'integrationOutbound', 'structure', []),
+  workflowProcess: handler('structure.workflowProcess', 'workflowProcess', 'structure', []),
 };
 
 /** Implement recipes. Null is a written absence: no fallback onto the structure scaffolder. */
@@ -65,6 +66,7 @@ export const M1_IMPLEMENT_HANDLERS: Record<M1ArtifactType, MaterializeHandler | 
   repositoryRegistration: null,
   persistenceSeeds: null,
   integrationOutbound: null,
+  workflowProcess: null,
 };
 
 export const M1_STRUCTURE_HANDLERS: Readonly<Record<M1ArtifactType, MaterializeHandler>> = STRUCTURE;

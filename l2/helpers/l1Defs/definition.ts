@@ -31,6 +31,7 @@ export const M1_ARTIFACT_TYPES = [
   'repositoryRegistration',
   'persistenceSeeds',
   'integrationOutbound',
+  'workflowProcess',
 ] as const;
 export type M1ArtifactType = typeof M1_ARTIFACT_TYPES[number];
 
@@ -87,6 +88,11 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryRegistration: { required: ['registrationId', 'adapters'], optional: [], nonempty: ['adapters'] },
   persistenceSeeds: { required: ['seedId', 'scenarios'], optional: ['phase', 'dependencies', 'datasets', 'fixture'], nonempty: ['scenarios'] },
   integrationOutbound: { required: ['integrationId', 'events'], optional: ['processes', 'inbound', 'plugins', 'gaps'], nonempty: [] },
+  workflowProcess: {
+    required: ['processId', 'trigger', 'functions', 'operations'],
+    optional: ['occurrence'],
+    nonempty: [],
+  },
 };
 
 export interface M1Definition {

@@ -303,6 +303,14 @@ export interface D1IntegrationData {
   events: Array<{ eventId: string; on: string; entityId: string; mechanism: string }>;
 }
 
+export interface D1WorkflowProcessData {
+  processId: string;
+  trigger: { kind: 'manual' | 'event' | 'scheduled'; actorRef?: string; event?: string; schedule?: string };
+  occurrence?: { entityId: string };
+  functions: string[];
+  operations: Array<{ operation: string; steps: string[] }>;
+}
+
 export interface D1Definition<T = Record<string, unknown>> {
   schemaVersion: typeof D1_DEFINITION_SCHEMA;
   artifactType: D1ArtifactType;
@@ -412,6 +420,7 @@ function dataIssues(artifactType: D1ArtifactType, data: Record<string, unknown>,
     case 'repositoryRegistration': return registrationIssues(data);
     case 'persistenceSeeds': return seedScenarioIssues(data);
     case 'integrationOutbound': return integrationShapeIssues(data);
+    case 'workflowProcess': return workflowProcessIssues(data);
     default: return [`definition.artifactType is unknown.`];
   }
 }
@@ -820,6 +829,76 @@ function mdmBindingIssues(value: unknown, issues: string[]): void {
       originIssues(arg.origin, `${argPath}.origin`, issues);
     });
   });
+}
+
+const TRIGGER_KINDS = ['manual', 'event', 'scheduled'] as const;
+const QUALIFIED = /^[A-Za-z][A-Za-z0-9_]*\.[A-Za-z][A-Za-z0-9_]*$/;
+const PROCESS_STEP = /^(?:journey:[A-Za-z][A-Za-z0-9_]*\/[A-Za-z][A-Za-z0-9_]*|task:[A-Za-z][A-Za-z0-9_]*)$/;
+
+function tokenAt(value: string, path: string, issues: string[]): void {
+  if (value && !TOKEN.test(value)) issues.push(`${path} must be a token.`);
+}
+
+/** One field for the trigger kind, and neither of the other two. */
+function triggerIssues(value: unknown, issues: string[]): void {
+  const path = 'data.trigger';
+  if (!isRecord(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  const kind = needString(value, 'kind', path, issues);
+  oneOf(kind, TRIGGER_KINDS, `${path}.kind`, issues);
+  const field = kind === 'manual' ? 'actorRef' : kind === 'event' ? 'event' : kind === 'scheduled' ? 'schedule' : '';
+  const allowed = field ? ['kind', field] : ['kind'];
+  unknownKeys(value, allowed, path, issues);
+  if (!field) return;
+  const found = needString(value, field, path, issues);
+  if (field === 'actorRef') tokenAt(found, `${path}.actorRef`, issues);
+  if (field === 'event' && found && !QUALIFIED.test(found)) issues.push(`${path}.event is invalid.`);
+}
+
+export function workflowProcessIssues(data: unknown): string[] {
+  if (!isRecord(data)) return ['Missing field data.'];
+  const issues: string[] = [];
+  unknownKeys(data, dataAllowList('workflowProcess'), 'data', issues);
+  tokenAt(needString(data, 'processId', 'data', issues), 'data.processId', issues);
+  triggerIssues(data.trigger, issues);
+  if (data.occurrence !== undefined) {
+    if (!isRecord(data.occurrence)) issues.push('Missing field data.occurrence.');
+    else {
+      unknownKeys(data.occurrence, ['entityId'], 'data.occurrence', issues);
+      tokenAt(needString(data.occurrence, 'entityId', 'data.occurrence', issues), 'data.occurrence.entityId', issues);
+    }
+  }
+  const functions = stringList(data.functions, 'data.functions', issues);
+  const seenFunctions = new Set<string>();
+  functions.forEach((name, index) => {
+    if (!TOKEN.test(name)) issues.push(`data.functions.${index} must be a token.`);
+    if (seenFunctions.has(name)) issues.push(`Duplicate data.functions ${name}.`);
+    seenFunctions.add(name);
+  });
+  if (!Array.isArray(data.operations)) issues.push('Missing field data.operations.');
+  else {
+    const seenOperations = new Set<string>();
+    data.operations.forEach((row, index) => {
+      const path = `data.operations.${index}`;
+      if (!isRecord(row)) {
+        issues.push(`Missing field ${path}.`);
+        return;
+      }
+      unknownKeys(row, ['operation', 'steps'], path, issues);
+      const operation = needString(row, 'operation', path, issues);
+      if (operation && !QUALIFIED.test(operation)) issues.push(`${path}.operation is invalid.`);
+      if (operation && seenOperations.has(operation)) issues.push(`Duplicate ${path}.operation ${operation}.`);
+      if (operation) seenOperations.add(operation);
+      const steps = stringList(row.steps, `${path}.steps`, issues);
+      if (Array.isArray(row.steps) && steps.length === 0) issues.push(`Missing field ${path}.steps.`);
+      steps.forEach((step, stepIndex) => {
+        if (!PROCESS_STEP.test(step)) issues.push(`${path}.steps.${stepIndex} is invalid.`);
+      });
+    });
+  }
+  return issues;
 }
 
 export function requestServiceIssues(data: unknown): string[] {

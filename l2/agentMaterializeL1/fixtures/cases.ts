@@ -31,6 +31,7 @@ export function defPathOf(type: M1ArtifactType, artifactId: string): string {
     case 'repositoryRegistration': return `${P}/l1/${MODULE}/layer_1_external/adapters/persistence/${artifactId}.defs.ts`;
     case 'persistenceSeeds': return `${P}/l1/${MODULE}/layer_1_external/adapters/persistence/${artifactId}.defs.ts`;
     case 'integrationOutbound': return `${P}/l1/${MODULE}/layer_1_external/integration/${artifactId}.defs.ts`;
+    case 'workflowProcess': return `${P}/l1/${MODULE}/layer_2_application/workflows/${artifactId}.defs.ts`;
   }
 }
 
@@ -244,6 +245,12 @@ export const definitionsByType: Record<M1ArtifactType, M1Definition> = {
   repositoryRegistration: registration,
   persistenceSeeds: seeds,
   integrationOutbound: outbound,
+  workflowProcess: envelope('workflowProcess', 'cicloTarefa', 'pending', [], {
+    processId: 'cicloTarefa',
+    trigger: { kind: 'manual', actorRef: 'membroEquipe' },
+    functions: [],
+    operations: [],
+  }),
 };
 
 export const indexedUnits = [

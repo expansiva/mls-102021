@@ -21,7 +21,8 @@
         "authorityMap",
         "repositoryRegistration",
         "persistenceSeeds",
-        "integrationOutbound"
+        "integrationOutbound",
+        "workflowProcess"
       ]
     },
     "artifactId": { "type": "string", "minLength": 1 },
@@ -487,6 +488,46 @@
         "datasetId": { "type": "string", "minLength": 1 },
         "tableId": { "type": "string", "minLength": 1 },
         "owners": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "workflowProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processId", "trigger", "functions", "operations"],
+      "properties": {
+        "processId": { "type": "string", "minLength": 1 },
+        "trigger": { "$ref": "#/$defs/workflowTrigger" },
+        "occurrence": { "$ref": "#/$defs/workflowOccurrence" },
+        "functions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/workflowOperation" } }
+      }
+    },
+    "workflowTrigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["manual", "event", "scheduled"] },
+        "actorRef": { "type": "string", "minLength": 1 },
+        "event": { "type": "string", "minLength": 1 },
+        "schedule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workflowOccurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entityId"],
+      "properties": {
+        "entityId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workflowOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "steps"],
+      "properties": {
+        "operation": { "type": "string", "minLength": 1 },
+        "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
       }
     },
     "integrationOutbound": {

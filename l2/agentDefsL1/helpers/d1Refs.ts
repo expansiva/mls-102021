@@ -41,6 +41,7 @@ export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> 
   repositoryRegistration: ['repositoryAdapter'],
   persistenceSeeds: ['table'],
   integrationOutbound: ['usecase'],
+  workflowProcess: ['usecase'],
 };
 
 export interface D1PipelineItem {
@@ -732,6 +733,18 @@ export const D1_FIELD_READERS = {
   'integrationOutbound.gaps.itemId': 'integrationCoverageIssues',
   'integrationOutbound.gaps.kind': 'integrationCoverageIssues',
   'integrationOutbound.gaps.code': 'integrationCoverageIssues',
+  'workflowProcess.processId': 'workflowProcessIssues',
+  'workflowProcess.trigger': 'workflowProcessIssues',
+  'workflowProcess.trigger.kind': 'workflowProcessIssues',
+  'workflowProcess.trigger.actorRef': 'workflowProcessIssues',
+  'workflowProcess.trigger.event': 'workflowProcessIssues',
+  'workflowProcess.trigger.schedule': 'workflowProcessIssues',
+  'workflowProcess.occurrence': 'workflowProcessIssues',
+  'workflowProcess.occurrence.entityId': 'workflowProcessIssues',
+  'workflowProcess.functions': 'workflowProcessIssues',
+  'workflowProcess.operations': 'workflowProcessIssues',
+  'workflowProcess.operations.operation': 'workflowProcessIssues',
+  'workflowProcess.operations.steps': 'workflowProcessIssues',
   'pipelineItem.id': 'pipelineItemIssues',
   'pipelineItem.type': 'pipelineItemIssues',
   'pipelineItem.defPath': 'resolveCatalogRefs',

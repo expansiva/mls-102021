@@ -351,6 +351,44 @@ function portClone(): M1Definition {
   return definitionsByType.repositoryPort;
 }
 
+const cicloTarefa: M1Definition = {
+  schemaVersion: M1_DEFINITION_SCHEMA,
+  artifactType: 'workflowProcess',
+  artifactId: 'cicloTarefa',
+  moduleName: 'tarefas',
+  status: 'pending',
+  dependencies: [],
+  data: {
+    processId: 'cicloTarefa',
+    trigger: { kind: 'manual', actorRef: 'membroEquipe' },
+    occurrence: { entityId: 'Tarefa' },
+    functions: ['abrirOcorrenciaTarefa', 'avancarEtapaTarefa', 'reatribuirQuemAge', 'resolverQuemAgeAgora'],
+    operations: [
+      { operation: 'ItemChecklist.update', steps: ['journey:executarTarefa/marcarChecklist'] },
+      { operation: 'Tarefa.aceitar', steps: ['journey:revisarTarefa/aceitarTarefa'] },
+      { operation: 'Tarefa.cancelar', steps: ['journey:cancelarTarefaCriador/cancelarCriada', 'journey:cancelarTarefaGestor/cancelarPeloGestor'] },
+      { operation: 'Tarefa.create', steps: ['journey:criarTarefa/preencherTarefa'] },
+      { operation: 'Tarefa.devolver', steps: ['journey:revisarTarefa/devolverTarefa'] },
+      { operation: 'Tarefa.enviarParaRevisao', steps: ['journey:executarTarefa/enviarRevisao', 'journey:retomarTarefaDevolvida/reenviarRevisao'] },
+      { operation: 'Tarefa.iniciar', steps: ['journey:executarTarefa/iniciarTarefa'] },
+      { operation: 'Tarefa.update', steps: ['journey:reatribuirTarefaCriador/trocarResponsavel', 'journey:reatribuirTarefaGestor/reatribuir', 'journey:retomarTarefaDevolvida/ajustarCampos'] },
+    ],
+  },
+};
+
+void test('workflowProcess accepts cicloTarefa and refuses a trigger or a key outside the def', () => {
+  assert.deepEqual(definitionIssues(cicloTarefa), []);
+  assert.deepEqual(d1DefinitionIssues(cicloTarefa), []);
+  const manual: M1Definition = {
+    ...cicloTarefa,
+    data: { ...cicloTarefa.data, trigger: { kind: 'manual' } },
+  };
+  assert.match(d1DefinitionIssues(manual).join('\n'), /Missing field data\.trigger\.actorRef\./);
+  const routes: M1Definition = { ...cicloTarefa, data: { ...cicloTarefa.data, routes: [] } };
+  assert.match(definitionIssues(routes).join('\n'), /Unknown field data\.routes\./);
+  assert.match(d1DefinitionIssues(routes).join('\n'), /Unknown field data\.routes\./);
+});
+
 void test('usecase keeps the intention and refuses the script', () => {
   assert.deepEqual(definitionIssues(listBuoy), []);
   assert.deepEqual(d1DefinitionIssues(listBuoy), []);
