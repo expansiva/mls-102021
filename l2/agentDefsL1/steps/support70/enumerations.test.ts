@@ -159,7 +159,8 @@ void test('dropping the union or leaving only a path removes that credit', () =>
     enumerations: [{ entityId, path: pathName, values }],
     snapshot: snapshot({ definitions: [withUnion], contracts: [] }),
   });
-  assert.equal(credited[0]?.uses.some(use => use.purpose === 'usecaseDef'), true);
+  assert.equal(credited[0]?.uses.some(use => use.purpose === 'usecaseDef'), false);
+  assert.equal(credited[0]?.consumed, false);
   const stripped = projectEnumerations({
     enumerations: [{ entityId, path: pathName, values }],
     snapshot: snapshot({ definitions: [asString], contracts: [] }),

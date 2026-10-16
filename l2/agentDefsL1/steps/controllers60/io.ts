@@ -120,7 +120,6 @@ async function controllerRequest(
   const actors = actorsOf(needs);
   const controllerPath = new Map(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.defPath]));
   const usecasePath = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
-  const functions = functionsOf(usecases);
   const pageIds = [...new Set([
     ...snapshot.selection.pages.map(page => page.pageId),
     ...(snapshot.selection.requests || []).map(request => request.pageId),
@@ -153,7 +152,7 @@ async function controllerRequest(
       entity: usecase.entity,
       operation: usecase.operation,
       status: usecase.status,
-      functionName: functions.get(usecase.usecaseId) || '',
+      functionName: usecase.usecaseId,
       defPath: usecasePath.get(usecase.identity) || usecasePath.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
     })),
     grants: grantsOf(access, ontology),
@@ -194,19 +193,6 @@ function removedRoutesOf(
       defPath: item.defPath || '',
       contentHash: item.contentHash || '',
     });
-  }
-  return out;
-}
-
-function functionsOf(draft: Record<string, unknown>): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!Array.isArray(draft.usecases)) return out;
-  for (const item of draft.usecases) {
-    if (!isRecord(item) || typeof item.usecaseId !== 'string') continue;
-    const data = isRecord(item.definition) && isRecord(item.definition.data) ? item.definition.data : null;
-    const fn = data && Array.isArray(data.functions) ? data.functions.find(isRecord) : null;
-    const name = fn && typeof fn.functionName === 'string' ? fn.functionName : '';
-    out.set(item.usecaseId, name);
   }
   return out;
 }
