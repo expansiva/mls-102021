@@ -61,14 +61,8 @@ void test('a usecase def does not depend on an l2 path', () => {
   request.plans = request.plans.filter(item => item.usecaseId === 'listConsulta');
   const build = buildD1Usecases(request);
   assert.equal(build.ok, true, build.problems.map(item => `${item.code} ${item.message}`).join('; '));
-  const data = build.emit[0]?.definition.data as {
-    routeProjections?: unknown;
-    functions: Array<{ contractRefs?: unknown; input: Array<{ name: string }>; output: Array<{ name: string }> }>;
-  };
+  const data = build.emit[0]?.definition.data as { routeProjections?: unknown };
   assert.equal(data.routeProjections, undefined);
-  assert.equal(data.functions[0].contractRefs, undefined);
-  assert.ok(data.functions[0].input.some(field => field.name === 'page'));
-  assert.deepEqual(data.functions[0].output.map(field => field.name), ['items', 'hasMore']);
   const files = build.emit[0]?.pipeline[0]?.dependsFiles || [];
   assert.equal(files.some(file => /(^|\/)l2\//.test(file)), false);
 

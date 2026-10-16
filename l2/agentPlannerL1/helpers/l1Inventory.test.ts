@@ -136,7 +136,7 @@ void test('fixture 102039 controleChamados: 19 usecases, 25 routes, 2 tables, st
   assert.ok(Array.isArray(create?.rulesApplied));
   assert.equal(create?.entityId, '');
   assert.equal(create?.operation, '');
-  assert.ok(create?.functions.some(fn => fn.name === 'createChamado'));
+  assert.deepEqual(create?.functions, []);
   assert.ok(create?.file.endsWith('/createChamado.defs.ts'));
   for (const usecase of inventory.usecases) {
     assert.equal(usecase.statusBackend, 'done', usecase.usecaseId);

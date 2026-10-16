@@ -9,49 +9,11 @@ export const definition = {
     "usecaseId": "createProfissional",
     "entityId": "Profissional",
     "operation": "create",
-    "ports": [],
     "rulesApplied": [
       "rule-foreign-namespace-refused",
       "rule-document-shape-validated",
       "rule-identity-never-in-namespace",
       "rule-person-privacy-consent-required-br-eu"
-    ],
-    "functions": [
-      {
-        "functionName": "createProfissional",
-        "input": [
-          {
-            "name": "details",
-            "fieldRef": "Profissional.details"
-          }
-        ],
-        "output": [
-          {
-            "name": "id",
-            "type": "string",
-            "fieldRef": "Profissional.id"
-          },
-          {
-            "name": "version",
-            "type": "number",
-            "fieldRef": "Profissional.version"
-          },
-          {
-            "name": "details",
-            "fieldRef": "Profissional.details"
-          }
-        ],
-        "contractRefs": [
-          {
-            "route": "agendaClinica.dados_profissional.cmdCreateProfissional",
-            "symbol": "CreateProfissionalOutput"
-          },
-          {
-            "route": "agendaClinica.dados_recepcionista.cmdCreateProfissional",
-            "symbol": "CreateProfissionalOutput"
-          }
-        ]
-      }
     ],
     "routeProjections": [
       {
@@ -75,78 +37,7 @@ export const definition = {
         ]
       }
     ],
-    "portCalls": [],
-    "transactional": false,
     "effects": [],
-    "sequence": [
-      {
-        "kind": "context",
-        "source": "ctx"
-      },
-      {
-        "kind": "rule",
-        "ruleId": "rule-foreign-namespace-refused"
-      },
-      {
-        "kind": "rule",
-        "ruleId": "rule-document-shape-validated"
-      },
-      {
-        "kind": "rule",
-        "ruleId": "rule-identity-never-in-namespace"
-      },
-      {
-        "kind": "rule",
-        "ruleId": "rule-person-privacy-consent-required-br-eu"
-      },
-      {
-        "kind": "mdm",
-        "namespace": "agendaClinica",
-        "call": "findByDocument",
-        "entity": "Profissional",
-        "capability": "register.createOrAttach"
-      },
-      {
-        "kind": "mdm",
-        "namespace": "agendaClinica",
-        "call": "create",
-        "entity": "Profissional",
-        "capability": "register.createOrAttach"
-      },
-      {
-        "kind": "mdm",
-        "namespace": "agendaClinica",
-        "call": "attachRole",
-        "entity": "Profissional",
-        "capability": "register.createOrAttach"
-      }
-    ],
-    "uses": [],
-    "rules": [
-      {
-        "ruleId": "rule-foreign-namespace-refused",
-        "path": "/_102034_/l4/ontology/mdm.defs.ts",
-        "symbol": "rule-foreign-namespace-refused"
-      },
-      {
-        "ruleId": "rule-document-shape-validated",
-        "path": "/_102034_/l4/ontology/mdm.defs.ts",
-        "symbol": "rule-document-shape-validated"
-      },
-      {
-        "ruleId": "rule-identity-never-in-namespace",
-        "path": "/_102034_/l4/ontology/mdm.defs.ts",
-        "symbol": "rule-identity-never-in-namespace"
-      },
-      {
-        "ruleId": "rule-person-privacy-consent-required-br-eu",
-        "path": "/_102034_/l4/ontology/mdm.defs.ts",
-        "symbol": "rule-person-privacy-consent-required-br-eu"
-      }
-    ],
-    "transaction": {
-      "boundary": "none"
-    },
     "mdm": {
       "namespace": "agendaClinica",
       "role": "agendaClinica.Profissional",

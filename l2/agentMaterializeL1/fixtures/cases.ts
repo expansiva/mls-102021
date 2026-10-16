@@ -160,33 +160,8 @@ export const listBuoyPending = envelope('usecase', 'listBuoy', 'pending', [
   usecaseId: 'listBuoy',
   entityId: 'Buoy',
   operation: 'list',
-  ports: ['BuoyRepository'],
   rulesApplied: ['keeperOwnBuoy'],
-  functions: [{
-    functionName: 'listBuoy',
-    input: [
-      { name: 'keeperId', type: 'record', fieldRef: 'Buoy.keeperId' },
-      { name: 'dueAt', type: 'timestamp', fieldRef: 'Buoy.dueAt' },
-    ],
-    output: [
-      { name: 'id', type: 'uuid', fieldRef: 'Buoy.id' },
-      { name: 'stage', type: 'enum', fieldRef: 'Buoy.stage' },
-    ],
-  }],
-  portCalls: ['list'],
-  transactional: false,
   effects: [],
-  sequence: [
-    { kind: 'context', source: 'ctx' },
-    { kind: 'port', call: 'list', port: 'BuoyRepository' },
-  ],
-  uses: [],
-  rules: [{
-    ruleId: 'keeperOwnBuoy',
-    path: `l4/${MODULE}/rules.defs.ts`,
-    symbol: 'keeperOwnBuoy',
-  }],
-  transaction: { boundary: 'none' },
 });
 
 export const deskService = envelope('requestService', PAGE_ID, 'pending', [LIST], {

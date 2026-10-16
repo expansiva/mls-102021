@@ -5,8 +5,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
-import { parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
+import { renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import type { D1UsecaseContext, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
@@ -197,10 +196,10 @@ void test('the gate keeps the prescribed set when the worker omits or adds a kno
   });
   assert.equal(close.ok, true, close.problems.map(item => `${item.code}: ${item.message}`).join('\n'));
   assert.equal(close.normalizations.some(item => item.code === 'RULE_RESTORED' && item.detail === 'ownRule'), true);
-  const closeData = close.emit[0]?.definition.data as { rulesApplied: string[]; rulePlan: Array<{ ruleId: string; enforcement: string }> };
+  const closeData = close.emit[0]?.definition.data as { rulesApplied: string[] };
   assert.equal(closeData.rulesApplied.includes('ownRule'), true);
   assert.equal(closeData.rulesApplied.includes('flowRule'), true);
-  assert.equal(closeData.rulePlan.some(row => row.ruleId === 'keyRule'), false);
+  assert.equal(closeData.rulesApplied.includes('keyRule'), false);
 
   const listed = buildD1Usecases({
     ...request,
@@ -230,35 +229,14 @@ void test('the gate keeps the prescribed set when the worker omits or adds a kno
     }],
   });
   assert.equal(created.ok, true, created.problems.map(item => item.message).join('\n'));
-  const createData = created.emit[0]?.definition.data as {
-    rulesApplied: string[];
-    rulePlan: Array<{ ruleId: string; enforcement: string; gap: string }>;
-  };
-  assert.deepEqual(createData.rulesApplied, []);
-  assert.equal(createData.rulePlan.some(row => row.ruleId === '' && row.enforcement === 'local'), true);
-  assert.equal(createData.rulePlan.some(row => row.ruleId === 'keyRule' && row.enforcement === 'pending' && row.gap === 'RULE_UNBOUND'), true);
+  const createData = created.emit[0]?.definition.data as { rulesApplied: string[] };
+  assert.deepEqual(createData.rulesApplied, ['keyRule']);
 
   const clerk = contract('clerk', { [CLERK_ROUTE]: true, [CREATE_ROUTE]: false });
   const files = [...sampleFiles(), { path: clerk.path, text: clerk.source }];
   const source = renderOf(created);
   const fidelity = readUsecaseFidelity(source, files);
   assert.equal(fidelity.problems.length, 0, fidelity.problems.map(item => item.message).join('\n'));
-  const parsed = parseRendered(source);
-  assert.ok(parsed);
-  const definition = parsed.definition as D1Definition & { data: Record<string, unknown> };
-  definition.data.rulesApplied = ['keyRule', 'ownRule'];
-  const defPath = /fileReference="([^"]+)"/.exec(source)?.[1] || '';
-  const tampered = renderDefinition(definition, defPath);
-  assert.equal('source' in tampered, true);
-  if (!('source' in tampered)) return;
-  const coverage = readUsecaseFidelity(tampered.source, files);
-  assert.equal(coverage.problems.some(item => item.code === 'RULE_COVERAGE'), true);
-  delete definition.data.rulePlan;
-  const stripped = renderDefinition(definition, defPath);
-  assert.equal('source' in stripped, true);
-  if (!('source' in stripped)) return;
-  const missing = readUsecaseFidelity(stripped.source, files);
-  assert.equal(missing.problems.some(item => item.code === 'RULE_COVERAGE'), true);
 });
 
 void test('agendaClinica sources keep the professional read and the schedule constraint apart', () => {

@@ -192,61 +192,8 @@
           "usecaseId": "confirmarConsulta",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow"
-          ],
-          "functions": [
-            {
-              "functionName": "confirmarConsulta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
-                  "symbol": "ConfirmarConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -263,64 +210,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "consultaConfirmada",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "consultaConfirmada"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "confirmarConsulta",
-              "payload": []
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "consultaConfirmada"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "confirmarConsulta",
-            "payload": [],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "confirmarConsulta"
-          }
+          ]
         }
       }
     },
@@ -361,84 +257,8 @@
           "usecaseId": "createConsulta",
           "entityId": "Consulta",
           "operation": "create",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "uniqueProfessionalSchedule"
-          ],
-          "functions": [
-            {
-              "functionName": "createConsulta",
-              "input": [
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -481,37 +301,7 @@
               ]
             }
           ],
-          "portCalls": [
-            "create"
-          ],
-          "transactional": false,
-          "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "uniqueProfessionalSchedule"
-            },
-            {
-              "kind": "port",
-              "call": "create",
-              "port": "ConsultaRepository"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "uniqueProfessionalSchedule",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "uniqueProfessionalSchedule"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          }
+          "effects": []
         }
       }
     },
@@ -731,48 +521,12 @@
           "usecaseId": "createPaciente",
           "entityId": "Paciente",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-ssn-unique-for-us",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createPaciente",
-              "input": [
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Paciente.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"contacts\": Array<object>; \"relationshipRefs\": object; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.pacientes.cmdCreatePaciente",
-                  "symbol": "CreatePacienteOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -786,94 +540,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-ssn-unique-for-us"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByContact",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-ssn-unique-for-us",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-ssn-unique-for-us"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Paciente",
@@ -1193,49 +860,11 @@
           "usecaseId": "createProfissional",
           "entityId": "Profissional",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createProfissional",
-              "input": [
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_profissional.cmdCreateProfissional",
-                  "symbol": "CreateProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdCreateProfissional",
-                  "symbol": "CreateProfissionalOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -1259,78 +888,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -1605,47 +1163,11 @@
           "usecaseId": "createRecepcionista",
           "entityId": "Recepcionista",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createRecepcionista",
-              "input": [
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdCreateRecepcionista",
-                  "symbol": "CreateRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -1659,78 +1181,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",
@@ -1870,102 +1321,8 @@
           "usecaseId": "listConsulta",
           "entityId": "Consulta",
           "operation": "list",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "uniqueProfessionalSchedule"
-          ],
-          "functions": [
-            {
-              "functionName": "listConsulta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_profissional.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -2022,43 +1379,7 @@
               ]
             }
           ],
-          "portCalls": [
-            "list"
-          ],
-          "transactional": false,
-          "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "uniqueProfessionalSchedule"
-            },
-            {
-              "kind": "port",
-              "call": "list",
-              "port": "ConsultaRepository"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "uniqueProfessionalSchedule",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "uniqueProfessionalSchedule"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          }
+          "effects": []
         }
       }
     },
@@ -2254,60 +1575,7 @@
           "usecaseId": "listPaciente",
           "entityId": "Paciente",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [],
-          "functions": [
-            {
-              "functionName": "listPaciente",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Paciente.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Paciente.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"contacts\": Array<object>; \"relationshipRefs\": object; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                }
-              ]
-            }
-          ],
           "routeProjections": [
             {
               "route": "agendaClinica.consultas_recepcionista.qryListPaciente",
@@ -2340,71 +1608,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Paciente",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Paciente",
-              "capability": "locate.byName"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Paciente",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByContact",
-              "entity": "Paciente",
-              "capability": "locate.byContact"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "relatedOfMany",
-              "entity": "Paciente",
-              "capability": "listLinks"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Paciente",
@@ -2698,67 +1902,7 @@
           "usecaseId": "listProfissional",
           "entityId": "Profissional",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [],
-          "functions": [
-            {
-              "functionName": "listProfissional",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Profissional.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_profissional.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                }
-              ]
-            }
-          ],
           "routeProjections": [
             {
               "route": "agendaClinica.consultas_recepcionista.qryListProfissional",
@@ -2811,64 +1955,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Profissional",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Profissional",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Profissional",
-              "capability": "locate.byName"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Profissional",
-              "capability": "locate.byTag"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -3119,56 +2206,11 @@
           "usecaseId": "listRecepcionista",
           "entityId": "Recepcionista",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "listRecepcionista",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Recepcionista.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.qryListRecepcionista",
-                  "symbol": "ListRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -3182,94 +2224,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Recepcionista",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Recepcionista",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Recepcionista",
-              "capability": "locate.byName"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",
@@ -3409,73 +2364,10 @@
           "usecaseId": "registrarAtendimento",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow",
             "attendanceNoteRequired",
             "professionalOwnAppointment"
-          ],
-          "functions": [
-            {
-              "functionName": "registrarAtendimento",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
-                  "symbol": "RegistrarAtendimentoOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -3493,91 +2385,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "atendimentoRegistrado",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "atendimentoRegistrado"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "professionalOwnAppointment"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "attendanceNoteRequired"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "registrarAtendimento",
-              "payload": [
-                "details.attendanceNote"
-              ]
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "atendimentoRegistrado"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            },
-            {
-              "path": "details.attendanceNote",
-              "role": "write",
-              "source": "payload"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            },
-            {
-              "ruleId": "attendanceNoteRequired",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "attendanceNoteRequired"
-            },
-            {
-              "ruleId": "professionalOwnAppointment",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "professionalOwnAppointment"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "registrarAtendimento",
-            "payload": [
-              "details.attendanceNote"
-            ],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "registrarAtendimento"
-          }
+          ]
         }
       }
     },
@@ -3625,61 +2439,8 @@
           "usecaseId": "registrarFalta",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow"
-          ],
-          "functions": [
-            {
-              "functionName": "registrarFalta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
-                  "symbol": "RegistrarFaltaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -3696,64 +2457,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "faltaPacienteRegistrada",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "faltaPacienteRegistrada"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "registrarFalta",
-              "payload": []
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "faltaPacienteRegistrada"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "registrarFalta",
-            "payload": [],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "registrarFalta"
-          }
+          ]
         }
       }
     },
@@ -3876,54 +2586,11 @@
           "usecaseId": "updateProfissional",
           "entityId": "Profissional",
           "operation": "update",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "updateProfissional",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_profissional.cmdUpdateProfissional",
-                  "symbol": "UpdateProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdUpdateProfissional",
-                  "symbol": "UpdateProfissionalOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -3947,70 +2614,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Profissional",
-              "capability": "edit.platformFields"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -4203,52 +2807,11 @@
           "usecaseId": "updateRecepcionista",
           "entityId": "Recepcionista",
           "operation": "update",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "updateRecepcionista",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdUpdateRecepcionista",
-                  "symbol": "UpdateRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -4262,77 +2825,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Recepcionista",
-              "capability": "edit.platformFields"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Recepcionista",
-              "capability": "edit.moduleNamespace"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",
@@ -4502,61 +2995,8 @@
           "usecaseId": "confirmarConsulta",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow"
-          ],
-          "functions": [
-            {
-              "functionName": "confirmarConsulta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
-                  "symbol": "ConfirmarConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -4573,64 +3013,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "consultaConfirmada",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "consultaConfirmada"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "confirmarConsulta",
-              "payload": []
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "consultaConfirmada"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "confirmarConsulta",
-            "payload": [],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "confirmarConsulta"
-          }
+          ]
         }
       },
       "pipeline": [
@@ -4669,84 +3058,8 @@
           "usecaseId": "createConsulta",
           "entityId": "Consulta",
           "operation": "create",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "uniqueProfessionalSchedule"
-          ],
-          "functions": [
-            {
-              "functionName": "createConsulta",
-              "input": [
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.cmdCreateConsulta",
-                  "symbol": "CreateConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -4789,37 +3102,7 @@
               ]
             }
           ],
-          "portCalls": [
-            "create"
-          ],
-          "transactional": false,
-          "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "uniqueProfessionalSchedule"
-            },
-            {
-              "kind": "port",
-              "call": "create",
-              "port": "ConsultaRepository"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "uniqueProfessionalSchedule",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "uniqueProfessionalSchedule"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          }
+          "effects": []
         }
       },
       "pipeline": [
@@ -4859,48 +3142,12 @@
           "usecaseId": "createPaciente",
           "entityId": "Paciente",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-ssn-unique-for-us",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createPaciente",
-              "input": [
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Paciente.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"contacts\": Array<object>; \"relationshipRefs\": object; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.pacientes.cmdCreatePaciente",
-                  "symbol": "CreatePacienteOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -4914,94 +3161,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-ssn-unique-for-us"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByContact",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Paciente",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-ssn-unique-for-us",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-ssn-unique-for-us"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Paciente",
@@ -5179,49 +3339,11 @@
           "usecaseId": "createProfissional",
           "entityId": "Profissional",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createProfissional",
-              "input": [
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_profissional.cmdCreateProfissional",
-                  "symbol": "CreateProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdCreateProfissional",
-                  "symbol": "CreateProfissionalOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -5245,78 +3367,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Profissional",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -5463,47 +3514,11 @@
           "usecaseId": "createRecepcionista",
           "entityId": "Recepcionista",
           "operation": "create",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "createRecepcionista",
-              "input": [
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdCreateRecepcionista",
-                  "symbol": "CreateRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -5517,78 +3532,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "create",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "attachRole",
-              "entity": "Recepcionista",
-              "capability": "register.createOrAttach"
-            }
-          ],
-          "uses": [],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",
@@ -5722,102 +3666,8 @@
           "usecaseId": "listConsulta",
           "entityId": "Consulta",
           "operation": "list",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "uniqueProfessionalSchedule"
-          ],
-          "functions": [
-            {
-              "functionName": "listConsulta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_profissional.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListConsulta",
-                  "symbol": "ListConsultaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -5874,43 +3724,7 @@
               ]
             }
           ],
-          "portCalls": [
-            "list"
-          ],
-          "transactional": false,
-          "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "uniqueProfessionalSchedule"
-            },
-            {
-              "kind": "port",
-              "call": "list",
-              "port": "ConsultaRepository"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "uniqueProfessionalSchedule",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "uniqueProfessionalSchedule"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          }
+          "effects": []
         }
       },
       "pipeline": [
@@ -5951,60 +3765,7 @@
           "usecaseId": "listPaciente",
           "entityId": "Paciente",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [],
-          "functions": [
-            {
-              "functionName": "listPaciente",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Paciente.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Paciente.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Paciente.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: { \"aliases\": Array<string>; \"contacts\": Array<object>; \"relationshipRefs\": object; \"notes\"?: string; }; }",
-                  "fieldRef": "Paciente.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListPaciente",
-                  "symbol": "ListPacienteOutput"
-                }
-              ]
-            }
-          ],
           "routeProjections": [
             {
               "route": "agendaClinica.consultas_recepcionista.qryListPaciente",
@@ -6037,71 +3798,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Paciente",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Paciente",
-              "capability": "locate.byName"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Paciente",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByContact",
-              "entity": "Paciente",
-              "capability": "locate.byContact"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "relatedOfMany",
-              "entity": "Paciente",
-              "capability": "listLinks"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Paciente",
@@ -6267,67 +3964,7 @@
           "usecaseId": "listProfissional",
           "entityId": "Profissional",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [],
-          "functions": [
-            {
-              "functionName": "listProfissional",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"SSN\" | \"EIN\" | \"Passport\" | \"DriversLicense\" | \"NationalId\" | \"CPF\" | \"CNPJ\" | \"VAT\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Profissional.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_profissional.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.pacientes.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.profissionais.qryListProfissional",
-                  "symbol": "ListProfissionalOutput"
-                }
-              ]
-            }
-          ],
           "routeProjections": [
             {
               "route": "agendaClinica.consultas_recepcionista.qryListProfissional",
@@ -6380,64 +4017,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Profissional",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Profissional",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Profissional",
-              "capability": "locate.byName"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Profissional",
-              "capability": "locate.byTag"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -6579,56 +4159,11 @@
           "usecaseId": "listRecepcionista",
           "entityId": "Recepcionista",
           "operation": "list",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "listRecepcionista",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; }",
-                  "fieldRef": "Recepcionista.details"
-                },
-                {
-                  "name": "page",
-                  "type": "number"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.qryListRecepcionista",
-                  "symbol": "ListRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -6642,94 +4177,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "get",
-              "entity": "Recepcionista",
-              "capability": "read.byId"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "findByDocument",
-              "entity": "Recepcionista",
-              "capability": "locate.byDocument"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "listByType",
-              "entity": "Recepcionista",
-              "capability": "locate.byName"
-            }
-          ],
-          "uses": [
-            {
-              "path": "details.identification.status",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "details.identification.subtype",
-              "role": "filter",
-              "source": "input"
-            },
-            {
-              "path": "id",
-              "role": "filter",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",
@@ -6846,73 +4294,10 @@
           "usecaseId": "registrarAtendimento",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow",
             "attendanceNoteRequired",
             "professionalOwnAppointment"
-          ],
-          "functions": [
-            {
-              "functionName": "registrarAtendimento",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"attendanceNote\"?: string; }",
-                  "fieldRef": "Consulta.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
-                  "symbol": "RegistrarAtendimentoOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -6930,91 +4315,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "atendimentoRegistrado",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "atendimentoRegistrado"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "professionalOwnAppointment"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "attendanceNoteRequired"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "registrarAtendimento",
-              "payload": [
-                "details.attendanceNote"
-              ]
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "atendimentoRegistrado"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            },
-            {
-              "path": "details.attendanceNote",
-              "role": "write",
-              "source": "payload"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            },
-            {
-              "ruleId": "attendanceNoteRequired",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "attendanceNoteRequired"
-            },
-            {
-              "ruleId": "professionalOwnAppointment",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "professionalOwnAppointment"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "registrarAtendimento",
-            "payload": [
-              "details.attendanceNote"
-            ],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "registrarAtendimento"
-          }
+          ]
         }
       },
       "pipeline": [
@@ -7053,61 +4360,8 @@
           "usecaseId": "registrarFalta",
           "entityId": "Consulta",
           "operation": "transition",
-          "ports": [
-            "ConsultaRepository"
-          ],
           "rulesApplied": [
             "consultationTransitionFlow"
-          ],
-          "functions": [
-            {
-              "functionName": "registrarFalta",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Consulta.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Consulta.version"
-                },
-                {
-                  "name": "patientId",
-                  "type": "string",
-                  "fieldRef": "Consulta.patientId"
-                },
-                {
-                  "name": "professionalId",
-                  "type": "string",
-                  "fieldRef": "Consulta.professionalId"
-                },
-                {
-                  "name": "scheduledAt",
-                  "type": "string",
-                  "fieldRef": "Consulta.scheduledAt"
-                },
-                {
-                  "name": "status",
-                  "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-                  "fieldRef": "Consulta.status"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
-                  "symbol": "RegistrarFaltaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -7124,64 +4378,13 @@
               ]
             }
           ],
-          "portCalls": [
-            "transition"
-          ],
-          "transactional": false,
           "effects": [
             {
               "eventId": "faltaPacienteRegistrada",
               "path": "l4/agendaClinica/integration.defs.ts",
               "symbol": "faltaPacienteRegistrada"
             }
-          ],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "consultationTransitionFlow"
-            },
-            {
-              "kind": "transition",
-              "transitionId": "registrarFalta",
-              "payload": []
-            },
-            {
-              "kind": "port",
-              "call": "transition",
-              "port": "ConsultaRepository"
-            },
-            {
-              "kind": "effect",
-              "eventId": "faltaPacienteRegistrada"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "consultationTransitionFlow",
-              "path": "l4/agendaClinica/rules.defs.ts",
-              "symbol": "consultationTransitionFlow"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
-          "lifecycle": {
-            "transitionId": "registrarFalta",
-            "payload": [],
-            "sourcePath": "l4/agendaClinica/ontology/Consulta.defs.ts",
-            "symbol": "registrarFalta"
-          }
+          ]
         }
       },
       "pipeline": [
@@ -7220,54 +4423,11 @@
           "usecaseId": "updateProfissional",
           "entityId": "Profissional",
           "operation": "update",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "updateProfissional",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Profissional.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Profissional.version"
-                },
-                {
-                  "name": "details",
-                  "fieldRef": "Profissional.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_profissional.cmdUpdateProfissional",
-                  "symbol": "UpdateProfissionalOutput"
-                },
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdUpdateProfissional",
-                  "symbol": "UpdateProfissionalOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -7291,70 +4451,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Profissional",
-              "capability": "edit.platformFields"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Profissional",
@@ -7460,52 +4557,11 @@
           "usecaseId": "updateRecepcionista",
           "entityId": "Recepcionista",
           "operation": "update",
-          "ports": [],
           "rulesApplied": [
             "rule-foreign-namespace-refused",
             "rule-document-shape-validated",
             "rule-identity-never-in-namespace",
             "rule-person-privacy-consent-required-br-eu"
-          ],
-          "functions": [
-            {
-              "functionName": "updateRecepcionista",
-              "input": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"name\": string; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "output": [
-                {
-                  "name": "id",
-                  "type": "string",
-                  "fieldRef": "Recepcionista.id"
-                },
-                {
-                  "name": "version",
-                  "type": "number",
-                  "fieldRef": "Recepcionista.version"
-                },
-                {
-                  "name": "details",
-                  "type": "{ \"identification\"?: { \"subtype\": \"Person\"; \"name\": string; \"status\": \"Active\" | \"Inactive\" | \"Merged\" | \"Blocked\"; \"docType\"?: \"CPF\" | \"Passport\" | \"NationalId\" | \"Other\"; \"docId\"?: string; \"countryCode\": string; }; \"base\"?: object; \"person\"?: object; \"general\"?: object; \"agendaClinica\"?: object; }",
-                  "fieldRef": "Recepcionista.details"
-                }
-              ],
-              "contractRefs": [
-                {
-                  "route": "agendaClinica.dados_recepcionista.cmdUpdateRecepcionista",
-                  "symbol": "UpdateRecepcionistaOutput"
-                }
-              ]
-            }
           ],
           "routeProjections": [
             {
@@ -7519,77 +4575,7 @@
               ]
             }
           ],
-          "portCalls": [],
-          "transactional": false,
           "effects": [],
-          "sequence": [
-            {
-              "kind": "context",
-              "source": "ctx"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-foreign-namespace-refused"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-document-shape-validated"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-identity-never-in-namespace"
-            },
-            {
-              "kind": "rule",
-              "ruleId": "rule-person-privacy-consent-required-br-eu"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Recepcionista",
-              "capability": "edit.platformFields"
-            },
-            {
-              "kind": "mdm",
-              "namespace": "agendaClinica",
-              "call": "update",
-              "entity": "Recepcionista",
-              "capability": "edit.moduleNamespace"
-            }
-          ],
-          "uses": [
-            {
-              "path": "id",
-              "role": "selector",
-              "source": "input"
-            }
-          ],
-          "rules": [
-            {
-              "ruleId": "rule-foreign-namespace-refused",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-foreign-namespace-refused"
-            },
-            {
-              "ruleId": "rule-document-shape-validated",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-document-shape-validated"
-            },
-            {
-              "ruleId": "rule-identity-never-in-namespace",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-identity-never-in-namespace"
-            },
-            {
-              "ruleId": "rule-person-privacy-consent-required-br-eu",
-              "path": "/_102034_/l4/ontology/mdm.defs.ts",
-              "symbol": "rule-person-privacy-consent-required-br-eu"
-            }
-          ],
-          "transaction": {
-            "boundary": "none"
-          },
           "mdm": {
             "namespace": "agendaClinica",
             "role": "agendaClinica.Recepcionista",

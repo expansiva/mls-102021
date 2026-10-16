@@ -13,67 +13,7 @@ export const createAtendenteUsecase = {
   },
   "data": {
     "usecaseId": "createAtendente",
-    "ports": [],
     "rulesApplied": [],
-    "functions": [
-      {
-        "functionName": "createAtendente",
-        "inputTypeName": "CreateAtendenteInput",
-        "outputTypeName": "CreateAtendenteOutput",
-        "input": [
-          {
-            "name": "platformUserId",
-            "type": "string",
-            "required": true,
-            "description": "Referência ao usuário correspondente no diretório da plataforma, sem duplicar dados de login.",
-            "ofEntity": "Atendente",
-            "fieldRef": "Atendente.platformUserId",
-            "item": {
-              "fields": []
-            }
-          }
-        ],
-        "output": [
-          {
-            "name": "atendenteId",
-            "type": "string",
-            "required": true,
-            "ofEntity": "Atendente"
-          },
-          {
-            "name": "platformUserId",
-            "type": "string",
-            "required": true,
-            "ofEntity": "Atendente"
-          }
-        ],
-        "ports": [],
-        "rulesApplied": [],
-        "transactional": true,
-        "steps": [
-          "Validate the required platformUserId input.",
-          "Create the Atendente master-data entity through ctx.mdm.entity.create using mdmType controleChamados.Atendente and the platformUserId field.",
-          "Return the created atendenteId and platformUserId."
-        ],
-        "outputShape": {
-          "kind": "object",
-          "fields": [
-            {
-              "name": "atendenteId",
-              "type": "string",
-              "required": true,
-              "fieldRef": "Atendente.atendenteId"
-            },
-            {
-              "name": "platformUserId",
-              "type": "string",
-              "required": true,
-              "fieldRef": "Atendente.platformUserId"
-            }
-          ]
-        }
-      }
-    ],
     "mdmRefs": [
       "Atendente"
     ]

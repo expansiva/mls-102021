@@ -215,7 +215,7 @@ void test('102047 mensalidadesAcademia with no l1: every candidate is toCreate a
   assert.ok(planned.file.endpoints.every(item => item.noTable === 'ok' && item.tableRefs.length > 0));
 });
 
-void test('fixture 102039 with invented needs: done, toUpdate and toRemove each appear', async () => {
+void test('fixture 102039 with invented needs: a usecase without a signature is done, and toRemove still appears', async () => {
   const host = installHost(102039);
   seedControleChamados(host);
   const inventory = await readL1Inventory(102039, 'controleChamados');
@@ -234,13 +234,12 @@ void test('fixture 102039 with invented needs: done, toUpdate and toRemove each 
   const create = byId.get('createChamado');
   assert.equal(list?.status, 'done', JSON.stringify(list));
   assert.ok(list?.existing.endsWith('/listChamado.defs.ts'));
-  assert.equal(get?.status, 'toUpdate', JSON.stringify(get));
-  assert.match(get?.reason || '', /prioridade/);
+  assert.equal(get?.status, 'done', JSON.stringify(get));
   assert.equal(create?.status, 'done');
   assert.ok(planned.file.removed.some(item => item.kind === 'usecase' && item.status === 'toRemove'));
   assert.ok(planned.file.removed.some(item => item.id === 'createAtendente'));
   assert.ok(planned.file.endpoints.some(item => item.route === 'controleChamados.chamadoCatalogue.cmdCreateChamado' && item.status === 'done'));
-  assert.ok(planned.file.endpoints.some(item => item.route === 'controleChamados.chamadoCatalogue.qryGetChamado' && item.status === 'toUpdate'));
+  assert.ok(planned.file.endpoints.some(item => item.route === 'controleChamados.chamadoCatalogue.qryGetChamado' && item.status === 'done'));
   assert.ok(planned.file.ports.some(item => item.portId === 'ChamadoRepository' && item.status === 'done'));
   assert.ok(planned.file.tables.some(item => item.entity === 'Chamado' && item.status === 'done'));
   assert.ok(planned.file.removed.some(item => item.kind === 'table' && item.id === 'Comentario'));

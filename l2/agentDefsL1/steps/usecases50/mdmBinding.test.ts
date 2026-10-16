@@ -43,9 +43,6 @@ void test('update of a professional is entity.update with platform fields and ex
   assert.equal(named(mdm.calls[0], 'expectedVersion')?.path, 'version');
   assert.equal(named(mdm.calls[0], 'mdmId')?.role, 'selector');
   assert.deepEqual(mdm.calls[0]?.result, ['mdmId', 'version', 'details']);
-  const data = item?.definition?.data as { ports: string[]; transactional: boolean };
-  assert.deepEqual(data.ports, []);
-  assert.equal(data.transactional, false);
 
   const seen: Array<{ mdmId: string; expectedVersion: number; patch: Record<string, unknown> }> = [];
   const result = applyUpdate(mdm, PROFESSIONAL_FIELDS, seen);
@@ -121,9 +118,6 @@ void test('create or attach keeps the new-person path and the existing-person pa
   assert.equal(mdm.calls.every(call => call.target === 'entity'), true);
   assert.equal(mdm.calls.find(call => call.method === 'create')?.result.includes('alreadyExists'), true);
   assert.equal(mdm.calls.find(call => call.method === 'attachRole')?.arguments.find(arg => arg.name === 'role')?.value, 'agendaClinica.Profissional');
-  const data = build.usecases[0]?.definition?.data as { ports: string[]; transactional: boolean };
-  assert.deepEqual(data.ports, []);
-  assert.equal(data.transactional, false);
 
   const store = new FakeEntity();
   const existing = await runCreateOrAttach(mdm, store, { ...PROFESSIONAL_FIELDS, id: '' });
@@ -501,9 +495,8 @@ void test('a second route and a broken page contract do not change the usecase',
   request.usecases[0].routes.push('agendaClinica.recepcao.cmdCreatePaciente');
   const build = buildD1Usecases(request);
   assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
-  const data = build.emit[0]?.definition.data as { routeProjections?: unknown; functions: Array<{ contractRefs?: unknown; output: Array<{ name: string }> }> };
+  const data = build.emit[0]?.definition.data as { routeProjections?: unknown };
   assert.equal(data.routeProjections, undefined);
-  assert.equal(data.functions[0].contractRefs, undefined);
   assert.equal(build.emit[0]?.pipeline[0]?.dependsFiles.some(file => file.includes('/l2/')), false);
 });
 

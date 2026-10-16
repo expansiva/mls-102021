@@ -9,102 +9,8 @@ export const definition = {
     "usecaseId": "listConsulta",
     "entityId": "Consulta",
     "operation": "list",
-    "ports": [
-      "ConsultaRepository"
-    ],
     "rulesApplied": [
       "uniqueProfessionalSchedule"
-    ],
-    "functions": [
-      {
-        "functionName": "listConsulta",
-        "input": [
-          {
-            "name": "id",
-            "type": "string",
-            "fieldRef": "Consulta.id"
-          },
-          {
-            "name": "patientId",
-            "type": "string",
-            "fieldRef": "Consulta.patientId"
-          },
-          {
-            "name": "professionalId",
-            "type": "string",
-            "fieldRef": "Consulta.professionalId"
-          },
-          {
-            "name": "scheduledAt",
-            "type": "string",
-            "fieldRef": "Consulta.scheduledAt"
-          },
-          {
-            "name": "status",
-            "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-            "fieldRef": "Consulta.status"
-          },
-          {
-            "name": "page",
-            "type": "number"
-          }
-        ],
-        "output": [
-          {
-            "name": "id",
-            "type": "string",
-            "fieldRef": "Consulta.id"
-          },
-          {
-            "name": "version",
-            "type": "number",
-            "fieldRef": "Consulta.version"
-          },
-          {
-            "name": "patientId",
-            "type": "string",
-            "fieldRef": "Consulta.patientId"
-          },
-          {
-            "name": "professionalId",
-            "type": "string",
-            "fieldRef": "Consulta.professionalId"
-          },
-          {
-            "name": "scheduledAt",
-            "type": "string",
-            "fieldRef": "Consulta.scheduledAt"
-          },
-          {
-            "name": "status",
-            "type": "\"scheduled\" | \"confirmed\" | \"noShow\" | \"attended\"",
-            "fieldRef": "Consulta.status"
-          },
-          {
-            "name": "details",
-            "type": "{ \"attendanceNote\"?: string; }",
-            "fieldRef": "Consulta.details"
-          }
-        ],
-        "contractRefs": [
-          {
-            "route": "agendaClinica.consultas_profissional.qryListConsulta",
-            "symbol": "ListConsultaOutput"
-          },
-          {
-            "route": "agendaClinica.consultas_recepcionista.qryListConsulta",
-            "symbol": "ListConsultaOutput"
-          },
-          {
-            "route": "agendaClinica.pacientes.qryListConsulta",
-            "symbol": "ListConsultaOutput"
-          },
-          {
-            "route": "agendaClinica.profissionais.qryListConsulta",
-            "symbol": "ListConsultaOutput"
-          }
-        ]
-      }
     ],
     "routeProjections": [
       {
@@ -161,43 +67,7 @@ export const definition = {
         ]
       }
     ],
-    "portCalls": [
-      "list"
-    ],
-    "transactional": false,
-    "effects": [],
-    "sequence": [
-      {
-        "kind": "context",
-        "source": "ctx"
-      },
-      {
-        "kind": "rule",
-        "ruleId": "uniqueProfessionalSchedule"
-      },
-      {
-        "kind": "port",
-        "call": "list",
-        "port": "ConsultaRepository"
-      }
-    ],
-    "uses": [
-      {
-        "path": "id",
-        "role": "filter",
-        "source": "input"
-      }
-    ],
-    "rules": [
-      {
-        "ruleId": "uniqueProfessionalSchedule",
-        "path": "l4/agendaClinica/rules.defs.ts",
-        "symbol": "uniqueProfessionalSchedule"
-      }
-    ],
-    "transaction": {
-      "boundary": "none"
-    }
+    "effects": []
   }
 } as const;
 

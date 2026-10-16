@@ -68,7 +68,7 @@ void test('consultaSemConflito aplica a entidade e o request que citam a regra',
   assert.equal(answer.status, 'computed');
   assert.deepEqual(
     answer.materialize.map(unit => `${unit.kind}:${unit.id}`),
-    ['entity:consulta', 'request:consultas'],
+    ['entity:consulta', 'request:consultas', 'usecase:createConsulta'],
   );
 });
 
