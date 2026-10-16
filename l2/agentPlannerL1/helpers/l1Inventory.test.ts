@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { readL1Inventory } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
+import { parseP1Needs, planP1Backend } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_ROOT = path.join(HERE, '../steps/entry10/fixtures/controleChamados-l1');
@@ -133,6 +134,8 @@ void test('fixture 102039 controleChamados: 19 usecases, 25 routes, 2 tables, st
   assert.ok(create);
   assert.equal(create?.statusBackend, 'done');
   assert.ok(Array.isArray(create?.rulesApplied));
+  assert.equal(create?.entityId, '');
+  assert.equal(create?.operation, '');
   assert.ok(create?.functions.some(fn => fn.name === 'createChamado'));
   assert.ok(create?.file.endsWith('/createChamado.defs.ts'));
   for (const usecase of inventory.usecases) {
@@ -179,4 +182,61 @@ void test('deleted def, other project and other folder stay out of the listing',
   for (const name of ['deletedCopy', 'otherProjectCopy', 'otherFolderCopy']) {
     assert.equal(inventory.usecases.some(item => item.file.includes(name)), false, name);
   }
+});
+
+void test('new-format usecase is inventoried by intent and does not become toUpdate', async () => {
+  const host = installHost(102039);
+  const folder = 'novoModulo/layer_2_application/usecases';
+  const body = (data: Record<string, unknown>, id: string) => `export const ${id}Usecase = ${JSON.stringify({
+    schemaVersion: '2026-09-24-d1-definition-v2',
+    artifactType: 'usecase',
+    artifactId: id,
+    moduleName: 'novoModulo',
+    data,
+  }, null, 2)} as const;\n`;
+  seed(host, 102039, 1, folder, 'listChamado', '.defs.ts', body({
+    usecaseId: 'listChamado',
+    entityId: 'Chamado',
+    operation: 'list',
+    rulesApplied: [],
+    effects: [],
+  }, 'listChamado'));
+  seed(host, 102039, 1, folder, 'resolveChamado', '.defs.ts', body({
+    usecaseId: 'resolveChamado',
+    entityId: 'Chamado',
+    operation: 'transition',
+    transitionRef: 'resolve',
+    rulesApplied: ['umaRegra'],
+    effects: [],
+  }, 'resolveChamado'));
+  const inventory = await readL1Inventory(102039, 'novoModulo');
+  const list = inventory.usecases.find(item => item.usecaseId === 'listChamado');
+  const resolve = inventory.usecases.find(item => item.usecaseId === 'resolveChamado');
+  assert.equal(list?.entityId, 'Chamado');
+  assert.equal(list?.operation, 'list');
+  assert.equal(list?.functions.length, 0);
+  assert.deepEqual(list?.ports, ['Chamado']);
+  assert.equal(resolve?.transitionRef, 'resolve');
+  assert.deepEqual(resolve?.rulesApplied, ['umaRegra']);
+  const planned = planP1Backend({
+    needs: parseP1Needs({
+      schemaVersion: '2026-09-21-p2-needs-v1',
+      moduleName: 'novoModulo',
+      device: 'web',
+      pages: [{
+        pageId: 'catalogue',
+        actors: ['atendente'],
+        reads: [{ entity: 'Chamado', family: 'tdm', scope: 'organization', derived: ['prioridade'], from: ['organism:list'] }],
+        writes: [{ entity: 'Chamado', operation: 'transition', transitionRef: 'resolve', from: ['journey:resolver/act'] }],
+      }],
+    }),
+    inventory,
+    ontology: [{
+      entityId: 'Chamado', family: 'tdm', storageKind: 'relational', storageTarget: 'moduleDatabase', transitions: ['resolve'], rules: [],
+    }],
+    now: new Date(Date.UTC(2026, 8, 20)),
+  });
+  const byId = new Map(planned.file.usecases.map(item => [item.usecaseId, item]));
+  assert.equal(byId.get('listChamado')?.status, 'done', JSON.stringify(byId.get('listChamado')));
+  assert.equal(byId.get('resolve')?.status, 'done', JSON.stringify(byId.get('resolve')));
 });

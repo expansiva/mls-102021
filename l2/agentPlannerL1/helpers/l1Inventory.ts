@@ -22,6 +22,10 @@ export interface L1InventoryFunction {
 export interface L1InventoryUsecase {
   usecaseId: string;
   file: string;
+  /** Empty when the def on disk is still the pre-d1_74 shape (no entityId/operation). */
+  entityId?: string;
+  operation?: string;
+  transitionRef?: string;
   functions: L1InventoryFunction[];
   ports: string[];
   rulesApplied: string[];
@@ -220,6 +224,9 @@ async function readUsecases(
     const usecaseId = typeof data.usecaseId === 'string' && data.usecaseId
       ? data.usecaseId
       : (typeof parsed.artifactId === 'string' ? parsed.artifactId : file.shortName);
+    const entityId = typeof data.entityId === 'string' ? data.entityId : '';
+    const operation = typeof data.operation === 'string' ? data.operation : '';
+    const transitionRef = typeof data.transitionRef === 'string' ? data.transitionRef : '';
     const rawFunctions = Array.isArray(data.functions) ? data.functions : [];
     const functions: L1InventoryFunction[] = [];
     const functionRules: string[] = [];
@@ -234,11 +241,15 @@ async function readUsecases(
       });
       functionRules.push(...stringList(raw.rulesApplied));
     }
+    const declaredPorts = stringList(data.ports);
     usecases.push({
       usecaseId,
       file: displayL1(file),
+      entityId,
+      operation,
+      transitionRef,
       functions,
-      ports: stringList(data.ports),
+      ports: declaredPorts.length ? declaredPorts : (entityId ? [entityId] : []),
       rulesApplied: uniqueStrings([...stringList(data.rulesApplied), ...functionRules]),
       statusBackend: statuses.get(usecaseId) || '',
     });

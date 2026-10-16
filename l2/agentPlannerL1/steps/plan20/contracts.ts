@@ -585,7 +585,7 @@ function matchCandidates(candidates: Matched, inventory: L1Inventory, ontology: 
   const usecases = candidates.usecases.map(candidate => {
     const found = findExisting(inventory, candidate);
     if (!found) return candidate;
-    const covers = coversNeed(found, candidate.derived);
+    const covers = coversNeed(found, candidate);
     return {
       ...candidate,
       nameMatched: true,
@@ -642,7 +642,7 @@ function applyResolution(
       || item.functions.some(fn => fn.name === alias.existingUsecaseId));
     if (!candidate || !existing) continue;
     byId.delete(alias.candidateUsecaseId);
-    const covers = coversNeed(existing, candidate.derived);
+    const covers = coversNeed(existing, candidate);
     const next: UsecaseDraft = {
       ...candidate,
       usecaseId: existing.usecaseId,
@@ -824,12 +824,23 @@ function stripDraft(draft: UsecaseDraft): PoolBackendUsecase {
   };
 }
 
+function sameIntent(item: L1InventoryUsecase, candidate: UsecaseDraft): boolean {
+  if (!item.entityId || !item.operation) return false;
+  if (item.entityId !== candidate.entity || item.operation !== candidate.operation) return false;
+  if (candidate.operation === 'transition' || item.operation === 'transition') {
+    return (item.transitionRef || '') === (candidate.transitionRef || '');
+  }
+  return true;
+}
+
 function findExisting(inventory: L1Inventory, candidate: UsecaseDraft): L1InventoryUsecase | undefined {
   const exact = inventory.usecases.find(item =>
     item.usecaseId === candidate.usecaseId
     || item.functions.some(fn => fn.name === candidate.usecaseId),
   );
   if (exact) return exact;
+  const byIntent = inventory.usecases.find(item => sameIntent(item, candidate));
+  if (byIntent) return byIntent;
   return inventory.usecases.find(item => {
     const parsed = parseUsecaseName(item.usecaseId) || item.functions.map(fn => parseUsecaseName(fn.name)).find(Boolean);
     return parsed?.entity === candidate.entity && parsed.operation === candidate.operation;
@@ -845,10 +856,18 @@ function parseUsecaseName(id: string): { operation: P1Operation; entity: string 
   return null;
 }
 
-function coversNeed(usecase: L1InventoryUsecase, derived: string[]): boolean {
-  if (!usecase.functions.length) return false;
-  if (!derived.length) return true;
-  return missingDerived(usecase, derived).length === 0;
+function coversNeed(usecase: L1InventoryUsecase, candidate: UsecaseDraft): boolean {
+  if (usecase.entityId || usecase.operation) {
+    if (usecase.entityId && usecase.entityId !== candidate.entity) return false;
+    if (usecase.operation && usecase.operation !== candidate.operation) return false;
+    if (usecase.operation === 'transition' || candidate.operation === 'transition') {
+      if ((usecase.transitionRef || '') !== (candidate.transitionRef || '')) return false;
+    }
+  }
+  // Old defs still carry a signature. A new-format usecase has none, and that is a cover.
+  if (!usecase.functions.length) return true;
+  if (!candidate.derived.length) return true;
+  return missingDerived(usecase, candidate.derived).length === 0;
 }
 
 function missingDerived(usecase: L1InventoryUsecase, derived: string[]): string[] {
@@ -1204,10 +1223,8 @@ function tableRefsForRemoved(
   }
   const usecase = inventory.usecases.find(candidate => candidate.usecaseId === item.id);
   const parsed = parseUsecaseName(item.id);
-  const entities = unique([
-    ...(usecase?.ports ?? []),
-    parsed?.entity || '',
-  ]);
+  const entity = usecase?.entityId || parsed?.entity || '';
+  const entities = unique([entity]);
   const tableRefs = unique(entities.map(entity => tables.find(table => table.entity === entity)?.tableId || ''));
   const known = entities.length ? entities : (parsed?.entity ? [parsed.entity] : []);
   return { tableRefs, entities: known };
