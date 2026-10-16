@@ -553,18 +553,17 @@ function checkCoverage(
     const usecaseId = typeof data.usecaseId === 'string' ? data.usecaseId : item.definition.artifactId;
     const entityId = typeof data.entityId === 'string' ? data.entityId : '';
     if (entityId && !domainRules.has(entityId)) gap(findings, gaps, usecaseId, `Usecase ${usecaseId} names model ${entityId}, which has no domain def.`);
-    const namedPorts = strings(data.ports);
-    for (const portId of namedPorts) {
-      if (!ports.has(portId)) gap(findings, gaps, usecaseId, `Usecase ${usecaseId} names port ${portId}, which has no port def.`);
-    }
-    const requiredPort = storage.get(entityId) === 'moduleDatabase' ? portByEntity.get(entityId) || '' : '';
-    if (requiredPort && !namedPorts.includes(requiredPort)) {
-      gap(findings, gaps, usecaseId, `Usecase ${usecaseId} does not name port ${requiredPort}.`);
+    if (storage.get(entityId) === 'moduleDatabase') {
+      const requiredPort = portByEntity.get(entityId) || '';
+      if (!requiredPort || !ports.has(requiredPort)) {
+        gap(findings, gaps, usecaseId, `Entity ${entityId} has no registered port.`);
+      }
     }
     const onDisk = domainRules.get(entityId) || new Set<string>();
     const onDraft = draftedRules.get(entityId) || new Set<string>();
+    const moduleRules = moduleRulesOf(request);
     for (const ruleId of strings(data.rulesApplied)) {
-      if (onDisk.has(ruleId) || onDraft.has(ruleId)) continue;
+      if (onDisk.has(ruleId) || onDraft.has(ruleId) || moduleRules.has(ruleId)) continue;
       gap(findings, gaps, usecaseId, `Usecase ${usecaseId} cites rule ${ruleId}, which is not on ${entityId}.`);
     }
     const effects = Array.isArray(data.effects) ? data.effects : [];
@@ -810,6 +809,10 @@ function registryIds(parsed: ParsedDef[]): string[] {
     }
   }
   return ids;
+}
+
+function moduleRulesOf(request: D1FinalizeRequest): Set<string> {
+  return new Set(strings(request.moduleRules));
 }
 
 function draftRules(request: D1FinalizeRequest): Map<string, Set<string>> {

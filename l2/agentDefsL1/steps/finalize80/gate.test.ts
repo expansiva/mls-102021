@@ -16,8 +16,6 @@ import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } 
 import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
-import { fieldUses } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
-import { rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 
 const PROJECT = 102047;
 const MODULE = 'agendaClinica';
@@ -207,51 +205,8 @@ function parts(): Array<{ logical: string; definition: D1Definition; item: D1Pip
         entityId: 'Consulta',
         operation: 'transition',
         transitionRef: 'registrarAtendimento',
-        ports: ['ConsultaRepository'],
         rulesApplied: ['noteRequired'],
-        rulePlan: rulePlanForUsecase({
-          moduleName: MODULE,
-          entityId: 'Consulta',
-          usecaseId: 'registrarAtendimento',
-          operation: 'transition',
-          transitionRef: 'registrarAtendimento',
-          files: [
-            { path: ONTOLOGY, text: ONTOLOGY_TEXT },
-            { path: RULES, text: RULES_TEXT },
-          ],
-          entity: { rules: [], transitions: [], namespace: '', storageTarget: 'moduleDatabase' },
-          routes: [{ route: ROUTE, contractPath: CONTRACT, grants: [] }],
-        }),
-        functions: [{
-          functionName: 'registrarAtendimento',
-          input: [{ name: 'id', type: 'string' }],
-          output: [{ name: 'id', type: 'string' }],
-        }],
-        portCalls: ['save'],
-        transactional: true,
         effects: [{ eventId: 'atendimentoRegistrado', path: INTEGRATION, symbol: 'atendimentoRegistrado' }],
-        sequence: [
-          { kind: 'context', source: 'ctx' },
-          { kind: 'port', call: 'save', port: 'ConsultaRepository' },
-          { kind: 'rule', ruleId: 'noteRequired' },
-          { kind: 'transition', transitionId: 'registrarAtendimento', payload: ['attendanceNote'] },
-          { kind: 'effect', eventId: 'atendimentoRegistrado' },
-          { kind: 'transaction', boundary: 'local' },
-        ],
-        uses: fieldUses({
-          operation: 'transition',
-          fields: [{ name: 'id', derived: true }],
-          inputPaths: ['id'],
-          payloadPaths: ['attendanceNote'],
-        }),
-        rules: [{ ruleId: 'noteRequired', path: RULES, symbol: 'noteRequired' }],
-        transaction: { boundary: 'local' },
-        lifecycle: {
-          transitionId: 'registrarAtendimento',
-          payload: ['attendanceNote'],
-          sourcePath: ONTOLOGY,
-          symbol: 'registrarAtendimento',
-        },
       }),
       item: pipe('usecase', 'registrarAtendimento', PATHS.usecase, [consulta, port, scope]),
     },
@@ -440,6 +395,7 @@ function request(): D1FinalizeRequest {
     futurePresent: {},
     children: [],
     callLog: null,
+    moduleRules: [],
   };
 }
 
@@ -561,6 +517,44 @@ void test('call receipts are not unit counts, and a resume does not zero history
   assert.equal(noHistory.calls.repliesUnknown, CALL_HISTORY_ABSENT);
   assert.equal(noHistory.calls.invocationReplies, 0);
   assert.equal(noHistory.calls.promptsAssembled, null);
+});
+
+void test('a module rule on the request is applied, and a moduleDatabase entity needs its port', () => {
+  const rows = parts();
+  const usecase = rows.find(row => row.logical === PATHS.usecase);
+  assert.ok(usecase);
+  usecase.definition = definition('usecase', 'registrarAtendimento', {
+    usecaseId: 'registrarAtendimento',
+    entityId: 'Consulta',
+    operation: 'transition',
+    transitionRef: 'registrarAtendimento',
+    rulesApplied: ['noteRequired', 'umaComandaAbertaPorMesa'],
+    effects: [{ eventId: 'atendimentoRegistrado', path: INTEGRATION, symbol: 'atendimentoRegistrado' }],
+  });
+  const unbound = request();
+  unbound.observed = observedOf(rows);
+  const refused = buildD1Finalize(unbound);
+  assert.equal(refused.outcome, 'held');
+  assert.match(refused.findings.find(item => item.code === 'COVERAGE_GAP')?.message || '', /umaComandaAbertaPorMesa/);
+
+  const accepted = request();
+  accepted.observed = observedOf(rows);
+  accepted.dependencyTexts = {
+    ...accepted.dependencyTexts,
+    [RULES]: RULES_TEXT.replace('"noteRequired": "A note is required."', '"noteRequired": "A note is required.", "umaComandaAbertaPorMesa": "One open tab per table."'),
+  };
+  accepted.moduleRules = ['umaComandaAbertaPorMesa'];
+  const report = buildD1Finalize(accepted);
+  assert.equal(codes(report, 'COVERAGE_GAP'), 0, report.blocking);
+  assert.equal(report.outcome, 'complete', report.blocking);
+
+  const portless = parts().filter(row => row.logical !== PATHS.port);
+  const missing = request();
+  missing.observed = observedOf(portless);
+  missing.snapshot = snapshot(missing.observed);
+  if (missing.snapshot) missing.snapshot.selection.ports = [];
+  const gap = buildD1Finalize(missing);
+  assert.match(gap.findings.find(item => item.code === 'COVERAGE_GAP')?.message || '', /no registered port/);
 });
 
 void test('a completed child with a missing artifact does not complete', () => {
@@ -818,9 +812,8 @@ void test('a missing read source and a missing rule symbol stay refused', () => 
   const moved = parts();
   const usecase = moved.find(row => row.logical === PATHS.usecase);
   assert.ok(usecase);
-  const data = usecase.definition.data as { rules: Array<{ path: string; symbol: string }> };
-  data.rules[0].path = missing;
-  usecase.item.dependsFiles = usecase.item.dependsFiles.map(file => file === RULES ? missing : file);
+  (usecase.definition.data as { effects: Array<{ path: string }> }).effects[0].path = missing;
+  usecase.item.dependsFiles = [...usecase.item.dependsFiles, missing];
   const absentInput = request();
   absentInput.observed = observedOf(moved);
   const absent = buildD1Finalize(absentInput);
@@ -831,7 +824,7 @@ void test('a missing read source and a missing rule symbol stay refused', () => 
   const renamed = parts();
   const named = renamed.find(row => row.logical === PATHS.usecase);
   assert.ok(named);
-  (named.definition.data as { rules: Array<{ symbol: string }> }).rules[0].symbol = 'noteNotInRules';
+  (named.definition.data as { rulesApplied: string[] }).rulesApplied = ['noteNotInRules'];
   const symbolInput = request();
   symbolInput.observed = observedOf(renamed);
   const unread = buildD1Finalize(symbolInput);

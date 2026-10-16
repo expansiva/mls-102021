@@ -14,7 +14,7 @@ import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { artifactFile, declaredDependencyPaths, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { fileInfoFromDisplay, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { fileInfoFromDisplay, parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { readCallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import {
@@ -63,6 +63,7 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
       moduleName,
       pipeline,
       snapshot,
+      moduleRules: await moduleRuleIds(project, moduleName),
       sourceHashes,
       dependencyTexts,
       contracts,
@@ -193,6 +194,15 @@ function productDef(entry: { level: number; folder: string; extension: string },
   const pipeline = `${moduleName}/pipeline`;
   if (entry.folder === pipeline || entry.folder.startsWith(`${pipeline}/`)) return false;
   return entry.folder === moduleName || entry.folder.startsWith(`${moduleName}/`);
+}
+
+/** Keys of `.rules` in `l4/<module>/rules.defs.ts`. A missing or unreadable file is an empty list. */
+async function moduleRuleIds(project: number, moduleName: string): Promise<string[]> {
+  const text = await readLogical(project, `l4/${moduleName}/rules.defs.ts`);
+  if (text == null) return [];
+  const parsed = parseD1Source(text, 'defs');
+  if (!isRecord(parsed) || !isRecord(parsed.rules)) return [];
+  return Object.keys(parsed.rules);
 }
 
 async function readLogical(project: number, path: string): Promise<string | null> {

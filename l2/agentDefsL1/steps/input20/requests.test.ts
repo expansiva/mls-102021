@@ -455,6 +455,7 @@ void test('a pruned usecase with a previous receipt is removed and inventoried',
     futurePresent: {},
     children: [],
     callLog: null,
+    moduleRules: [],
   });
   const removedFile = report.files.find(file => file.defPath === planned.defPath);
   assert.ok(removedFile);

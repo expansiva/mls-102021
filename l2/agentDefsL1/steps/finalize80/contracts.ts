@@ -63,6 +63,8 @@ export interface D1FinalizeContract {
 export interface D1FinalizeRequest {
   project: number;
   moduleName: string;
+  /** Rule ids from `l4/<module>/rules.defs.ts`. Empty when that file is absent. */
+  moduleRules: string[];
   pipeline: D1PipelineState;
   snapshot: D1InputSnapshot | null;
   sourceHashes: Record<string, string>;
