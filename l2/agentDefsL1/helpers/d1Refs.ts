@@ -142,6 +142,8 @@ export function futureOutputPath(defPath: string): string {
 }
 
 export function skillPaths(type: string): string[] {
+  // No skill file of its own. Support types that have one still name it.
+  if (type === 'workflowProcess') return [];
   const names = ['architecture.md'];
   if (type !== 'usecase') names.push(`${type}.md`);
   return names.map(name => `_102021_/l2/agentDefsL1/skills/${name}`);
@@ -714,11 +716,6 @@ export const D1_FIELD_READERS = {
   'integrationOutbound.events.mechanism': 'integrationMechanismIssues',
   'integrationOutbound.events.consumer': 'integrationLinkIssues',
   'integrationOutbound.events.mechanismRef': 'integrationMechanismIssues',
-  'integrationOutbound.processes': 'integrationCoverageIssues',
-  'integrationOutbound.processes.processId': 'integrationCoverageIssues',
-  'integrationOutbound.processes.operations': 'integrationCoverageIssues',
-  'integrationOutbound.processes.mechanism': 'integrationCoverageIssues',
-  'integrationOutbound.processes.consumer': 'integrationCoverageIssues',
   'integrationOutbound.inbound': 'integrationCoverageIssues',
   'integrationOutbound.inbound.inboundId': 'integrationCoverageIssues',
   'integrationOutbound.inbound.operations': 'integrationCoverageIssues',

@@ -171,6 +171,49 @@ void test('integration outbound def is inventoried from an inbound item, with no
   assert.ok(fileOf(snapshot, 'integrationOutbound', 'outbound'));
 });
 
+void test('a process without an outbound event plans workflow:<id> and not integration outbound', () => {
+  const artifacts = clone(loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [];
+  integration.plugins = [];
+  const workflows = artifacts.workflows as Record<string, unknown>;
+  workflows.processes = [{
+    processId: 'cicloTarefa',
+    trigger: { kind: 'manual', actorRef: 'membroEquipe' },
+    tasks: [{ kind: 'mechanical', taskId: 'abrir', entityRef: 'Produto', effect: 'create' }],
+    functions: [],
+  }];
+  workflows.journeyDecisions = [];
+  const snapshot = build(artifacts);
+  const file = fileOf(snapshot, 'workflowProcess', 'cicloTarefa');
+  assert.equal(file?.id, 'workflow:cicloTarefa');
+  assert.equal(file?.defPath, `l1/${MODULE}/layer_2_application/workflows/cicloTarefa.defs.ts`);
+  assert.deepEqual(file?.ownerRefs, ['process:cicloTarefa']);
+  assert.equal(file?.dependsOn.includes('usecase:createProduto'), true);
+  assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound'), undefined);
+  assert.equal(codes(snapshot, 'error').includes('DAG_CYCLE'), false);
+});
+
+void test('a process and an outbound event plan both defs', () => {
+  const artifacts = clone(loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };
+  integration.outbound = [{ id: 'produtoCriado', on: 'Produto.criar' }];
+  integration.inbound = [];
+  integration.plugins = [];
+  const workflows = artifacts.workflows as Record<string, unknown>;
+  workflows.processes = [{
+    processId: 'cicloTarefa',
+    trigger: { kind: 'event', event: 'Produto.criar' },
+    tasks: [],
+    functions: [],
+  }];
+  workflows.journeyDecisions = [];
+  const snapshot = build(artifacts);
+  assert.equal(fileOf(snapshot, 'workflowProcess', 'cicloTarefa')?.id, 'workflow:cicloTarefa');
+  assert.ok(fileOf(snapshot, 'integrationOutbound', 'outbound'));
+});
+
 void test('integration outbound def is absent with no outbound event, process, inbound or plugin', async () => {
   const artifacts = clone(loadHead());
   const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };

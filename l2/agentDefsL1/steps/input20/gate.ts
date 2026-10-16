@@ -241,7 +241,7 @@ export function buildD1InputSnapshot(
   }
 
   const outbound = outboundEvents(integration);
-  const hasEffects = outbound.length > 0 || hasEffectOperations(integration, workflows);
+  const hasEffects = outbound.length > 0 || hasEffectOperations(integration);
   noteStale(problems, moduleName, sources, previous);
   noteChanges(problems, paths, backend, effort);
   notePayload(problems, moduleName, selectedUsecases, artifacts.entities);
@@ -291,6 +291,8 @@ export function buildD1InputSnapshot(
     entities: entityClosure,
     outbound,
     hasEffects,
+    workflows,
+    journeys: artifacts.journeys,
     grants: qualifyingGrants(access, entityClosure.ids),
     present,
     previous,
@@ -344,6 +346,8 @@ function planFiles(input: {
   entities: { ids: string[]; owners: Map<string, string[]> };
   outbound: Array<{ id: string; on: string }>;
   hasEffects: boolean;
+  workflows: Record<string, unknown>;
+  journeys: Record<string, unknown>;
   grants: string[];
   present: Map<string, string>;
   previous: D1InputSnapshot | null;
@@ -554,6 +558,18 @@ function planFiles(input: {
       identity: 'outbound',
       ownerRefs: input.outbound.map(event => `event:${event.id}`),
       dependsOn,
+    });
+  }
+  for (const process of workflowFiles(input.workflows, input.journeys, input.usecases)) {
+    const defPath = `l1/${moduleName}/layer_2_application/workflows/${process.processId}.defs.ts`;
+    add({
+      id: `workflow:${process.processId}`,
+      artifactType: 'workflowProcess',
+      defPath,
+      action: actionFor('toCreate', defPath, input.present, input.previous, input.receipts, input.problems, `process:${process.processId}`),
+      identity: process.processId,
+      ownerRefs: [`process:${process.processId}`],
+      dependsOn: process.dependsOn,
     });
   }
 
@@ -1206,12 +1222,47 @@ function outboundEvents(integration: Record<string, unknown>): Array<{ id: strin
     .filter(row => row.id);
 }
 
-// Same condition support70's emitEffects/laterOf use to decide whether the
-// integration outbound def is written: an outbound event, a process, an
-// inbound item or a plugin. Mirrors it here so input20 inventories the path
-// finalize80 will find, instead of only reacting to outbound events.
-function hasEffectOperations(integration: Record<string, unknown>, workflows: Record<string, unknown>): boolean {
-  return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0 || rows(workflows.processes).length > 0;
+// Inbound or plugin still writes integration outbound. A workflow process is its own def.
+function hasEffectOperations(integration: Record<string, unknown>): boolean {
+  return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0;
+}
+
+function workflowFiles(
+  workflows: Record<string, unknown>,
+  journeys: Record<string, unknown>,
+  usecases: readonly D1SelectedUsecase[],
+): Array<{ processId: string; dependsOn: string[] }> {
+  const decisions = rows(workflows.journeyDecisions).filter(row => row.inProcess === true && text(row.journeyId) && text(row.processId));
+  const plans: Array<{ processId: string; dependsOn: string[] }> = [];
+  for (const process of rows(workflows.processes)) {
+    const processId = text(process.processId);
+    if (!isSafeToken(processId)) continue;
+    const dependsOn = new Set<string>();
+    const consider = (entity: string, effect: string, transitionRef: string) => {
+      const name = effect === 'transition' ? transitionRef : effect;
+      if (!entity || !name || (effect !== 'create' && effect !== 'update' && effect !== 'transition')) return;
+      const usecase = usecases.find(item => effect === 'transition'
+        ? item.operation === 'transition' && item.entity === entity && item.transitionRef === transitionRef
+        : item.entity === entity && item.operation === effect);
+      if (usecase && isSafeToken(usecase.identity)) dependsOn.add(`usecase:${usecase.identity}`);
+    };
+    for (const journeyId of decisions.filter(row => text(row.processId) === processId).map(row => text(row.journeyId))) {
+      const journey = rec(journeys[journeyId]);
+      const business = rec(journey.business);
+      const steps = rows(business.steps).length ? rows(business.steps) : rows(journey.steps);
+      for (const step of steps) {
+        if (text(step.kind) !== 'act') continue;
+        consider(text(step.entity), text(step.effect), text(step.transitionRef));
+      }
+    }
+    for (const task of rows(process.tasks)) {
+      const kind = text(task.kind);
+      if (kind !== 'mechanical' && kind !== 'llm') continue;
+      consider(text(task.entityRef), text(task.effect), text(task.transitionRef));
+    }
+    plans.push({ processId, dependsOn: [...dependsOn].sort() });
+  }
+  return plans;
 }
 
 function comparePageSets(problems: D1InputProblem[], paths: ReturnType<typeof inputPaths>, menu: Set<string>, needs: Set<string>, effort: Set<string>): void {
