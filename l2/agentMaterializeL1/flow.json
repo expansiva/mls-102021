@@ -22,7 +22,7 @@
         "accessScope",
         "authorityMap"
       ],
-      "goal": "Emit each unit with its copied recipe, write it in memory, run the gates, record its status."
+      "goal": "Emit each unit with its copied recipe, write it to the stor (createStorFile / localStor.setContent, as agentDefsL1), run the gates, record its status."
     },
     {
       "planId": "persistence20-<module>",
@@ -133,7 +133,7 @@
     "Source and hints (materializadorL1.md §2.1): the source is the page contract (types, JSDoc, rules, access), the l4 (ontology, rule texts) and the def inventory (which units exist, the authority of each route). The def's implementation fields (uses, params, output tree) are hints shown to the model as such; where they diverge, the contract and the l4 win, and an empty or unresolved field means decide by them. The usecase def carries only its intent (§10: entity, operation, transitionRef, rulesApplied, effects, mdm): its signature, port, selector and transition payload follow from the operation, the entity and the l4 (emitters/usecaseIntent.ts).",
     "Order is domain -> persistence (recipes) -> usecases -> requests (model) -> controllers (recipe) -> tests (model): a unit whose same-or-earlier-layer dependency has no file is blocked (BLOCKED_BY). A controller imports its request service, so it is proven by the compiler after the service exists. Step and folder numbers are names, not the order (controllers30 runs after requests50): renaming them would leave stale copies with the same agent name in the Studio stor.",
     "Proof is the Studio compiler. An unavailable compiler is a failure; a file that does not compile gets its previous bytes back (or is removed).",
-    "Writes stay in memory: the file is registered with mls.stor.addOrUpdateFile and serves its bytes through getContent; no libStor, no localStor.setContent, no editor model. The Studio saves.",
+    "Writes persist on the collabmsg path: a new or deleted file is createStorFile without an editor model; an existing file is localStor.setContent. This session still serves those bytes.",
     "Proof is the Studio compiler, for l1 too: a missing model is created by the canonical Studio path (getStudioModel / file.getOrCreateModel) and compiled with mls.l2.typescript.compile under a 60 s deadline. Compiler errors fail the unit (previous bytes restored; a model unit repairs with them). A worker that stops answering trips a breaker for the page: the remaining units end done COMPILE_UNAVAILABLE_L1 with the cause, listed apart in the report.",
     "A usecase whose generated source does not name a rule of its rulesApplied is blocked (RULE_NOT_EMITTED); the file stays, the unit is not generated. Never silent.",
     "An output this agent did not write, or edited since, is never overwritten without \"force\": true or a target.",

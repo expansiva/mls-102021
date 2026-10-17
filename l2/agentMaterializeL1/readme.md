@@ -37,8 +37,8 @@ Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests5
 - A type the recipe derives only sometimes always goes to the model (05/10/2026): usecases and request
   services. Domain, persistence and controllers are recipes.
 
-- Writes stay in memory: each file is registered with `mls.stor.addOrUpdateFile` and serves its bytes through
-  `getContent`. No libStor, no `localStor.setContent`, no editor model; the Studio saves.
+- Writes persist on the collabmsg path: a new or deleted file is `createStorFile(..., false, false, false)`
+  (no editor model); an existing file is `localStor.setContent`. This session still serves those bytes.
 - Proof is the Studio compiler, l1 included: a missing model is created by the canonical Studio path (`getStudioModel` / `file.getOrCreateModel`)
   and `mls.l2.typescript.compile` runs under a 60 s deadline. Compiler errors fail the unit and feed the repair of
   a model unit. A worker that stops answering trips a breaker: the rest of the run ends `done COMPILE_UNAVAILABLE_L1`

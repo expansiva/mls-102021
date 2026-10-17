@@ -31,7 +31,7 @@ import { createAgent as persistenceAgent } from '/_102021_/l2/agentMaterializeL1
 import { createAgent as controllersAgent } from '/_102021_/l2/agentMaterializeL1/steps/controllers30/agentM12Controllers.js';
 import { createAgent as usecasesAgent } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readOptional, readUnitStatus, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readOptional, readUnitStatus, removeStorFile, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { borrowedModelScopeSize } from '/_102035_/l2/solution/studioCompile.js';
 import { contractRoutes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
@@ -253,23 +253,60 @@ void test('a worker call that never answers fails by name instead of hanging the
   assert.equal(await withCompileTimeout('x', Promise.resolve(7), 20), 7);
 });
 
-void test('a write stays in memory; once the worker is down the l1 compile is reported unavailable without touching the editor', async () => {
+void test('a write persists without an editor model; once the worker is down the l1 compile is reported unavailable', async () => {
   const files = installStor();
   const calls: string[] = [];
   const stor = (mls as unknown as { stor: { localStor: Record<string, unknown> } }).stor;
-  stor.localStor.setContent = async () => { calls.push('setContent'); return true; };
+  stor.localStor.setContent = async (file: FakeFile, value: { content?: string | null }) => {
+    calls.push('setContent');
+    file.content = value.content ?? '';
+    return true;
+  };
   (mls as unknown as Record<string, unknown>).editor = new Proxy({}, { get: (_target, name) => { calls.push(`editor.${String(name)}`); return () => undefined; } });
   (mls as unknown as Record<string, unknown>).l2 = { typescript: new Proxy({}, { get: (_target, name) => { calls.push(`typescript.${String(name)}`); return () => undefined; } }) };
   const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'unit', extension: '.ts' };
   await writeText(info, 'export const a = 1;\n');
   assert.equal(await readOptional(info), 'export const a = 1;\n');
   assert.equal(files[keyOf(info)].status, 'new');
-  assert.deepEqual(calls, [], 'a write registers the file and keeps the bytes in memory: no setContent, no editor model');
+  assert.deepEqual(calls, ['setContent'], 'a new file is createStorFile, which stores the bytes and does not open an editor model');
   markWorkerDown('M12_COMPILER_TIMEOUT: test');
   const results = await compileM12Files([{ info, expected: 'export const a = 1;\n' }]);
   assert.ok(isUnavailable(results[0].errors[0]) && results[0].errors[0].includes('M12_COMPILER_TIMEOUT: test'), results[0].errors[0]);
-  assert.deepEqual(calls, [], 'with the worker down, the Studio editor and worker are not asked again');
+  assert.deepEqual(calls, ['setContent'], 'with the worker down, the Studio editor and worker are not asked again');
   markWorkerDown('');
+});
+
+void test('a new file is created without an editor model; an existing file is setContent; removing a new file clears it', async () => {
+  const files = installStor();
+  const calls: string[] = [];
+  const stor = (mls as unknown as { stor: { addOrUpdateFile: (info: M12FileInfo) => Promise<FakeFile>; localStor: { setContent: (file: FakeFile, value: { content?: string | null; contentType?: string }) => Promise<boolean> } } }).stor;
+  const add = stor.addOrUpdateFile.bind(stor);
+  stor.addOrUpdateFile = async (info) => { calls.push('addOrUpdateFile'); return add(info); };
+  stor.localStor.setContent = async (file, value) => {
+    calls.push(`setContent:${value.content === null ? 'null' : value.content}`);
+    file.content = value.content ?? '';
+    return true;
+  };
+  (mls as unknown as Record<string, unknown>).editor = new Proxy({}, { get: () => { calls.push('editor'); return () => undefined; } });
+  const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'unit', extension: '.ts' };
+  const text = 'export const a = 1;\n';
+  await writeText(info, text);
+  assert.deepEqual(calls, ['addOrUpdateFile', `setContent:${text}`], 'a new file is createStorFile (addOrUpdateFile then setContent) and no editor model');
+  assert.equal(await files[keyOf(info)].getContent(), text);
+  calls.length = 0;
+  files[keyOf(info)].status = 'changed';
+  await writeText(info, 'export const a = 2;\n');
+  assert.deepEqual(calls, ['setContent:export const a = 2;\n'], 'an existing file is localStor.setContent only');
+  assert.equal(await files[keyOf(info)].getContent(), 'export const a = 2;\n');
+  calls.length = 0;
+  await removeStorFile(info);
+  assert.deepEqual(calls, [], 'a file that existed before is never removed here');
+  assert.equal(files[keyOf(info)].status, 'changed');
+  files[keyOf(info)].status = 'new';
+  calls.length = 0;
+  await removeStorFile(info);
+  assert.deepEqual(calls, ['setContent:null']);
+  assert.equal(files[keyOf(info)], undefined, 'a new file leaves the index');
 });
 
 void test('the request gate holds the contract routes, the atomic command and the route rules', () => {

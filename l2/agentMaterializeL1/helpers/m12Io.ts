@@ -1,8 +1,9 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/helpers/m12Io.ts" enhancement="_blank"/>
 
 // Disk is the truth of a run: every unit writes its own status file (one owner per file), finalize80 reads them.
-// Reads go through the Studio stor; writes stay in memory (see writeText). No node, fs or typescript import.
+// Reads go through the Studio stor; writes persist on the collabmsg path (see writeText). No node, fs or typescript import.
 
+import { createStorFile } from '/_102027_/l2/libStor.js';
 import type { M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { fileRef, infoOfRef, unitDraftFile, unitStatusFile, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
@@ -168,8 +169,8 @@ export async function hashParts(parts: readonly string[]): Promise<string> {
 }
 
 /**
- * The bytes this agent wrote in this browser session, by stor key. Nothing is saved: a written file lives in
- * `mls.stor.files` (registered with `addOrUpdateFile`) with its content here, until the Studio saves it.
+ * The bytes this agent wrote in this browser session, by stor key. The collabmsg persists the same bytes
+ * (`createStorFile` / `localStor.setContent`); this map is what later phases and the compiler read.
  */
 // One map for the whole page: every phase agent, whatever module instance the Studio loaded it from, reads the
 // bytes the earlier phases wrote. A module-level map was not shared, so a later phase read every status as absent
@@ -185,31 +186,27 @@ function keyOf(info: M12FileInfo): string {
 }
 
 /**
- * In memory only: no libStor, no `localStor.setContent`, no editor model (an l1 model sent to the Studio
- * TypeScript worker never settles, 05/10/2026). The file is registered in `mls.stor.files` with
- * `mls.stor.addOrUpdateFile`, marked `new` or `changed`, and serves these bytes through `getContent` and
- * `getValueInfo`. Returns the hash of the bytes, which is the hash a later read of this session returns.
+ * Persists like `agentDefsL1` `writeText`: a missing or `deleted` file is created with
+ * `createStorFile(..., false, false, false)` (no editor model — an l1 model sent to the Studio
+ * TypeScript worker never settles, 05/10/2026). Any other file is `localStor.setContent`.
+ * The session map keeps the bytes a later phase reads. Returns the hash of those bytes.
  */
 export async function writeText(info: M12FileInfo, text: string): Promise<string> {
   if (info.shortName.includes('.') && info.shortName !== 'runtime.project') throw new Error(`M12_SHORTNAME_DOT: ${fileRef(info)}`);
   const key = keyOf(info);
-  const now = new Date().toISOString();
-  const index = mls.stor.files as Record<string, any>;
-  let file = index[key];
+  const index = mls.stor.files as Record<string, mls.stor.IFileInfo>;
+  const file = index[key];
   memory.set(key, text);
   if (!file || file.status === 'deleted') {
-    const returned = await mls.stor.addOrUpdateFile({ project: info.project, level: info.level, shortName: info.shortName, extension: info.extension, versionRef: '0', folder: info.folder, updatedAt: now } as never);
-    // The object the index holds is the one the Studio reads: keep that one, register the returned one if missing.
-    file = index[key] ?? returned;
-    if (!file) throw new Error(`M12_STOR_REFUSED: ${fileRef(info)} could not be registered in mls.stor.files.`);
-    if (!index[key]) index[key] = file;
-    file.status = 'new';
-  } else if (file.status !== 'new' && file.status !== 'renamed') {
-    file.status = 'changed';
+    await createStorFile({ ...info, source: text, status: 'new' }, false, false, false);
+    // createStorFile writes the object addOrUpdateFile returned. When that is not the index entry, put the bytes there too.
+    const stored = index[key];
+    if (stored && await stored.getContent() !== text) {
+      await mls.stor.localStor.setContent(stored, { contentType: 'string', content: text });
+    }
+  } else {
+    await mls.stor.localStor.setContent(file, { contentType: 'string', content: text });
   }
-  file.updatedAt = now;
-  file.getContent = async () => memory.get(key) ?? text;
-  file.getValueInfo = async () => ({ content: memory.get(key) ?? text, contentType: 'string' });
   return sha256Text(text);
 }
 
@@ -220,14 +217,18 @@ export async function writeSource(info: M12FileInfo, text: string): Promise<{ ha
 }
 
 /**
- * Drops a file this agent created in this session (a broken output, the l5 lock). A file that existed before is
- * never removed here: its previous bytes are written back instead.
+ * Drops a file this agent created in this session (a broken output, the l5 lock), the way `agentDefsL1`
+ * `deleteOne` drops a `new` file: content cleared, out of the index. A file that existed before is never removed
+ * here: its previous bytes are written back instead.
  */
 export async function removeStorFile(info: M12FileInfo): Promise<void> {
   const key = keyOf(info);
-  const file = (mls.stor.files as Record<string, any>)[key];
+  const index = mls.stor.files as Record<string, mls.stor.IFileInfo>;
+  const stored = index[key];
   memory.delete(key);
-  if (file && file.status === 'new') delete (mls.stor.files as Record<string, any>)[key];
+  if (!stored || stored.status !== 'new') return;
+  await mls.stor.localStor.setContent(stored, { contentType: 'string', content: null });
+  delete index[key];
 }
 
 export async function writeJson(info: M12FileInfo, value: unknown): Promise<void> {
