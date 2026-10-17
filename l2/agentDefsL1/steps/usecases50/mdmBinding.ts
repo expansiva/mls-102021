@@ -67,8 +67,8 @@ const READ_CAPABILITIES = [
 export function capabilityApplies(name: string, operation: string): boolean {
   if (!isL1Operation(operation)) return false;
   switch (operation) {
-    case 'update': return name === 'edit.platformFields' || name.startsWith('edit.');
-    case 'create': return name.startsWith('register.') || name === 'create';
+    case 'update': return name === 'edit.platformFields' || name.startsWith('edit.') || name === 'link.contact';
+    case 'create': return name.startsWith('register.') || name === 'create' || name === 'link.contact';
     // Candidates are the read table below, not a `list` / `read.` / `locate.` prefix.
     case 'list':
     case 'get': return (READ_CAPABILITIES as readonly string[]).includes(name);
@@ -292,6 +292,7 @@ export function bindMdm(input: MdmBindInput): MdmBindResult {
   }
   if (selected.has('link.contact')) {
     if (!fields) refuseUnread(gaps, 'link.contact', reason);
+    else if (!linkFeedable(fields)) skipped.add('link.contact');
     else calls.push(linkCall(fields));
   }
 
@@ -904,6 +905,10 @@ function contactPair(fields: readonly MdmInputField[]): { type: MdmInputField; v
     if (value) return { type: field, value };
   }
   return null;
+}
+
+function linkFeedable(fields: readonly MdmInputField[]): boolean {
+  return ['id', 'toId', 'type'].every(path => fields.some(field => field.path === path));
 }
 
 function readFeedable(name: string, fields: readonly MdmInputField[]): boolean {

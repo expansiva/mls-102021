@@ -559,6 +559,46 @@ void test('an unread signature does not prune, and the reason is recorded', () =
   assert.equal(mdm.skipped.some(item => item.code === 'RESULT_UNUSED'), false);
 });
 
+void test('update with link.contact emits link', () => {
+  const mdm = mdmForOperation({
+    entityId: 'PessoaOrganizacao',
+    namespace: 'inicio',
+    capabilities: ['link.contact'],
+    platformFields: [],
+    inputFields: [
+      { path: 'id', optional: false, writePrecondition: false },
+      { path: 'toId', optional: false, writePrecondition: false },
+      { path: 'type', optional: false, writePrecondition: false },
+    ],
+    outputFields: [],
+    operation: 'update',
+  });
+  assert.deepEqual(mdm.calls.map(call => call.method), ['link']);
+  assert.deepEqual(mdm.calls[0]?.capabilities, ['link.contact']);
+});
+
+void test('create with register.createOrAttach and link.contact emits create, attachRole, then link', () => {
+  const mdm = mdmForOperation({
+    entityId: 'PessoaOrganizacao',
+    namespace: 'inicio',
+    capabilities: ['register.createOrAttach', 'link.contact'],
+    platformFields: ['details.identification.name'],
+    inputFields: [
+      { path: 'details.identification.name', optional: false, writePrecondition: false },
+      { path: 'id', optional: false, writePrecondition: false },
+      { path: 'toId', optional: false, writePrecondition: false },
+      { path: 'type', optional: false, writePrecondition: false },
+    ],
+    outputFields: [{ path: 'id' }],
+    operation: 'create',
+  });
+  const methods = mdm.calls.map(call => call.method);
+  const createAt = methods.indexOf('create');
+  const attachAt = methods.indexOf('attachRole');
+  const linkAt = methods.indexOf('link');
+  assert.ok(createAt >= 0 && attachAt > createAt && linkAt > attachAt);
+});
+
 void test('get and list candidates come from the read table, not a list prefix', () => {
   assert.equal(capabilityApplies('listLinks', 'get'), true);
   assert.equal(capabilityApplies('read.byId', 'list'), true);
