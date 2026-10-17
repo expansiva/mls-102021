@@ -13,6 +13,7 @@ import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60
 import {
   type D1ControllerBuild,
   type D1ControllerGrant,
+  type D1ControllerProblem,
   type D1ControllerRelationship,
   type D1ControllerRequest,
   type D1ExistingController,
@@ -41,8 +42,8 @@ export async function assembleD1Controllers(
   if (!isRecord(parsed) || parsed.schemaVersion !== D1_USECASE_VERSION || parsed.project !== project || parsed.moduleName !== moduleName) {
     return { refusal: 'usecases50 draft does not belong to this project. controllers60 wrote nothing.' };
   }
-  const request = await controllerRequest(project, moduleName, snapshot, parsed);
-  return { build: buildD1Controllers(request) };
+  const loaded = await controllerRequest(project, moduleName, snapshot, parsed);
+  return { build: withDisclosureProblems(buildD1Controllers(loaded.request), loaded.disclosureProblems) };
 }
 
 export async function commitD1Controllers(
@@ -109,7 +110,7 @@ async function controllerRequest(
     removed: Array<{ kind: string; id: string; defPath: string | null; contentHash?: string }>;
   },
   usecases: Record<string, unknown>,
-): Promise<D1ControllerRequest> {
+): Promise<{ request: D1ControllerRequest; disclosureProblems: D1ControllerProblem[] }> {
   const paths = inputPaths(moduleName);
   const accessText = await readLogical(project, paths.access);
   const needsText = await readLogical(project, paths.needs);
@@ -139,32 +140,36 @@ async function controllerRequest(
     if (parsed) existing.push(parsed);
   }
   const ontology = await ontologyOf(project, moduleName, index);
+  const accessGrants = accessGrantsOf(access, ontology);
   return {
-    project,
-    moduleName,
-    pages: pageIds.map(pageId => ({
-      pageId,
-      actors: actors.get(pageId) || [],
-      defPath: controllerPath.get(pageId) || `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
-    })),
-    usecases: snapshot.selection.usecases.map(usecase => ({
-      usecaseId: usecase.usecaseId,
-      entity: usecase.entity,
-      operation: usecase.operation,
-      status: usecase.status,
-      functionName: usecase.usecaseId,
-      defPath: usecasePath.get(usecase.identity) || usecasePath.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
-    })),
-    grants: grantsOf(access, ontology),
-    relationships: relationshipsOf(index),
-    contracts,
-    existing,
-    enumerations: enumerationsOf(usecases),
-    accessRead: isRecord(access),
-    actorsRead: isRecord(needs),
-    removedRoutes: removedRoutesOf(snapshot.removed),
-    serviceRequests: (snapshot.selection.requests || []).map(serviceSourceOf),
-    ontology,
+    disclosureProblems: accessGrants.problems,
+    request: {
+      project,
+      moduleName,
+      pages: pageIds.map(pageId => ({
+        pageId,
+        actors: actors.get(pageId) || [],
+        defPath: controllerPath.get(pageId) || `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
+      })),
+      usecases: snapshot.selection.usecases.map(usecase => ({
+        usecaseId: usecase.usecaseId,
+        entity: usecase.entity,
+        operation: usecase.operation,
+        status: usecase.status,
+        functionName: usecase.usecaseId,
+        defPath: usecasePath.get(usecase.identity) || usecasePath.get(usecase.usecaseId) || `l1/${moduleName}/layer_2_application/usecases/${usecase.usecaseId}.defs.ts`,
+      })),
+      grants: accessGrants.grants,
+      relationships: relationshipsOf(index),
+      contracts,
+      existing,
+      enumerations: enumerationsOf(usecases),
+      accessRead: isRecord(access),
+      actorsRead: isRecord(needs),
+      removedRoutes: removedRoutesOf(snapshot.removed),
+      serviceRequests: (snapshot.selection.requests || []).map(serviceSourceOf),
+      ontology,
+    },
   };
 }
 
@@ -217,18 +222,33 @@ function actorsOf(needs: unknown): Map<string, string[]> {
   return out;
 }
 
-function grantsOf(access: unknown, ontology: Record<string, unknown>): D1ControllerGrant[] {
-  if (!isRecord(access) || !Array.isArray(access.grants)) return [];
-  const out: D1ControllerGrant[] = [];
+/** `summaryOnly` is the L4 name of `fieldsOnly`. Any other mode is an error on the grant. */
+export function accessGrantsOf(
+  access: unknown,
+  ontology: Record<string, unknown>,
+): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
+  if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: [], problems: [] };
+  const grants: D1ControllerGrant[] = [];
+  const problems: D1ControllerProblem[] = [];
   for (const grant of access.grants) {
     if (!isRecord(grant) || typeof grant.grantId !== 'string' || typeof grant.actorRef !== 'string') continue;
     const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
     const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
-    const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
-    if (!mode) continue;
+    const declared = disclosure.mode;
+    const known = declared === 'fullRecord' || declared === 'fieldsOnly' || declared === 'summaryOnly';
+    if (!known) {
+      problems.push({
+        severity: 'error',
+        code: 'DISCLOSURE_MODE',
+        path: grant.grantId,
+        message: `Grant ${grant.grantId} disclosure mode ${JSON.stringify(declared ?? null)} is not fullRecord, fieldsOnly, or summaryOnly.`,
+      });
+      continue;
+    }
+    const mode = declared === 'summaryOnly' ? 'fieldsOnly' : declared;
     const entityRefs = stringList(grant.entityRefs);
     const allowedFields = stringList(disclosure.allowedFields);
-    out.push({
+    grants.push({
       grantId: grant.grantId,
       actorRef: grant.actorRef,
       entityRefs,
@@ -245,7 +265,12 @@ function grantsOf(access: unknown, ontology: Record<string, unknown>): D1Control
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
     });
   }
-  return out;
+  return { grants, problems };
+}
+
+function withDisclosureProblems(build: D1ControllerBuild, problems: readonly D1ControllerProblem[]): D1ControllerBuild {
+  if (problems.length === 0) return build;
+  return { ...build, ok: false, problems: [...build.problems, ...problems], emit: [] };
 }
 
 function relationshipsOf(index: unknown): D1ControllerRelationship[] {

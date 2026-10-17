@@ -32,7 +32,7 @@ import {
   type D1SupportRequest,
 } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
-import type { D1ControllerGrant, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import type { D1ControllerGrant, D1ControllerProblem, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
 const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound', 'workflowProcess']);
 
@@ -69,7 +69,8 @@ export async function assembleD1Support(
   const previous = previousText ? parseObject(previousText) : null;
   const files = await receiptFiles(project, snapshot.files);
   const entities = await entitiesOf(project, moduleName, index);
-  const grants = grantsOf(access, entities);
+  const accessGrants = accessGrantsOf(access, entities);
+  const grants = accessGrants.grants;
   const models = modelsOf(domain, index);
   const selected = snapshot.selection.usecases;
   const usecaseIds = [...new Set(selected.flatMap(item => [item.usecaseId, item.identity]))].filter(Boolean).sort();
@@ -113,7 +114,7 @@ export async function assembleD1Support(
   } else {
     request.testSupportUnread = testSupport.unread;
   }
-  return { build: buildD1Support(request), files };
+  return { build: withDisclosureProblems(buildD1Support(request), accessGrants.problems), files };
 }
 
 export async function commitD1Support(
@@ -292,18 +293,33 @@ function parseObject(text: string): Record<string, unknown> | null {
   }
 }
 
-function grantsOf(access: unknown, entities: Record<string, unknown>): D1ControllerGrant[] {
-  if (!isRecord(access) || !Array.isArray(access.grants)) return [];
-  const out: D1ControllerGrant[] = [];
+/** `summaryOnly` is the L4 name of `fieldsOnly`. Any other mode is an error on the grant. */
+export function accessGrantsOf(
+  access: unknown,
+  entities: Record<string, unknown>,
+): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
+  if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: [], problems: [] };
+  const grants: D1ControllerGrant[] = [];
+  const problems: D1ControllerProblem[] = [];
   for (const grant of access.grants) {
     if (!isRecord(grant) || typeof grant.grantId !== 'string' || typeof grant.actorRef !== 'string') continue;
     const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
     const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
-    const mode = disclosure.mode === 'fullRecord' || disclosure.mode === 'fieldsOnly' ? disclosure.mode : '';
-    if (!mode) continue;
+    const declared = disclosure.mode;
+    const known = declared === 'fullRecord' || declared === 'fieldsOnly' || declared === 'summaryOnly';
+    if (!known) {
+      problems.push({
+        severity: 'error',
+        code: 'DISCLOSURE_MODE',
+        path: grant.grantId,
+        message: `Grant ${grant.grantId} disclosure mode ${JSON.stringify(declared ?? null)} is not fullRecord, fieldsOnly, or summaryOnly.`,
+      });
+      continue;
+    }
+    const mode = declared === 'summaryOnly' ? 'fieldsOnly' : declared;
     const entityRefs = stringList(grant.entityRefs);
     const allowedFields = stringList(disclosure.allowedFields);
-    out.push({
+    grants.push({
       grantId: grant.grantId,
       actorRef: grant.actorRef,
       entityRefs,
@@ -320,7 +336,15 @@ function grantsOf(access: unknown, entities: Record<string, unknown>): D1Control
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
     });
   }
-  return out;
+  return { grants, problems };
+}
+
+function withDisclosureProblems<T extends { ok: boolean; problems: D1ControllerProblem[]; emit: unknown[] }>(
+  build: T,
+  problems: readonly D1ControllerProblem[],
+): T {
+  if (problems.length === 0) return build;
+  return { ...build, ok: false, problems: [...build.problems, ...problems], emit: [] };
 }
 
 async function entitiesOf(project: number, moduleName: string, index: unknown): Promise<Record<string, unknown>> {
