@@ -153,7 +153,8 @@ async function l1Diagnostics(info: M12FileInfo, model: M12Model): Promise<{ erro
     const ref = fileRef(info);
     if (model.compilerResults) model.compilerResults.modelNeedCompile = true;
     await withCompileTimeout(ref, typescript.compile(model));
-    return { errors: (model.compilerResults?.errors ?? []).map(formatCompilerDiagnostic) };
+    const text = typeof (model.model as { getValue?: unknown }).getValue === 'function' ? String((model.model as { getValue(): string }).getValue()) : '';
+    return { errors: (model.compilerResults?.errors ?? []).map(diagnostic => `${formatCompilerDiagnostic(diagnostic)}${diagnosticLocation(diagnostic, text)}`) };
   }
   const ref = fileRef(info);
   const textModel = model.model as unknown as { uri?: { toString(): string } };

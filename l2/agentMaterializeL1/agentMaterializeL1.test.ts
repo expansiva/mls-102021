@@ -17,7 +17,7 @@ import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterialize
 import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { moduleTickSource, taskOccurrenceSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { l4Process, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { l4Process, loadWorkflowContext, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
@@ -397,6 +397,28 @@ void test('an l1 file with compile and no worker is proven by compilerResults.er
   const results = await compileM12Files([{ info, expected: text }]);
   assert.equal(results[0].errors.some(error => error.startsWith('M12_COMPILE_UNAVAILABLE_L1') || error.startsWith('COMPILE_UNAVAILABLE_L1')), false);
   assert.deepEqual(results[0].errors, ["TS2345 - Argument of type 'string' is not assignable to parameter of type 'MdmEntityGetInput'."]);
+});
+
+void test('a host compile error with start names the line and column', async () => {
+  const files = installStor();
+  const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'located', extension: '.ts' };
+  const text = 'export function f(id: string) { return ctx.mdm.entity.get(id); }\n';
+  await writeText(info, text);
+  const start = text.indexOf('get(id)');
+  const model = { model: { getValue: () => text, uri: { toString: () => 'mem://located.ts' } }, storFile: { ...info }, compilerResults: { errors: [] as unknown[] } };
+  (mls as unknown as Record<string, unknown>).editor = { getKeyModel: () => 'located', models: { located: { ts: model } } };
+  (mls as unknown as Record<string, unknown>).l2 = { typescript: {
+    compile: async (target: { compilerResults?: { errors: unknown[] } }) => {
+      target.compilerResults = { errors: [{ code: 2345, messageText: "Argument of type 'string' is not assignable to parameter of type 'MdmEntityGetInput'.", start }] };
+      return false;
+    },
+  } };
+  void files;
+  markWorkerDown('');
+  const results = await compileM12Files([{ info, expected: text }]);
+  const line = text.slice(0, start).split('\n').length;
+  const column = start - text.lastIndexOf('\n', start - 1);
+  assert.match(results[0].errors[0], new RegExp(`\\(line ${line}, column ${column}:`));
 });
 
 void test('an l1 file with neither worker nor compile stays COMPILE_UNAVAILABLE_L1', async () => {
@@ -913,7 +935,7 @@ test('a workflowProcess is a model unit between the usecases and the request ser
   assert.ok(at('Materialize usecases') < at('Materialize the workflow service') && at('Materialize the workflow service') < at('Materialize request services'), titles.join(' | '));
 });
 
-test('the workflow service: its facts, its l4 process, the usecase of each operation and the gate of its answer (§11)', () => {
+test('the workflow service: its facts, its l4 process, the usecase of each operation and the gate of its answer (§11)', async () => {
   const unit = (artifactType: string, unitId: string, data: Record<string, unknown>): M12Unit => ({ unitId, definition: { artifactType, artifactId: unitId, data, dependencies: [] }, declared: { data } } as unknown as M12Unit);
   const avisos = unit('workflowProcess', 'avisoDiario', { processId: 'avisoDiario', trigger: { kind: 'scheduled', schedule: 'Todo dia às 8h' }, functions: ['gerarAvisosDiarios'], operations: [{ operation: 'AvisoVencimento.create', steps: ['task:gerarAvisos'] }], occurrence: { entityId: 'AvisoVencimento' } });
   const ciclo = unit('workflowProcess', 'cicloTarefa', { processId: 'cicloTarefa', trigger: { kind: 'manual', actorRef: 'membroEquipe' }, functions: ['abrirOcorrenciaTarefa', 'avancarEtapaTarefa'], operations: [{ operation: 'Tarefa.aceitar', steps: ['journey:revisarTarefa/aceitarTarefa'] }, { operation: 'Tarefa.create', steps: ['journey:criarTarefa/preencherTarefa'] }] });
@@ -924,6 +946,18 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   const facts = workflowFacts(avisos);
   assert.deepEqual([facts.trigger.kind, facts.occurrence, facts.functions.join()], ['scheduled', 'AvisoVencimento', 'gerarAvisosDiarios']);
   assert.equal(operationUsecase(units, 'Tarefa.aceitar')?.unitId, 'aceitar', 'a transition is reached by its transitionRef');
+  const l4Both = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'comMdm', functions: [] }, { processId: 'semMdm', functions: [] }] }) + ' as const;';
+  const asUnit = (artifactType: string, unitId: string, data: Record<string, unknown>): M12Unit => ({ unitId, definition: { artifactType, artifactId: unitId, data, dependencies: [] }, declared: { data } } as unknown as M12Unit);
+  const comMdm = asUnit('workflowProcess', 'comMdm', { processId: 'comMdm', trigger: { kind: 'event', event: 'pedido' }, functions: ['liberar'], operations: [{ operation: 'Pessoa.get', steps: ['a'] }] });
+  const semMdm = asUnit('workflowProcess', 'semMdm', { processId: 'semMdm', trigger: { kind: 'event', event: 'pedido' }, functions: ['listar'], operations: [{ operation: 'Pessoa.list', steps: ['b'] }] });
+  const getPessoa = asUnit('usecase', 'getPessoa', { entityId: 'Pessoa', operation: 'get', mdm: { store: 'platform' }, sequence: [] });
+  const listPessoa = asUnit('usecase', 'listPessoa', { entityId: 'Pessoa', operation: 'list', sequence: [] });
+  const read = async (ref: string) => ref.endsWith('/l4/inicio/workflows.defs.ts') ? l4Both : null;
+  const withMdm = await loadWorkflowContext({ run: { project: 102047, module: 'inicio' }, units: [comMdm, getPessoa], read } as never, comMdm);
+  const without = await loadWorkflowContext({ run: { project: 102047, module: 'inicio' }, units: [semMdm, listPessoa], read } as never, semMdm);
+  assert.match(withMdm.human, /## The platform MDM \(source: how the engine stores and returns this entity today\)/);
+  assert.match(withMdm.human, /ctx\.mdm\.entity\.get\(\{ mdmId \}\)/);
+  assert.equal(without.human.includes('The platform MDM'), false);
   assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
   const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
   assert.ok(l4Process(l4, 'avisoDiario').includes('Gera um aviso por responsável'));

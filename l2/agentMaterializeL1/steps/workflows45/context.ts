@@ -16,7 +16,7 @@ import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { allRuleIds, citedEntities, entityNames, exportSignatures, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, allRuleIds, citedEntities, entityNames, exportSignatures, mdmContextSection, ruleTexts, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 export const M12_WORKFLOW_TOOL = 'writeWorkflowService' as const;
 export const M12_WORKFLOW_TOOL_DESCRIPTION = 'Return the whole workflow service TypeScript file of the process';
@@ -131,6 +131,10 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     lines.push(`- ${row.operation} (${row.steps.join(', ')}): ${usecase ? `usecase \`${usecase.unitId}\`` : 'no usecase: the function applies it through the entity port (POOL_ABSENT)'}`);
   }
   if (lines.length) parts.push(section('Operations of the process', lines.join('\n')));
+  const mdmUsecase = facts.operations.map(row => operationUsecase(ctx.units, row.operation)).find(usecase => usecase && usesMdm(usecase));
+  if (mdmUsecase) {
+    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF))));
+  }
 
   const sent = new Set<string>();
   for (const dep of dependencyUnits(ctx, unit)) {
