@@ -300,13 +300,18 @@ void test('a new file is created without an editor model; an existing file is se
   assert.equal(await files[keyOf(info)].getContent(), 'export const a = 2;\n');
   calls.length = 0;
   await removeStorFile(info);
-  assert.deepEqual(calls, [], 'a file that existed before is never removed here');
-  assert.equal(files[keyOf(info)].status, 'changed');
-  files[keyOf(info)].status = 'new';
+  assert.deepEqual(calls, ['setContent:null'], 'a file this session created is removed even after the host marks it changed');
+  assert.equal(files[keyOf(info)], undefined);
+  const prior = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'prior', extension: '.ts' };
+  files[keyOf(prior)] = fakeFile(prior, 'export const kept = 1;\n', 'changed');
   calls.length = 0;
-  await removeStorFile(info);
-  assert.deepEqual(calls, ['setContent:null']);
-  assert.equal(files[keyOf(info)], undefined, 'a new file leaves the index');
+  await writeText(prior, 'export const kept = 2;\n');
+  assert.deepEqual(calls, ['setContent:export const kept = 2;\n']);
+  calls.length = 0;
+  await removeStorFile(prior);
+  assert.deepEqual(calls, [], 'a file that existed before is never removed here');
+  assert.equal(files[keyOf(prior)].content, 'export const kept = 2;\n');
+  assert.equal(files[keyOf(prior)].status, 'changed');
 });
 
 void test('the request gate holds the contract routes, the atomic command and the route rules', () => {
@@ -370,6 +375,44 @@ void test('an l1 file is proven by worker diagnostics only: never compile, emit,
   const results = await compileM12Files([{ info, expected: text }]);
   assert.deepEqual(calls, ['getTypeScriptWorker', 'getDiagnostics file://server/_102047_/l1/x/unit.ts']);
   assert.deepEqual(results[0].errors, ["TS2322 - Type 'string' is not assignable to type 'number'."], 'a type error is a compile failure, not unavailable');
+});
+
+void test('an l1 file with compile and no worker is proven by compilerResults.errors', async () => {
+  const files = installStor();
+  const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'host', extension: '.ts' };
+  const text = 'export const a: number = "x";\n';
+  await writeText(info, text);
+  const storFile = files[keyOf(info)];
+  const model = { model: { getValue: () => text, uri: { toString: () => 'mem://host.ts' } }, storFile: { ...info }, compilerResults: { errors: [] as unknown[] } };
+  const editorKey = 'host';
+  (mls as unknown as Record<string, unknown>).editor = { getKeyModel: () => editorKey, models: { [editorKey]: { ts: model } } };
+  (mls as unknown as Record<string, unknown>).l2 = { typescript: {
+    compile: async (target: { compilerResults?: { errors: unknown[] } }) => {
+      target.compilerResults = { errors: [{ code: 2345, messageText: "Argument of type 'string' is not assignable to parameter of type 'MdmEntityGetInput'." }] };
+      return false;
+    },
+  } };
+  void storFile;
+  markWorkerDown('');
+  const results = await compileM12Files([{ info, expected: text }]);
+  assert.equal(results[0].errors.some(error => error.startsWith('M12_COMPILE_UNAVAILABLE_L1') || error.startsWith('COMPILE_UNAVAILABLE_L1')), false);
+  assert.deepEqual(results[0].errors, ["TS2345 - Argument of type 'string' is not assignable to parameter of type 'MdmEntityGetInput'."]);
+});
+
+void test('an l1 file with neither worker nor compile stays COMPILE_UNAVAILABLE_L1', async () => {
+  const files = installStor();
+  const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'none', extension: '.ts' };
+  const text = 'export const a = 1;\n';
+  await writeText(info, text);
+  const editorKey = 'none';
+  const model = { model: { getValue: () => text, uri: { toString: () => 'mem://none.ts' } }, storFile: { ...info } };
+  (mls as unknown as Record<string, unknown>).editor = { getKeyModel: () => editorKey, models: { [editorKey]: { ts: model } } };
+  (mls as unknown as Record<string, unknown>).l2 = { typescript: {} };
+  void files;
+  markWorkerDown('');
+  const results = await compileM12Files([{ info, expected: text }]);
+  assert.ok(isUnavailable(results[0].errors[0]), results[0].errors[0]);
+  markWorkerDown('');
 });
 
 void test('a usecase takes exactly (input, ctx), and a Contracts annotation on requests is swapped for the function table', () => {

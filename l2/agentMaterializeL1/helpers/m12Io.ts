@@ -181,6 +181,17 @@ const memory: Map<string, string> = (() => {
   return holder.__agentMaterializeL1Memory;
 })();
 
+/**
+ * Stor keys `writeText` created in this session. The collabmsg host sets `status` to `changed` on a
+ * successful write, so `status === 'new'` is gone before `removeStorFile` runs (the l5 lock stayed on disk).
+ * The set, not the status, says which file this session may drop.
+ */
+const created: Set<string> = (() => {
+  const holder = globalThis as unknown as { __agentMaterializeL1Created?: Set<string> };
+  if (!holder.__agentMaterializeL1Created) holder.__agentMaterializeL1Created = new Set<string>();
+  return holder.__agentMaterializeL1Created;
+})();
+
 function keyOf(info: M12FileInfo): string {
   return mls.stor.getKeyToFile(info as mls.stor.IFileInfo);
 }
@@ -198,6 +209,7 @@ export async function writeText(info: M12FileInfo, text: string): Promise<string
   const file = index[key];
   memory.set(key, text);
   if (!file || file.status === 'deleted') {
+    created.add(key);
     await createStorFile({ ...info, source: text, status: 'new' }, false, false, false);
     // createStorFile writes the object addOrUpdateFile returned. When that is not the index entry, put the bytes there too.
     const stored = index[key];
@@ -217,16 +229,18 @@ export async function writeSource(info: M12FileInfo, text: string): Promise<{ ha
 }
 
 /**
- * Drops a file this agent created in this session (a broken output, the l5 lock), the way `agentDefsL1`
- * `deleteOne` drops a `new` file: content cleared, out of the index. A file that existed before is never removed
- * here: its previous bytes are written back instead.
+ * Drops a file this agent created in this session (a broken output, the l5 lock): content cleared, out of the
+ * index. Membership is the session set `writeText` filled, not `status === 'new'` — the host marks a fresh
+ * write `changed`. A file that already existed is never removed here: its previous bytes are written back instead.
  */
 export async function removeStorFile(info: M12FileInfo): Promise<void> {
   const key = keyOf(info);
   const index = mls.stor.files as Record<string, mls.stor.IFileInfo>;
   const stored = index[key];
   memory.delete(key);
-  if (!stored || stored.status !== 'new') return;
+  if (!created.has(key)) return;
+  created.delete(key);
+  if (!stored) return;
   await mls.stor.localStor.setContent(stored, { contentType: 'string', content: null });
   delete index[key];
 }

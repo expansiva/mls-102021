@@ -131,27 +131,36 @@ function studioTypescript(): StudioTypescript {
 }
 
 /**
- * An l1 file is proven by its diagnostics only. `mls.l2.typescript.compile` also asks the TypeScript worker for
+ * An l1 file is proven by its diagnostics only. On the Studio, `compile` also asks the TypeScript worker for
  * imports, the emit output, decorators and the JSON doc; on an l1 model one of those answers could not be
- * cloned back (DataCloneError in ts.worker.js, 05/10/2026, through compile and compileAndPostProcess alike), and
- * the server JavaScript of l1 is built at publish anyway. So an l1 file asks the worker for exactly what the
- * proof needs, through the Studio's public helpers: `getTypeScriptWorker(model)` and `getDiagnostics(fileName,
- * worker)` (syntactic, then semantic). Each call has its own deadline and the cause names the call that hung.
+ * cloned back (DataCloneError in ts.worker.js, 05/10/2026), and the server JavaScript of l1 is built at publish
+ * anyway. So when `getTypeScriptWorker` and `getDiagnostics` exist, an l1 file asks the worker for exactly the
+ * proof. A host that has `compile` and not that pair (collabmsg: a real `ts.LanguageService`, no worker) is
+ * proven by `compile(model)` and `compilerResults.errors`, the same shape the other levels already return.
+ * Neither capability is `M12_COMPILE_UNAVAILABLE_L1`. Chosen by what the object offers, never by host name.
  */
 async function l1Diagnostics(info: M12FileInfo, model: M12Model): Promise<{ errors: string[] }> {
   const typescript = studioTypescript() as StudioTypescript & {
     getTypeScriptWorker?: (model: unknown) => Promise<unknown>;
     getDiagnostics?: (fileName: string, worker: unknown) => Promise<unknown[]>;
   };
-  if (typeof typescript.getTypeScriptWorker !== 'function' || typeof typescript.getDiagnostics !== 'function') {
-    throw new Error('M12_COMPILER_TIMEOUT: mls.l2.typescript has no getTypeScriptWorker/getDiagnostics here');
+  const getTypeScriptWorker = typescript.getTypeScriptWorker;
+  const getDiagnostics = typescript.getDiagnostics;
+  if (typeof getTypeScriptWorker !== 'function' || typeof getDiagnostics !== 'function') {
+    if (typeof typescript.compile !== 'function') {
+      throw new Error('M12_COMPILER_TIMEOUT: mls.l2.typescript has no getTypeScriptWorker/getDiagnostics here');
+    }
+    const ref = fileRef(info);
+    if (model.compilerResults) model.compilerResults.modelNeedCompile = true;
+    await withCompileTimeout(ref, typescript.compile(model));
+    return { errors: (model.compilerResults?.errors ?? []).map(formatCompilerDiagnostic) };
   }
   const ref = fileRef(info);
   const textModel = model.model as unknown as { uri?: { toString(): string } };
   const fileName = textModel.uri?.toString() ?? '';
   if (!fileName) throw new Error(`model of ${ref} has no uri`);
-  const worker = await withCompileTimeout(`${ref} (getTypeScriptWorker)`, typescript.getTypeScriptWorker(model.model));
-  const diagnostics = await withCompileTimeout(`${ref} (getDiagnostics)`, typescript.getDiagnostics(fileName, worker));
+  const worker = await withCompileTimeout(`${ref} (getTypeScriptWorker)`, getTypeScriptWorker(model.model));
+  const diagnostics = await withCompileTimeout(`${ref} (getDiagnostics)`, getDiagnostics(fileName, worker));
   const text = typeof (model.model as { getValue?: unknown }).getValue === 'function' ? String((model.model as { getValue(): string }).getValue()) : '';
   return { errors: (Array.isArray(diagnostics) ? diagnostics : []).map(diagnostic => `${formatCompilerDiagnostic(diagnostic)}${diagnosticLocation(diagnostic, text)}`) };
 }
