@@ -6,7 +6,7 @@
 // under the `ts` slot and preloads a `/x.defs.js` import as `x.defs.ts` (a file that does not exist).
 // A controller imports its contract `.defs.js` type, so with that helper it would never compile.
 
-import { enterStudioCompile, formatCompilerDiagnostic, leaveStudioCompile, releaseBorrowedModelScope, studioCompileAvailable } from '/_102035_/l2/solution/studioCompile.js';
+import { enterStudioCompile, formatCompilerDiagnostic, getStudioModel, leaveStudioCompile, releaseBorrowedModelScope, studioCompileAvailable } from '/_102035_/l2/solution/studioCompile.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
@@ -83,11 +83,15 @@ async function studioModel(info: M12FileInfo): Promise<M12Model | null> {
   };
   let model = find();
   if (!model) {
-    // The Studio's own path for an l1 model (libModel, as readProjectTypescriptAndCompileL1 does), without the
-    // compile it would start: this agent compiles it next, with a deadline.
-    const { createModel } = await import('/_102027_/l2/libModel.js');
-    const created = await createModel(file, false, false) as M12Model | undefined;
-    model = find() ?? (belongsTo(created, info) ? created : undefined);
+    // Canonical Studio creation, the same primitive the L2 materializer uses. `getStudioModel` creates through
+    // `file.getOrCreateModel()` and borrows the model when this editor key was empty. A key that already holds
+    // another extension (`.ts` beside `.defs.ts`) is not borrowed and is not passed through `getStudioModel`:
+    // that helper files every non-test extension in the `ts` slot and would sync the wrong bytes into it.
+    // Identity stays `storFile`, never the slot.
+    const slots = (mls.editor.models as Record<string, unknown> | undefined)?.[key];
+    if (!slots) await getStudioModel(info.project, info.level, info.folder, info.shortName, info.extension);
+    else await file.getOrCreateModel?.();
+    model = find();
   }
   if (!model?.model) return null;
   // Monaco compiles memory, not stor: bring the model to the stor bytes.

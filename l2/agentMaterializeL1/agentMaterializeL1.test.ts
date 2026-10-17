@@ -32,7 +32,8 @@ import { createAgent as controllersAgent } from '/_102021_/l2/agentMaterializeL1
 import { createAgent as usecasesAgent } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readOptional, readUnitStatus, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { borrowedModelScopeSize } from '/_102035_/l2/solution/studioCompile.js';
 import { contractRoutes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { exportSignatures, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { normalizeTestCases, orderCases, renderPageTests } from '/_102021_/l2/agentMaterializeL1/steps/tests60/render.js';
@@ -985,4 +986,57 @@ export interface PedidosContracts {
   assert.deepEqual(childWriteMethods(writes).get('LinhaPedido')?.map(item => item.name), ['create', 'update', 'delete'], 'an edit replaces the list');
   const port = def('repositoryPort', { entityId: 'LinhaPedido', interfaceName: 'LinhaPedidoRepository', methods: [{ name: 'list', params: ['LinhaPedidoFilter'], returns: 'LinhaPedido[]' }] });
   assert.deepEqual(((withProcessMethods(port, defs, childWriteMethods(writes)) as { data: { methods: Array<{ name: string }> } }).data.methods).map(item => item.name), ['list', 'create', 'update', 'delete']);
+});
+
+test('a file with no editor model is created on the canonical Studio path and the borrow is released', async () => {
+  const helper = readFileSync(path.join(HERE, 'helpers/m12Compile.ts'), 'utf8');
+  assert.equal(helper.includes('lib' + 'Model'), false);
+  const previous = (globalThis as { mls?: unknown }).mls;
+  const info: M12FileInfo = { project: 1, level: 1, folder: 'm', shortName: 'a', extension: '.ts' };
+  const source = 'export const a = 1;\n';
+  const editorKey = `${info.project}|${info.level}|${info.folder}|${info.shortName}`;
+  let created = 0;
+  const released: unknown[][] = [];
+  const models: Record<string, unknown> = {};
+  const file = {
+    ...info,
+    status: 'changed',
+    getContent: async () => source,
+    getOrCreateModel: async () => {
+      created += 1;
+      const slot = {
+        model: { getValue: () => source, uri: { toString: () => 'mem://a.ts' } },
+        storFile: { ...info },
+      };
+      models[editorKey] = { ts: slot };
+      return slot;
+    },
+  };
+  (globalThis as { mls: unknown }).mls = {
+    stor: { files: { [keyOf(info)]: file }, getKeyToFile: keyOf },
+    editor: {
+      models,
+      getKeyModel: () => editorKey,
+      deleteModels: (...args: unknown[]) => { released.push(args); delete models[editorKey]; },
+    },
+    l2: {
+      typescript: {
+        compile: async () => undefined,
+        getTypeScriptWorker: async () => ({}),
+        getDiagnostics: async () => [],
+      },
+    },
+  };
+  try {
+    const results = await compileM12Files([{ info, expected: source }]);
+    assert.deepEqual(results, [{ path: '_1_/l1/m/a.ts', errors: [] }]);
+    assert.equal(created, 1, 'the missing model is created through file.getOrCreateModel');
+    assert.equal(borrowedModelScopeSize(), 1);
+    releaseCompileModels();
+    assert.equal(borrowedModelScopeSize(), 0);
+    assert.deepEqual(released, [[info.project, info.shortName, info.folder, true, info.level]]);
+  } finally {
+    releaseCompileModels();
+    (globalThis as { mls?: unknown }).mls = previous;
+  }
 });

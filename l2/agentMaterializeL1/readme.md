@@ -39,7 +39,7 @@ Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests5
 
 - Writes stay in memory: each file is registered with `mls.stor.addOrUpdateFile` and serves its bytes through
   `getContent`. No libStor, no `localStor.setContent`, no editor model; the Studio saves.
-- Proof is the Studio compiler, l1 included: the model comes from `libModel.createModel` (the Studio's own l1 path)
+- Proof is the Studio compiler, l1 included: a missing model is created by the canonical Studio path (`getStudioModel` / `file.getOrCreateModel`)
   and `mls.l2.typescript.compile` runs under a 60 s deadline. Compiler errors fail the unit and feed the repair of
   a model unit. A worker that stops answering trips a breaker: the rest of the run ends `done COMPILE_UNAVAILABLE_L1`
   with the cause, and the l5 registration stays at phase `structure`.
