@@ -19,6 +19,7 @@ import { moduleTickSource, taskOccurrenceSource } from '/_102021_/l2/agentMateri
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { l4Process, loadWorkflowContext, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
@@ -1153,4 +1154,50 @@ test('a file with no editor model is created on the canonical Studio path and th
     releaseCompileModels();
     (globalThis as { mls?: unknown }).mls = previous;
   }
+});
+
+const CONTROLLER_REF = '_102047_/l1/inicio/layer_2_controllers/home.ts';
+const CONTROLLER_SOURCE = "export const routes = [{ key: 'inicio.home' }];\n";
+
+function l5Files(withTable: boolean): L5FileFact[] {
+  const files: L5FileFact[] = [{ ref: CONTROLLER_REF, source: CONTROLLER_SOURCE, role: 'httpController' }];
+  if (withTable) {
+    files.push({
+      ref: '_102047_/l1/inicio/layer_1_external/adapters/persistence/table.ts',
+      source: 'export const tableDefinition = {};\n',
+      role: 'table',
+    });
+  }
+  return files;
+}
+
+test('a module with no table unit registers backend controllers and no persistence', () => {
+  const open = reconcileL5Backend({
+    project: 102047,
+    moduleName: 'inicio',
+    allowStructureStub: true,
+    phase: 'verified',
+    projectJson: `${JSON.stringify({ modules: [] })}\n`,
+    files: l5Files(false),
+    catalogRef: null,
+    localTables: false,
+  });
+  assert.equal(open.action, 'patch');
+  assert.equal(open.backend && 'persistence' in open.backend, false);
+  assert.equal(open.backend?.backendControllers, './_102047_/l1/inicio/layer_2_controllers');
+  assert.deepEqual(open.backend?.routeKeys, ['inicio.home']);
+  assert.equal(open.pendings.some(item => item.reason === 'LOCAL_TABLE_ABSENT' || item.reason === 'COMPOSITION_ROOT_ABSENT'), false);
+  const blocked = reconcileL5Backend({
+    project: 102047,
+    moduleName: 'inicio',
+    allowStructureStub: true,
+    phase: 'structure',
+    projectJson: `${JSON.stringify({ modules: [] })}\n`,
+    files: l5Files(false),
+    catalogRef: null,
+    localTables: true,
+  });
+  assert.equal(blocked.action, 'pending');
+  assert.equal(blocked.backend, null);
+  assert.equal(blocked.pendings.some(item => item.reason === 'LOCAL_TABLE_ABSENT'), true);
 });

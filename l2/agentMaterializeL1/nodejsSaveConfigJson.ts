@@ -77,8 +77,9 @@ export function composeBackendRuntimeConfig(root: string, clientId: string): { c
   const live = liveBackendModulesFromL5(l5.modules);
   for (const item of live) {
     const controllersDir = path.join(root, item.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
-    const tableDefsDir = path.join(root, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
     if (!fs.existsSync(controllersDir)) throw new Error(`backendControllers dir not found on disk: ${controllersDir}`);
+    if (!item.tableDefsDir) continue;
+    const tableDefsDir = path.join(root, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
     if (!fs.existsSync(tableDefsDir)) throw new Error(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
   }
   if (live.length === 0) throw new Error('l5/project.json declares no modules with a backend block; nothing to compose');

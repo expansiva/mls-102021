@@ -105,6 +105,10 @@ async function register(run: M12RunArgs): Promise<string> {
       backendSignature: null,
       files,
       catalogRef: null,
+      localTables: ctx.units.some(unit => {
+        const kind = unit.definition.artifactType as string;
+        return kind === 'table' || kind === 'tableDefinition';
+      }),
     });
     const pendings = result.pendings.map(item => `${item.reason} ${item.origin}`);
     // The runtime loads the whole controllers folder: one controller importing a file that does not exist breaks

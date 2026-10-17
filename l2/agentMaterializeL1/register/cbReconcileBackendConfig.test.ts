@@ -97,6 +97,37 @@ test('liveBackendModulesFromL5 reads the register block', () => {
   assert.deepEqual(live, [todoLive]);
 });
 
+test('a module with controllers and no persistence is registered without persistenceModules', () => {
+  const inicio = {
+    moduleId: 'inicio',
+    backendControllers: './_102047_/l1/inicio/layer_2_controllers',
+  };
+  const live = liveBackendModulesFromL5([
+    { moduleName: 'inicio', backend: { backendControllers: inicio.backendControllers, routeKeys: ['inicio.home'] } },
+    { moduleName: 'todo', backend: { backendControllers: todoLive.backendControllers, persistence: { tableDefsDir: todoLive.tableDefsDir } } },
+  ]);
+  assert.deepEqual(live, [inicio, todoLive]);
+  const result = reconcileClientBackendRegistration(
+    [],
+    [{ moduleId: 'inicio', tableDefsDir: './stale' }, todoPersistence],
+    live,
+  );
+  assert.deepEqual(result.modules.map(m => m.moduleId), ['inicio', 'todo']);
+  assert.equal(result.modules[0].backendControllers, inicio.backendControllers);
+  assert.deepEqual(result.persistenceModules.map(m => m.moduleId), ['todo']);
+  const pruned = pruneOrphanL5BackendModules(
+    [
+      { moduleName: 'inicio', backend: { backendControllers: inicio.backendControllers, routeKeys: ['inicio.home'] } },
+      { moduleName: 'petShop', backend: { backendControllers: './pet', persistence: { tableDefsDir: './pet' } } },
+    ],
+    'other',
+    () => false,
+  );
+  assert.deepEqual(pruned.modules.map(m => m.moduleName), ['inicio']);
+  assert.equal('backend' in pruned.modules[0], true);
+  assert.deepEqual(pruned.discarded, ['petShop']);
+});
+
 test('pruneOrphanL5BackendModules drops a backend whose persistence dir is gone', () => {
   const result = pruneOrphanL5BackendModules(
     [

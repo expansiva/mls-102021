@@ -8,7 +8,8 @@
 export interface LiveBackendModule {
   moduleId: string;
   backendControllers: string;
-  tableDefsDir: string;
+  /** Absent when the module backend has controllers and no persistence block. */
+  tableDefsDir?: string;
 }
 
 export interface ReconcileBackendConfigResult<M extends Record<string, unknown>, P extends Record<string, unknown>> {
@@ -29,10 +30,15 @@ export function liveBackendModulesFromL5(l5Modules: unknown): LiveBackendModule[
     const moduleId = readString(l5mod.moduleName);
     const backend = isRecord(l5mod.backend) ? l5mod.backend : null;
     if (!moduleId || !backend) continue;
-    const persistence = isRecord(backend.persistence) ? backend.persistence : {};
     const backendControllers = readString(backend.backendControllers);
+    if (!backendControllers) continue;
+    const persistence = isRecord(backend.persistence) ? backend.persistence : null;
+    if (!persistence) {
+      live.push({ moduleId, backendControllers });
+      continue;
+    }
     const tableDefsDir = readString(persistence.tableDefsDir);
-    if (!backendControllers || !tableDefsDir) continue;
+    if (!tableDefsDir) continue;
     live.push({ moduleId, backendControllers, tableDefsDir });
   }
   return live;
@@ -50,7 +56,9 @@ export function pruneOrphanL5BackendModules<M extends Record<string, unknown>>(
     if (!isRecord(mod)) continue;
     const name = readString(mod.moduleName);
     const backend = isRecord(mod.backend) ? mod.backend : null;
-    if (!name || !backend || name === currentModuleName || tableDefsExists(name)) {
+    const persistence = backend && isRecord(backend.persistence) ? backend.persistence : null;
+    const declaresTables = !!persistence && readString(persistence.tableDefsDir) !== '';
+    if (!name || !backend || name === currentModuleName || !declaresTables || tableDefsExists(name)) {
       kept.push({ ...mod } as M);
       continue;
     }
@@ -102,6 +110,10 @@ export function reconcileClientBackendRegistration<
     rec.backendControllers = item.backendControllers;
     delete rec.backendRouter;
 
+    if (!item.tableDefsDir) {
+      persistenceById.delete(item.moduleId);
+      continue;
+    }
     const pm = { ...(persistenceById.get(item.moduleId) || { moduleId: item.moduleId }) } as P;
     const pmRec = pm as Record<string, unknown>;
     pmRec.moduleId = item.moduleId;
@@ -117,7 +129,11 @@ export function reconcileClientBackendRegistration<
     delete (mod as Record<string, unknown>).backendRouter;
   }
 
-  const persistenceModules = live.map(item => persistenceById.get(item.moduleId)!);
+  const persistenceModules = live.flatMap(item => {
+    if (!item.tableDefsDir) return [];
+    const pm = persistenceById.get(item.moduleId);
+    return pm ? [pm] : [];
+  });
   const keptModules = modules.filter(mod => {
     const id = readString(mod.moduleId);
     if (liveIds.has(id)) return true;

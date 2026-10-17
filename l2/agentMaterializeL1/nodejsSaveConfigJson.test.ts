@@ -61,3 +61,30 @@ test('mlsDep.json from the backend compose includes both runtimeProject masters 
     assert.equal(fs.readFileSync(dest, 'utf8'), first);
   });
 });
+
+test('a module that declares no tableDefsDir composes without a persistence folder', () => {
+  withRoot((root, clientRoot) => {
+    const controllers = path.join(clientRoot, 'l1', 'inicio', 'layer_2_controllers');
+    fs.mkdirSync(controllers, { recursive: true });
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+      masters: { backend: { runtimeProject: 102034 } },
+      modules: [{
+        moduleName: 'inicio',
+        backend: {
+          backendControllers: `./_${CLIENT_ID}_/l1/inicio/layer_2_controllers`,
+          routeKeys: ['inicio.home'],
+        },
+      }],
+    }, null, 2)}\n`);
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      workspaceDependencies: [CLIENT_ID],
+    }, null, 2)}\n`);
+    composeBackendRuntimeConfig(root, CLIENT_ID);
+    const config = JSON.parse(fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8')) as {
+      projects: Record<string, { modules?: Array<{ moduleId: string }>; persistenceModules?: Array<{ moduleId: string }> }>;
+    };
+    const client = config.projects[CLIENT_ID];
+    assert.deepEqual(client.modules?.map(item => item.moduleId), ['inicio']);
+    assert.deepEqual(client.persistenceModules ?? [], []);
+  });
+});

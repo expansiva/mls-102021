@@ -80,6 +80,11 @@ export interface ReconcileL5Input {
   backendSignature?: L5BackendSignature | null;
   files: readonly L5FileFact[];
   catalogRef: string | null;
+  /**
+   * False when the module defs have no table unit. Omitted keeps the table requirement
+   * (a module that declares tables and has no folder stays LOCAL_TABLE_ABSENT).
+   */
+  localTables?: boolean;
 }
 
 export interface L5Pending {
@@ -345,19 +350,20 @@ function buildBackend(input: ReconcileL5Input): { backend: Record<string, unknow
   if (controllerDirs.size > 1) {
     pendings.push({ origin: [...controllerDirs].sort().join(', '), reason: 'CONTROLLER_DIRS_DIVERGE' });
   }
+  const requiresPersistence = input.localTables !== false;
   const persistenceDir = persistenceDirectory(input);
-  if (!persistenceDir) pendings.push({ origin: input.moduleName, reason: 'LOCAL_TABLE_ABSENT' });
+  if (requiresPersistence && !persistenceDir) pendings.push({ origin: input.moduleName, reason: 'LOCAL_TABLE_ABSENT' });
   const registration = persistenceDir
     ? input.files.find(file => file.role === 'repositoryRegistration' && file.source !== null && directoryOf(file.ref) === persistenceDir)
     : undefined;
-  if (!registration) pendings.push({ origin: 'repositoryRegistration', reason: 'COMPOSITION_ROOT_ABSENT' });
+  if (requiresPersistence && !registration) pendings.push({ origin: 'repositoryRegistration', reason: 'COMPOSITION_ROOT_ABSENT' });
   const catalog = catalogList(input, pendings);
   const cleanRoutes = unique(routeKeys).sort();
   if (controllers.length > 0 && cleanRoutes.length === 0 && !pendings.some(item => item.reason === 'STUB_REFUSED')) {
     pendings.push({ origin: 'httpController', reason: 'NO_ROUTES' });
   }
   const blocking = pendings.filter(item => BLOCKING.has(item.reason));
-  if (blocking.length > 0 || !persistenceDir || controllerDirs.size !== 1) {
+  if (blocking.length > 0 || (requiresPersistence && !persistenceDir) || controllerDirs.size !== 1) {
     return {
       backend: null,
       pendings,
@@ -366,13 +372,13 @@ function buildBackend(input: ReconcileL5Input): { backend: Record<string, unknow
   }
   const backend: Record<string, unknown> = {
     backendControllers: `./${[...controllerDirs][0]}`,
-    persistence: { tableDefsDir: `./${persistenceDir}` },
     routeKeys: cleanRoutes,
     materialization: {
       phase: input.phase,
       behaviorVerified: input.phase === 'verified',
     },
   };
+  if (requiresPersistence) backend.persistence = { tableDefsDir: `./${persistenceDir}` };
   if (catalog) backend.scenarioCatalog = catalog;
   return {
     backend,
@@ -443,8 +449,12 @@ function mergeBackend(previous: Record<string, unknown>, built: Record<string, u
   for (const key of OWNED_BACKEND) {
     if (key in built) next[key] = built[key];
   }
+  if (!isRecord(built.persistence)) {
+    delete next.persistence;
+    return next;
+  }
   const prevPersistence = isRecord(previous.persistence) ? previous.persistence : {};
-  const builtPersistence = isRecord(built.persistence) ? built.persistence : {};
+  const builtPersistence = built.persistence;
   next.persistence = { ...prevPersistence, tableDefsDir: builtPersistence.tableDefsDir };
   return next;
 }
