@@ -15,7 +15,7 @@ import { derivedReadProblems, inputMembers, listFilterProblems, parentRuleProble
 import { createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitted, rulesToEnforce, unitInputHash, unitNeedsLlm, writeAndProve } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
-import { moduleTickSource, taskOccurrenceSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { moduleTickSource, transitionDestinations, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { l4Process, loadWorkflowContext, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
@@ -966,11 +966,11 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
 
   const header = '/// <mls fileReference="_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.ts" enhancement="_blank"/>';
   const empty = workflowGate(`${header}\nexport async function gerarAvisosDiarios(input: unknown, ctx: unknown) {}`, { header, facts, project: 102047, moduleName: 'tarefas', ports: [] });
-  assert.ok(empty.some(problem => problem.includes('onTick')) && empty.some(problem => problem.includes('taskOccurrence')), empty.join('\n'));
+  assert.ok(empty.some(problem => problem.includes('onTick')) && empty.some(problem => problem.includes('workflow/engine.js')), empty.join('\n'));
   const good = [header,
     "import { evaluateSchedule } from '/_102034_/l1/server/layer_2_application/schedule/evaluateSchedule.js';",
-    "import { taskOccurrence } from '/_102047_/l1/tarefas/layer_1_external/adapters/workflow/taskOccurrence.js';",
-    'export async function gerarAvisosDiarios(input: unknown, ctx: unknown) { void taskOccurrence; }',
+    "import { engines } from '/_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.js';",
+    'export async function gerarAvisosDiarios(input: unknown, ctx: unknown) { void engines; }',
     "export async function onTick(ctx: unknown, now: Date) { if (evaluateSchedule('Todo dia às 8h', now, null)) await gerarAvisosDiarios({}, ctx); }"].join('\n');
   assert.deepEqual(workflowGate(good, { header, facts, project: 102047, moduleName: 'tarefas', ports: [] }), []);
 
@@ -980,10 +980,28 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.deepEqual(workflowRouteProblems("import { avancarEtapaTarefa } from '/_102047_/l1/tarefas/layer_2_application/workflows/cicloTarefa.js';", routes), []);
 });
 
-test('the Task adapter and the module tick are mechanical and name what is pending (§11)', () => {
-  const adapter = taskOccurrenceSource(102047, 'tarefas');
-  assert.ok(adapter.startsWith('/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/adapters/workflow/taskOccurrence.ts"'));
-  assert.ok(adapter.includes('TASK_ADAPTER_PENDING') && adapter.includes('export const taskOccurrence: TaskOccurrencePort'));
+const TAREFAS_L4 = path.join(ROOT, `mls-${PROJECT}`, 'l4', 'tarefas');
+
+test('the module engine copies the l4 step tables and the ontology destination of each operation (§13)', { skip: !existsSync(path.join(TAREFAS_L4, 'workflows.defs.ts')) }, () => {
+  const l4 = readFileSync(path.join(TAREFAS_L4, 'workflows.defs.ts'), 'utf8');
+  const ontology = readFileSync(path.join(TAREFAS_L4, 'ontology', 'Tarefa.defs.ts'), 'utf8');
+  const tables = workflowTablesFromL4(l4);
+  const ciclo = tables.find(table => table.processId === 'cicloTarefa');
+  const aviso = tables.find(table => table.processId === 'avisoDiario');
+  assert.equal(ciclo?.steps.length, 10);
+  assert.deepEqual(ciclo?.steps[0], { stepId: 'criar', kind: 'human', actorRef: 'membroEquipe', journeyRef: 'criarTarefa', next: ['aguardarInicio'] });
+  assert.equal(ciclo?.steps[1]?.actorRef, undefined);
+  assert.equal(ciclo?.steps[1]?.journeyRef, undefined);
+  assert.equal(aviso?.steps.length, 2);
+  assert.deepEqual(aviso?.steps.map(step => step.stepId), ['gerarAvisos', 'avisarResponsavel']);
+  const targets = transitionDestinations([ontology], new Set(['iniciar', 'enviarParaRevisao', 'aceitar', 'devolver', 'cancelar']));
+  assert.deepEqual(targets, { iniciar: 'emAndamento', enviarParaRevisao: 'emRevisao', aceitar: 'concluida', devolver: 'emAndamento', cancelar: 'cancelada' });
+  const source = workflowEngineSource(102047, 'tarefas', tables, targets);
+  assert.ok(source.startsWith('/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.ts"'));
+  assert.equal(source.match(/createWorkflowEngine\(createMemoryOccurrencePort\(\)\)/gu)?.length, 2);
+  assert.ok(source.includes('processId: "cicloTarefa"') && source.includes('processId: "avisoDiario"'));
+  assert.ok(source.includes('iniciar: "emAndamento"') && source.includes('cancelar: "cancelada"'));
+  assert.equal(source.includes('taskOccurrence'), false);
   const tick = moduleTickSource(102047, 'tarefas', ['avisoDiario']);
   assert.ok(tick.includes("import { onTick as avisoDiarioTick } from '/_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.js';"));
   assert.ok(tick.includes('export async function onTick(ctx: RequestContext, now: Date)') && tick.includes('TICK_FAILED'), 'one failing process does not stop the others');
