@@ -64,7 +64,7 @@ async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string
   // module on tableDefsDir is not woken until it also looks in that folder. Named, never silent.
   return errors.length
     ? `tick: COMPILE_FAILED ${clip(errors.join(' | '), 400)}`
-    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (the platform must load onTick from the tableDefsDir folder: TICK_LOADER_PENDING)`;
+    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (loaded by the runtime tick from the tableDefsDir folder: loadModuleTickHandlers)`;
 }
 
 async function register(run: M12RunArgs): Promise<string> {
