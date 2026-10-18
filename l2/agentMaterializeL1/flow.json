@@ -62,14 +62,14 @@
       "types": [
         "workflowProcess"
       ],
-      "goal": "The workflow service of the module (materializadorL1.md §11): first the Task adapter (layer_1_external/adapters/workflow/taskOccurrence.ts, mechanical, in memory with TASK_ADAPTER_PENDING until the collab-messages contract exists), then one agentM12WorkflowUnit worker per process writes layer_2_application/workflows/<processId>.ts, one function per functionId from the l4 prose. A scheduled process also exports onTick; register70 writes layer_1_external/adapters/persistence/moduleTick.ts over them.",
+      "goal": "The workflow service of the module (materializadorL1.md §13): first the module engine (layer_1_external/adapters/workflow/engine.ts, mechanical: one runtime engine per process over the memory port, the l4 step tables and the destination status of each operation), then one agentM12WorkflowUnit worker per process writes layer_2_application/workflows/<processId>.ts, one function per functionId from the l4 prose. A scheduled process also exports onTick; register70 writes layer_1_external/adapters/persistence/moduleTick.ts over them.",
       "worker": {
         "agentName": "agentM12WorkflowUnit",
         "planIdPattern": "workflows45-<module>-<processId>-<attempt>",
         "prompt": "steps/workflows45/prompt.md",
         "context": "def, the l4 process (source), the operations and their usecases, the occurrence entity with its port and l4 ontology, the module rules, the Task adapter, platform signatures (evaluateSchedule when scheduled)",
         "tool": "writeWorkflowService { code, notApplicable[] }",
-        "gate": "header, every functionId exported, onTick + evaluateSchedule when scheduled, taskOccurrence when the process keeps an occurrence, ports of the module only, imports only /_102034_/l1/ and the module, no node:/fetch/storage/empty catch/as any",
+        "gate": "header, every functionId exported, onTick + evaluateSchedule when scheduled, the module engine when the process keeps an occurrence, ports of the module only, imports only /_102034_/l1/ and the module, no node:/fetch/storage/empty catch/as any",
         "repairBudget": 2
       }
     },

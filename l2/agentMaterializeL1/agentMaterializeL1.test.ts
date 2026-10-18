@@ -959,6 +959,17 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.match(withMdm.human, /## The platform MDM \(source: how the engine stores and returns this entity today\)/);
   assert.match(withMdm.human, /ctx\.mdm\.entity\.get\(\{ mdmId \}\)/);
   assert.equal(without.human.includes('The platform MDM'), false);
+  assert.match(withMdm.human, /occurrenceRecordId\(ctx, 'comMdm'\)/);
+  assert.match(withMdm.human, /createOccurrenceContext/);
+  assert.match(withMdm.human, /first `newId`/);
+  assert.equal(withMdm.human.includes('taskOccurrence'), false);
+  assert.equal(withMdm.human.includes('TRANSITIONS'), false);
+  const workflowPrompt = readFileSync(path.join(HERE, 'steps/workflows45/prompt.md'), 'utf8');
+  assert.equal(workflowPrompt.includes('taskOccurrence'), false);
+  assert.equal(workflowPrompt.includes('TRANSITIONS'), false);
+  assert.match(workflowPrompt, /engine\.open/);
+  assert.match(workflowPrompt, /engine\.advance/);
+  assert.equal(workflowPrompt.includes("'1'"), false);
   assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
   const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
   assert.ok(l4Process(l4, 'avisoDiario').includes('Gera um aviso por responsável'));

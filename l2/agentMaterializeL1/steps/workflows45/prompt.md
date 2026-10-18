@@ -36,16 +36,28 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
 
 ## The occurrence and its Task
 
-- The business record stays in the module table. The Task keeps only the reference
-  `{ project, module, entity, recordId, processId, workflowVersion }` and the progress `{ step, actorNow, history }`,
-  through `taskOccurrence` (`open`, `find`, `advance`). Nothing of the business goes to the Task; nothing of the
-  progress goes to the table, unless the l4 declares the field.
-- Opening is idempotent: the key is `ctx.requestMeta?.requestId`. The same key returns the same record and the same
-  occurrence — a function that creates the record first looks for the occurrence the key already opened.
-- Do not advance a step the occurrence is not in, do not mix occurrences of different records, do not skip a step.
-  A failure between writing the record and moving the Task leaves something the next call can finish: never assume
-  one transaction spans the app and the Task.
-- `workflowVersion` is the version of the l4 process the occurrence started on (`'1'` when the l4 names none).
+- The business record stays in the module table. The occurrence lives in the runtime engine. Import
+  `createWorkflowEngine` only inside the module engine file already given; this service imports that file
+  (`engines`, the `WorkflowTable` of this process, `transitionTo`) and calls `engine.open`, `engine.advance`
+  and `engine.find`. Nothing of the business goes on the occurrence; nothing of the progress goes on the
+  table, unless the l4 declares the field. This service does not keep a transition table of its own.
+- Open with `engine.open(ctx, table, key, firstStep, actorNow)`. Advance with
+  `engine.advance(ctx, table, key, { from, to, actorNow })`. `to` is a step id the function chooses inside
+  the table of this process, or `'end'`. Do not advance a step the occurrence is not in, do not mix
+  occurrences of different records, do not skip a step.
+- Whether the actor may act is the usecase and `authorize`. This service does not decide it from a
+  transition table or from the actor's name (`isGestor` and the like come from the grant on the context).
+- The record id of a new occurrence is `occurrenceRecordId(ctx, processId)` from
+  `/_102034_/l1/workflow/index.js`. The create usecase is called with `createOccurrenceContext(ctx, recordId)`:
+  that context serves this id on the first `newId`. Check that the usecase writes the record with that first
+  id. The same id returns the same record and the same occurrence.
+- A call that died between the write and the advance is finished by the next call. When the record is already
+  in the destination status (`transitionTo` of that operation) and the occurrence is still on the step it
+  left, skip the usecase and only call `advance`.
+- `conflict` means another call already advanced: return the current state. It is not a system error.
+- Reassigning is `advance` with `to` equal to `from` and a different `actorNow`.
+- The version is the one the engine stored when it opened the occurrence (the release, or `null`). Do not
+  write a version of your own.
 
 ## Rules and errors
 

@@ -2,7 +2,8 @@
 
 // What the model sees to write the workflow service of one process (materializadorL1.md §11): the def (trigger,
 // occurrence, functions, operations), the l4 prose of each function (the source), the usecases the operations reach,
-// the occurrence entity and its port, the Task adapter and the platform signatures. And the gate of its answer.
+// the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
+// And the gate of its answer.
 
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
@@ -21,6 +22,13 @@ import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, allRuleIds, citedEntities, entityName
 export const M12_WORKFLOW_TOOL = 'writeWorkflowService' as const;
 export const M12_WORKFLOW_TOOL_DESCRIPTION = 'Return the whole workflow service TypeScript file of the process';
 export const EVALUATE_SCHEDULE_REF = '_102034_/l1/server/layer_2_application/schedule/evaluateSchedule.ts';
+/** Public surface of the runtime engine (`/_102034_/l1/workflow/index.js`). */
+export const WORKFLOW_INDEX_REF = '_102034_/l1/workflow/index.ts';
+/** Call shapes `index.ts` re-exports: open, advance, find, the table and the key. */
+export const WORKFLOW_ENGINE_REF = '_102034_/l1/workflow/engine.ts';
+export const WORKFLOW_CONTRACTS_REF = '_102034_/l1/workflow/contracts.ts';
+/** `occurrenceRecordId` and `createOccurrenceContext` (the first `newId` is the record). */
+export const WORKFLOW_RECORD_ID_REF = '_102034_/l1/workflow/occurrenceRecordId.ts';
 
 function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;
@@ -189,8 +197,13 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
 
   const adapter = workflowEngineFile(project, moduleName);
   const adapterSource = await readOptional(adapter);
-  if (adapterSource) parts.push(section('The Task of an occurrence', [`Import from \`${moduleSpecifier(adapter)}\`.`, fence('ts', exportSignatures(adapterSource))].join('\n\n')));
-  const platform = [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
+  if (adapterSource) parts.push(section('The module engine (one engine per process, the step tables, the destination status of each operation)', [`Import from \`${moduleSpecifier(adapter)}\`. Open and advance through it. \`transitionTo\` is the destination status of each operation.`, fence('ts', exportSignatures(adapterSource))].join('\n\n')));
+  parts.push(section('Occurrence record id', [
+    `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
+    'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
+    'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
+  ].join('\n')));
+  const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
   for (const ref of platform) {
     const source = await ctx.read(ref);
     if (source) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(source))].join('\n\n')));
