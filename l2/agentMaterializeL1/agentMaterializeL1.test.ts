@@ -1122,19 +1122,18 @@ test('the generated module engine opens with the process plan, does the owner ac
   await engine.advance(ctx, key, { commandId: 'c2', expectedRevision: 1, from: 'criar', to: 'aguardarInicio', actorNow: null, executor: person, wake, message: { content: 'x' } });
   assert.deepEqual(advances[1]?.wake, wake);
   assert.equal(advances[1]?.message, undefined, 'a wait step carries no notice');
-  await assert.rejects(
-    () => engine.advance(ctx, key, { commandId: 'c3', expectedRevision: 1, from: 'criar', to: 'aguardarInicio', actorNow: null, executor: person }),
-    (error: unknown) => (error as { code?: string }).code === 'WAKE_REQUIRED',
-  );
+  await engine.advance(ctx, key, { commandId: 'c3', expectedRevision: 1, from: 'criar', to: 'aguardarInicio', actorNow: null, executor: person });
+  assert.equal(advances[2]?.wake, undefined, 'an absent wake stays absent');
+  assert.equal(advances[2]?.message, undefined);
 
   await engine.advance(ctx, key, { commandId: 'c4', expectedRevision: 1, from: 'executar', to: 'end', actorNow: null, executor: person, message: { content: 'x' } });
-  assert.equal(advances[2]?.message, undefined, 'closing sends no notice');
-  assert.equal(advances[2]?.done, true);
+  assert.equal(advances[3]?.message, undefined, 'closing sends no notice');
+  assert.equal(advances[3]?.done, true);
 
   const aviso = { ...key, processId: 'avisoDiario', entity: 'AvisoVencimento' };
   stored = snapshot(generated.workflowPlans.avisoDiario!, 'gerarAvisos', 'avisoDiario');
   await engine.advance(ctx, aviso, { commandId: 'c5', expectedRevision: 1, from: 'gerarAvisos', to: 'avisarResponsavel', actorNow: 'person-1', executor: { kind: 'routine', name: 'tarefas.avisoDiario.gerarAvisosDiarios' } });
-  assert.ok(advances[3]?.message, 'an alert step carries the notice');
+  assert.ok(advances[4]?.message, 'an alert step carries the notice');
 
   await assert.rejects(
     () => engine.advance(ctx, { ...key, processId: 'pensarTarefa' }, { commandId: 'c6', expectedRevision: 1, from: 'pensar', to: 'pensar', actorNow: null, executor: person }),
