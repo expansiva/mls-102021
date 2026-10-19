@@ -29,6 +29,8 @@ export const WORKFLOW_ENGINE_REF = '_102034_/l1/workflow/engine.ts';
 export const WORKFLOW_CONTRACTS_REF = '_102034_/l1/workflow/contracts.ts';
 /** `occurrenceRecordId` and `createOccurrenceContext` (the first `newId` is the record). */
 export const WORKFLOW_RECORD_ID_REF = '_102034_/l1/workflow/occurrenceRecordId.ts';
+/** Platform access-request read API. The screen resolves; this module only reads. */
+export const REGISTRATION_REF = '_102034_/l1/mdm/registration.ts';
 
 function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;
@@ -40,6 +42,58 @@ function fence(lang: string, text: string): string {
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/** `onboarding.moduleId` of a project's `l5/config.json`, or empty when the file has none. */
+export function onboardingModuleId(configText: string | null): string {
+  if (!configText) return '';
+  const config = JSON.parse(configText) as { onboarding?: { moduleId?: unknown } };
+  return typeof config.onboarding?.moduleId === 'string' ? config.onboarding.moduleId : '';
+}
+
+/**
+ * Export surface of `registration.ts`, read from the source. A union type and a function head span lines;
+ * `exportSignatures` stops at the first line, which drops `person.mdmId` and `(ctx, { requestId })`.
+ */
+export function registrationSignatures(source: string): string {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^export\s+(?:type|interface|async\s+function|function)\s/u.test(line)) continue;
+    const block = [line];
+    const isType = /^export\s+(?:type|interface)\s/u.test(line);
+    let depth = (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
+    while (index + 1 < lines.length && (depth > 0 || (isType ? !lineEnds(block) : !block[block.length - 1].includes('{')))) {
+      index += 1;
+      block.push(lines[index]);
+      depth += (lines[index].match(/\{/gu)?.length ?? 0) - (lines[index].match(/\}/gu)?.length ?? 0);
+    }
+    const text = block.join('\n');
+    out.push(isType ? text : text.replace(/\{\s*$/u, '{ … }'));
+  }
+  return out.join('\n');
+}
+
+function lineEnds(block: string[]): boolean {
+  return /;\s*$/u.test(block[block.length - 1]);
+}
+
+/**
+ * The registration read API, only for the onboarding module. The signature is read from `registration.ts`
+ * (never a hand copy). Other modules get an empty string.
+ */
+export function registrationAccessSection(moduleName: string, configText: string | null, registrationSource: string | null): string {
+  const moduleId = onboardingModuleId(configText);
+  if (!moduleId || moduleId !== moduleName) return '';
+  const rules = [
+    'Import `readAccessRequestState` from `/_102034_/l1/mdm/registration.js`. `listPendingAccessRequests` needs a person in the session; a process routine does not use it.',
+    'Reread the access request with `readAccessRequestState(ctx, { requestId })`. `requestId` is the key of the occurrence. Continue only with `person.mdmId` when the result is `resolved`.',
+    'No flag from the frontend and no copy of the request in this module.',
+    'The screen resolves the request (`POST /session/registration/resolve`). This code only reads.',
+  ];
+  if (!registrationSource) throw new Error(`${REGISTRATION_REF} not found: the onboarding module ${moduleName} needs the access request read API`);
+  return section('Platform access request (source: _102034_/l1/mdm/registration.ts)', [...rules, fence('ts', registrationSignatures(registrationSource))].join('\n\n'));
 }
 
 /** The facts of a workflowProcess def the context and the gate read. */
@@ -207,6 +261,10 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   for (const ref of platform) {
     const source = await ctx.read(ref);
     if (source) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(source))].join('\n\n')));
+  }
+  const l5Config = await ctx.read(`_${project}_/l5/config.json`);
+  if (onboardingModuleId(l5Config) === moduleName) {
+    parts.push(registrationAccessSection(moduleName, l5Config, await ctx.read(REGISTRATION_REF)));
   }
   if (repair) {
     parts.push(section('Repair', [

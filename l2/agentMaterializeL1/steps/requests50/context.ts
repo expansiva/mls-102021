@@ -18,6 +18,7 @@ import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterialize
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
+import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 export const M12_REQUEST_TOOL = 'writeRequestService' as const;
 export const M12_REQUEST_TOOL_DESCRIPTION = 'Return the whole request service TypeScript file of the page, and the listed rules that do not apply to it';
@@ -334,6 +335,10 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
+  }
+  const l5Config = await ctx.read(`_${project}_/l5/config.json`);
+  if (onboardingModuleId(l5Config) === moduleName) {
+    parts.push(registrationAccessSection(moduleName, l5Config, await ctx.read(REGISTRATION_REF)));
   }
   if (repair) {
     parts.push(section('Repair', [

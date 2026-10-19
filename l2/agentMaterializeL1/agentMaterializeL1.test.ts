@@ -17,7 +17,7 @@ import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterialize
 import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { moduleTickSource, transitionDestinations, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { l4Process, loadWorkflowContext, operationUsecase, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { REGISTRATION_REF, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -989,6 +989,37 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.deepEqual(routes.map(item => `${item.route}:${item.processId}:${item.operation}`), ['tarefas.minhas_tarefas.aceitarEntrega:cicloTarefa:Tarefa.aceitar'], 'a list outside the process does not go through it');
   assert.equal(workflowRouteProblems("import { aceitar } from '/_102047_/l1/tarefas/layer_2_application/usecases/aceitar.js';", routes).length, 1);
   assert.deepEqual(workflowRouteProblems("import { avancarEtapaTarefa } from '/_102047_/l1/tarefas/layer_2_application/workflows/cicloTarefa.js';", routes), []);
+});
+
+test('the onboarding module sees the platform access-request signature; another module does not', async () => {
+  const registration = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'registration.ts'), 'utf8');
+  const l5 = JSON.stringify({ onboarding: { moduleId: 'inicio' } });
+  assert.equal(onboardingModuleId(l5), 'inicio');
+  const inicio = registrationAccessSection('inicio', l5, registration);
+  const tarefas = registrationAccessSection('tarefas', l5, registration);
+  assert.match(inicio, /export async function readAccessRequestState/u);
+  assert.match(inicio, /export async function listPendingAccessRequests/u);
+  assert.match(inicio, /person: \{ mdmId: string \}/u);
+  assert.match(inicio, /requestId/u);
+  assert.match(inicio, /person\.mdmId/u);
+  assert.match(inicio, /POST \/session\/registration\/resolve/u);
+  assert.equal(tarefas, '');
+  assert.equal(registrationAccessSection('inicio', '{}', registration), '');
+
+  const asUnit = (processId: string): M12Unit => ({ unitId: processId, definition: { artifactType: 'workflowProcess', artifactId: processId, data: { processId, trigger: { kind: 'event', event: 'pedido' }, functions: ['ler'], operations: [] }, dependencies: [] }, declared: { data: { processId, trigger: { kind: 'event', event: 'pedido' }, functions: ['ler'], operations: [] } } } as unknown as M12Unit);
+  const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'liberacao', functions: [] }] }) + ' as const;';
+  const read = async (ref: string) => {
+    if (ref === '_102047_/l5/config.json') return l5;
+    if (ref === REGISTRATION_REF) return registration;
+    if (ref.endsWith('/workflows.defs.ts')) return l4;
+    return null;
+  };
+  const unit = asUnit('liberacao');
+  const onboarding = await loadWorkflowContext({ run: { project: 102047, module: 'inicio' }, units: [unit], read } as never, unit);
+  const other = await loadWorkflowContext({ run: { project: 102047, module: 'tarefas' }, units: [unit], read } as never, unit);
+  assert.match(onboarding.human, /export async function readAccessRequestState/u);
+  assert.equal(other.human.includes('readAccessRequestState'), false);
+  assert.equal(other.human.includes('registration.js'), false);
 });
 
 const TAREFAS_L4 = path.join(ROOT, `mls-${PROJECT}`, 'l4', 'tarefas');
