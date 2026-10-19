@@ -1,7 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/agentMaterializeL1.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
@@ -16,6 +17,9 @@ import { createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitte
 import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { moduleTickSource, transitionDestinations, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
+import { prepareWorkflowPlan, type TaskOccurrenceAdvanceCommand, type TaskOccurrenceOpenCommand, type TaskOccurrencePort, type TaskOccurrenceSnapshot, type TaskWorkflowEngine, type WorkflowPlanInput } from '/_102034_/l1/workflow/index.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { REGISTRATION_REF, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
@@ -1031,7 +1035,12 @@ test('the module engine copies the l4 step tables and the ontology destination o
   const ciclo = tables.find(table => table.processId === 'cicloTarefa');
   const aviso = tables.find(table => table.processId === 'avisoDiario');
   assert.equal(ciclo?.steps.length, 10);
-  assert.deepEqual(ciclo?.steps[0], { stepId: 'criar', kind: 'human', actorRef: 'membroEquipe', journeyRef: 'criarTarefa', next: ['aguardarInicio'] });
+  assert.equal(ciclo?.steps[0]?.stepId, 'criar');
+  assert.equal(ciclo?.steps[0]?.kind, 'human');
+  assert.equal(ciclo?.steps[0]?.actorRef, 'membroEquipe');
+  assert.equal(ciclo?.steps[0]?.journeyRef, 'criarTarefa');
+  assert.deepEqual(ciclo?.steps[0]?.next, ['aguardarInicio']);
+  assert.ok((ciclo?.steps[0]?.title?.length ?? 0) > 0);
   assert.equal(ciclo?.steps[1]?.actorRef, undefined);
   assert.equal(ciclo?.steps[1]?.journeyRef, undefined);
   assert.equal(aviso?.steps.length, 2);
@@ -1040,13 +1049,101 @@ test('the module engine copies the l4 step tables and the ontology destination o
   assert.deepEqual(targets, { iniciar: 'emAndamento', enviarParaRevisao: 'emRevisao', aceitar: 'concluida', devolver: 'emAndamento', cancelar: 'cancelada' });
   const source = workflowEngineSource(102047, 'tarefas', tables, targets);
   assert.ok(source.startsWith('/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.ts"'));
-  assert.equal(source.match(/createWorkflowEngine\(createMemoryOccurrencePort\(\)\)/gu)?.length, 2);
+  assert.equal(source.includes('createMemoryOccurrencePort'), false);
+  assert.ok(source.includes('export function createModuleWorkflowEngine(port: TaskOccurrencePort)'));
   assert.ok(source.includes('processId: "cicloTarefa"') && source.includes('processId: "avisoDiario"'));
+  assert.ok(source.includes('title: "Ciclo da tarefa"') && source.includes('title: "Aviso diário de vencimentos"'));
+  assert.match(source, /async advance\(ctx: RequestContext, key: OccurrenceKey, command: TaskWorkflowAdvance\)/u);
+  assert.equal(source.includes('table: WorkflowTable'), false);
   assert.ok(source.includes('iniciar: "emAndamento"') && source.includes('cancelar: "cancelada"'));
   assert.equal(source.includes('taskOccurrence'), false);
   const tick = moduleTickSource(102047, 'tarefas', ['avisoDiario']);
   assert.ok(tick.includes("import { onTick as avisoDiarioTick } from '/_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.js';"));
   assert.ok(tick.includes('export async function onTick(ctx: RequestContext, now: Date)') && tick.includes('TICK_FAILED'), 'one failing process does not stop the others');
+});
+
+test('the generated module engine opens with the process plan, does the owner action on entry, and keeps an absent notice pending', { skip: !existsSync(path.join(TAREFAS_L4, 'workflows.defs.ts')) }, async () => {
+  const tables = workflowTablesFromL4(readFileSync(path.join(TAREFAS_L4, 'workflows.defs.ts'), 'utf8'));
+  const llmTable = { processId: 'pensarTarefa', title: 'Pensar', moduleTitle: 'tarefas', steps: [{ stepId: 'pensar', kind: 'llm', title: 'Agente', next: [] }] };
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'd1_89-')), 'engine.ts');
+  writeFileSync(file, workflowEngineSource(102047, 'tarefas', [...tables, llmTable], {}));
+  const generated = await import(file) as {
+    workflowPlans: Record<string, WorkflowPlanInput>;
+    noticeState: (moduleMessage?: { state: 'sent' | 'pending' }) => 'sent' | 'pending';
+    createModuleWorkflowEngine: (port: TaskOccurrencePort) => TaskWorkflowEngine;
+  };
+  assert.deepEqual(Object.keys(generated.workflowPlans).sort(), ['avisoDiario', 'cicloTarefa', 'pensarTarefa']);
+
+  const key = { project: '102047', module: 'tarefas', processId: 'cicloTarefa', entity: 'Tarefa', recordId: 'rec-1' };
+  const opens: TaskOccurrenceOpenCommand[] = [];
+  const advances: TaskOccurrenceAdvanceCommand[] = [];
+  let stored: TaskOccurrenceSnapshot | null = null;
+  const snapshot = (plan: WorkflowPlanInput, step: string, processId: string): TaskOccurrenceSnapshot => ({
+    ref: { ...key, processId, workflowVersion: 'rel-s1' }, step, actorNow: 'person-1', done: false, history: [],
+    plan: prepareWorkflowPlan(plan), title: 'Tarefa', taskId: 'task-1', revision: 1, status: 'in progress', owner: 'owner-1',
+    origin: { kind: 'screen', by: 'person-1' }, room: { mode: 'exclusive' }, roomId: 'room-1', pass: 1,
+  });
+  const port: TaskOccurrencePort = {
+    kind: 'task',
+    async find() { return stored; },
+    async open(_ctx, command) {
+      opens.push(command);
+      stored = snapshot(command.plan, command.firstStep, command.ref.processId);
+      return { outcome: 'created', occurrence: stored };
+    },
+    async advance(_ctx, advanceKey, command) {
+      advances.push(command);
+      stored = snapshot(generated.workflowPlans[advanceKey.processId]!, command.to, advanceKey.processId);
+      return { outcome: 'advanced', occurrence: stored };
+    },
+  };
+  const engine = generated.createModuleWorkflowEngine(port);
+  const ctx: RequestContext = createRequestContext();
+  ctx.moduleId = 'tarefas';
+  const person = { kind: 'person' as const, mdmId: 'person-1' };
+
+  const opened = await engine.open(ctx, {
+    key, plan: generated.workflowPlans.cicloTarefa!, title: 'Tarefa', firstStep: 'criar', actorNow: 'person-1', owner: 'owner-1',
+    origin: { kind: 'screen', by: 'person-1' }, executor: person, room: { mode: 'exclusive' },
+  });
+  assert.equal(opens[0]?.plan.title, 'Ciclo da tarefa');
+  assert.ok(opens[0]?.message, 'entering a human step carries the notice');
+  assert.equal(opened.moduleMessage, undefined);
+  assert.equal(generated.noticeState(opened.moduleMessage), 'pending');
+  assert.equal(generated.noticeState({ state: 'pending' }), 'pending');
+  assert.equal(generated.noticeState({ state: 'sent' }), 'sent');
+
+  await engine.advance(ctx, key, { commandId: 'c1', expectedRevision: 1, from: 'aguardarInicio', to: 'executar', actorNow: 'person-1', executor: person });
+  assert.equal(advances.length, 1, 'one advance, one notice');
+  assert.ok(advances[0]?.message);
+  assert.equal(advances[0]?.wake, undefined);
+
+  const wake = { everyMinutes: 30, routine: 'tarefas.cicloTarefa.lembrar' };
+  await engine.advance(ctx, key, { commandId: 'c2', expectedRevision: 1, from: 'criar', to: 'aguardarInicio', actorNow: null, executor: person, wake, message: { content: 'x' } });
+  assert.deepEqual(advances[1]?.wake, wake);
+  assert.equal(advances[1]?.message, undefined, 'a wait step carries no notice');
+  await assert.rejects(
+    () => engine.advance(ctx, key, { commandId: 'c3', expectedRevision: 1, from: 'criar', to: 'aguardarInicio', actorNow: null, executor: person }),
+    (error: unknown) => (error as { code?: string }).code === 'WAKE_REQUIRED',
+  );
+
+  await engine.advance(ctx, key, { commandId: 'c4', expectedRevision: 1, from: 'executar', to: 'end', actorNow: null, executor: person, message: { content: 'x' } });
+  assert.equal(advances[2]?.message, undefined, 'closing sends no notice');
+  assert.equal(advances[2]?.done, true);
+
+  const aviso = { ...key, processId: 'avisoDiario', entity: 'AvisoVencimento' };
+  stored = snapshot(generated.workflowPlans.avisoDiario!, 'gerarAvisos', 'avisoDiario');
+  await engine.advance(ctx, aviso, { commandId: 'c5', expectedRevision: 1, from: 'gerarAvisos', to: 'avisarResponsavel', actorNow: 'person-1', executor: { kind: 'routine', name: 'tarefas.avisoDiario.gerarAvisosDiarios' } });
+  assert.ok(advances[3]?.message, 'an alert step carries the notice');
+
+  await assert.rejects(
+    () => engine.advance(ctx, { ...key, processId: 'pensarTarefa' }, { commandId: 'c6', expectedRevision: 1, from: 'pensar', to: 'pensar', actorNow: null, executor: person }),
+    (error: unknown) => (error as { code?: string }).code === 'STEP_OWNER_NOT_SUPPORTED',
+  );
+  await assert.rejects(
+    () => engine.advance(ctx, { ...key, processId: 'semPlano' }, { commandId: 'c7', expectedRevision: 1, from: 'a', to: 'b', actorNow: null, executor: person }),
+    (error: unknown) => (error as { code?: string }).code === 'WORKFLOW_INCOMPATIBLE',
+  );
 });
 
 test('a port carries the methods a process applies through it and no usecase brings (the daily notice could not create an aviso)', () => {
