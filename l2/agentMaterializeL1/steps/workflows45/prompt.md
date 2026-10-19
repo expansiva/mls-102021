@@ -38,13 +38,36 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
 
 - The business record stays in the module table. The occurrence lives in the runtime engine. Import
   `createWorkflowEngine` only inside the module engine file already given; this service imports that file
-  (`engines`, the `WorkflowTable` of this process, `transitionTo`) and calls `engine.open`, `engine.advance`
-  and `engine.find`. Nothing of the business goes on the occurrence; nothing of the progress goes on the
-  table, unless the l4 declares the field. This service does not keep a transition table of its own.
-- Open with `engine.open(ctx, table, key, firstStep, actorNow)`. Advance with
-  `engine.advance(ctx, table, key, { from, to, actorNow })`. `to` is a step id the function chooses inside
-  the table of this process, or `'end'`. Do not advance a step the occurrence is not in, do not mix
-  occurrences of different records, do not skip a step.
+  (`createModuleWorkflowEngine` / `engines`, `transitionTo`, `noticeState` when exported) and calls
+  `engine.open`, `engine.advance` and `engine.find`. Nothing of the business goes on the occurrence;
+  nothing of the progress goes on the table, unless the l4 declares the field. This service does not keep
+  a transition table of its own. The engine does the owner action when a step is entered; this function
+  does not send "who acts now" on its own.
+- Open with `engine.open(ctx, { key, plan, title, firstStep, actorNow, owner, origin, executor, room, message? })`.
+  Advance with `engine.advance(ctx, key, { commandId, expectedRevision, from, to, actorNow, executor, note?, wake?, message? })`.
+  No step table on `advance`. `to` is a step id of this process, or `'end'`. Do not advance a step the
+  occurrence is not in, do not mix occurrences of different records, do not skip a step.
+- `commandId`: from a person, `requestMeta.requestId`; from a routine, `<recordId>:<to>` (the same value on
+  a retry, a different value only for a new command); from a wake, `<taskId>:<step>:<wake.seq>`.
+  `expectedRevision` is the `revision` of the `find` of the same call. `executor` is
+  `{ kind: 'person', mdmId }` or `{ kind: 'routine', name: '<module>.<processId>.<function>' }`. `title` is
+  the business record by its display field. `origin` is the screen, the channel, or the schedule.
+- The notice result decides the L4 system transition, only from the returned state (`moduleMessage`, or
+  `noticeState`). `sent` → the success transition (in `tarefas`, `concluirAviso`) and `to: 'end'`. A
+  definitive port error (below) → the failure transition (`falharAviso`, `motivoFalha` with no personal data) and
+  `to: 'end'`. `pending` or absent → the record stays `pending` and the Task stays on the step. Never a
+  second message and never another `commandId` to repeat the same command.
+- Reconciliation of a pending notice belongs to the start function whose l4 prose says to check the previous
+  execution (in `tarefas`, `gerarAvisosDiarios`). Before the block on a previous day, `find` the Tasks of
+  `pending` notices from earlier days and apply the transition from the message state of the same
+  `commandId` in the history. No new scheduler.
+- `onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.
+- Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`,
+  `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so
+  the person can try again; the routine leaves the notice `pending` for the next execution and does not
+  change the business record. Definitive for the command (`WORKFLOW_CM_REJECTED`,
+  `WORKFLOW_IDENTITY_UNLINKED`, `WORKFLOW_IDENTITY_REMOVED`): the screen receives the error; the routine
+  applies the failure transition with the code as `motivoFalha`.
 - Whether the actor may act is the usecase and `authorize`. This service does not decide it from a
   transition table or from the actor's name (`isGestor` and the like come from the grant on the context).
 - The record id of a new occurrence is `occurrenceRecordId(ctx, processId)` from

@@ -21,7 +21,7 @@ import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/con
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { prepareWorkflowPlan, type TaskOccurrenceAdvanceCommand, type TaskOccurrenceOpenCommand, type TaskOccurrencePort, type TaskOccurrenceSnapshot, type TaskWorkflowEngine, type WorkflowPlanInput } from '/_102034_/l1/workflow/index.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { REGISTRATION_REF, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -973,9 +973,26 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.equal(workflowPrompt.includes('TRANSITIONS'), false);
   assert.match(workflowPrompt, /engine\.open/);
   assert.match(workflowPrompt, /engine\.advance/);
+  assert.match(workflowPrompt, /requestMeta\.requestId/);
+  assert.match(workflowPrompt, /<recordId>:<to>/);
+  assert.match(workflowPrompt, /<taskId>:<step>:<wake\.seq>/);
+  assert.match(workflowPrompt, /expectedRevision/);
+  assert.match(workflowPrompt, /kind: 'routine'/);
+  assert.match(workflowPrompt, /concluirAviso/);
+  assert.match(workflowPrompt, /falharAviso/);
+  assert.match(workflowPrompt, /gerarAvisosDiarios/);
+  assert.match(workflowPrompt, /ctx\.clock/);
+  assert.match(workflowPrompt, /WORKFLOW_CM_BUSY/);
+  assert.match(workflowPrompt, /WORKFLOW_IDENTITY_UNLINKED/);
+  assert.equal(workflowPrompt.includes('engine.advance(ctx, table,'), false);
   assert.equal(workflowPrompt.includes("'1'"), false);
-  assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
   const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
+  const tarefasRead = async (ref: string) => ref.endsWith('/l4/tarefas/workflows.defs.ts') ? l4 : null;
+  const tarefasCtx = await loadWorkflowContext({ run: { project: 102047, module: 'tarefas' }, units: [avisos], read: tarefasRead } as never, avisos);
+  const rules = engineUseRules('tarefas', 'avisoDiario');
+  assert.match(tarefasCtx.human, /How every process function uses the engine/);
+  assert.ok(tarefasCtx.human.includes(rules), 'the tarefas context carries the engine-use rules');
+  assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
   assert.ok(l4Process(l4, 'avisoDiario').includes('Gera um aviso por responsável'));
   assert.equal(l4Process(l4, 'outro'), '');
 

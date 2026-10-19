@@ -96,6 +96,22 @@ export function registrationAccessSection(moduleName: string, configText: string
   return section('Platform access request (source: _102034_/l1/mdm/registration.ts)', [...rules, fence('ts', registrationSignatures(registrationSource))].join('\n\n'));
 }
 
+/**
+ * Rules every process function follows when it calls the module engine. The engine does the owner action;
+ * the function supplies the command and applies the L4 system transition from the returned notice state only.
+ */
+export function engineUseRules(moduleName: string, processId: string): string {
+  return [
+    'Open with `engine.open(ctx, { key, plan, title, firstStep, actorNow, owner, origin, executor, room, message? })`. Advance with `engine.advance(ctx, key, { commandId, expectedRevision, from, to, actorNow, executor, note?, wake?, message? })`. No step table on `advance`. `find` is `engine.find(ctx, key)`.',
+    '`commandId`: from a person, `requestMeta.requestId`; from a routine, `<recordId>:<to>` (the same value on a retry, a different value only for a new command); from a wake, `<taskId>:<step>:<wake.seq>`.',
+    '`expectedRevision` is the `revision` of the `find` of the same call. `executor` is `{ kind: \'person\', mdmId }` or `{ kind: \'routine\', name: \'<module>.<processId>.<function>\' }` (here `' + moduleName + '.' + processId + '.<function>`). `title` is the business record by its display field. `origin` is the screen, the channel, or the schedule.',
+    'The notice result decides the L4 system transition, only from the state returned (`moduleMessage`, or `noticeState` when the module engine exports it). `sent` → the success transition (in `tarefas`, `concluirAviso`) and `to: \'end\'`. A definitive port error (below) → the failure transition (`falharAviso`, `motivoFalha` with no personal data) and `to: \'end\'`. `pending` or absent → the record stays `pending` and the Task stays on the step. Never a second message and never another `commandId` to repeat the same command.',
+    'Reconciliation of a pending notice belongs to the start function whose l4 prose says to check the previous execution (in `tarefas`, `gerarAvisosDiarios`). Before the block on a previous day, `find` the Tasks of `pending` notices from earlier days and apply the transition from the message state of the same `commandId` in the history. No new scheduler.',
+    '`onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.',
+    'Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`, `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so the person can try again; the routine leaves the notice `pending` for the next execution and does not change the business record. Definitive for the command (`WORKFLOW_CM_REJECTED`, `WORKFLOW_IDENTITY_UNLINKED`, `WORKFLOW_IDENTITY_REMOVED`): the screen receives the error; the routine applies the failure transition with the code as `motivoFalha`.',
+  ].join('\n');
+}
+
 /** The facts of a workflowProcess def the context and the gate read. */
 export interface M12WorkflowFacts {
   processId: string;
@@ -257,6 +273,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
     'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
   ].join('\n')));
+  parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId)));
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
   for (const ref of platform) {
     const source = await ctx.read(ref);
