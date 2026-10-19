@@ -63,6 +63,7 @@ leaves. You do not decide business: you do not invent a route, a field, a rule o
   document made the detail route fail with "unsupported document type: null").
 - A record that must exist and is not found is `new AppError('NOT_FOUND', '<message>', 404)`.
 - No silent fallback: no empty `catch`, no invented default value. An error names its cause.
+- A message the person reads names the record by its display field (the ontology `displayField`), never by its id; the id goes in the error `details`.
 
 ## Typing (no compiler checks this file before it runs: write it so it compiles under `strict`)
 
