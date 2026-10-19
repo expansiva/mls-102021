@@ -1001,8 +1001,8 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.ok(empty.some(problem => problem.includes('onTick')) && empty.some(problem => problem.includes('workflow/engine.js')), empty.join('\n'));
   const good = [header,
     "import { evaluateSchedule } from '/_102034_/l1/server/layer_2_application/schedule/evaluateSchedule.js';",
-    "import { engines } from '/_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.js';",
-    'export async function gerarAvisosDiarios(input: unknown, ctx: unknown) { void engines; }',
+    "import { workflowEngine } from '/_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.js';",
+    'export async function gerarAvisosDiarios(input: unknown, ctx: unknown) { void workflowEngine; }',
     "export async function onTick(ctx: unknown, now: Date) { if (evaluateSchedule('Todo dia às 8h', now, null)) await gerarAvisosDiarios({}, ctx); }"].join('\n');
   assert.deepEqual(workflowGate(good, { header, facts, project: 102047, moduleName: 'tarefas', ports: [] }), []);
 
@@ -1067,6 +1067,13 @@ test('the module engine copies the l4 step tables and the ontology destination o
   const source = workflowEngineSource(102047, 'tarefas', tables, targets);
   assert.ok(source.startsWith('/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/adapters/workflow/engine.ts"'));
   assert.equal(source.includes('createMemoryOccurrencePort'), false);
+  assert.equal(source.includes('createMessagesTaskOccurrencePort'), false);
+  assert.match(source, /import \{ createRuntimeMessagesTaskPort, createWorkflowEngine,/u);
+  assert.match(source, /export const workflowEngine = createModuleWorkflowEngine\(createRuntimeMessagesTaskPort\(\{/u);
+  assert.match(source, /projectId: "102047"/u);
+  assert.match(source, /moduleId: "tarefas"/u);
+  assert.equal(source.includes('asUserId'), false);
+  assert.equal(source.includes('payload'), false);
   assert.ok(source.includes('export function createModuleWorkflowEngine(port: TaskOccurrencePort)'));
   assert.ok(source.includes('processId: "cicloTarefa"') && source.includes('processId: "avisoDiario"'));
   assert.ok(source.includes('title: "Ciclo da tarefa"') && source.includes('title: "Aviso diário de vencimentos"'));

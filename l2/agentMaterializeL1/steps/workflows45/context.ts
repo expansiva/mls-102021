@@ -178,7 +178,7 @@ function operationTransitionIds(units: readonly M12Unit[]): Set<string> {
 }
 
 /**
- * The module engine (one memory engine per process, the step tables, the destination status of each operation),
+ * The module engine (the engine on the cm Task port, the plan of each process, the destination status of each operation),
  * written and compiled before any workflow worker runs. A copy someone edited by hand is kept. The lines go to the phase trace.
  */
 export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {

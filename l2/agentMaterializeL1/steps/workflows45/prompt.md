@@ -38,8 +38,9 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
 
 - The business record stays in the module table. The occurrence lives in the runtime engine. Import
   `createWorkflowEngine` only inside the module engine file already given; this service imports that file
-  (`createModuleWorkflowEngine` / `engines`, `transitionTo`, `noticeState` when exported) and calls
-  `engine.open`, `engine.advance` and `engine.find`. Nothing of the business goes on the occurrence;
+  (`workflowEngine`, the module engine on the cm Task port; `workflowPlans`; `transitionTo`; `noticeState`)
+  and calls `workflowEngine.open`, `workflowEngine.advance` and `workflowEngine.find`; `plan` on open is
+  `workflowPlans.<processId>`. Nothing of the business goes on the occurrence;
   nothing of the progress goes on the table, unless the l4 declares the field. This service does not keep
   a transition table of its own. The engine does the owner action when a step is entered; this function
   does not send "who acts now" on its own.
