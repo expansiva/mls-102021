@@ -768,6 +768,20 @@ test('an MDM usecase is told the engine is flat today (agendaClinica read detail
   assert.equal(usesMdm(unit(['_102047_/l1/comandaRestaurante/layer_3_domain/entities/comanda.defs.ts'], [{ kind: 'port', call: 'get' }])), false);
 });
 
+test('a named MDM type uses the platform interface and the platform predicates', () => {
+  const ontology = readFileSync(path.join(ROOT, 'mls-102034', 'l4', 'ontology', 'mdm.defs.ts'), 'utf8');
+  const text = mdmContextSection('onboarding', ontology, null);
+  const phrases = [
+    'Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
+    'Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
+    'The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
+  ];
+  for (const phrase of phrases) assert.ok(text.includes(phrase), phrase.slice(0, 80));
+  for (const name of ['PrivacyConsentValue', 'isPersonAccessComplete', 'isValidPrivacyConsent', 'isProtectedPrivacyCountry', '/_102034_/l1/mdm/module.js']) assert.ok(text.includes(name), name);
+  assert.equal((text.match(/mdmSupport/gu) ?? []).length, 1, 'mdmSupport appears only in the prohibition');
+  assert.ok(!mdmContextSection('onboarding', 'export const mdm = { fields: { name: { type: "string" } } } as const;', null).includes('PrivacyConsentValue'), 'no named of, no platform type rule');
+});
+
 test('a compile error carries its line, column and code (the model never found the missing brace)', () => {
   const text = 'const a = 1;\nreturn { id: value.id, identification: { details: { name: i.name } } ;\nexport {};';
   const start = text.indexOf(' ;');

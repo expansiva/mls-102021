@@ -375,6 +375,14 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     '  field out of the output, and never throw because a field is `null`. A patient with no document is normal (the',
     '  document is optional); treating `docType: null` as invalid broke every agenda that had one (agendaClinica, 07/10).',
   ];
+  if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
+    lines.push(
+      '- A field whose type in the MDM ontology is named (`"of"`: `PrivacyConsent`, `Address`, `ContactSummary`, `GeoPoint`):',
+      '- Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
+      '- Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
+      '- The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
+    );
+  }
   const parts = [lines.join('\n')];
   const platformRules = platformRuleIds.map(ruleId => {
     const escaped = ruleId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
