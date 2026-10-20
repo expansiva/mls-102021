@@ -980,10 +980,13 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   assert.match(workflowPrompt, /kind: 'routine'/);
   assert.match(workflowPrompt, /concluirAviso/);
   assert.match(workflowPrompt, /falharAviso/);
-  assert.match(workflowPrompt, /gerarAvisosDiarios/);
   assert.match(workflowPrompt, /ctx\.clock/);
   assert.match(workflowPrompt, /WORKFLOW_CM_BUSY/);
   assert.match(workflowPrompt, /WORKFLOW_IDENTITY_UNLINKED/);
+  assert.match(workflowPrompt, /for that\s+recipient only/);
+  assert.match(workflowPrompt, /NOTICE_DELIVERY_NOT_CONFIRMED/);
+  assert.match(workflowPrompt, /Never invent an interval/);
+  assert.equal(workflowPrompt.includes('Before the block on a previous day'), false);
   assert.equal(workflowPrompt.includes('engine.advance(ctx, table,'), false);
   assert.equal(workflowPrompt.includes("'1'"), false);
   const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
@@ -992,6 +995,9 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   const rules = engineUseRules('tarefas', 'avisoDiario');
   assert.match(tarefasCtx.human, /How every process function uses the engine/);
   assert.ok(tarefasCtx.human.includes(rules), 'the tarefas context carries the engine-use rules');
+  assert.match(tarefasCtx.human, /for that recipient only/);
+  assert.match(tarefasCtx.human, /A `wait` step requests a wake only when the L4/);
+  assert.equal(tarefasCtx.human.includes('Before the block on a previous day'), false);
   assert.equal(operationUsecase(units, 'AvisoVencimento.concluirAviso'), undefined, 'a system transition has no usecase');
   assert.ok(l4Process(l4, 'avisoDiario').includes('Gera um aviso por responsável'));
   assert.equal(l4Process(l4, 'outro'), '');

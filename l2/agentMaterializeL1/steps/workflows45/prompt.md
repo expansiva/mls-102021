@@ -58,10 +58,15 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
   definitive port error (below) → the failure transition (`falharAviso`, `motivoFalha` with no personal data) and
   `to: 'end'`. `pending` or absent → the record stays `pending` and the Task stays on the step. Never a
   second message and never another `commandId` to repeat the same command.
-- Reconciliation of a pending notice belongs to the start function whose l4 prose says to check the previous
-  execution (in `tarefas`, `gerarAvisosDiarios`). Before the block on a previous day, `find` the Tasks of
-  `pending` notices from earlier days and apply the transition from the message state of the same
-  `commandId` in the history. No new scheduler.
+- A notice still `pending` from an earlier run is settled by the next run of the start function, **for that
+  recipient only**: if its message is `sent`, apply the success transition; otherwise apply the failure
+  transition with `motivoFalha` = `NOTICE_DELIVERY_NOT_CONFIRMED`; then that recipient's new notice starts.
+  A `sent` that arrives after the failure is only logged. A pending notice of one recipient never blocks
+  another.
+- A `wait` step requests a wake only when the L4 gives it a time (a deadline, a reminder or a period in the
+  step description or in a rule) and names the function that handles it; `everyMinutes`/`until` come from
+  that text and `routine` is that function. Otherwise the step has no wake: the wait ends by the action of
+  the next step's owner. Never invent an interval.
 - `onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.
 - Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`,
   `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so
