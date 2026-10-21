@@ -263,6 +263,7 @@ export function buildD1InputSnapshot(
     access,
     planned,
     answers,
+    new Set([...entityKind].filter(([, kind]) => kind === 'role').map(([entity]) => entity)),
   );
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
@@ -915,8 +916,11 @@ function contractRequests(
   access: Record<string, unknown>,
   planned: PlannedIds,
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]>,
+  roleEntities: ReadonlySet<string>,
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
+  // Planner pool only. A get/list created later in this pass is not a planned read. An MDM role keeps its get (read through the facade).
+  const poolReads = new Set(usecases.filter(item => !roleEntities.has(item.entity)).map(item => `${item.entity}\0${item.operation}`));
   const pageIds = [...pages.keys()].sort();
   const colliding = collidingTransitionIds(transitionWrites(pages, usecases));
   for (const pageId of pageIds) {
@@ -925,7 +929,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || []));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -960,6 +964,7 @@ function oneRequest(
   planned: PlannedIds,
   colliding: ReadonlySet<string>,
   answers: readonly D1RequestGapAnswer[],
+  poolReads: ReadonlySet<string>,
 ): D1SelectedRequest {
   // d1_60/d1_62: the route is derived from its types, the ontology and the resolve25 answers. `meta` is not read.
   const derived = applyResolutions({ route, definition, entities }, answers);
@@ -996,6 +1001,13 @@ function oneRequest(
     review(problems, 'USECASE_FROM_CONTRACT', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Usecase ${usecaseId} was created from the contract.`, usecaseId);
     uses.push(usecaseId);
   };
+  // Unique output: planned get, else planned list (locate picks the row). Neither: get, as before. many stays list.
+  const readOf = (entity: string, many: boolean): string => {
+    if (many) return 'list';
+    if (poolReads.has(`${entity}\0get`)) return 'get';
+    if (poolReads.has(`${entity}\0list`)) return 'list';
+    return 'get';
+  };
   if (route.kind === 'cmd' && route.writes) {
     const split = route.writes.indexOf('.');
     const entity = split < 0 ? route.writes : route.writes.slice(0, split);
@@ -1009,11 +1021,11 @@ function oneRequest(
     }
     for (const output of outputs) {
       if (output.entity === entity) continue;
-      take(output.entity, output.many ? 'list' : 'get');
+      take(output.entity, readOf(output.entity, output.many));
     }
     // A cmd writes one entity. Reading another table (output or validation) is a get/list, not a second write.
   } else {
-    for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
+    for (const output of outputs) take(output.entity, readOf(output.entity, output.many));
   }
   const request: D1SelectedRequest = { route: route.route, pageId, kind: route.kind, writes: route.writes ?? '', outputs, params, uses };
   if (derived.computedBy.length) request.computedBy = derived.computedBy;

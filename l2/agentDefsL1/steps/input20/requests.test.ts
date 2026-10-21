@@ -205,32 +205,32 @@ const listNote: PoolRow = { usecaseId: 'listNote', entity: 'DeskNote', operation
 void test('a read the plan lacks is created from the contract, once for two requests', () => {
   const snapshot = deskBuild(deskOf([listNote], [
     qryRoute('ledgerDesk.board.load', 'notes', 'DeskNote', true),
-    qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false),
-    qryRoute('ledgerDesk.board.noteAgain', 'note', 'DeskNote', false),
+    qryRoute('ledgerDesk.board.card', 'card', 'ItemCard', false),
+    qryRoute('ledgerDesk.board.cardAgain', 'card', 'ItemCard', false),
   ]));
-  const created = snapshot.selection.usecases.filter(item => item.entity === 'DeskNote' && item.operation === 'get');
+  const created = snapshot.selection.usecases.filter(item => item.entity === 'ItemCard' && item.operation === 'get');
   assert.equal(created.length, 1);
   assert.deepEqual(created[0], {
-    usecaseId: 'getDeskNote',
-    entity: 'DeskNote',
+    usecaseId: 'getItemCard',
+    entity: 'ItemCard',
     operation: 'get',
     status: 'toCreate',
     existing: '',
-    identity: 'getDeskNote',
-    routes: ['ledgerDesk.board.note', 'ledgerDesk.board.noteAgain'],
+    identity: 'getItemCard',
+    routes: ['ledgerDesk.board.card', 'ledgerDesk.board.cardAgain'],
   });
   const uses = (route: string) => snapshot.selection.requests.find(item => item.route === route)?.uses;
   assert.deepEqual(uses('ledgerDesk.board.load'), ['listNote']);
-  assert.deepEqual(uses('ledgerDesk.board.note'), ['getDeskNote']);
-  assert.deepEqual(uses('ledgerDesk.board.noteAgain'), ['getDeskNote']);
+  assert.deepEqual(uses('ledgerDesk.board.card'), ['getItemCard']);
+  assert.deepEqual(uses('ledgerDesk.board.cardAgain'), ['getItemCard']);
   const fromContract = snapshot.problems.filter(item => item.code === 'USECASE_FROM_CONTRACT');
   assert.equal(fromContract.length, 1);
   assert.equal(fromContract[0].severity, 'review');
-  assert.equal(fromContract[0].ownerRef, 'getDeskNote');
+  assert.equal(fromContract[0].ownerRef, 'getItemCard');
   // synthetic-v2 carries schema and planner errors of its own. None of them is about these requests or this usecase.
-  const touched = new Set(['ledgerDesk.board.load', 'ledgerDesk.board.note', 'ledgerDesk.board.noteAgain', 'getDeskNote', 'listNote']);
+  const touched = new Set(['ledgerDesk.board.load', 'ledgerDesk.board.card', 'ledgerDesk.board.cardAgain', 'getItemCard', 'listNote']);
   assert.deepEqual(snapshot.problems.filter(item => item.severity === 'error' && (item.code.startsWith('REQUEST_') || touched.has(item.ownerRef || ''))), []);
-  assert.ok(snapshot.files.some(file => file.id === 'usecase:getDeskNote' && file.action === 'create'));
+  assert.ok(snapshot.files.some(file => file.id === 'usecase:getItemCard' && file.action === 'create'));
 });
 
 void test('a role read created from the contract binds read.byId in the usecase step', () => {
@@ -357,11 +357,33 @@ void test('a lifecycle transition the plan lacks is created from the contract an
   assert.equal(fromContract[0].severity, 'review');
 });
 
+void test('a single output uses the planned list when the pool has no get', () => {
+  const getNote: PoolRow = { usecaseId: 'readNote', entity: 'DeskNote', operation: 'get', status: 'toCreate', existing: '' };
+  const listed = deskBuild(deskOf([listNote], [qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false)]));
+  assert.deepEqual(listed.selection.requests.find(item => item.route === 'ledgerDesk.board.note')?.uses, ['listNote']);
+  assert.equal(listed.selection.usecases.some(item => item.entity === 'DeskNote' && item.operation === 'get'), false);
+  assert.equal(listed.problems.some(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'getDeskNote'), false);
+
+  const plannedGet = deskBuild(deskOf([getNote, listNote], [qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false)]));
+  assert.deepEqual(plannedGet.selection.requests.find(item => item.route === 'ledgerDesk.board.note')?.uses, ['readNote']);
+  assert.equal(plannedGet.problems.some(item => item.code === 'USECASE_FROM_CONTRACT'), false);
+});
+
+void test('an MDM role with only a planned list keeps creating its get from the contract', () => {
+  const listCard: PoolRow = { usecaseId: 'listItemCard', entity: 'ItemCard', operation: 'list', status: 'toCreate', existing: '' };
+  const artifacts = deskOf([listCard], null);
+  artifacts.contractTexts = { cards: (artifacts.contractTexts || {}).cards };
+  const snapshot = deskBuild(artifacts);
+  assert.deepEqual(snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.get')?.uses, ['getItemCard']);
+  assert.ok(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT' && item.ownerRef === 'getItemCard'));
+});
+
 void test('a created id that the plan already names for another operation stays an error', () => {
-  const clash: PoolRow = { usecaseId: 'getDeskNote', entity: 'DeskNote', operation: 'list', status: 'toCreate', existing: '' };
+  const clash: PoolRow = { usecaseId: 'getDeskNote', entity: 'DeskNote', operation: 'update', status: 'toCreate', existing: '' };
   const snapshot = deskBuild(deskOf([clash], [qryRoute('ledgerDesk.board.note', 'note', 'DeskNote', false)]));
-  assert.ok(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes('already in the plan as DeskNote.list')));
+  assert.ok(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes('already in the plan as DeskNote.update')));
   assert.equal(snapshot.problems.some(item => item.code === 'USECASE_FROM_CONTRACT'), false);
+  assert.equal(snapshot.selection.usecases.some(item => item.operation === 'get' && item.entity === 'DeskNote'), false);
 });
 
 void test('a planned usecase no request calls is not generated when the module has a v2 contract', () => {
