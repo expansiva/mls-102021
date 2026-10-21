@@ -417,14 +417,22 @@ async function finish(
   return intents;
 }
 
-/** Error-severity codes and counts, the shape input20 holds with. The paths stay in input.json. */
-function blockingReason(snapshot: { problems: ReadonlyArray<{ severity: string; code: string }> }): string {
+/** Error-severity codes, counts, and up to three ownerRefs. The paths stay in input.json. */
+function blockingReason(snapshot: { problems: ReadonlyArray<{ severity: string; code: string; ownerRef?: string }> }): string {
   const counts = new Map<string, number>();
+  const owners = new Map<string, string[]>();
   for (const problem of snapshot.problems) {
     if (problem.severity !== 'error' || !problem.code) continue;
     counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+    const refs = owners.get(problem.code) || [];
+    if (problem.ownerRef && refs.length < 3 && !refs.includes(problem.ownerRef)) refs.push(problem.ownerRef);
+    owners.set(problem.code, refs);
   }
-  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+  return [...counts.keys()].sort().map(code => {
+    const refs = owners.get(code) || [];
+    const head = `${code}:${counts.get(code)}`;
+    return refs.length > 0 ? `${head} (${refs.join(', ')})` : head;
+  }).join(',');
 }
 
 function withResolveHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {

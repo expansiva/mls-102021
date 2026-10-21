@@ -17,6 +17,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { blockingReason } from '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -86,14 +87,37 @@ async function readyHost(withContracts: boolean) {
   return host;
 }
 
-function blockingCodes(problems: Array<{ severity?: string; code?: string }>): string {
+function blockingCodes(problems: Array<{ severity?: string; code?: string; ownerRef?: string }>): string {
   const counts = new Map<string, number>();
+  const owners = new Map<string, string[]>();
   for (const problem of problems) {
     if (problem.severity !== 'error' || !problem.code) continue;
     counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+    const refs = owners.get(problem.code) || [];
+    if (problem.ownerRef && refs.length < 3 && !refs.includes(problem.ownerRef)) refs.push(problem.ownerRef);
+    owners.set(problem.code, refs);
   }
-  return [...counts.keys()].sort().map(code => `${code}:${counts.get(code)}`).join(',');
+  return [...counts.keys()].sort().map(code => {
+    const refs = owners.get(code) || [];
+    const head = `${code}:${counts.get(code)}`;
+    return refs.length > 0 ? `${head} (${refs.join(', ')})` : head;
+  }).join(',');
 }
+
+/** d1_93 s2: the hold reason names which route stopped, so a reader without input.json knows where to look. */
+void test('the hold reason carries up to three ownerRefs per code', () => {
+  const problem = (code: string, ownerRef?: string) => ({ severity: 'error', code, path: 'p', message: 'm', ...(ownerRef ? { ownerRef } : {}) });
+  const problems = [
+    problem('MDM_NOT_ATOMIC', 'onboarding.my_access_overview.saveMyData'),
+    problem('ROUTE_X', 'r1'), problem('ROUTE_X', 'r2'), problem('ROUTE_X', 'r2'), problem('ROUTE_X', 'r3'), problem('ROUTE_X', 'r4'),
+    problem('SCHEMA_DIVERGENT'),
+    { severity: 'review', code: 'IGNORED', path: 'p', message: 'm', ownerRef: 'x' },
+  ] as Parameters<typeof blockingReason>[0]['problems'];
+  assert.equal(
+    blockingReason({ problems }),
+    'MDM_NOT_ATOMIC:1 (onboarding.my_access_overview.saveMyData),ROUTE_X:5 (r1, r2, r3),SCHEMA_DIVERGENT:1',
+  );
+});
 
 void test('input20 without contracts records the inventory and does not unlock the next phase', { skip: 'frozen agendaClinica plan predates transitionRef (d1_53)' }, async () => {
   const host = await readyHost(false);
@@ -115,7 +139,7 @@ void test('input20 without contracts records the inventory and does not unlock t
     problems?: Array<{ severity?: string; code?: string; path?: string }>;
   };
   const reason = blockingCodes(inventory.problems || []);
-  assert.match(reason, /^CONTRACT_ABSENT:\d+,SCHEMA_DIVERGENT:2$/);
+  assert.match(reason, /^CONTRACT_ABSENT:\d+ \([^)]+\),SCHEMA_DIVERGENT:2$/);
   assert.equal((trace?.traceMsg || '').includes(reason), true);
   const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, MODULE))]?.content || '{}') as {
     status?: string;
@@ -161,11 +185,12 @@ void test('input20 refuses v1.1 plans even when contracts parse, and writes no d
   assert.match(trace?.traceMsg || '', /Consumer phases are not released/);
   const inventory = JSON.parse(host.files[fileKey(inputFile(PROJECT, MODULE))]?.content || '{}') as {
     consumersReleased?: boolean;
-    problems?: Array<{ severity?: string; code?: string; path?: string; message?: string }>;
+    problems?: Array<{ severity?: string; code?: string; path?: string; message?: string; ownerRef?: string }>;
   };
   assert.equal(inventory.consumersReleased, false);
-  assert.equal(blockingCodes(inventory.problems || []), 'SCHEMA_DIVERGENT:2');
   const refusals = (inventory.problems || []).filter(problem => problem.code === 'SCHEMA_DIVERGENT');
+  const schemaRefs = refusals.map(problem => problem.ownerRef).filter((ref): ref is string => !!ref).slice(0, 3);
+  assert.equal(blockingCodes(inventory.problems || []), schemaRefs.length > 0 ? `SCHEMA_DIVERGENT:2 (${schemaRefs.join(', ')})` : 'SCHEMA_DIVERGENT:2');
   assert.deepEqual(refusals.map(problem => problem.path).sort(), [`l4/${MODULE}/pool/l2/web/backend.json`, `l4/${MODULE}/pool/l2/web/effort.json`]);
   assert.ok(refusals.some(problem => /2026-09-21-p1-backend-v1\.1', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/.test(problem.message || '')));
   assert.ok(refusals.some(problem => /2026-09-21-p2-effort-v1\.1', expected 2026-09-21-p2-effort-v1\.2\. Regenerate/.test(problem.message || '')));
@@ -177,7 +202,7 @@ void test('input20 refuses v1.1 plans even when contracts parse, and writes no d
   assert.equal(pipeline.status, 'awaitingStep');
   assert.equal(pipeline.awaitingStep, 'input20');
   assert.equal(pipeline.steps.input20?.status, 'failed');
-  assert.equal(pipeline.steps.input20?.error, 'SCHEMA_DIVERGENT:2');
+  assert.equal(pipeline.steps.input20?.error, blockingCodes(inventory.problems || []));
   assert.equal(pipeline.steps.domain30, undefined);
   assert.equal(host.files[contractKey]?.updatedAt, contractMtime);
   assert.equal(Object.keys(host.files).some(key => key.includes('layer_')), false);
