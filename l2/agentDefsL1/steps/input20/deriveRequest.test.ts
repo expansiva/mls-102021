@@ -201,6 +201,36 @@ for (const [id, moduleName] of ORACLE_FIXTURES) {
   });
 }
 
+/** d1_91 s2a: `none` on a field no entity owns is a server value; the other fields still match the entity. */
+void test('resolution: a field answered none stays out of the match and is a server value', () => {
+  const entities = {
+    Member: { record: { fields: { name: { type: 'string' }, countryCode: { type: 'string' } } } },
+  };
+  const definition: D2ContractV2Definition = {
+    module: 'onboarding',
+    pageId: 'p',
+    projections: [{ name: 'MyAccess', entityId: '', requestIds: [], body: '{ name: string; countryCode: string; loginEmail: string }' }],
+    routes: [],
+  };
+  const route: D2ContractV2Route = {
+    route: 'onboarding.p.getMyAccess',
+    kind: 'qry',
+    input: '{}',
+    output: '{ access: MyAccess }',
+    meta: { output: {}, lists: {}, params: {} },
+    rules: [],
+    access: { actors: [], grants: [], scope: '' },
+  };
+  const source = { route, definition, entities };
+  const first = deriveRequest(route, definition, entities);
+  assert.deepEqual(first.outputs, []);
+  assert.ok(first.unresolved.some(gap => gap.path === 'output.access.loginEmail' && gap.kind === 'fieldPath'));
+
+  const resolved = applyResolutions(source, [{ path: 'output.access.loginEmail', choice: D1_GAP_NONE }]);
+  assert.deepEqual(resolved.outputs, [{ key: 'access', entity: 'Member', many: false, computed: ['loginEmail'] }]);
+  assert.ok(resolved.unresolved.some(gap => gap.path === 'output.access.loginEmail'));
+});
+
 void test('resolution: none to every gap leaves the derivation and its gaps as they are', () => {
   let gaps = 0;
   for (const item of ALL_ROUTES()) {

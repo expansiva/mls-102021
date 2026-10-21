@@ -154,19 +154,26 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
     return;
   }
   // A field that is in no entity may be a flattened ontology path: the candidates are the paths with the same last segment.
+  // A field answered `none` is a server value, like a readonly one, and stays out of the match (d1_91 s2a). No answer still opens the interface.
   const mapped: D1RequestMappedField[] = [];
+  const server: string[] = [];
   let open = false;
-  const paths = leaves.map(leaf => {
-    if (ownedByAny(ctx, leaf)) return leaf;
-    const choice = ask(ctx, `output.${key}.${leaf}`, 'fieldPath', `Interface ${typeName}: field ${leaf} is not a field of any entity.`, pathsEndingIn(ctx, leaf));
-    if (!choice) {
-      open = true;
-      return leaf;
+  const paths = leaves.flatMap(leaf => {
+    if (ownedByAny(ctx, leaf)) return [leaf];
+    const gapPath = `output.${key}.${leaf}`;
+    const choice = ask(ctx, gapPath, 'fieldPath', `Interface ${typeName}: field ${leaf} is not a field of any entity.`, pathsEndingIn(ctx, leaf));
+    if (choice) {
+      mapped.push({ field: leaf, path: choice });
+      return [choice];
     }
-    mapped.push({ field: leaf, path: choice });
-    return choice;
+    if (ctx.answers.get(gapPath) === D1_GAP_NONE) {
+      server.push(leaf);
+      return [];
+    }
+    open = true;
+    return [leaf];
   });
-  if (open) {
+  if (open || !paths.length) {
     readonlyFields(ctx, key, typeName, computed, null);
     shadowNested(ctx, key, nested);
     return;
@@ -194,7 +201,7 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
   }
   const readonly = readonlyFields(ctx, key, typeName, computed, chosen.entity);
   mapped.push(...readonly.mapped);
-  const calculated = readonly.calculated;
+  const calculated = [...readonly.calculated, ...server];
   if (calculated.length) output.computed = calculated;
   if (chosen.related.length) output.related = chosen.related;
   if (mapped.length) output.mapped = mapped;
