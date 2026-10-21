@@ -22,7 +22,10 @@ import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/ex
 import { prepareWorkflowPlan, type TaskOccurrenceAdvanceCommand, type TaskOccurrenceOpenCommand, type TaskOccurrencePort, type TaskOccurrenceSnapshot, type TaskWorkflowEngine, type WorkflowPlanInput } from '/_102034_/l1/workflow/index.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
-import { collapseCollections } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
@@ -352,7 +355,7 @@ void test('the request gate holds the contract routes, the atomic command and th
 void test('every prompt declares a model type the Collab LLM proxy knows (no default "cost" alias)', () => {
   const steps = path.join(HERE, 'steps');
   const prompts = readdirSync(steps).map(step => path.join(steps, step, 'prompt.md')).filter(file => existsSync(file));
-  assert.equal(prompts.length, 4, 'usecases40, workflows45, requests50 and tests60 call the model');
+  assert.equal(prompts.length, 5, 'usecases40, workflows45, requests50, tests60 and seedRows25 call the model');
   for (const file of prompts) {
     const second = readFileSync(file, 'utf8').split('\n')[1] ?? '';
     assert.match(second, /^<!-- modelType: (code|design|reasoning) -->$/u, `${path.relative(HERE, file)} line 2`);
@@ -1418,4 +1421,84 @@ test('a module with no table unit registers backend controllers and no persisten
   assert.equal(blocked.action, 'pending');
   assert.equal(blocked.backend, null);
   assert.equal(blocked.pendings.some(item => item.reason === 'LOCAL_TABLE_ABSENT'), true);
+});
+
+test('reference seed rows come from the l4, are checked, and are emitted beside def rows', async () => {
+  const fixture = path.join(HERE, 'steps', 'seedRows25', 'fixture');
+  const countrySource = readFileSync(path.join(fixture, 'Country.defs.ts'), 'utf8');
+  const privacySource = readFileSync(path.join(fixture, 'PrivacyText.defs.ts'), 'utf8');
+  assert.match(readFileSync(path.join(HERE, 'steps', 'seedRows25', 'prompt.md'), 'utf8'), new RegExp(PROVISIONAL_PRIVACY_SENTENCE));
+  const country = referenceSeedUnit({ scenarioId: 'maintainCountries', tableId: 'country', ontologySource: countrySource, states: ['active'], stateField: 'status' });
+  const privacy = referenceSeedUnit({ scenarioId: 'completeMyAccess', tableId: 'privacyText', ontologySource: privacySource, states: [], stateField: '' });
+  assert.ok(country && privacy);
+  const countryRows = [
+    { code: 'BR', name: 'Brazil', status: 'active', details: {} },
+    { code: 'US', name: 'United States', status: 'active', details: {} },
+  ];
+  const privacyRows = [{ version: 1, publishedAt: '2026-01-01T00:00:00Z', details: { title: 'Privacy', body: 'a provisional privacy text', language: 'en' } }];
+  const settledCountry = await settleReferenceSeed(country, () => JSON.stringify({ rows: countryRows }));
+  const settledPrivacy = await settleReferenceSeed(privacy, () => JSON.stringify({ rows: privacyRows }));
+  assert.equal(settledCountry.calls, 1);
+  assert.equal(settledPrivacy.calls, 1);
+  assert.equal(settledCountry.reason, null);
+  const reference: ReferenceSeedDataset[] = [
+    { seedFor: 'country', rows: settledCountry.rows },
+    { seedFor: 'privacyText', rows: settledPrivacy.rows },
+  ];
+  const definition: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'persistenceSeeds',
+    artifactId: 'seeds',
+    moduleName: 'onboarding',
+    status: 'pending',
+    dependencies: [],
+    data: {
+      seedId: 'seeds',
+      phase: 'plan',
+      scenarios: [
+        { scenarioId: 'maintainCountries', tableId: 'country', states: ['active'], entityId: 'Country' },
+        { scenarioId: 'completeMyAccess', tableId: 'privacyText', states: [], entityId: 'PrivacyText' },
+        { scenarioId: 'journeyOnly', tableId: 'note', states: [], entityId: 'Note' },
+      ],
+      datasets: [
+        { datasetId: 'country', tableId: 'country', owners: ['maintainCountries'] },
+        { datasetId: 'privacyText', tableId: 'privacyText', owners: ['completeMyAccess'] },
+        { datasetId: 'note', tableId: 'note', owners: ['journeyOnly'] },
+        { datasetId: 'fromDef', seedFor: 'noteKept', tableId: 'noteKept', rows: [{ id: 'kept' }] },
+      ],
+    },
+  };
+  definition.data.scenarios = [
+    ...(definition.data.scenarios as unknown[]),
+    { scenarioId: 'kept', tableId: 'noteKept', states: [] },
+  ];
+  const emitted = await emitPersistence('persistence.persistenceSeeds', definition, '_102056_/l1/onboarding/layer_1_external/adapters/persistence/seeds.ts', async () => null, [], reference);
+  assert.ok(!('code' in emitted));
+  if ('code' in emitted) return;
+  assert.match(emitted.source, /"seedFor":"country"/);
+  assert.match(emitted.source, /"code":"BR"/);
+  assert.match(emitted.source, /"name":"Brazil"/);
+  assert.match(emitted.source, /"status":"active"/);
+  assert.match(emitted.source, /"seedFor":"privacyText"/);
+  assert.match(emitted.source, /"version":1/);
+  assert.match(emitted.source, /"seedFor":"noteKept"/);
+  assert.equal(emitted.source.includes('"tableId": "note"') && emitted.source.includes('seedRows'), true);
+  const noteSeed = emitted.source.includes('"seedFor":"note"');
+  assert.equal(noteSeed, false);
+  assert.deepEqual(seedRowProblems(country, [{ code: 'BR', name: 'Brazil', status: 'active', details: {}, extra: 1 }]), ['row 0.extra is not a column.']);
+  assert.ok(seedRowProblems(country, [countryRows[0], { ...countryRows[0] }]).some(problem => problem.includes('repeats unique key')));
+  const refused = await settleReferenceSeed(country, () => JSON.stringify({ rows: [{ code: 'BR', name: 'Brazil', status: 'active', details: {}, extra: 1 }] }));
+  assert.equal(refused.calls, 2);
+  assert.deepEqual(refused.rows, []);
+  assert.ok(refused.reason);
+  let controlCalls = 0;
+  const control = referenceSeedUnit({
+    scenarioId: 'journeyOnly',
+    tableId: 'note',
+    ontologySource: 'export const note = { "entityId": "Note", "description": "A note the journey creates.", "capabilities": { "create": "Writes a note." }, "record": { "fields": {} } } as const;\n',
+    states: [],
+    stateField: '',
+  });
+  assert.equal(control, null);
+  assert.equal(controlCalls, 0);
 });

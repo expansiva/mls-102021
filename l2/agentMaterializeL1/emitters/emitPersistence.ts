@@ -168,17 +168,24 @@ export function withoutUniqueChecks(source: string): string {
   return `${source.slice(0, start)}// enforce:unique disabled\n  ${source.slice(end)}`;
 }
 
+/** Rows the reference-seed unit accepted. They are not a key of the def. */
+export interface ReferenceSeedDataset {
+  seedFor: string;
+  rows: readonly Record<string, unknown>[];
+}
+
 export async function emitPersistence(
   id: string,
   definition: M1Definition,
   output: string,
   read: StructureRead,
   moduleDefinitions: readonly M1Definition[] = [],
+  referenceSeeds: readonly ReferenceSeedDataset[] = [],
 ): Promise<PersistenceEmit | EmitFailure> {
   if (id === 'persistence.table') return emitTable(definition, output, read);
   if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read, moduleDefinitions);
   if (id === 'persistence.repositoryRegistration') return emitRegistration(definition, output, read);
-  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output);
+  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds);
   if (id === 'persistence.integrationOutbound') return emitOutbound(definition);
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a persistence body.` };
 }
@@ -271,16 +278,24 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
  * Product seeds and the certification fixture are two exports. D1 plans datasets as
  * `{ datasetId, tableId, owners }` with no rows, so `applicableSeeds` stays empty and the
  * receipt says planned, not materialized. Rows a def carries (`seedFor`/`rows`) are product
- * seeds and keep the profile guard. The fixture (l2/helpers/l1Defs/fixture.ts) is never a seed row.
+ * seeds and keep the profile guard. Rows the reference-seed unit accepted are product seeds too,
+ * and they are not written back onto the def. The fixture (l2/helpers/l1Defs/fixture.ts) is never a seed row.
  */
-function emitSeeds(definition: M1Definition, output: string): PersistenceEmit | EmitFailure {
+function emitSeeds(definition: M1Definition, output: string, referenceSeeds: readonly ReferenceSeedDataset[] = []): PersistenceEmit | EmitFailure {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No seed file was written.` };
   const scenarios = Array.isArray(definition.data.scenarios) ? definition.data.scenarios.filter(isRecord) : [];
   const targets = [...new Set(scenarios.map(item => text(item.tableId)).filter(Boolean))];
   const datasets = Array.isArray(definition.data.datasets) ? definition.data.datasets.filter(isRecord) : [];
-  const rows = datasets.filter(item => targets.includes(text(item.seedFor)) && Array.isArray(item.rows));
-  const planned = datasets.filter(item => targets.includes(text(item.tableId)) && !Array.isArray(item.rows)).map(item => text(item.tableId));
+  const fromDef = datasets.filter(item => targets.includes(text(item.seedFor)) && Array.isArray(item.rows));
+  const filled = new Set(fromDef.map(item => text(item.seedFor)));
+  const fromUnit = referenceSeeds
+    .filter(item => targets.includes(item.seedFor) && item.rows.length > 0 && !filled.has(item.seedFor))
+    .map(item => ({ seedFor: item.seedFor, rows: item.rows }));
+  const rows = [...fromDef, ...fromUnit];
+  const planned = datasets
+    .filter(item => targets.includes(text(item.tableId)) && !Array.isArray(item.rows) && !rows.some(row => text(row.seedFor) === text(item.tableId)))
+    .map(item => text(item.tableId));
   let fixture: M1FixturePlan | null = null;
   if (definition.data.fixture !== undefined) {
     const read = readFixturePlan(definition.data.fixture);
