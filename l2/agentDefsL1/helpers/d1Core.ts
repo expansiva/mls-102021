@@ -147,7 +147,7 @@ export function doneAnchorId(stepId: D1StepId): string {
 }
 
 export function dynamicPlanId(stepId: D1StepId, kind: 'fanout' | 'worker' | 'repair' | 'barrier', token: string): string {
-  if (kind === 'fanout') return `${stepId}-fanout`;
+  if (kind === 'fanout') return token ? `${stepId}-fanout-${token}` : `${stepId}-fanout`;
   if (kind === 'barrier') return token ? `${stepId}-barrier-${token}` : `${stepId}-barrier`;
   if (kind === 'worker') return `${stepId}-worker-${token}`;
   return `${stepId}-repair-${token}`;
@@ -174,8 +174,9 @@ export function ownerStepId(planId: string): D1StepId | '' {
   if (isD1StepId(planId)) return planId;
   for (const id of D1_FLOW_STEP_IDS) {
     if (planId === `${id}-done`) return '';
-    if (planId === `${id}-fanout`) return id;
-    if (planId === `${id}-barrier` || new RegExp(`^${id}-barrier-\\d+$`).test(planId)) return id;
+    // A later round (resolve25 round2, d1_91) has its own fan-out and barrier ids.
+    if (planId === `${id}-fanout` || new RegExp(`^${id}-fanout-round\\d+$`).test(planId)) return id;
+    if (planId === `${id}-barrier` || new RegExp(`^${id}-barrier-(\\d+|round\\d+)$`).test(planId)) return id;
     if (new RegExp(`^${id}-worker-[A-Za-z0-9]+$`).test(planId)) return id;
     if (new RegExp(`^${id}-repair-\\d+$`).test(planId)) return id;
   }

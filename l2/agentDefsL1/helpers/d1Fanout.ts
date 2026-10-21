@@ -126,7 +126,8 @@ export function firstFanoutWorkerArg(config: D1FanoutConfig, project: number, mo
   });
 }
 
-export function fanoutStepFor(config: D1FanoutConfig, project: number, moduleName: string, args: readonly string[]): mls.msg.AIAgentStep {
+/** `round` names a later fan-out of the same step: its plan id must differ, or a barrier that depends on it is unlocked by the first one. */
+export function fanoutStepFor(config: D1FanoutConfig, project: number, moduleName: string, args: readonly string[], round = ''): mls.msg.AIAgentStep {
   return {
     type: 'agent',
     stepId: 0,
@@ -143,12 +144,12 @@ export function fanoutStepFor(config: D1FanoutConfig, project: number, moduleNam
     status: 'in_progress',
     nextSteps: [],
     agentName: D1_AGENT_NAME,
-    prompt: JSON.stringify({ planId: dynamicPlanId(config.stepId, 'fanout', ''), moduleName, project, command: 'run' }),
+    prompt: JSON.stringify({ planId: dynamicPlanId(config.stepId, 'fanout', round), moduleName, project, command: 'run' }),
     rags: [],
     onFailure: 'continue',
     progress: { total: args.length, completed: 0, failed: 0, templateTitle: FANOUT_TITLE },
     planning: {
-      planId: dynamicPlanId(config.stepId, 'fanout', ''),
+      planId: dynamicPlanId(config.stepId, 'fanout', round),
       dependsOn: [config.after],
       executionMode: 'parallel_dynamic',
       executionHost: 'client',
@@ -269,7 +270,7 @@ export function fanoutRepairOpen(config: D1FanoutConfig, context: mls.msg.Execut
 }
 
 export function isFanoutBarrier(config: D1FanoutConfig, planId: string): boolean {
-  return planId === `${config.stepId}-barrier` || new RegExp(`^${config.stepId}-barrier-\\d+$`).test(planId);
+  return planId === `${config.stepId}-barrier` || new RegExp(`^${config.stepId}-barrier-(\\d+|round\\d+)$`).test(planId);
 }
 
 export function parseFanoutBarrier(config: D1FanoutConfig, prompt: string): { project: number; moduleName: string } | null {

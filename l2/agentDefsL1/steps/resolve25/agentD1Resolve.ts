@@ -74,7 +74,7 @@ export async function beforeD1ResolvePromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   const planId = planIdOf(step) || planIdFromText(args || step.prompt || '');
-  if (planId === 'resolve25-fanout') {
+  if (planId === 'resolve25-fanout' || planId === 'resolve25-fanout-round2') {
     return [updateStatus(context, parentStep, step, hookSequential, 'in_progress', 'resolve25 fan-out is waiting for workers.')];
   }
   if (isFanoutBarrier(RESOLVE_FANOUT, planId)) return barrier(context, parentStep, step, hookSequential);
@@ -151,7 +151,7 @@ export async function beforeD1ResolvePromptStep(
     await writeResolveReceipt(receipt);
     return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 kept the answered routes for ${moduleName} from the previous receipt. No model was called.`, 0);
   }
-  return dispatchRound(context, parentStep, step, hookSequential, project, moduleName, pending, 'in_progress', 'resolve25 dispatched');
+  return dispatchRound(context, parentStep, step, hookSequential, project, moduleName, pending, '', 'in_progress', 'resolve25 dispatched');
 }
 
 export async function afterD1ResolvePromptStep(
@@ -163,7 +163,7 @@ export async function afterD1ResolvePromptStep(
   args?: string,
 ): Promise<mls.msg.AgentIntent[]> {
   const planId = planIdOf(step) || planIdFromText(args || step.prompt || '');
-  if (planId === 'resolve25-fanout') {
+  if (planId === 'resolve25-fanout' || planId === 'resolve25-fanout-round2') {
     return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'resolve25 fan-out closed. The barrier step decides repair.')];
   }
   if (isFanoutBarrier(RESOLVE_FANOUT, planId)) {
@@ -347,7 +347,7 @@ async function barrier(
         answers: {},
       });
     }
-    return dispatchRound(context, parentStep, step, hookSequential, prompt.project, prompt.moduleName, ask, 'completed', 'resolve25 dispatched a second round:');
+    return dispatchRound(context, parentStep, step, hookSequential, prompt.project, prompt.moduleName, ask, 'round2', 'completed', 'resolve25 dispatched a second round:');
   }
   if (fresh.length) await writeResolveWork(work);
   // After the one repair of this round, a gap without an accepted choice is none. It stays a gap downstream, not a stop.
@@ -467,7 +467,7 @@ D1_STEP_HOOKS.resolve25 = {
   afterPromptStep: afterD1ResolvePromptStep,
 };
 
-/** Fan-out plus barrier for one round. The status names which round. */
+/** Fan-out plus barrier for one round. The second round has its own plan ids, so its barrier waits for its own workers. */
 function dispatchRound(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -476,11 +476,12 @@ function dispatchRound(
   project: number,
   moduleName: string,
   pending: readonly D1ResolveUnit[],
+  round: '' | 'round2',
   stepStatus: 'in_progress' | 'completed',
   status: string,
 ): mls.msg.AgentIntent[] {
   const workerArgs = pending.map(unit => firstFanoutWorkerArg(RESOLVE_FANOUT, project, moduleName, unit.unitId));
-  const fanout = fanoutStepFor(RESOLVE_FANOUT, project, moduleName, workerArgs);
+  const fanout = fanoutStepFor(RESOLVE_FANOUT, project, moduleName, workerArgs, round);
   const gaps = pending.reduce((sum, unit) => sum + unit.gaps.length, 0);
   return [
     {
@@ -492,7 +493,7 @@ function dispatchRound(
       step: fanout,
       executionMode: fanoutExecution(workerArgs),
     },
-    addStepIntent(context, parentStep, barrierStepFor(RESOLVE_FANOUT, project, moduleName, [fanout.planning?.planId || 'resolve25-fanout'], '')),
+    addStepIntent(context, parentStep, barrierStepFor(RESOLVE_FANOUT, project, moduleName, [fanout.planning?.planId || 'resolve25-fanout'], round)),
     updateStatus(context, parentStep, step, hookSequential, stepStatus, `${status} ${pending.length} route workers for ${gaps} open parts, at most 5 at once.`),
   ];
 }

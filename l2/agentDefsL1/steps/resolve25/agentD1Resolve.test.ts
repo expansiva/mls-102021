@@ -299,7 +299,7 @@ void test('the gate accepts only candidates, every gap, and no extra key', () =>
 });
 
 function workerArgsOf(intents: mls.msg.AgentIntent[]): string[] {
-  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout');
+  const fanout = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step' && (intent.step.planning?.planId === 'resolve25-fanout' || intent.step.planning?.planId === 'resolve25-fanout-round2'));
   const mode = fanout?.executionMode;
   if (mode?.type === 'parallel' || mode?.type === 'sequential') return mode.args;
   return [];
@@ -445,6 +445,10 @@ export interface ProdutosContracts {`,
   const second = workerArgsOf(opened);
   assert.equal(second.length, 1, 'the second round asks only the route that opened a new gap');
   assert.equal(opened.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), false);
+  // d1_91 s2 r3: with the first round's plan ids, the host unlocked the new barrier before the new workers answered.
+  const added = opened.flatMap(intent => intent.type === 'add-step' ? [intent.step.planning] : []);
+  assert.ok(added.some(planning => planning?.planId === 'resolve25-fanout-round2'), 'the second fan-out has its own plan id');
+  assert.deepEqual(added.find(planning => planning?.planId === 'resolve25-barrier-round2')?.dependsOn, ['resolve25-fanout-round2'], 'the second barrier waits for the second fan-out');
   const arg = parseFanoutWorkerArg(RESOLVE_FANOUT, second[0]);
   const round = await readResolveWork(PROJECT, MODULE);
   const unit = round?.units.find(item => item.unitId === arg?.unitId);
@@ -452,7 +456,7 @@ export interface ProdutosContracts {`,
   assert.equal(unit?.unitId, `${cascade.unitId}b`);
   assert.deepEqual(unit?.gaps.map(gap => [gap.path, gap.kind]), [['output.access', 'entity']]);
   await answer(run, agentStep(351, second[0]), gap => (gap.candidates.includes('MovimentacaoEstoque') ? 'MovimentacaoEstoque' : D1_GAP_NONE));
-  const closed = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(390, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const closed = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(390, JSON.stringify({ planId: 'resolve25-barrier-round2', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier-round2'), run.seq++);
   assert.equal(workerArgsOf(closed).length, 0, 'a third new gap is not asked');
   assert.equal(closed.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), true);
   const receipt = await readResolveReceipt(PROJECT, MODULE);
