@@ -1522,7 +1522,9 @@ test('reference seed rows come from the l4, are checked, and are emitted beside 
   const fixture = path.join(HERE, 'steps', 'seedRows25', 'fixture');
   const countrySource = readFileSync(path.join(fixture, 'Country.defs.ts'), 'utf8');
   const privacySource = readFileSync(path.join(fixture, 'PrivacyText.defs.ts'), 'utf8');
-  assert.match(readFileSync(path.join(HERE, 'steps', 'seedRows25', 'prompt.md'), 'utf8'), new RegExp(PROVISIONAL_PRIVACY_SENTENCE));
+  const seedPrompt = readFileSync(path.join(HERE, 'steps', 'seedRows25', 'prompt.md'), 'utf8');
+  assert.match(seedPrompt, new RegExp(PROVISIONAL_PRIVACY_SENTENCE));
+  assert.match(seedPrompt, /Return every row the l4 description implies, never a sample: when it names a standard list \(for example the ISO 3166-1 countries\), return all of its entries\./);
   const country = referenceSeedUnit({ scenarioId: 'maintainCountries', tableId: 'country', ontologySource: countrySource, states: ['active'], stateField: 'status' });
   const privacy = referenceSeedUnit({ scenarioId: 'completeMyAccess', tableId: 'privacyText', ontologySource: privacySource, states: [], stateField: '' });
   assert.ok(country && privacy);
