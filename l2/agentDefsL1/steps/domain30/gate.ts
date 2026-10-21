@@ -752,12 +752,21 @@ function readLifecycle(
     const initials = states
       .filter(state => state.reachedBy !== 'time' && !targets.has(state.state))
       .map(state => state.state);
-    if (initials.length !== 1) {
+    if (initials.length > 1) {
       error(problems, 'INITIAL_STATE', entityId, `Entity ${entityId} has ${initials.length} states that no transition reaches.`);
       blocked.add(entityId);
-    } else {
+    } else if (initials.length === 1) {
       derivedInitial = initials[0];
       normalizations.push({ code: 'INITIAL_STATE_DERIVED', path: entityId, detail: derivedInitial });
+    } else {
+      const ordered = states.filter(state => state.reachedBy !== 'time');
+      if (ordered.length === 0) {
+        error(problems, 'INITIAL_STATE', entityId, `Entity ${entityId} has ${initials.length} states that no transition reaches.`);
+        blocked.add(entityId);
+      } else {
+        derivedInitial = ordered[0].state;
+        normalizations.push({ code: 'INITIAL_STATE_FROM_ORDER', path: entityId, detail: derivedInitial });
+      }
     }
   }
   return {

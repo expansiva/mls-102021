@@ -378,6 +378,71 @@ void test('a preserved domain file is not part of the write set', () => {
   assert.ok(build.entities[0].definition);
 });
 
+void test('a cycle takes the first declared non-time state; one free state stays derived', () => {
+  const rules = { rules: {} };
+  const base = {
+    entityId: 'Country',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { id: { type: 'uuid', derived: true } } },
+  };
+  const cycled = buildD1Domain(requestFrom({
+    Country: {
+      ...base,
+      lifecycleStates: [
+        { state: 'active', reachedBy: 'command' },
+        { state: 'inactive', reachedBy: 'command' },
+      ],
+      transitions: [
+        { transitionId: 'deactivate', from: ['active'], to: 'inactive', by: ['admin'], ruleRefs: [] as string[] },
+        { transitionId: 'activate', from: ['inactive'], to: 'active', by: ['admin'], ruleRefs: [] as string[] },
+      ],
+    },
+  }, rules));
+  assert.equal(cycled.ok, true, JSON.stringify(cycled.problems));
+  assert.equal(codes(cycled, 'error').includes('INITIAL_STATE'), false);
+  assert.equal(cycled.entities[0].derivedInitial, 'active');
+  assert.equal(
+    cycled.normalizations.some(item => item.code === 'INITIAL_STATE_FROM_ORDER' && item.path === 'Country' && item.detail === 'active'),
+    true,
+  );
+  assert.equal(cycled.normalizations.some(item => item.code === 'INITIAL_STATE_DERIVED'), false);
+
+  const twoFree = buildD1Domain(requestFrom({
+    Country: {
+      ...base,
+      lifecycleStates: [
+        { state: 'active', reachedBy: 'command' },
+        { state: 'inactive', reachedBy: 'command' },
+      ],
+      transitions: [],
+    },
+  }, rules));
+  assert.equal(codes(twoFree, 'error').includes('INITIAL_STATE'), true);
+  assert.equal(twoFree.entities[0].derivedInitial, null);
+  assert.equal(twoFree.entities[0].definition, null);
+
+  const oneFree = buildD1Domain(requestFrom({
+    Country: {
+      ...base,
+      lifecycleStates: [
+        { state: 'draft', reachedBy: 'command' },
+        { state: 'sent', reachedBy: 'command' },
+      ],
+      transitions: [
+        { transitionId: 'send', from: ['draft'], to: 'sent', by: ['admin'], ruleRefs: [] as string[] },
+      ],
+    },
+  }, rules));
+  assert.equal(oneFree.ok, true, JSON.stringify(oneFree.problems));
+  assert.equal(oneFree.entities[0].derivedInitial, 'draft');
+  assert.equal(
+    oneFree.normalizations.some(item => item.code === 'INITIAL_STATE_DERIVED' && item.path === 'Country' && item.detail === 'draft'),
+    true,
+  );
+  assert.equal(oneFree.normalizations.some(item => item.code === 'INITIAL_STATE_FROM_ORDER'), false);
+});
+
 void test('a system transition keeps an empty by and an empty from stays TRANSITION_SHAPE', () => {
   const rules = { rules: { ordemChegadaListaEspera: 'queue', promoverPrimeiroListaEsperaAoCancelar: 'promote' } };
   const body = {
