@@ -82,6 +82,45 @@ void test('platform branches come from the ontology subtypes, not a fixed list: 
   assert.equal(mdm.gaps.some(gap => gap.evidence.includes('details.person.birthDate')), false);
 });
 
+void test('subfields of a facade object share one patch argument on the object path', () => {
+  const platformFields = [
+    'details.person.privacyConsent.version',
+    'details.person.privacyConsent.acceptedAt',
+    'details.person.privacyConsent.channel',
+    'details.identification.name',
+  ];
+  const mdm = bindMdm({
+    entityId: 'Record',
+    namespace: 'moduleN',
+    capabilities: ['edit.platformFields'],
+    selected: ['edit.platformFields'],
+    platformFields,
+    inputFields: platformFields.map(path => ({ path, optional: false, writePrecondition: false })),
+  });
+  const update = mdm.calls[0];
+  assert.deepEqual(patchKeys(update), ['name', 'privacyConsent']);
+  assert.equal(named(update, 'privacyConsent')?.path, 'details.person.privacyConsent');
+  assert.equal(named(update, 'name')?.path, 'details.identification.name');
+  assert.equal(mdm.gaps.some(gap => gap.code === 'MDM_PATCH_UNBOUND'), false);
+});
+
+void test('a deep field whose object key is outside the facade stays MDM_PATCH_UNBOUND', () => {
+  const platformFields = ['details.person.unknownThing.x', 'details.person.privacyConsent.foo'];
+  const mdm = bindMdm({
+    entityId: 'Record',
+    namespace: 'moduleN',
+    capabilities: ['edit.platformFields'],
+    selected: ['edit.platformFields'],
+    platformFields,
+    inputFields: platformFields.map(path => ({ path, optional: false, writePrecondition: false })),
+  });
+  assert.equal(
+    mdm.gaps.some(gap => gap.code === 'MDM_PATCH_UNBOUND' && gap.evidence.includes('details.person.unknownThing.x')),
+    true,
+  );
+  assert.equal(named(mdm.calls[0], 'privacyConsent')?.path, 'details.person.privacyConsent');
+});
+
 void test('update of a receptionist writes platform fields and the caller namespace in one versioned update', () => {
   const build = buildD1Usecases(one('updateRecepcionista'));
   assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));

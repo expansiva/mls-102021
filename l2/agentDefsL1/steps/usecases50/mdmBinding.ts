@@ -544,12 +544,12 @@ function platformPatches(input: MdmBindInput, capability: string, gaps: D1MdmGap
     if (!input.inputFields || !input.inputFields.some(field => field.path === path)) continue;
     if (seen.has(resolved.key)) continue;
     seen.add(resolved.key);
-    args.push(contractArg(resolved.key, 'patch', path, capability));
+    args.push(contractArg(resolved.key, 'patch', resolved.argPath, capability));
   }
   return args;
 }
 
-function platformPatchKey(path: string): { key: string } | { gap: string } {
+function platformPatchKey(path: string): { key: string; argPath: string } | { gap: string } {
   const parts = path.split('.');
   if (parts.length < 3 || parts[0] !== 'details') {
     return { gap: `${path} is not a details field entity.update can patch.` };
@@ -559,13 +559,17 @@ function platformPatchKey(path: string): { key: string } | { gap: string } {
   if (!PLATFORM_BRANCHES.has(branch)) {
     return { gap: `${path} is not a platform branch. Module data is the caller namespace key, not a platform patch.` };
   }
+  // A facade object (privacyConsent, …) is one patch key. Subfields share that key and the object path.
+  if (parts.length > 3 && FACADE_PLATFORM_KEYS.has(parts[2])) {
+    return { key: parts[2], argPath: parts.slice(0, 3).join('.') };
+  }
   if (ENGINE_KEYS.has(leaf)) {
     return { gap: `${path} is not an edit.platformFields key. status is inactivate or reactivate; tags are attachRole.` };
   }
   if (!FACADE_PLATFORM_KEYS.has(leaf)) {
     return { gap: `${path} has no key on entity.update.` };
   }
-  return { key: leaf };
+  return { key: leaf, argPath: path };
 }
 
 /**
