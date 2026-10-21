@@ -338,14 +338,13 @@ function interfaceBlocks(source: string, names: readonly string[]): string {
 
 /**
  * The platform MDM APIs a module must call instead of inventing them: the named-type rules when the ontology has
- * an `"of"`, and the login, user list and country catalog. Same text inside `mdmContextSection` and, when a
+ * an `"of"`, and the login and the user list. Same text inside `mdmContextSection` and, when a
  * request contract names an MDM entity a usecase already owns, on its own.
  */
 export function mdmPlatformApiSection(ontologySource: string | null): string {
   const lines = [
     '- The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
     '- The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
-    '- The countries shown to the user are `getCountryCatalog()`, imported from `/_102034_/l1/mdm/module.js`, which returns `readonly { code, name, requiresPrivacyConsent }[]`; call it with no argument (the request carries no user language). Never a list of country codes or of consent countries of your own. An empty country stays empty: never a default country.',
   ];
   if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
     lines.push(

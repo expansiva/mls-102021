@@ -777,10 +777,9 @@ test('a named MDM type uses the platform interface and the platform predicates',
     'The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
     'The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
     'The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
-    'The countries shown to the user are `getCountryCatalog()`, imported from `/_102034_/l1/mdm/module.js`, which returns `readonly { code, name, requiresPrivacyConsent }[]`; call it with no argument (the request carries no user language). Never a list of country codes or of consent countries of your own. An empty country stays empty: never a default country.',
   ];
   for (const phrase of phrases) assert.ok(text.includes(phrase), phrase.slice(0, 80));
-  for (const name of ['PrivacyConsentValue', 'isPersonAccessComplete', 'isValidPrivacyConsent', 'isProtectedPrivacyCountry', '/_102034_/l1/mdm/module.js', 'getLoginEmail', 'listUsers', 'nextCursor', 'getCountryCatalog']) assert.ok(text.includes(name), name);
+  for (const name of ['PrivacyConsentValue', 'isPersonAccessComplete', 'isValidPrivacyConsent', 'isProtectedPrivacyCountry', '/_102034_/l1/mdm/module.js', 'getLoginEmail', 'listUsers', 'nextCursor']) assert.ok(text.includes(name), name);
   assert.equal((text.match(/mdmSupport/gu) ?? []).length, 1, 'mdmSupport appears only in the prohibition');
   assert.ok(!mdmContextSection('onboarding', 'export const mdm = { fields: { name: { type: "string" } } } as const;', null).includes('PrivacyConsentValue'), 'no named of, no platform type rule');
 });
@@ -795,7 +794,7 @@ test('a request contract that names an MDM entity a usecase owns still gets the 
   const cited = 'export interface MyAccessContracts { save(input: { member: { name: string } }): { member: { name: string } } }';
   const text = mdmPlatformSectionForRequest(cited, owned, ontology);
   assert.ok(text.includes('## The platform APIs for MDM data (source: the platform MDM facade)'), text.slice(0, 120));
-  for (const name of ['getCountryCatalog', 'getLoginEmail', 'listUsers', 'isPersonAccessComplete']) assert.ok(text.includes(name), name);
+  for (const name of ['getLoginEmail', 'listUsers', 'isPersonAccessComplete']) assert.ok(text.includes(name), name);
   assert.equal(mdmPlatformSectionForRequest('export interface PageContracts { save(input: { title: string }): { title: string } }', owned, ontology), '', 'a contract that names no MDM entity gets no section');
   const unowned = [unit('domainEntity', { entityId: 'Member', storageTarget: 'mdm' })];
   assert.equal(mdmPlatformSectionForRequest(cited, unowned, ontology), '', 'an entity with no usecase stays on the MDM section, which already carries these lines');
