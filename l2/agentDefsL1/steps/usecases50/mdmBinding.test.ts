@@ -104,6 +104,76 @@ void test('subfields of a facade object share one patch argument on the object p
   assert.equal(mdm.gaps.some(gap => gap.code === 'MDM_PATCH_UNBOUND'), false);
 });
 
+void test('a facade object argument is on the input when only a subfield is', () => {
+  const platformFields = [
+    'details.person.privacyConsent.version',
+    'details.person.privacyConsent.acceptedAt',
+    'details.person.privacyConsent.channel',
+  ];
+  const mdm = bindMdm({
+    entityId: 'Record',
+    namespace: 'moduleN',
+    capabilities: ['edit.platformFields'],
+    selected: ['edit.platformFields'],
+    platformFields,
+    inputFields: [
+      { path: 'id', optional: false, writePrecondition: false },
+      { path: 'version', optional: false, writePrecondition: true },
+      { path: 'details.person.privacyConsent.version', optional: false, writePrecondition: false },
+    ],
+  });
+  assert.equal(named(mdm.calls[0], 'privacyConsent')?.path, 'details.person.privacyConsent');
+  assert.equal(
+    mdm.gaps.some(gap => gap.code === 'MDM_ARGUMENT_UNBOUND'),
+    false,
+    mdm.gaps.map(gap => gap.evidence).join('; '),
+  );
+});
+
+void test('a contract path with no input field and no subfield prefix stays MDM_ARGUMENT_UNBOUND', () => {
+  const gaps = mdmFlowGaps([{
+    id: 'update1',
+    method: 'update',
+    target: 'entity',
+    shape: 'write',
+    capabilities: ['edit.platformFields'],
+    alternative: false,
+    when: [],
+    result: ['mdmId', 'version', 'details'],
+    arguments: [
+      { name: 'mdmId', role: 'selector', path: 'id', origin: { kind: 'contract', path: 'id' } },
+      {
+        name: 'expectedVersion',
+        role: 'parameter',
+        path: 'version',
+        origin: { kind: 'contract', path: 'version', evidence: 'writePrecondition' },
+      },
+      {
+        name: 'unknown',
+        role: 'patch',
+        path: 'details.person.unknown',
+        origin: { kind: 'contract', path: 'details.person.unknown' },
+      },
+    ],
+  }], {
+    entityId: 'Record',
+    namespace: 'moduleN',
+    capabilities: ['edit.platformFields'],
+    selected: ['edit.platformFields'],
+    platformFields: [],
+    inputFields: [
+      { path: 'id', optional: false, writePrecondition: false },
+      { path: 'version', optional: false, writePrecondition: true },
+      { path: 'details.person.privacyConsent.version', optional: false, writePrecondition: false },
+    ],
+  });
+  assert.equal(
+    gaps.some(gap => gap.code === 'MDM_ARGUMENT_UNBOUND' && gap.evidence.includes('details.person.unknown')),
+    true,
+    gaps.map(gap => gap.evidence).join('; '),
+  );
+});
+
 void test('a deep field whose object key is outside the facade stays MDM_PATCH_UNBOUND', () => {
   const platformFields = ['details.person.unknownThing.x', 'details.person.privacyConsent.foo'];
   const mdm = bindMdm({

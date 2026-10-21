@@ -977,7 +977,11 @@ function proveArgument(
       return;
     }
     if (arg.name === 'expectedVersion' || input.inputFields == null) return;
-    if (!input.inputFields.some(field => field.path === origin.path)) {
+    // A facade object (privacyConsent) is one argument. The input may list only a subfield.
+    const onInput = input.inputFields.some(field =>
+      field.path === origin.path || field.path.startsWith(`${origin.path}.`),
+    );
+    if (!onInput) {
       push(capability, `${call.id} argument ${arg.name} reads ${origin.path}, which is not on this input.`);
       return;
     }
