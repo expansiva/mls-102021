@@ -1,7 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/resolve25/gate.ts" enhancement="_blank"/>
 
 import { D1_GAP_NONE, type D1InputArtifacts, type D1RequestGapAnswer, type D1SourceDigest } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { deriveRequest } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
+import { applyResolutions, deriveRequest } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import {
   D1_RESOLVE_VERSION,
@@ -91,21 +91,29 @@ export function checkResolveReply(unit: D1ResolveUnit, reply: unknown): D1Resolv
  */
 export function buildResolveReceipt(work: D1ResolveWork, attempts: readonly D1ResolveAttempt[]): D1ResolveReceipt {
   let llmCalls = 0;
-  const routes = work.units.map(unit => {
-    const attempt = attempts.find(item => item.unitId === unit.unitId);
-    llmCalls += attempt?.calls || 0;
-    const answers: D1ResolveAnswer[] = unit.gaps.map(gap => {
-      const choice = attempt?.answers?.[gap.gapId];
-      const accepted = typeof choice === 'string' && gap.candidates.includes(choice);
-      return {
-        path: gap.path,
-        kind: gap.kind,
-        choice: accepted ? choice : D1_GAP_NONE,
-        call: accepted && attempt ? attempt.planId : '',
-        gapKey: resolveGapKey(unit.route, gap),
-      };
+  const grouped: Array<{ route: string; pageId: string; units: D1ResolveUnit[] }> = [];
+  for (const unit of work.units) {
+    llmCalls += attempts.find(item => item.unitId === unit.unitId)?.calls || 0;
+    const row = grouped.find(item => item.route === unit.route);
+    if (row) row.units.push(unit);
+    else grouped.push({ route: unit.route, pageId: unit.pageId, units: [unit] });
+  }
+  const routes = grouped.map(row => {
+    const answers: D1ResolveAnswer[] = row.units.flatMap(unit => {
+      const attempt = attempts.find(item => item.unitId === unit.unitId);
+      return unit.gaps.map(gap => {
+        const choice = attempt?.answers?.[gap.gapId];
+        const accepted = typeof choice === 'string' && gap.candidates.includes(choice);
+        return {
+          path: gap.path,
+          kind: gap.kind,
+          choice: accepted ? choice : D1_GAP_NONE,
+          call: accepted && attempt ? attempt.planId : '',
+          gapKey: resolveGapKey(unit.route, gap),
+        };
+      });
     });
-    return { route: unit.route, pageId: unit.pageId, answers };
+    return { route: row.route, pageId: row.pageId, answers };
   });
   return {
     schemaVersion: D1_RESOLVE_VERSION,
@@ -144,6 +152,78 @@ export function keptRoutes(receipt: D1ResolveReceipt, units: readonly D1ResolveU
 /** Identity of one gap. Synchronous, not a hash. */
 function resolveGapKey(route: string, gap: Pick<D1ResolveGap, 'path' | 'kind' | 'reason' | 'candidates'>): string {
   return JSON.stringify([route, gap.path, gap.kind, gap.reason, [...gap.candidates].sort()]);
+}
+
+/**
+ * Choices the gate already settled, one list per route, as `applyResolutions` takes them.
+ * A gap with no accepted candidate is `none`.
+ */
+export function settledGapAnswers(work: D1ResolveWork, attempts: readonly D1ResolveAttempt[]): Map<string, D1RequestGapAnswer[]> {
+  const byRoute = new Map<string, D1RequestGapAnswer[]>();
+  for (const unit of work.units) {
+    const attempt = attempts.find(item => item.unitId === unit.unitId);
+    const list = byRoute.get(unit.route) || [];
+    for (const gap of unit.gaps) {
+      const choice = attempt?.answers?.[gap.gapId];
+      const accepted = typeof choice === 'string' && gap.candidates.includes(choice);
+      list.push({ path: gap.path, choice: accepted ? choice : D1_GAP_NONE });
+    }
+    byRoute.set(unit.route, list);
+  }
+  return byRoute;
+}
+
+/**
+ * Gaps `applyResolutions` opens on routes already asked, whose path was not asked yet.
+ * A repeated path stays with the choice it has. The caller asks a new path at most once more (d1_91 s2b).
+ */
+export function unaskedGaps(
+  artifacts: Pick<D1InputArtifacts, 'contractTexts' | 'entities'>,
+  settled: ReadonlyMap<string, readonly D1RequestGapAnswer[]>,
+  askedPaths: ReadonlyMap<string, ReadonlySet<string>>,
+): Array<{ route: string; pageId: string; gaps: Array<Omit<D1ResolveGap, 'gapId'>> }> {
+  const out: Array<{ route: string; pageId: string; gaps: Array<Omit<D1ResolveGap, 'gapId'>> }> = [];
+  for (const [pageId, definition] of readContractV2(artifacts.contractTexts)) {
+    for (const route of definition.routes) {
+      if (!askedPaths.has(route.route)) continue;
+      const derived = applyResolutions(
+        { route, definition, entities: artifacts.entities },
+        settled.get(route.route) || [],
+      );
+      const asked = askedPaths.get(route.route) || new Set<string>();
+      const gaps = derived.unresolved.filter(gap => !asked.has(gap.path)).map(gap => ({
+        path: gap.path,
+        kind: gap.kind,
+        reason: gap.reason,
+        candidates: [...gap.candidates],
+      }));
+      if (gaps.length) out.push({ route: route.route, pageId, gaps });
+    }
+  }
+  return out;
+}
+
+/**
+ * True when every gap `applyResolutions` still opens, with this receipt's choices, is already on the receipt.
+ * A choice that closed its gap may stay on the receipt. A new path the choices opened is not covered.
+ */
+export function receiptAnswersDerived(
+  receipt: D1ResolveReceipt,
+  artifacts: Pick<D1InputArtifacts, 'contractTexts' | 'entities'>,
+): boolean {
+  const byRoute = new Map(receipt.routes.map(row => [row.route, row.answers]));
+  for (const [, definition] of readContractV2(artifacts.contractTexts)) {
+    for (const route of definition.routes) {
+      const answers = byRoute.get(route.route) || [];
+      const derived = applyResolutions(
+        { route, definition, entities: artifacts.entities },
+        answers.map(item => ({ path: item.path, choice: item.choice })),
+      );
+      const have = new Set(answers.map(item => item.path));
+      if (derived.unresolved.some(gap => !have.has(gap.path))) return false;
+    }
+  }
+  return true;
 }
 
 /** The answers of one route, as `applyResolutions` takes them. No receipt or no route gives none. */

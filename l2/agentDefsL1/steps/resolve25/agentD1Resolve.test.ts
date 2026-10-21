@@ -401,6 +401,89 @@ void test('resolve25 asks only the route whose gaps are not on the previous rece
   assert.equal(extra.answers.every(item => item.call === `resolve25-worker-${unit!.unitId}`), true);
 });
 
+void test('resolve25 asks a second round only for a gap the first answers open, and a third new gap stays none', async () => {
+  const host = await readyHost();
+  const products = contractFile(host, 'produtos');
+  products.content = products.content.replace(
+    'export interface ProdutosContracts {',
+    `export interface Cascade {
+  id: string;
+  version: number;
+  loginEmail: string;
+  extra: CascadeExtra;
+}
+export interface CascadeExtra {
+  produtoId: string;
+}
+export interface ProdutosContracts {`,
+  );
+  assert.ok(products.content.includes('controleEstoque.produtos.cadastrarProduto'));
+  products.content = `${products.content.slice(0, products.content.lastIndexOf('\n}'))}
+  'controleEstoque.produtos.cascade': {
+    kind: 'qry';
+    input: {};
+    output: { access: Cascade };
+    meta: { output: {}; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
+  };
+}
+`;
+  const run = await throughInput();
+  const intents = await resolveMain(run);
+  const args = workerArgsOf(intents);
+  const work = await readResolveWork(PROJECT, MODULE);
+  assert.ok(work);
+  const cascade = work.units.find(unit => unit.route === 'controleEstoque.produtos.cascade');
+  assert.ok(cascade);
+  assert.deepEqual(cascade.gaps.map(gap => gap.path), ['output.access.loginEmail']);
+  for (const [index, unit] of work.units.entries()) {
+    const route = await routeOf(unit.route);
+    await answer(run, agentStep(251 + index * 10, args[index]), gap => unit.route.endsWith('.cascade') ? D1_GAP_NONE : metaResolver(route, gap));
+  }
+  const opened = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(290, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const second = workerArgsOf(opened);
+  assert.equal(second.length, 1, 'the second round asks only the route that opened a new gap');
+  assert.equal(opened.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), false);
+  const arg = parseFanoutWorkerArg(RESOLVE_FANOUT, second[0]);
+  const round = await readResolveWork(PROJECT, MODULE);
+  const unit = round?.units.find(item => item.unitId === arg?.unitId);
+  assert.equal(unit?.route, 'controleEstoque.produtos.cascade');
+  assert.equal(unit?.unitId, `${cascade.unitId}b`);
+  assert.deepEqual(unit?.gaps.map(gap => [gap.path, gap.kind]), [['output.access', 'entity']]);
+  await answer(run, agentStep(351, second[0]), gap => (gap.candidates.includes('MovimentacaoEstoque') ? 'MovimentacaoEstoque' : D1_GAP_NONE));
+  const closed = await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(390, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  assert.equal(workerArgsOf(closed).length, 0, 'a third new gap is not asked');
+  assert.equal(closed.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), true);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  const row = receipt.routes.find(item => item.route === 'controleEstoque.produtos.cascade');
+  assert.ok(row);
+  const byPath = new Map(row.answers.map(item => [item.path, item]));
+  assert.equal(byPath.get('output.access.loginEmail')?.call, `resolve25-worker-${cascade.unitId}`);
+  assert.deepEqual(
+    [byPath.get('output.access')?.choice, byPath.get('output.access')?.call],
+    ['MovimentacaoEstoque', `resolve25-worker-${unit?.unitId}`],
+  );
+  assert.deepEqual(
+    [byPath.get('output.access.extra')?.choice, byPath.get('output.access.extra')?.call],
+    [D1_GAP_NONE, ''],
+  );
+  const others = work.units.filter(item => item.route !== cascade.route);
+  assert.equal(receipt.llmCalls, others.length + 2);
+  for (const item of others) {
+    const kept = receipt.routes.find(entry => entry.route === item.route);
+    assert.equal(kept?.answers.every(answer => answer.call === `resolve25-worker-${item.unitId}`), true, item.route);
+  }
+  const final = await readD1Input(PROJECT, MODULE);
+  const selected = final?.selection.requests.find(item => item.route === cascade.route);
+  assert.equal(selected?.outputs.find(output => output.key === 'access')?.entity, 'MovimentacaoEstoque');
+  const again = await resolveMain(run);
+  assert.equal(again.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), false);
+  assert.match(JSON.stringify(again), /kept the answers/);
+  assert.equal((await readResolveReceipt(PROJECT, MODULE))?.llmCalls, receipt.llmCalls);
+});
+
 void test('resolve25: an attempt left by an earlier run is neither an answer nor a call of this one', async () => {
   await readyHost();
   const stale = { unitId: 'r0', status: 'parsed' as const, trace: 'old', unitAttempts: 0, planId: 'resolve25-worker-r0', calls: 1, answers: { g0: 'movimentacoes', g1: 'movimentacoes', g2: 'movimentacoes' } };

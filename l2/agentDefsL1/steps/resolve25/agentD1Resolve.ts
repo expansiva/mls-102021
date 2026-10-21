@@ -38,7 +38,7 @@ import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
-import { answersByRoute, buildResolveReceipt, checkResolveReply, keptRoutes, resolveUnits, sourcesDrift } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { answersByRoute, buildResolveReceipt, checkResolveReply, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 import {
   readResolveAttempt,
   readResolveReceipt,
@@ -51,9 +51,11 @@ import { RESOLVE_TOOL_NAME, resolveHumanPrompt, resolveTool } from '/_102021_/l2
 
 /**
  * resolve25 (d1_62): between input20 and domain30. No gap, no model call. One worker per route with a gap, on the
- * shared fan-out, barrier and repair (`helpers/d1Fanout.ts`). The receipt `resolve25.json` is keyed by the source
- * key of the input20 derivation. With the answers, resolve25 builds and writes the final `input.json` through the
- * same `buildD1InputSnapshot`, with the `input.json` of the run before as previous.
+ * shared fan-out, barrier and repair (`helpers/d1Fanout.ts`). After that barrier, a route whose accepted answers
+ * open a gap that was not asked gets one second round, the same fan-out, gate and repair, and only those gaps
+ * (d1_91 s2b). A third new gap is `none`. The receipt `resolve25.json` is keyed by the source key of the input20
+ * derivation and keeps both rounds on the same route. With the answers, resolve25 builds and writes the final
+ * `input.json` through the same `buildD1InputSnapshot`, with the `input.json` of the run before as previous.
  */
 export const RESOLVE_FANOUT: D1FanoutConfig = {
   stepId: 'resolve25',
@@ -100,8 +102,8 @@ export async function beforeD1ResolvePromptStep(
   }
   const kept = await readResolveReceipt(project, moduleName);
   const units = resolveUnits(artifacts);
-  // Same sources: the receipt is kept only when it answers every gap the derivation opens now.
-  if (kept && kept.sourceKey === sourceKey && receiptAnswersUnits(kept, units)) {
+  // Same sources: the receipt is kept only when it answers every gap the derivation with those answers opens now.
+  if (kept && kept.sourceKey === sourceKey && receiptAnswersDerived(kept, artifacts)) {
     return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
   }
   const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, sourceKey, units, repairs: 0 };
@@ -149,22 +151,7 @@ export async function beforeD1ResolvePromptStep(
     await writeResolveReceipt(receipt);
     return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 kept the answered routes for ${moduleName} from the previous receipt. No model was called.`, 0);
   }
-  const workerArgs = pending.map(unit => firstFanoutWorkerArg(RESOLVE_FANOUT, project, moduleName, unit.unitId));
-  const fanout = fanoutStepFor(RESOLVE_FANOUT, project, moduleName, workerArgs);
-  const gaps = pending.reduce((sum, unit) => sum + unit.gaps.length, 0);
-  return [
-    {
-      type: 'add-step',
-      messageId: context.message.orderAt,
-      threadId: context.message.threadId,
-      taskId: context.task?.PK || '',
-      parentStepId: parentStep.stepId,
-      step: fanout,
-      executionMode: fanoutExecution(workerArgs),
-    },
-    addStepIntent(context, parentStep, barrierStepFor(RESOLVE_FANOUT, project, moduleName, [fanout.planning?.planId || 'resolve25-fanout'], '')),
-    updateStatus(context, parentStep, step, hookSequential, 'in_progress', `resolve25 dispatched ${pending.length} route workers for ${gaps} open parts, at most 5 at once.`),
-  ];
+  return dispatchRound(context, parentStep, step, hookSequential, project, moduleName, pending, 'in_progress', 'resolve25 dispatched');
 }
 
 export async function afterD1ResolvePromptStep(
@@ -317,7 +304,53 @@ async function barrier(
       updateStatus(context, parentStep, step, hookSequential, 'completed', `barrier identified ${named}`),
     ];
   }
-  // After the one repair, a gap without an accepted choice is none. It stays a gap downstream (review), not a stop.
+  // A route whose answers open a path not asked yet gets one more round, only those gaps. A further new path is none.
+  const askedPaths = new Map<string, Set<string>>();
+  const round = new Map<string, number>();
+  for (const unit of work.units) {
+    const paths = askedPaths.get(unit.route) || new Set<string>();
+    for (const gap of unit.gaps) paths.add(gap.path);
+    askedPaths.set(unit.route, paths);
+    if (unit.unitId.endsWith('b')) round.set(unit.route, 2);
+  }
+  const fresh = unaskedGaps(await readD1InputArtifacts(prompt.project, prompt.moduleName), settledGapAnswers(work, attempts), askedPaths);
+  const ask: D1ResolveUnit[] = [];
+  for (const item of fresh) {
+    if ((round.get(item.route) || 1) >= 2) {
+      const host = [...work.units].reverse().find(unit => unit.route === item.route);
+      if (!host) continue;
+      for (const gap of item.gaps) {
+        if (host.gaps.some(existing => existing.path === gap.path)) continue;
+        host.gaps.push({ gapId: `g${host.gaps.length}`, ...gap });
+      }
+      continue;
+    }
+    const prior = work.units.find(unit => unit.route === item.route);
+    ask.push({
+      unitId: `${prior?.unitId || 'r0'}b`,
+      route: item.route,
+      pageId: item.pageId,
+      gaps: item.gaps.map((gap, index) => ({ gapId: `g${index}`, ...gap })),
+    });
+  }
+  if (ask.length) {
+    work.units.push(...ask);
+    await writeResolveWork(work);
+    for (const unit of ask) {
+      await writeResolveAttempt(prompt.project, prompt.moduleName, {
+        unitId: unit.unitId,
+        status: 'operational',
+        trace: 'The worker was not dispatched yet.',
+        unitAttempts: 0,
+        planId: '',
+        calls: 0,
+        answers: {},
+      });
+    }
+    return dispatchRound(context, parentStep, step, hookSequential, prompt.project, prompt.moduleName, ask, 'completed', 'resolve25 dispatched a second round:');
+  }
+  if (fresh.length) await writeResolveWork(work);
+  // After the one repair of this round, a gap without an accepted choice is none. It stays a gap downstream, not a stop.
   const receipt = buildResolveReceipt(work, attempts);
   await writeResolveReceipt(receipt);
   const open = receipt.routes.reduce((sum, row) => sum + row.answers.filter(item => !item.call).length, 0);
@@ -434,10 +467,32 @@ D1_STEP_HOOKS.resolve25 = {
   afterPromptStep: afterD1ResolvePromptStep,
 };
 
-/** True when the receipt has, per route, exactly the gap paths of the units. */
-function receiptAnswersUnits(receipt: D1ResolveReceipt, units: readonly D1ResolveUnit[]): boolean {
-  const asked = (paths: readonly string[]): string => [...paths].sort().join('\n');
-  const kept = new Map(receipt.routes.filter(row => row.answers.length).map(row => [row.route, asked(row.answers.map(item => item.path))]));
-  if (kept.size !== units.length) return false;
-  return units.every(unit => kept.get(unit.route) === asked(unit.gaps.map(gap => gap.path)));
+/** Fan-out plus barrier for one round. The status names which round. */
+function dispatchRound(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  project: number,
+  moduleName: string,
+  pending: readonly D1ResolveUnit[],
+  stepStatus: 'in_progress' | 'completed',
+  status: string,
+): mls.msg.AgentIntent[] {
+  const workerArgs = pending.map(unit => firstFanoutWorkerArg(RESOLVE_FANOUT, project, moduleName, unit.unitId));
+  const fanout = fanoutStepFor(RESOLVE_FANOUT, project, moduleName, workerArgs);
+  const gaps = pending.reduce((sum, unit) => sum + unit.gaps.length, 0);
+  return [
+    {
+      type: 'add-step',
+      messageId: context.message.orderAt,
+      threadId: context.message.threadId,
+      taskId: context.task?.PK || '',
+      parentStepId: parentStep.stepId,
+      step: fanout,
+      executionMode: fanoutExecution(workerArgs),
+    },
+    addStepIntent(context, parentStep, barrierStepFor(RESOLVE_FANOUT, project, moduleName, [fanout.planning?.planId || 'resolve25-fanout'], '')),
+    updateStatus(context, parentStep, step, hookSequential, stepStatus, `${status} ${pending.length} route workers for ${gaps} open parts, at most 5 at once.`),
+  ];
 }
