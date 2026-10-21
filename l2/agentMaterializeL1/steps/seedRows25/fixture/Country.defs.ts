@@ -8,6 +8,7 @@ export const onboardingEntityCountry = {
   "entityId": "Country",
   "title": "Country",
   "description": "The module's own country list: two-letter ISO code and English name, loaded by the module seed and maintained by the company owner (add, edit, inactivate). Shown with the country name in the user language; platform records keep only the code.",
+  "initialData": "Every ISO 3166-1 country with its two-letter code and English name, loaded by the module seed.",
   "displayField": "name",
   "relationships": {},
   "capabilities": {

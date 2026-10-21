@@ -8,6 +8,7 @@ export const onboardingEntityPrivacyText = {
   "entityId": "PrivacyText",
   "title": "Privacy text",
   "description": "Read-only privacy text, one per version, loaded by the module seed. The current version is the latest one; it is shown with an unchecked acceptance when the chosen country requires consent.",
+  "initialData": "The organization's privacy texts, one row per version, loaded by the module seed.",
   "displayField": "version",
   "relationships": {},
   "capabilities": {

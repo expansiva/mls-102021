@@ -30,7 +30,9 @@ export interface SeedTableUnit {
   uniqueKeys: string[][];
   states: string[];
   stateField: string;
-  /** True when the description or the create capability says the module seed loads the entity. */
+  /** The l4 sentence of what this table brings in every database. Empty when the entity has no `initialData`. */
+  initialData: string;
+  /** True when the l4 entity declares `initialData`. A role never does. */
   loadedBySeed: boolean;
   provisionalPrivacy: boolean;
 }
@@ -42,11 +44,13 @@ export interface SeedRepair {
 
 interface OntologyRead {
   entityId: string;
+  kind: string;
   description: string;
   createText: string;
   fieldsText: string;
   fields: SeedColumn[];
   uniqueKeys: string[][];
+  initialData: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,22 +120,19 @@ function ontologyOf(source: string): OntologyRead | null {
   const fields = columnsOf(isRecord(literal.record) ? literal.record.fields : null);
   return {
     entityId: typeof literal.entityId === 'string' ? literal.entityId : '',
+    kind: typeof literal.kind === 'string' ? literal.kind : '',
     description: typeof literal.description === 'string' ? literal.description : '',
     createText: typeof capabilities.create === 'string' ? capabilities.create : '',
     fieldsText: JSON.stringify(isRecord(literal.record) ? literal.record.fields ?? {} : {}),
     fields,
     uniqueKeys: uniqueKeysOf(literal.uniqueKeys),
+    initialData: typeof literal.initialData === 'string' ? literal.initialData.trim() : '',
   };
 }
 
-/** Description or the create capability says the module seed loads this entity. */
-export function loadedByModuleSeed(description: string, createText: string): boolean {
-  return /module seed/i.test(`${description}\n${createText}`);
-}
-
 /**
- * One seed scenario whose entity the l4 loads by the module seed. Null when the l4 does not say that:
- * the caller does not call the model.
+ * One table whose l4 entity declares `initialData`. Null for a role, or when the sentence is absent:
+ * the caller does not call the model. The description text is not read.
  */
 export function referenceSeedUnit(input: {
   scenarioId: string;
@@ -141,9 +142,7 @@ export function referenceSeedUnit(input: {
   stateField: string;
 }): SeedTableUnit | null {
   const ontology = ontologyOf(input.ontologySource);
-  if (!ontology) return null;
-  const loadedBySeed = loadedByModuleSeed(ontology.description, ontology.createText);
-  if (!loadedBySeed) return null;
+  if (!ontology || ontology.kind === 'role' || !ontology.initialData) return null;
   const provisionalPrivacy = /privacy text/i.test(`${ontology.description}\n${ontology.createText}`);
   return {
     scenarioId: input.scenarioId,
@@ -156,7 +155,8 @@ export function referenceSeedUnit(input: {
     uniqueKeys: ontology.uniqueKeys,
     states: [...input.states],
     stateField: input.stateField,
-    loadedBySeed,
+    initialData: ontology.initialData,
+    loadedBySeed: true,
     provisionalPrivacy,
   };
 }
@@ -197,7 +197,7 @@ export function seedScenariosOf(data: unknown): SeedScenarioRef[] {
 }
 
 /**
- * One reference-seed table. Null when the l4 does not say the module seed loads the entity:
+ * One reference-seed table. Null when the l4 entity has no `initialData`:
  * the caller does not call the model.
  */
 export function referenceSeedFromScenario(input: SeedScenarioRef & { ontologySource: string | null }): SeedTableUnit | null {
@@ -219,6 +219,7 @@ export function seedRowsHuman(unit: SeedTableUnit, repair?: SeedRepair): string 
   const lines = [
     `Scenario ${unit.scenarioId}, table ${unit.tableId}, entity ${unit.entityId}.`,
     `Description: ${unit.description}`,
+    `What the table brings in every database: ${unit.initialData}`,
     `Create: ${unit.createText || '(none)'}`,
     `Fields: ${unit.fieldsText}`,
     `Columns: ${columns || '(none)'}`,

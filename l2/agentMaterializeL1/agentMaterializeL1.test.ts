@@ -24,7 +24,7 @@ import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMet
 import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { createAgent as seedRowUnitAgent, settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -1528,6 +1528,17 @@ test('reference seed rows come from the l4, are checked, and are emitted beside 
   const country = referenceSeedUnit({ scenarioId: 'maintainCountries', tableId: 'country', ontologySource: countrySource, states: ['active'], stateField: 'status' });
   const privacy = referenceSeedUnit({ scenarioId: 'completeMyAccess', tableId: 'privacyText', ontologySource: privacySource, states: [], stateField: '' });
   assert.ok(country && privacy);
+  assert.match(seedRowsHuman(country), /What the table brings in every database: Every ISO 3166-1 country/);
+  assert.match(seedRowsHuman(privacy), /What the table brings in every database: The organization's privacy texts/);
+  const withoutScenario = referenceSeedUnit({
+    scenarioId: 'initial',
+    tableId: 'zone',
+    ontologySource: 'export const zone = { "entityId": "Zone", "kind": "entity", "description": "A zone.", "initialData": "rows to help fill the DB", "record": { "fields": { "code": { "type": "string", "required": true } } } } as const;\n',
+    states: [],
+    stateField: '',
+  });
+  assert.equal(withoutScenario?.tableId, 'zone');
+  assert.equal(withoutScenario?.initialData, 'rows to help fill the DB');
   const countryRows = [
     { code: 'BR', name: 'Brazil', status: 'active', details: {} },
     { code: 'US', name: 'United States', status: 'active', details: {} },
@@ -1592,7 +1603,7 @@ test('reference seed rows come from the l4, are checked, and are emitted beside 
   const control = referenceSeedUnit({
     scenarioId: 'journeyOnly',
     tableId: 'note',
-    ontologySource: 'export const note = { "entityId": "Note", "description": "A note the journey creates.", "capabilities": { "create": "Writes a note." }, "record": { "fields": {} } } as const;\n',
+    ontologySource: 'export const note = { "entityId": "Note", "kind": "entity", "description": "A note loaded by the module seed.", "capabilities": { "create": "Writes a note from the module seed." }, "record": { "fields": {} } } as const;\n',
     states: [],
     stateField: '',
   });
@@ -1613,7 +1624,11 @@ test('the onboarding fixture passes seedRows25 after persistence20 and a table t
   }
   put(
     { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: 'Note', extension: '.defs.ts' },
-    'export const note = { "entityId": "Note", "description": "A note the journey creates.", "capabilities": { "create": "Writes a note." }, "record": { "fields": {} } } as const;\n',
+    'export const note = { "entityId": "Note", "kind": "entity", "description": "A note loaded by the module seed.", "capabilities": { "create": "Writes a note from the module seed." }, "record": { "fields": {} } } as const;\n',
+  );
+  put(
+    { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: 'Zone', extension: '.defs.ts' },
+    'export const zone = { "entityId": "Zone", "kind": "entity", "description": "A zone with no seed scenario.", "initialData": "rows to help fill the DB", "record": { "fields": { "code": { "type": "string", "required": true } } } } as const;\n',
   );
   const definition: M1Definition = {
     schemaVersion: M1_DEFINITION_SCHEMA,
@@ -1650,8 +1665,8 @@ test('the onboarding fixture passes seedRows25 after persistence20 and a table t
   const hook = seedRowsAgent().beforePromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number, args?: string) => Promise<Array<Record<string, any>>>;
   const intents = await hook(meta, context, parent, step, 0, step.prompt);
   const workers = intents.filter(item => item.type === 'add-step');
-  assert.deepEqual(workers.map(item => item.step.agentName), ['agentM12SeedRowUnit', 'agentM12SeedRowUnit']);
-  assert.deepEqual(workers.map(item => JSON.parse(item.step.prompt).unitId), ['country', 'privacyText']);
+  assert.deepEqual(workers.map(item => item.step.agentName), ['agentM12SeedRowUnit', 'agentM12SeedRowUnit', 'agentM12SeedRowUnit']);
+  assert.deepEqual(workers.map(item => JSON.parse(item.step.prompt).unitId), ['country', 'privacyText', 'zone']);
   assert.equal(intents.some(item => item.type === 'update-status' && item.status === 'in_progress'), true);
 });
 

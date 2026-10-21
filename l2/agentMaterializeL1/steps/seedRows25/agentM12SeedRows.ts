@@ -3,15 +3,15 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_BUILD, M12_SEED_ROWS_AGENT_NAME, M12_SEED_ROW_UNIT_AGENT_NAME, clip, errorText, parseM12StepInvocation, tokenOk, unitIdOk } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12WorkerStep, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import type { ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { readDraft, writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { materializeUnit, type M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import {
-  referenceSeedFromScenario,
+  referenceSeedUnit,
   seedOntologyRef,
-  seedScenariosOf,
+  stateFieldFor,
   type SeedTableUnit,
 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 
@@ -25,25 +25,47 @@ export interface SeedWorkerArgs {
   previous?: string;
 }
 
-/** Tables of this module whose l4 says the module seed loads them. Others are absent: no model call. */
+function lowerFirst(value: string): string {
+  return value ? value.charAt(0).toLowerCase() + value.slice(1) : '';
+}
+
+/** `tableId` of the persistence def for this entity, or the entity id with a lower first letter. */
+function tableIdOf(ctx: M12Context, entityId: string): string {
+  for (const unit of ctx.units) {
+    if (unit.definition.artifactType !== 'table') continue;
+    if (unit.definition.data.entityId !== entityId) continue;
+    const tableId = unit.definition.data.tableId;
+    if (typeof tableId === 'string' && tableId) return tableId;
+  }
+  return lowerFirst(entityId);
+}
+
+/** Tables of this module whose l4 entity declares `initialData`. A seed scenario is not required. Others are absent: no model call. */
 export async function referenceSeedTables(ctx: M12Context): Promise<SeedTableUnit[]> {
   const tables: SeedTableUnit[] = [];
   const seen = new Set<string>();
-  for (const unit of ctx.units) {
-    if (unit.definition.artifactType !== 'persistenceSeeds') continue;
-    for (const scenario of seedScenariosOf(unit.definition.data)) {
-      if (seen.has(scenario.tableId) || !unitIdOk(scenario.tableId)) continue;
-      const entity = ctx.units.find(item => item.definition.artifactType === 'domainEntity' && item.definition.data.entityId === scenario.entityId);
-      const ref = entity
-        ? ontologyRef(entity.definition, entity.outputRef)
-        : seedOntologyRef(ctx.run.project, ctx.run.module, scenario.entityId);
-      const table = referenceSeedFromScenario({ ...scenario, ontologySource: await ctx.read(ref) });
-      if (!table) continue;
-      seen.add(scenario.tableId);
-      tables.push(table);
-    }
+  const entries = storEntries()
+    .filter(file => file.project === ctx.run.project && file.level === 4 && file.extension === '.defs.ts'
+      && file.folder === `${ctx.run.module}/ontology` && file.status !== 'deleted' && !!file.shortName)
+    .sort((left, right) => left.shortName.localeCompare(right.shortName));
+  for (const entry of entries) {
+    const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, entry.shortName));
+    if (!source) continue;
+    const draft = referenceSeedUnit({
+      scenarioId: 'initial',
+      tableId: '',
+      ontologySource: source,
+      states: [],
+      stateField: '',
+    });
+    if (!draft) continue;
+    const tableId = tableIdOf(ctx, draft.entityId || entry.shortName);
+    if (!tableId || seen.has(tableId) || !unitIdOk(tableId)) continue;
+    const stateField = stateFieldFor(draft.columns, draft.states);
+    seen.add(tableId);
+    tables.push({ ...draft, tableId, ...(stateField ? { stateField } : {}) });
   }
-  return tables;
+  return tables.sort((left, right) => left.tableId.localeCompare(right.tableId));
 }
 
 const SEED_DRAFT_PART = 'rows';
