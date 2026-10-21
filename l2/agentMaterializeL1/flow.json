@@ -32,10 +32,26 @@
         "table",
         "repositoryAdapter",
         "repositoryRegistration",
-        "persistenceSeeds",
         "integrationOutbound"
       ],
-      "goal": "Same loop. An outbound event without a runtime mechanism is a declared gap (MECHANISM_UNBOUND), not a failure."
+      "goal": "Same loop. An outbound event without a runtime mechanism is a declared gap (MECHANISM_UNBOUND), not a failure. Seeds are not emitted here."
+    },
+    {
+      "planId": "seedRows25-<module>",
+      "agentName": "agentM12SeedRows",
+      "llm": "one worker per table the l4 says the module seed loads",
+      "types": [
+        "persistenceSeeds"
+      ],
+      "goal": "Emit persistence/seeds.ts once, when every reference-seed table has a draft (accepted rows, or empty with the reason after the repair), together with the rows the def already carries. No such table: the dispatcher emits immediately and calls no model.",
+      "worker": {
+        "agentName": "agentM12SeedRowUnit",
+        "planIdPattern": "seedRows25-<module>-<tableId>-<attempt>",
+        "prompt": "steps/seedRows25/prompt.md",
+        "tool": "writeSeedRows { code }",
+        "gate": "columns of the table, types, required fields, unique key, scenario state",
+        "repairBudget": 1
+      }
     },
     {
       "planId": "usecases40-<module>",

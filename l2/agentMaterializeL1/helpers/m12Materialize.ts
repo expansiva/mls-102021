@@ -6,7 +6,7 @@
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { auditImports, emitController, emitValueObject, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { behaviorNeedsLlm, emitBehavior } from '/_102021_/l2/agentMaterializeL1/emitters/emitBehavior.js';
-import { emitPersistence, type PersistenceEmit } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { emitPersistence, type PersistenceEmit, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { clip, errorText, LAYER_OF_TYPE, M12_LAYERS, type M12Layer, type M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import {
@@ -56,6 +56,11 @@ export interface M12Context {
   read: (ref: string) => Promise<string | null>;
   /** The Studio compiler unless a test injects one. */
   compiler?: M12Compiler;
+  /**
+   * Rows the reference-seed step accepted. Read only when emitting `persistenceSeeds`.
+   * Absent for every other recipe.
+   */
+  referenceSeeds?: readonly ReferenceSeedDataset[];
 }
 
 export function createContext(run: M12RunArgs, units: readonly M12Unit[], appEnv: string, compiler?: M12Compiler): M12Context {
@@ -105,7 +110,10 @@ export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted 
   const output = unit.outputRef;
   if (!recipe) return { code: 'NO_NAMED_HANDLER', detail: `${unit.definition.artifactType} has no recipe.` };
   let produced: EmitResult | PersistenceEmit | EmitFailure;
-  if (recipe.startsWith('persistence.')) produced = await emitPersistence(recipe, unit.definition, output, ctx.read, ctx.units.map(item => item.definition));
+  if (recipe.startsWith('persistence.')) {
+    const referenceSeeds = recipe === 'persistence.persistenceSeeds' ? (ctx.referenceSeeds ?? []) : [];
+    produced = await emitPersistence(recipe, unit.definition, output, ctx.read, ctx.units.map(item => item.definition), referenceSeeds);
+  }
   else if (recipe === 'structure.valueObject') produced = emitValueObject(unit.definition, output);
   else if (recipe === 'structure.httpController') produced = await emitController(unit.definition, output, ctx.read);
   else produced = await emitBehavior(recipe, unit.definition, output, ctx.read, definitions);
@@ -169,6 +177,7 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
     parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));
   }
+  if (unit.definition.artifactType === 'persistenceSeeds') parts.push(JSON.stringify(ctx.referenceSeeds ?? []));
   parts.push(...extra);
   return hashParts(parts);
 }

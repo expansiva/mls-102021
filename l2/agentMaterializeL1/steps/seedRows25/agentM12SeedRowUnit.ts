@@ -17,7 +17,7 @@ import {
   type SeedRepair,
   type SeedTableUnit,
 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
-import { parseSeedWorkerArgs, referenceSeedTables, seedWorkerStep } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
+import { emitSeedsWhenReady, parseSeedWorkerArgs, referenceSeedTables, seedWorkerStep, writeSeedTableDraft } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 
 export interface SeedRowsResult {
   tableId: string;
@@ -92,7 +92,11 @@ export function createAgent(): IAgentAsync {
       const code = typeof payload.code === 'string' ? payload.code : '';
       const parsed = parseSeedRowsCode(code);
       const problems = 'problems' in parsed ? parsed.problems : seedRowProblems(unit, parsed.rows);
-      if (problems.length === 0) return finish(`${unit.tableId}: rows accepted`);
+      if (problems.length === 0 && 'rows' in parsed) {
+        await writeSeedTableDraft(args.project, args.module, unit.tableId, parsed.rows, null);
+        const emitted = await emitSeedsWhenReady(ctx);
+        return finish(`${unit.tableId}: rows accepted${emitted ? '; seeds.ts emitted' : ''}`);
+      }
       if (args.attempt === 1) {
         const next = seedWorkerStep({ ...args, attempt: 2, problems, previous: code });
         return [
@@ -100,7 +104,9 @@ export function createAgent(): IAgentAsync {
           updateM12Status(context, parentStep, step, hookSequential, 'completed', clip(`Repair scheduled: ${problems.join(' | ')}`), 'input'),
         ];
       }
-      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}`);
+      await writeSeedTableDraft(args.project, args.module, unit.tableId, [], problems.join(' '));
+      const emitted = await emitSeedsWhenReady(ctx);
+      return finish(`M12_FAILED: ${unit.tableId} left empty: ${problems.join(' | ')}${emitted ? '; seeds.ts emitted' : ''}`);
     } catch (error) {
       return finish(`M12_FAILED: ${errorText(error)}`);
     }

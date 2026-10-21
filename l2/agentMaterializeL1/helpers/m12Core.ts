@@ -32,7 +32,7 @@ export const M12_FINALIZE_AGENT_NAME = 'agentM12Finalize' as const;
  * leave a stale copy with the same agent name in the Studio stor, which loads the last file it finds.
  */
 // The workflow service (§11) calls the usecases and is called by the request services: between the two.
-export const M12_LAYERS = ['domain', 'persistence', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
+export const M12_LAYERS = ['domain', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
 export type M12Layer = typeof M12_LAYERS[number];
 
 export const M12_STEP_IDS = ['domain10', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
@@ -41,6 +41,7 @@ export type M12StepId = typeof M12_STEP_IDS[number];
 const LAYER_STEP: Record<M12Layer, M12StepId> = {
   domain: 'domain10',
   persistence: 'persistence20',
+  seedRows: 'seedRows25',
   usecases: 'usecases40',
   workflows: 'workflows45',
   requests: 'requests50',
@@ -84,7 +85,7 @@ export const LAYER_OF_TYPE: Readonly<Record<string, M12Layer>> = {
   table: 'persistence',
   repositoryAdapter: 'persistence',
   repositoryRegistration: 'persistence',
-  persistenceSeeds: 'persistence',
+  persistenceSeeds: 'seedRows',
   integrationOutbound: 'persistence',
   usecase: 'usecases',
   workflowProcess: 'workflows',
@@ -220,7 +221,7 @@ export function buildM12PlannedSteps(
     ];
     // Not a def layer: one step per module that materializes persistence, before any later phase.
     const persistenceAt = stepIds.indexOf('persistence20');
-    if (persistenceAt >= 0) stepIds.splice(persistenceAt + 1, 0, 'seedRows25');
+    if (persistenceAt >= 0 && !stepIds.includes('seedRows25')) stepIds.splice(persistenceAt + 1, 0, 'seedRows25');
     for (const stepId of stepIds) {
       const planId = phasePlanId(stepId, item.module);
       const dependsOn = previous ? [previous] : [];

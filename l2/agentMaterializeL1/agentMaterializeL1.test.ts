@@ -25,7 +25,7 @@ import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboa
 import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
-import { settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
+import { createAgent as seedRowUnitAgent, settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
@@ -38,9 +38,10 @@ import { createAgent as domainAgent } from '/_102021_/l2/agentMaterializeL1/step
 import { createAgent as persistenceAgent } from '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
 import { createAgent as controllersAgent } from '/_102021_/l2/agentMaterializeL1/steps/controllers30/agentM12Controllers.js';
 import { createAgent as usecasesAgent } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
-import { createAgent as seedRowsAgent } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
+import { createAgent as seedRowsAgent, emitSeedsWhenReady } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readOptional, readUnitStatus, removeStorFile, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readOptional, readUnitStatus, removeStorFile, writeDraft, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { borrowedModelScopeSize } from '/_102035_/l2/solution/studioCompile.js';
 import { contractRoutes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
@@ -503,7 +504,7 @@ void test('the bench: recipes for domain and persistence, real prompts and gates
   assert.deepEqual(loaded.problems, []);
   const selected = selectUnits(PROJECT, MODULE, loaded.units, run);
   assert.equal(selected.length, loaded.units.length);
-  assert.deepEqual(selectedLayers(selected), ['domain', 'persistence', 'usecases', 'requests', 'controllers', 'tests']);
+  assert.deepEqual(selectedLayers(selected), ['domain', 'persistence', 'seedRows', 'usecases', 'requests', 'controllers', 'tests']);
   // Rule of 05/10/2026: a type the recipe derives only sometimes always goes to the model.
   for (const unit of selected) assert.equal(unitNeedsLlm(unit), unit.layer === 'usecases' || unit.layer === 'workflows' || unit.layer === 'requests', unit.defRef);
   const ctx = createContext(run, loaded.units, 'presentation', BYTES_COMPILER);
@@ -1562,4 +1563,189 @@ test('the onboarding fixture passes seedRows25 after persistence20 and a table t
   assert.deepEqual(workers.map(item => item.step.agentName), ['agentM12SeedRowUnit', 'agentM12SeedRowUnit']);
   assert.deepEqual(workers.map(item => JSON.parse(item.step.prompt).unitId), ['country', 'privacyText']);
   assert.equal(intents.some(item => item.type === 'update-status' && item.status === 'in_progress'), true);
+});
+
+test('a flow run emits seeds.ts once, from seedRows25, and the persistence20 receipt does not list the seed', async () => {
+  const files = installStor();
+  const moduleName = 'refdata';
+  const fixture = path.join(HERE, 'steps', 'seedRows25', 'fixture');
+  const put = (info: M12FileInfo, content: string) => { files[keyOf(info)] = fakeFile(info, content); };
+  for (const entityId of ['Country', 'PrivacyText']) {
+    put(
+      { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: entityId, extension: '.defs.ts' },
+      readFileSync(path.join(fixture, `${entityId}.defs.ts`), 'utf8'),
+    );
+  }
+  const definition: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'persistenceSeeds',
+    artifactId: 'seeds',
+    moduleName,
+    status: 'pending',
+    dependencies: [],
+    data: {
+      seedId: 'seeds',
+      phase: 'plan',
+      scenarios: [
+        { scenarioId: 'maintainCountries', tableId: 'country', states: ['active'], entityId: 'Country' },
+        { scenarioId: 'completeMyAccess', tableId: 'privacyText', states: [], entityId: 'PrivacyText' },
+      ],
+      datasets: [
+        { datasetId: 'fromDef', seedFor: 'noteKept', tableId: 'noteKept', rows: [{ id: 'kept' }] },
+        { datasetId: 'country', tableId: 'country', owners: ['maintainCountries'] },
+        { datasetId: 'privacyText', tableId: 'privacyText', owners: ['completeMyAccess'] },
+      ],
+    },
+  };
+  definition.data.scenarios = [
+    ...(definition.data.scenarios as unknown[]),
+    { scenarioId: 'kept', tableId: 'noteKept', states: [], entityId: 'Note' },
+  ];
+  const rendered = renderDefinition(definition, `_${PROJECT}_/l1/${moduleName}/layer_1_external/adapters/persistence/seeds.defs.ts`);
+  assert.ok(!('issues' in rendered), 'issues' in rendered ? rendered.issues.join(' ') : '');
+  if ('issues' in rendered) return;
+  put(
+    { project: PROJECT, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.defs.ts' },
+    rendered.source,
+  );
+  let seedWrites = 0;
+  const stor = mls.stor as unknown as { localStor: { setContent: (file: FakeFile, value: { content?: string | null }) => Promise<boolean> } };
+  const write = stor.localStor.setContent.bind(stor.localStor);
+  stor.localStor.setContent = async (file, value) => {
+    if (file.shortName === 'seeds' && file.extension === '.ts') seedWrites += 1;
+    return write(file, value);
+  };
+  const context = { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as unknown as mls.msg.ExecutionContext;
+  const meta = { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta;
+  const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+  const request = { scope: moduleName, target: '', force: false };
+  const steps = planSteps(PROJECT, request, [{ module: moduleName, layers: ['persistence'], register: false }]);
+  const run = async (agent: { beforePromptStep?: unknown }, index: number) => {
+    const step = { ...steps[index], stepId: 20 + index } as mls.msg.AIAgentStep;
+    const hook = agent.beforePromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number, args?: string) => Promise<Array<Record<string, any>>>;
+    return hook(meta, context, parent, step, index, step.prompt);
+  };
+  const persistence = await run(persistenceAgent(), 0);
+  const receipt = persistence.filter(item => item.type === 'update-status').map(item => String(item.traceMsg ?? '')).join('\n');
+  assert.equal(receipt.includes('seeds'), false);
+  assert.equal(seedWrites, 0);
+  const dispatched = await run(seedRowsAgent(), 1);
+  const workers = dispatched.filter(item => item.type === 'add-step');
+  assert.deepEqual(workers.map(item => JSON.parse(item.step.prompt).unitId), ['country', 'privacyText']);
+  assert.equal(seedWrites, 0);
+  const seedRun = parseM12StepInvocation(steps[1].prompt ?? '', PROJECT);
+  assert.equal(seedRun.kind, 'run');
+  if (seedRun.kind !== 'run') return;
+  const pendingHold = await emitSeedsWhenReady((await loadRun(seedRun)).ctx);
+  assert.equal(pendingHold, false, 'a pending draft does not emit seeds.ts');
+  assert.equal(seedWrites, 0);
+  const countryRows = [
+    { code: 'BR', name: 'Brazil', status: 'active', details: {} },
+    { code: 'US', name: 'United States', status: 'active', details: {} },
+  ];
+  const privacyRows = [{ version: 1, publishedAt: '2026-01-01T00:00:00Z', details: { title: 'Privacy', body: 'a provisional privacy text', language: 'en' } }];
+  const answer = (worker: Record<string, any>, code: string, stepId: number) => {
+    const step = {
+      ...worker.step,
+      stepId,
+      interaction: { payload: [{ type: 'flexible', result: { toolName: 'writeSeedRows', arguments: { code: JSON.stringify({ rows: JSON.parse(code) }) } } }] },
+    } as mls.msg.AIAgentStep;
+    const hook = seedRowUnitAgent().afterPromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number) => Promise<Array<Record<string, any>>>;
+    return hook(meta, context, parent, step, stepId);
+  };
+  const first = await answer(workers[0], JSON.stringify(countryRows), 31);
+  assert.equal(seedWrites, 0);
+  assert.match(String(first.find(item => item.type === 'update-status')?.traceMsg ?? ''), /rows accepted/);
+  const second = await answer(workers[1], JSON.stringify(privacyRows), 32);
+  assert.equal(seedWrites, 1);
+  assert.match(String(second.find(item => item.type === 'update-status')?.traceMsg ?? ''), /seeds\.ts emitted/);
+  const source = files[keyOf({ project: PROJECT, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.ts' })]?.content ?? '';
+  assert.match(source, /"seedFor":"country"/);
+  assert.match(source, /"code":"BR"/);
+  assert.match(source, /"seedFor":"privacyText"/);
+  assert.match(source, /"version":1/);
+  assert.match(source, /"seedFor":"noteKept"/);
+  const seedReceipt = await readUnitStatus(PROJECT, moduleName, 'seedRows', 'seeds');
+  assert.equal(seedReceipt?.layer, 'seedRows');
+  assert.equal(seedReceipt?.unitId, 'seeds');
+  assert.ok(seedReceipt && (seedReceipt.status === 'done' || seedReceipt.status === 'reused'), seedReceipt?.status);
+});
+
+test('production appEnv refuses the reference seed and a pending draft does not emit', async () => {
+  const files = installStor();
+  const moduleName = 'refdataProd';
+  const fixture = path.join(HERE, 'steps', 'seedRows25', 'fixture');
+  const put = (info: M12FileInfo, content: string) => { files[keyOf(info)] = fakeFile(info, content); };
+  for (const entityId of ['Country', 'PrivacyText']) {
+    put(
+      { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: entityId, extension: '.defs.ts' },
+      readFileSync(path.join(fixture, `${entityId}.defs.ts`), 'utf8'),
+    );
+  }
+  const definition: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'persistenceSeeds',
+    artifactId: 'seeds',
+    moduleName,
+    status: 'pending',
+    dependencies: [],
+    data: {
+      seedId: 'seeds',
+      phase: 'plan',
+      scenarios: [
+        { scenarioId: 'maintainCountries', tableId: 'country', states: ['active'], entityId: 'Country' },
+        { scenarioId: 'completeMyAccess', tableId: 'privacyText', states: [], entityId: 'PrivacyText' },
+      ],
+    },
+  };
+  const rendered = renderDefinition(definition, `_${PROJECT}_/l1/${moduleName}/layer_1_external/adapters/persistence/seeds.defs.ts`);
+  assert.ok(!('issues' in rendered), 'issues' in rendered ? rendered.issues.join(' ') : '');
+  if ('issues' in rendered) return;
+  put(
+    { project: PROJECT, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.defs.ts' },
+    rendered.source,
+  );
+  put(
+    { project: PROJECT, level: 5, folder: '', shortName: 'project', extension: '.json' },
+    `${JSON.stringify({ appEnv: 'production' })}\n`,
+  );
+  let seedWrites = 0;
+  const stor = mls.stor as unknown as { localStor: { setContent: (file: FakeFile, value: { content?: string | null }) => Promise<boolean> } };
+  const write = stor.localStor.setContent.bind(stor.localStor);
+  stor.localStor.setContent = async (file, value) => {
+    if (file.shortName === 'seeds' && file.extension === '.ts') seedWrites += 1;
+    return write(file, value);
+  };
+  const context = { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as unknown as mls.msg.ExecutionContext;
+  const meta = { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta;
+  const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+  const request = { scope: moduleName, target: '', force: false };
+  const steps = planSteps(PROJECT, request, [{ module: moduleName, layers: ['persistence'], register: false }]);
+  const step = { ...steps[1], stepId: 41 } as mls.msg.AIAgentStep;
+  const hook = seedRowsAgent().beforePromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number, args?: string) => Promise<Array<Record<string, any>>>;
+  const dispatched = await hook(meta, context, parent, step, 0, step.prompt);
+  const workers = dispatched.filter(item => item.type === 'add-step');
+  const countryRows = [{ code: 'BR', name: 'Brazil', status: 'active', details: {} }];
+  const privacyRows = [{ version: 1, publishedAt: '2026-01-01T00:00:00Z', details: { title: 'Privacy', body: 'a provisional privacy text', language: 'en' } }];
+  const answer = (worker: Record<string, any>, code: string, stepId: number) => {
+    const answered = {
+      ...worker.step,
+      stepId,
+      interaction: { payload: [{ type: 'flexible', result: { toolName: 'writeSeedRows', arguments: { code: JSON.stringify({ rows: JSON.parse(code) }) } } }] },
+    } as mls.msg.AIAgentStep;
+    const after = seedRowUnitAgent().afterPromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number) => Promise<Array<Record<string, any>>>;
+    return after(meta, context, parent, answered, stepId);
+  };
+  await answer(workers[0], JSON.stringify(countryRows), 42);
+  assert.equal(seedWrites, 0);
+  await answer(workers[1], JSON.stringify(privacyRows), 43);
+  assert.equal(seedWrites, 0, 'production refuses the seed file');
+  const receipt = await readUnitStatus(PROJECT, moduleName, 'seedRows', 'seeds');
+  assert.equal(receipt?.code, 'PROFILE_REFUSED');
+  await writeDraft(PROJECT, moduleName, 'seedRows', 'country', 'rows', JSON.stringify({ pending: true }));
+  const seedRun = parseM12StepInvocation(step.prompt ?? '', PROJECT);
+  assert.equal(seedRun.kind, 'run');
+  if (seedRun.kind !== 'run') return;
+  assert.equal(await emitSeedsWhenReady((await loadRun(seedRun)).ctx), false);
+  assert.equal(seedWrites, 0);
 });
