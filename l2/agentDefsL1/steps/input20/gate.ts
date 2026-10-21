@@ -259,8 +259,6 @@ export function buildD1InputSnapshot(
     moduleName,
     contractV2,
     selectedUsecases,
-    selectedTables,
-    entityKind,
     artifacts.entities,
     access,
     planned,
@@ -913,8 +911,6 @@ function contractRequests(
   moduleName: string,
   pages: Map<string, D2ContractV2Definition>,
   usecases: D1SelectedUsecase[],
-  tables: D1SelectedTable[],
-  entityKind: Map<string, string>,
   entities: Record<string, unknown>,
   access: Record<string, unknown>,
   planned: PlannedIds,
@@ -929,7 +925,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, tables, entityKind, entities, planned, colliding, answers.get(route.route) || []));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || []));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -960,8 +956,6 @@ function oneRequest(
   route: D2ContractV2Route,
   definition: D2ContractV2Definition,
   usecases: D1SelectedUsecase[],
-  tables: D1SelectedTable[],
-  entityKind: Map<string, string>,
   entities: Record<string, unknown>,
   planned: PlannedIds,
   colliding: ReadonlySet<string>,
@@ -1017,15 +1011,8 @@ function oneRequest(
       if (output.entity === entity) continue;
       take(output.entity, output.many ? 'list' : 'get');
     }
-    if (entityKind.get(entity) === 'role' && outputs.some(output => output.entity !== entity && isLocalEntity(output.entity, tables, entities))) {
-      error(
-        problems,
-        'MDM_NOT_ATOMIC',
-        path,
-        `Route ${route.route} writes MDM ${entity} and also reads or writes a local table. That facade method is the boundary.`,
-        route.route,
-      );
-    }
+    // A cmd writes one entity. Reading another table (output or validation) is a get/list, not a second write.
+    // MDM_NOT_ATOMIC stays on the usecase gate: a local transaction around the MDM call.
   } else {
     for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
   }
@@ -1063,11 +1050,6 @@ function lifecycleHasId(entities: Record<string, unknown>, entity: string, trans
   // A bare `entity.transition` write has no lifecycle id. An empty ref must not match a row whose transitionId is absent.
   if (!transitionRef) return false;
   return rows(rec(entities[entity]).transitions).some(row => text(row.transitionId) === transitionRef);
-}
-
-function isLocalEntity(entity: string, tables: D1SelectedTable[], entities: Record<string, unknown>): boolean {
-  if (tables.some(table => table.entity === entity)) return true;
-  return text(rec(rec(entities[entity]).storage).target) === 'moduleDatabase';
 }
 
 function noteContractAccess(

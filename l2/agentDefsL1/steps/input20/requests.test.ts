@@ -134,7 +134,9 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   (mixed.backend as Record<string, unknown>).usecases = pool;
   (mixed.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
   const mixedSnapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, mixed, null, resolverAnswers(mixed));
-  assert.equal(mixedSnapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), true);
+  const mixedSave = mixedSnapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.save');
+  assert.equal(mixedSnapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), false);
+  assert.ok(mixedSave?.uses.includes('readNote'));
 });
 
 void test('contract access that disagrees with L4 is a review and does not gate', () => {
