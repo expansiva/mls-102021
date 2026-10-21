@@ -29,7 +29,7 @@ import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpe
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 import { citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
-import { delegatedRuleProblems, mdmInputProblems, mdmInputRoutes, normalizeRequestsTyping, requestGate, requestsTypeOf, unownedMdmEntities, unownedMdmSection, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { delegatedRuleProblems, mdmInputProblems, mdmInputRoutes, mdmPlatformSectionForRequest, normalizeRequestsTyping, requestGate, requestsTypeOf, unownedMdmEntities, unownedMdmSection, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { buildM12PlannedSteps as planSteps, runArgsJson, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { createAgent as domainAgent } from '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import { createAgent as persistenceAgent } from '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
@@ -783,6 +783,22 @@ test('a named MDM type uses the platform interface and the platform predicates',
   for (const name of ['PrivacyConsentValue', 'isPersonAccessComplete', 'isValidPrivacyConsent', 'isProtectedPrivacyCountry', '/_102034_/l1/mdm/module.js', 'getLoginEmail', 'listUsers', 'nextCursor', 'getCountryCatalog']) assert.ok(text.includes(name), name);
   assert.equal((text.match(/mdmSupport/gu) ?? []).length, 1, 'mdmSupport appears only in the prohibition');
   assert.ok(!mdmContextSection('onboarding', 'export const mdm = { fields: { name: { type: "string" } } } as const;', null).includes('PrivacyConsentValue'), 'no named of, no platform type rule');
+});
+
+test('a request contract that names an MDM entity a usecase owns still gets the platform MDM APIs', () => {
+  const ontology = readFileSync(path.join(ROOT, 'mls-102034', 'l4', 'ontology', 'mdm.defs.ts'), 'utf8');
+  const unit = (artifactType: string, data: Record<string, unknown>): M12Unit => ({ definition: { artifactType, artifactId: String(data.entityId ?? data.usecaseId ?? artifactType), data, dependencies: [] } } as unknown as M12Unit);
+  const owned = [
+    unit('domainEntity', { entityId: 'Member', storageTarget: 'mdm' }),
+    unit('usecase', { usecaseId: 'updateMember', entityId: 'Member' }),
+  ];
+  const cited = 'export interface MyAccessContracts { save(input: { member: { name: string } }): { member: { name: string } } }';
+  const text = mdmPlatformSectionForRequest(cited, owned, ontology);
+  assert.ok(text.includes('## The platform APIs for MDM data (source: the platform MDM facade)'), text.slice(0, 120));
+  for (const name of ['getCountryCatalog', 'getLoginEmail', 'listUsers', 'isPersonAccessComplete']) assert.ok(text.includes(name), name);
+  assert.equal(mdmPlatformSectionForRequest('export interface PageContracts { save(input: { title: string }): { title: string } }', owned, ontology), '', 'a contract that names no MDM entity gets no section');
+  const unowned = [unit('domainEntity', { entityId: 'Member', storageTarget: 'mdm' })];
+  assert.equal(mdmPlatformSectionForRequest(cited, unowned, ontology), '', 'an entity with no usecase stays on the MDM section, which already carries these lines');
 });
 
 test('a compile error carries its line, column and code (the model never found the missing brace)', () => {

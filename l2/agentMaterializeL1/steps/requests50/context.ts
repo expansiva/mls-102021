@@ -16,7 +16,7 @@ import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/proce
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
@@ -62,6 +62,31 @@ export interface M12MdmInput {
   key: string;
 }
 
+/** MDM entities of the module (`storageTarget: "mdm"`), owned or not. The source `unownedMdmEntities` filters. */
+export function moduleMdmEntities(units: readonly M12Unit[]): Array<{ entityId: string; key: string }> {
+  return units
+    .filter(unit => unit.definition.artifactType === 'domainEntity' && unit.definition.data.storageTarget === 'mdm')
+    .map(unit => String(unit.definition.data.entityId ?? unit.definition.artifactId))
+    .filter(entityId => entityId.length > 0)
+    .map(entityId => ({ entityId, key: entityId[0].toLowerCase() + entityId.slice(1) }));
+}
+
+function contractNamesEntity(contractText: string, entity: { entityId: string; key: string }): boolean {
+  return new RegExp(`\\b(?:${entity.key}|${entity.entityId})\\b`, 'u').test(contractText);
+}
+
+/**
+ * Platform MDM APIs for a request whose contract names an MDM entity a usecase already owns. Empty when the
+ * contract names none, and empty when an unowned MDM entity is named: that path already includes
+ * `mdmContextSection`, which carries the same lines.
+ */
+export function mdmPlatformSectionForRequest(contractText: string, units: readonly M12Unit[], ontologySource: string | null): string {
+  const cited = moduleMdmEntities(units).filter(entity => contractNamesEntity(contractText, entity));
+  if (!cited.length) return '';
+  if (unownedMdmEntities(units).some(entity => contractNamesEntity(contractText, entity))) return '';
+  return section('The platform APIs for MDM data (source: the platform MDM facade)', mdmPlatformApiSection(ontologySource));
+}
+
 /**
  * The MDM entities of the module no usecase owns. inscricaoEvento (15/10): the D1 gave Participante no usecase, the
  * request prompt carried no MDM API, and `inscreverEmEvento` had nothing to write the participant with. Read from
@@ -71,16 +96,15 @@ export function unownedMdmEntities(units: readonly M12Unit[]): M12UnownedMdmEnti
   const owned = new Set(units.filter(unit => unit.definition.artifactType === 'usecase').map(unit => String(unit.definition.data.entityId ?? '')));
   const grants = units.filter(unit => unit.definition.artifactType === 'accessScope')
     .flatMap(unit => Array.isArray(unit.definition.data.grants) ? unit.definition.data.grants.filter(isRecord) : []);
-  return units
-    .filter(unit => unit.definition.artifactType === 'domainEntity' && unit.definition.data.storageTarget === 'mdm')
-    .map(unit => String(unit.definition.data.entityId ?? unit.definition.artifactId))
-    .filter(entityId => entityId && !owned.has(entityId))
-    .map(entityId => {
+  return moduleMdmEntities(units)
+    .filter(entity => !owned.has(entity.entityId))
+    .map(entity => {
+      const entityId = entity.entityId;
       const anchored = grants.filter(grant => grant.scopeMode === 'own' && grant.anchorEntity === entityId);
       const recordField = anchored.map(grant => recordFieldFromGrant(grant)).find(Boolean) ?? '';
       return {
         entityId,
-        key: entityId[0].toLowerCase() + entityId.slice(1),
+        key: entity.key,
         anchor: anchored.length ? { grantIds: anchored.map(grant => String(grant.grantId ?? '')), recordField } : null,
       };
     });
@@ -327,10 +351,13 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   const access = accessSection(routes, contractText, scopeGrants);
   if (access) parts.push(section('Access of the routes (source: the contract access and the module access scope)', access));
   const unowned = unownedMdmEntities(ctx.units)
-    .filter(entity => new RegExp(`\\b(?:${entity.key}|${entity.entityId})\\b`, 'u').test(contractText));
+    .filter(entity => contractNamesEntity(contractText, entity));
   if (unowned.length) {
     parts.push(section('MDM entities with no usecase (source: the defs and the access scope of the module)', unownedMdmSection(moduleName, unowned)));
     parts.push(section('The platform MDM (source: how the engine stores and returns these entities today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF))));
+  } else {
+    const platformApis = mdmPlatformSectionForRequest(contractText, ctx.units, await ctx.read(MDM_ONTOLOGY_REF));
+    if (platformApis) parts.push(platformApis);
   }
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);

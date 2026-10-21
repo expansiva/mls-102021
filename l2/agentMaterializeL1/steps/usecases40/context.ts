@@ -337,6 +337,28 @@ function interfaceBlocks(source: string, names: readonly string[]): string {
 }
 
 /**
+ * The platform MDM APIs a module must call instead of inventing them: the named-type rules when the ontology has
+ * an `"of"`, and the login, user list and country catalog. Same text inside `mdmContextSection` and, when a
+ * request contract names an MDM entity a usecase already owns, on its own.
+ */
+export function mdmPlatformApiSection(ontologySource: string | null): string {
+  const lines = [
+    '- The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
+    '- The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
+    '- The countries shown to the user are `getCountryCatalog()`, imported from `/_102034_/l1/mdm/module.js`, which returns `readonly { code, name, requiresPrivacyConsent }[]`; call it with no argument (the request carries no user language). Never a list of country codes or of consent countries of your own. An empty country stays empty: never a default country.',
+  ];
+  if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
+    lines.push(
+      '- A field whose type in the MDM ontology is named (`"of"`: `PrivacyConsent`, `Address`, `ContactSummary`, `GeoPoint`):',
+      '- Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
+      '- Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
+      '- The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
  * How the platform MDM stores and returns an entity today, for a usecase of an MDM entity. The ontology of the
  * module groups the fields (`details.identification.name`); the engine is FLAT (`details.name`), which the MDM
  * ontology states in knownDivergences.grouped-document. Without this the model guessed the groups and every read
@@ -374,18 +396,8 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     '  module branch, …). `null` is the same as absent: test with `== null` (it catches `null` and `undefined`), leave the',
     '  field out of the output, and never throw because a field is `null`. A patient with no document is normal (the',
     '  document is optional); treating `docType: null` as invalid broke every agenda that had one (agendaClinica, 07/10).',
-    '- The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
-    '- The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
-    '- The countries shown to the user are `getCountryCatalog()`, imported from `/_102034_/l1/mdm/module.js`, which returns `readonly { code, name, requiresPrivacyConsent }[]`; call it with no argument (the request carries no user language). Never a list of country codes or of consent countries of your own. An empty country stays empty: never a default country.',
   ];
-  if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
-    lines.push(
-      '- A field whose type in the MDM ontology is named (`"of"`: `PrivacyConsent`, `Address`, `ContactSummary`, `GeoPoint`):',
-      '- Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
-      '- Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
-      '- The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
-    );
-  }
+  lines.push(mdmPlatformApiSection(ontologySource));
   const parts = [lines.join('\n')];
   const platformRules = platformRuleIds.map(ruleId => {
     const escaped = ruleId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
