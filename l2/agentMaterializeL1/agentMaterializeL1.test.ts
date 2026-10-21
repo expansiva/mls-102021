@@ -23,7 +23,7 @@ import { prepareWorkflowPlan, type TaskOccurrenceAdvanceCommand, type TaskOccurr
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
-import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
@@ -38,6 +38,7 @@ import { createAgent as domainAgent } from '/_102021_/l2/agentMaterializeL1/step
 import { createAgent as persistenceAgent } from '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
 import { createAgent as controllersAgent } from '/_102021_/l2/agentMaterializeL1/steps/controllers30/agentM12Controllers.js';
 import { createAgent as usecasesAgent } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
+import { createAgent as seedRowsAgent } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readOptional, readUnitStatus, removeStorFile, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
@@ -603,7 +604,9 @@ void test('the phase agents run in order: recipes write domain and persistence, 
   seedTree(files, 102034, 1, 'mdm');
   const request = { scope: MODULE, target: '', force: false };
   const steps = planSteps(PROJECT, request, [{ module: MODULE, layers: ['domain', 'persistence', 'usecases', 'requests', 'controllers', 'tests'], register: true }]);
-  assert.deepEqual(steps.map(step => step.agentName).slice(0, 5), ['agentM12Domain', 'agentM12Persistence', 'agentM12Usecases', 'agentM12Requests', 'agentM12Controllers']);
+  assert.deepEqual(steps.map(step => step.agentName).slice(0, 6), ['agentM12Domain', 'agentM12Persistence', 'agentM12SeedRows', 'agentM12Usecases', 'agentM12Requests', 'agentM12Controllers']);
+  assert.equal(steps[2].planning?.planId, `seedRows25-${MODULE}`);
+  assert.deepEqual(steps[2].planning?.dependsOn, [`persistence20-${MODULE}`]);
   const context = { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as unknown as mls.msg.ExecutionContext;
   const meta = { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta;
   const parent = { stepId: 1 } as mls.msg.AIAgentStep;
@@ -622,7 +625,10 @@ void test('the phase agents run in order: recipes write domain and persistence, 
   assert.equal(entity?.status, 'done', 'a later phase reads the status an earlier phase wrote');
   assert.equal(entity?.code, 'COMPILE_UNAVAILABLE_L1');
   void controllersAgent;
-  const usecases = await run(usecasesAgent(), 2);
+  const seedRows = await run(seedRowsAgent(), 2);
+  assert.deepEqual(statusOf(seedRows), ['completed'], 'a module whose l4 does not say the seed loads a table does not call the model');
+  assert.equal(seedRows.some(item => item.type === 'add-step'), false);
+  const usecases = await run(usecasesAgent(), 3);
   const workers = usecases.filter(item => item.type === 'add-step');
   const usecaseDefs = (await loadModuleUnits(PROJECT, MODULE, storEntries())).units.filter(unit => unit.layer === 'usecases').length;
   assert.ok(usecaseDefs > 0);
@@ -1501,4 +1507,59 @@ test('reference seed rows come from the l4, are checked, and are emitted beside 
   });
   assert.equal(control, null);
   assert.equal(controlCalls, 0);
+});
+
+test('the onboarding fixture passes seedRows25 after persistence20 and a table the l4 does not load by seed is not dispatched', async () => {
+  const files = installStor();
+  const moduleName = 'refdata';
+  const fixture = path.join(HERE, 'steps', 'seedRows25', 'fixture');
+  const put = (info: M12FileInfo, content: string) => { files[keyOf(info)] = fakeFile(info, content); };
+  for (const entityId of ['Country', 'PrivacyText']) {
+    put(
+      { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: entityId, extension: '.defs.ts' },
+      readFileSync(path.join(fixture, `${entityId}.defs.ts`), 'utf8'),
+    );
+  }
+  put(
+    { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: 'Note', extension: '.defs.ts' },
+    'export const note = { "entityId": "Note", "description": "A note the journey creates.", "capabilities": { "create": "Writes a note." }, "record": { "fields": {} } } as const;\n',
+  );
+  const definition: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA,
+    artifactType: 'persistenceSeeds',
+    artifactId: 'seeds',
+    moduleName,
+    status: 'pending',
+    dependencies: [],
+    data: {
+      seedId: 'seeds',
+      scenarios: [
+        { scenarioId: 'maintainCountries', tableId: 'country', states: ['active'], entityId: 'Country' },
+        { scenarioId: 'completeMyAccess', tableId: 'privacyText', states: [], entityId: 'PrivacyText' },
+        { scenarioId: 'journeyOnly', tableId: 'note', states: [], entityId: 'Note' },
+      ],
+    },
+  };
+  const defPath = `_${PROJECT}_/l1/${moduleName}/layer_1_external/adapters/persistence/seeds.defs.ts`;
+  const rendered = renderDefinition(definition, defPath);
+  assert.ok(!('issues' in rendered), 'issues' in rendered ? rendered.issues.join(' ') : '');
+  if ('issues' in rendered) return;
+  put(
+    { project: PROJECT, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'seeds', extension: '.defs.ts' },
+    rendered.source,
+  );
+  const request = { scope: moduleName, target: '', force: false };
+  const steps = planSteps(PROJECT, request, [{ module: moduleName, layers: ['persistence'], register: false }]);
+  assert.deepEqual(steps.map(step => step.planning?.planId), [`persistence20-${moduleName}`, `seedRows25-${moduleName}`, `finalize80-${moduleName}`]);
+  assert.deepEqual(steps[1].planning?.dependsOn, [`persistence20-${moduleName}`]);
+  const context = { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as unknown as mls.msg.ExecutionContext;
+  const meta = { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta;
+  const parent = { stepId: 1 } as mls.msg.AIAgentStep;
+  const step = { ...steps[1], stepId: 12 } as mls.msg.AIAgentStep;
+  const hook = seedRowsAgent().beforePromptStep as (a: IAgentMeta, c: mls.msg.ExecutionContext, p: mls.msg.AIAgentStep, s: mls.msg.AIAgentStep, h: number, args?: string) => Promise<Array<Record<string, any>>>;
+  const intents = await hook(meta, context, parent, step, 0, step.prompt);
+  const workers = intents.filter(item => item.type === 'add-step');
+  assert.deepEqual(workers.map(item => item.step.agentName), ['agentM12SeedRowUnit', 'agentM12SeedRowUnit']);
+  assert.deepEqual(workers.map(item => JSON.parse(item.step.prompt).unitId), ['country', 'privacyText']);
+  assert.equal(intents.some(item => item.type === 'update-status' && item.status === 'in_progress'), true);
 });

@@ -161,6 +161,59 @@ export function referenceSeedUnit(input: {
   };
 }
 
+/** The enum column that holds every state of the scenario, when there is exactly one. */
+export function stateFieldFor(columns: readonly SeedColumn[], states: readonly string[]): string {
+  if (states.length === 0) return '';
+  const matched = columns.filter(column => column.type === 'enum' && states.every(state => column.enumValues.includes(state)));
+  return matched.length === 1 ? matched[0].name : '';
+}
+
+/** Default l4 ontology path of an entity of this module. */
+export function seedOntologyRef(project: number, moduleName: string, entityId: string): string {
+  return `_${project}_/l4/${moduleName}/ontology/${entityId}.defs.ts`;
+}
+
+export interface SeedScenarioRef {
+  scenarioId: string;
+  tableId: string;
+  entityId: string;
+  states: string[];
+}
+
+/** Scenarios of one persistenceSeeds def. A scenario without a table or an entity is dropped. */
+export function seedScenariosOf(data: unknown): SeedScenarioRef[] {
+  if (!isRecord(data) || !Array.isArray(data.scenarios)) return [];
+  const out: SeedScenarioRef[] = [];
+  for (const item of data.scenarios) {
+    if (!isRecord(item)) continue;
+    const scenarioId = typeof item.scenarioId === 'string' ? item.scenarioId : '';
+    const tableId = typeof item.tableId === 'string' ? item.tableId : '';
+    const entityId = typeof item.entityId === 'string' ? item.entityId : '';
+    if (!scenarioId || !tableId || !entityId) continue;
+    const states = Array.isArray(item.states) ? item.states.filter((state): state is string => typeof state === 'string' && state.length > 0) : [];
+    out.push({ scenarioId, tableId, entityId, states });
+  }
+  return out;
+}
+
+/**
+ * One reference-seed table. Null when the l4 does not say the module seed loads the entity:
+ * the caller does not call the model.
+ */
+export function referenceSeedFromScenario(input: SeedScenarioRef & { ontologySource: string | null }): SeedTableUnit | null {
+  if (!input.ontologySource) return null;
+  const draft = referenceSeedUnit({
+    scenarioId: input.scenarioId,
+    tableId: input.tableId,
+    ontologySource: input.ontologySource,
+    states: input.states,
+    stateField: '',
+  });
+  if (!draft) return null;
+  const stateField = stateFieldFor(draft.columns, input.states);
+  return stateField ? { ...draft, stateField } : draft;
+}
+
 export function seedRowsHuman(unit: SeedTableUnit, repair?: SeedRepair): string {
   const columns = unit.columns.map(column => `${column.name}:${column.type}${column.required ? ' required' : ''}`).join(', ');
   const lines = [

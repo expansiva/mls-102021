@@ -7,6 +7,8 @@ import { loadModuleUnits, registersModule, requestModules, selectUnits, selected
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
 import '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
+import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
+import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12Usecases.js';
 import '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 import '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12Workflows.js';
