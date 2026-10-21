@@ -374,6 +374,9 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     '  module branch, …). `null` is the same as absent: test with `== null` (it catches `null` and `undefined`), leave the',
     '  field out of the output, and never throw because a field is `null`. A patient with no document is normal (the',
     '  document is optional); treating `docType: null` as invalid broke every agenda that had one (agendaClinica, 07/10).',
+    '- The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
+    '- The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
+    '- The countries shown to the user are `getCountryCatalog()`, imported from `/_102034_/l1/mdm/module.js`, which returns `readonly { code, name, requiresPrivacyConsent }[]`; call it with no argument (the request carries no user language). Never a list of country codes or of consent countries of your own. An empty country stays empty: never a default country.',
   ];
   if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
     lines.push(
