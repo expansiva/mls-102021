@@ -130,6 +130,56 @@ function studioTypescript(): StudioTypescript {
   return (mls as unknown as { l2: { typescript: StudioTypescript } }).l2.typescript;
 }
 
+type VersionedText = {
+  getValue?: () => string;
+  setValue?: (value: string) => void;
+  getVersionId?: () => number;
+  uri?: { toString(): string };
+};
+
+/**
+ * Workaround for the collabmsg host (reported to its owners): a model disposed and recreated under the same URI
+ * starts again at version 1, and the language service reuses the old text. Remove once the host tells them apart.
+ */
+const lastCompiledVersionByUri = new Map<string, number>();
+
+/** Dependencies `studioPreload` left in the editor for the file about to be compiled. */
+let preloadedModels: M12Model[] = [];
+
+function versionedText(model: M12Model): VersionedText | undefined {
+  return model.model as VersionedText | undefined;
+}
+
+function bumpPastLastCompiled(model: M12Model): void {
+  const text = versionedText(model);
+  const uri = text?.uri?.toString?.() ?? '';
+  const last = uri ? lastCompiledVersionByUri.get(uri) : undefined;
+  if (last === undefined || typeof text?.getVersionId !== 'function' || typeof text.setValue !== 'function' || typeof text.getValue !== 'function') return;
+  let guard = 0;
+  while (text.getVersionId() <= last && guard < 32) {
+    const version = text.getVersionId();
+    text.setValue(text.getValue());
+    guard += 1;
+    if (text.getVersionId() === version) break;
+  }
+}
+
+function rememberCompiledVersion(model: M12Model): void {
+  const text = versionedText(model);
+  const uri = text?.uri?.toString?.() ?? '';
+  if (!uri || typeof text?.getVersionId !== 'function') return;
+  lastCompiledVersionByUri.set(uri, text.getVersionId());
+}
+
+/** Raises the version of the compiled model and of the loaded dependencies, then records the version the host saw. */
+async function compileOnHost(model: M12Model, ref: string): Promise<void> {
+  const typescript = studioTypescript();
+  const touched = [model, ...preloadedModels.filter(item => item !== model)];
+  for (const item of touched) bumpPastLastCompiled(item);
+  await withCompileTimeout(ref, typescript.compile(model));
+  for (const item of touched) rememberCompiledVersion(item);
+}
+
 /**
  * An l1 file is proven by its diagnostics only. On the Studio, `compile` also asks the TypeScript worker for
  * imports, the emit output, decorators and the JSON doc; on an l1 model one of those answers could not be
@@ -152,7 +202,7 @@ async function l1Diagnostics(info: M12FileInfo, model: M12Model): Promise<{ erro
     }
     const ref = fileRef(info);
     if (model.compilerResults) model.compilerResults.modelNeedCompile = true;
-    await withCompileTimeout(ref, typescript.compile(model));
+    await compileOnHost(model, ref);
     const text = typeof (model.model as { getValue?: unknown }).getValue === 'function' ? String((model.model as { getValue(): string }).getValue()) : '';
     return { errors: (model.compilerResults?.errors ?? []).map(diagnostic => `${formatCompilerDiagnostic(diagnostic)}${diagnosticLocation(diagnostic, text)}`) };
   }
@@ -197,13 +247,13 @@ async function studioCompile(info: M12FileInfo): Promise<{ errors: string[] } | 
   const typescript = studioTypescript();
   const ref = fileRef(info);
   if (typeof typescript.compileAndPostProcess !== 'function') {
-    await withCompileTimeout(ref, typescript.compile(model));
+    await compileOnHost(model, ref);
   } else {
     const runtime = info.extension === '.ts';
     await withCompileTimeout(ref, typescript.compileAndPostProcess(model, runtime, runtime));
     if (!model.compilerResults?.prodDTS && model.compilerResults) {
       model.compilerResults.modelNeedCompile = true;
-      await withCompileTimeout(ref, typescript.compile(model));
+      await compileOnHost(model, ref);
     }
   }
   return { errors: (model.compilerResults?.errors ?? []).map(formatCompilerDiagnostic) };
@@ -214,7 +264,7 @@ async function studioPreload(root: M12FileInfo): Promise<string[]> {
   const missing: string[] = [];
   const seen = new Set<string>([fileRef(root)]);
   const queue: M12FileInfo[] = [root];
-  const typescript = studioTypescript();
+  preloadedModels = [];
   while (queue.length) {
     const current = queue.shift()!;
     const model = await studioModel(current);
@@ -227,11 +277,13 @@ async function studioPreload(root: M12FileInfo): Promise<string[]> {
       try {
         const depModel = await studioModel(dep);
         if (!depModel?.model) { missing.push(id); continue; }
+        preloadedModels.push(depModel);
         // An l1 dependency only needs its model in the editor: the worker type-checks against the models it has.
         // Compiling it here would send it through the full compile that broke the worker on l1.
+        // Its version is still raised in compileOnHost: a recreated model would otherwise be read stale.
         if (dep.level !== 1 && !depModel.compilerResults?.prodDTS) {
           if (depModel.compilerResults) depModel.compilerResults.modelNeedCompile = true;
-          await withCompileTimeout(id, typescript.compile(depModel));
+          await compileOnHost(depModel, id);
         }
       } catch (error) {
         missing.push(`${id} (${error instanceof Error ? error.message : String(error)})`);
