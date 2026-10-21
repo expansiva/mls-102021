@@ -1012,7 +1012,6 @@ function oneRequest(
       take(output.entity, output.many ? 'list' : 'get');
     }
     // A cmd writes one entity. Reading another table (output or validation) is a get/list, not a second write.
-    // MDM_NOT_ATOMIC stays on the usecase gate: a local transaction around the MDM call.
   } else {
     for (const output of outputs) take(output.entity, output.many ? 'list' : 'get');
   }

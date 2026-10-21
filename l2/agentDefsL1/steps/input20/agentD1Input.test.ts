@@ -108,14 +108,14 @@ function blockingCodes(problems: Array<{ severity?: string; code?: string; owner
 void test('the hold reason carries up to three ownerRefs per code', () => {
   const problem = (code: string, ownerRef?: string) => ({ severity: 'error', code, path: 'p', message: 'm', ...(ownerRef ? { ownerRef } : {}) });
   const problems = [
-    problem('MDM_NOT_ATOMIC', 'onboarding.my_access_overview.saveMyData'),
+    problem('REQUEST_USECASE_UNPLANNED', 'onboarding.my_access_overview.saveMyData'),
     problem('ROUTE_X', 'r1'), problem('ROUTE_X', 'r2'), problem('ROUTE_X', 'r2'), problem('ROUTE_X', 'r3'), problem('ROUTE_X', 'r4'),
     problem('SCHEMA_DIVERGENT'),
     { severity: 'review', code: 'IGNORED', path: 'p', message: 'm', ownerRef: 'x' },
   ] as Parameters<typeof blockingReason>[0]['problems'];
   assert.equal(
     blockingReason({ problems }),
-    'MDM_NOT_ATOMIC:1 (onboarding.my_access_overview.saveMyData),ROUTE_X:5 (r1, r2, r3),SCHEMA_DIVERGENT:1',
+    'REQUEST_USECASE_UNPLANNED:1 (onboarding.my_access_overview.saveMyData),ROUTE_X:5 (r1, r2, r3),SCHEMA_DIVERGENT:1',
   );
 });
 

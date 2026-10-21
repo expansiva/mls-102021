@@ -112,7 +112,6 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   const move = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.move');
   assert.deepEqual(get?.uses, ['readItem']);
   assert.deepEqual(save?.uses, ['writeItem']);
-  assert.equal(snapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), false);
   const verdict = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.veredito.aprovar');
   assert.deepEqual(move?.uses, ['aprovarDeskNote']);
   assert.deepEqual(verdict?.uses, ['aprovarSlip']);
@@ -135,7 +134,6 @@ void test('synthetic contract covers get, a second entity, MDM plus local, and a
   (mixed.effort as Record<string, unknown>).usecases = pool.map(item => ({ ...item }));
   const mixedSnapshot = buildD1InputSnapshot({ project: 102047, moduleName: 'ledgerDesk' }, mixed, null, resolverAnswers(mixed));
   const mixedSave = mixedSnapshot.selection.requests.find(item => item.route === 'ledgerDesk.cards.save');
-  assert.equal(mixedSnapshot.problems.some(item => item.code === 'MDM_NOT_ATOMIC' && item.ownerRef === 'ledgerDesk.cards.save'), false);
   assert.ok(mixedSave?.uses.includes('readNote'));
 });
 

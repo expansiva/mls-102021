@@ -212,13 +212,11 @@ void test('a foreign namespace, a missing facade call, an incompatible call, a m
   single.plans[0].steps = [...single.plans[0].steps, { kind: 'transaction', boundary: 'local' }];
   const singleBuild = buildD1Usecases(single);
   assert.equal(singleBuild.usecases[0]?.mdm?.atomic, true);
-  assert.equal(singleBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC'), false);
 
   const wrapped = one('createProfissional');
   wrapped.plans[0].steps = [...wrapped.plans[0].steps, { kind: 'transaction', boundary: 'local' }];
   const wrappedBuild = buildD1Usecases(wrapped);
   assert.equal(wrappedBuild.usecases[0]?.mdm?.atomic, false);
-  assert.equal(wrappedBuild.problems.some(item => item.code === 'MDM_NOT_ATOMIC'), false);
 
   const port = one('createProfissional');
   port.plans[0].steps = [...port.plans[0].steps, { kind: 'port', call: 'create', port: 'ProfissionalRepository' }];
