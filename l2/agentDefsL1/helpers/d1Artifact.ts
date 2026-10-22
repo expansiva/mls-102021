@@ -86,6 +86,8 @@ export interface D1Field {
   type: string;
   derived?: boolean;
   ref?: string;
+  /** Named type of the MDM ontology (`mdm.types`) when `type` is `object`. */
+  of?: string;
 }
 
 export interface D1LifecycleState {
@@ -430,7 +432,7 @@ function fieldIssues(value: unknown, path: string, issues: string[]): void {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(value, ['name', 'type', 'derived', 'ref'], path, issues);
+  unknownKeys(value, ['name', 'type', 'derived', 'ref', 'of'], path, issues);
   needString(value, 'name', path, issues);
   const type = needString(value, 'type', path, issues);
   if (value.derived !== undefined && typeof value.derived !== 'boolean') issues.push(`Missing field ${path}.derived.`);

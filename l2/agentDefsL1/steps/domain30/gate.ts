@@ -33,6 +33,7 @@ import {
   type D1PlacedRule,
   type D1RulePlacement,
 } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
+import mdm from '/_102034_/l4/ontology/mdm.defs.js';
 
 const REACHED = ['actor', 'command', 'time'] as const;
 const FIELD_CONSUMED = new Set(['type', 'derived', 'to', 'fields', 'values']);
@@ -583,6 +584,11 @@ function emitRaw(
       continue;
     }
     if (type === 'object' && raw.fields === undefined) {
+      const of = platformOf(raw.of);
+      if (of) {
+        out.push(field(path, type, derived, undefined, of));
+        continue;
+      }
       normalizations.push({ code: 'OBJECT_LEAF', path: origin, detail: 'no nested field map' });
       out.push(field(path, type, derived));
       continue;
@@ -676,7 +682,7 @@ function readDerived(
 }
 
 function noteOmitted(origin: string, raw: Record<string, unknown>, normalizations: D1Normalization[]): void {
-  if (raw.of !== undefined) {
+  if (raw.of !== undefined && !(text(raw.type) === 'object' && platformOf(raw.of))) {
     normalizations.push({ code: 'FIELD_OF_NOT_REFERENCE', path: origin, detail: text(raw.of) || '(empty)' });
   }
   const dropped = Object.keys(raw).filter(key => !FIELD_CONSUMED.has(key) && key !== 'of').sort();
@@ -685,11 +691,18 @@ function noteOmitted(origin: string, raw: Record<string, unknown>, normalization
   }
 }
 
-function field(name: string, type: string, derived?: boolean, ref?: string): D1Field {
+function field(name: string, type: string, derived?: boolean, ref?: string, of?: string): D1Field {
   const out: D1Field = { name, type };
   if (derived) out.derived = true;
   if (ref) out.ref = ref;
+  if (of) out.of = of;
   return out;
+}
+
+function platformOf(value: unknown): string {
+  const name = text(value);
+  if (!name) return '';
+  return Object.prototype.hasOwnProperty.call(mdm.types, name) ? name : '';
 }
 
 function readLifecycle(

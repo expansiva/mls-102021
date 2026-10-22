@@ -475,6 +475,29 @@ void test('a system transition keeps an empty by and an empty from stays TRANSIT
   assert.equal(emptyFrom.entities[0].definition, null);
 });
 
+void test('an object of a platform type keeps of; a name that is not of the platform is dropped', () => {
+  const built = buildD1Domain(requestFrom({
+    Member: {
+      entityId: 'Member',
+      kind: 'role',
+      source: '/_102034_/l4/ontology/mdm.defs.ts',
+      record: {
+        fields: {
+          privacyConsent: { type: 'object', of: 'PrivacyConsent' },
+          bogus: { type: 'object', of: 'Foo' },
+        },
+      },
+    },
+  }));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  const fields = dataOf(built.entities[0]).fields;
+  assert.deepEqual(fields.find(field => field.name === 'privacyConsent'), { name: 'privacyConsent', type: 'object', of: 'PrivacyConsent' });
+  assert.deepEqual(fields.find(field => field.name === 'bogus'), { name: 'bogus', type: 'object' });
+  assert.equal(built.normalizations.some(item => item.code === 'FIELD_OF_NOT_REFERENCE' && item.path === 'Member.record.fields.bogus' && item.detail === 'Foo'), true);
+  assert.equal(built.normalizations.some(item => item.code === 'FIELD_OF_NOT_REFERENCE' && item.path === 'Member.record.fields.privacyConsent'), false);
+  assert.equal(definitionIssues(built.entities[0].definition!).length, 0, definitionIssues(built.entities[0].definition!).join('\n'));
+});
+
 function agendaBuild(artifacts: D1InputArtifacts, snapshot: D1InputSnapshot): D1DomainBuild {
   return buildD1Domain({
     project: PROJECT,

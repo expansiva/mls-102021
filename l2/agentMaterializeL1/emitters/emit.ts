@@ -36,6 +36,7 @@ export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v13';
 
 const PLATFORM_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+const MDM_MODULE = '/_102034_/l1/mdm/module.js';
 
 export interface EmitFailure {
   code: string;
@@ -53,6 +54,7 @@ export type StructureRead = (ref: string) => Promise<string | null>;
 interface FieldRow {
   name: string;
   type: string;
+  of?: string;
 }
 
 interface Tree {
@@ -82,10 +84,16 @@ export function emitDomain(
   const declared = new Map(enums);
   if (states.length > 0 && topEnums.length === 1 && !declared.has(topEnums[0].name)) declared.set(topEnums[0].name, states);
   const body = renderType(nest(fields, declared, optional, new Set(), collections), '');
+  const values = platformValueImports(fields);
+  const importLine = values.length > 0 ? `import type { ${values.join(', ')} } from '${MDM_MODULE}';\n` : '';
   // A type alias, not an interface: an object type alias fits where a usecase output that extends
   // Record<string, unknown> is expected; an interface does not (TS2345 "Index signature … is missing"), which made the
   // fechamento request of comandaRestaurante fail three repairs on 09/10. Same fields, no runtime difference.
-  return { runsStub: false, imports: [], source: `${header(output)}\nexport type ${name} = ${body};\n` };
+  return {
+    runsStub: false,
+    imports: values.length > 0 ? [MDM_MODULE] : [],
+    source: `${header(output)}\n${importLine}export type ${name} = ${body};\n`,
+  };
 }
 
 export function emitValueObject(definition: M1Definition, output: string): EmitResult {
@@ -1355,6 +1363,7 @@ function fieldRows(value: unknown): FieldRow[] {
   return value.filter(isRecord).map(field => ({
     name: typeof field.name === 'string' ? field.name : '',
     type: typeof field.type === 'string' ? field.type : 'string',
+    ...(typeof field.of === 'string' && field.of ? { of: field.of } : {}),
   })).filter(field => field.name);
 }
 
@@ -1443,7 +1452,7 @@ function nest(
         node.children.set(part, child);
       }
       if (index === parts.length - 1) {
-        const ts = fieldTs(field.type, enums.get(field.name) ?? [], aliases);
+        const ts = fieldTs(field.type, enums.get(field.name) ?? [], aliases, field.of);
         // `collection: true` in the l4 is a list (`details.base.contacts` of an MDM person is `[]`, not an object).
         child.ts = collections.has(field.name) && !ts.endsWith('[]') ? (ts.includes('|') ? `Array<${ts}>` : `${ts}[]`) : ts;
       }
@@ -1455,7 +1464,8 @@ function nest(
   return root;
 }
 
-function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<string> = new Set()): string {
+function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<string> = new Set(), of?: string): string {
+  if (of) return platformValueName(of);
   if (aliases.has(type)) return type;
   const array = /^(.+)\[\]$/.exec(type);
   if (array && aliases.has(array[1])) return type;
@@ -1465,6 +1475,20 @@ function fieldTs(type: string, values: readonly string[], aliases: ReadonlySet<s
   if (type === 'boolean') return 'boolean';
   if (type === 'object') return 'Record<string, unknown>';
   return 'string';
+}
+
+/**
+ * `<of>Value`, imported from the MDM module. No list of platform names here: the unit compile proves the export
+ * exists, and a missing one fails by name ("has no exported member 'GeoPointValue'"), never as `Record`.
+ */
+function platformValueName(of: string): string {
+  return `${of}Value`;
+}
+
+function platformValueImports(fields: readonly FieldRow[]): string[] {
+  const names = new Set<string>();
+  for (const field of fields) if (field.of) names.add(platformValueName(field.of));
+  return [...names].sort();
 }
 
 function renderType(node: Tree, indent: string): string {
