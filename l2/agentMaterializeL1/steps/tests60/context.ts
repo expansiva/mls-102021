@@ -131,6 +131,26 @@ function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
 
+/** `ruleId → code` pairs a materialized request throws as `new AppError('<CODE>', …, { ruleId })`. */
+export function thrownErrorCodes(source: string): Array<{ ruleId: string; code: string }> {
+  const out: Array<{ ruleId: string; code: string }> = [];
+  const seen = new Set<string>();
+  const hits = [...source.matchAll(/new AppError\(\s*(['"])([^'"]+)\1/gu)];
+  for (let index = 0; index < hits.length; index += 1) {
+    const match = hits[index];
+    const from = match.index ?? 0;
+    const until = hits[index + 1]?.index ?? source.length;
+    const ruleId = /ruleId\s*:\s*(['"])([^'"]+)\1/u.exec(source.slice(from, until))?.[2];
+    if (!ruleId) continue;
+    const code = match[2];
+    const key = `${ruleId}\0${code}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ruleId, code });
+  }
+  return out;
+}
+
 /** The page of a controller unit and everything its cases are read from. */
 export async function loadTestsContext(ctx: M12Context, controller: M12Unit, repair?: { problems: string[]; previous: string | null }): Promise<M12TestsContext> {
   const { project, module: moduleName } = ctx.run;
@@ -154,7 +174,12 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
   ].join('\n')));
   parts.push(section(`Contract ${fileRef(contract)} (the source of truth)`, fence('ts', contractText)));
   if (rules.length) parts.push(section('Rules (l4 text)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+  const requestSource = service ? await readOptional(service.output) : null;
+  const thrown = requestSource ? thrownErrorCodes(requestSource) : [];
   if (service) parts.push(section(`Request service def ${service.defRef}`, fence('json', JSON.stringify(service.definition.data, null, 2))));
+  if (thrown.length) {
+    parts.push(section('Error codes the request throws', thrown.map(item => `- ${item.ruleId} → ${item.code}`).join('\n')));
+  }
   parts.push(section('Entities of the module (for paramFieldRefs)', entities.map(unit => {
     const fields = Array.isArray(unit.definition.data.fields) ? unit.definition.data.fields.filter(isRecord).map(field => String(field.name ?? '')).filter(Boolean) : [];
     return `- ${String(unit.definition.data.entityId ?? unit.definition.artifactId)}: ${fields.join(', ')}`;
@@ -174,6 +199,6 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
     actor,
     entities: entities.map(unit => String(unit.definition.data.entityId ?? unit.definition.artifactId)),
     human: parts.join('\n'),
-    inputs: [contractText, service?.text ?? '', rulesSource ?? '', seeds?.text ?? '', ...entities.map(unit => unit.text)],
+    inputs: [contractText, service?.text ?? '', requestSource ?? '', rulesSource ?? '', seeds?.text ?? '', ...entities.map(unit => unit.text)],
   };
 }

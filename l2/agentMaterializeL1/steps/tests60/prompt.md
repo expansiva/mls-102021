@@ -14,8 +14,8 @@ rendered from your cases.
   in declaration order. A read that must happen after a command is not a read case.
 - `mutating` is true exactly for a command route (`kind: 'cmd'`).
 - A param that addresses a stored record carries a marker, never an invented id:
-  `<seedRef>` (a value harvested from earlier reads or the seed rows), `<seedValue>`, or `<seedSpare>` (a spare
-  row a case may consume). Each marker param needs `paramFieldRefs["<param>"] = "<Entity>.<field>"`, with an
+  `<seedRef>` (a value harvested from earlier reads or the seed rows) or `<seedValue>`. Each marker param
+  needs `paramFieldRefs["<param>"] = "<Entity>.<field>"`, with an
   entity of the module, e.g. `"comandaId": "<seedRef>"` with `"Comanda.id"`. Nested params use the dotted path
   as the key of `paramFieldRefs` (`"details.mesaId"`).
 - A literal value (a number, a text, a payment method of the contract union) is written as it is.
@@ -24,9 +24,8 @@ rendered from your cases.
 - An id ending in `.required` means "the call is refused because input field <field> is missing", written
   `<route>.<field>.required`, with `expect.ok: false` and `errorCode: "VALIDATION_ERROR"`. Use it only for a
   required input field of the route.
-- A rule broken through the input expects `ok: false` and, when the rule names one, the error code the backend
-  throws (`VALIDATION_ERROR` for an invalid value, `CONFLICT` for a state conflict, `NOT_FOUND` for an absent
-  record).
+- A rule broken through the input expects `ok: false` and the error code the request throws for that rule
+  (`ruleId → code` in the context). Do not invent a code the request does not throw.
 - A list route may declare `shape` (`object`, `array` or `paginated`) and `itemsKey`, read from the contract
   output type.
 

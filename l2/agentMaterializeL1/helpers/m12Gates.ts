@@ -352,7 +352,8 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
 }
 
 /** The marker values a generated case may carry (skills/monitorTests.md); the frontend never sees a row value. */
-export const M12_SEED_MARKERS = ['<seedRef>', '<seedValue>', '<seedSpare>'] as const;
+export const M12_SEED_MARKERS = ['<seedRef>', '<seedValue>'] as const;
+const SEED_SPARE = '<seedSpare>';
 
 export interface M12TestCase {
   id: string;
@@ -368,14 +369,20 @@ export interface M12TestsGateInput {
   entities: readonly string[];
 }
 
-function markerParams(params: Record<string, unknown>, prefix = ''): string[] {
-  const out: string[] = [];
+function walkParams(params: Record<string, unknown>, prefix = ''): Array<{ path: string; value: string }> {
+  const out: Array<{ path: string; value: string }> = [];
   for (const [key, value] of Object.entries(params)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === 'string' && (M12_SEED_MARKERS as readonly string[]).includes(value)) out.push(path);
-    else if (value && typeof value === 'object' && !Array.isArray(value)) out.push(...markerParams(value as Record<string, unknown>, path));
+    if (typeof value === 'string') out.push({ path, value });
+    else if (value && typeof value === 'object' && !Array.isArray(value)) out.push(...walkParams(value as Record<string, unknown>, path));
   }
   return out;
+}
+
+function markerParams(params: Record<string, unknown>): string[] {
+  return walkParams(params)
+    .filter(item => (M12_SEED_MARKERS as readonly string[]).includes(item.value))
+    .map(item => item.path);
 }
 
 /** Problems of the monitor cases a model proposed for one page. Empty = the gate passes. */
@@ -394,6 +401,11 @@ export function testsGate(cases: readonly M12TestCase[], input: M12TestsGateInpu
       const field = item.id.split('.').slice(-2, -1)[0] ?? '';
       if (!route.inputFields.includes(field)) problems.push(`Case ${item.id}: a ".required" id names an input field of the route; ${field} is not one.`);
       if (item.expect.ok) problems.push(`Case ${item.id}: a ".required" case expects ok: false.`);
+    }
+    for (const param of walkParams(item.params)) {
+      if (param.value === SEED_SPARE) {
+        problems.push(`Case ${item.id}: param ${param.path} uses ${SEED_SPARE}; use <seedRef> of an existing record.`);
+      }
     }
     for (const path of markerParams(item.params)) {
       const ref = item.paramFieldRefs?.[path];
