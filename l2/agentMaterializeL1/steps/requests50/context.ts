@@ -16,7 +16,7 @@ import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/proce
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts, sessionCompanyAnchor } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
@@ -394,6 +394,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
   }
   const l5Config = await ctx.read(`_${project}_/l5/config.json`);
+  const companyAnchor = sessionCompanyAnchor(moduleName, l5Config, ctx.units.map(item => String(item.definition.data.entityId ?? '')));
+  if (companyAnchor) parts.push(companyAnchor);
   if (onboardingModuleId(l5Config) === moduleName) {
     parts.push(registrationAccessSection(moduleName, l5Config, await ctx.read(REGISTRATION_REF)));
   }

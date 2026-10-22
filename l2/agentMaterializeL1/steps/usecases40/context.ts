@@ -164,6 +164,32 @@ function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;
 }
 
+/** `onboarding.companyType` of a project's `l5/config.json` (`<module>.<Entity>`), or empty. */
+export function companyTypeOf(configText: string | null): string {
+  if (!configText) return '';
+  const config = JSON.parse(configText) as { onboarding?: { companyType?: unknown } };
+  return typeof config.onboarding?.companyType === 'string' ? config.onboarding.companyType : '';
+}
+
+/**
+ * The session company is `activeCompanyId`, read from l5. Empty when this module does not own the entity
+ * named by `companyType`.
+ */
+export function sessionCompanyAnchor(moduleName: string, configText: string | null, entityIds: readonly string[]): string {
+  const companyType = companyTypeOf(configText);
+  const split = companyType.indexOf('.');
+  if (split <= 0) return '';
+  const typeModule = companyType.slice(0, split);
+  const entityId = companyType.slice(split + 1);
+  if (typeModule !== moduleName || !entityId || !entityIds.includes(entityId)) return '';
+  return section('The company of the session', [
+    `The company entity of this module is \`${entityId}\` (\`${companyType}\`, from l5).`,
+    'the company of the session is `ctx.sessionContext.activeCompanyId`; the person of the session is `ctx.sessionContext.person.mdmId`.',
+    "A read or write of the session's company uses that id; an input id that differs is FORBIDDEN",
+    'When `ctx.sessionContext.activeCompanyId` is absent, refuse with an AppError that names it; never use the person of the session as the company.',
+  ].join('\n'));
+}
+
 function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
@@ -248,6 +274,12 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   }
   const links = await moduleMdmLinksSection(ctx);
   if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
+  const companyAnchor = sessionCompanyAnchor(
+    ctx.run.module,
+    await ctx.read(`_${ctx.run.project}_/l5/config.json`),
+    ctx.units.map(item => String(item.definition.data.entityId ?? '')),
+  );
+  if (companyAnchor) parts.push(companyAnchor);
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
