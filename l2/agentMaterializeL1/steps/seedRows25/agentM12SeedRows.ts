@@ -9,8 +9,10 @@ import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { materializeUnit, type M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import {
+  draftScenarioRow,
   referenceSeedUnit,
   seedOntologyRef,
+  seedScenariosOf,
   stateFieldFor,
   type SeedTableUnit,
 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
@@ -70,6 +72,47 @@ export async function referenceSeedTables(ctx: M12Context): Promise<SeedTableUni
 
 const SEED_DRAFT_PART = 'rows';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * One accepted row per seed-plan scenario (journey or model). No `purpose`:
+ * the emitter marks a dataset that is not the initial unit as `test`.
+ * A row the gate refuses is left out. Initial drafts are not touched.
+ */
+export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSeedDataset[]> {
+  const grouped = new Map<string, Record<string, unknown>[]>();
+  const { completeInitialRows } = await import('/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js');
+  for (const seed of ctx.units) {
+    if (seed.definition.artifactType !== 'persistenceSeeds') continue;
+    for (const scenario of seedScenariosOf(seed.definition.data)) {
+      const source = await ctx.read(seedOntologyRef(ctx.run.project, ctx.run.module, scenario.entityId));
+      if (!source) continue;
+      const draft = referenceSeedUnit({
+        scenarioId: scenario.scenarioId,
+        tableId: scenario.tableId,
+        ontologySource: source,
+        states: scenario.states,
+        stateField: scenario.stateField,
+        requireInitial: false,
+        constraints: scenario.constraints,
+      });
+      if (!draft) continue;
+      const stateField = scenario.stateField || stateFieldFor(draft.columns, scenario.states);
+      const unit = stateField ? { ...draft, stateField } : draft;
+      const drafted = await draftScenarioRow(unit);
+      if ('problems' in drafted) continue;
+      const completed = await completeInitialRows(unit, [drafted.row]);
+      if ('problems' in completed || completed.rows.length === 0) continue;
+      const rows = grouped.get(scenario.tableId) ?? [];
+      rows.push(completed.rows[0]);
+      grouped.set(scenario.tableId, rows);
+    }
+  }
+  return [...grouped.entries()].map(([seedFor, rows]) => ({ seedFor, rows }));
+}
+
 /** One draft per table: accepted rows, or an empty table and the reason after the repair. */
 export async function writeSeedTableDraft(project: number, moduleName: string, tableId: string, rows: readonly Record<string, unknown>[], reason: string | null): Promise<void> {
   await writeDraft(project, moduleName, 'seedRows', tableId, SEED_DRAFT_PART, JSON.stringify({ rows, reason }));
@@ -98,8 +141,16 @@ export async function emitSeedsWhenReady(ctx: M12Context): Promise<boolean> {
     reference.push({ seedFor: table.tableId, rows: record.rows as Record<string, unknown>[] });
   }
   ctx.referenceSeeds = reference;
+  const scenarioDatasets = await scenarioSeedDatasets(ctx);
   let wrote = false;
   for (const unit of seeds) {
+    const data = unit.definition.data;
+    const prior = Array.isArray(data.datasets) ? data.datasets : [];
+    const taken = new Set(prior.filter(isRecord).filter(item => Array.isArray(item.rows) && item.rows.length > 0).map(item => String(item.seedFor ?? '')));
+    data.datasets = [
+      ...prior,
+      ...scenarioDatasets.filter(item => !taken.has(item.seedFor)).map(item => ({ seedFor: item.seedFor, rows: item.rows })),
+    ];
     const outcome = await materializeUnit(ctx, unit);
     if (outcome.code === 'PROFILE_REFUSED') return false;
     if (outcome.status === 'done' || outcome.status === 'reused') wrote = true;

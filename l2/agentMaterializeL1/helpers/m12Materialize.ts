@@ -177,7 +177,8 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
     parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));
   }
-  if (unit.definition.artifactType === 'persistenceSeeds') parts.push(JSON.stringify(ctx.referenceSeeds ?? []));
+  // The initial rows of seedRows25 and the scenario rows it adds to the def in memory (d1_102 s3) both change the seeds.ts.
+  if (unit.definition.artifactType === 'persistenceSeeds') parts.push(JSON.stringify(ctx.referenceSeeds ?? []), JSON.stringify(unit.definition.data.datasets ?? []));
   parts.push(...extra);
   return hashParts(parts);
 }

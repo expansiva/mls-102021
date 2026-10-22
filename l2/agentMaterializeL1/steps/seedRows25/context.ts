@@ -39,6 +39,8 @@ export interface SeedTableUnit {
   /** True when the l4 entity declares `initialData`. A role never does. */
   loadedBySeed: boolean;
   provisionalPrivacy: boolean;
+  /** Seed-plan constraints (`ref:`, `state:`, `uniqueKeys:`). Empty for an initial table. */
+  constraints: string[];
 }
 
 export interface SeedRepair {
@@ -81,6 +83,8 @@ function columnType(meta: Record<string, unknown>): SeedColumn['type'] {
   if (type === 'boolean') return 'boolean';
   if (type === 'timestamp') return 'timestamp';
   if (type === 'uuid') return 'uuid';
+  if (type === 'date') return 'string';
+  if (type === 'record') return 'uuid';
   if (type === 'enum') return 'enum';
   if (type === 'object') return 'object';
   return 'unknown';
@@ -147,9 +151,13 @@ export function referenceSeedUnit(input: {
   ontologySource: string;
   states: readonly string[];
   stateField: string;
+  /** Journey and model scenarios have no `initialData`. Initial tables still require it. */
+  requireInitial?: boolean;
+  constraints?: readonly string[];
 }): SeedTableUnit | null {
   const ontology = ontologyOf(input.ontologySource);
-  if (!ontology || ontology.kind === 'role' || !ontology.initialData) return null;
+  if (!ontology || ontology.kind === 'role') return null;
+  if (input.requireInitial !== false && !ontology.initialData) return null;
   const provisionalPrivacy = /privacy text/i.test(`${ontology.description}\n${ontology.createText}`);
   return {
     scenarioId: input.scenarioId,
@@ -164,8 +172,9 @@ export function referenceSeedUnit(input: {
     states: [...input.states],
     stateField: input.stateField,
     initialData: ontology.initialData,
-    loadedBySeed: true,
+    loadedBySeed: input.requireInitial !== false,
     provisionalPrivacy,
+    constraints: [...(input.constraints ?? [])],
   };
 }
 
@@ -186,6 +195,9 @@ export interface SeedScenarioRef {
   tableId: string;
   entityId: string;
   states: string[];
+  stateField: string;
+  constraints: string[];
+  source: string;
 }
 
 /** Scenarios of one persistenceSeeds def. A scenario without a table or an entity is dropped. */
@@ -199,7 +211,22 @@ export function seedScenariosOf(data: unknown): SeedScenarioRef[] {
     const entityId = typeof item.entityId === 'string' ? item.entityId : '';
     if (!scenarioId || !tableId || !entityId) continue;
     const states = Array.isArray(item.states) ? item.states.filter((state): state is string => typeof state === 'string' && state.length > 0) : [];
-    out.push({ scenarioId, tableId, entityId, states });
+    const constraints = Array.isArray(item.constraints) ? item.constraints.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0) : [];
+    for (const constraint of constraints) {
+      if (constraint.startsWith('state:')) {
+        const state = constraint.slice('state:'.length);
+        if (state && !states.includes(state)) states.push(state);
+      }
+    }
+    out.push({
+      scenarioId,
+      tableId,
+      entityId,
+      states,
+      stateField: typeof item.stateField === 'string' ? item.stateField : '',
+      constraints,
+      source: typeof item.source === 'string' ? item.source : '',
+    });
   }
   return out;
 }
@@ -216,6 +243,7 @@ export function referenceSeedFromScenario(input: SeedScenarioRef & { ontologySou
     ontologySource: input.ontologySource,
     states: input.states,
     stateField: '',
+    constraints: input.constraints,
   });
   if (!draft) return null;
   const stateField = stateFieldFor(draft.columns, input.states);
@@ -315,7 +343,70 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
   if (unit.provisionalPrivacy && rows.length > 0 && !rows.some(row => stringsOf(row).some(text => /provisional/i.test(text)))) {
     problems.push('The privacy text is not marked as provisional.');
   }
+  for (const constraint of unit.constraints) {
+    const ref = /^ref:([^:]+):/u.exec(constraint);
+    if (!ref) continue;
+    rows.forEach((row, index) => {
+      const value = row[ref[1]];
+      if (value === undefined || value === null || value === '') problems.push(`row ${index} misses constraint ${constraint}.`);
+    });
+  }
   return problems;
+}
+
+function placeholder(column: SeedColumn, token: string, uuidFor: (name: string) => Promise<string>): Promise<unknown> {
+  if (column.type === 'string') {
+    const text = token || 'seed';
+    return Promise.resolve(column.maxLength !== null ? text.slice(0, column.maxLength) : text);
+  }
+  if (column.type === 'integer') return Promise.resolve(1);
+  if (column.type === 'boolean') return Promise.resolve(true);
+  if (column.type === 'timestamp') return Promise.resolve('2026-01-01T00:00:00.000Z');
+  if (column.type === 'uuid') return uuidFor(token);
+  if (column.type === 'enum') return Promise.resolve(column.enumValues[0] ?? '');
+  if (column.type === 'object') return objectPlaceholder(column.fields, token, uuidFor);
+  return Promise.resolve(undefined);
+}
+
+async function objectPlaceholder(fields: readonly SeedColumn[], token: string, uuidFor: (name: string) => Promise<string>): Promise<Record<string, unknown>> {
+  const nested: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (!field.required) continue;
+    nested[field.name] = await placeholder(field, `${token}.${field.name}`, uuidFor);
+  }
+  return nested;
+}
+
+/**
+ * One row for a seed-plan scenario. No `purpose` (the emitter marks it `test`).
+ * The primary key is filled later, from the unique key, the same way as an initial row.
+ * Returns the gate problems instead of a row that breaks columns, types, the unique key, states, or a ref constraint.
+ */
+export async function draftScenarioRow(unit: SeedTableUnit): Promise<{ row: Record<string, unknown> } | { problems: string[] }> {
+  const row: Record<string, unknown> = {};
+  const needed = new Set<string>();
+  for (const column of unit.columns) {
+    if (column.name === 'id') continue;
+    if (column.required) needed.add(column.name);
+  }
+  for (const key of unit.uniqueKeys) for (const field of key) needed.add(field);
+  for (const constraint of unit.constraints) {
+    const ref = /^ref:([^:]+):/u.exec(constraint);
+    if (ref) needed.add(ref[1]);
+  }
+  for (const name of needed) {
+    const column = unit.columns.find(item => item.name === name);
+    if (!column || column.name === 'id') continue;
+    const token = `${unit.moduleName}.${unit.tableId}.${unit.scenarioId}.${name}`;
+    row[name] = await placeholder(column, token, name => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${name}`));
+  }
+  if (unit.stateField && unit.states.length > 0) {
+    const column = unit.columns.find(item => item.name === unit.stateField);
+    const state = unit.states.find(item => !column || column.enumValues.length === 0 || column.enumValues.includes(item));
+    if (state) row[unit.stateField] = state;
+  }
+  const problems = seedRowProblems(unit, [row]);
+  return problems.length > 0 ? { problems } : { row };
 }
 
 /** Fixed clock for actor identity rows. The same actor always gets the same timestamps. */
