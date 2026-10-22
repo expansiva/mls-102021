@@ -77,6 +77,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Tables that already have rows: the def's datasets, and the initial rows the
+ * reference-seed unit accepted. A scenario for one of these tables reuses that
+ * row (same primary key); it does not add a `test` dataset.
+ */
+export function takenSeedTables(prior: readonly unknown[], reference: readonly ReferenceSeedDataset[]): Set<string> {
+  const fromDef = prior.filter(isRecord).filter(item => Array.isArray(item.rows) && item.rows.length > 0).map(item => String(item.seedFor ?? ''));
+  const fromReference = reference.filter(item => item.rows.length > 0).map(item => item.seedFor);
+  return new Set([...fromDef, ...fromReference]);
+}
+
+/**
  * One accepted row per seed-plan scenario (journey or model). No `purpose`:
  * the emitter marks a dataset that is not the initial unit as `test`.
  * A row the gate refuses is left out. Initial drafts are not touched.
@@ -146,7 +157,7 @@ export async function emitSeedsWhenReady(ctx: M12Context): Promise<boolean> {
   for (const unit of seeds) {
     const data = unit.definition.data;
     const prior = Array.isArray(data.datasets) ? data.datasets : [];
-    const taken = new Set(prior.filter(isRecord).filter(item => Array.isArray(item.rows) && item.rows.length > 0).map(item => String(item.seedFor ?? '')));
+    const taken = takenSeedTables(prior, reference);
     data.datasets = [
       ...prior,
       ...scenarioDatasets.filter(item => !taken.has(item.seedFor)).map(item => ({ seedFor: item.seedFor, rows: item.rows })),
