@@ -143,8 +143,8 @@ test('compose carries pageTests from two modules into config.json backend.pageTe
       projects: Record<string, { modules?: Array<{ moduleId: string; backend?: { pageTests?: string[] } }> }>;
     };
     const byId = new Map((config.projects[CLIENT_ID].modules ?? []).map(item => [item.moduleId, item]));
-    assert.deepEqual(byId.get('todo')?.backend?.pageTests, [todoTests]);
-    assert.deepEqual(byId.get('inbox')?.backend?.pageTests, [inboxTests]);
+    assert.deepEqual(byId.get('todo')?.backend?.pageTests, [todoTests.replace(/\.ts$/, '.js')]);
+    assert.deepEqual(byId.get('inbox')?.backend?.pageTests, [inboxTests.replace(/\.ts$/, '.js')]);
     assert.equal('pageTests' in (byId.get('inicio')?.backend ?? {}), false);
   });
 });

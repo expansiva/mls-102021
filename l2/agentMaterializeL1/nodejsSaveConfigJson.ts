@@ -5,7 +5,7 @@
 // Reads the client-owned mls-<clientId>/l5/project.json (written by agentMaterializeL1)
 // and reconciles the backend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // projects (client + master backend + 102029 lib), modules[].backendControllers,
-// modules[].backend.pageTests (from l5/project.json; omitted when the module has none) and
+// modules[].backend.pageTests (from l5/project.json, checked as .ts, written as .js; omitted when none) and
 // persistenceModules[].tableDefsDir. Leftover modules whose dirs are gone are dropped (named in the
 // log) — append would leave a dead tableDefsDir that crashes publish migration with ENOENT.
 // Routes/tables themselves are discovered at RUNTIME by the production master from those folders.
@@ -63,7 +63,7 @@ function applyPageTests(
     const listed = moduleId ? pageTestsByModule.get(moduleId) : undefined;
     if (listed?.length) {
       const backend = isRecord(mod.backend) ? { ...mod.backend } : {};
-      backend.pageTests = listed;
+      backend.pageTests = listed.map(item => item.replace(/\.ts$/, '.js'));
       mod.backend = backend;
       continue;
     }
