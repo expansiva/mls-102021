@@ -318,6 +318,113 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
   return problems;
 }
 
+/** Fixed clock for actor identity rows. The same actor always gets the same timestamps. */
+export const ACTOR_SEED_AT = '2026-07-01T00:00:00.000Z';
+
+export interface L4Actor {
+  actorId: string;
+  name: string;
+  personEntity: string;
+}
+
+/** Actors of an l4 access file. An empty list is a module with no actor. */
+export function l4ActorsOf(accessSource: string | null): L4Actor[] {
+  if (!accessSource) return [];
+  const literal = readOntologyLiteral(accessSource);
+  if (!literal || !Array.isArray(literal.actors)) return [];
+  const actors: L4Actor[] = [];
+  for (const item of literal.actors) {
+    if (!isRecord(item) || typeof item.actorId !== 'string' || !item.actorId) continue;
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    actors.push({
+      actorId: item.actorId,
+      name: title || item.actorId,
+      personEntity: typeof item.personEntity === 'string' ? item.personEntity : '',
+    });
+  }
+  return actors;
+}
+
+/** `roleTag` of an l4 role ontology. Empty when the file has none. */
+export function roleTagOf(ontologySource: string | null): string {
+  if (!ontologySource) return '';
+  const literal = readOntologyLiteral(ontologySource);
+  return literal && typeof literal.roleTag === 'string' ? literal.roleTag : '';
+}
+
+/** UUID derived from `<module>:actor:<actorId>`. Same input, same id. No random. */
+export async function stableActorMdmId(moduleName: string, actorId: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${moduleName}:actor:${actorId}`)));
+  const bytes = digest.slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * One Person in `mdmEntityIndex` and the same person in `mdmDocumentCache`, per l4 actor.
+ * No `purpose`: the runtime counts the row as `test`. A module with no actor returns nothing.
+ */
+export async function actorMdmSeedRows(input: {
+  moduleName: string;
+  accessSource: string | null;
+  roleSource: (personEntity: string) => Promise<string | null>;
+}): Promise<{ seedFor: string; rows: Record<string, unknown>[] }[]> {
+  const actors = l4ActorsOf(input.accessSource);
+  if (!input.moduleName || actors.length === 0) return [];
+  const index: Record<string, unknown>[] = [];
+  const documents: Record<string, unknown>[] = [];
+  for (const actor of actors) {
+    const roleTag = actor.personEntity ? roleTagOf(await input.roleSource(actor.personEntity)) : '';
+    const tags = [`${input.moduleName}.Person`, input.moduleName, 'actor', actor.actorId];
+    if (roleTag && !tags.includes(roleTag)) tags.push(roleTag);
+    const mdmId = await stableActorMdmId(input.moduleName, actor.actorId);
+    const searchVector = `${actor.name} ${actor.actorId} ${input.moduleName}`.toLowerCase();
+    index.push({
+      mdmId,
+      subtype: 'Person',
+      name: actor.name,
+      status: 'Active',
+      docType: null,
+      docId: null,
+      countryCode: 'US',
+      tags,
+      searchVector,
+      mergedInto: null,
+      dynamoPk: mdmId,
+      createdAt: ACTOR_SEED_AT,
+      updatedAt: ACTOR_SEED_AT,
+    });
+    documents.push({
+      mdmId,
+      version: 1,
+      details: {
+        mdmId,
+        subtype: 'Person',
+        name: actor.name,
+        status: 'Active',
+        docType: null,
+        docId: null,
+        countryCode: 'US',
+        tags,
+        aliases: [],
+        contacts: [],
+        relationshipRefs: {},
+        addresses: [],
+        mergedInto: null,
+        createdAt: ACTOR_SEED_AT,
+        updatedAt: ACTOR_SEED_AT,
+        actorId: actor.actorId,
+      },
+    });
+  }
+  return [
+    { seedFor: 'mdmEntityIndex', rows: index },
+    { seedFor: 'mdmDocumentCache', rows: documents },
+  ];
+}
+
 /** Parse the tool `code` value. Problems are a refusal, not rows. */
 export function parseSeedRowsCode(code: string): { rows: Record<string, unknown>[] } | { problems: string[] } {
   let value: unknown;

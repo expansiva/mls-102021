@@ -19,6 +19,7 @@ import {
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { actorMdmSeedRows, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
@@ -185,7 +186,7 @@ export async function emitPersistence(
   if (id === 'persistence.table') return emitTable(definition, output, read);
   if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read, moduleDefinitions);
   if (id === 'persistence.repositoryRegistration') return emitRegistration(definition, output, read);
-  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds);
+  if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds, read);
   if (id === 'persistence.integrationOutbound') return emitOutbound(definition);
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a persistence body.` };
 }
@@ -282,7 +283,12 @@ async function emitRegistration(definition: M1Definition, output: string, read: 
  * ship for every table that unit produced, with or without a scenario, and they are not written
  * back onto the def. The fixture (l2/helpers/l1Defs/fixture.ts) is never a seed row.
  */
-function emitSeeds(definition: M1Definition, output: string, referenceSeeds: readonly ReferenceSeedDataset[] = []): PersistenceEmit | EmitFailure {
+async function emitSeeds(
+  definition: M1Definition,
+  output: string,
+  referenceSeeds: readonly ReferenceSeedDataset[] = [],
+  read: StructureRead = async () => null,
+): Promise<PersistenceEmit | EmitFailure> {
   const pending = pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No seed file was written.` };
   const scenarios = Array.isArray(definition.data.scenarios) ? definition.data.scenarios.filter(isRecord) : [];
@@ -295,7 +301,11 @@ function emitSeeds(definition: M1Definition, output: string, referenceSeeds: rea
     // A table may carry both: its initial rows and the test rows of the def (rt118 contract, item 1).
     .filter(item => item.rows.length > 0)
     .map(item => ({ seedFor: item.seedFor, purpose: 'initial' as const, rows: item.rows }));
-  const rows = [...fromDef, ...fromUnit];
+  const taken = new Set([...fromDef, ...fromUnit].map(item => item.seedFor));
+  const fromActors = (await actorDatasets(definition.moduleName, output, read))
+    .filter(item => item.rows.length > 0 && !taken.has(item.seedFor))
+    .map(item => ({ seedFor: item.seedFor, purpose: 'test' as const, rows: item.rows }));
+  const rows = [...fromDef, ...fromUnit, ...fromActors];
   const planned = datasets
     .filter(item => targets.includes(text(item.tableId)) && !Array.isArray(item.rows) && !rows.some(row => text(row.seedFor) === text(item.tableId)))
     .map(item => text(item.tableId));
@@ -326,6 +336,18 @@ function emitSeeds(definition: M1Definition, output: string, referenceSeeds: rea
     });
   }
   return { source, imports: [CONTRACTS], runsStub: false, seeds: rows.length > 0, evidences };
+}
+
+/** Person rows for each l4 actor. The MDM tables are not scenarios of the module. No actor, no row. */
+async function actorDatasets(moduleName: string, output: string, read: StructureRead): Promise<ReferenceSeedDataset[]> {
+  const project = /^_(\d+)_\//.exec(output);
+  if (!project || !moduleName) return [];
+  const access = await read(`_${project[1]}_/l4/${moduleName}/access.defs.ts`);
+  return actorMdmSeedRows({
+    moduleName,
+    accessSource: access,
+    roleSource: entityId => read(seedOntologyRef(Number(project[1]), moduleName, entityId)),
+  });
 }
 
 function emitOutbound(definition: M1Definition): EmitFailure {
