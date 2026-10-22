@@ -19,7 +19,7 @@ import {
 import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { actorMdmSeedRows, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { actorMdmSeedRows, l4ActorsOf, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
@@ -338,15 +338,25 @@ async function emitSeeds(
   return { source, imports: [CONTRACTS], runsStub: false, seeds: rows.length > 0, evidences };
 }
 
+const MDM_TABLE_REF = '_102034_/l1/mdm/persistence.ts';
+const MDM_ONTOLOGY_REF = '_102034_/l1/mdm/defs/ontology.ts';
+
 /** Person rows for each l4 actor. The MDM tables are not scenarios of the module. No actor, no row. */
 async function actorDatasets(moduleName: string, output: string, read: StructureRead): Promise<ReferenceSeedDataset[]> {
   const project = /^_(\d+)_\//.exec(output);
   if (!project || !moduleName) return [];
   const access = await read(`_${project[1]}_/l4/${moduleName}/access.defs.ts`);
+  if (l4ActorsOf(access).length === 0) return [];
+  const tableSource = await read(MDM_TABLE_REF);
+  if (!tableSource) throw new Error(`${MDM_TABLE_REF} was not read`);
+  const ontologySource = await read(MDM_ONTOLOGY_REF);
+  if (!ontologySource) throw new Error(`${MDM_ONTOLOGY_REF} was not read`);
   return actorMdmSeedRows({
     moduleName,
     accessSource: access,
     roleSource: entityId => read(seedOntologyRef(Number(project[1]), moduleName, entityId)),
+    tableSource,
+    ontologySource,
   });
 }
 

@@ -1,5 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/seedRows25/context.ts" enhancement="_blank"/>
 
+import { mdm } from '/_102034_/l4/ontology/mdm.defs.js';
+
 // Rows for a seed table whose l4 entity says the module seed loads it. The def stays without a rows key.
 
 export const SEED_ROWS_TOOL = 'writeSeedRows' as const;
@@ -436,17 +438,130 @@ export async function stableActorMdmId(moduleName: string, actorId: string): Pro
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+interface MdmColumn {
+  name: string;
+  nullable: boolean;
+  postgresType: string;
+}
+
+/** Columns of one `repositoryName` in a MDM table-definition source. Empty recognition throws. */
+export function columnsOfRepository(source: string, repositoryName: string): MdmColumn[] {
+  const marker = new RegExp(`repositoryName:\\s*['"]${repositoryName}['"]`).exec(source);
+  if (!marker) throw new Error(`mdm table ${repositoryName} was not recognized`);
+  const columnsAt = /columns:\s*\[/.exec(source.slice(marker.index));
+  if (!columnsAt) throw new Error(`mdm table ${repositoryName} has no columns`);
+  const start = marker.index + columnsAt.index + columnsAt[0].length;
+  let depth = 1;
+  let end = start;
+  for (; end < source.length && depth > 0; end++) {
+    if (source[end] === '[') depth += 1;
+    else if (source[end] === ']') depth -= 1;
+  }
+  const body = source.slice(start, end - 1);
+  const columns: MdmColumn[] = [];
+  for (const match of body.matchAll(/\{\s*name:\s*['"]([A-Za-z0-9_]+)['"]([^}]*)\}/g)) {
+    const postgresType = /postgresType:\s*['"]([^'"]+)['"]/.exec(match[2]);
+    columns.push({
+      name: match[1],
+      nullable: /nullable:\s*true/.test(match[2]),
+      postgresType: postgresType?.[1] ?? '',
+    });
+  }
+  if (columns.length === 0) throw new Error(`mdm table ${repositoryName} has no columns`);
+  return columns;
+}
+
+function definedColumns(repositoryName: string, source: string | null | undefined): MdmColumn[] {
+  if (!source) throw new Error(`mdm table source for ${repositoryName} was not read`);
+  return columnsOfRepository(source, repositoryName);
+}
+
+/** `Default: …` and `"default"` on MDM field objects. The generator keeps no country literal. */
+function fieldDefaults(source: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  const seen = new Set<unknown>();
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object') continue;
+      const record = value as Record<string, unknown>;
+      if (typeof record.constraints === 'string') {
+        const found = /Default:\s*(\S+)/.exec(record.constraints);
+        if (found) out.set(key, found[1]);
+      }
+      if (typeof record.default === 'string') out.set(key, record.default);
+      visit(value);
+    }
+  };
+  visit(source);
+  return out;
+}
+
+function defaultsFromOntologyText(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const match of source.matchAll(/(\w+)\s*:\s*\{([^{}]*)\}/g)) {
+    const fromConstraint = /Default:\s*([^'"}\s]+)/.exec(match[2]);
+    const fromJson = /["']default["']\s*:\s*["']([^"']+)["']/.exec(match[2]);
+    const value = fromConstraint?.[1] ?? fromJson?.[1];
+    if (value) out.set(match[1], value);
+  }
+  return out;
+}
+
+interface OntologyField {
+  name: string;
+  collection: boolean;
+  type: string;
+  required: boolean;
+  values: string[];
+  defaultValue: string | null;
+}
+
+function fieldsOf(group: unknown): OntologyField[] {
+  if (!isRecord(group) || !isRecord(group.fields)) return [];
+  const fields: OntologyField[] = [];
+  for (const [name, meta] of Object.entries(group.fields)) {
+    if (!isRecord(meta)) continue;
+    const values = Array.isArray(meta.values) ? meta.values.filter((item): item is string => typeof item === 'string') : [];
+    fields.push({
+      name,
+      collection: meta.collection === true,
+      type: typeof meta.type === 'string' ? meta.type : '',
+      required: meta.required === true,
+      values,
+      defaultValue: typeof meta.default === 'string' ? meta.default : null,
+    });
+  }
+  return fields;
+}
+
 /**
  * One Person in `mdmEntityIndex` and the same person in `mdmDocumentCache`, per l4 actor.
+ * Columns come from the MDM table definition. A field default comes from the MDM ontology.
  * No `purpose`: the runtime counts the row as `test`. A module with no actor returns nothing.
  */
 export async function actorMdmSeedRows(input: {
   moduleName: string;
   accessSource: string | null;
   roleSource: (personEntity: string) => Promise<string | null>;
+  /** Full table-definition source. Required once the module has actors. */
+  tableSource?: string | null;
+  /** Ontology source. Required once the module has actors. */
+  ontologySource?: string | null;
 }): Promise<{ seedFor: string; rows: Record<string, unknown>[] }[]> {
   const actors = l4ActorsOf(input.accessSource);
   if (!input.moduleName || actors.length === 0) return [];
+  if (!input.ontologySource) throw new Error('mdm ontology source was not read');
+  const indexColumns = definedColumns('mdmEntityIndex', input.tableSource);
+  const documentColumns = definedColumns('mdmDocumentCache', input.tableSource);
+  const defaults = defaultsFromOntologyText(input.ontologySource);
+  for (const [key, value] of fieldDefaults(mdm)) {
+    if (!defaults.has(key)) defaults.set(key, value);
+  }
+  const identification = fieldsOf(mdm.groups.identification);
+  const base = fieldsOf(mdm.groups.base);
+  const statusValues = identification.find(field => field.name === 'status')?.values ?? [];
   const index: Record<string, unknown>[] = [];
   const documents: Record<string, unknown>[] = [];
   for (const actor of actors) {
@@ -455,43 +570,42 @@ export async function actorMdmSeedRows(input: {
     if (roleTag && !tags.includes(roleTag)) tags.push(roleTag);
     const mdmId = await stableActorMdmId(input.moduleName, actor.actorId);
     const searchVector = `${actor.name} ${actor.actorId} ${input.moduleName}`.toLowerCase();
-    index.push({
-      mdmId,
-      subtype: 'Person',
-      name: actor.name,
-      status: 'Active',
-      docType: null,
-      docId: null,
-      countryCode: 'US',
-      tags,
-      searchVector,
-      mergedInto: null,
-      dynamoPk: mdmId,
-      createdAt: ACTOR_SEED_AT,
-      updatedAt: ACTOR_SEED_AT,
-    });
-    documents.push({
-      mdmId,
-      version: 1,
-      details: {
-        mdmId,
-        subtype: 'Person',
-        name: actor.name,
-        status: 'Active',
-        docType: null,
-        docId: null,
-        countryCode: 'US',
-        tags,
-        aliases: [],
-        contacts: [],
-        relationshipRefs: {},
-        addresses: [],
-        mergedInto: null,
-        createdAt: ACTOR_SEED_AT,
-        updatedAt: ACTOR_SEED_AT,
-        actorId: actor.actorId,
-      },
-    });
+    const known = new Map<string, unknown>([
+      ['mdmId', mdmId],
+      ['dynamoPk', mdmId],
+      ['subtype', 'Person'],
+      ['name', actor.name],
+      ['tags', tags],
+      ['searchVector', searchVector],
+      ['status', statusValues[0] ?? null],
+      ['createdAt', ACTOR_SEED_AT],
+      ['updatedAt', ACTOR_SEED_AT],
+      ['version', 1],
+      ['actorId', actor.actorId],
+    ]);
+    const cell = (name: string, nullable: boolean, postgresType: string, field?: OntologyField): unknown => {
+      if (known.has(name)) return known.get(name);
+      const fallback = field?.defaultValue ?? defaults.get(name);
+      if (fallback !== undefined) return fallback;
+      if (field?.collection || postgresType.includes('[]')) return [];
+      if (field?.type === 'object' || postgresType === 'JSONB') return {};
+      if (field?.values.length) return field.values[0];
+      if (nullable || field?.required === false || !field) return null;
+      return null;
+    };
+    const details: Record<string, unknown> = {};
+    for (const field of [...identification, ...base]) {
+      details[field.name] = cell(field.name, !field.required, '', field);
+    }
+    details.actorId = actor.actorId;
+    known.set('details', details);
+    const rowFor = (columns: MdmColumn[]) => {
+      const row: Record<string, unknown> = {};
+      for (const column of columns) row[column.name] = cell(column.name, column.nullable, column.postgresType);
+      return row;
+    };
+    index.push(rowFor(indexColumns));
+    documents.push(rowFor(documentColumns));
   }
   return [
     { seedFor: 'mdmEntityIndex', rows: index },
