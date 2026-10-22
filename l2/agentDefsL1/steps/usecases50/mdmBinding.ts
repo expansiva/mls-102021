@@ -15,16 +15,16 @@ import {
   type D1UsecaseMdm,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
-/** Facade file the agent reads with `readText`. No disk path. */
-const MDM_FACADE_FILE: D1FileInfo = {
+/** Classification file the agent reads with `readText`. No disk path. Never imported. */
+const PLATFORM_KEYS_FILE: D1FileInfo = {
   project: 102034,
   level: 1,
-  folder: 'mdm/layer_3_usecases',
-  shortName: 'mdmFacade',
+  folder: 'mdm/defs',
+  shortName: 'platformDetailKeys',
   extension: '.ts',
 };
 
-const FACADE_FILE_NAME = `${MDM_FACADE_FILE.shortName}${MDM_FACADE_FILE.extension}`;
+const PLATFORM_KEYS_FILE_NAME = `${PLATFORM_KEYS_FILE.shortName}${PLATFORM_KEYS_FILE.extension}`;
 const NOT_LOADED = 'platform keys not loaded';
 
 const ENGINE_KEYS = new Set<string>([
@@ -46,7 +46,7 @@ const PLATFORM_BRANCHES = new Set<string>([
   ...Object.keys(mdm.subtypes).map(name => name.charAt(0).toLowerCase() + name.slice(1)),
 ]);
 
-const UNRECOGNIZED_FACADE_SET = `MDM_PLATFORM_DETAIL_KEYS set was not recognized in ${FACADE_FILE_NAME}.`;
+const UNRECOGNIZED_PLATFORM_SET = `MDM_PLATFORM_DETAIL_KEYS set was not recognized in ${PLATFORM_KEYS_FILE_NAME}.`;
 
 type ReadFacadeText = (file: D1FileInfo) => Promise<string | null>;
 
@@ -57,16 +57,54 @@ function loadedPlatformKeys(): ReadonlySet<string> {
   return platformKeys;
 }
 
+/** Literals and `...Name` spreads. Anything else is an unrecognized form. */
+function setElements(body: string): { literals: string[]; spreads: string[] } | null {
+  const literals: string[] = [];
+  const spreads: string[] = [];
+  const token = /'([^'\\]*)'|"([^"\\]*)"|\.\.\.\s*([A-Za-z_][A-Za-z0-9_]*)|([,\s]+)/g;
+  let end = 0;
+  for (const match of body.matchAll(token)) {
+    if (match.index !== end) return null;
+    end = match.index + match[0].length;
+    if (match[3]) spreads.push(match[3]);
+    else if (match[1] != null || match[2] != null) literals.push((match[1] ?? match[2]) as string);
+  }
+  if (end !== body.length) return null;
+  if (literals.length === 0 && spreads.length === 0) return null;
+  return { literals, spreads };
+}
+
+/** `export const Name = [ '…', … ] as const` in the same classification file. */
+function exportedConstArray(text: string, name: string): string[] | null {
+  const block = new RegExp(
+    `export\\s+const\\s+${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as\\s+const\\b`,
+  ).exec(text);
+  if (!block) return null;
+  const elements = setElements(block[1]);
+  if (!elements || elements.spreads.length > 0) return null;
+  return elements.literals;
+}
+
 /**
  * Keys `entity.update` accepts as a caller patch: `MDM_PLATFORM_DETAIL_KEYS`
- * read from the facade source, minus `ENGINE_KEYS`. An unrecognized set throws.
+ * read from the classification file, minus `ENGINE_KEYS`.
+ * The set may list string literals and spreads of `export const` arrays in the
+ * same text. A missing export, an unrecognized form, or an empty read throws
+ * with the file name. A spread whose name is not in the file throws with that name.
  * An empty set is never returned in place of a failed read.
  */
 export function platformKeysFromFacadeText(text: string): ReadonlySet<string> {
-  const block = /const\s+MDM_PLATFORM_DETAIL_KEYS\s*=\s*new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(text);
-  if (!block) throw new Error(UNRECOGNIZED_FACADE_SET);
-  const quoted = [...block[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
-  if (quoted.length === 0) throw new Error(UNRECOGNIZED_FACADE_SET);
+  const block = /(?:export\s+)?const\s+MDM_PLATFORM_DETAIL_KEYS\b[\s\S]*?new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(text);
+  if (!block) throw new Error(UNRECOGNIZED_PLATFORM_SET);
+  const elements = setElements(block[1]);
+  if (!elements) throw new Error(UNRECOGNIZED_PLATFORM_SET);
+  const quoted: string[] = [...elements.literals];
+  for (const name of elements.spreads) {
+    const resolved = exportedConstArray(text, name);
+    if (!resolved) throw new Error(`${name} is not an exported const array in ${PLATFORM_KEYS_FILE_NAME}.`);
+    quoted.push(...resolved);
+  }
+  if (quoted.length === 0) throw new Error(UNRECOGNIZED_PLATFORM_SET);
   const keys = new Set<string>();
   for (const key of quoted) {
     if (!ENGINE_KEYS.has(key)) keys.add(key);
@@ -81,8 +119,8 @@ export function platformKeysFromFacadeText(text: string): ReadonlySet<string> {
  */
 export async function loadFacadePlatformKeys(read: ReadFacadeText = readText): Promise<ReadonlySet<string>> {
   if (platformKeys) return platformKeys;
-  const text = await read(MDM_FACADE_FILE);
-  if (text == null) throw new Error(`MDM facade text was not read: ${FACADE_FILE_NAME}`);
+  const text = await read(PLATFORM_KEYS_FILE);
+  if (text == null) throw new Error(`MDM platform keys file was not read: ${PLATFORM_KEYS_FILE_NAME}`);
   const keys = platformKeysFromFacadeText(text);
   platformKeys = keys;
   return keys;

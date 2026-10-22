@@ -25,7 +25,7 @@ import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/use
 import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
 
 setFacadePlatformKeysForTest(readFileSync(
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/defs/platformDetailKeys.ts'),
   'utf8',
 ));
 const AGENDA_KEPT = 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source';

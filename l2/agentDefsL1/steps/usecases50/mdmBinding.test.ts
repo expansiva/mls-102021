@@ -16,10 +16,8 @@ import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FACADE_TEXT = readFileSync(
-  path.resolve(HERE, '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
-  'utf8',
-);
+const PLATFORM_KEYS_PATH = path.resolve(HERE, '../../../../../mls-102034/l1/mdm/defs/platformDetailKeys.ts');
+const FACADE_TEXT = readFileSync(PLATFORM_KEYS_PATH, 'utf8');
 
 setFacadePlatformKeysForTest(FACADE_TEXT);
 
@@ -933,33 +931,45 @@ async function runPlan(
 }
 
 void test('platform patch keys are MDM_PLATFORM_DETAIL_KEYS minus the engine keys', () => {
-  const source = readFileSync(
-    path.resolve(HERE, '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
-    'utf8',
-  );
-  const block = /const\s+MDM_PLATFORM_DETAIL_KEYS\s*=\s*new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(source);
+  const source = readFileSync(PLATFORM_KEYS_PATH, 'utf8');
+  const block = /const\s+MDM_PLATFORM_DETAIL_KEYS\b[\s\S]*?new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(source);
   assert.ok(block);
   const engine = new Set(['mdmId', 'subtype', 'status', 'moduleTypes', 'tags', 'relationshipRefs', 'mergedInto', 'createdAt', 'updatedAt', 'namespaces']);
-  const expected = [...block[1].matchAll(/'([^']+)'/g)].map(match => match[1]).filter(key => !engine.has(key)).sort();
+  const names = [...block[1].matchAll(/\.\.\.\s*([A-Za-z_][A-Za-z0-9_]*)/g)].map(match => match[1]);
+  assert.ok(names.length > 0);
+  const quoted: string[] = [];
+  for (const name of names) {
+    const array = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as\\s+const\\b`).exec(source);
+    assert.ok(array, name);
+    quoted.push(...[...array[1].matchAll(/'([^']+)'/g)].map(match => match[1]));
+  }
+  const expected = quoted.filter(key => !engine.has(key)).sort();
   assert.ok(expected.length > 0);
   assert.deepEqual([...facadePlatformKeys()].sort(), expected);
   assert.equal(facadePlatformKeys().has('mdmId'), false);
+  assert.equal(facadePlatformKeys().has('namespaces'), false);
   assert.equal(facadePlatformKeys().has('privacyConsent'), true);
   assert.equal(facadePlatformKeys().has('registrationDraft'), true);
 });
 
-void test('a facade source without a recognizable set fails with a message', () => {
+void test('a classification source without a recognizable set fails with the file name', () => {
   assert.throws(
     () => platformKeysFromFacadeText('export const MDM_PLATFORM_DETAIL_KEYS = ["name"];\n'),
-    /mdmFacade\.ts/,
+    /platformDetailKeys\.ts/,
   );
   assert.throws(
     () => platformKeysFromFacadeText('const MDM_PLATFORM_DETAIL_KEYS = new Set<string>([]);\n'),
-    /MDM_PLATFORM_DETAIL_KEYS set was not recognized/,
+    /platformDetailKeys\.ts/,
+  );
+  assert.throws(
+    () => platformKeysFromFacadeText(
+      'export const MDM_PLATFORM_DETAIL_KEYS = new Set<string>([...MISSING_KEYS]);\n',
+    ),
+    /MISSING_KEYS/,
   );
 });
 
-void test('a missing facade file fails with the file name', async () => {
+void test('a missing classification file fails with the file name', async () => {
   setFacadePlatformKeysForTest(null);
   try {
     assert.throws(() => bindMdm({
@@ -971,11 +981,11 @@ void test('a missing facade file fails with the file name', async () => {
     }), /platform keys not loaded/);
     await assert.rejects(
       () => loadFacadePlatformKeys(async () => null),
-      /mdmFacade\.ts/,
+      /platformDetailKeys\.ts/,
     );
     await assert.rejects(
       () => loadFacadePlatformKeys(async () => 'export const MDM_PLATFORM_DETAIL_KEYS = ["name"];\n'),
-      /mdmFacade\.ts/,
+      /platformDetailKeys\.ts/,
     );
   } finally {
     setFacadePlatformKeysForTest(FACADE_TEXT);
