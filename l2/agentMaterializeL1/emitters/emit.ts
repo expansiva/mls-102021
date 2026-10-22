@@ -318,6 +318,11 @@ interface PortBinding {
   binding: string;
 }
 
+interface ClosedUnion {
+  path: string;
+  values: string[];
+}
+
 interface AdapterRoute {
   route: string;
   fn: string;
@@ -327,6 +332,7 @@ interface AdapterRoute {
   requiredFields: string[];
   allowedInputPaths: string[];
   nullableInputPaths: string[];
+  unions: ClosedUnion[];
 }
 
 /**
@@ -479,6 +485,7 @@ async function resolveAdapterRoute(
       requiredFields: members.requiredFields,
       allowedInputPaths: members.allowedPaths,
       nullableInputPaths: members.nullablePaths,
+      unions: members.unions,
     },
   };
 }
@@ -488,6 +495,7 @@ function renderAdapter(route: AdapterRoute): string {
   const required = route.requiredFields.map(item => `'${item}'`).join(', ');
   const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
   const nullable = route.nullableInputPaths.map(item => `'${item}'`).join(', ');
+  const unions = route.unions.map(item => `'${item.path}': [${item.values.map(value => `'${value.replaceAll('\\', '\\\\').replaceAll('\'', '\\\'')}'`).join(', ')}]`).join(', ');
   const inputType = `${route.contractInterface}['${route.route}']['input']`;
   const outputType = `${route.contractInterface}['${route.route}']['output']`;
   return [
@@ -496,7 +504,7 @@ function renderAdapter(route: AdapterRoute): string {
     '  if (held instanceof AppError) throw held;',
     // The scope field is the server's: it is set before the validation, so the page is never asked for it.
     `  const scoped = scopeParams(input.request.params, input.ctx, held, [${allowed}]);`,
-    `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}]);`,
+    `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}], { ${unions} });`,
     '  if (invalid) throw invalid;',
     `  const params = scoped as ${inputType};`,
     // The request takes the contract input type: no cast, so a wrong input path is a compile error there.
@@ -507,22 +515,20 @@ function renderAdapter(route: AdapterRoute): string {
   ].join('\n');
 }
 
-export function membersOfType(source: string, typeText: string): { requiredFields: string[]; allowedPaths: string[]; nullablePaths: string[] } | null {
+export function membersOfType(source: string, typeText: string): { requiredFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
   const text = typeText.trim();
   if (text.startsWith('{')) {
     // agentMaterializeL1: the rest of the contract follows, so a member typed with a named interface of the same
     // contract (`details: DetalhesItemCardapio`) is opened (the copied recipe allowed only `details`: 400 on details.details).
     const wrapped = `export interface Wrapped ${text.replaceAll('{', '{\n').replaceAll(';', ';\n').replaceAll('}', '\n}')}\n${source}`;
-    const members = contractMembers(wrapped, 'Wrapped');
-    const nullable = contractNullablePaths(wrapped, 'Wrapped');
-    if (!members || !nullable) return null;
-    return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: nullable };
+    const members = readMembers(wrapped, 'Wrapped');
+    if (!members) return null;
+    return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: members.nullablePaths, unions: members.unions };
   }
   if (!IDENT.test(text)) return null;
-  const members = contractMembers(source, text);
-  const nullable = contractNullablePaths(source, text);
-  if (!members || !nullable) return null;
-  return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: nullable };
+  const members = readMembers(source, text);
+  if (!members) return null;
+  return { requiredFields: members.requiredFields, allowedPaths: members.allowedPaths, nullablePaths: members.nullablePaths, unions: members.unions };
 }
 
 export function routeClause(source: string, route: string): string | null {
@@ -644,7 +650,8 @@ function authorizeSource(mapped: boolean): string {
 export function validateSource(): string {
   return [
     '// `null` is accepted only where the contract type declares it; elsewhere it is refused, never read as absent.',
-    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = []): AppError | null {',
+    '// A required member is a present key. `\'\'` is a string, refused only when a closed union omits it.',
+    'function validateInput(params: unknown, fields: readonly string[], allowed: readonly string[], nullable: readonly string[] = [], unions: Readonly<Record<string, readonly string[]>> = {}): AppError | null {',
     '  const body = params && typeof params === \'object\' && !Array.isArray(params) ? params as Record<string, unknown> : null;',
     `  if (!body) return new AppError('${VALIDATION_ERROR}', 'Request body must be an object.', 400);`,
     '  const invalidPath = (value: unknown, prefix: string): string => {',
@@ -654,6 +661,8 @@ export function validateSource(): string {
     "      const path = prefix ? prefix + '.' + key : key;",
     "      if (!allowed.includes(path)) return path + ' is not permitted.';",
     "      if (child === null && !nullable.includes(path)) return path + ' must not be null.';",
+    '      const permitted = unions[path];',
+    '      if (permitted && child !== null && (typeof child !== \'string\' || !permitted.includes(child))) return path + \' is not a permitted value.\';',
     '      const invalid = invalidPath(child, path); if (invalid) return invalid;',
     '    }',
     '    return \'\';',
@@ -663,7 +672,7 @@ export function validateSource(): string {
     '    // A required member of an absent optional parent is not required; a required parent has its own entry.',
     '    // A list on the way applies the rest of the path to each of its items: an empty list requires nothing.',
     '    const missing = (value: unknown, parts: readonly string[], path: string, top: boolean): string => {',
-    '      if (parts.length === 0) return value === undefined || (value === null && !nullable.includes(field)) || value === \'\' ? path : \'\';',
+    '      if (parts.length === 0) return value === undefined || (value === null && !nullable.includes(field)) ? path : \'\';',
     '      if (!top && (value === undefined || value === null)) return \'\';',
     '      if (Array.isArray(value)) {',
     '        for (const [index, item] of value.entries()) { const found = missing(item, parts, `${path}[${index}]`, false); if (found) return found; }',
@@ -1243,7 +1252,22 @@ export function unopenedNamedMembers(source: string, typeText: string, allowedPa
   return out;
 }
 
-function readMembers(source: string, name: string, seen: ReadonlySet<string> = new Set()): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[]; nullablePaths: string[] } | null {
+/** String-literal union (`'a' | 'b'`, optional `| null`). Anything else, including `string`, is not closed. */
+function closedUnionLiterals(declared: string): string[] | null {
+  const text = declared.replace(/;\s*$/u, '').trim();
+  if (!text || text.includes('{') || text.includes('[')) return null;
+  const parts = text.split('|').map(part => part.trim()).filter(part => part && part !== 'null' && part !== 'undefined');
+  if (parts.length === 0) return null;
+  const values: string[] = [];
+  for (const part of parts) {
+    const match = /^(['"])((?:\\.|(?!\1).)*)\1$/u.exec(part);
+    if (!match) return null;
+    values.push(match[2].replace(/\\(['"\\])/gu, '$1'));
+  }
+  return values;
+}
+
+function readMembers(source: string, name: string, seen: ReadonlySet<string> = new Set()): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
   const tokenText = `export interface ${name} `;
   const at = source.indexOf(tokenText);
   if (at < 0) return null;
@@ -1268,6 +1292,7 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
   const allowedFields: string[] = [];
   const allowedPaths: string[] = [];
   const nullablePaths: string[] = [];
+  const unions: ClosedUnion[] = [];
   const parents: string[] = [];
   depth = 1;
   const lines = body.split('\n');
@@ -1283,6 +1308,8 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
       // `x: T | null` on one line, or `x: null | {` opening an object.
       const declared = line.slice(line.indexOf(':') + 1);
       if (/\bnull\b/.test(opens > closes ? declared.slice(0, declared.indexOf('{')) : declared)) nullablePaths.push(path);
+      const literals = closedUnionLiterals(opens > closes ? declared.slice(0, declared.indexOf('{')) : declared);
+      if (literals) unions.push({ path, values: literals });
       if (opens > closes) parents.push(match[1]);
       else {
         // agentMaterializeL1: a member typed with a named interface of the same contract (also `T[]`, `T | null`)
@@ -1294,6 +1321,7 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
             for (const child of inner.allowedPaths) allowedPaths.push(`${path}.${child}`);
             for (const child of inner.requiredFields) requiredFields.push(`${path}.${child}`);
             for (const child of inner.nullablePaths) nullablePaths.push(`${path}.${child}`);
+            for (const child of inner.unions) unions.push({ path: `${path}.${child.path}`, values: child.values });
           }
         }
       }
@@ -1304,7 +1332,7 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
     }
     depth += opens - closes;
   }
-  return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)], nullablePaths: [...new Set(nullablePaths)] };
+  return { requiredFields, allowedFields: [...new Set(allowedFields)], allowedPaths: [...new Set(allowedPaths)], nullablePaths: [...new Set(nullablePaths)], unions };
 }
 
 interface UsecaseFunction {

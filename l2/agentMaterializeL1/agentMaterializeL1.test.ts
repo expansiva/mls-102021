@@ -1285,11 +1285,11 @@ test('the emitted input validator is run on every shape a contract has: nested, 
   // task always failed with "checklist.ordem is required", the list was read as if it were one item).
   const js = ts.transpileModule(`${validateSource()}\nreturn validateInput;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   class AppError extends Error { constructor(public code: string, message: string) { super(message); } }
-  const validateInput = new Function('AppError', js)(AppError) as (params: unknown, fields: string[], allowed: string[], nullable?: string[]) => AppError | null;
+  const validateInput = new Function('AppError', js)(AppError) as (params: unknown, fields: string[], allowed: string[], nullable?: string[], unions?: Record<string, readonly string[]>) => AppError | null;
   const fields = ['id', 'checklist.ordem', 'checklist.details', 'checklist.details.details', 'checklist.details.details.descricao', 'details', 'details.motivo'];
   const allowed = ['id', 'checklist', 'checklist.id', 'checklist.ordem', 'checklist.details', 'checklist.details.details', 'checklist.details.details.descricao', 'details', 'details.motivo', 'details.nota'];
   const item = (ordem?: number) => ({ ...(ordem === undefined ? {} : { ordem }), details: { details: { descricao: 'x' } } });
-  const run = (body: unknown, nullable: string[] = []) => validateInput(body, fields, allowed, nullable)?.message ?? 'ok';
+  const run = (body: unknown, nullable: string[] = [], unions?: Record<string, readonly string[]>) => validateInput(body, fields, allowed, nullable, unions)?.message ?? 'ok';
   assert.equal(run({ id: '1', checklist: [item(1), item(2)], details: { motivo: 'm' } }), 'ok', 'every item has its required members');
   assert.equal(run({ id: '1', checklist: [], details: { motivo: 'm' } }), 'ok', 'an empty list requires nothing');
   assert.equal(run({ id: '1', details: { motivo: 'm' } }), 'ok', 'an absent optional list requires nothing');
@@ -1299,6 +1299,15 @@ test('the emitted input validator is run on every shape a contract has: nested, 
   assert.equal(run({ id: '1', checklist: [{ ...item(1), extra: 1 }], details: { motivo: 'm' } }), 'checklist.extra is not permitted.');
   assert.equal(run({ id: '1', details: { motivo: null } }), 'details.motivo must not be null.');
   assert.equal(run({ id: '1', details: { motivo: null } }, ['details.motivo']), 'ok', 'null where the contract allows it');
+  assert.equal(validateInput({ termo: '' }, ['termo'], ['termo'])?.message ?? 'ok', 'ok', 'an empty string is a present string');
+  const outside = validateInput({ filtro: 'x' }, [], ['filtro'], [], { filtro: ['criadasPorMim', 'atribuidasAMim', 'emRevisao', 'devolvidas'] });
+  assert.equal(outside?.code, 'VALIDATION_ERROR');
+  assert.equal(outside?.message, 'filtro is not a permitted value.');
+  assert.equal(validateInput({ filtro: 'criadasPorMim' }, [], ['filtro'], [], { filtro: ['criadasPorMim', 'atribuidasAMim'] })?.message ?? 'ok', 'ok', 'a value of the closed union passes');
+  assert.equal(validateInput({}, ['termo'], ['termo'])?.message, 'termo is required.', 'a missing required member is still refused');
+  const parsed = membersOfType('', "{ filtro?: 'criadasPorMim' | 'atribuidasAMim' | 'emRevisao' | 'devolvidas'; termo: string; page: number }");
+  assert.deepEqual(parsed?.unions, [{ path: 'filtro', values: ['criadasPorMim', 'atribuidasAMim', 'emRevisao', 'devolvidas'] }]);
+  assert.deepEqual(parsed?.requiredFields.filter(field => field === 'termo' || field === 'filtro'), ['termo']);
 });
 
 test('a child a route writes with its parent is found by its fields and gets its port methods (repo.create is not a function)', async () => {
