@@ -6,9 +6,6 @@ export const SEED_ROWS_TOOL = 'writeSeedRows' as const;
 
 export const SEED_ROWS_TOOL_DESCRIPTION = 'Return the seed rows of one reference table as JSON in code, and an empty notApplicable list';
 
-/** The sentence the unit prompt gives the model until the module prompt carries the real privacy text. */
-export const PROVISIONAL_PRIVACY_SENTENCE = 'a provisional privacy text, clearly marked as provisional, until the module prompt gives the text';
-
 export interface SeedColumn {
   name: string;
   type: 'string' | 'integer' | 'boolean' | 'timestamp' | 'uuid' | 'enum' | 'object' | 'unknown';
@@ -38,7 +35,6 @@ export interface SeedTableUnit {
   initialData: string;
   /** True when the l4 entity declares `initialData`. A role never does. */
   loadedBySeed: boolean;
-  provisionalPrivacy: boolean;
   /** Seed-plan constraints (`ref:`, `state:`, `uniqueKeys:`). Empty for an initial table. */
   constraints: string[];
 }
@@ -158,7 +154,6 @@ export function referenceSeedUnit(input: {
   const ontology = ontologyOf(input.ontologySource);
   if (!ontology || ontology.kind === 'role') return null;
   if (input.requireInitial !== false && !ontology.initialData) return null;
-  const provisionalPrivacy = /privacy text/i.test(`${ontology.description}\n${ontology.createText}`);
   return {
     scenarioId: input.scenarioId,
     tableId: input.tableId,
@@ -173,7 +168,6 @@ export function referenceSeedUnit(input: {
     stateField: input.stateField,
     initialData: ontology.initialData,
     loadedBySeed: input.requireInitial !== false,
-    provisionalPrivacy,
     constraints: [...(input.constraints ?? [])],
   };
 }
@@ -263,7 +257,6 @@ export function seedRowsHuman(unit: SeedTableUnit, repair?: SeedRepair): string 
     `States: ${unit.states.length ? unit.states.join(', ') : '(none listed)'}`,
     unit.stateField ? `State field: ${unit.stateField}` : 'State field: (none)',
   ];
-  if (unit.provisionalPrivacy) lines.push(PROVISIONAL_PRIVACY_SENTENCE);
   if (repair) {
     lines.push('The previous rows were refused. Fix only these problems:');
     lines.push(...repair.problems.map(problem => `- ${problem}`));
@@ -313,13 +306,6 @@ function recordProblems(columns: readonly SeedColumn[], row: Record<string, unkn
   return problems;
 }
 
-function stringsOf(value: unknown): string[] {
-  if (typeof value === 'string') return [value];
-  if (Array.isArray(value)) return value.flatMap(stringsOf);
-  if (isRecord(value)) return Object.values(value).flatMap(stringsOf);
-  return [];
-}
-
 /** Problems of one answer. Empty means the rows can be emitted. */
 export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<string, unknown>[]): string[] {
   const problems: string[] = [];
@@ -339,9 +325,6 @@ export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<strin
       if (seen.has(token)) problems.push(`row ${index} repeats unique key ${key.join('+')}.`);
       seen.add(token);
     });
-  }
-  if (unit.provisionalPrivacy && rows.length > 0 && !rows.some(row => stringsOf(row).some(text => /provisional/i.test(text)))) {
-    problems.push('The privacy text is not marked as provisional.');
   }
   for (const constraint of unit.constraints) {
     const ref = /^ref:([^:]+):/u.exec(constraint);

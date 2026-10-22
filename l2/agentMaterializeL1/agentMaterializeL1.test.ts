@@ -24,7 +24,7 @@ import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMet
 import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { PROVISIONAL_PRIVACY_SENTENCE, referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { createAgent as seedRowUnitAgent, settleReferenceSeed } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
@@ -1546,7 +1546,8 @@ test('reference seed rows come from the l4, are checked, and are emitted beside 
   const countrySource = readFileSync(path.join(fixture, 'Country.defs.ts'), 'utf8');
   const privacySource = readFileSync(path.join(fixture, 'PrivacyText.defs.ts'), 'utf8');
   const seedPrompt = readFileSync(path.join(HERE, 'steps', 'seedRows25', 'prompt.md'), 'utf8');
-  assert.match(seedPrompt, new RegExp(PROVISIONAL_PRIVACY_SENTENCE));
+  assert.ok(seedPrompt.includes('A long text the l4 does not give is a placeholder, clearly marked as one.'), 'the generic placeholder rule');
+  assert.equal(/privacy/i.test(seedPrompt), false, 'no entity-named rule in the seed prompt');
   assert.match(seedPrompt, /Return every row the l4 description implies, never a sample: when it names a standard list \(for example the ISO 3166-1 countries\), return all of its entries\./);
   const country = referenceSeedUnit({ scenarioId: 'maintainCountries', tableId: 'country', ontologySource: countrySource, states: ['active'], stateField: 'status' });
   const privacy = referenceSeedUnit({ scenarioId: 'completeMyAccess', tableId: 'privacyText', ontologySource: privacySource, states: [], stateField: '' });

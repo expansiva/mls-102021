@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { referenceSeedUnit } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
 import { settleReferenceSeed, uuidV5 } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +23,17 @@ function unitOf(file: string, tableId: string) {
   assert.ok(unit);
   return unit;
 }
+
+test('a privacy text unit gets no sentence of its own', () => {
+  const privacy = unitOf('PrivacyText.defs.ts', 'privacyText');
+  const country = unitOf('Country.defs.ts', 'country');
+  const privacyLines = seedRowsHuman(privacy).split('\n');
+  const countryLines = seedRowsHuman(country).split('\n');
+  assert.equal(privacyLines.length, countryLines.length);
+  assert.equal(privacyLines.some(line => /placeholder|provisional/i.test(line)), false);
+  const rows = [{ version: 1, publishedAt: '2026-01-01T00:00:00Z', details: { title: 'Title', body: 'the text', language: 'en' } }];
+  assert.equal(seedRowProblems(privacy, rows).some(problem => /provisional|privacy/i.test(problem)), false);
+});
 
 test('initial rows receive a stable primary key and version 1', async () => {
   const country = unitOf('Country.defs.ts', 'country');
