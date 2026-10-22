@@ -1,6 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.ts" enhancement="_blank"/>
 
 import mdm from '/_102034_/l4/ontology/mdm.defs.js';
+import type { D1FileInfo } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { isL1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_MDM_CALLS,
@@ -13,27 +15,17 @@ import {
   type D1UsecaseMdm,
 } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 
-/**
- * Platform keys of the MDM detail record that `entity.update` accepts as a
- * caller patch. Engine fields stay out: status is inactivate/reactivate,
- * tags and moduleTypes are attachRole, relationshipRefs is link.
- * This set mirrors the facade. A key the facade does not accept is a gap.
- */
-const FACADE_PLATFORM_KEYS = new Set<string>([
-  'name', 'docType', 'docId', 'countryCode', 'aliases', 'contacts', 'addresses',
-  'privacyConsent', 'birthDate', 'gender', 'nationality', 'occupation', 'photoUrl', 'notes',
-  'companyKind', 'parentCompanyId', 'externalCode', 'legalName', 'tradeName', 'legalType',
-  'foundingDate', 'taxRegime', 'industryCode', 'website',
-  'sku', 'productType', 'category', 'brand', 'unitOfMeasure', 'isInventoried',
-  'serviceCode', 'serviceKind', 'parentServiceId', 'serviceType', 'durationMinutes', 'deliveryMode',
-  'locationType', 'locationCode', 'parentLocationId', 'capacity', 'propertyAddress',
-  'assetCategory', 'serialNumber', 'manufacturer', 'model',
-  'contactType', 'value', 'isVerified', 'verifiedAt',
-  'storageBucket', 'storagePath', 'originModule', 'docCategory', 'fileName', 'mimeType',
-  'bankRoutingNumber', 'bankName', 'accountNumber', 'accountType', 'swift', 'iban',
-  'pixKey', 'pixKeyType',
-  'promotionSource', 'promotedTo', 'ttlExpiresAt',
-]);
+/** Facade file the agent reads with `readText`. No disk path. */
+const MDM_FACADE_FILE: D1FileInfo = {
+  project: 102034,
+  level: 1,
+  folder: 'mdm/layer_3_usecases',
+  shortName: 'mdmFacade',
+  extension: '.ts',
+};
+
+const FACADE_FILE_NAME = `${MDM_FACADE_FILE.shortName}${MDM_FACADE_FILE.extension}`;
+const NOT_LOADED = 'platform keys not loaded';
 
 const ENGINE_KEYS = new Set<string>([
   'mdmId', 'subtype', 'status', 'moduleTypes', 'tags', 'relationshipRefs',
@@ -53,6 +45,58 @@ const PLATFORM_BRANCHES = new Set<string>([
   'base',
   ...Object.keys(mdm.subtypes).map(name => name.charAt(0).toLowerCase() + name.slice(1)),
 ]);
+
+const UNRECOGNIZED_FACADE_SET = `MDM_PLATFORM_DETAIL_KEYS set was not recognized in ${FACADE_FILE_NAME}.`;
+
+type ReadFacadeText = (file: D1FileInfo) => Promise<string | null>;
+
+let platformKeys: ReadonlySet<string> | null = null;
+
+function loadedPlatformKeys(): ReadonlySet<string> {
+  if (!platformKeys) throw new Error(NOT_LOADED);
+  return platformKeys;
+}
+
+/**
+ * Keys `entity.update` accepts as a caller patch: `MDM_PLATFORM_DETAIL_KEYS`
+ * read from the facade source, minus `ENGINE_KEYS`. An unrecognized set throws.
+ * An empty set is never returned in place of a failed read.
+ */
+export function platformKeysFromFacadeText(text: string): ReadonlySet<string> {
+  const block = /const\s+MDM_PLATFORM_DETAIL_KEYS\s*=\s*new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(text);
+  if (!block) throw new Error(UNRECOGNIZED_FACADE_SET);
+  const quoted = [...block[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  if (quoted.length === 0) throw new Error(UNRECOGNIZED_FACADE_SET);
+  const keys = new Set<string>();
+  for (const key of quoted) {
+    if (!ENGINE_KEYS.has(key)) keys.add(key);
+  }
+  return keys;
+}
+
+/**
+ * Reads `MDM_PLATFORM_DETAIL_KEYS` through the agent file API and caches the
+ * platform patch keys. A missing file or an unrecognized set throws with the
+ * file name. A loaded cache is returned as-is.
+ */
+export async function loadFacadePlatformKeys(read: ReadFacadeText = readText): Promise<ReadonlySet<string>> {
+  if (platformKeys) return platformKeys;
+  const text = await read(MDM_FACADE_FILE);
+  if (text == null) throw new Error(`MDM facade text was not read: ${FACADE_FILE_NAME}`);
+  const keys = platformKeysFromFacadeText(text);
+  platformKeys = keys;
+  return keys;
+}
+
+/** Test seam. `null` clears the cache so the binding fails closed. */
+export function setFacadePlatformKeysForTest(text: string | null): void {
+  platformKeys = text == null ? null : platformKeysFromFacadeText(text);
+}
+
+/** Platform patch keys currently accepted by the facade source. */
+export function facadePlatformKeys(): ReadonlySet<string> {
+  return loadedPlatformKeys();
+}
 
 const READ_CAPABILITIES = [
   'read.byId',
@@ -88,6 +132,7 @@ export function capabilityApplies(name: string, operation: string): boolean {
  * cannot feed is not offered.
  */
 export function mdmForOperation(input: MdmBindInput & { operation: string }): MdmBindResult {
+  loadedPlatformKeys();
   return bindMdm({
     ...input,
     selected: input.capabilities.filter(name => capabilityApplies(name, input.operation)),
@@ -135,7 +180,7 @@ export function isMdmFacadeCall(value: string): value is D1MdmCall {
 
 /** A patch key the caller module may not write. Platform keys and the caller namespace are allowed. */
 export function isForeignMdmPatchKey(namespace: string, key: string): boolean {
-  if (FACADE_PLATFORM_KEYS.has(key)) return false;
+  if (loadedPlatformKeys().has(key)) return false;
   return key !== namespace;
 }
 
@@ -230,6 +275,7 @@ export interface MdmBindResult extends D1UsecaseMdm {
 }
 
 export function bindMdm(input: MdmBindInput): MdmBindResult {
+  loadedPlatformKeys();
   const role = input.namespace && input.entityId ? `${input.namespace}.${input.entityId}` : '';
   const gaps: D1MdmGap[] = [];
   const calls: D1MdmPlannedCall[] = [];
@@ -560,13 +606,14 @@ function platformPatchKey(path: string): { key: string; argPath: string } | { ga
     return { gap: `${path} is not a platform branch. Module data is the caller namespace key, not a platform patch.` };
   }
   // A facade object (privacyConsent, …) is one patch key. Subfields share that key and the object path.
-  if (parts.length > 3 && FACADE_PLATFORM_KEYS.has(parts[2])) {
+  const keys = loadedPlatformKeys();
+  if (parts.length > 3 && keys.has(parts[2])) {
     return { key: parts[2], argPath: parts.slice(0, 3).join('.') };
   }
   if (ENGINE_KEYS.has(leaf)) {
     return { gap: `${path} is not an edit.platformFields key. status is inactivate or reactivate; tags are attachRole.` };
   }
-  if (!FACADE_PLATFORM_KEYS.has(leaf)) {
+  if (!keys.has(leaf)) {
     return { gap: `${path} has no key on entity.update.` };
   }
   return { key: leaf, argPath: path };

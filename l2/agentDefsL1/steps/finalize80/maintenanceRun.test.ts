@@ -1,7 +1,16 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/finalize80/maintenanceRun.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+
+setFacadePlatformKeysForTest(readFileSync(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  'utf8',
+));
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';

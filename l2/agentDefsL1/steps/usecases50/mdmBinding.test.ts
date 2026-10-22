@@ -4,15 +4,24 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { domainSignature, mdmInputFields, ontologyLeaves, platformFieldPaths, writePreconditionPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
 import { coreUsecaseRequest, fixturePlan } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
-import { bindMdm, capabilityApplies, isForeignMdmPatchKey, mdmFacadeGaps, mdmFlowGaps, mdmForOperation } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import { bindMdm, capabilityApplies, facadePlatformKeys, isForeignMdmPatchKey, loadFacadePlatformKeys, mdmFacadeGaps, mdmFlowGaps, mdmForOperation, platformKeysFromFacadeText, setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1MdmArgument, D1MdmPlannedCall, D1UsecaseMdm, D1UsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveFixtureFile } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import { AGENDA_CLINICA_F35E28A } from '/_102021_/l2/agentDefsL1/fixtures/agendaClinica-f35e28a/root.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FACADE_TEXT = readFileSync(
+  path.resolve(HERE, '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  'utf8',
+);
+
+setFacadePlatformKeysForTest(FACADE_TEXT);
 
 const BENCH = AGENDA_CLINICA_F35E28A;
 
@@ -922,6 +931,56 @@ async function runPlan(
   }
   return { trace, mdmId, created, conflict };
 }
+
+void test('platform patch keys are MDM_PLATFORM_DETAIL_KEYS minus the engine keys', () => {
+  const source = readFileSync(
+    path.resolve(HERE, '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+    'utf8',
+  );
+  const block = /const\s+MDM_PLATFORM_DETAIL_KEYS\s*=\s*new\s+Set(?:<[^>]*>)?\s*\(\s*\[([\s\S]*?)\]\s*\)/.exec(source);
+  assert.ok(block);
+  const engine = new Set(['mdmId', 'subtype', 'status', 'moduleTypes', 'tags', 'relationshipRefs', 'mergedInto', 'createdAt', 'updatedAt', 'namespaces']);
+  const expected = [...block[1].matchAll(/'([^']+)'/g)].map(match => match[1]).filter(key => !engine.has(key)).sort();
+  assert.ok(expected.length > 0);
+  assert.deepEqual([...facadePlatformKeys()].sort(), expected);
+  assert.equal(facadePlatformKeys().has('mdmId'), false);
+  assert.equal(facadePlatformKeys().has('privacyConsent'), true);
+  assert.equal(facadePlatformKeys().has('registrationDraft'), true);
+});
+
+void test('a facade source without a recognizable set fails with a message', () => {
+  assert.throws(
+    () => platformKeysFromFacadeText('export const MDM_PLATFORM_DETAIL_KEYS = ["name"];\n'),
+    /mdmFacade\.ts/,
+  );
+  assert.throws(
+    () => platformKeysFromFacadeText('const MDM_PLATFORM_DETAIL_KEYS = new Set<string>([]);\n'),
+    /MDM_PLATFORM_DETAIL_KEYS set was not recognized/,
+  );
+});
+
+void test('a missing facade file fails with the file name', async () => {
+  setFacadePlatformKeysForTest(null);
+  try {
+    assert.throws(() => bindMdm({
+      entityId: 'Item',
+      namespace: 'estoqueFicticio',
+      capabilities: [],
+      selected: [],
+      platformFields: [],
+    }), /platform keys not loaded/);
+    await assert.rejects(
+      () => loadFacadePlatformKeys(async () => null),
+      /mdmFacade\.ts/,
+    );
+    await assert.rejects(
+      () => loadFacadePlatformKeys(async () => 'export const MDM_PLATFORM_DETAIL_KEYS = ["name"];\n'),
+      /mdmFacade\.ts/,
+    );
+  } finally {
+    setFacadePlatformKeysForTest(FACADE_TEXT);
+  }
+});
 
 async function runCreateOrAttach(
   mdm: D1UsecaseMdm,

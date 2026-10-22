@@ -21,7 +21,13 @@ import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { contractSources, coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
+import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import { coreUsecaseRequest } from '/_102021_/l2/agentDefsL1/steps/usecases50/fixtures/cases.js';
+
+setFacadePlatformKeysForTest(readFileSync(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  'utf8',
+));
 const AGENDA_KEPT = 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

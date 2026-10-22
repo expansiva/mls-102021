@@ -1,7 +1,16 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/requests.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+
+setFacadePlatformKeysForTest(readFileSync(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  'utf8',
+));
 
 import { D1_DEFINITION_SCHEMA } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import { D1_FLOW_ID, D1_FLOW_VERSION, D1_PIPELINE_SCHEMA, type D1PipelineState } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';

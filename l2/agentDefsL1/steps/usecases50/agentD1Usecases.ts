@@ -21,6 +21,7 @@ import { unitIsIntact } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { blockingDrift, blockingFinding } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { loadFacadePlatformKeys } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import type { D1UsecaseWork } from '/_102021_/l2/agentDefsL1/steps/usecases50/io.js';
 import {
   accountCalls,
@@ -84,6 +85,7 @@ export async function beforeD1UsecasesPromptStep(
       updateStatus(context, mutationParent, step, hookSequential, 'completed', kept),
     ];
   }
+  await loadFacadePlatformKeys();
   const loaded = await loadD1UsecaseWork(parsed.prompt.project, parsed.prompt.moduleName);
   if ('refusal' in loaded) return refuse(context, parentStep, step, hookSequential, loaded.refusal);
   await writeD1UsecaseWork(parsed.prompt.project, loaded.work);

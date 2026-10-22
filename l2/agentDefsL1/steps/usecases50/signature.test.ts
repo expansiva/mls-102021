@@ -1,7 +1,16 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/usecases50/signature.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { setFacadePlatformKeysForTest } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+
+setFacadePlatformKeysForTest(readFileSync(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l1/mdm/layer_3_usecases/mdmFacade.ts'),
+  'utf8',
+));
 
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';

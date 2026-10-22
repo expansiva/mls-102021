@@ -21,6 +21,7 @@ import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { earlierHold, buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import type { D1CallAccount } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
+import { loadFacadePlatformKeys } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import { assembleD1Finalize, writeD1Report } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import type { PoolTraceLine } from '/_102035_/l2/solution/pool.js';
@@ -53,6 +54,7 @@ export async function beforeD1FinalizePromptStep(
     return refuse(context, parentStep, step, hookSequential, 'Checkpoint is not intact. finalize80 wrote nothing.');
   }
 
+  await loadFacadePlatformKeys();
   const assembled = await assembleD1Finalize(prompt.project, prompt.moduleName);
   if ('refusal' in assembled) return refuse(context, parentStep, step, hookSequential, assembled.refusal);
   const built = buildD1Finalize({ ...assembled.request, pipeline });
