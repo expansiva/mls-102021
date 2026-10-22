@@ -13,6 +13,8 @@ export interface SeedColumn {
   name: string;
   type: 'string' | 'integer' | 'boolean' | 'timestamp' | 'uuid' | 'enum' | 'object' | 'unknown';
   required: boolean;
+  /** True when the l4 marks the field indexed, so persistence promotes it to a column. */
+  indexed: boolean;
   enumValues: string[];
   pattern: string;
   maxLength: number | null;
@@ -22,6 +24,8 @@ export interface SeedColumn {
 export interface SeedTableUnit {
   scenarioId: string;
   tableId: string;
+  /** L4 `moduleName`. The stable primary key is `<moduleName>.<tableId>:<unique key>`. */
+  moduleName: string;
   entityId: string;
   description: string;
   createText: string;
@@ -51,6 +55,7 @@ interface OntologyRead {
   fields: SeedColumn[];
   uniqueKeys: string[][];
   initialData: string;
+  moduleName: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,6 +99,7 @@ function columnsOf(fields: unknown): SeedColumn[] {
       name,
       type: columnType(meta),
       required: meta.required === true && !derived,
+      indexed: meta.indexed === true,
       enumValues,
       pattern: typeof meta.pattern === 'string' ? meta.pattern : '',
       maxLength: typeof meta.maxLength === 'number' ? meta.maxLength : null,
@@ -127,6 +133,7 @@ function ontologyOf(source: string): OntologyRead | null {
     fields,
     uniqueKeys: uniqueKeysOf(literal.uniqueKeys),
     initialData: typeof literal.initialData === 'string' ? literal.initialData.trim() : '',
+    moduleName: typeof literal.moduleName === 'string' ? literal.moduleName : '',
   };
 }
 
@@ -147,6 +154,7 @@ export function referenceSeedUnit(input: {
   return {
     scenarioId: input.scenarioId,
     tableId: input.tableId,
+    moduleName: ontology.moduleName,
     entityId: ontology.entityId,
     description: ontology.description,
     createText: ontology.createText,
