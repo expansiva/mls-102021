@@ -940,11 +940,15 @@ function paramIssues(param: unknown, path: string, issues: string[]): void {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(param, ['name', 'target', 'field', 'pages'], path, issues);
+  unknownKeys(param, ['name', 'target', 'field', 'pages', 'optional'], path, issues);
   needString(param, 'name', path, issues);
-  needString(param, 'target', path, issues);
+  // An optional contract input with no field to filter (d1_103 s2) has no target: '' is its value.
+  const unbound = param.optional === true && param.field === undefined && param.pages === undefined;
+  if (!unbound) needString(param, 'target', path, issues);
+  else if (typeof param.target !== 'string') issues.push(`Missing field ${path}.target.`);
   if (param.field !== undefined) needString(param, 'field', path, issues);
   if (param.pages !== undefined) needString(param, 'pages', path, issues);
+  if (param.optional !== undefined) needBoolean(param, 'optional', path, issues);
 }
 
 export function httpControllerIssues(data: unknown): string[] {

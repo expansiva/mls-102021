@@ -155,12 +155,14 @@ export interface D1RequestGapAnswer {
   choice: string;
 }
 
-/** `field` filters `target`. `pages` names the list organism instead of a field. */
+/** `field` filters `target`. `pages` names the list organism instead of a field. `optional` is the contract `?`. */
 export interface D1RequestParam {
   name: string;
   target: string;
   field?: string;
   pages?: string;
+  /** Present when the contract input is optional. A required param omits it. */
+  optional?: boolean;
 }
 
 export interface D1SelectedRequest {

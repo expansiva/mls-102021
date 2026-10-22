@@ -319,7 +319,7 @@ void test('resolution: closed candidates for the shapes without meta, and their 
     ['cursor', 'Thing', true, undefined, 'hasMore', [{ field: 'price', path: 'details.price' }]],
   ]);
   assert.deepEqual(resolved.computedBy, [{ path: 'summary', rule: 'countRule' }]);
-  assert.deepEqual(resolved.params, [{ name: 'page', target: 'list', pages: 'list' }, { name: 'rowsPage', target: 'cursor', pages: 'cursor' }]);
+  assert.deepEqual(resolved.params, [{ name: 'page', target: 'list', pages: 'list', optional: true }, { name: 'rowsPage', target: 'cursor', pages: 'cursor', optional: true }]);
 });
 
 /** d1_62 r2b: a query input that does not page filters a root output; a command input is the payload. */
@@ -346,13 +346,13 @@ void test('resolution: filter inputs take the ontology path with their name, els
   assert.deepEqual(first.unresolved.map(gap => [gap.path, gap.kind, gap.candidates]), [
     ['input.search', 'filterField', ['rows:details.label', 'rows:id', 'rows:name', 'rows:ownerId', D1_GAP_NONE]],
   ]);
-  assert.deepEqual(first.params, [{ name: 'ownerId', target: 'rows', field: 'ownerId' }, { name: 'search', target: 'rows' }]);
+  assert.deepEqual(first.params, [{ name: 'ownerId', target: 'rows', field: 'ownerId', optional: true }, { name: 'search', target: 'rows', optional: true }]);
   const resolved = applyResolutions({ route, definition, entities }, [{ path: 'input.search', choice: 'rows:name' }]);
   assert.deepEqual(resolved.unresolved, []);
-  assert.deepEqual(resolved.params[1], { name: 'search', target: 'rows', field: 'name' });
+  assert.deepEqual(resolved.params[1], { name: 'search', target: 'rows', field: 'name', optional: true });
 
-  const command = deriveRequest({ ...route, kind: 'cmd' }, definition, entities);
-  assert.deepEqual(command.params, []);
+  const command = deriveRequest({ ...route, kind: 'cmd', input: '{ ownerId: string; search?: string }' }, definition, entities);
+  assert.deepEqual(command.params, [{ name: 'search', target: '', optional: true }]);
   assert.deepEqual(command.unresolved, []);
 });
 

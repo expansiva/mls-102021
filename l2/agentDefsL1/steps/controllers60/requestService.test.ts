@@ -6,7 +6,7 @@ import test from 'node:test';
 import { seedControllerRequest, seedSnapshot } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import type { D1ServiceRow } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
-import { fieldsByEntity, requestServiceProblems } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import { fieldsByEntity, readContractV2, requestServiceProblems, serviceRowsFor } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { outputViews } from '/_102021_/l2/helpers/l1Defs/requestTree.js';
 
 void test('a contract v2 page controller is an adapter over one request service function', () => {
@@ -114,4 +114,42 @@ void test('a command whose transaction is not single fails the gate', () => {
     fieldsByEntity: fieldsByEntity({ ItemCard: { record: { fields: { id: { type: 'uuid' } } } } }),
   });
   assert.equal(kept.some(item => item.severity === 'error'), false, kept.map(item => item.message).join('; '));
+});
+
+void test('an optional param with no field enters the request def; a required one stays unresolved', () => {
+  const source = `/// <mls fileReference="_102099_/l2/tarefas/web/contracts/minhas_tarefas.defs.ts" enhancement="_blank"/>
+
+export interface TaskRow {
+  id: string;
+  title: string;
+}
+
+export interface MinhasTarefasContracts {
+  'tarefas.minhasTarefas.list': {
+    kind: 'qry';
+    input: { filtro?: 'a' | 'b'; termo: string };
+    output: { items: TaskRow[] };
+    rules: [];
+    access: { actors: ['member']; grants: ['memberTasks']; scope: 'organization' };
+  };
+}
+`;
+  const definition = readContractV2(source);
+  assert.ok(definition);
+  const built = serviceRowsFor('minhasTarefas', definition, [{
+    route: 'tarefas.minhasTarefas.list',
+    pageId: 'minhasTarefas',
+    kind: 'qry',
+    uses: [],
+    outputs: [{ key: 'items', entity: 'Task', many: true }],
+    params: [
+      { name: 'filtro', target: '', optional: true },
+      { name: 'termo', target: '' },
+    ],
+  }]);
+  const row = built.rows.find(item => item.route === 'tarefas.minhasTarefas.list');
+  assert.ok(row);
+  assert.deepEqual(row.params, [{ name: 'filtro', target: '', optional: true }]);
+  assert.equal(built.problems.some(item => item.code === 'FILTER_UNRESOLVED' && item.message.includes('input filtro')), false);
+  assert.equal(built.problems.some(item => item.code === 'FILTER_UNRESOLVED' && item.message.includes('input termo')), true);
 });

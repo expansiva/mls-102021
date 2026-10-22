@@ -7,6 +7,7 @@ import { D1_DEFINITION_SCHEMA } from '/_102021_/l2/agentDefsL1/helpers/d1Artifac
 import { D1_FLOW_ID, D1_FLOW_VERSION, D1_PIPELINE_SCHEMA, type D1PipelineState } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import type { D1InputArtifacts, D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { deriveRequest } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { resolverAnswers } from '/_102021_/l2/agentDefsL1/helpers/d1TestResolver.js';
 import { fieldsByEntity, readContractV2 as readContractV2Source, requestServiceProblems, serviceRowsFor, serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
@@ -79,7 +80,7 @@ void test('contract v2 requests follow entity and operation, including the renam
     usecaseId(real, 'Produto', 'list'),
   ]);
   const produtoId = load.params.find(item => item.name === 'produtoId');
-  assert.deepEqual(produtoId, { name: 'produtoId', target: 'movimentacoes', field: 'produtoId' });
+  assert.deepEqual(produtoId, { name: 'produtoId', target: 'movimentacoes', field: 'produtoId', optional: true });
   assert.equal(real.problems.some(item => item.code === 'CONTRACT_ACCESS_DIVERGENT'), false);
 
   const renamed = build('ledgerBin-39a5166', 'ledgerBin');
@@ -548,9 +549,9 @@ export interface SlipView {
     related: [{ field: 'details.identification.name', entity: 'ItemCard', relationship: 'noteItemCard' }],
   }]);
   assert.deepEqual(load?.params, [
-    { name: 'page', target: 'notes', pages: 'notes' },
-    { name: 'pageSize', target: 'notes', pages: 'notes' },
-    { name: 'itemCardId', target: 'notes', field: 'itemCardId' },
+    { name: 'page', target: 'notes', pages: 'notes', optional: true },
+    { name: 'pageSize', target: 'notes', pages: 'notes', optional: true },
+    { name: 'itemCardId', target: 'notes', field: 'itemCardId', optional: true },
   ]);
   const slip = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.slip');
   assert.deepEqual(slip?.outputs.map(item => [item.key, item.entity, item.many, item.parent, item.relationship]), [
@@ -590,4 +591,31 @@ export interface SlipView {
   const openRows = serviceRowsFor('board', definition, unanswered.selection.requests.map(serviceSourceOf));
   assert.ok(openRows.problems.some(problem => problem.code === 'FILTER_UNRESOLVED' && problem.severity === 'review' && problem.message.includes('input id')));
   assert.deepEqual(openRows.rows.find(row => row.route === 'ledgerDesk.board.slip')?.params ?? [], []);
+});
+
+/** An optional contract input is a param marked optional. A required input stays without the flag. */
+void test('optional contract param stays in params; a required param is unchanged', () => {
+  const entities = {
+    Task: { record: { fields: { id: { type: 'string' }, title: { type: 'string' } } } },
+  };
+  const definition = {
+    module: 'tarefas',
+    pageId: 'minhasTarefas',
+    projections: [{ name: 'TaskRow', entityId: '', requestIds: [], body: '{ id: string; title: string }' }],
+    routes: [],
+  };
+  const derived = deriveRequest({
+    route: 'tarefas.minhasTarefas.list',
+    kind: 'qry',
+    input: '{ termo: string; filtro?: \'a\' | \'b\' | \'c\' | \'d\' }',
+    output: '{ items: TaskRow[] }',
+    meta: { output: {}, lists: {}, params: {} },
+    rules: [],
+    access: { actors: [], grants: [], scope: '' },
+  }, definition, entities);
+  const filtro = derived.params.find(item => item.name === 'filtro');
+  const termo = derived.params.find(item => item.name === 'termo');
+  assert.equal(filtro?.optional, true);
+  assert.equal(termo?.optional, undefined);
+  assert.equal(termo?.name, 'termo');
 });

@@ -24,6 +24,8 @@ import {
  * d1_62 r2b: a query input that does not page filters a root output. Its candidates are `<output>:<path>`, the
  * ontology paths of the output entity whose last segment is the input name; with none, the text leaves of the entity.
  * A command input is the payload, not a filter.
+ * Every contract input is a param. Optional (`?`) is `optional: true`; a required param omits the flag.
+ * A required command input stays the payload (no param). An optional one still enters `params`.
  */
 
 /** A list page: `items: X[]` and at least one of these keys. */
@@ -51,6 +53,7 @@ export interface D1DeriveSource {
 interface Member {
   name: string;
   readonly: boolean;
+  optional: boolean;
   type: string;
 }
 
@@ -115,6 +118,18 @@ export function applyResolutions(source: D1DeriveSource, answers: readonly D1Req
   const inputs = members(route.input);
   const params = pageParams(ctx, inputs);
   if (route.kind !== 'cmd') params.push(...filterParams(ctx, inputs, root.filter(member => !flatNames.has(member.name)).map(member => member.name)));
+  for (const member of inputs) {
+    const found = params.find(item => item.name === member.name);
+    if (found) {
+      if (member.optional) found.optional = true;
+      continue;
+    }
+    // A required command payload, and an input already left unresolved, stay as they are.
+    // An optional input with no gap still enters.
+    if (member.optional && !ctx.unresolved.some(item => item.path === `input.${member.name}`)) {
+      params.push({ name: member.name, target: '', optional: true });
+    }
+  }
   return { outputs: ctx.outputs, params, unresolved: ctx.unresolved, computedBy: ctx.computedBy };
 }
 
@@ -609,7 +624,11 @@ function members(source: string): Member[] {
     const name = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(text.slice(i))?.[0];
     if (!name) break;
     i += name.length;
-    if (text[i] === '?') i += 1;
+    let optional = false;
+    if (text[i] === '?') {
+      optional = true;
+      i += 1;
+    }
     while (text[i] === ' ') i += 1;
     if (text[i] !== ':') break;
     i += 1;
@@ -626,7 +645,7 @@ function members(source: string): Member[] {
       else if (depth === 0 && (ch === ';' || ch === '\n')) break;
       i += 1;
     }
-    out.push({ name, readonly, type: text.slice(start, i).trim() });
+    out.push({ name, readonly, optional, type: text.slice(start, i).trim() });
   }
   return out;
 }

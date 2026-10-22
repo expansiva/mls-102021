@@ -48,6 +48,7 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
       target: param.target,
       ...(param.field ? { field: param.field } : {}),
       ...(param.pages ? { pages: param.pages } : {}),
+      ...(param.optional ? { optional: true } : {}),
     })),
     ...(request.computedBy?.length ? { computedBy: request.computedBy.map(item => ({ ...item })) } : {}),
     ...(request.unresolved?.length ? { unresolved: request.unresolved.map(item => ({ path: item.path, reason: item.reason })) } : {}),
@@ -159,7 +160,12 @@ export function serviceRowsFor(
     const params: D1ServiceParam[] = [];
     for (const param of source.params) {
       if (!param.field && !param.pages) {
-        // d1_62: a filter input left without a field (resolve25 answered none) is not applied. Said, not dropped silently.
+        // An optional contract input has no derived field. It still belongs on the request def.
+        if (param.optional) {
+          params.push(copyParam(param));
+          continue;
+        }
+        // d1_62: a required filter left without a field (resolve25 answered none) is not applied. Said, not dropped silently.
         review(problems, 'FILTER_UNRESOLVED', route.route, `Route ${route.route} input ${param.name} filters no derived field. The request service does not apply it.`);
         continue;
       }
@@ -379,6 +385,7 @@ function copyParam(param: D1ServiceRequestSource['params'][number]): D1ServicePa
   const out: D1ServiceParam = { name: param.name, target: param.target };
   if (param.field) out.field = param.field;
   if (param.pages) out.pages = param.pages;
+  if (param.optional) out.optional = true;
   return out;
 }
 

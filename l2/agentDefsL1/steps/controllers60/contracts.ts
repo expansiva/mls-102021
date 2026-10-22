@@ -116,7 +116,7 @@ export interface D1ServiceRequestSource {
   uses: string[];
   /** The derived outputs (d1_62): the classification says which projected fields are entity fields. */
   outputs: Array<Pick<D1RequestOutput, 'key' | 'entity' | 'many' | 'parent' | 'relationship' | 'computed' | 'related' | 'mapped' | 'page' | 'pageSize' | 'hasMore' | 'total'>>;
-  params: Array<{ name: string; target: string; field?: string; pages?: string }>;
+  params: Array<{ name: string; target: string; field?: string; pages?: string; optional?: boolean }>;
   /** Readonly values a resolution tied to a route rule (d1_62). */
   computedBy?: D1RequestComputedBy[];
   /** What the derivation left open (d1_60). The `output.` ones become `unresolved` nodes of the tree (d1_61). */
@@ -128,6 +128,8 @@ export interface D1ServiceParam {
   target: string;
   field?: string;
   pages?: string;
+  /** Present when the contract input is optional. A required param omits it. */
+  optional?: boolean;
 }
 
 export interface D1ServiceRow {
