@@ -198,6 +198,11 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this usecase: ${draft.refusal.slice(0, 16000)}`));
   if (rules.length) parts.push(section('Rules this usecase must apply (rulesApplied, with the l4 text; enforce each one, or declare it notApplicable with the reason)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
+  const authority = ctx.units.find(item => item.definition.artifactType === 'authorityMap');
+  if (authority) {
+    const authoritySource = await readOptional(authority.output) ?? JSON.stringify(authority.definition.data);
+    parts.push(section('Actors of the authorityMap', authorityActorsText(authorityActorIds(authoritySource))));
+  }
   const others = ruleTexts(rulesSource, allRuleIds(rulesSource).filter(ruleId => !ruleIds.includes(ruleId)));
   if (others.length) parts.push(section('Other rules of the module (l4 text: a rule about this entity and operation that the def missed is enforced here too)', others.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
   const dependencies = dependencyUnits(ctx, unit);
@@ -436,8 +441,27 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const derived = [...new Set(entities.flatMap(entity => entity.derived))];
   const parentRules = await parentRulesOf(ctx, unit, entities);
   const transition = await transitionOf(ctx, unit);
+  const authority = ctx.units.find(item => item.definition.artifactType === 'authorityMap');
+  const actorIds = authority
+    ? authorityActorIds(await readOptional(authority.output) ?? JSON.stringify(authority.definition.data))
+    : undefined;
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId) }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId), actorIds }),
   ];
+}
+
+/** Actor ids of an authorityMap source (`"actorRef": "companyOwner"`). */
+export function authorityActorIds(source: string): string[] {
+  const ids: string[] = [];
+  for (const match of source.matchAll(/["']actorRef["']\s*:\s*["']([A-Za-z][A-Za-z0-9]*)["']/gu)) {
+    if (!ids.includes(match[1])) ids.push(match[1]);
+  }
+  return ids;
+}
+
+/** Prompt text: a rule check may name only these actor ids. */
+export function authorityActorsText(actorIds: readonly string[]): string {
+  const list = actorIds.map(id => `- ${id}`).join('\n');
+  return [`an actor named in a rule check is one of these ids; never another name`, list].filter(Boolean).join('\n');
 }

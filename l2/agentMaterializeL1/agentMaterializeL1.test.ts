@@ -30,7 +30,7 @@ import { reconcileL5Backend, type L5FileFact } from '/_102021_/l2/agentMateriali
 import { workflowRouteProblems, workflowRoutes } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { mdmLinks, mdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
-import { citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { authorityActorIds, authorityActorsText, citedEntities, mdmContextSection, ontologyNames, ruleNames, transitionTarget, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { REQUEST_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/requests50/agentM12RequestService.js';
 import { delegatedRuleProblems, mdmInputProblems, mdmInputRoutes, mdmPlatformSectionForRequest, normalizeRequestsTyping, requestGate, requestsTypeOf, unownedMdmEntities, unownedMdmSection, untypedInputProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 import { buildM12PlannedSteps as planSteps, runArgsJson, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
@@ -199,6 +199,20 @@ void test('the usecase gate names every problem a repair can act on', () => {
   assert.ok(problems.some(item => item.includes('/_102099_/')));
   assert.ok(problems.some(item => item.includes('empty catch')));
   assert.ok(problems.some(item => item.includes('descontoNaoExcedeSubtotal')));
+});
+
+void test('a rule check names an actor id of the authorityMap', () => {
+  const header = '/// <mls fileReference="_102047_/l1/onboarding/u/updateCompany.ts" enhancement="_blank"/>';
+  const map = 'export const entries = [\n  { "grantId": "g", "actorRef": "companyOwner" }\n] as const;\n';
+  assert.deepEqual(authorityActorIds(map), ['companyOwner']);
+  const text = authorityActorsText(authorityActorIds(map));
+  assert.ok(text.includes('an actor named in a rule check is one of these ids; never another name'));
+  assert.ok(text.includes('companyOwner'));
+  const body = (actor: string) => [header, `export async function updateCompany(input: unknown, ctx: unknown) { if (ctx.sessionContext.actorRef !== '${actor}') throw new AppError('FORBIDDEN', 'no', 403, { ruleId: 'somenteDono' }); }`].join('\n');
+  const input = { header, functionName: 'updateCompany', project: 102047, moduleName: 'onboarding', ruleIds: ['somenteDono'], actorIds: ['companyOwner'] as const };
+  const refused = usecaseGate(body('owner'), input);
+  assert.ok(refused.some(item => item.includes("'owner'") && item.includes('companyOwner') && item.includes('keep the condition')));
+  assert.deepEqual(usecaseGate(body('companyOwner'), input), []);
 });
 
 void test('the tests gate refuses an unknown route, a wrong mutating flag and a marker without its field ref', () => {
