@@ -792,20 +792,22 @@ test('an MDM usecase is told the engine is flat today (agendaClinica read detail
   assert.equal(usesMdm(unit(['_102047_/l1/comandaRestaurante/layer_3_domain/entities/comanda.defs.ts'], [{ kind: 'port', call: 'get' }])), false);
 });
 
-test('a named MDM type uses the platform interface and the platform predicates', () => {
+test('a named MDM type uses the platform interface and the platform functions read from the files', () => {
   const ontology = readFileSync(path.join(ROOT, 'mls-102034', 'l4', 'ontology', 'mdm.defs.ts'), 'utf8');
-  const text = mdmContextSection('onboarding', ontology, null);
-  const phrases = [
-    'Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
-    'Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
-    'The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
-    'The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
-    'The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
-  ];
-  for (const phrase of phrases) assert.ok(text.includes(phrase), phrase.slice(0, 80));
-  for (const name of ['PrivacyConsentValue', 'isPersonAccessComplete', 'isValidPrivacyConsent', 'isProtectedPrivacyCountry', '/_102034_/l1/mdm/module.js', 'getLoginEmail', 'listUsers', 'nextCursor']) assert.ok(text.includes(name), name);
-  assert.equal((text.match(/mdmSupport/gu) ?? []).length, 1, 'mdmSupport appears only in the prohibition');
-  assert.ok(!mdmContextSection('onboarding', 'export const mdm = { fields: { name: { type: "string" } } } as const;', null).includes('PrivacyConsentValue'), 'no named of, no platform type rule');
+  const facade = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'layer_3_usecases', 'mdmFacade.ts'), 'utf8');
+  const moduleSource = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'module.ts'), 'utf8');
+  const text = mdmContextSection('onboarding', ontology, facade, [], moduleSource);
+  assert.ok(text.includes('never rebuilt from other fields or reimplemented'), 'the platform API rule is generic');
+  assert.ok(text.includes('built in its exported shape; server-owned fields come from the server'), 'a platform record follows the export');
+  assert.ok(text.includes('export interface PrivacyConsentValue'), 'the named type interface comes from the module file');
+  assert.ok(text.includes('consentedAt: string'), 'required members come from that export');
+  assert.ok(text.includes('getLoginEmail(mdmId: string)'), 'a facade method comes from the facade file');
+  assert.ok(text.includes('listUsers(input?: MdmListUsersInput)'), 'a facade method comes from the facade file');
+  assert.ok(!text.includes("channel `web`") && !text.includes("channel `'web'`"), 'no platform field value written by hand');
+  const fixture = 'export const mdm = { fields: { name: { type: "string" } } } as const;';
+  const without = mdmContextSection('onboarding', fixture, null, [], moduleSource);
+  assert.ok(!without.includes('PrivacyConsent'), 'no named of, no platform type from the module');
+  assert.ok(!without.includes('isValidPrivacyConsent'), 'no function name written by hand');
 });
 
 test('a request contract that names an MDM entity a usecase owns still gets the platform MDM APIs', () => {
@@ -816,9 +818,16 @@ test('a request contract that names an MDM entity a usecase owns still gets the 
     unit('usecase', { usecaseId: 'updateMember', entityId: 'Member' }),
   ];
   const cited = 'export interface MyAccessContracts { save(input: { member: { name: string } }): { member: { name: string } } }';
-  const text = mdmPlatformSectionForRequest(cited, owned, ontology);
+  const facadeSource = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'layer_3_usecases', 'mdmFacade.ts'), 'utf8');
+  const moduleSource = readFileSync(path.join(ROOT, 'mls-102034', 'l1', 'mdm', 'module.ts'), 'utf8');
+  const text = mdmPlatformSectionForRequest(cited, owned, ontology, facadeSource, moduleSource);
   assert.ok(text.includes('## The platform APIs for MDM data (source: the platform MDM facade)'), text.slice(0, 120));
-  for (const name of ['getLoginEmail', 'listUsers', 'isPersonAccessComplete']) assert.ok(text.includes(name), name);
+  assert.ok(text.includes('never rebuilt from other fields or reimplemented'), text.slice(0, 200));
+  // d1_91 s2d: the request path gets the platform functions too; they come from the facade files, not from the generator.
+  assert.ok(text.includes('isPersonAccessComplete'), 'the request gets the platform predicates from the module file');
+  assert.ok(text.includes('listUsers'), 'the request gets the facade methods from the facade file');
+  const bare = mdmPlatformSectionForRequest(cited, owned, ontology);
+  assert.ok(!bare.includes('isPersonAccessComplete'), 'without the files, no function name is written by hand');
   assert.equal(mdmPlatformSectionForRequest('export interface PageContracts { save(input: { title: string }): { title: string } }', owned, ontology), '', 'a contract that names no MDM entity gets no section');
   const unowned = [unit('domainEntity', { entityId: 'Member', storageTarget: 'mdm' })];
   assert.equal(mdmPlatformSectionForRequest(cited, unowned, ontology), '', 'an entity with no usecase stays on the MDM section, which already carries these lines');

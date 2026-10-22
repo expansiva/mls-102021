@@ -80,10 +80,9 @@ declared filter that is never applied returns the records of every parent (the i
 
 - `input` is `Record<string, unknown>`: convert each value before use (`String(input.id)`, `Number(input.version)`, or a
   checked cast); never pass an `unknown` where a type is expected.
-- A nested input object the caller may not send (`details.person`, `details.general`, the module branch, any optional
-  group) is read with optional chaining (`input.details?.person?.privacyConsent`) and its absence means "not given":
-  never dereference a nested input object without checking it exists (createProfissional and createConsulta threw a
-  TypeError on `input.details.person.privacyConsent` / `input.details.attendanceNote`).
+- A nested input object the caller may not send (a group inside `details`, the module branch, any optional
+  group) is read with optional chaining (`input.details?.group?.field`) and its absence means "not given":
+  never dereference a nested input object without checking it exists.
 - `resolveRepository` returns what you cast it to: `resolveRepository<ComandaRepository>(ctx, 'ComandaRepository')`.
 - A function returns exactly its declared type: build the output object field by field. No `as unknown as` and no
   `as any`: they hide a wrong shape from the compiler (a list declared `{ items, hasMore }` that returned a bare

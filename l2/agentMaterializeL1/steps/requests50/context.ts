@@ -16,7 +16,7 @@ import { routeChildWrites } from '/_102021_/l2/agentMaterializeL1/emitters/proce
 import { recipeDraft, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { MDM_FACADE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
@@ -80,11 +80,11 @@ function contractNamesEntity(contractText: string, entity: { entityId: string; k
  * contract names none, and empty when an unowned MDM entity is named: that path already includes
  * `mdmContextSection`, which carries the same lines.
  */
-export function mdmPlatformSectionForRequest(contractText: string, units: readonly M12Unit[], ontologySource: string | null): string {
+export function mdmPlatformSectionForRequest(contractText: string, units: readonly M12Unit[], ontologySource: string | null, facadeSource: string | null = null, moduleSource: string | null = null): string {
   const cited = moduleMdmEntities(units).filter(entity => contractNamesEntity(contractText, entity));
   if (!cited.length) return '';
   if (unownedMdmEntities(units).some(entity => contractNamesEntity(contractText, entity))) return '';
-  return section('The platform APIs for MDM data (source: the platform MDM facade)', mdmPlatformApiSection(ontologySource));
+  return section('The platform APIs for MDM data (source: the platform MDM facade)', mdmPlatformApiSection(ontologySource, facadeSource, moduleSource));
 }
 
 /**
@@ -354,9 +354,9 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     .filter(entity => contractNamesEntity(contractText, entity));
   if (unowned.length) {
     parts.push(section('MDM entities with no usecase (source: the defs and the access scope of the module)', unownedMdmSection(moduleName, unowned)));
-    parts.push(section('The platform MDM (source: how the engine stores and returns these entities today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF))));
+    parts.push(section('The platform MDM (source: how the engine stores and returns these entities today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [], await ctx.read(MDM_MODULE_REF))));
   } else {
-    const platformApis = mdmPlatformSectionForRequest(contractText, ctx.units, await ctx.read(MDM_ONTOLOGY_REF));
+    const platformApis = mdmPlatformSectionForRequest(contractText, ctx.units, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), await ctx.read(MDM_MODULE_REF));
     if (platformApis) parts.push(platformApis);
   }
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {

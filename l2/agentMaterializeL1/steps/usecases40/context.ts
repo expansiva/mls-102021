@@ -244,7 +244,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     const platformRuleIds = (Array.isArray(unit.definition.data.rulePlan) ? unit.definition.data.rulePlan : [])
       .map(row => (row && typeof row === 'object' ? String((row as { ruleId?: unknown }).ruleId ?? '') : ''))
       .filter(ruleId => ruleId.startsWith('rule-'));
-    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)])));
+    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)], await ctx.read(MDM_MODULE_REF))));
   }
   const links = await moduleMdmLinksSection(ctx);
   if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
@@ -310,6 +310,10 @@ export async function parentRulesOf(ctx: M12Context, unit: M12Unit, entities: re
 
 export const MDM_ONTOLOGY_REF = '_102034_/l4/ontology/mdm.defs.ts';
 export const MDM_FACADE_REF = '_102034_/l1/mdm/layer_3_usecases/mdmFacade.ts';
+export const MDM_MODULE_REF = '_102034_/l1/mdm/module.ts';
+
+const PLATFORM_API_RULE = 'A value or a rule the platform API gives is used through it, never rebuilt from other fields or reimplemented.';
+const PLATFORM_RECORD_RULE = 'A platform record is built in its exported shape; server-owned fields come from the server.';
 
 /** A usecase of an entity kept in the platform MDM: its def has `mdm` (§10), depends on the MDM ontology or calls `ctx.mdm`. */
 export function usesMdm(unit: M12Unit): boolean {
@@ -320,45 +324,219 @@ export function usesMdm(unit: M12Unit): boolean {
     || sequence.some(step => !!step && typeof step === 'object' && (step as { kind?: unknown }).kind === 'mdm');
 }
 
-/** The exported interfaces named `names`, whole, from a TypeScript source. */
-function interfaceBlocks(source: string, names: readonly string[]): string {
-  const out: string[] = [];
-  for (const name of names) {
-    const at = new RegExp(`^export\\s+interface\\s+${name}\\b[^{]*\\{`, 'mu').exec(source);
-    if (!at) {
-      const alias = new RegExp(`^export\\s+type\\s+${name}\\b[^\\n]*;`, 'mu').exec(source);
-      if (alias) out.push(alias[0]);
-      continue;
-    }
-    let depth = 0;
-    let end = at.index ?? 0;
-    for (let index = at.index ?? 0; index < source.length; index += 1) {
-      if (source[index] === '{') depth += 1;
-      else if (source[index] === '}' && (depth -= 1) === 0) { end = index + 1; break; }
-    }
-    out.push(source.slice(at.index ?? 0, end));
+function ontologyTree(source: string | null): Record<string, unknown> | null {
+  const match = source ? /=\s*(\{[\s\S]*\})\s*as const/u.exec(source) : null;
+  if (!match) return null;
+  try {
+    const value = JSON.parse(match[1]) as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch (error) {
+    console.warn(`MDM ontology is not JSON: ${String(error)}`);
+    return null;
   }
-  return out.join('\n\n');
+}
+
+/** Every `"of"` name in the MDM ontology, in first-seen order. */
+function namedOf(tree: Record<string, unknown> | null): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    const record = node as Record<string, unknown>;
+    if (typeof record.of === 'string' && /^[A-Za-z][A-Za-z0-9]*$/u.test(record.of) && !out.includes(record.of)) out.push(record.of);
+    Object.values(record).forEach(walk);
+  };
+  walk(tree);
+  return out;
+}
+
+/** Group names and a short sample of their field names, both read from the ontology. */
+function ontologyShape(tree: Record<string, unknown> | null): { groups: string[]; fields: string[] } {
+  const groupsNode = tree?.groups;
+  if (!groupsNode || typeof groupsNode !== 'object') return { groups: [], fields: [] };
+  const groups: string[] = [];
+  const fields: string[] = [];
+  for (const [group, meta] of Object.entries(groupsNode as Record<string, unknown>)) {
+    if (!group.startsWith('<')) groups.push(group);
+    const groupFields = meta && typeof meta === 'object' ? (meta as { fields?: unknown }).fields : undefined;
+    if (!groupFields || typeof groupFields !== 'object') continue;
+    for (const name of Object.keys(groupFields as Record<string, unknown>)) {
+      if (!name.startsWith('<') && !fields.includes(name) && fields.length < 8) fields.push(name);
+    }
+  }
+  return { groups, fields };
+}
+
+function exportName(line: string): string | null {
+  return /^(?:export\s+)?(?:declare\s+)?(?:async\s+)?(?:interface|type|function|class|const)\s+([A-Za-z_][A-Za-z0-9_]*)/u.exec(line.trim())?.[1]
+    ?? /^export\s+(?:async\s+)?(?:interface|type|function|class|const)\s+([A-Za-z_][A-Za-z0-9_]*)/u.exec(line)?.[1]
+    ?? null;
+}
+
+/** Exported interface and type blocks whose name is an ontology `"of"` or starts with that name. */
+/** The value exports of the module facade, copied from its text: `export function …` lines and `export { … } from …` re-exports (type-only ones left out). */
+function moduleFunctionExports(moduleSource: string): string {
+  const out: string[] = [];
+  for (const match of moduleSource.matchAll(/^export\s+\{([^}]*)\}\s+from\s+['"][^'"]+['"];?/gmu)) out.push(match[0]);
+  for (const match of moduleSource.matchAll(/^export\s+(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*(?:<[^>]*>)?\([^)]*\)[^{;]*/gmu)) out.push(`${match[0].trim()};`);
+  return out.join('\n');
+}
+
+function interfacesForNamedTypes(moduleSource: string, ofs: readonly string[]): string {
+  if (!ofs.length) return '';
+  const lines = moduleSource.split('\n');
+  const blocks: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^export\s+(?:interface|type)\s/u.test(line)) continue;
+    const name = exportName(line);
+    if (!name || !ofs.some(of => name === of || name.startsWith(of))) continue;
+    const block = [line];
+    let depth = (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
+    while ((depth > 0 || !block[block.length - 1].includes(';')) && index + 1 < lines.length && depth >= 0) {
+      if (depth === 0 && block[block.length - 1].includes(';')) break;
+      index += 1;
+      block.push(lines[index]);
+      depth += (lines[index].match(/\{/gu)?.length ?? 0) - (lines[index].match(/\}/gu)?.length ?? 0);
+      if (depth === 0 && lines[index].includes(';')) break;
+      if (depth === 0 && lines[index].trim() === '}') break;
+    }
+    blocks.push(block.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
+
+function commentBefore(lines: readonly string[], index: number): string[] {
+  let cursor = index - 1;
+  while (cursor >= 0 && lines[cursor].trim() === '') cursor -= 1;
+  if (cursor < 0 || !lines[cursor].trim().endsWith('*/')) return [];
+  const end = cursor;
+  while (cursor >= 0 && !lines[cursor].includes('/**')) cursor -= 1;
+  return cursor < 0 ? [] : lines.slice(cursor, end + 1);
+}
+
+/** Signature up to, and not including, the body brace. `next` is the line that opens the body. */
+function signatureUntilBody(lines: readonly string[], index: number): { text: string; next: number } {
+  const chunk: string[] = [];
+  let paren = 0;
+  let seenParen = false;
+  for (let cursor = index; cursor < lines.length; cursor += 1) {
+    const line = lines[cursor];
+    let cut = -1;
+    for (let column = 0; column < line.length; column += 1) {
+      const char = line[column];
+      if (char === '(') { paren += 1; seenParen = true; }
+      else if (char === ')') paren -= 1;
+      else if (char === '{' && seenParen && paren === 0) {
+        const rest = line.slice(column + 1).trim();
+        if (rest === '' || rest.startsWith('//') || rest.startsWith('/*')) { cut = column; break; }
+      }
+    }
+    if (cut >= 0) {
+      chunk.push(`${line.slice(0, cut).replace(/\s*$/u, '')};`);
+      return { text: chunk.join('\n'), next: cursor };
+    }
+    chunk.push(line);
+    if (seenParen && paren === 0 && /;\s*$/u.test(line)) return { text: chunk.join('\n'), next: cursor + 1 };
+  }
+  return { text: chunk.join('\n'), next: lines.length };
+}
+
+function skipBody(lines: readonly string[], index: number): number {
+  let depth = 0;
+  let started = false;
+  for (let cursor = index; cursor < lines.length; cursor += 1) {
+    for (const char of lines[cursor]) {
+      if (char === '{') { depth += 1; started = true; }
+      else if (char === '}') depth -= 1;
+    }
+    if (started && depth === 0) return cursor + 1;
+  }
+  return lines.length;
 }
 
 /**
- * The platform MDM APIs a module must call instead of inventing them: the named-type rules when the ontology has
- * an `"of"`, and the login and the user list. Same text inside `mdmContextSection` and, when a
- * request contract names an MDM entity a usecase already owns, on its own.
+ * Exported functions and the methods of exported classes, each with its JSDoc, bodies omitted.
+ * Names come from the facade text; nothing is listed here.
  */
-export function mdmPlatformApiSection(ontologySource: string | null): string {
-  const lines = [
-    '- The login e-mail of a person is `await ctx.mdm.identity.getLoginEmail(mdmId)` (`string | null`), read-only; never take it from the contacts or from the input.',
-    '- The people with a platform login are `await ctx.mdm.identity.listUsers({ name?, status?, roleTag?, roleTagMode?, pageSize?, cursor? })`, which returns `{ items: { mdmId, version, name, loginEmail, status, tags, contacts }[], nextCursor: string | null }` and no total. Page with the `nextCursor` it returned; never compute a total or a page count. A filter the module applies to a page is not the end of the list and does not make it empty: return the `nextCursor`.',
-  ];
-  if (ontologySource && /"of"\s*:\s*"[A-Za-z][A-Za-z0-9]*"/u.test(ontologySource)) {
-    lines.push(
-      '- A field whose type in the MDM ontology is named (`"of"`: `PrivacyConsent`, `Address`, `ContactSummary`, `GeoPoint`):',
-      '- Type it with the interface the platform exports from `/_102034_/l1/mdm/module.js` (for `PrivacyConsent`, `PrivacyConsentValue`); never `Record<string, unknown>` and never a shape of your own.',
-      '- Whether a person\'s access is complete, and whether a consent is valid, is decided only by `isPersonAccessComplete` and `isValidPrivacyConsent`, and whether a country requires consent only by `isProtectedPrivacyCountry`, all imported from `/_102034_/l1/mdm/module.js`; pass them the flat MDM data (`PersonAccessData`). Never a check, a country list or an algorithm of your own, and never import `mdmSupport`.',
-      '- The screen sends the user\'s explicit acceptance of the text it showed, with that text\'s version; the server builds the platform record: `consentedAt` from `ctx.clock`, `channel` `\'web\'`, `consentVersion` the version received. A consent already valid is kept and not asked again; an empty, invalid or revoked one does not complete access.',
-    );
+function facadeApiSignatures(source: string): string {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  const methodStart = /^\s+(?:public |private |protected )?(?:async )?[A-Za-z_][A-Za-z0-9_]*\s*(?:<[^>\n]*>)?\s*\(/u;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^export\s+(?:async\s+)?function\s/u.test(line)) {
+      const doc = commentBefore(lines, index);
+      const signature = signatureUntilBody(lines, index);
+      out.push([...doc, signature.text].join('\n'));
+      index = lines[signature.next]?.includes('{') ? skipBody(lines, signature.next) - 1 : signature.next - 1;
+      continue;
+    }
+    if (!/^export\s+class\s/u.test(line)) continue;
+    out.push(`export class ${exportName(line) ?? 'Facade'} {`);
+    let depth = (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
+    index += 1;
+    while (index < lines.length && depth > 0) {
+      const current = lines[index];
+      if (depth === 1 && methodStart.test(current)) {
+        const doc = commentBefore(lines, index);
+        const signature = signatureUntilBody(lines, index);
+        out.push([...doc, signature.text].join('\n'));
+        index = lines[signature.next]?.includes('{') ? skipBody(lines, signature.next) : signature.next;
+        continue;
+      }
+      depth += (current.match(/\{/gu)?.length ?? 0) - (current.match(/\}/gu)?.length ?? 0);
+      index += 1;
+    }
+    out.push('}');
+    index -= 1;
   }
+  return out.join('\n');
+}
+
+/** Exported interface and type blocks of a source (the `ctx.mdm` contracts). */
+function exportedTypeBlocks(source: string): string {
+  const lines = source.split('\n');
+  const blocks: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^export\s+(?:interface|type)\s/u.test(line)) continue;
+    const block = [line];
+    let depth = (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
+    while ((depth > 0 || !block[block.length - 1].includes(';')) && index + 1 < lines.length && depth >= 0) {
+      if (depth === 0 && block[block.length - 1].includes(';')) break;
+      index += 1;
+      block.push(lines[index]);
+      depth += (lines[index].match(/\{/gu)?.length ?? 0) - (lines[index].match(/\}/gu)?.length ?? 0);
+      if (depth === 0 && lines[index].includes(';')) break;
+      if (depth === 0 && lines[index].trim() === '}') break;
+    }
+    blocks.push(block.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
+
+/**
+ * The platform MDM APIs a module must call instead of inventing them. Named types come from the ontology
+ * `"of"` and their interfaces from the module exports. Functions and methods come from the facade text.
+ * Same text inside `mdmContextSection` and, when a request contract names an MDM entity a usecase already
+ * owns, on its own.
+ */
+export function mdmPlatformApiSection(ontologySource: string | null, facadeSource: string | null = null, moduleSource: string | null = null): string {
+  const ofs = namedOf(ontologyTree(ontologySource));
+  const lines = [`- ${PLATFORM_API_RULE}`, `- ${PLATFORM_RECORD_RULE}`];
+  if (ofs.length) {
+    lines.push(
+      '- A field whose type in the MDM ontology is named (`"of"`): type it with the interface exported from `/_102034_/l1/mdm/module.js` for that name; never `Record<string, unknown>` and never a shape of your own.',
+      '- Required members of that exported interface are the ones written without `?`.',
+    );
+    const types = moduleSource ? interfacesForNamedTypes(moduleSource, ofs) : '';
+    if (types) lines.push(fence('ts', types));
+    const moduleFunctions = moduleSource ? moduleFunctionExports(moduleSource) : '';
+    if (moduleFunctions) lines.push('Functions the module facade exports (import them from `/_102034_/l1/mdm/module.js`; call them, do not reimplement them):', fence('ts', moduleFunctions));
+  }
+  const api = facadeSource ? facadeApiSignatures(facadeSource) : '';
+  if (api) lines.push('Platform functions and methods (import them from the facade the prompt gives; call them, do not reimplement them):', fence('ts', api));
   return lines.join('\n');
 }
 
@@ -368,40 +546,40 @@ export function mdmPlatformApiSection(ontologySource: string | null): string {
  * ontology states in knownDivergences.grouped-document. Without this the model guessed the groups and every read
  * of a patient failed (agendaClinica, 07/10). Verified against mdmFacade.ts and the in-memory engine.
  */
-export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = []): string {
+export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = [], moduleSource: string | null = null): string {
+  const shape = ontologyShape(ontologyTree(ontologySource));
+  const groupText = shape.groups.length ? shape.groups.map(group => '`' + group + '`').join(', ') : 'the groups the MDM ontology names';
+  const fieldText = shape.fields.length ? shape.fields.map(field => '`details.' + field + '`').join(', ') : '`details.<field>`';
   const lines = [
     'This entity is kept in the platform MDM, not in a table of the module. Read and write it through `ctx.mdm` as below.',
     '',
-    '- The l4 ontology of this entity groups its fields (`details.identification.name`, `details.base.contacts`,',
-    '  `details.person.privacyConsent`, `details.general`, `details.' + moduleName + '`). That grouping is the TARGET of the',
+    '- The l4 ontology of this entity groups its fields (`details.<group>.<field>`, groups ' + groupText + ',',
+    '  and `details.' + moduleName + '`). That grouping is the TARGET of the',
     '  platform; the engine stores and returns the document FLAT today (MDM ontology, knownDivergences.grouped-document):',
-    '  - a field of a platform group (identification, base, the subtype branch such as `person`) is `details.<field>`:',
-    '    `details.name`, `details.subtype`, `details.status`, `details.docType`, `details.docId`, `details.countryCode`,',
-    '    `details.tags`, `details.contacts` (an array), `details.privacyConsent` (may be null);',
-    '  - `general` is `details.general`; this module\'s own branch is `details.' + moduleName + '` (an object, may be absent).',
+    '  - a field of a platform group is `details.<field>` (from the ontology: ' + fieldText + ');',
+    '  - a group the ontology keeps as its own object stays an object; this module\'s own branch is `details.' + moduleName + '` (an object, may be absent).',
     '- `ctx.mdm.entity.get({ mdmId })`, `create`, `update`, `attachRole` and `findByDocument` return',
-    '  `{ mdmId, version, details, document, index }` (`MdmEntityReadResult`): read `result.mdmId`, `result.version` and',
-    '  `result.details.<field>` (flat). `findByDocument(docType, docId)` returns null when there is none.',
-    '- `ctx.mdm.entity.create({ details: { subtype, name, countryCode, docType?, docId?, … } })` takes flat details; then',
+    '  the read result the facade exports: read `result.mdmId`, `result.version` and',
+    '  `result.details.<field>` (flat). `findByDocument` returns null when there is none.',
+    '- `ctx.mdm.entity.create` takes flat details; then',
     '  `ctx.mdm.entity.attachRole(mdmId, \'' + moduleName + '.<Entity>\', branch?)` makes the record one of this module\'s',
     '  (it is what `listByType` finds) and may write the module branch.',
     '- `ctx.mdm.entity.update({ mdmId, expectedVersion, patch })`: `patch` is flat (and `' + moduleName + '` for the module',
     '  branch); `expectedVersion` is the version that was read, unchanged.',
     '- `ctx.mdm.collection.listByType({ type: \'' + moduleName + '.<Entity>\', name?, status?, page, pageSize })` returns',
     '  `{ items, page, pageSize, total }`. `name` is already a case-insensitive "contains" search. Each item is an index',
-    '  row (`mdmId`, `name`, `status`, `subtype`, `docType`, `docId`, `tags`, …) with flat `details` and NO `version`:',
+    '  row with flat `details` and NO `version`:',
     '  when the output needs the version, `get` the record. `hasMore` is `page * pageSize < total`.',
     '- Build the output in the grouped shape this usecase declares (the entity of the module), placing each flat field',
     '  into its group. Never expect the groups in what the engine returns. A field the engine does not have is absent,',
-    '  not an error: do not require an optional field (docType, docId, contacts, privacyConsent, the module branch); a',
+    '  not an error: do not require an optional field; a',
     '  missing optional object becomes an empty object or is left out, as the declared type allows. Read from the',
     '  input only what its interface declares.',
-    '- The engine returns `null` for any field it does not have (`docType`, `docId`, `privacyConsent`, `birthDate`, the',
-    '  module branch, …). `null` is the same as absent: test with `== null` (it catches `null` and `undefined`), leave the',
-    '  field out of the output, and never throw because a field is `null`. A patient with no document is normal (the',
-    '  document is optional); treating `docType: null` as invalid broke every agenda that had one (agendaClinica, 07/10).',
+    '- The engine returns `null` for any field it does not have. `null` is the same as absent: test with `== null` (it catches `null` and `undefined`), leave the',
+    '  field out of the output, and never throw because a field is `null`. An optional field left empty is normal;',
+    '  treating a null optional field as invalid broke every read that had one.',
   ];
-  lines.push(mdmPlatformApiSection(ontologySource));
+  lines.push(mdmPlatformApiSection(ontologySource, facadeSource, moduleSource));
   const parts = [lines.join('\n')];
   const platformRules = platformRuleIds.map(ruleId => {
     const escaped = ruleId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -411,9 +589,7 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
   if (platformRules.length) {
     parts.push([
       'Platform rules this definition lists (`rule-*`): the MDM engine applies them, as their text says. The module does not',
-      'check them and does not refuse a request for them: it passes the data through and lets the engine act (a person in',
-      'Brazil or the EU without consent is set Inactive by the engine; refusing to create it blocked every Brazilian',
-      'professional, whose contract has no consent field). Do not throw an AppError with these rule ids.',
+      'check them and does not refuse a request for them: it passes the data through and lets the engine act. Do not throw an AppError with these rule ids.',
       ...platformRules,
     ].join('\n'));
   }
@@ -423,7 +599,7 @@ export function mdmContextSection(moduleName: string, ontologySource: string | n
     parts.push(['MDM ontology (`' + MDM_ONTOLOGY_REF + '`), header:', fence('ts', header.slice(0, 4000)), divergence ? `knownDivergences.grouped-document: ${divergence}` : ''].join('\n\n'));
   }
   if (facadeSource) {
-    const types = interfaceBlocks(facadeSource, ['MdmEntityCreateInput', 'MdmEntityUpdateInput', 'MdmEntityGetInput', 'MdmEntityReadResult', 'MdmEntityWriteResult', 'MdmListByTypeInput', 'MdmListByTypeItem', 'MdmListByTypeResult']);
+    const types = exportedTypeBlocks(facadeSource);
     if (types) parts.push(['`ctx.mdm` types (`' + MDM_FACADE_REF + '`):', fence('ts', types)].join('\n\n'));
   }
   return parts.join('\n\n');
