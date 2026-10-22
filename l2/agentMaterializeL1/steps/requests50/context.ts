@@ -75,13 +75,43 @@ function contractNamesEntity(contractText: string, entity: { entityId: string; k
   return new RegExp(`\\b(?:${entity.key}|${entity.entityId})\\b`, 'u').test(contractText);
 }
 
+/** Usecase ids the request def calls: `uses` / `usecaseRef` on each route, and the basename of each dependency. */
+function requestCalledUsecaseIds(request: { data?: Record<string, unknown>; dependencies?: readonly string[] }): Set<string> {
+  const ids = new Set<string>();
+  const rows = Array.isArray(request.data?.requests) ? request.data.requests.filter(isRecord) : [];
+  for (const row of rows) {
+    if (Array.isArray(row.uses)) for (const id of row.uses) ids.add(String(id));
+    if (row.usecaseRef) ids.add(String(row.usecaseRef));
+  }
+  for (const dep of request.dependencies ?? []) {
+    const name = dep.split('/').pop()?.replace(/\.defs\.ts$/u, '') ?? '';
+    if (name) ids.add(name);
+  }
+  return ids;
+}
+
+function usecaseUnitMatches(unit: M12Unit, ids: Set<string>): boolean {
+  if (unit.definition.artifactType !== 'usecase') return false;
+  return [unit.unitId, String(unit.definition.data.usecaseId ?? ''), String(unit.definition.artifactId ?? '')].some(id => id.length > 0 && ids.has(id));
+}
+
+/** MDM entities of the module whose usecase the request def calls. */
+function mdmEntitiesCalledByRequest(request: { data?: Record<string, unknown>; dependencies?: readonly string[] }, units: readonly M12Unit[]): Array<{ entityId: string; key: string }> {
+  const ids = requestCalledUsecaseIds(request);
+  const entityIds = new Set(units.filter(unit => usecaseUnitMatches(unit, ids)).map(unit => String(unit.definition.data.entityId ?? '')).filter(Boolean));
+  return moduleMdmEntities(units).filter(entity => entityIds.has(entity.entityId));
+}
+
 /**
- * Platform MDM APIs for a request whose contract names an MDM entity a usecase already owns. Empty when the
- * contract names none, and empty when an unowned MDM entity is named: that path already includes
- * `mdmContextSection`, which carries the same lines.
+ * Platform MDM APIs for a request whose def calls a usecase of an MDM entity. Empty when it calls none, and empty
+ * when an unowned MDM entity is named in the contract: that path already includes `mdmContextSection`, which
+ * carries the same lines. `request` is the request-service definition (`data` + `dependencies`); without it the
+ * callers that still pass only the contract keep the previous filter.
  */
-export function mdmPlatformSectionForRequest(contractText: string, units: readonly M12Unit[], ontologySource: string | null, facadeSource: string | null = null, moduleSource: string | null = null): string {
-  const cited = moduleMdmEntities(units).filter(entity => contractNamesEntity(contractText, entity));
+export function mdmPlatformSectionForRequest(contractText: string, units: readonly M12Unit[], ontologySource: string | null, facadeSource: string | null = null, moduleSource: string | null = null, request?: { data?: Record<string, unknown>; dependencies?: readonly string[] } | null): string {
+  const cited = request
+    ? mdmEntitiesCalledByRequest(request, units)
+    : moduleMdmEntities(units).filter(entity => contractNamesEntity(contractText, entity));
   if (!cited.length) return '';
   if (unownedMdmEntities(units).some(entity => contractNamesEntity(contractText, entity))) return '';
   return section('The platform APIs for MDM data (source: the platform MDM facade)', mdmPlatformApiSection(ontologySource, facadeSource, moduleSource));
@@ -356,7 +386,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     parts.push(section('MDM entities with no usecase (source: the defs and the access scope of the module)', unownedMdmSection(moduleName, unowned)));
     parts.push(section('The platform MDM (source: how the engine stores and returns these entities today)', mdmContextSection(moduleName, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [], await ctx.read(MDM_MODULE_REF))));
   } else {
-    const platformApis = mdmPlatformSectionForRequest(contractText, ctx.units, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), await ctx.read(MDM_MODULE_REF));
+    const platformApis = mdmPlatformSectionForRequest(contractText, ctx.units, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), await ctx.read(MDM_MODULE_REF), unit.definition);
     if (platformApis) parts.push(platformApis);
   }
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
