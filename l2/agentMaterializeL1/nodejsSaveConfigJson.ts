@@ -4,7 +4,8 @@
 //   tsx mls-102021/l2/agentMaterializeL1/nodejsSaveConfigJson.ts <clientId>
 // Reads the client-owned mls-<clientId>/l5/project.json (written by agentMaterializeL1)
 // and reconciles the backend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
-// projects (client + master backend + 102029 lib), modules[].backendControllers and
+// projects (client + master backend + 102029 lib), modules[].backendControllers,
+// modules[].backend.pageTests (from l5/project.json; omitted when the module has none) and
 // persistenceModules[].tableDefsDir. Leftover modules whose dirs are gone are dropped (named in the
 // log) — append would leave a dead tableDefsDir that crashes publish migration with ENOENT.
 // Routes/tables themselves are discovered at RUNTIME by the production master from those folders.
@@ -28,6 +29,50 @@ function fail(msg: string): never { console.error(`[nodejsSaveConfigJson:backend
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) as T; } catch { return null; }
+}
+
+function resolveListedPath(root: string, listed: string): string {
+  return path.join(root, listed.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pageTestsByModuleFromL5(l5Modules: unknown): Map<string, string[]> {
+  const byModule = new Map<string, string[]>();
+  if (!Array.isArray(l5Modules)) return byModule;
+  for (const l5mod of l5Modules) {
+    if (!isRecord(l5mod)) continue;
+    const moduleId = typeof l5mod.moduleName === 'string' ? l5mod.moduleName.trim() : '';
+    const backend = isRecord(l5mod.backend) ? l5mod.backend : null;
+    if (!moduleId || !backend || !Array.isArray(backend.pageTests)) continue;
+    const listed = backend.pageTests.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+    if (listed.length) byModule.set(moduleId, listed);
+  }
+  return byModule;
+}
+
+function applyPageTests(
+  modules: Array<Record<string, unknown>> | undefined,
+  pageTestsByModule: Map<string, string[]>,
+): void {
+  if (!modules) return;
+  for (const mod of modules) {
+    const moduleId = typeof mod.moduleId === 'string' ? mod.moduleId : '';
+    const listed = moduleId ? pageTestsByModule.get(moduleId) : undefined;
+    if (listed?.length) {
+      const backend = isRecord(mod.backend) ? { ...mod.backend } : {};
+      backend.pageTests = listed;
+      mod.backend = backend;
+      continue;
+    }
+    if (!isRecord(mod.backend)) continue;
+    const backend = { ...mod.backend };
+    delete backend.pageTests;
+    if (Object.keys(backend).length) mod.backend = backend;
+    else delete mod.backend;
+  }
 }
 
 function projectRuntimeMetadata(l5: L5ProjectJson, clientId: string) {
@@ -75,12 +120,17 @@ export function composeBackendRuntimeConfig(root: string, clientId: string): { c
 
   const client = config.projects[clientId];
   const live = liveBackendModulesFromL5(l5.modules);
+  const pageTestsByModule = pageTestsByModuleFromL5(l5.modules);
   for (const item of live) {
-    const controllersDir = path.join(root, item.backendControllers.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+    const controllersDir = resolveListedPath(root, item.backendControllers);
     if (!fs.existsSync(controllersDir)) throw new Error(`backendControllers dir not found on disk: ${controllersDir}`);
     if (!item.tableDefsDir) continue;
-    const tableDefsDir = path.join(root, item.tableDefsDir.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/'));
+    const tableDefsDir = resolveListedPath(root, item.tableDefsDir);
     if (!fs.existsSync(tableDefsDir)) throw new Error(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
+  }
+  for (const listed of [...pageTestsByModule.values()].flat()) {
+    const pageTestsFile = resolveListedPath(root, listed);
+    if (!fs.existsSync(pageTestsFile)) throw new Error(`pageTests file not found on disk: ${listed}`);
   }
   if (live.length === 0) throw new Error('l5/project.json declares no modules with a backend block; nothing to compose');
 
@@ -90,6 +140,7 @@ export function composeBackendRuntimeConfig(root: string, clientId: string): { c
     live,
   );
   client.modules = reconciled.modules as unknown as typeof client.modules;
+  applyPageTests(client.modules as unknown as Array<Record<string, unknown>>, pageTestsByModule);
   client.persistenceModules = reconciled.persistenceModules as unknown as typeof client.persistenceModules;
   const orphanNote = formatDiscardedOrphans(reconciled.discarded);
   if (reconciled.discarded.length) {

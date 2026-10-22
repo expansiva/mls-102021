@@ -88,3 +88,91 @@ test('a module that declares no tableDefsDir composes without a persistence fold
     assert.deepEqual(client.persistenceModules ?? [], []);
   });
 });
+
+test('compose carries pageTests from two modules into config.json backend.pageTests', () => {
+  withRoot((root, clientRoot) => {
+    const todoControllers = path.join(clientRoot, 'l1', 'todo', 'layer_1_external', 'adapters', 'http', 'controllers');
+    const todoPersistence = path.join(clientRoot, 'l1', 'todo', 'layer_1_external', 'adapters', 'persistence');
+    const inboxControllers = path.join(clientRoot, 'l1', 'inbox', 'layer_1_external', 'adapters', 'http', 'controllers');
+    const inboxPersistence = path.join(clientRoot, 'l1', 'inbox', 'layer_1_external', 'adapters', 'persistence');
+    fs.mkdirSync(todoControllers, { recursive: true });
+    fs.mkdirSync(todoPersistence, { recursive: true });
+    fs.mkdirSync(inboxControllers, { recursive: true });
+    fs.mkdirSync(inboxPersistence, { recursive: true });
+    const todoTests = `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/http/controllers/home.test.ts`;
+    const inboxTests = `./_${CLIENT_ID}_/l1/inbox/layer_1_external/adapters/http/controllers/inbox.test.ts`;
+    writeFile(path.join(root, todoTests.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/')), 'export const pageTests = {};\n');
+    writeFile(path.join(root, inboxTests.replace(/^\.\//, '').replace(/^_(\d+)_\//, 'mls-$1/')), 'export const pageTests = {};\n');
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+      masters: { backend: { runtimeProject: 102034 } },
+      modules: [
+        {
+          moduleName: 'todo',
+          backend: {
+            backendControllers: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/http/controllers`,
+            persistence: { tableDefsDir: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/persistence` },
+            pageTests: [todoTests],
+            routeKeys: ['todo.home'],
+          },
+        },
+        {
+          moduleName: 'inbox',
+          backend: {
+            backendControllers: `./_${CLIENT_ID}_/l1/inbox/layer_1_external/adapters/http/controllers`,
+            persistence: { tableDefsDir: `./_${CLIENT_ID}_/l1/inbox/layer_1_external/adapters/persistence` },
+            pageTests: [inboxTests],
+            routeKeys: ['inbox.home'],
+          },
+        },
+        {
+          moduleName: 'inicio',
+          backend: {
+            backendControllers: `./_${CLIENT_ID}_/l1/inicio/layer_2_controllers`,
+            routeKeys: ['inicio.home'],
+          },
+        },
+      ],
+    }, null, 2)}\n`);
+    fs.mkdirSync(path.join(clientRoot, 'l1', 'inicio', 'layer_2_controllers'), { recursive: true });
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      workspaceDependencies: [CLIENT_ID],
+    }, null, 2)}\n`);
+
+    composeBackendRuntimeConfig(root, CLIENT_ID);
+    const config = JSON.parse(fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8')) as {
+      projects: Record<string, { modules?: Array<{ moduleId: string; backend?: { pageTests?: string[] } }> }>;
+    };
+    const byId = new Map((config.projects[CLIENT_ID].modules ?? []).map(item => [item.moduleId, item]));
+    assert.deepEqual(byId.get('todo')?.backend?.pageTests, [todoTests]);
+    assert.deepEqual(byId.get('inbox')?.backend?.pageTests, [inboxTests]);
+    assert.equal('pageTests' in (byId.get('inicio')?.backend ?? {}), false);
+  });
+});
+
+test('a listed pageTests file that is missing fails with the listed name', () => {
+  withRoot((root, clientRoot) => {
+    const controllers = path.join(clientRoot, 'l1', 'todo', 'layer_1_external', 'adapters', 'http', 'controllers');
+    const persistence = path.join(clientRoot, 'l1', 'todo', 'layer_1_external', 'adapters', 'persistence');
+    fs.mkdirSync(controllers, { recursive: true });
+    fs.mkdirSync(persistence, { recursive: true });
+    const missing = `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/http/controllers/absent.test.ts`;
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+      masters: { backend: { runtimeProject: 102034 } },
+      modules: [{
+        moduleName: 'todo',
+        backend: {
+          backendControllers: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/http/controllers`,
+          persistence: { tableDefsDir: `./_${CLIENT_ID}_/l1/todo/layer_1_external/adapters/persistence` },
+          pageTests: [missing],
+        },
+      }],
+    }, null, 2)}\n`);
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      workspaceDependencies: [CLIENT_ID],
+    }, null, 2)}\n`);
+    assert.throws(
+      () => composeBackendRuntimeConfig(root, CLIENT_ID),
+      (error: Error) => error.message.includes(missing),
+    );
+  });
+});

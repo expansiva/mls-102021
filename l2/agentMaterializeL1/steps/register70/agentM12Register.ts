@@ -25,8 +25,8 @@ async function readyPageTests(run: M12RunArgs, pageIds: readonly string[]): Prom
 }
 
 /**
- * `backend.pageTests` is this agent's key: the monitor cases of each page backend. The publish composer does
- * not carry it into the runtime config yet (named in the report); the other backend keys are reconcileL5's.
+ * `backend.pageTests` is this agent's key: the monitor cases of each page backend. The publish composer
+ * carries it into the runtime config (`modules[].backend.pageTests`); the other backend keys are reconcileL5's.
  */
 function withPageTests(text: string, moduleName: string, pageTests: readonly string[]): string {
   const config = JSON.parse(text) as Record<string, unknown>;
