@@ -1,0 +1,268 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/requests/company_preparation.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "company_preparation",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/usecases/getCompany.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listCountry.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/updateCompany.defs.ts"
+  ],
+  "data": {
+    "pageId": "company_preparation",
+    "requests": [
+      {
+        "route": "onboarding.company_preparation.qryCompanyPreparation",
+        "kind": "qry",
+        "uses": [
+          "getCompany",
+          "listCountry"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "company",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "company.details.identification",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              },
+              {
+                "field": "docType",
+                "path": "details.identification.docType"
+              },
+              {
+                "field": "docId",
+                "path": "details.identification.docId"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "company.details.company",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "legalName",
+                "path": "details.company.legalName"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "activeCountries",
+            "entity": "Country",
+            "items": "",
+            "fields": [
+              {
+                "field": "code",
+                "path": "code"
+              },
+              {
+                "field": "englishName",
+                "path": "englishName"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "company.details.onboarding",
+            "rules": [
+              "companyPreparedWhenAllRequiredSaved"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.identification",
+            "reason": "Company inside Company needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.company",
+            "reason": "Company inside Company needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.base",
+            "reason": "Interface CompanyBaseData has no field that is not readonly, so no entity owns it."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.companyContact",
+            "reason": "Interface CompanyContactRecord has no field that is not readonly, so no entity owns it."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.companyContact",
+            "reason": "PROJECTION_FIELD_UNKNOWN: Route onboarding.company_preparation.qryCompanyPreparation projects Company.companyContact, which is not a field of the ontology."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "askOnlyMissingCompanyData",
+          "companyPreparedWhenAllRequiredSaved",
+          "authorityValidationMissingShownApart",
+          "onlyActiveCountryCanBeChosen",
+          "companyCountryFromModuleList",
+          "unknownCountryNeverDefaulted"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads in one call the company of the signed-in login with its saved data, its linked contact and its preparation state, plus the module’s active countries to choose from.\nInput: No input: the server resolves the company from the signed-in login.\nProcessing: Reads the company by the mdmId the platform resolved for the session and the active contact linked by HasContact. Computes isPrepared and missingData (never stored): companyPreparedWhenAllRequiredSaved demands name, legal name, country from the module list, document, address and at least one contact; askOnlyMissingCompanyData means missingData lists only what is absent. A countryCode not in the module country list counts as missing and is returned as is, never replaced by a default (unknownCountryNeverDefaulted, companyCountryFromModuleList). Lists only countries with status active, ordered by English name (onlyActiveCountryCanBeChosen); the list is bounded so it is not paged. authorityValidationMissingShownApart: a missing company returns a not-found error, a caller who is not the owner an authority error, each distinct.\nOutput: company: the company in its current state with identification, legal name, address, contacts summary, the linked contact channel (when any) and the computed isPrepared and missingData; activeCountries: the active countries with code, English name and status.",
+          "purpose": "Loads in one call the company of the signed-in login with its saved data, its linked contact and its preparation state, plus the module’s active countries to choose from.",
+          "input": "No input: the server resolves the company from the signed-in login.",
+          "processing": "Reads the company by the mdmId the platform resolved for the session and the active contact linked by HasContact. Computes isPrepared and missingData (never stored): companyPreparedWhenAllRequiredSaved demands name, legal name, country from the module list, document, address and at least one contact; askOnlyMissingCompanyData means missingData lists only what is absent. A countryCode not in the module country list counts as missing and is returned as is, never replaced by a default (unknownCountryNeverDefaulted, companyCountryFromModuleList). Lists only countries with status active, ordered by English name (onlyActiveCountryCanBeChosen); the list is bounded so it is not paged. authorityValidationMissingShownApart: a missing company returns a not-found error, a caller who is not the owner an authority error, each distinct.",
+          "output": "company: the company in its current state with identification, legal name, address, contacts summary, the linked contact channel (when any) and the computed isPrepared and missingData; activeCountries: the active countries with code, English name and status."
+        }
+      },
+      {
+        "route": "onboarding.company_preparation.cmdSaveCompanyData",
+        "kind": "cmd",
+        "uses": [
+          "updateCompany"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "company",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "company.details.identification",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              },
+              {
+                "field": "docType",
+                "path": "details.identification.docType"
+              },
+              {
+                "field": "docId",
+                "path": "details.identification.docId"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "company.details.company",
+            "entity": "Company",
+            "fields": [
+              {
+                "field": "legalName",
+                "path": "details.company.legalName"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "company.details.onboarding",
+            "rules": [
+              "companyPreparedWhenAllRequiredSaved"
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "company.companyContact",
+            "rules": [
+              "companyContactNotDuplicated"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.identification",
+            "reason": "Company inside Company needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.company",
+            "reason": "Company inside Company needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.details.base",
+            "reason": "Interface CompanyBaseData has no field that is not readonly, so no entity owns it."
+          },
+          {
+            "kind": "unresolved",
+            "path": "company.companyContact",
+            "reason": "PROJECTION_FIELD_UNKNOWN: Route onboarding.company_preparation.cmdSaveCompanyData projects Company.companyContact, which is not a field of the ontology."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "onlyOwnerPreparesCompany",
+          "authorityValidationMissingShownApart",
+          "askOnlyMissingCompanyData",
+          "companyCountryFromModuleList",
+          "onlyActiveCountryCanBeChosen",
+          "unknownCountryNeverDefaulted",
+          "companyContactNotDuplicated",
+          "companyPreparedWhenAllRequiredSaved"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves the missing company data and the company contact in one platform update, without duplicating the contact.\nInput: id and version: the company and the version read, for optimistic concurrency. details.identification.name, details.company.legalName, details.identification.countryCode, details.identification.docType, details.identification.docId, details.base.addresses: only the missing company fields the owner filled. companyContact.details.contactChannel.contactType and companyContact.details.contactChannel.value: the company phone or e-mail, when the contact was missing or is being corrected.\nProcessing: Refuses anyone who is not the company owner with an authority error (onlyOwnerPreparesCompany); validation errors and a missing company are returned as distinct errors (authorityValidationMissingShownApart). Writes only the fields sent and leaves saved data untouched (askOnlyMissingCompanyData). countryCode must be a code of an active country in the module list and is never defaulted (companyCountryFromModuleList, onlyActiveCountryCanBeChosen, unknownCountryNeverDefaulted). Checks the document is not held by another permanent company. For the contact, locates an existing channel with the same type and value and attaches it, creating one only if none exists, then links it by HasContact idempotently (companyContactNotDuplicated). Rejects a stale version. After saving, recomputes isPrepared and missingData (companyPreparedWhenAllRequiredSaved); they are derived, never stored.\nOutput: company: the updated company in its new version with its saved data, its single linked contact and the recomputed isPrepared and missingData.",
+          "purpose": "Saves the missing company data and the company contact in one platform update, without duplicating the contact.",
+          "input": "id and version: the company and the version read, for optimistic concurrency. details.identification.name, details.company.legalName, details.identification.countryCode, details.identification.docType, details.identification.docId, details.base.addresses: only the missing company fields the owner filled. companyContact.details.contactChannel.contactType and companyContact.details.contactChannel.value: the company phone or e-mail, when the contact was missing or is being corrected.",
+          "processing": "Refuses anyone who is not the company owner with an authority error (onlyOwnerPreparesCompany); validation errors and a missing company are returned as distinct errors (authorityValidationMissingShownApart). Writes only the fields sent and leaves saved data untouched (askOnlyMissingCompanyData). countryCode must be a code of an active country in the module list and is never defaulted (companyCountryFromModuleList, onlyActiveCountryCanBeChosen, unknownCountryNeverDefaulted). Checks the document is not held by another permanent company. For the contact, locates an existing channel with the same type and value and attaches it, creating one only if none exists, then links it by HasContact idempotently (companyContactNotDuplicated). Rejects a stale version. After saving, recomputes isPrepared and missingData (companyPreparedWhenAllRequiredSaved); they are derived, never stored.",
+          "output": "company: the updated company in its new version with its saved data, its single linked contact and the recomputed isPrepared and missingData."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

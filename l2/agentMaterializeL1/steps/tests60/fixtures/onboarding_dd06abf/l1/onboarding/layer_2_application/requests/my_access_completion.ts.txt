@@ -1,0 +1,309 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/requests/my_access_completion.ts" enhancement="_blank"/>
+import type { My_access_completionContracts } from '/_102056_/l2/onboarding/web/contracts/my_access_completion.defs.js';
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { isProtectedPrivacyCountry, isValidPrivacyConsent } from '/_102034_/l1/mdm/module.js';
+import type { PrivacyConsentValue } from '/_102034_/l1/mdm/module.js';
+import { getOrganizationMember } from '/_102056_/l1/onboarding/layer_2_application/usecases/getOrganizationMember.js';
+import type { GetOrganizationMemberOutput } from '/_102056_/l1/onboarding/layer_2_application/usecases/getOrganizationMember.js';
+import { listCountry } from '/_102056_/l1/onboarding/layer_2_application/usecases/listCountry.js';
+import type { ListCountryOutput } from '/_102056_/l1/onboarding/layer_2_application/usecases/listCountry.js';
+import { listPrivacyText } from '/_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.js';
+import type { ListPrivacyTextOutput } from '/_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.js';
+import { updateOrganizationMember } from '/_102056_/l1/onboarding/layer_2_application/usecases/updateOrganizationMember.js';
+
+type Contracts = My_access_completionContracts;
+type MemberRecord = GetOrganizationMemberOutput;
+type CountryRecord = ListCountryOutput['items'][number];
+type PrivacyTextRecord = ListPrivacyTextOutput['items'][number];
+type MyAccess = Contracts['onboarding.my_access_completion.qryMyAccess']['output']['member'];
+type CountryOption = Contracts['onboarding.my_access_completion.qryMyAccess']['output']['countries'][number];
+type PrivacyTextView = NonNullable<Contracts['onboarding.my_access_completion.qryMyAccess']['output']['privacyText']>;
+type MissingItem = MyAccess['details']['onboarding']['missingItems'][number];
+
+const MAX_PAGE_SIZE = 200;
+
+// noSecondPerson: the only person the module works on is the one the platform session resolved.
+function sessionMemberId(ctx: RequestContext): string {
+  const person = ctx.sessionContext.person;
+  if (person == null || !person.mdmId) {
+    throw new AppError('UNAUTHENTICATED', 'The platform session did not resolve a person for this login', 401, { ruleId: 'noSecondPerson' });
+  }
+  return person.mdmId;
+}
+
+async function listAllActiveCountries(ctx: RequestContext): Promise<CountryRecord[]> {
+  const all: CountryRecord[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await listCountry({ status: 'active', page, pageSize: MAX_PAGE_SIZE }, ctx);
+    for (const c of res.items) all.push(c);
+    if (!res.hasMore || res.items.length === 0) break;
+    page += 1;
+  }
+  return all;
+}
+
+async function listAllPrivacyTexts(ctx: RequestContext): Promise<PrivacyTextRecord[]> {
+  const all: PrivacyTextRecord[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await listPrivacyText({ page, pageSize: MAX_PAGE_SIZE }, ctx);
+    for (const t of res.items) all.push(t);
+    if (!res.hasMore || res.items.length === 0) break;
+    page += 1;
+  }
+  return all;
+}
+
+async function findCountry(code: string, ctx: RequestContext): Promise<CountryRecord | null> {
+  const res = await listCountry({ code, page: 1, pageSize: 1 }, ctx);
+  const found = res.items.find((c) => c.code === code);
+  return found == null ? null : found;
+}
+
+// currentPrivacyTextIsLatest: the current text is the most recently published version.
+function latestText(texts: PrivacyTextRecord[]): PrivacyTextRecord | null {
+  let best: PrivacyTextRecord | null = null;
+  let bestTime = Number.NEGATIVE_INFINITY;
+  for (const t of texts) {
+    const time = Date.parse(String(t.publishedAt));
+    const value = Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+    if (best == null || value > bestTime) {
+      best = t;
+      bestTime = value;
+    }
+  }
+  return best;
+}
+
+// privacyTextReadOnly: the text is only read and projected into a view here; it is never written or changed.
+function toView(t: PrivacyTextRecord, isCurrent: boolean): PrivacyTextView {
+  const details: PrivacyTextView['details'] = {
+    title: t.details.title,
+    body: t.details.body,
+    provisional: t.details.provisional,
+    isCurrent,
+  };
+  if (typeof t.details.languageCode === 'string' && t.details.languageCode !== '') {
+    details.languageCode = t.details.languageCode;
+  }
+  return {
+    id: String(t.id),
+    versionCode: t.versionCode,
+    publishedAt: String(t.publishedAt),
+    details,
+  };
+}
+
+function toConsent(raw: Record<string, unknown> | null | undefined): PrivacyConsentValue | null {
+  if (raw == null) return null;
+  const consentedAt = raw.consentedAt;
+  const consentVersion = raw.consentVersion;
+  const channel = raw.channel;
+  if (typeof consentedAt !== 'string' || typeof consentVersion !== 'string' || typeof channel !== 'string') return null;
+  const value: PrivacyConsentValue = { consentedAt, consentVersion, channel };
+  if (typeof raw.revokedAt === 'string') value.revokedAt = raw.revokedAt;
+  if (typeof raw.notes === 'string') value.notes = raw.notes;
+  return value;
+}
+
+// validConsentNotAskedAgain: a consent is valid when the platform says so and it points at an existing privacy text version.
+function isConsentValid(record: MemberRecord, texts: PrivacyTextRecord[]): boolean {
+  const consent = toConsent(record.details.person?.privacyConsent);
+  if (consent == null) return false;
+  if (!isValidPrivacyConsent(consent)) return false;
+  return texts.some((t) => String(t.id) === consent.consentVersion || t.versionCode === consent.consentVersion);
+}
+
+interface MemberStatus {
+  member: MyAccess;
+  consentRequired: boolean;
+  consentValid: boolean;
+  latest: PrivacyTextRecord | null;
+}
+
+// accessCompleteByPlatformRule: consentRequired, consentValid, missingItems and accessComplete are derived here, never stored.
+async function buildMember(record: MemberRecord, ctx: RequestContext): Promise<MemberStatus> {
+  const ident = record.details.identification;
+  const rawName: unknown = ident.name;
+  const rawCode: unknown = ident.countryCode;
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
+  const code = typeof rawCode === 'string' ? rawCode : '';
+  // unknownCountryNeverDefaulted / countryFromModuleList: a saved country outside the module list stays empty.
+  const country = code !== '' ? await findCountry(code, ctx) : null;
+  const texts = await listAllPrivacyTexts(ctx);
+  const latest = latestText(texts);
+  const consentRequired = country != null && isProtectedPrivacyCountry(code);
+  const consentValid = isConsentValid(record, texts);
+  const missingItems: MissingItem[] = [];
+  if (name === '') missingItems.push({ item: 'name', resolver: 'member' });
+  if (country == null) missingItems.push({ item: 'country', resolver: 'member' });
+  if (consentRequired && !consentValid) {
+    missingItems.push({ item: 'privacyConsent', resolver: latest == null ? 'owner' : 'member' });
+  }
+  const accessComplete = missingItems.length === 0;
+  const identification: MyAccess['details']['identification'] = { updatedAt: String(ident.updatedAt) };
+  if (name !== '') identification.name = name;
+  if (country != null) identification.countryCode = code;
+  const member: MyAccess = {
+    id: String(record.id),
+    version: Number(record.version),
+    details: {
+      identification,
+      onboarding: { consentRequired, consentValid, missingItems, accessComplete },
+    },
+  };
+  return { member, consentRequired, consentValid, latest };
+}
+
+export const requests: { [K in keyof My_access_completionContracts]: (input: My_access_completionContracts[K]['input'], ctx: RequestContext) => Promise<My_access_completionContracts[K]['output']> } = {
+  'onboarding.my_access_completion.qryMyAccess': async function (input, ctx) {
+    const memberId = sessionMemberId(ctx);
+    const record = await getOrganizationMember({ id: memberId }, ctx);
+    const status = await buildMember(record, ctx);
+
+    // onlyActiveCountryCanBeChosen: only active countries, ordered by English name.
+    const activeCountries = await listAllActiveCountries(ctx);
+    const countries: CountryOption[] = activeCountries
+      .map((c): CountryOption => ({
+        code: c.code,
+        englishName: c.englishName,
+        status: c.status === 'active' ? 'active' : 'inactive',
+      }))
+      .sort((a, b) => a.englishName.localeCompare(b.englishName));
+
+    const result: Contracts['onboarding.my_access_completion.qryMyAccess']['output'] = {
+      member: status.member,
+      countries,
+    };
+    // privacyTextReadOnly: the latest published text is only read and returned as a view, never modified.
+    if (status.consentRequired && !status.consentValid && status.latest != null) {
+      result.privacyText = toView(status.latest, true);
+    }
+    return result;
+  },
+
+  'onboarding.my_access_completion.qryConsentForCountry': async function (input, ctx) {
+    const code = input.countryCode;
+    const country = await findCountry(code, ctx);
+    if (country == null) {
+      throw new AppError('COUNTRY_NOT_IN_LIST', `Country ${code} is not in the module country list`, 400, { ruleId: 'countryFromModuleList', countryCode: code });
+    }
+    if (country.status !== 'active') {
+      throw new AppError('COUNTRY_NOT_ACTIVE', `Country ${country.englishName} is not active and cannot be chosen`, 400, { ruleId: 'onlyActiveCountryCanBeChosen', countryCode: code });
+    }
+    // consentFollowsEditedCountry: the rule is applied to the edited country, not the saved one.
+    const consentRequired = isProtectedPrivacyCountry(code);
+    const result: Contracts['onboarding.my_access_completion.qryConsentForCountry']['output'] = { consentRequired };
+    if (!consentRequired) return result;
+    const record = await getOrganizationMember({ id: sessionMemberId(ctx) }, ctx);
+    const texts = await listAllPrivacyTexts(ctx);
+    // validConsentNotAskedAgain
+    if (isConsentValid(record, texts)) return result;
+    // currentPrivacyTextIsLatest / firstPrivacyTextProvisional / consentExplicitUnchecked: the text is returned; no acceptance is marked.
+    const latest = latestText(texts);
+    if (latest != null) result.privacyText = toView(latest, true);
+    return result;
+  },
+
+  'onboarding.my_access_completion.cmdSaveMyAccess': async function (input, ctx) {
+    return ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      // noSecondPerson: refuses any record other than the signed-in member's.
+      const memberId = sessionMemberId(bound);
+      if (String(input.id) !== memberId) {
+        throw new AppError('FORBIDDEN', 'Only the signed-in member’s own record can be saved', 403, { ruleId: 'noSecondPerson', recordId: input.id });
+      }
+      const current = await getOrganizationMember({ id: memberId }, bound);
+      const currentIdent = current.details.identification;
+      const rawCurrentName: unknown = currentIdent.name;
+      const rawCurrentCode: unknown = currentIdent.countryCode;
+      const savedName = typeof rawCurrentName === 'string' ? rawCurrentName.trim() : '';
+      const savedCode = typeof rawCurrentCode === 'string' ? rawCurrentCode : '';
+
+      // savedAndPendingShownAfterFailure: a refusal carries what is saved so nothing has to be retyped.
+      const savedState = {
+        saved: { name: savedName, countryCode: savedCode },
+        sent: {
+          name: input.details.identification.name,
+          countryCode: input.details.identification.countryCode,
+        },
+      };
+
+      const sentName = input.details.identification.name;
+      const sentCode = input.details.identification.countryCode;
+      const name = typeof sentName === 'string' && sentName.trim() !== '' ? sentName.trim() : savedName;
+      const code = typeof sentCode === 'string' && sentCode !== '' ? sentCode : savedCode;
+
+      // countryFromModuleList / onlyActiveCountryCanBeChosen: a changed or newly chosen country must be an active country of the module list.
+      let countryKnown = false;
+      if (code !== '') {
+        const country = await findCountry(code, bound);
+        if (code !== savedCode) {
+          if (country == null) {
+            throw new AppError('COUNTRY_NOT_IN_LIST', `Country ${code} is not in the module country list`, 400, { ruleId: 'countryFromModuleList', ...savedState });
+          }
+          if (country.status !== 'active') {
+            throw new AppError('COUNTRY_NOT_ACTIVE', `Country ${country.englishName} is not active and cannot be chosen`, 400, { ruleId: 'onlyActiveCountryCanBeChosen', ...savedState });
+          }
+        }
+        countryKnown = country != null;
+      }
+
+      // consentFollowsEditedCountry: the consent need is re-evaluated for the country being saved.
+      const consentRequired = countryKnown && isProtectedPrivacyCountry(code);
+      const texts = await listAllPrivacyTexts(bound);
+      const alreadyValid = isConsentValid(current, texts);
+      let consentToRecord: Record<string, unknown> | null = null;
+      // validConsentNotAskedAgain: a valid consent is neither asked nor overwritten.
+      if (consentRequired && !alreadyValid) {
+        const latest = latestText(texts);
+        if (latest == null) {
+          throw new AppError('PRIVACY_TEXT_UNAVAILABLE', 'No privacy text has been published, so the consent cannot be given yet', 409, { ruleId: 'currentPrivacyTextIsLatest', ...savedState });
+        }
+        const acceptance = input.privacyConsent;
+        // consentExplicitUnchecked: the save is refused unless accepted is explicitly true.
+        if (acceptance == null || acceptance.accepted !== true) {
+          throw new AppError('CONSENT_REQUIRED', 'The privacy consent must be explicitly accepted to save this country', 422, { ruleId: 'consentExplicitUnchecked', ...savedState });
+        }
+        if (acceptance.id !== String(latest.id) && acceptance.id !== latest.versionCode) {
+          throw new AppError('CONSENT_VERSION_NOT_CURRENT', `The accepted privacy text is not the current version ${latest.versionCode}`, 409, { ruleId: 'currentPrivacyTextIsLatest', acceptedId: acceptance.id, ...savedState });
+        }
+        if (typeof acceptance.method !== 'string' || acceptance.method.trim() === '') {
+          throw new AppError('CONSENT_METHOD_REQUIRED', 'The way the consent was accepted must be informed', 422, { ruleId: 'consentRecordsAcceptedVersion', ...savedState });
+        }
+        // consentRecordsAcceptedVersion: when (server time), how and which version.
+        consentToRecord = {
+          consentedAt: bound.clock.nowIso(),
+          // The consent keeps the accepted text's versionCode, the key updateOrganizationMember validates against.
+          consentVersion: latest.versionCode,
+          channel: acceptance.method.trim(),
+        };
+      }
+
+      // fillingDataGrantsNoAuthority / personalPhoneNotAsked: only name, country and consent are written; no roles, no phone.
+      const updated = await updateOrganizationMember(
+        consentToRecord == null
+          ? {
+              id: memberId,
+              version: Number(input.version),
+              details: { identification: { name, countryCode: code } },
+            }
+          : {
+              id: memberId,
+              version: Number(input.version),
+              details: {
+                identification: { name, countryCode: code },
+                person: { privacyConsent: consentToRecord },
+              },
+            },
+        bound,
+      );
+
+      // accessCompleteByPlatformRule: recomputed after the write so the screen and the session agree.
+      const status = await buildMember(updated, bound);
+      return { member: status.member };
+    });
+  },
+};

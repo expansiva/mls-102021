@@ -1,0 +1,100 @@
+/// <mls fileReference="_102056_/l2/onboarding/web/contracts/organization_people.defs.ts" enhancement="_blank"/>
+
+/** The identifying part of an organization member: name, platform status and country. */
+export interface MemberIdentification {
+  name: string;
+  readonly status: 'Active' | 'Inactive' | 'Merged' | 'Blocked';
+  countryCode?: string;
+}
+
+/** The computed onboarding state of a member as a list row: what is still missing and whether access is complete. */
+export interface MemberRowOnboarding {
+  /** The login e-mail of the platform account, read-only. */
+  readonly loginEmail?: string;
+  readonly missingItems?: string;
+  readonly accessComplete: boolean;
+}
+
+/** The details of an organization member as a list row. */
+export interface MemberRowDetails {
+  identification: MemberIdentification;
+  onboarding: MemberRowOnboarding;
+}
+
+/** An organization user with name, status, country, missing items and access-complete state. */
+export interface MemberRow {
+  id: string;
+  details: MemberRowDetails;
+}
+
+/** The computed onboarding state of a member: consent required, consent valid, still missing and access complete. */
+export interface MemberAccessOnboarding {
+  /** The login e-mail of the platform account, read-only. */
+  readonly loginEmail?: string;
+  readonly consentRequired: boolean;
+  readonly consentValid: boolean;
+  readonly missingItems?: string;
+  readonly accessComplete: boolean;
+}
+
+/** The details of an organization member with their onboarding access state. */
+export interface MemberAccessDetails {
+  identification: MemberIdentification;
+  onboarding: MemberAccessOnboarding;
+}
+
+/** Whether a privacy text version is the current one. */
+export interface PrivacyTextCurrentDetails {
+  readonly isCurrent: boolean;
+}
+
+/** The current privacy text version of the module. */
+export interface CurrentPrivacyText {
+  versionCode: string;
+  details: PrivacyTextCurrentDetails;
+}
+
+/** One item a member still has to complete, with who resolves it and the page where it is resolved. */
+export interface PendingItem {
+  readonly item: string;
+  readonly resolvedBy: string;
+  readonly targetPage?: string;
+  readonly ownerCanAct: boolean;
+}
+
+/** An organization member with their access state, the current privacy text and each pending item with its resolver. */
+export interface MemberAccess {
+  id: string;
+  details: MemberAccessDetails;
+  privacyText?: CurrentPrivacyText;
+  pendingItems: PendingItem[];
+}
+
+export interface Organization_peopleContracts {
+  /**
+   * Purpose: Lists the organization users for the owner, one page at a time, searchable by name and filterable by platform status, with what each one still has to complete.
+   * Input: details.identification.name: optional text the member details.identification.name must contain; details.identification.status: optional platform details.identification.status to filter by; page and pageSize: the page requested and its size.
+   * Processing: Reads the platform user list of the caller’s organization (locate.users, locate.byName), filtered by name contains and status. For each user computes missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule); these are derived, never stored. Returns only the fields allowed by the ownerFollowPeople grant; privacy consent details are never returned. Being listed is not evidence of an accepted invitation and grants nothing (listingProvesNoInvitation, fillingDataGrantsNoAuthority). An empty result is returned as an empty page, while a loading failure is returned as an error, never as an empty list (emptyListAndErrorShownApart).
+   * Output: A page of organization users ({ items, page, pageSize, hasMore }), each with id, name, status, country, still missing and access complete.
+   */
+  'onboarding.organization_people.listOrganizationPeople': {
+    kind: 'qry';
+    input: { details: { identification: { name?: string; status?: 'Active' | 'Inactive' | 'Merged' | 'Blocked' } }; page: number; pageSize: number };
+    output: { people: { items: MemberRow[]; page: number; pageSize: number; hasMore: boolean } };
+    rules: ['listingProvesNoInvitation', 'fillingDataGrantsNoAuthority', 'emptyListAndErrorShownApart', 'accessCompleteByPlatformRule'];
+    access: { actors: ['companyOwner']; grants: ['ownerOwnAccess', 'ownerFollowPeople', 'ownerPrivacyTexts']; scope: 'own' };
+  };
+  /**
+   * Purpose: Loads the access state of the selected organization user and explains how each pending item is resolved.
+   * Input: memberId: the id of the person selected in the people list.
+   * Processing: Reads the member in the caller’s organization and computes consentRequired, consentValid, missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); none is stored. Reads the current privacy text as the most recently published version (currentPrivacyTextIsLatest). Builds one pending item per missing item with its resolver (pendingItemHasResolver): name, country and consent are resolved by the member in my_access_completion; a country absent from the module country list is resolved by the owner in countries (countryFromModuleList); a required consent with no current privacy text is resolved by the owner in privacy_texts. Privacy consent details are never returned (ownerFollowPeople grant). Listing grants no authority (listingProvesNoInvitation).
+   * Output: The member with id, name, status, country, consent required, consent valid, still missing, access complete, the current privacy text version when one exists, and the pending items each with who resolves it, the target page and whether the owner can act.
+   */
+  'onboarding.organization_people.getPersonAccess': {
+    kind: 'qry';
+    input: { memberId: string };
+    output: { person: MemberAccess };
+    rules: ['pendingItemHasResolver', 'accessCompleteByPlatformRule', 'currentPrivacyTextIsLatest', 'countryFromModuleList', 'validConsentNotAskedAgain', 'listingProvesNoInvitation'];
+    access: { actors: ['companyOwner']; grants: ['ownerOwnAccess', 'ownerFollowPeople', 'ownerPrivacyTexts']; scope: 'own' };
+  };
+}

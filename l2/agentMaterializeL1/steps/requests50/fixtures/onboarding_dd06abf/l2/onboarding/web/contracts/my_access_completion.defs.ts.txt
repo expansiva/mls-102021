@@ -1,0 +1,109 @@
+/// <mls fileReference="_102056_/l2/onboarding/web/contracts/my_access_completion.defs.ts" enhancement="_blank"/>
+
+/** One item the member still has to complete, with who resolves it. */
+export interface MissingItem {
+  readonly item: string;
+  readonly resolver: string;
+}
+
+/** Identification data of the signed-in member. */
+export interface MyIdentification {
+  name?: string;
+  countryCode?: string;
+  readonly updatedAt: string;
+}
+
+/** Computed access situation of the signed-in member. */
+export interface MyOnboarding {
+  readonly consentRequired: boolean;
+  readonly consentValid: boolean;
+  missingItems: MissingItem[];
+  readonly accessComplete: boolean;
+}
+
+/** Details of the signed-in member’s record relevant to access completion. */
+export interface MyAccessDetails {
+  identification: MyIdentification;
+  onboarding: MyOnboarding;
+}
+
+/** The signed-in member’s own record with saved data and computed access status. */
+export interface MyAccess {
+  id: string;
+  version: number;
+  details: MyAccessDetails;
+}
+
+/** An active country of the module country list. */
+export interface CountryOption {
+  code: string;
+  englishName: string;
+  status: 'active' | 'inactive';
+}
+
+/** Content of a privacy text version. */
+export interface PrivacyTextDetails {
+  title: string;
+  body: string;
+  provisional: boolean;
+  languageCode?: string;
+  readonly isCurrent: boolean;
+}
+
+/** A privacy text version with its label and publication date. */
+export interface PrivacyTextView {
+  id: string;
+  versionCode: string;
+  publishedAt: string;
+  details: PrivacyTextDetails;
+}
+
+/** The explicit acceptance of a privacy text version given by the member. */
+export interface ConsentAcceptance {
+  accepted: boolean;
+  id: string;
+  method: string;
+}
+
+export interface My_access_completionContracts {
+  /**
+   * Purpose: Loads everything the complete-my-access page needs in one call: the signed-in member’s own record with its computed access status, the active country list and, when the saved country requires consent, the current privacy text.
+   * Input: None. The member is the signed-in person resolved by the platform session.
+   * Processing: Reads the member by the mdmId the session resolved (noSecondPerson; never creates or links another person). Computes consentRequired, consentValid, missingItems (each with who resolves it: the member here or the owner on the platform) and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); these are derived, never stored. Saved name, country and updatedAt are returned so already-saved data is shown after an earlier failure (savedAndPendingShownAfterFailure). Lists only active countries ordered by English name (onlyActiveCountryCanBeChosen, countryFromModuleList); a missing or unknown saved country stays empty and is never defaulted (unknownCountryNeverDefaulted). When consentRequired is true and consent is not valid, picks the most recently published privacy text, isCurrent computed (currentPrivacyTextIsLatest, privacyTextReadOnly). Never asks for a personal phone.
+   * Output: member: the member record with id, version, name, countryCode, updatedAt and the computed onboarding status; countries: active countries with code, English name and status; privacyText: the current privacy text version, present only when consent is required and not yet valid.
+   */
+  'onboarding.my_access_completion.qryMyAccess': {
+    kind: 'qry';
+    input: {};
+    output: { member: MyAccess; countries: CountryOption[]; privacyText?: PrivacyTextView };
+    rules: ['noSecondPerson', 'accessCompleteByPlatformRule', 'validConsentNotAskedAgain', 'savedAndPendingShownAfterFailure', 'onlyActiveCountryCanBeChosen', 'countryFromModuleList', 'unknownCountryNeverDefaulted', 'currentPrivacyTextIsLatest', 'consentExplicitUnchecked', 'privacyTextReadOnly', 'personalPhoneNotAsked'];
+    access: { actors: ['companyOwner', 'organizationMember']; grants: ['memberOwnAccess', 'memberChooseCountry', 'memberReadPrivacyText', 'ownerOwnAccess', 'ownerFollowPeople', 'ownerMaintainCountries', 'ownerPrivacyTexts']; scope: 'own' };
+  };
+  /**
+   * Purpose: Tells whether the country being chosen in the form requires privacy consent and, if so, returns the current privacy text to accept.
+   * Input: countryCode: two-letter ISO code of the active country currently selected in the form (not yet saved).
+   * Processing: Applies the platform consent rule to the edited country (consentFollowsEditedCountry), not to the saved one. If consent is required and the member has no valid consent, returns the most recently published privacy text version (currentPrivacyTextIsLatest) with its provisional mark (firstPrivacyTextProvisional); a valid consent is not asked again (validConsentNotAskedAgain). Never marks any acceptance: the acceptance starts unchecked (consentExplicitUnchecked). Refuses a country that is not active (onlyActiveCountryCanBeChosen).
+   * Output: consentRequired for the edited country, and privacyText: the current privacy text version with title, body, version, publication date, language and provisional mark, present only when acceptance must be given.
+   */
+  'onboarding.my_access_completion.qryConsentForCountry': {
+    kind: 'qry';
+    input: { countryCode: string };
+    output: { readonly consentRequired: boolean; privacyText?: PrivacyTextView };
+    rules: ['consentFollowsEditedCountry', 'currentPrivacyTextIsLatest', 'firstPrivacyTextProvisional', 'consentExplicitUnchecked', 'validConsentNotAskedAgain', 'onlyActiveCountryCanBeChosen'];
+    access: { actors: ['companyOwner', 'organizationMember']; grants: ['memberOwnAccess', 'memberChooseCountry', 'memberReadPrivacyText', 'ownerOwnAccess', 'ownerFollowPeople', 'ownerMaintainCountries', 'ownerPrivacyTexts']; scope: 'own' };
+  };
+  /**
+   * Purpose: Saves the signed-in member’s missing name and country and, when required, the explicit privacy consent, in one platform update of their own record.
+   * Input: id and version: the member’s own record and the version read, for optimistic concurrency. details.identification.name: the missing details.identification.name, only when the platform does not have it. details.identification.countryCode: ISO code of the chosen active country, only when missing or changed. privacyConsent: the explicit acceptance with accepted flag, the id of the privacy text version accepted and the method (onboarding screen, desktop or mobile); sent only when the edited country requires consent.
+   * Processing: Refuses any record other than the signed-in member’s (noSecondPerson). Refuses a country not in the module list or not active and never fills a default (countryFromModuleList, onlyActiveCountryCanBeChosen, unknownCountryNeverDefaulted). Re-evaluates the consent need for the country being saved (consentFollowsEditedCountry): if required and no valid consent exists, refuses the save unless accepted is explicitly true for the current version (consentExplicitUnchecked); records the consent with acceptance time set by the server, method and accepted privacy text version (consentRecordsAcceptedVersion); does not ask again for a valid consent (validConsentNotAskedAgain). Never asks for a phone and never grants roles or permissions (personalPhoneNotAsked, fillingDataGrantsNoAuthority). After the write, recomputes missingItems and accessComplete by the platform rule so the session agrees (accessCompleteByPlatformRule); if a step fails after a partial save, the error carries the saved state so nothing has to be retyped (savedAndPendingShownAfterFailure).
+   * Output: member: the member’s record in its new state, with new version, saved name, country, updatedAt and the recomputed consentRequired, consentValid, missingItems and accessComplete.
+   */
+  'onboarding.my_access_completion.cmdSaveMyAccess': {
+    kind: 'cmd';
+    writes: 'OrganizationMember.update';
+    input: { id: string; version: number; details: { identification: { name?: string; countryCode?: string } }; privacyConsent?: ConsentAcceptance };
+    output: { member: MyAccess };
+    rules: ['noSecondPerson', 'countryFromModuleList', 'onlyActiveCountryCanBeChosen', 'unknownCountryNeverDefaulted', 'consentFollowsEditedCountry', 'consentExplicitUnchecked', 'consentRecordsAcceptedVersion', 'validConsentNotAskedAgain', 'accessCompleteByPlatformRule', 'fillingDataGrantsNoAuthority', 'savedAndPendingShownAfterFailure', 'personalPhoneNotAsked'];
+    access: { actors: ['companyOwner', 'organizationMember']; grants: ['memberOwnAccess', 'memberChooseCountry', 'memberReadPrivacyText', 'ownerOwnAccess', 'ownerFollowPeople', 'ownerMaintainCountries', 'ownerPrivacyTexts']; scope: 'own' };
+  };
+}

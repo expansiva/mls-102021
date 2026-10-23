@@ -1,0 +1,108 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/usecases/updateOrganizationMember.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "updateOrganizationMember",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_3_domain/entities/organizationMember.defs.ts",
+    "_102056_/l4/onboarding/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "updateOrganizationMember",
+    "entityId": "OrganizationMember",
+    "operation": "update",
+    "rulesApplied": [
+      "accessCompleteByPlatformRule",
+      "consentExplicitUnchecked",
+      "consentFollowsEditedCountry",
+      "countryFromModuleList",
+      "fillingDataGrantsNoAuthority",
+      "listingProvesNoInvitation",
+      "loginEmailReadOnly",
+      "noSecondPerson",
+      "savedAndPendingShownAfterFailure",
+      "unknownCountryNeverDefaulted",
+      "validConsentNotAskedAgain"
+    ],
+    "effects": [],
+    "mdm": {
+      "namespace": "onboarding",
+      "role": "onboarding.OrganizationMember",
+      "atomic": true,
+      "calls": [
+        {
+          "id": "update",
+          "method": "update",
+          "target": "entity",
+          "shape": "write",
+          "capabilities": [
+            "edit.platformFields"
+          ],
+          "alternative": false,
+          "when": [],
+          "arguments": [
+            {
+              "name": "mdmId",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "id"
+              },
+              "path": "id"
+            },
+            {
+              "name": "expectedVersion",
+              "role": "parameter",
+              "origin": {
+                "kind": "contract",
+                "path": "version",
+                "evidence": "writePrecondition"
+              },
+              "path": "version"
+            },
+            {
+              "name": "countryCode",
+              "role": "patch",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.countryCode"
+              },
+              "capability": "edit.platformFields",
+              "path": "details.identification.countryCode"
+            },
+            {
+              "name": "name",
+              "role": "patch",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.name"
+              },
+              "capability": "edit.platformFields",
+              "path": "details.identification.name"
+            },
+            {
+              "name": "privacyConsent",
+              "role": "patch",
+              "origin": {
+                "kind": "contract",
+                "path": "details.person.privacyConsent"
+              },
+              "capability": "edit.platformFields",
+              "path": "details.person.privacyConsent"
+            }
+          ],
+          "result": [
+            "mdmId",
+            "version",
+            "details"
+          ]
+        }
+      ]
+    }
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,227 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/requests/organization_people.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "organization_people",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/usecases/getOrganizationMember.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listOrganizationMember.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.defs.ts"
+  ],
+  "data": {
+    "pageId": "organization_people",
+    "requests": [
+      {
+        "route": "onboarding.organization_people.listOrganizationPeople",
+        "kind": "qry",
+        "uses": [
+          "listOrganizationMember",
+          "getOrganizationMember"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "people.items.details",
+            "reason": "DISCLOSURE: Route onboarding.organization_people.listOrganizationPeople projects items.details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "list",
+            "path": "people",
+            "entity": "OrganizationMember",
+            "items": "items",
+            "page": "people.page",
+            "pageSize": "people.pageSize",
+            "hasMore": "people.hasMore",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "people.items.details.identification",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.items.details.identification.status",
+            "reason": "COMPUTED_NOT_DISCLOSED: onboarding.organization_people.listOrganizationPeople items.details.identification.status"
+          },
+          {
+            "kind": "computed",
+            "path": "people.details.onboarding",
+            "rules": [
+              "accessCompleteByPlatformRule"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.identification",
+            "reason": "OrganizationMember inside OrganizationMember needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "people.details.identification.status",
+            "reason": "Interface MemberIdentification: readonly status is not a field of OrganizationMember; it may stand for one of its paths."
+          }
+        ],
+        "params": [
+          {
+            "name": "page",
+            "target": "people",
+            "pages": "people"
+          },
+          {
+            "name": "pageSize",
+            "target": "people",
+            "pages": "people"
+          },
+          {
+            "name": "details",
+            "target": "people",
+            "field": "details"
+          }
+        ],
+        "rules": [
+          "listingProvesNoInvitation",
+          "fillingDataGrantsNoAuthority",
+          "emptyListAndErrorShownApart",
+          "accessCompleteByPlatformRule"
+        ],
+        "doc": {
+          "raw": "Purpose: Lists the organization users for the owner, one page at a time, searchable by name and filterable by platform status, with what each one still has to complete.\nInput: details.identification.name: optional text the member details.identification.name must contain; details.identification.status: optional platform details.identification.status to filter by; page and pageSize: the page requested and its size.\nProcessing: Reads the platform user list of the caller’s organization (locate.users, locate.byName), filtered by name contains and status. For each user computes missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule); these are derived, never stored. Returns only the fields allowed by the ownerFollowPeople grant; privacy consent details are never returned. Being listed is not evidence of an accepted invitation and grants nothing (listingProvesNoInvitation, fillingDataGrantsNoAuthority). An empty result is returned as an empty page, while a loading failure is returned as an error, never as an empty list (emptyListAndErrorShownApart).\nOutput: A page of organization users ({ items, page, pageSize, hasMore }), each with id, name, status, country, still missing and access complete.",
+          "purpose": "Lists the organization users for the owner, one page at a time, searchable by name and filterable by platform status, with what each one still has to complete.",
+          "input": "details.identification.name: optional text the member details.identification.name must contain; details.identification.status: optional platform details.identification.status to filter by; page and pageSize: the page requested and its size.",
+          "processing": "Reads the platform user list of the caller’s organization (locate.users, locate.byName), filtered by name contains and status. For each user computes missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule); these are derived, never stored. Returns only the fields allowed by the ownerFollowPeople grant; privacy consent details are never returned. Being listed is not evidence of an accepted invitation and grants nothing (listingProvesNoInvitation, fillingDataGrantsNoAuthority). An empty result is returned as an empty page, while a loading failure is returned as an error, never as an empty list (emptyListAndErrorShownApart).",
+          "output": "A page of organization users ({ items, page, pageSize, hasMore }), each with id, name, status, country, still missing and access complete."
+        }
+      },
+      {
+        "route": "onboarding.organization_people.getPersonAccess",
+        "kind": "qry",
+        "uses": [
+          "getOrganizationMember",
+          "listPrivacyText"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "unresolved",
+            "path": "person.details",
+            "reason": "DISCLOSURE: Route onboarding.organization_people.getPersonAccess projects details. A grant names a sub-path, but the nested shape could not be read, so the container was not released."
+          },
+          {
+            "kind": "entity",
+            "path": "person",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "person.details.identification",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.identification.status",
+            "reason": "COMPUTED_NOT_DISCLOSED: onboarding.organization_people.getPersonAccess details.identification.status"
+          },
+          {
+            "kind": "related",
+            "path": "person.privacyText",
+            "entity": "PrivacyText",
+            "relationship": "memberConsentVersion",
+            "fields": [
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "person.details.onboarding",
+            "rules": [
+              "accessCompleteByPlatformRule"
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "person.pendingItems",
+            "rules": [
+              "pendingItemHasResolver"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.identification",
+            "reason": "OrganizationMember inside OrganizationMember needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.details.identification.status",
+            "reason": "Interface MemberIdentification: readonly status is not a field of OrganizationMember; it may stand for one of its paths."
+          },
+          {
+            "kind": "unresolved",
+            "path": "person.pendingItems",
+            "reason": "PROJECTION_FIELD_UNKNOWN: Route onboarding.organization_people.getPersonAccess projects OrganizationMember.pendingItems, which is not a field of the ontology."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "pendingItemHasResolver",
+          "accessCompleteByPlatformRule",
+          "currentPrivacyTextIsLatest",
+          "countryFromModuleList",
+          "validConsentNotAskedAgain",
+          "listingProvesNoInvitation"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the access state of the selected organization user and explains how each pending item is resolved.\nInput: memberId: the id of the person selected in the people list.\nProcessing: Reads the member in the caller’s organization and computes consentRequired, consentValid, missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); none is stored. Reads the current privacy text as the most recently published version (currentPrivacyTextIsLatest). Builds one pending item per missing item with its resolver (pendingItemHasResolver): name, country and consent are resolved by the member in my_access_completion; a country absent from the module country list is resolved by the owner in countries (countryFromModuleList); a required consent with no current privacy text is resolved by the owner in privacy_texts. Privacy consent details are never returned (ownerFollowPeople grant). Listing grants no authority (listingProvesNoInvitation).\nOutput: The member with id, name, status, country, consent required, consent valid, still missing, access complete, the current privacy text version when one exists, and the pending items each with who resolves it, the target page and whether the owner can act.",
+          "purpose": "Loads the access state of the selected organization user and explains how each pending item is resolved.",
+          "input": "memberId: the id of the person selected in the people list.",
+          "processing": "Reads the member in the caller’s organization and computes consentRequired, consentValid, missingItems and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); none is stored. Reads the current privacy text as the most recently published version (currentPrivacyTextIsLatest). Builds one pending item per missing item with its resolver (pendingItemHasResolver): name, country and consent are resolved by the member in my_access_completion; a country absent from the module country list is resolved by the owner in countries (countryFromModuleList); a required consent with no current privacy text is resolved by the owner in privacy_texts. Privacy consent details are never returned (ownerFollowPeople grant). Listing grants no authority (listingProvesNoInvitation).",
+          "output": "The member with id, name, status, country, consent required, consent valid, still missing, access complete, the current privacy text version when one exists, and the pending items each with who resolves it, the target page and whether the owner can act."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

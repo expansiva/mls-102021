@@ -1,0 +1,252 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/requests/privacy_texts.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "privacy_texts",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/usecases/createPrivacyText.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/updatePrivacyText.defs.ts"
+  ],
+  "data": {
+    "pageId": "privacy_texts",
+    "requests": [
+      {
+        "route": "onboarding.privacy_texts.loadPrivacyTexts",
+        "kind": "qry",
+        "uses": [
+          "listPrivacyText"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "currentVersion",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "versions",
+            "entity": "PrivacyText",
+            "items": "",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "currentPrivacyTextIsLatest",
+          "privacyTextOneRowPerVersion"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads the organization’s privacy text versions and the current one in a single call when the page opens.\nInput: No input; the organization comes from the logged-in owner.\nProcessing: Reads every privacy text version of the organization, ordered by publishedAt descending (one row per version, privacyTextOneRowPerVersion). Computes the derived isCurrent per version: per currentPrivacyTextIsLatest, the current version is the most recently published one (publishedAt not in the future); isCurrent is computed, never stored. The list is not paged because versions grow slowly.\nOutput: currentVersion: the current version summary, absent when no version is published yet. versions: all version summaries (label, title, language, publication date, provisional and current marks) without the full text.",
+          "purpose": "Loads the organization’s privacy text versions and the current one in a single call when the page opens.",
+          "input": "No input; the organization comes from the logged-in owner.",
+          "processing": "Reads every privacy text version of the organization, ordered by publishedAt descending (one row per version, privacyTextOneRowPerVersion). Computes the derived isCurrent per version: per currentPrivacyTextIsLatest, the current version is the most recently published one (publishedAt not in the future); isCurrent is computed, never stored. The list is not paged because versions grow slowly.",
+          "output": "currentVersion: the current version summary, absent when no version is published yet. versions: all version summaries (label, title, language, publication date, provisional and current marks) without the full text."
+        }
+      },
+      {
+        "route": "onboarding.privacy_texts.getPrivacyTextVersion",
+        "kind": "qry",
+        "uses": [
+          "listPrivacyText"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "version",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [
+          {
+            "name": "id",
+            "target": "version",
+            "field": "id"
+          }
+        ],
+        "rules": [
+          "currentPrivacyTextIsLatest"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads one privacy text version with its full text when it is selected.\nInput: id: the id of the selected privacy text version.\nProcessing: Reads the version by id within the owner’s organization and computes isCurrent per currentPrivacyTextIsLatest (most recently published version).\nOutput: version: the complete privacy text version with its label, publication date, title, full text, language, provisional mark and current mark.",
+          "purpose": "Loads one privacy text version with its full text when it is selected.",
+          "input": "id: the id of the selected privacy text version.",
+          "processing": "Reads the version by id within the owner’s organization and computes isCurrent per currentPrivacyTextIsLatest (most recently published version).",
+          "output": "version: the complete privacy text version with its label, publication date, title, full text, language, provisional mark and current mark."
+        }
+      },
+      {
+        "route": "onboarding.privacy_texts.createPrivacyTextVersion",
+        "kind": "cmd",
+        "uses": [
+          "createPrivacyText"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "version",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "privacyTextOneRowPerVersion",
+          "firstPrivacyTextProvisional",
+          "currentPrivacyTextIsLatest"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves a new privacy text version for the organization.\nInput: versionCode: the version label; publishedAt: when the version comes into force; details.title: heading; details.body: full text; details.languageCode: language of the text (optional); details.provisional: details.provisional mark.\nProcessing: Refuses a version label already used (privacyTextOneRowPerVersion, unique key). When no version exists yet, the new one is saved as provisional (firstPrivacyTextProvisional). Creates the row; isCurrent is computed per currentPrivacyTextIsLatest, never stored.\nOutput: version: the created privacy text version in its saved state, with its full text and computed current mark.",
+          "purpose": "Saves a new privacy text version for the organization.",
+          "input": "versionCode: the version label; publishedAt: when the version comes into force; details.title: heading; details.body: full text; details.languageCode: language of the text (optional); details.provisional: details.provisional mark.",
+          "processing": "Refuses a version label already used (privacyTextOneRowPerVersion, unique key). When no version exists yet, the new one is saved as provisional (firstPrivacyTextProvisional). Creates the row; isCurrent is computed per currentPrivacyTextIsLatest, never stored.",
+          "output": "version: the created privacy text version in its saved state, with its full text and computed current mark."
+        }
+      },
+      {
+        "route": "onboarding.privacy_texts.updatePrivacyTextVersion",
+        "kind": "cmd",
+        "uses": [
+          "updatePrivacyText"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "version",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          }
+        ],
+        "params": [],
+        "rules": [
+          "privacyTextReadOnly",
+          "privacyTextOneRowPerVersion",
+          "currentPrivacyTextIsLatest"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves changes to a privacy text version that is not yet published.\nInput: id and version: the version being changed and its row version for concurrency; the other fields: the new label, publication date, details.title, full text, language and details.provisional mark.\nProcessing: Refuses the change when the stored version is already published (publishedAt reached), per privacyTextReadOnly. Refuses a label used by another version (privacyTextOneRowPerVersion). Refuses a stale row version. isCurrent is computed per currentPrivacyTextIsLatest, never stored.\nOutput: version: the changed privacy text version in its new state, with its full text and computed current mark.",
+          "purpose": "Saves changes to a privacy text version that is not yet published.",
+          "input": "id and version: the version being changed and its row version for concurrency; the other fields: the new label, publication date, details.title, full text, language and details.provisional mark.",
+          "processing": "Refuses the change when the stored version is already published (publishedAt reached), per privacyTextReadOnly. Refuses a label used by another version (privacyTextOneRowPerVersion). Refuses a stale row version. isCurrent is computed per currentPrivacyTextIsLatest, never stored.",
+          "output": "version: the changed privacy text version in its new state, with its full text and computed current mark."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,29 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/usecases/updatePrivacyText.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "updatePrivacyText",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/ports/privacyTextRepository.defs.ts",
+    "_102056_/l1/onboarding/layer_3_domain/entities/privacyText.defs.ts",
+    "_102056_/l4/onboarding/rules.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "updatePrivacyText",
+    "entityId": "PrivacyText",
+    "operation": "update",
+    "rulesApplied": [
+      "consentRecordsAcceptedVersion",
+      "currentPrivacyTextIsLatest",
+      "firstPrivacyTextProvisional",
+      "privacyTextOneRowPerVersion",
+      "privacyTextReadOnly"
+    ],
+    "effects": []
+  }
+} as const;
+
+export default definition;

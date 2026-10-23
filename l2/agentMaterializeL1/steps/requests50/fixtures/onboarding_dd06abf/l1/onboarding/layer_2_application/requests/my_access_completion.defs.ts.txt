@@ -1,0 +1,320 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/requests/my_access_completion.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "requestService",
+  "artifactId": "my_access_completion",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/usecases/getOrganizationMember.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listCountry.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.defs.ts",
+    "_102056_/l1/onboarding/layer_2_application/usecases/updateOrganizationMember.defs.ts"
+  ],
+  "data": {
+    "pageId": "my_access_completion",
+    "requests": [
+      {
+        "route": "onboarding.my_access_completion.qryMyAccess",
+        "kind": "qry",
+        "uses": [
+          "getOrganizationMember",
+          "listCountry",
+          "listPrivacyText"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "member",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "member.details.identification",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              },
+              {
+                "field": "updatedAt",
+                "path": "details.identification.updatedAt"
+              }
+            ]
+          },
+          {
+            "kind": "list",
+            "path": "countries",
+            "entity": "Country",
+            "items": "",
+            "fields": [
+              {
+                "field": "code",
+                "path": "code"
+              },
+              {
+                "field": "englishName",
+                "path": "englishName"
+              },
+              {
+                "field": "status",
+                "path": "status"
+              }
+            ]
+          },
+          {
+            "kind": "entity",
+            "path": "privacyText",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "member.details.onboarding",
+            "rules": [
+              "accessCompleteByPlatformRule"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.identification",
+            "reason": "OrganizationMember inside OrganizationMember needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.consentRequired",
+            "reason": "Interface MyOnboarding pages missingItems; consentRequired is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.consentValid",
+            "reason": "Interface MyOnboarding pages missingItems; consentValid is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.accessComplete",
+            "reason": "Interface MyOnboarding pages missingItems; accessComplete is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "noSecondPerson",
+          "accessCompleteByPlatformRule",
+          "validConsentNotAskedAgain",
+          "savedAndPendingShownAfterFailure",
+          "onlyActiveCountryCanBeChosen",
+          "countryFromModuleList",
+          "unknownCountryNeverDefaulted",
+          "currentPrivacyTextIsLatest",
+          "consentExplicitUnchecked",
+          "privacyTextReadOnly",
+          "personalPhoneNotAsked"
+        ],
+        "doc": {
+          "raw": "Purpose: Loads everything the complete-my-access page needs in one call: the signed-in member’s own record with its computed access status, the active country list and, when the saved country requires consent, the current privacy text.\nInput: None. The member is the signed-in person resolved by the platform session.\nProcessing: Reads the member by the mdmId the session resolved (noSecondPerson; never creates or links another person). Computes consentRequired, consentValid, missingItems (each with who resolves it: the member here or the owner on the platform) and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); these are derived, never stored. Saved name, country and updatedAt are returned so already-saved data is shown after an earlier failure (savedAndPendingShownAfterFailure). Lists only active countries ordered by English name (onlyActiveCountryCanBeChosen, countryFromModuleList); a missing or unknown saved country stays empty and is never defaulted (unknownCountryNeverDefaulted). When consentRequired is true and consent is not valid, picks the most recently published privacy text, isCurrent computed (currentPrivacyTextIsLatest, privacyTextReadOnly). Never asks for a personal phone.\nOutput: member: the member record with id, version, name, countryCode, updatedAt and the computed onboarding status; countries: active countries with code, English name and status; privacyText: the current privacy text version, present only when consent is required and not yet valid.",
+          "purpose": "Loads everything the complete-my-access page needs in one call: the signed-in member’s own record with its computed access status, the active country list and, when the saved country requires consent, the current privacy text.",
+          "input": "None. The member is the signed-in person resolved by the platform session.",
+          "processing": "Reads the member by the mdmId the session resolved (noSecondPerson; never creates or links another person). Computes consentRequired, consentValid, missingItems (each with who resolves it: the member here or the owner on the platform) and accessComplete by the platform rule (accessCompleteByPlatformRule, validConsentNotAskedAgain); these are derived, never stored. Saved name, country and updatedAt are returned so already-saved data is shown after an earlier failure (savedAndPendingShownAfterFailure). Lists only active countries ordered by English name (onlyActiveCountryCanBeChosen, countryFromModuleList); a missing or unknown saved country stays empty and is never defaulted (unknownCountryNeverDefaulted). When consentRequired is true and consent is not valid, picks the most recently published privacy text, isCurrent computed (currentPrivacyTextIsLatest, privacyTextReadOnly). Never asks for a personal phone.",
+          "output": "member: the member record with id, version, name, countryCode, updatedAt and the computed onboarding status; countries: active countries with code, English name and status; privacyText: the current privacy text version, present only when consent is required and not yet valid."
+        }
+      },
+      {
+        "route": "onboarding.my_access_completion.qryConsentForCountry",
+        "kind": "qry",
+        "uses": [
+          "listPrivacyText"
+        ],
+        "transaction": "none",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "privacyText",
+            "entity": "PrivacyText",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "versionCode",
+                "path": "versionCode"
+              },
+              {
+                "field": "publishedAt",
+                "path": "publishedAt"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "consentRequired",
+            "reason": "Output consentRequired is a value (boolean), not an interface; no entity owns it."
+          }
+        ],
+        "params": [],
+        "rules": [
+          "consentFollowsEditedCountry",
+          "currentPrivacyTextIsLatest",
+          "firstPrivacyTextProvisional",
+          "consentExplicitUnchecked",
+          "validConsentNotAskedAgain",
+          "onlyActiveCountryCanBeChosen"
+        ],
+        "doc": {
+          "raw": "Purpose: Tells whether the country being chosen in the form requires privacy consent and, if so, returns the current privacy text to accept.\nInput: countryCode: two-letter ISO code of the active country currently selected in the form (not yet saved).\nProcessing: Applies the platform consent rule to the edited country (consentFollowsEditedCountry), not to the saved one. If consent is required and the member has no valid consent, returns the most recently published privacy text version (currentPrivacyTextIsLatest) with its provisional mark (firstPrivacyTextProvisional); a valid consent is not asked again (validConsentNotAskedAgain). Never marks any acceptance: the acceptance starts unchecked (consentExplicitUnchecked). Refuses a country that is not active (onlyActiveCountryCanBeChosen).\nOutput: consentRequired for the edited country, and privacyText: the current privacy text version with title, body, version, publication date, language and provisional mark, present only when acceptance must be given.",
+          "purpose": "Tells whether the country being chosen in the form requires privacy consent and, if so, returns the current privacy text to accept.",
+          "input": "countryCode: two-letter ISO code of the active country currently selected in the form (not yet saved).",
+          "processing": "Applies the platform consent rule to the edited country (consentFollowsEditedCountry), not to the saved one. If consent is required and the member has no valid consent, returns the most recently published privacy text version (currentPrivacyTextIsLatest) with its provisional mark (firstPrivacyTextProvisional); a valid consent is not asked again (validConsentNotAskedAgain). Never marks any acceptance: the acceptance starts unchecked (consentExplicitUnchecked). Refuses a country that is not active (onlyActiveCountryCanBeChosen).",
+          "output": "consentRequired for the edited country, and privacyText: the current privacy text version with title, body, version, publication date, language and provisional mark, present only when acceptance must be given."
+        }
+      },
+      {
+        "route": "onboarding.my_access_completion.cmdSaveMyAccess",
+        "kind": "cmd",
+        "uses": [
+          "updateOrganizationMember"
+        ],
+        "transaction": "single",
+        "output": [
+          {
+            "kind": "entity",
+            "path": "member",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "id",
+                "path": "id"
+              },
+              {
+                "field": "version",
+                "path": "version"
+              },
+              {
+                "field": "details",
+                "path": "details"
+              }
+            ]
+          },
+          {
+            "kind": "related",
+            "path": "member.details.identification",
+            "entity": "OrganizationMember",
+            "fields": [
+              {
+                "field": "name",
+                "path": "details.identification.name"
+              },
+              {
+                "field": "countryCode",
+                "path": "details.identification.countryCode"
+              },
+              {
+                "field": "updatedAt",
+                "path": "details.identification.updatedAt"
+              }
+            ]
+          },
+          {
+            "kind": "computed",
+            "path": "member.details.onboarding",
+            "rules": [
+              "accessCompleteByPlatformRule"
+            ]
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.identification",
+            "reason": "OrganizationMember inside OrganizationMember needs one L4 relationship between them; found 0."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.consentRequired",
+            "reason": "Interface MyOnboarding pages missingItems; consentRequired is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.consentValid",
+            "reason": "Interface MyOnboarding pages missingItems; consentValid is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          },
+          {
+            "kind": "unresolved",
+            "path": "member.details.onboarding.accessComplete",
+            "reason": "Interface MyOnboarding pages missingItems; accessComplete is not one of the paging keys total, page, pageSize, hasMore next to items, so the types do not say what it is."
+          }
+        ],
+        "params": [
+          {
+            "name": "privacyConsent",
+            "target": "",
+            "optional": true
+          }
+        ],
+        "rules": [
+          "noSecondPerson",
+          "countryFromModuleList",
+          "onlyActiveCountryCanBeChosen",
+          "unknownCountryNeverDefaulted",
+          "consentFollowsEditedCountry",
+          "consentExplicitUnchecked",
+          "consentRecordsAcceptedVersion",
+          "validConsentNotAskedAgain",
+          "accessCompleteByPlatformRule",
+          "fillingDataGrantsNoAuthority",
+          "savedAndPendingShownAfterFailure",
+          "personalPhoneNotAsked"
+        ],
+        "doc": {
+          "raw": "Purpose: Saves the signed-in member’s missing name and country and, when required, the explicit privacy consent, in one platform update of their own record.\nInput: id and version: the member’s own record and the version read, for optimistic concurrency. details.identification.name: the missing details.identification.name, only when the platform does not have it. details.identification.countryCode: ISO code of the chosen active country, only when missing or changed. privacyConsent: the explicit acceptance with accepted flag, the id of the privacy text version accepted and the method (onboarding screen, desktop or mobile); sent only when the edited country requires consent.\nProcessing: Refuses any record other than the signed-in member’s (noSecondPerson). Refuses a country not in the module list or not active and never fills a default (countryFromModuleList, onlyActiveCountryCanBeChosen, unknownCountryNeverDefaulted). Re-evaluates the consent need for the country being saved (consentFollowsEditedCountry): if required and no valid consent exists, refuses the save unless accepted is explicitly true for the current version (consentExplicitUnchecked); records the consent with acceptance time set by the server, method and accepted privacy text version (consentRecordsAcceptedVersion); does not ask again for a valid consent (validConsentNotAskedAgain). Never asks for a phone and never grants roles or permissions (personalPhoneNotAsked, fillingDataGrantsNoAuthority). After the write, recomputes missingItems and accessComplete by the platform rule so the session agrees (accessCompleteByPlatformRule); if a step fails after a partial save, the error carries the saved state so nothing has to be retyped (savedAndPendingShownAfterFailure).\nOutput: member: the member’s record in its new state, with new version, saved name, country, updatedAt and the recomputed consentRequired, consentValid, missingItems and accessComplete.",
+          "purpose": "Saves the signed-in member’s missing name and country and, when required, the explicit privacy consent, in one platform update of their own record.",
+          "input": "id and version: the member’s own record and the version read, for optimistic concurrency. details.identification.name: the missing details.identification.name, only when the platform does not have it. details.identification.countryCode: ISO code of the chosen active country, only when missing or changed. privacyConsent: the explicit acceptance with accepted flag, the id of the privacy text version accepted and the method (onboarding screen, desktop or mobile); sent only when the edited country requires consent.",
+          "processing": "Refuses any record other than the signed-in member’s (noSecondPerson). Refuses a country not in the module list or not active and never fills a default (countryFromModuleList, onlyActiveCountryCanBeChosen, unknownCountryNeverDefaulted). Re-evaluates the consent need for the country being saved (consentFollowsEditedCountry): if required and no valid consent exists, refuses the save unless accepted is explicitly true for the current version (consentExplicitUnchecked); records the consent with acceptance time set by the server, method and accepted privacy text version (consentRecordsAcceptedVersion); does not ask again for a valid consent (validConsentNotAskedAgain). Never asks for a phone and never grants roles or permissions (personalPhoneNotAsked, fillingDataGrantsNoAuthority). After the write, recomputes missingItems and accessComplete by the platform rule so the session agrees (accessCompleteByPlatformRule); if a step fails after a partial save, the error carries the saved state so nothing has to be retyped (savedAndPendingShownAfterFailure).",
+          "output": "member: the member’s record in its new state, with new version, saved name, country, updatedAt and the recomputed consentRequired, consentValid, missingItems and accessComplete."
+        }
+      }
+    ]
+  }
+} as const;
+
+export default definition;

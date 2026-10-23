@@ -1,0 +1,55 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/usecases/getOrganizationMember.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "getOrganizationMember",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_3_domain/entities/organizationMember.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "getOrganizationMember",
+    "entityId": "OrganizationMember",
+    "operation": "get",
+    "rulesApplied": [],
+    "effects": [],
+    "mdm": {
+      "namespace": "onboarding",
+      "role": "onboarding.OrganizationMember",
+      "atomic": true,
+      "calls": [
+        {
+          "id": "get",
+          "method": "get",
+          "target": "entity",
+          "shape": "point",
+          "capabilities": [
+            "read.byId"
+          ],
+          "alternative": false,
+          "when": [],
+          "arguments": [
+            {
+              "name": "mdmId",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "id"
+              },
+              "path": "id"
+            }
+          ],
+          "result": [
+            "mdmId",
+            "version",
+            "details"
+          ]
+        }
+      ]
+    }
+  }
+} as const;
+
+export default definition;

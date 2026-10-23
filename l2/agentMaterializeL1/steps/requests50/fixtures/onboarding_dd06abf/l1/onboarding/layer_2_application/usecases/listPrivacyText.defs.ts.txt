@@ -1,0 +1,22 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/usecases/listPrivacyText.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "listPrivacyText",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_2_application/ports/privacyTextRepository.defs.ts",
+    "_102056_/l1/onboarding/layer_3_domain/entities/privacyText.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "listPrivacyText",
+    "entityId": "PrivacyText",
+    "operation": "list",
+    "rulesApplied": [],
+    "effects": []
+  }
+} as const;
+
+export default definition;

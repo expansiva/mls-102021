@@ -15,12 +15,13 @@ import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.j
 import { loadTestsContext, thrownErrorCodes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '../../../../..');
 const PROJECT = 102056;
 const MODULE = 'onboarding';
 const PAGE = 'my_access_completion';
-const REQUEST_TS = path.join(ROOT, `mls-${PROJECT}`, 'l1', MODULE, 'layer_2_application', 'requests', `${PAGE}.ts`);
-const CONTRACT_TS = path.join(ROOT, `mls-${PROJECT}`, 'l2', MODULE, 'web', 'contracts', `${PAGE}.defs.ts`);
+// 102056 onboarding frozen at its commit dd06abf (byte copies, .txt so tsc skips them).
+const FIXTURE = path.join(HERE, 'fixtures', 'onboarding_dd06abf');
+const REQUEST_TS = path.join(FIXTURE, 'l1', MODULE, 'layer_2_application', 'requests', `${PAGE}.ts.txt`);
+const CONTRACT_TS = path.join(FIXTURE, 'l2', MODULE, 'web', 'contracts', `${PAGE}.defs.ts.txt`);
 
 interface FakeFile extends M12FileInfo {
   status: string;

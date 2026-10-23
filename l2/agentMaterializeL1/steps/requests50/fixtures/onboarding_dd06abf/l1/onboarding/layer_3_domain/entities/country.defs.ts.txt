@@ -1,0 +1,81 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_3_domain/entities/country.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "Country",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "Country",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "code",
+        "type": "string"
+      },
+      {
+        "name": "englishName",
+        "type": "string"
+      },
+      {
+        "name": "status",
+        "type": "enum"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      }
+    ],
+    "lifecycle": {
+      "states": [
+        {
+          "state": "active",
+          "reachedBy": "actor"
+        },
+        {
+          "state": "inactive",
+          "reachedBy": "actor"
+        }
+      ],
+      "transitions": [
+        {
+          "transitionId": "inactivateCountry",
+          "from": [
+            "active"
+          ],
+          "to": "inactive",
+          "by": [
+            "companyOwner"
+          ],
+          "ruleRefs": [
+            "onlyOwnerMaintainsCountries",
+            "inactiveCountryKeepsRecords"
+          ]
+        }
+      ]
+    },
+    "invariants": [
+      "onlyOwnerMaintainsCountries",
+      "countryCodeUnique",
+      "countryCodeIsoFormat",
+      "onlyActiveCountryCanBeChosen",
+      "unknownCountryNeverDefaulted",
+      "inactiveCountryKeepsRecords"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;

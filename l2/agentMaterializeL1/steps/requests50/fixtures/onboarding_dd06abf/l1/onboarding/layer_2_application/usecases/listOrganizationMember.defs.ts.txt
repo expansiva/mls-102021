@@ -1,0 +1,98 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_2_application/usecases/listOrganizationMember.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "listOrganizationMember",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [
+    "_102056_/l1/onboarding/layer_3_domain/entities/organizationMember.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "listOrganizationMember",
+    "entityId": "OrganizationMember",
+    "operation": "list",
+    "rulesApplied": [],
+    "effects": [],
+    "mdm": {
+      "namespace": "onboarding",
+      "role": "onboarding.OrganizationMember",
+      "atomic": false,
+      "calls": [
+        {
+          "id": "get",
+          "method": "get",
+          "target": "entity",
+          "shape": "point",
+          "capabilities": [
+            "read.byId"
+          ],
+          "alternative": false,
+          "when": [],
+          "arguments": [
+            {
+              "name": "mdmId",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "id"
+              },
+              "path": "id"
+            }
+          ],
+          "result": [
+            "mdmId",
+            "version",
+            "details"
+          ]
+        },
+        {
+          "id": "listByName",
+          "method": "listByType",
+          "target": "collection",
+          "shape": "collection",
+          "capabilities": [
+            "locate.byName"
+          ],
+          "alternative": false,
+          "when": [
+            {
+              "kind": "contract",
+              "path": "details.identification.name",
+              "present": true
+            }
+          ],
+          "arguments": [
+            {
+              "name": "type",
+              "role": "parameter",
+              "origin": {
+                "kind": "literal",
+                "evidence": "role"
+              },
+              "value": "onboarding.OrganizationMember"
+            },
+            {
+              "name": "name",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.name"
+              },
+              "path": "details.identification.name"
+            }
+          ],
+          "result": [
+            "items",
+            "page",
+            "pageSize",
+            "total"
+          ]
+        }
+      ]
+    }
+  }
+} as const;
+
+export default definition;

@@ -1,0 +1,73 @@
+/// <mls fileReference="_102056_/l1/onboarding/layer_3_domain/entities/privacyText.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "domainEntity",
+  "artifactId": "PrivacyText",
+  "moduleName": "onboarding",
+  "status": "pending",
+  "dependencies": [],
+  "data": {
+    "entityId": "PrivacyText",
+    "storageTarget": "moduleDatabase",
+    "fields": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "derived": true
+      },
+      {
+        "name": "version",
+        "type": "integer",
+        "derived": true
+      },
+      {
+        "name": "versionCode",
+        "type": "string"
+      },
+      {
+        "name": "publishedAt",
+        "type": "timestamp"
+      },
+      {
+        "name": "details",
+        "type": "object"
+      },
+      {
+        "name": "details.title",
+        "type": "string"
+      },
+      {
+        "name": "details.body",
+        "type": "text"
+      },
+      {
+        "name": "details.provisional",
+        "type": "boolean"
+      },
+      {
+        "name": "details.languageCode",
+        "type": "string"
+      },
+      {
+        "name": "details.isCurrent",
+        "type": "boolean",
+        "derived": true
+      }
+    ],
+    "lifecycle": {
+      "states": [],
+      "transitions": []
+    },
+    "invariants": [
+      "privacyTextReadOnly",
+      "privacyTextOneRowPerVersion",
+      "firstPrivacyTextProvisional",
+      "currentPrivacyTextIsLatest",
+      "consentRecordsAcceptedVersion"
+    ],
+    "imports": []
+  }
+} as const;
+
+export default definition;
