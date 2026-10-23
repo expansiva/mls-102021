@@ -1569,6 +1569,9 @@ test('the onboarding fixture passes seedRows25 after persistence20 and a table t
     { project: PROJECT, level: 4, folder: `${moduleName}/ontology`, shortName: 'Zone', extension: '.defs.ts' },
     'export const zone = { "entityId": "Zone", "kind": "entity", "description": "A zone with no seed scenario.", "initialData": "rows to help fill the DB", "record": { "fields": { "code": { "type": "string", "required": true } } } } as const;\n',
   );
+  putSeedTableDefs(put, moduleName, [
+    { tableId: 'zone', entityId: 'Zone', fields: [{ name: 'id', type: 'uuid', indexed: true }, { name: 'code', type: 'string', indexed: true }], uniqueKeys: [['code']] },
+  ]);
   const definition: M1Definition = {
     schemaVersion: M1_DEFINITION_SCHEMA,
     artifactType: 'persistenceSeeds',
@@ -1609,6 +1612,62 @@ test('the onboarding fixture passes seedRows25 after persistence20 and a table t
   assert.equal(intents.some(item => item.type === 'update-status' && item.status === 'in_progress'), true);
 });
 
+/** Table and entity defs of the seeded `country` and `privacyText` tables: the seed rows are checked against their columns. */
+type SeedTableSpec = { tableId: string; entityId: string; fields: Array<Record<string, unknown>>; uniqueKeys: string[][] };
+
+function putSeedTableDefs(put: (info: M12FileInfo, content: string) => void, moduleName: string, extra: readonly SeedTableSpec[] = []): void {
+  const tables: SeedTableSpec[] = [
+    {
+      tableId: 'country',
+      entityId: 'Country',
+      fields: [
+        { name: 'id', type: 'uuid', indexed: true },
+        { name: 'version', type: 'integer' },
+        { name: 'code', type: 'string', indexed: true },
+        { name: 'name', type: 'string', indexed: true },
+        { name: 'status', type: 'string', indexed: true },
+        { name: 'details.localizedNames', type: 'object' },
+      ],
+      uniqueKeys: [['code']],
+    },
+    {
+      tableId: 'privacyText',
+      entityId: 'PrivacyText',
+      fields: [
+        { name: 'id', type: 'uuid', indexed: true },
+        { name: 'version', type: 'integer' },
+        { name: 'publishedAt', type: 'timestamp', indexed: true },
+        { name: 'details.title', type: 'string' },
+        { name: 'details.body', type: 'string' },
+        { name: 'details.language', type: 'string' },
+      ],
+      uniqueKeys: [['version']],
+    },
+    ...extra,
+  ];
+  for (const table of tables) {
+    const entityFolder = `${moduleName}/layer_3_domain/entities`;
+    const tableFolder = `${moduleName}/layer_1_external/adapters/persistence`;
+    const entityRef = `_${PROJECT}_/l1/${entityFolder}/${table.tableId}.defs.ts`;
+    const defs: Array<[string, M1Definition]> = [
+      [entityFolder, {
+        schemaVersion: M1_DEFINITION_SCHEMA, artifactType: 'domainEntity', artifactId: table.tableId, moduleName, status: 'pending', dependencies: [],
+        data: { entityId: table.entityId, storageTarget: 'moduleDatabase', fields: table.fields, lifecycle: [], invariants: [], imports: [] },
+      }],
+      [tableFolder, {
+        schemaVersion: M1_DEFINITION_SCHEMA, artifactType: 'table', artifactId: table.tableId, moduleName, status: 'pending', dependencies: [entityRef],
+        data: { tableId: table.tableId, entityId: table.entityId, physicalName: `${moduleName.toLowerCase()}_${table.tableId.toLowerCase()}`, primaryKey: ['id'], uniqueKeys: table.uniqueKeys, indexes: [] },
+      }],
+    ];
+    for (const [folder, definition] of defs) {
+      const rendered = renderDefinition(definition, `_${PROJECT}_/l1/${folder}/${table.tableId}.defs.ts`);
+      assert.ok(!('issues' in rendered), 'issues' in rendered ? rendered.issues.join(' ') : '');
+      if ('issues' in rendered) return;
+      put({ project: PROJECT, level: 1, folder, shortName: table.tableId, extension: '.defs.ts' }, rendered.source);
+    }
+  }
+}
+
 test('a flow run emits seeds.ts once, from seedRows25, and the persistence20 receipt does not list the seed', async () => {
   const files = installStor();
   const moduleName = 'refdata';
@@ -1620,6 +1679,7 @@ test('a flow run emits seeds.ts once, from seedRows25, and the persistence20 rec
       readFileSync(path.join(fixture, `${entityId}.defs.ts`), 'utf8'),
     );
   }
+  putSeedTableDefs(put, moduleName);
   const definition: M1Definition = {
     schemaVersion: M1_DEFINITION_SCHEMA,
     artifactType: 'persistenceSeeds',
@@ -1726,6 +1786,7 @@ test('production appEnv refuses the reference seed and a pending draft does not 
       readFileSync(path.join(fixture, `${entityId}.defs.ts`), 'utf8'),
     );
   }
+  putSeedTableDefs(put, moduleName);
   const definition: M1Definition = {
     schemaVersion: M1_DEFINITION_SCHEMA,
     artifactType: 'persistenceSeeds',

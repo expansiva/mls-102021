@@ -3,11 +3,11 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_BUILD, M12_SEED_ROWS_AGENT_NAME, M12_SEED_ROW_UNIT_AGENT_NAME, clip, errorText, parseM12StepInvocation, tokenOk, unitIdOk } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12WorkerStep, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import type { ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { buildLocalTable, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { readDraft, writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { materializeUnit, type M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import {
   draftScenarioRow,
   referenceSeedUnit,
@@ -42,6 +42,21 @@ function tableIdOf(ctx: M12Context, entityId: string): string {
   return lowerFirst(entityId);
 }
 
+/**
+ * Column names of the table def of `tableId`, as the persistence step emits it (`buildLocalTable`).
+ * A table def, entity def or table shape that is missing throws: the rows are not checked against a guess.
+ */
+export function seedTableColumns(units: readonly M12Unit[], tableId: string): string[] {
+  const table = units.find(unit => unit.definition.artifactType === 'table' && unit.definition.data.tableId === tableId);
+  if (!table) throw new Error(`M12_TABLE_UNKNOWN: seedRows ${tableId} has no table def.`);
+  const entityRef = table.definition.dependencies.find(path => path.includes('/entities/'));
+  const entity = entityRef ? units.find(unit => unit.defRef === entityRef) : undefined;
+  if (!entity) throw new Error(`M12_TABLE_UNKNOWN: table ${tableId} has no entity def in the module.`);
+  const built = buildLocalTable(table.definition, entity.definition);
+  if ('code' in built) throw new Error(`M12_TABLE_UNKNOWN: table ${tableId}: ${built.code}: ${built.detail}`);
+  return built.definition.columns.map(column => column.name);
+}
+
 /** Tables of this module whose l4 entity declares `initialData`. A seed scenario is not required. Others are absent: no model call. */
 export async function referenceSeedTables(ctx: M12Context): Promise<SeedTableUnit[]> {
   const tables: SeedTableUnit[] = [];
@@ -65,7 +80,7 @@ export async function referenceSeedTables(ctx: M12Context): Promise<SeedTableUni
     if (!tableId || seen.has(tableId) || !unitIdOk(tableId)) continue;
     const stateField = stateFieldFor(draft.columns, draft.states);
     seen.add(tableId);
-    tables.push({ ...draft, tableId, ...(stateField ? { stateField } : {}) });
+    tables.push({ ...draft, tableId, tableColumns: seedTableColumns(ctx.units, tableId), ...(stateField ? { stateField } : {}) });
   }
   return tables.sort((left, right) => left.tableId.localeCompare(right.tableId));
 }
@@ -111,7 +126,7 @@ export async function scenarioSeedDatasets(ctx: M12Context): Promise<ReferenceSe
       });
       if (!draft) continue;
       const stateField = scenario.stateField || stateFieldFor(draft.columns, scenario.states);
-      const unit = stateField ? { ...draft, stateField } : draft;
+      const unit = { ...draft, tableColumns: seedTableColumns(ctx.units, scenario.tableId), ...(stateField ? { stateField } : {}) };
       const drafted = await draftScenarioRow(unit);
       if ('problems' in drafted) continue;
       const completed = await completeInitialRows(unit, [drafted.row]);

@@ -58,8 +58,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** `version` is a column only when persistence would promote it (unique key or index). Otherwise it lives in `details`. */
+/**
+ * `version` is a column when the emitted table has it. Without the table columns: only when persistence would
+ * promote it (unique key or index). Otherwise it lives in `details`.
+ */
 function versionIsColumn(unit: SeedTableUnit): boolean {
+  if (unit.tableColumns) return unit.tableColumns.includes('version');
   if (!unit.columns.some(column => column.name === 'version')) return false;
   if (unit.uniqueKeys.some(key => key.includes('version'))) return true;
   return unit.columns.some(column => column.name === 'version' && column.indexed);

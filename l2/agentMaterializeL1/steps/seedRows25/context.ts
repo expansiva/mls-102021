@@ -30,6 +30,11 @@ export interface SeedTableUnit {
   createText: string;
   fieldsText: string;
   columns: SeedColumn[];
+  /**
+   * Column names of the table the persistence step emits (`buildLocalTable`). The runtime refuses a seed key that is
+   * not one of them, so the gate does too; `details` is the only nested key. Null until the caller resolves the table.
+   */
+  tableColumns: string[] | null;
   uniqueKeys: string[][];
   states: string[];
   stateField: string;
@@ -165,6 +170,7 @@ export function referenceSeedUnit(input: {
     createText: ontology.createText,
     fieldsText: ontology.fieldsText,
     columns: ontology.fields,
+    tableColumns: null,
     uniqueKeys: ontology.uniqueKeys,
     states: [...input.states],
     stateField: input.stateField,
@@ -247,7 +253,13 @@ export function referenceSeedFromScenario(input: SeedScenarioRef & { ontologySou
 }
 
 export function seedRowsHuman(unit: SeedTableUnit, repair?: SeedRepair): string {
-  const columns = unit.columns.map(column => `${column.name}:${column.type}${column.required ? ' required' : ''}`).join(', ');
+  const shown = (column: SeedColumn) => `${column.name}:${column.type}${column.required ? ' required' : ''}`;
+  const columns = unit.tableColumns
+    ? unit.tableColumns.map(name => {
+      const column = unit.columns.find(item => item.name === name);
+      return column ? shown(column) : name;
+    }).join(', ')
+    : unit.columns.map(shown).join(', ');
   const lines = [
     `Scenario ${unit.scenarioId}, table ${unit.tableId}, entity ${unit.entityId}.`,
     `Description: ${unit.description}`,
@@ -308,11 +320,27 @@ function recordProblems(columns: readonly SeedColumn[], row: Record<string, unkn
   return problems;
 }
 
+/**
+ * Root keys of one row. With the table columns, a key that is not a column is refused with the column list (the
+ * runtime refuses it too), and only the l4 fields that are columns are typed and required at the root.
+ */
+function rootProblems(unit: SeedTableUnit, row: Record<string, unknown>, prefix: string): string[] {
+  if (!unit.tableColumns) return recordProblems(unit.columns, row, prefix);
+  const table = new Set(unit.tableColumns);
+  const problems: string[] = [];
+  for (const key of Object.keys(row)) {
+    if (!table.has(key)) problems.push(`${prefix}.${key} is not a column of table ${unit.tableId}. Columns: ${unit.tableColumns.join(', ')}.`);
+  }
+  const columns = unit.columns.filter(column => table.has(column.name));
+  const typed = Object.fromEntries(Object.entries(row).filter(([key]) => columns.some(column => column.name === key)));
+  return [...problems, ...recordProblems(columns, typed, prefix)];
+}
+
 /** Problems of one answer. Empty means the rows can be emitted. */
 export function seedRowProblems(unit: SeedTableUnit, rows: readonly Record<string, unknown>[]): string[] {
   const problems: string[] = [];
   rows.forEach((row, index) => {
-    problems.push(...recordProblems(unit.columns, row, `row ${index}`));
+    problems.push(...rootProblems(unit, row, `row ${index}`));
   });
   if (unit.stateField && unit.states.length > 0) {
     rows.forEach((row, index) => {
@@ -382,6 +410,8 @@ export async function draftScenarioRow(unit: SeedTableUnit): Promise<{ row: Reco
   for (const name of needed) {
     const column = unit.columns.find(item => item.name === name);
     if (!column || column.name === 'id') continue;
+    // A field that is not a column of the table is not written at the root: the runtime refuses it.
+    if (unit.tableColumns && !unit.tableColumns.includes(name)) continue;
     const token = `${unit.moduleName}.${unit.tableId}.${unit.scenarioId}.${name}`;
     row[name] = await placeholder(column, token, name => stableActorMdmId(unit.moduleName, `${unit.scenarioId}:${name}`));
   }
