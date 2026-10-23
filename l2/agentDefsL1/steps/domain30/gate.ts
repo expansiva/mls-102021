@@ -594,7 +594,8 @@ function emitRaw(
       continue;
     }
     if (type === 'object' && isRecord(raw.fields) && !Array.isArray(raw.fields)) {
-      out.push(field(path, type, derived));
+      // A platform `of` stays with its leaves: the emitter types the field `<of>Value`, the leaves stay in the def.
+      out.push(field(path, type, derived, undefined, platformOf(raw.of) || undefined));
       out.push(...emitRaw(entityId, raw.fields, path, extracted, resolutions, names, problems, normalizations, enumerations, blocked));
       continue;
     }

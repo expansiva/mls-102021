@@ -40,3 +40,17 @@ test('a platform type is named <of>Value and imported; its existence is the comp
   // GeoPoint has no Value interface on the module today: the unit compile refuses the import by name.
   assert.equal(/export\s+interface\s+GeoPointValue\b/.test(moduleText), false);
 });
+
+test('an object of PrivacyConsent with leaves is still typed PrivacyConsentValue; without of the nested object stays', () => {
+  const emitted = emitDomain(entity([
+    { name: 'privacyConsent', type: 'object', of: 'PrivacyConsent' },
+    { name: 'privacyConsent.accepted', type: 'boolean' },
+    { name: 'privacyConsent.version', type: 'string' },
+    { name: 'address', type: 'object' },
+    { name: 'address.city', type: 'string' },
+  ]), '_102056_/l1/onboarding/layer_3_domain/entities/member.ts');
+  assert.match(emitted.source, /import type \{ PrivacyConsentValue \} from '\/_102034_\/l1\/mdm\/module\.js';/);
+  assert.match(emitted.source, /privacyConsent: PrivacyConsentValue;/);
+  assert.equal(emitted.source.includes('accepted'), false);
+  assert.match(emitted.source, /address: \{\n\s+city: string;\n\s+\};/);
+});

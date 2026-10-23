@@ -498,6 +498,35 @@ void test('an object of a platform type keeps of; a name that is not of the plat
   assert.equal(definitionIssues(built.entities[0].definition!).length, 0, definitionIssues(built.entities[0].definition!).join('\n'));
 });
 
+void test('an object of a platform type keeps of with its leaves; without of the nested fields do not change', () => {
+  const built = buildD1Domain(requestFrom({
+    Member: {
+      entityId: 'Member',
+      kind: 'role',
+      source: '/_102034_/l4/ontology/mdm.defs.ts',
+      record: {
+        fields: {
+          privacyConsent: { type: 'object', of: 'PrivacyConsent', fields: { accepted: { type: 'boolean' }, version: { type: 'string' } } },
+          address: { type: 'object', fields: { city: { type: 'string' } } },
+        },
+      },
+    },
+  }));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  const fields = dataOf(built.entities[0]).fields;
+  assert.deepEqual(fields.filter(field => field.name.startsWith('privacyConsent')), [
+    { name: 'privacyConsent', type: 'object', of: 'PrivacyConsent' },
+    { name: 'privacyConsent.accepted', type: 'boolean' },
+    { name: 'privacyConsent.version', type: 'string' },
+  ]);
+  assert.deepEqual(fields.filter(field => field.name.startsWith('address')), [
+    { name: 'address', type: 'object' },
+    { name: 'address.city', type: 'string' },
+  ]);
+  assert.equal(built.normalizations.some(item => item.code === 'FIELD_OF_NOT_REFERENCE'), false);
+  assert.equal(definitionIssues(built.entities[0].definition!).length, 0, definitionIssues(built.entities[0].definition!).join('\n'));
+});
+
 function agendaBuild(artifacts: D1InputArtifacts, snapshot: D1InputSnapshot): D1DomainBuild {
   return buildD1Domain({
     project: PROJECT,

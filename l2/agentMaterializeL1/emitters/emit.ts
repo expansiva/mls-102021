@@ -63,6 +63,8 @@ interface Tree {
   collection?: boolean;
   children: Map<string, Tree>;
   optional?: boolean;
+  /** The field names a platform type (`of`): typed `<of>Value` even when the l4 also lists its leaves. */
+  platform?: boolean;
 }
 
 /**
@@ -1455,6 +1457,7 @@ function nest(
         const ts = fieldTs(field.type, enums.get(field.name) ?? [], aliases, field.of);
         // `collection: true` in the l4 is a list (`details.base.contacts` of an MDM person is `[]`, not an object).
         child.ts = collections.has(field.name) && !ts.endsWith('[]') ? (ts.includes('|') ? `Array<${ts}>` : `${ts}[]`) : ts;
+        if (field.of) child.platform = true;
       }
       if (optional.has(parts.slice(0, index + 1).join('.'))) child.optional = true;
       if (collections.has(parts.slice(0, index + 1).join('.'))) child.collection = true;
@@ -1492,7 +1495,7 @@ function platformValueImports(fields: readonly FieldRow[]): string[] {
 }
 
 function renderType(node: Tree, indent: string): string {
-  if (node.children.size === 0) return node.ts;
+  if (node.children.size === 0 || node.platform) return node.ts;
   const lines = [...node.children].map(([key, child]) => `${indent}  ${key}${child.optional ? '?' : ''}: ${renderType(child, `${indent}  `)};`);
   // A collection with fields is a list of that object; the leaf marker of `nest` would be lost under its children.
   return `{\n${lines.join('\n')}\n${indent}}${node.collection ? '[]' : ''}`;
