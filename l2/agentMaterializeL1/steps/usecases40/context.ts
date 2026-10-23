@@ -649,13 +649,9 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const derived = [...new Set(entities.flatMap(entity => entity.derived))];
   const parentRules = await parentRulesOf(ctx, unit, entities);
   const transition = await transitionOf(ctx, unit);
-  const authority = ctx.units.find(item => item.definition.artifactType === 'authorityMap');
-  const actorIds = authority
-    ? authorityActorIds(await readOptional(authority.output) ?? JSON.stringify(authority.definition.data))
-    : undefined;
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId), actorIds }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId) }),
   ];
 }
 

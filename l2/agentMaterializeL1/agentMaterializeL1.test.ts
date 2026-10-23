@@ -201,18 +201,12 @@ void test('the usecase gate names every problem a repair can act on', () => {
   assert.ok(problems.some(item => item.includes('descontoNaoExcedeSubtotal')));
 });
 
-void test('a rule check names an actor id of the authorityMap', () => {
-  const header = '/// <mls fileReference="_102047_/l1/onboarding/u/updateCompany.ts" enhancement="_blank"/>';
+void test('the usecase context lists the actor ids of the authorityMap', () => {
   const map = 'export const entries = [\n  { "grantId": "g", "actorRef": "companyOwner" }\n] as const;\n';
   assert.deepEqual(authorityActorIds(map), ['companyOwner']);
   const text = authorityActorsText(authorityActorIds(map));
   assert.ok(text.includes('an actor named in a rule check is one of these ids; never another name'));
   assert.ok(text.includes('companyOwner'));
-  const body = (actor: string) => [header, `export async function updateCompany(input: unknown, ctx: unknown) { if (ctx.sessionContext.actorRef !== '${actor}') throw new AppError('FORBIDDEN', 'no', 403, { ruleId: 'somenteDono' }); }`].join('\n');
-  const input = { header, functionName: 'updateCompany', project: 102047, moduleName: 'onboarding', ruleIds: ['somenteDono'], actorIds: ['companyOwner'] as const };
-  const refused = usecaseGate(body('owner'), input);
-  assert.ok(refused.some(item => item.includes("'owner'") && item.includes('companyOwner') && item.includes('keep the condition')));
-  assert.deepEqual(usecaseGate(body('companyOwner'), input), []);
 });
 
 void test('the tests gate refuses an unknown route, a wrong mutating flag and a marker without its field ref', () => {

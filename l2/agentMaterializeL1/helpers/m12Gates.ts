@@ -19,8 +19,6 @@ export interface M12CodeGateInput {
   transition?: { transitionId: string; to: string };
   /** The repository ports of the module (`DespesaRepository`); a name outside them is refused. */
   ports?: readonly string[];
-  /** Actor ids of the module `authorityMap`. Absent: this gate does not judge actor ids. */
-  actorIds?: readonly string[];
 }
 
 /**
@@ -276,40 +274,6 @@ export function derivedReadProblems(code: string, derivedPaths: readonly string[
   return problems;
 }
 
-const ACTOR_COMPARED = /([A-Za-z_$][\w$.]*?(?:actor|Actor|authorit\w*|role|Role)[\w$.]*)\s*(?:===|!==|==|!=)\s*['"]([A-Za-z][\w:]*)['"]|['"]([A-Za-z][\w:]*)['"]\s*(?:===|!==|==|!=)\s*([A-Za-z_$][\w$.]*?(?:actor|Actor|authorit\w*|role|Role)[\w$.]*)|([A-Za-z_$][\w$.]*?(?:actor|Actor|authorit\w*|role|Role)[\w$.]*)\s*\.\s*(?:includes|has)\s*\(\s*['"]([A-Za-z][\w:]*)['"]\s*\)/gu;
-
-function actorIdOf(literal: string): string {
-  const parts = literal.split(':');
-  return parts[parts.length - 1] || literal;
-}
-
-function nearRuleId(code: string, index: number): boolean {
-  const from = Math.max(0, index - 800);
-  const to = Math.min(code.length, index + 800);
-  return code.slice(from, to).includes('ruleId');
-}
-
-/**
- * An actor id compared in a rule check must be an id of the authorityMap. The message names the ids and tells the
- * repair to keep the condition (a bare replacement erased applied rules; see the repair-message note of 19/10).
- */
-export function actorRuleProblems(code: string, actorIds?: readonly string[]): string[] {
-  if (!actorIds) return [];
-  const known = new Set(actorIds);
-  const list = actorIds.length ? actorIds.join(', ') : '(none)';
-  const problems: string[] = [];
-  const seen = new Set<string>();
-  for (const match of code.matchAll(ACTOR_COMPARED)) {
-    const literal = match[2] || match[3] || match[6] || '';
-    const id = actorIdOf(literal);
-    if (!id || known.has(id) || seen.has(id)) continue;
-    if (!nearRuleId(code, match.index ?? 0)) continue;
-    seen.add(id);
-    problems.push(`Actor '${literal}' in a rule check is not an id of the authorityMap (${list}). Use one of these ids and keep the condition.`);
-  }
-  return problems;
-}
-
 /** Problems of a model-written usecase file. Empty = the gate passes. */
 export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   const problems: string[] = [];
@@ -344,7 +308,6 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...parentRuleProblems(code, input.parentRules ?? []));
   problems.push(...transitionTargetProblems(code, input.transition));
   problems.push(...undeclaredInputProblems(code));
-  problems.push(...actorRuleProblems(code, input.actorIds));
   for (const ruleId of input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);
   }
