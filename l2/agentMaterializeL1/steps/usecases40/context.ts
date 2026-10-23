@@ -270,7 +270,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     const platformRuleIds = (Array.isArray(unit.definition.data.rulePlan) ? unit.definition.data.rulePlan : [])
       .map(row => (row && typeof row === 'object' ? String((row as { ruleId?: unknown }).ruleId ?? '') : ''))
       .filter(ruleId => ruleId.startsWith('rule-'));
-    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)], await ctx.read(MDM_MODULE_REF))));
+    parts.push(section('The platform MDM (source: how the engine stores and returns this entity today)', mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [...new Set(platformRuleIds)], await ctx.read(MDM_MODULE_REF), entitySubtype(ontology))));
   }
   const links = await moduleMdmLinksSection(ctx);
   if (links) parts.push(section('Links of the platform MDM (source: the compact keys each link is stored under)', links));
@@ -382,20 +382,34 @@ function namedOf(tree: Record<string, unknown> | null): string[] {
   return out;
 }
 
-/** Group names and a short sample of their field names, both read from the ontology. */
-function ontologyShape(tree: Record<string, unknown> | null): { groups: string[]; fields: string[] } {
+/** The `subtype` an l4 entity ontology declares (`"subtype": "Person"`), or '' when it declares none. */
+export function entitySubtype(source: string | null): string {
+  const subtype = ontologyTree(source)?.subtype;
+  return typeof subtype === 'string' ? subtype : '';
+}
+
+/**
+ * Group names and every field name the MDM ontology gives the entity: the fields of its groups and, when the entity
+ * has a subtype, the fields of `subtypes.<subtype>` (the read returns them flat too: `details.privacyConsent`).
+ */
+function ontologyShape(tree: Record<string, unknown> | null, subtype = ''): { groups: string[]; fields: string[] } {
   const groupsNode = tree?.groups;
   if (!groupsNode || typeof groupsNode !== 'object') return { groups: [], fields: [] };
   const groups: string[] = [];
   const fields: string[] = [];
+  const addFields = (node: unknown): void => {
+    const nodeFields = node && typeof node === 'object' ? (node as { fields?: unknown }).fields : undefined;
+    if (!nodeFields || typeof nodeFields !== 'object') return;
+    for (const name of Object.keys(nodeFields as Record<string, unknown>)) {
+      if (!name.startsWith('<') && !fields.includes(name)) fields.push(name);
+    }
+  };
   for (const [group, meta] of Object.entries(groupsNode as Record<string, unknown>)) {
     if (!group.startsWith('<')) groups.push(group);
-    const groupFields = meta && typeof meta === 'object' ? (meta as { fields?: unknown }).fields : undefined;
-    if (!groupFields || typeof groupFields !== 'object') continue;
-    for (const name of Object.keys(groupFields as Record<string, unknown>)) {
-      if (!name.startsWith('<') && !fields.includes(name) && fields.length < 8) fields.push(name);
-    }
+    addFields(meta);
   }
+  const subtypesNode = tree?.subtypes;
+  if (subtype && subtypesNode && typeof subtypesNode === 'object') addFields((subtypesNode as Record<string, unknown>)[subtype]);
   return { groups, fields };
 }
 
@@ -578,8 +592,8 @@ export function mdmPlatformApiSection(ontologySource: string | null, facadeSourc
  * ontology states in knownDivergences.grouped-document. Without this the model guessed the groups and every read
  * of a patient failed (agendaClinica, 07/10). Verified against mdmFacade.ts and the in-memory engine.
  */
-export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = [], moduleSource: string | null = null): string {
-  const shape = ontologyShape(ontologyTree(ontologySource));
+export function mdmContextSection(moduleName: string, ontologySource: string | null, facadeSource: string | null, platformRuleIds: readonly string[] = [], moduleSource: string | null = null, subtype = ''): string {
+  const shape = ontologyShape(ontologyTree(ontologySource), subtype);
   const groupText = shape.groups.length ? shape.groups.map(group => '`' + group + '`').join(', ') : 'the groups the MDM ontology names';
   const fieldText = shape.fields.length ? shape.fields.map(field => '`details.' + field + '`').join(', ') : '`details.<field>`';
   const lines = [
