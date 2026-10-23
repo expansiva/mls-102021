@@ -627,6 +627,7 @@ export async function actorMdmSeedRows(input: {
     for (const field of [...identification, ...base]) {
       details[field.name] = cell(field.name, !field.required, '', field);
     }
+    details.mdmId = mdmId;
     details.actorId = actor.actorId;
     known.set('details', details);
     const rowFor = (columns: MdmColumn[]) => {

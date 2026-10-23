@@ -121,6 +121,30 @@ test('an actor row takes its columns from the MDM table definition', async () =>
   assert.equal(liveIndex.rows[0].countryCode, 'US');
 });
 
+test('an actor MDM document carries the mdmId of its row in details', async () => {
+  const rows = await actorMdmSeedRows({
+    moduleName: 'tarefas',
+    accessSource,
+    roleSource: async () => roleSource,
+    tableSource: persistenceSource,
+    ontologySource,
+  });
+  const index = rows.find(item => item.seedFor === 'mdmEntityIndex');
+  const documents = rows.find(item => item.seedFor === 'mdmDocumentCache');
+  assert.ok(index && documents);
+  assert.equal(documents.rows.length, 2);
+  for (const row of documents.rows) {
+    const details = row.details as Record<string, unknown>;
+    assert.equal(typeof row.mdmId, 'string');
+    assert.equal(details.mdmId, row.mdmId);
+    assert.equal(details.subtype, 'Person');
+    assert.equal(typeof details.actorId, 'string');
+    const indexRow = index.rows.find(item => item.mdmId === row.mdmId);
+    assert.ok(indexRow);
+    assert.equal(await stableActorMdmId('tarefas', details.actorId as string), indexRow.mdmId);
+  }
+});
+
 test('the emitter writes actor columns from the table text the read returns', async () => {
   const withBadge = persistenceSource.replace(
     "{ name: 'mdmId', postgresType: 'TEXT' },",
