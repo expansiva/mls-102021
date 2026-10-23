@@ -60,11 +60,11 @@ async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string
   const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
   const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
   const errors = unavailable ? [] : compileDiagnostics(results);
-  // The platform loads onTick from the persistenceEntrypoint only (102034 registry.ts loadModuleTickHandlers); a
-  // module on tableDefsDir is not woken until it also looks in that folder. Named, never silent.
+  // The platform loads onTick from the persistenceEntrypoint only (102034 registry.ts loadModuleTickHandlers); the
+  // config composer (nodejsSaveConfigJson) writes it when moduleTick.ts is on disk. Named, never silent.
   return errors.length
     ? `tick: COMPILE_FAILED ${clip(errors.join(' | '), 400)}`
-    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (loaded by the runtime tick from the tableDefsDir folder: loadModuleTickHandlers)`;
+    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (loaded by the runtime tick from the persistenceEntrypoint the composer writes: loadModuleTickHandlers)`;
 }
 
 async function register(run: M12RunArgs): Promise<string> {

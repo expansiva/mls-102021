@@ -10,6 +10,8 @@ export interface LiveBackendModule {
   backendControllers: string;
   /** Absent when the module backend has controllers and no persistence block. */
   tableDefsDir?: string;
+  /** Derived at compose time from disk (`moduleTick.ts` next to tableDefsDir). Never copied from the old config. */
+  persistenceEntrypoint?: string;
 }
 
 export interface ReconcileBackendConfigResult<M extends Record<string, unknown>, P extends Record<string, unknown>> {
@@ -118,7 +120,8 @@ export function reconcileClientBackendRegistration<
     const pmRec = pm as Record<string, unknown>;
     pmRec.moduleId = item.moduleId;
     pmRec.tableDefsDir = item.tableDefsDir;
-    delete pmRec.persistenceEntrypoint;
+    if (item.persistenceEntrypoint) pmRec.persistenceEntrypoint = item.persistenceEntrypoint;
+    else delete pmRec.persistenceEntrypoint;
     persistenceById.set(item.moduleId, pm);
   }
 

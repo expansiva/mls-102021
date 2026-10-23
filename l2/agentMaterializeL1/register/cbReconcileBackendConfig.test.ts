@@ -89,6 +89,30 @@ test('legacy persistenceEntrypoint does not survive a live upsert', () => {
   assert.equal('persistenceEntrypoint' in result.persistenceModules[0], false);
 });
 
+test('live persistenceEntrypoint is written onto the persistence module', () => {
+  const result = reconcileClientBackendRegistration(
+    [],
+    [],
+    [{ ...todoLive, persistenceEntrypoint: './_102047_/l1/todo/layer_1_external/adapters/persistence/moduleTick.js' }],
+  );
+  assert.equal(
+    result.persistenceModules[0].persistenceEntrypoint,
+    './_102047_/l1/todo/layer_1_external/adapters/persistence/moduleTick.js',
+  );
+});
+
+test('live persistenceEntrypoint replaces a leftover one', () => {
+  const result = reconcileClientBackendRegistration(
+    [],
+    [{ moduleId: 'todo', persistenceEntrypoint: './old.js', tableDefsDir: './stale' }],
+    [{ ...todoLive, persistenceEntrypoint: './_102047_/l1/todo/layer_1_external/adapters/persistence/moduleTick.js' }],
+  );
+  assert.equal(
+    result.persistenceModules[0].persistenceEntrypoint,
+    './_102047_/l1/todo/layer_1_external/adapters/persistence/moduleTick.js',
+  );
+});
+
 test('liveBackendModulesFromL5 reads the register block', () => {
   const live = liveBackendModulesFromL5([
     { moduleName: 'todo', backend: { backendControllers: todoLive.backendControllers, persistence: { tableDefsDir: todoLive.tableDefsDir }, routeKeys: ['todo.a'] } },

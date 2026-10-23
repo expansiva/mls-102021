@@ -127,6 +127,9 @@ export function composeBackendRuntimeConfig(root: string, clientId: string): { c
     if (!item.tableDefsDir) continue;
     const tableDefsDir = resolveListedPath(root, item.tableDefsDir);
     if (!fs.existsSync(tableDefsDir)) throw new Error(`persistence tableDefsDir not found on disk: ${tableDefsDir}`);
+    if (fs.existsSync(path.join(tableDefsDir, 'moduleTick.ts'))) {
+      item.persistenceEntrypoint = `${item.tableDefsDir.replace(/\/$/, '')}/moduleTick.js`;
+    }
   }
   for (const listed of [...pageTestsByModule.values()].flat()) {
     const pageTestsFile = resolveListedPath(root, listed);
