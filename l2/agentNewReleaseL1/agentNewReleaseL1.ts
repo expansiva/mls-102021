@@ -108,7 +108,8 @@ async function checkAfterGenerator(
   defs: Record<string, string>,
   plan: ReturnType<typeof planNewReleaseL1>,
 ): Promise<mls.msg.AgentIntent[]> {
-  if (!plan.ok || plan.path !== 'generator') return finish(agent, context, 'completed', reportCheckWithoutGenerator());
+  if (!plan.ok) return finish(agent, context, 'completed', plan.reason);
+  if (plan.path !== 'generator') return finish(agent, context, 'completed', reportCheckWithoutGenerator());
   const portrait = snapshotFile(moduleName);
   const portraitPath = displayPath(portrait);
   if (!fileExists(portrait)) return finish(agent, context, 'completed', reportMissingSnapshot(portraitPath));

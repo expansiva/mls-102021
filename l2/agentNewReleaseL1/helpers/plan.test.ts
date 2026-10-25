@@ -231,6 +231,25 @@ test('a contract file status takes the generator; entity create, remove, abend a
   assert.match(noRoutePlan.reason, /cannot tell which route takes the rule/);
 });
 
+test('an effort with answers only from 102020 is refused on the def edit and on the generator', () => {
+  const filtered = JSON.parse(JSON.stringify(loadEffort('R1.changeEffort.json'))) as ChangeEffortFile;
+  for (const row of filtered.perItem) {
+    row.answers = row.answers.filter(answer => answer.master.project === '102020');
+  }
+  assert.ok(filtered.perItem.some(row => row.answers.length > 0));
+  const defEdit = planNewReleaseL1(reseal(filtered), MASTER, DEFS);
+  assert.equal(defEdit.ok, false);
+  if (defEdit.ok) return;
+  assert.equal(defEdit.reason, `change effort has no answer from master ${MASTER}`);
+
+  const contract = JSON.parse(JSON.stringify(filtered)) as ChangeEffortFile;
+  contract.perItem[0]!.answers[0]!.contract = 'change';
+  const generator = planNewReleaseL1(reseal(contract), MASTER, DEFS);
+  assert.equal(generator.ok, false);
+  if (generator.ok) return;
+  assert.equal(generator.reason, `change effort has no answer from master ${MASTER}`);
+});
+
 test('an invalid change effort is refused with the gate reason', () => {
   const plan = planNewReleaseL1({ schemaVersion: 'no' }, MASTER, DEFS);
   assert.equal(plan.ok, false);

@@ -36,6 +36,9 @@ export function planNewReleaseL1(
   }
   const file = gate.file;
   const answers = file.perItem.flatMap(row => row.answers.filter(answer => answer.master.project === masterProject));
+  if (answers.length === 0) {
+    return { ok: false, reason: `change effort has no answer from master ${masterProject}` };
+  }
   const refusals: string[] = [];
   const generator = file.status === 'contract' || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)));
   for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
