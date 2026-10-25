@@ -281,9 +281,8 @@ function rulePhrase(item: EffortInput['item']): { id: string; description: strin
 }
 
 function effortSchema(units: CatalogUnit[]): object {
-  const choosable = units.filter(unit => unit.kind !== 'workflow');
-  const pages = choosable.filter(unit => unit.kind === 'request').map(unit => unit.id);
-  const usecases = choosable.filter(unit => unit.kind === 'usecase').map(unit => unit.id);
+  const pages = units.filter(unit => unit.kind === 'request').map(unit => unit.id);
+  const usecases = units.filter(unit => unit.kind === 'usecase').map(unit => unit.id);
   return {
     type: 'object',
     additionalProperties: false,
@@ -294,10 +293,9 @@ function effortSchema(units: CatalogUnit[]): object {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['unit', 'kind'],
+          required: ['usecase'],
           properties: {
-            unit: { type: 'string', enum: choosable.map(unit => unit.id) },
-            kind: { type: 'string', enum: ['usecase', 'request', 'entity'] },
+            usecase: { type: 'string', enum: usecases },
           },
         },
       },
@@ -306,12 +304,11 @@ function effortSchema(units: CatalogUnit[]): object {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['kind', 'name', 'page'],
+          required: ['route', 'page', 'usecase'],
           properties: {
-            kind: { type: 'string', enum: ['usecase', 'route'] },
-            name: { type: 'string' },
+            route: { type: 'string' },
             page: { type: 'string', enum: pages },
-            uses: { type: 'string', enum: usecases },
+            usecase: { type: 'string' },
           },
         },
       },
@@ -321,10 +318,9 @@ function effortSchema(units: CatalogUnit[]): object {
 }
 
 const LADDER = [
-  'Pick the smallest step that delivers the new rule on the backend.',
-  'Step 3: put the rule id on an existing usecase, request or entity (existing). The code rematerializes it.',
-  'Step 5: create a usecase or a route on an existing request page (create). A new route names the usecase it calls; a new usecase goes in create too.',
-  'Do nothing with existing: [] and create: [].',
+  'Step 3: pick the usecases the new rule changes (existing); the requests that call them follow.',
+  'Step 5: a new capability is a new route with its own new usecase (create).',
+  'Nothing to do on the backend: existing [] and create [].',
 ].join('\n');
 
 /** Pure. A prompt only for `rule added`; every other item is null and `describeEffort` answers it. */
@@ -343,41 +339,36 @@ export function effortPromptFrom(input: EffortInput, defs: Record<string, string
 }
 
 interface ExistingChoice {
-  unit: string;
-  kind: ChooseKind;
+  usecase: string;
 }
 
 interface CreateChoice {
-  kind: 'usecase' | 'route';
-  name: string;
+  route: string;
   page: string;
-  uses?: string;
+  usecase: string;
 }
 
+const OUTSIDE_SCHEMA = 'answer outside the schema';
+
 function schemaFailure(value: unknown, units: CatalogUnit[]): string | null {
-  if (!isRecord(value)) return 'resposta fora do schema: não é objeto';
+  if (!isRecord(value)) return OUTSIDE_SCHEMA;
   const keys = Object.keys(value).sort();
-  if (keys.join(',') !== 'create,existing,reason') return 'resposta fora do schema: campos';
-  if (typeof value.reason !== 'string') return 'resposta fora do schema: reason';
-  if (!Array.isArray(value.existing) || !Array.isArray(value.create)) return 'resposta fora do schema: listas';
-  const choosable = new Set(units.filter(unit => unit.kind !== 'workflow').map(unit => `${unit.kind}:${unit.id}`));
+  if (keys.join(',') !== 'create,existing,reason') return OUTSIDE_SCHEMA;
+  if (typeof value.reason !== 'string') return OUTSIDE_SCHEMA;
+  if (!Array.isArray(value.existing) || !Array.isArray(value.create)) return OUTSIDE_SCHEMA;
+  const usecases = new Set(units.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
   const pages = new Set(units.filter(unit => unit.kind === 'request').map(unit => unit.id));
   for (const entry of value.existing) {
-    if (!isRecord(entry) || Object.keys(entry).sort().join(',') !== 'kind,unit') return 'resposta fora do schema: existing';
-    if (typeof entry.unit !== 'string' || (entry.kind !== 'usecase' && entry.kind !== 'request' && entry.kind !== 'entity')) {
-      return 'resposta fora do schema: existing';
+    if (!isRecord(entry) || Object.keys(entry).sort().join(',') !== 'usecase') return OUTSIDE_SCHEMA;
+    if (typeof entry.usecase !== 'string' || !usecases.has(entry.usecase)) {
+      return `unknown usecase: ${typeof entry.usecase === 'string' ? entry.usecase : ''}`;
     }
-    if (!choosable.has(`${entry.kind}:${entry.unit}`)) return `unidade inexistente: ${entry.unit}`;
   }
   for (const entry of value.create) {
-    if (!isRecord(entry)) return 'resposta fora do schema: create';
-    const keys = Object.keys(entry).sort().join(',');
-    const routeKeys = keys === 'kind,name,page' || keys === 'kind,name,page,uses';
-    if (entry.kind === 'route' ? !routeKeys : keys !== 'kind,name,page') return 'resposta fora do schema: create';
-    if (entry.kind !== 'usecase' && entry.kind !== 'route') return 'resposta fora do schema: create';
-    if (typeof entry.name !== 'string' || entry.name.length === 0) return 'resposta fora do schema: create';
-    if (typeof entry.page !== 'string' || !pages.has(entry.page)) return 'resposta fora do schema: create';
-    if ('uses' in entry && typeof entry.uses !== 'string') return 'resposta fora do schema: create';
+    if (!isRecord(entry) || Object.keys(entry).sort().join(',') !== 'page,route,usecase') return OUTSIDE_SCHEMA;
+    if (typeof entry.route !== 'string' || entry.route.length === 0) return OUTSIDE_SCHEMA;
+    if (typeof entry.page !== 'string' || !pages.has(entry.page)) return OUTSIDE_SCHEMA;
+    if (typeof entry.usecase !== 'string' || entry.usecase.length === 0) return OUTSIDE_SCHEMA;
   }
   return null;
 }
@@ -400,8 +391,6 @@ function takenIds(defs: Record<string, string>): { usecases: Set<string>; routes
   });
   return { usecases, routes };
 }
-
-const ROUTE_NEEDS_USECASE = 'route needs its usecase';
 
 /** Requests whose some route `uses` cites `usecaseId`. */
 function requestsUsing(defs: Record<string, string>, usecaseId: string): EffortUnitRef[] {
@@ -430,9 +419,6 @@ export function finishEffortFrom(input: EffortInput, defs: Record<string, string
   const output = modelOutput as { existing: ExistingChoice[]; create: CreateChoice[] };
   const taken = takenIds(defs);
   const byKey = new Map(units.map(unit => [`${unit.kind}:${unit.id}`, unit]));
-  const createdUsecaseNames = new Set(
-    output.create.filter(choice => choice.kind === 'usecase').map(choice => choice.name),
-  );
   const regenerate: EffortUnitRef[] = [];
   const seen = new Set<string>();
   const remember = (unit: EffortUnitRef): void => {
@@ -442,31 +428,23 @@ export function finishEffortFrom(input: EffortInput, defs: Record<string, string
     regenerate.push(unit);
   };
   for (const choice of output.existing) {
-    const unit = byKey.get(`${choice.kind}:${choice.unit}`);
-    if (!unit) return abend(item, `unidade inexistente: ${choice.unit}`);
-    remember({ kind: choice.kind, id: choice.unit, path: unit.path });
-    if (choice.kind !== 'usecase') continue;
-    for (const request of requestsUsing(defs, choice.unit)) remember(request);
+    const unit = byKey.get(`usecase:${choice.usecase}`);
+    if (!unit) return abend(item, `unknown usecase: ${choice.usecase}`);
+    remember({ kind: 'usecase', id: choice.usecase, path: unit.path });
+    for (const request of requestsUsing(defs, choice.usecase)) remember(request);
   }
   const create: EffortUnitRef[] = [];
   for (const choice of output.create) {
-    if (choice.kind === 'usecase') {
-      if (taken.usecases.has(choice.name)) return abend(item, `nome já existe: ${choice.name}`);
-      create.push({
-        kind: 'usecase',
-        id: choice.name,
-        path: `l1/${input.module}/layer_2_application/usecases/${choice.name}.defs.ts`,
-      });
-      continue;
-    }
-    if (taken.routes.has(choice.name)) return abend(item, `nome já existe: ${choice.name}`);
-    const uses = typeof choice.uses === 'string' ? choice.uses : '';
-    if (!uses || (!taken.usecases.has(uses) && !createdUsecaseNames.has(uses))) {
-      return abend(item, ROUTE_NEEDS_USECASE);
-    }
+    if (taken.routes.has(choice.route)) return abend(item, `name already exists: ${choice.route}`);
+    if (taken.usecases.has(choice.usecase)) return abend(item, `name already exists: ${choice.usecase}`);
     const page = byKey.get(`request:${choice.page}`);
-    if (!page) return abend(item, `resposta fora do schema: ${choice.page}`);
-    create.push({ kind: 'route', id: choice.name, path: page.path });
+    if (!page) return abend(item, OUTSIDE_SCHEMA);
+    create.push({ kind: 'route', id: choice.route, path: page.path });
+    create.push({
+      kind: 'usecase',
+      id: choice.usecase,
+      path: `l1/${input.module}/layer_2_application/usecases/${choice.usecase}.defs.ts`,
+    });
     remember({ kind: 'request', id: page.id, path: page.path });
   }
   const existingUnits = sortUnits(regenerate);

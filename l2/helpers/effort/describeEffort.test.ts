@@ -293,36 +293,18 @@ function addedRule(id: string, description: string): EffortInput {
   }, 'tarefas');
 }
 
-function fixtureIds(defs: Record<string, string>): string[] {
-  const ids: string[] = [];
-  for (const source of Object.values(defs)) {
-    const parsed = parseDefinitionSource(source);
-    if (!('definition' in parsed) || !parsed.definition || typeof parsed.definition !== 'object') continue;
-    const definition = parsed.definition as { artifactType?: string; data?: Record<string, unknown> };
-    const data = definition.data;
-    if (!data) continue;
-    if (definition.artifactType === 'usecase' && typeof data.usecaseId === 'string') ids.push(data.usecaseId);
-    if (definition.artifactType === 'requestService' && typeof data.pageId === 'string') ids.push(data.pageId);
-    if (definition.artifactType === 'domainEntity' && typeof data.entityId === 'string') {
-      const entityId = data.entityId;
-      ids.push(entityId.charAt(0).toLowerCase() + entityId.slice(1));
-    }
-  }
-  return [...new Set(ids)].sort();
+function existingUsecaseEnum(request: EffortPromptRequest): string[] {
+  const schema = request.schema as {
+    properties: { existing: { items: { properties: { usecase: { enum: string[] } } } } };
+  };
+  return [...schema.properties.existing.items.properties.usecase.enum].sort();
 }
 
-function unitEnum(request: EffortPromptRequest): string[] {
+function createUsecaseProperty(request: EffortPromptRequest): { enum?: unknown } {
   const schema = request.schema as {
-    properties: { existing: { items: { properties: { unit: { enum: string[] } } } } };
+    properties: { create: { items: { properties: { usecase: { enum?: unknown } } } } };
   };
-  return [...schema.properties.existing.items.properties.unit.enum].sort();
-}
-
-function usesEnum(request: EffortPromptRequest): string[] {
-  const schema = request.schema as {
-    properties: { create: { items: { properties: { uses: { enum: string[] } } } } };
-  };
-  return [...schema.properties.create.items.properties.uses.enum].sort();
+  return schema.properties.create.items.properties.usecase;
 }
 
 function usecaseIds(defs: Record<string, string>): string[] {
@@ -344,9 +326,11 @@ void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtur
   assert.ok(request);
   assert.equal(request.prompt.includes('novaTarefaPrioridadeMedia'), true);
   assert.equal(request.prompt.includes(phrase), true);
-  assert.deepEqual(unitEnum(request), fixtureIds(TAREFAS));
-  assert.deepEqual(usesEnum(request), usecaseIds(TAREFAS));
-  assert.equal(request.prompt.includes('A new route names the usecase it calls; a new usecase goes in create too.'), true);
+  assert.deepEqual(existingUsecaseEnum(request), usecaseIds(TAREFAS));
+  assert.equal('enum' in createUsecaseProperty(request), false);
+  assert.equal(request.prompt.includes('Step 3: pick the usecases the new rule changes (existing); the requests that call them follow.'), true);
+  assert.equal(request.prompt.includes('Step 5: a new capability is a new route with its own new usecase (create).'), true);
+  assert.equal(request.prompt.includes('Nothing to do on the backend: existing [] and create [].'), true);
   assert.equal(effortPromptFrom(itemOf('rule', 'changed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
   assert.equal(effortPromptFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
 });
@@ -376,16 +360,19 @@ void test('finishEffort aplica a resposta gravada do R1 e do R4', () => {
     'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts',
   ]);
 
-  const routeOnly = JSON.parse(readFileSync(join(HERE, 'fixtures/tarefas/model/r4_rota_sem_usecase.json'), 'utf8'));
-  const missingUsecase = finishEffortFrom(r4, TAREFAS, routeOnly);
-  assert.equal(missingUsecase.status, 'abend');
-  assert.equal(missingUsecase.abend?.reason, 'route needs its usecase');
+  const entityOnly = finishEffortFrom(r1, TAREFAS, {
+    existing: [{ unit: 'tarefa', kind: 'entity' }],
+    create: [],
+    reason: 'entity only',
+  });
+  assert.equal(entityOnly.status, 'abend');
+  assert.equal(entityOnly.abend?.reason.includes('schema'), true);
 });
 
 void test('finishEffort abenda unidade inexistente, nome existente e forma fora do schema', () => {
   const r1 = addedRule('novaTarefaPrioridadeMedia', 'Uma tarefa nova começa com prioridade média.');
   const missing = finishEffortFrom(r1, TAREFAS, {
-    existing: [{ unit: 'naoExiste', kind: 'usecase' }],
+    existing: [{ usecase: 'naoExiste' }],
     create: [],
     reason: 'no',
   });
@@ -394,19 +381,19 @@ void test('finishEffort abenda unidade inexistente, nome existente e forma fora 
 
   const taken = finishEffortFrom(r1, TAREFAS, {
     existing: [],
-    create: [{ kind: 'usecase', name: 'createTarefa', page: 'minhas_tarefas' }],
+    create: [{ route: 'rotaNova', page: 'minhas_tarefas', usecase: 'createTarefa' }],
     reason: 'no',
   });
   assert.equal(taken.status, 'abend');
   assert.equal(taken.abend?.reason.includes('createTarefa'), true);
 
-  const unknownUse = finishEffortFrom(r1, TAREFAS, {
+  const takenRoute = finishEffortFrom(r1, TAREFAS, {
     existing: [],
-    create: [{ kind: 'route', name: 'rotaNova', page: 'minhas_tarefas', uses: 'naoExiste' }],
+    create: [{ route: 'cmdCriarTarefa', page: 'minhas_tarefas', usecase: 'usecaseNovo' }],
     reason: 'no',
   });
-  assert.equal(unknownUse.status, 'abend');
-  assert.equal(unknownUse.abend?.reason, 'route needs its usecase');
+  assert.equal(takenRoute.status, 'abend');
+  assert.equal(takenRoute.abend?.reason.includes('cmdCriarTarefa'), true);
 
   const malformed = finishEffortFrom(r1, TAREFAS, { existing: [] });
   assert.equal(malformed.status, 'abend');
