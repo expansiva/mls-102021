@@ -1,0 +1,251 @@
+/// <mls fileReference="_102021_/l2/agentNewReleaseL1/helpers/plan.test.ts" enhancement="_blank"/>
+
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
+import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
+import type { ChangeEffortFile, EffortAnswer, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const DEFS_ROOT = join(HERE, '../../helpers/effort/fixtures/tarefas');
+const MASTER = '102021';
+
+function loadTarefas(): Record<string, string> {
+  const defs: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      if (!name.endsWith('.defs.txt')) continue;
+      const rel = relative(DEFS_ROOT, abs).replace(/\.txt$/, '.ts');
+      defs[`l1/tarefas/${rel}`] = readFileSync(abs, 'utf8');
+    }
+  };
+  walk(DEFS_ROOT);
+  return defs;
+}
+
+const DEFS = loadTarefas();
+
+function loadEffort(name: string): ChangeEffortFile {
+  return JSON.parse(readFileSync(join(HERE, 'fixtures', name), 'utf8')) as ChangeEffortFile;
+}
+
+function reseal(file: ChangeEffortFile): ChangeEffortFile {
+  return {
+    ...file,
+    merged: mergeChangeEffort(file.perItem),
+    status: changeEffortFileStatus(file.perItem),
+  };
+}
+
+function l1Answer(file: ChangeEffortFile): EffortAnswer {
+  const answer = file.perItem[0]?.answers.find(row => row.master.project === MASTER);
+  if (!answer) throw new Error('missing l1 answer');
+  return answer;
+}
+
+function dataOf(source: string): Record<string, unknown> {
+  const parsed = parseDefinitionSource(source);
+  if (!('definition' in parsed) || !parsed.definition || typeof parsed.definition !== 'object') {
+    throw new Error('definition did not parse');
+  }
+  const data = (parsed.definition as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') throw new Error('definition has no data');
+  return data as Record<string, unknown>;
+}
+
+function overlay(defs: Record<string, string>, edits: { path: string; source: string }[]): Record<string, string> {
+  const next = { ...defs };
+  for (const edit of edits) next[edit.path] = edit.source;
+  return next;
+}
+
+test('R1 adds the rule on createTarefa and only on cmdCriarTarefa', () => {
+  const plan = planNewReleaseL1(loadEffort('R1.changeEffort.json'), MASTER, DEFS);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  const paths = plan.edits.map(edit => edit.path);
+  assert.deepEqual(paths, [
+    'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts',
+    'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts',
+  ]);
+  assert.deepEqual(plan.targets, paths);
+  const usecase = dataOf(plan.edits[1]!.source);
+  const applied = usecase.rulesApplied as string[];
+  assert.equal(applied[applied.length - 1], 'novaTarefaPrioridadeMedia');
+  assert.equal(applied.filter(id => id === 'novaTarefaPrioridadeMedia').length, 1);
+  const requests = dataOf(plan.edits[0]!.source).requests as Array<Record<string, unknown>>;
+  const touched = requests.filter(route => Array.isArray(route.rules) && (route.rules as string[]).includes('novaTarefaPrioridadeMedia'));
+  assert.deepEqual(touched.map(route => route.route), ['tarefas.minhas_tarefas.cmdCriarTarefa']);
+});
+
+test('R2 rule changed edits nothing and targets the materialized units', () => {
+  const plan = planNewReleaseL1(loadEffort('R2.changeEffort.json'), MASTER, DEFS);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.deepEqual(plan.edits, []);
+  assert.deepEqual(plan.targets, [
+    'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts',
+    'l1/tarefas/layer_2_application/requests/inicio.defs.ts',
+    'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts',
+    'l1/tarefas/layer_2_application/usecases/devolver.defs.ts',
+  ]);
+});
+
+test('R3 removes the rule and changes nothing else', () => {
+  const plan = planNewReleaseL1(loadEffort('R3.changeEffort.json'), MASTER, DEFS);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  const ruleId = 'devolucaoExigeMotivo';
+  assert.deepEqual(plan.edits.map(edit => edit.path), [
+    'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts',
+    'l1/tarefas/layer_2_application/requests/inicio.defs.ts',
+    'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts',
+    'l1/tarefas/layer_2_application/usecases/devolver.defs.ts',
+  ]);
+  const byPath = new Map(plan.edits.map(edit => [edit.path, edit.source]));
+  const usecase = dataOf(byPath.get('l1/tarefas/layer_2_application/usecases/devolver.defs.ts')!);
+  assert.equal((usecase.rulesApplied as string[]).includes(ruleId), false);
+  const entity = dataOf(byPath.get('l1/tarefas/layer_3_domain/entities/tarefa.defs.ts')!);
+  const transitions = (entity.lifecycle as { transitions: Array<Record<string, unknown>> }).transitions;
+  assert.equal(JSON.stringify(entity).includes(ruleId), false);
+  assert.equal(transitions.some(row => Array.isArray(row.ruleRefs) && (row.ruleRefs as string[]).includes(ruleId)), false);
+  for (const path of [
+    'l1/tarefas/layer_2_application/requests/inicio.defs.ts',
+    'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts',
+  ]) {
+    const requests = dataOf(byPath.get(path)!).requests as Array<Record<string, unknown>>;
+    assert.equal(requests.some(route => JSON.stringify(route.rules).includes(ruleId)), false);
+  }
+  const routes = [
+    ...((dataOf(byPath.get('l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts')!).requests) as Array<Record<string, unknown>>),
+    ...((dataOf(byPath.get('l1/tarefas/layer_2_application/requests/inicio.defs.ts')!).requests) as Array<Record<string, unknown>>),
+  ];
+  const named = routes.filter(route => route.route === 'tarefas.minhas_tarefas.cmdDevolver' || route.route === 'tarefas.inicio.devolverTarefa');
+  assert.equal(named.length, 2);
+  for (const edit of plan.edits) {
+    const before = JSON.parse(definitionJson(DEFS[edit.path]!)) as unknown;
+    const after = JSON.parse(definitionJson(edit.source)) as unknown;
+    assert.deepEqual(diffValues(before, after), []);
+  }
+});
+
+test('R1 applied twice edits nothing', () => {
+  const first = planNewReleaseL1(loadEffort('R1.changeEffort.json'), MASTER, DEFS);
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const second = planNewReleaseL1(loadEffort('R1.changeEffort.json'), MASTER, overlay(DEFS, first.edits));
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.deepEqual(second.edits, []);
+});
+
+test('refuses create, remove, contract change, abend and a request with no route', () => {
+  const base = loadEffort('R1.changeEffort.json');
+  const withCreate = reseal(mutate(base, answer => {
+    answer.create.push(unit('usecase', 'createTarefa', 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts'));
+  }));
+  const createPlan = planNewReleaseL1(withCreate, MASTER, DEFS);
+  assert.equal(createPlan.ok, false);
+  if (createPlan.ok) return;
+  assert.match(createPlan.reason, /create is not applied/);
+
+  const removed = loadEffort('R3.changeEffort.json');
+  const process = reseal(mutate(removed, answer => {
+    answer.remove.push(unit('workflow', 'resumo', 'l1/tarefas/layer_4_workflow/resumo.defs.ts'));
+    answer.regenerateDefs = [];
+  }));
+  process.request.items[0] = {
+    changeId: process.request.items[0]!.changeId,
+    kind: 'process',
+    op: 'removed',
+    entity: '',
+    source: 'process.defs.ts',
+  };
+  const removePlan = planNewReleaseL1(reseal(process), MASTER, DEFS);
+  assert.equal(removePlan.ok, false);
+  if (removePlan.ok) return;
+  assert.match(removePlan.reason, /remove is not applied/);
+
+  const contract = reseal(mutate(base, answer => {
+    answer.contract = 'change';
+  }));
+  const contractPlan = planNewReleaseL1(contract, MASTER, DEFS);
+  assert.equal(contractPlan.ok, false);
+  if (contractPlan.ok) return;
+  assert.match(contractPlan.reason, /contract change/);
+
+  const abend = reseal(mutate(base, answer => {
+    answer.status = 'abend';
+    answer.abend = { reason: 'módulo sem defs gerados' };
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+  }));
+  const abendPlan = planNewReleaseL1(abend, MASTER, DEFS);
+  assert.equal(abendPlan.ok, false);
+  if (abendPlan.ok) return;
+  assert.match(abendPlan.reason, /status is abend/);
+
+  const noRoute = reseal(mutate(base, answer => {
+    answer.regenerateDefs = answer.regenerateDefs.filter(row => row.kind === 'request');
+    answer.materialize = answer.materialize.filter(row => row.kind === 'request');
+  }));
+  const noRoutePlan = planNewReleaseL1(noRoute, MASTER, DEFS);
+  assert.equal(noRoutePlan.ok, false);
+  if (noRoutePlan.ok) return;
+  assert.match(noRoutePlan.reason, /cannot tell which route takes the rule/);
+});
+
+test('an invalid change effort is refused with the gate reason', () => {
+  const plan = planNewReleaseL1({ schemaVersion: 'no' }, MASTER, DEFS);
+  assert.equal(plan.ok, false);
+  if (plan.ok) return;
+  assert.match(plan.reason, /schema/);
+});
+
+function mutate(file: ChangeEffortFile, visit: (answer: EffortAnswer) => void): ChangeEffortFile {
+  const copy = JSON.parse(JSON.stringify(file)) as ChangeEffortFile;
+  visit(l1Answer(copy));
+  return copy;
+}
+
+function unit(kind: EffortUnitRef['kind'], id: string, path: string): EffortUnitRef {
+  return { kind, id, path };
+}
+
+function definitionJson(source: string): string {
+  const marker = 'export const definition = ';
+  const start = source.indexOf(marker);
+  const end = source.indexOf(' as const', start);
+  return source.slice(start + marker.length, end);
+}
+
+/** Paths whose only change is the absence of a removed rule id. Any other difference fails the test. */
+function diffValues(before: unknown, after: unknown, path = '$'): string[] {
+  if (JSON.stringify(before) === JSON.stringify(after)) return [];
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const removed = before.filter(entry => typeof entry === 'string' && !after.includes(entry));
+    const added = after.filter(entry => typeof entry === 'string' && !before.includes(entry));
+    if (added.length === 0 && removed.every(entry => entry === 'devolucaoExigeMotivo') && after.length === before.length - removed.length) {
+      return [];
+    }
+  }
+  if (before && after && typeof before === 'object' && typeof after === 'object' && !Array.isArray(before) && !Array.isArray(after)) {
+    const left = before as Record<string, unknown>;
+    const right = after as Record<string, unknown>;
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    const issues: string[] = [];
+    for (const key of keys) issues.push(...diffValues(left[key], right[key], `${path}.${key}`));
+    return issues;
+  }
+  return [`${path}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`];
+}
