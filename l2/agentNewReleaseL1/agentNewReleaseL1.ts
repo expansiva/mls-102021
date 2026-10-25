@@ -1,14 +1,27 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { checkAfterDefs, snapshotOf } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
 import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
-import { editNotes, parseNewReleaseInvocation, reportNewRelease } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
+import {
+  editNotes,
+  generatorUnits,
+  parseNewReleaseInvocation,
+  reportCheckWithoutGenerator,
+  reportGeneratorStart,
+  reportMaterialize,
+  reportMissingSnapshot,
+  reportNewRelease,
+  reportOutside,
+} from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import {
   displayPath,
   fileExists,
   moduleFile,
+  readJson,
   readSourceText,
   setModuleRoot,
+  writeJson,
   writeSourceText,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
@@ -21,7 +34,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentNewReleaseL1',
-    agentDescription: 'Applies a backend change-effort rule add or remove onto L1 defs and lists the materialize commands.',
+    agentDescription: 'Applies a backend change effort onto L1 defs, or asks the defs generator to add a route and a usecase and then checks the portrait.',
     visibility: 'public',
     beforePromptImplicit,
   };
@@ -57,7 +70,18 @@ async function beforePromptImplicit(
 
   const masterProject = String(agent.agentProject);
   const plan = planNewReleaseL1(effort, masterProject, defs);
+  if (invocation.check) return checkAfterGenerator(agent, context, invocation.module, defs, plan);
+
   if (!plan.ok) return finish(agent, context, 'completed', plan.reason);
+  if (plan.path === 'generator') {
+    const portrait = snapshotFile(invocation.module);
+    try {
+      await writeJson(portrait, await snapshotOf(defs));
+    } catch (error) {
+      return finish(agent, context, 'failed', `failed to write ${displayPath(portrait)}: ${messageOf(error)}`);
+    }
+    return finish(agent, context, 'completed', reportGeneratorStart(invocation.module, generatorUnits(effort, masterProject)));
+  }
 
   const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
   if (plan.edits.length === 0 && plan.targets.length === 0) {
@@ -75,6 +99,67 @@ async function beforePromptImplicit(
     }
   }
   return finish(agent, context, 'completed', reportNewRelease(notes, plan.targets));
+}
+
+async function checkAfterGenerator(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  moduleName: string,
+  defs: Record<string, string>,
+  plan: ReturnType<typeof planNewReleaseL1>,
+): Promise<mls.msg.AgentIntent[]> {
+  if (!plan.ok || plan.path !== 'generator') return finish(agent, context, 'completed', reportCheckWithoutGenerator());
+  const portrait = snapshotFile(moduleName);
+  const portraitPath = displayPath(portrait);
+  if (!fileExists(portrait)) return finish(agent, context, 'completed', reportMissingSnapshot(portraitPath));
+
+  let before: Record<string, string>;
+  try {
+    before = await readPortrait(portrait, portraitPath);
+  } catch (error) {
+    return finish(agent, context, 'failed', messageOf(error));
+  }
+  const after = await snapshotOf(defs);
+  const guard = checkAfterDefs(before, after, plan.allowed);
+  if (guard.outside.length > 0) return finish(agent, context, 'failed', reportOutside(guard.outside));
+
+  const createdOrChanged = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
+  try {
+    await deletePortrait(portrait);
+  } catch (error) {
+    return finish(agent, context, 'failed', `failed to delete ${portraitPath}: ${messageOf(error)}`);
+  }
+  return finish(agent, context, 'completed', reportMaterialize(createdOrChanged));
+}
+
+/** `l1/<module>/pipeline/agentNewReleaseL1/snapshot.json`. */
+function snapshotFile(moduleName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentNewReleaseL1`,
+    shortName: 'snapshot',
+    extension: '.json',
+  };
+}
+
+async function readPortrait(file: Ns5FileInfo, path: string): Promise<Record<string, string>> {
+  const parsed = await readJson<unknown>(file);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`snapshot is not a path map: ${path}`);
+  const portrait: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value !== 'string') throw new Error(`snapshot is not a path map: ${path}`);
+    portrait[key] = value;
+  }
+  return portrait;
+}
+
+async function deletePortrait(file: Ns5FileInfo): Promise<void> {
+  const indexed = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[mls.stor.getKeyToFile(file)];
+  if (!indexed || indexed.status === 'deleted') return;
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  await deleteFile(indexed);
 }
 
 /** `l4/<module>/pool/l4/changeEffort.json`, same folder rule as `moduleFile`. */
