@@ -25,9 +25,12 @@ function abend(item: string, reason: string): EffortAnswer {
     master: { ...MASTER },
     item,
     status: 'abend',
+    create: [],
     regenerateDefs: [],
     materialize: [],
+    remove: [],
     runAgents: [],
+    contract: 'keep',
     abend: { reason },
   };
 }
@@ -37,9 +40,12 @@ function computed(item: string, materialize: EffortUnitRef[]): EffortAnswer {
     master: { ...MASTER },
     item,
     status: 'computed',
+    create: [],
     regenerateDefs: [],
     materialize,
+    remove: [],
     runAgents: [],
+    contract: 'keep',
   };
 }
 
