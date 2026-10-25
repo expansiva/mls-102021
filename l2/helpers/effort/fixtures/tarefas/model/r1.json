@@ -1,0 +1,8 @@
+{
+  "existing": [
+    { "unit": "createTarefa", "kind": "usecase" },
+    { "unit": "minhas_tarefas", "kind": "request" }
+  ],
+  "create": [],
+  "reason": "The new rule applies to creating a task and to the create route on minhas_tarefas."
+}

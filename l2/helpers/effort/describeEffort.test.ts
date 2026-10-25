@@ -6,8 +6,14 @@ import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { describeEffort, describeEffortFrom } from '/_102021_/l2/helpers/effort/describeEffort.js';
-import type { EffortInput, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
+import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import {
+  describeEffort,
+  describeEffortFrom,
+  effortPromptFrom,
+  finishEffortFrom,
+} from '/_102021_/l2/helpers/effort/describeEffort.js';
+import type { EffortInput, EffortPromptRequest, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, 'fixtures/agendaClinica');
@@ -274,6 +280,103 @@ void test('processo e tarefa removidos no workflow; ausentes ficam vazios', () =
   assert.equal(missingTask.status, 'computed');
   assert.deepEqual(missingTask.regenerateDefs, []);
   assert.deepEqual(missingTask.materialize, []);
+});
+
+function addedRule(id: string, description: string): EffortInput {
+  return input({
+    changeId: `rule:${id}`,
+    kind: 'rule',
+    op: 'added',
+    entity: '',
+    source: 'l4',
+    after: { ruleId: id, description },
+  }, 'tarefas');
+}
+
+function fixtureIds(defs: Record<string, string>): string[] {
+  const ids: string[] = [];
+  for (const source of Object.values(defs)) {
+    const parsed = parseDefinitionSource(source);
+    if (!('definition' in parsed) || !parsed.definition || typeof parsed.definition !== 'object') continue;
+    const definition = parsed.definition as { artifactType?: string; data?: Record<string, unknown> };
+    const data = definition.data;
+    if (!data) continue;
+    if (definition.artifactType === 'usecase' && typeof data.usecaseId === 'string') ids.push(data.usecaseId);
+    if (definition.artifactType === 'requestService' && typeof data.pageId === 'string') ids.push(data.pageId);
+    if (definition.artifactType === 'domainEntity' && typeof data.entityId === 'string') {
+      const entityId = data.entityId;
+      ids.push(entityId.charAt(0).toLowerCase() + entityId.slice(1));
+    }
+  }
+  return [...new Set(ids)].sort();
+}
+
+function unitEnum(request: EffortPromptRequest): string[] {
+  const schema = request.schema as {
+    properties: { existing: { items: { properties: { unit: { enum: string[] } } } } };
+  };
+  return [...schema.properties.existing.items.properties.unit.enum].sort();
+}
+
+void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtures', () => {
+  const phrase = 'Uma tarefa nova começa com prioridade média.';
+  const request = effortPromptFrom(addedRule('novaTarefaPrioridadeMedia', phrase), TAREFAS);
+  assert.ok(request);
+  assert.equal(request.prompt.includes('novaTarefaPrioridadeMedia'), true);
+  assert.equal(request.prompt.includes(phrase), true);
+  assert.deepEqual(unitEnum(request), fixtureIds(TAREFAS));
+  assert.equal(effortPromptFrom(itemOf('rule', 'changed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
+  assert.equal(effortPromptFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
+});
+
+void test('finishEffort aplica a resposta gravada do R1 e do R4', () => {
+  const r1 = addedRule('novaTarefaPrioridadeMedia', 'Uma tarefa nova começa com prioridade média.');
+  const recordedR1 = JSON.parse(readFileSync(join(HERE, 'fixtures/tarefas/model/r1.json'), 'utf8'));
+  const answer = finishEffortFrom(r1, TAREFAS, recordedR1);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  const cited = ['request:minhas_tarefas', 'usecase:createTarefa'];
+  assert.deepEqual(keysOf(answer.regenerateDefs), cited);
+  assert.deepEqual(keysOf(answer.materialize), cited);
+
+  const r4 = addedRule('gestorExportaCsv', 'O gestor exporta as tarefas da equipe em CSV.');
+  const recordedR4 = JSON.parse(readFileSync(join(HERE, 'fixtures/tarefas/model/r4.json'), 'utf8'));
+  const created = finishEffortFrom(r4, TAREFAS, recordedR4);
+  assert.equal(created.status, 'computed');
+  assert.equal(created.contract, 'keep');
+  assert.deepEqual(created.regenerateDefs, []);
+  assert.deepEqual(created.materialize, []);
+  assert.deepEqual(keysOf(created.create), ['route:exportarTarefas', 'usecase:exportarTarefas']);
+  assert.deepEqual(created.create.map(unit => unit.path), [
+    'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts',
+    'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts',
+  ]);
+});
+
+void test('finishEffort abenda unidade inexistente, nome existente e forma fora do schema', () => {
+  const r1 = addedRule('novaTarefaPrioridadeMedia', 'Uma tarefa nova começa com prioridade média.');
+  const missing = finishEffortFrom(r1, TAREFAS, {
+    existing: [{ unit: 'naoExiste', kind: 'usecase' }],
+    create: [],
+    reason: 'no',
+  });
+  assert.equal(missing.status, 'abend');
+  assert.equal(missing.abend?.reason.includes('naoExiste'), true);
+
+  const taken = finishEffortFrom(r1, TAREFAS, {
+    existing: [],
+    create: [{ kind: 'usecase', name: 'createTarefa', page: 'minhas_tarefas' }],
+    reason: 'no',
+  });
+  assert.equal(taken.status, 'abend');
+  assert.equal(taken.abend?.reason.includes('createTarefa'), true);
+
+  const malformed = finishEffortFrom(r1, TAREFAS, { existing: [] });
+  assert.equal(malformed.status, 'abend');
+  assert.equal(malformed.abend?.reason.includes('schema'), true);
+  assert.equal(malformed.abend?.reason.includes('nada a fazer'), false);
 });
 
 void test('describeEffort só importa helpers e solution, e não escreve nem busca rede', () => {
