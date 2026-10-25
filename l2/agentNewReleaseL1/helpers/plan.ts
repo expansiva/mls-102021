@@ -6,6 +6,7 @@ import {
   renderDefinition,
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { allowedPaths } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
 import { validateChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
 import type { ChangeEffortFile, EffortAnswer, EffortUnitRef, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -14,11 +15,14 @@ export interface NewReleaseEdit {
   source: string;
 }
 
+export type NewReleasePath = 'def-edit' | 'generator';
+
 export type NewReleasePlan =
-  | { ok: true; edits: NewReleaseEdit[]; targets: string[] }
+  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[] }
   | { ok: false; reason: string };
 
 const APPLIED = new Set(['usecase', 'entity', 'request']);
+const GENERATOR_CREATE = new Set(['route', 'usecase']);
 
 /** Pure. Applies one master's rule add/remove onto the def sources. Does not write. */
 export function planNewReleaseL1(
@@ -33,8 +37,12 @@ export function planNewReleaseL1(
   const file = gate.file;
   const answers = file.perItem.flatMap(row => row.answers.filter(answer => answer.master.project === masterProject));
   const refusals: string[] = [];
-  for (const answer of answers) refusals.push(...refusalOf(file, answer, defs));
+  const generator = file.status === 'contract' || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)));
+  for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
   if (refusals.length > 0) return { ok: false, reason: refusals.join('\n') };
+  if (generator) {
+    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs) };
+  }
 
   const sources = { ...defs };
   const edits: NewReleaseEdit[] = [];
@@ -51,16 +59,17 @@ export function planNewReleaseL1(
       if (applied.edit) edits.push(applied.edit);
     }
   }
-  return { ok: true, edits, targets: targetsOf(answers) };
+  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [] };
 }
 
-function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<string, string>): string[] {
+function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<string, string>, generator: boolean): string[] {
   const reasons: string[] = [];
   if (answer.status === 'abend') reasons.push(`status is abend (${answer.abend?.reason || 'no reason'})`);
-  if (answer.create.length > 0) reasons.push('create is not applied by this agent');
   if (answer.remove.length > 0) reasons.push('remove is not applied by this agent');
   if (answer.runAgents.length > 0) reasons.push('runAgents is not applied by this agent');
-  if (answer.contract === 'change') reasons.push('contract change is not applied by this agent');
+  if (!generator && answer.create.length > 0) reasons.push('create is not applied by this agent');
+  if (!generator && answer.contract === 'change') reasons.push('contract change is not applied by this agent');
+  if (generator) return reasons.map(reason => `${answer.item}: ${reason}`);
   const item = itemOf(file, answer.item);
   const ruleEdit = !!item && isRuleEdit(item);
   if (answer.regenerateDefs.length > 0 && !ruleEdit) reasons.push('regenerateDefs is not from a rule added or removed');

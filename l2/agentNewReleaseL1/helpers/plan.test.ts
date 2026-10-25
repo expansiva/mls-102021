@@ -73,6 +73,7 @@ test('R1 adds the rule on createTarefa and only on cmdCriarTarefa', () => {
   const plan = planNewReleaseL1(loadEffort('R1.changeEffort.json'), MASTER, DEFS);
   assert.equal(plan.ok, true);
   if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
   const paths = plan.edits.map(edit => edit.path);
   assert.deepEqual(paths, [
     'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts',
@@ -149,10 +150,34 @@ test('R1 applied twice edits nothing', () => {
   assert.deepEqual(second.edits, []);
 });
 
-test('refuses create, remove, contract change, abend and a request with no route', () => {
+test('R4 new route and usecase on tarefas_equipe takes the generator and allows the page controller', () => {
+  const base = loadEffort('R1.changeEffort.json');
+  const effort = reseal(mutate(base, answer => {
+    answer.create = [
+      unit('route', 'exportarTarefas', 'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts'),
+      unit('usecase', 'exportarTarefas', 'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts'),
+    ];
+    answer.regenerateDefs = [
+      unit('request', 'tarefas_equipe', 'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts'),
+    ];
+    answer.materialize = [];
+  }));
+  const plan = planNewReleaseL1(effort, MASTER, DEFS);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'generator');
+  assert.deepEqual(plan.edits, []);
+  assert.deepEqual(plan.allowed, [
+    'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts',
+    'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts',
+    'l1/tarefas/layer_1_external/adapters/http/controllers/tarefas_equipe.defs.ts',
+  ]);
+});
+
+test('a contract file status takes the generator; entity create, remove, abend and a request with no route are refused', () => {
   const base = loadEffort('R1.changeEffort.json');
   const withCreate = reseal(mutate(base, answer => {
-    answer.create.push(unit('usecase', 'createTarefa', 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts'));
+    answer.create.push(unit('entity', 'tarefa', 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts'));
   }));
   const createPlan = planNewReleaseL1(withCreate, MASTER, DEFS);
   assert.equal(createPlan.ok, false);
@@ -180,9 +205,10 @@ test('refuses create, remove, contract change, abend and a request with no route
     answer.contract = 'change';
   }));
   const contractPlan = planNewReleaseL1(contract, MASTER, DEFS);
-  assert.equal(contractPlan.ok, false);
-  if (contractPlan.ok) return;
-  assert.match(contractPlan.reason, /contract change/);
+  assert.equal(contractPlan.ok, true);
+  if (!contractPlan.ok) return;
+  assert.equal(contractPlan.path, 'generator');
+  assert.equal(contract.status, 'contract');
 
   const abend = reseal(mutate(base, answer => {
     answer.status = 'abend';
