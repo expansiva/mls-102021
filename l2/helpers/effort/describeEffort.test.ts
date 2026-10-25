@@ -32,6 +32,27 @@ function loadAgenda(): Record<string, string> {
 
 const AGENDA = loadAgenda();
 
+function loadModule(moduleName: string): Record<string, string> {
+  const root = join(HERE, 'fixtures', moduleName);
+  const defs: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      if (!name.endsWith('.defs.txt')) continue;
+      const rel = relative(root, abs).replace(/\.txt$/, '.ts');
+      defs[`l1/${moduleName}/${rel}`] = readFileSync(abs, 'utf8');
+    }
+  };
+  walk(root);
+  return defs;
+}
+
+const TAREFAS = loadModule('tarefas');
+
 function input(item: L4DiffItem, module = 'agendaClinica'): EffortInput {
   return { module, base: { baseId: 'mls-102047', revisionId: '79f94cc' }, item };
 }
@@ -43,6 +64,9 @@ function rule(id: string, op: L4DiffItem['op'] = 'changed'): L4DiffItem {
 void test('rule changed aplica usecase, entidade e request, e ignora rulePlan herdado', () => {
   const answer = describeEffortFrom(input(rule('anotacaoObrigatoriaNoAtendimento')), AGENDA);
   assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
   assert.deepEqual(answer.regenerateDefs, []);
   assert.deepEqual(answer.runAgents, []);
   assert.deepEqual(answer.master, { project: '102021', kind: 'l1', device: 'web' });
@@ -165,6 +189,91 @@ void test('describeEffort sem arquivos de produto abend', async () => {
   } finally {
     (globalThis as { mls?: unknown }).mls = previous;
   }
+});
+
+function itemOf(
+  kind: L4DiffItem['kind'],
+  op: L4DiffItem['op'],
+  changeId: string,
+  moduleName: string,
+): EffortInput {
+  return input({ changeId, kind, op, entity: '', source: 'l4' }, moduleName);
+}
+
+function keysOf(units: { kind: string; id: string }[]): string[] {
+  return units.map(unit => `${unit.kind}:${unit.id}`);
+}
+
+void test('regra removida regenera e materializa quem cita; sem citação fica vazio', () => {
+  const removed = describeEffortFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS);
+  assert.equal(removed.status, 'computed');
+  assert.equal(removed.contract, 'keep');
+  assert.deepEqual(removed.create, []);
+  assert.deepEqual(removed.remove, []);
+  const cited = [
+    'entity:tarefa',
+    'request:inicio',
+    'request:minhas_tarefas',
+    'usecase:devolver',
+  ];
+  assert.deepEqual(keysOf(removed.regenerateDefs), cited);
+  assert.deepEqual(keysOf(removed.materialize), cited);
+  assert.deepEqual(removed.regenerateDefs.map(unit => unit.path), removed.materialize.map(unit => unit.path));
+
+  const none = describeEffortFrom(itemOf('rule', 'removed', 'rule:naoExiste', 'tarefas'), TAREFAS);
+  assert.equal(none.status, 'computed');
+  assert.deepEqual(none.regenerateDefs, []);
+  assert.deepEqual(none.materialize, []);
+  assert.deepEqual(none.remove, []);
+});
+
+void test('regra alterada no módulo de tarefas continua só em materialize', () => {
+  const answer = describeEffortFrom(itemOf('rule', 'changed', 'rule:resumoDiarioOitoHoras', 'tarefas'), TAREFAS);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(answer.regenerateDefs, []);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'entity:tarefa',
+    'request:inicio',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ]);
+});
+
+void test('processo e tarefa removidos no workflow; ausentes ficam vazios', () => {
+  const process = describeEffortFrom(
+    itemOf('process', 'removed', 'process:resumoDiarioTarefas', 'tarefas'),
+    TAREFAS,
+  );
+  assert.equal(process.status, 'computed');
+  assert.equal(process.contract, 'keep');
+  assert.deepEqual(process.create, []);
+  assert.deepEqual(process.regenerateDefs, []);
+  assert.deepEqual(process.materialize, []);
+  assert.deepEqual(keysOf(process.remove), ['workflow:resumoDiarioTarefas']);
+  assert.deepEqual(process.remove.map(unit => unit.path), [
+    'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts',
+  ]);
+
+  const task = describeEffortFrom(
+    itemOf('task', 'removed', 'task:resumoDiarioTarefas.avisarVencendo', 'tarefas'),
+    TAREFAS,
+  );
+  assert.equal(task.status, 'computed');
+  assert.deepEqual(keysOf(task.regenerateDefs), ['workflow:resumoDiarioTarefas']);
+  assert.deepEqual(keysOf(task.materialize), ['workflow:resumoDiarioTarefas']);
+  assert.deepEqual(task.remove, []);
+  assert.deepEqual(task.regenerateDefs.map(unit => unit.path), process.remove.map(unit => unit.path));
+
+  const missingProcess = describeEffortFrom(itemOf('process', 'removed', 'process:naoExiste', 'tarefas'), TAREFAS);
+  assert.equal(missingProcess.status, 'computed');
+  assert.deepEqual(missingProcess.remove, []);
+  const missingTask = describeEffortFrom(itemOf('task', 'removed', 'task:naoExiste.passo', 'tarefas'), TAREFAS);
+  assert.equal(missingTask.status, 'computed');
+  assert.deepEqual(missingTask.regenerateDefs, []);
+  assert.deepEqual(missingTask.materialize, []);
 });
 
 void test('describeEffort só importa helpers e solution, e não escreve nem busca rede', () => {

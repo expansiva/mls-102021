@@ -35,15 +35,20 @@ function abend(item: string, reason: string): EffortAnswer {
   };
 }
 
-function computed(item: string, materialize: EffortUnitRef[]): EffortAnswer {
+function computed(
+  item: string,
+  materialize: EffortUnitRef[],
+  regenerateDefs: EffortUnitRef[] = [],
+  remove: EffortUnitRef[] = [],
+): EffortAnswer {
   return {
     master: { ...MASTER },
     item,
     status: 'computed',
     create: [],
-    regenerateDefs: [],
+    regenerateDefs,
     materialize,
-    remove: [],
+    remove,
     runAgents: [],
     contract: 'keep',
   };
@@ -99,32 +104,83 @@ function kindOf(artifactType: string): EffortUnitRef['kind'] | null {
   return null;
 }
 
-/** Pure. `defs` maps each product def path to its `.defs.ts` source. */
-export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
-  const item = input.item.changeId;
-  if (isTextOnlyChange(input.item)) return computed(item, []);
-  const paths = Object.keys(defs);
-  if (paths.length === 0) return abend(item, NO_DEFS);
-  if (input.item.kind !== 'rule' || input.item.op !== 'changed') {
-    return abend(item, `kind/op fora da v1: ${input.item.kind} ${input.item.op}`);
-  }
-  const ruleId = ruleIdOf(input.item);
-  const units: EffortUnitRef[] = [];
-  for (const defPath of paths) {
+function sortUnits(units: EffortUnitRef[]): EffortUnitRef[] {
+  return units.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
+}
+
+function idAfter(changeId: string, prefix: string): string {
+  return changeId.startsWith(prefix) ? changeId.slice(prefix.length) : '';
+}
+
+/** `task:<processId>.<taskId>` — the process id is the segment before the first dot. */
+function taskProcessId(changeId: string): string {
+  const rest = idAfter(changeId, 'task:');
+  const dot = rest.indexOf('.');
+  return dot > 0 ? rest.slice(0, dot) : '';
+}
+
+function eachDefinition(
+  defs: Record<string, string>,
+  visit: (defPath: string, artifactType: string, data: Record<string, unknown>) => void,
+): void {
+  for (const defPath of Object.keys(defs)) {
     const parsed = parseDefinitionSource(defs[defPath] ?? '');
     if (!('definition' in parsed) || !isRecord(parsed.definition)) continue;
     const definition = parsed.definition;
     const artifactType = typeof definition.artifactType === 'string' ? definition.artifactType : '';
-    const kind = kindOf(artifactType);
     const data = isRecord(definition.data) ? definition.data : null;
-    if (!kind || !data) continue;
-    const id = unitId(artifactType, data);
-    if (!id || !applies(artifactType, data, ruleId)) continue;
-    units.push({ kind, id, path: defPath });
+    if (!artifactType || !data) continue;
+    visit(defPath, artifactType, data);
   }
-  if (units.length === 0) return abend(item, NONE_APPLY);
-  units.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
-  return computed(item, units);
+}
+
+function citingUnits(defs: Record<string, string>, ruleId: string): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    const kind = kindOf(artifactType);
+    if (!kind) return;
+    const id = unitId(artifactType, data);
+    if (!id || !applies(artifactType, data, ruleId)) return;
+    units.push({ kind, id, path: defPath });
+  });
+  return sortUnits(units);
+}
+
+function workflowUnits(defs: Record<string, string>, processId: string): EffortUnitRef[] {
+  if (!processId) return [];
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType !== 'workflowProcess') return;
+    if (data.processId !== processId) return;
+    units.push({ kind: 'workflow', id: processId, path: defPath });
+  });
+  return sortUnits(units);
+}
+
+/** Pure. `defs` maps each product def path to its `.defs.ts` source. */
+export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
+  const item = input.item.changeId;
+  if (isTextOnlyChange(input.item)) return computed(item, []);
+  if (Object.keys(defs).length === 0) return abend(item, NO_DEFS);
+  const { kind, op } = input.item;
+  if (kind === 'rule' && op === 'changed') {
+    const units = citingUnits(defs, ruleIdOf(input.item));
+    if (units.length === 0) return abend(item, NONE_APPLY);
+    return computed(item, units);
+  }
+  if (kind === 'rule' && op === 'removed') {
+    const units = citingUnits(defs, ruleIdOf(input.item));
+    return computed(item, units, units);
+  }
+  if (kind === 'process' && op === 'removed') {
+    const units = workflowUnits(defs, idAfter(item, 'process:'));
+    return computed(item, [], [], units);
+  }
+  if (kind === 'task' && op === 'removed') {
+    const units = workflowUnits(defs, taskProcessId(item));
+    return computed(item, units, units);
+  }
+  return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 
 function productPath(file: StorFile, moduleName: string): string | null {
