@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
@@ -300,13 +300,6 @@ function existingUsecaseEnum(request: EffortPromptRequest): string[] {
   return [...schema.properties.existing.items.properties.usecase.enum].sort();
 }
 
-function createUsecaseProperty(request: EffortPromptRequest): { enum?: unknown } {
-  const schema = request.schema as {
-    properties: { create: { items: { properties: { usecase: { enum?: unknown } } } } };
-  };
-  return schema.properties.create.items.properties.usecase;
-}
-
 function usecaseIds(defs: Record<string, string>): string[] {
   const ids: string[] = [];
   for (const source of Object.values(defs)) {
@@ -327,10 +320,10 @@ void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtur
   assert.equal(request.prompt.includes('novaTarefaPrioridadeMedia'), true);
   assert.equal(request.prompt.includes(phrase), true);
   assert.deepEqual(existingUsecaseEnum(request), usecaseIds(TAREFAS));
-  assert.equal('enum' in createUsecaseProperty(request), false);
-  assert.equal(request.prompt.includes('Step 3: pick the usecases the new rule changes (existing); the requests that call them follow.'), true);
-  assert.equal(request.prompt.includes('Step 5: a new capability is a new route with its own new usecase (create).'), true);
-  assert.equal(request.prompt.includes('Nothing to do on the backend: existing [] and create [].'), true);
+  assert.equal('create' in (request.schema as { properties: object }).properties, false);
+  assert.equal(request.prompt.includes("A rule about data that an operation writes is guaranteed in that operation's usecase: pick it (existing). The requests that call it follow."), true);
+  assert.equal(request.prompt.includes('New routes or usecases are not chosen here: they come from the page contract.'), true);
+  assert.equal(request.prompt.includes('Nothing on the backend only for a rule about display alone; then say why in reason.'), true);
   assert.equal(effortPromptFrom(itemOf('rule', 'changed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
   assert.equal(effortPromptFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
 });
@@ -347,22 +340,21 @@ void test('finishEffort aplica a resposta gravada do R1 e do R4', () => {
   assert.deepEqual(keysOf(answer.regenerateDefs), cited);
   assert.deepEqual(keysOf(answer.materialize), cited);
 
-  const r4 = addedRule('gestorExportaCsv', 'O gestor exporta as tarefas da equipe em CSV.');
-  const recordedR4 = JSON.parse(readFileSync(join(HERE, 'fixtures/tarefas/model/r4.json'), 'utf8'));
-  const created = finishEffortFrom(r4, TAREFAS, recordedR4);
-  assert.equal(created.status, 'computed');
-  assert.equal(created.contract, 'keep');
-  assert.deepEqual(keysOf(created.regenerateDefs), ['request:tarefas_equipe']);
-  assert.deepEqual(keysOf(created.materialize), ['request:tarefas_equipe']);
-  assert.deepEqual(keysOf(created.create), ['route:exportarTarefas', 'usecase:exportarTarefas']);
-  assert.deepEqual(created.create.map(unit => unit.path), [
-    'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts',
-    'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts',
-  ]);
+  const emptyReason = 'The rule is about display alone.';
+  const info = mock.method(console, 'info', () => {});
+  const empty = finishEffortFrom(r1, TAREFAS, { existing: [], reason: emptyReason });
+  info.mock.restore();
+  assert.equal(info.mock.calls.length, 1);
+  assert.deepEqual(info.mock.calls[0]?.arguments, [r1.item.changeId, emptyReason]);
+  assert.equal(empty.status, 'computed');
+  assert.equal(empty.contract, 'keep');
+  assert.deepEqual(empty.create, []);
+  assert.deepEqual(empty.remove, []);
+  assert.deepEqual(empty.regenerateDefs, []);
+  assert.deepEqual(empty.materialize, []);
 
   const entityOnly = finishEffortFrom(r1, TAREFAS, {
     existing: [{ unit: 'tarefa', kind: 'entity' }],
-    create: [],
     reason: 'entity only',
   });
   assert.equal(entityOnly.status, 'abend');
@@ -373,27 +365,22 @@ void test('finishEffort abenda unidade inexistente, nome existente e forma fora 
   const r1 = addedRule('novaTarefaPrioridadeMedia', 'Uma tarefa nova começa com prioridade média.');
   const missing = finishEffortFrom(r1, TAREFAS, {
     existing: [{ usecase: 'naoExiste' }],
-    create: [],
     reason: 'no',
   });
   assert.equal(missing.status, 'abend');
   assert.equal(missing.abend?.reason.includes('naoExiste'), true);
 
-  const taken = finishEffortFrom(r1, TAREFAS, {
+  const withCreate = finishEffortFrom(r1, TAREFAS, {
     existing: [],
-    create: [{ route: 'rotaNova', page: 'minhas_tarefas', usecase: 'createTarefa' }],
+    create: [{ route: 'rotaNova', page: 'minhas_tarefas', usecase: 'usecaseNovo' }],
     reason: 'no',
   });
-  assert.equal(taken.status, 'abend');
-  assert.equal(taken.abend?.reason.includes('createTarefa'), true);
+  assert.equal(withCreate.status, 'abend');
+  assert.equal(withCreate.abend?.reason.includes('schema'), true);
 
-  const takenRoute = finishEffortFrom(r1, TAREFAS, {
-    existing: [],
-    create: [{ route: 'cmdCriarTarefa', page: 'minhas_tarefas', usecase: 'usecaseNovo' }],
-    reason: 'no',
-  });
-  assert.equal(takenRoute.status, 'abend');
-  assert.equal(takenRoute.abend?.reason.includes('cmdCriarTarefa'), true);
+  const emptyReason = finishEffortFrom(r1, TAREFAS, { existing: [], reason: '   ' });
+  assert.equal(emptyReason.status, 'abend');
+  assert.equal(emptyReason.abend?.reason, 'empty answer for a new rule needs a reason');
 
   const malformed = finishEffortFrom(r1, TAREFAS, { existing: [] });
   assert.equal(malformed.status, 'abend');

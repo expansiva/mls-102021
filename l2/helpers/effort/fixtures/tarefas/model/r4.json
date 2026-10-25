@@ -1,7 +1,0 @@
-{
-  "existing": [],
-  "create": [
-    { "route": "exportarTarefas", "page": "tarefas_equipe", "usecase": "exportarTarefas" }
-  ],
-  "reason": "Export is a new route and a new usecase; no existing usecase applies the rule."
-}

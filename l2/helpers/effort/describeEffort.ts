@@ -224,11 +224,6 @@ function stringList(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string');
 }
 
-function routeId(route: string): string {
-  const dot = route.lastIndexOf('.');
-  return dot >= 0 ? route.slice(dot + 1) : route;
-}
-
 function catalogOf(defs: Record<string, string>): CatalogUnit[] {
   const units: CatalogUnit[] = [];
   eachDefinition(defs, (defPath, artifactType, data) => {
@@ -281,12 +276,11 @@ function rulePhrase(item: EffortInput['item']): { id: string; description: strin
 }
 
 function effortSchema(units: CatalogUnit[]): object {
-  const pages = units.filter(unit => unit.kind === 'request').map(unit => unit.id);
   const usecases = units.filter(unit => unit.kind === 'usecase').map(unit => unit.id);
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['existing', 'create', 'reason'],
+    required: ['existing', 'reason'],
     properties: {
       existing: {
         type: 'array',
@@ -299,28 +293,15 @@ function effortSchema(units: CatalogUnit[]): object {
           },
         },
       },
-      create: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['route', 'page', 'usecase'],
-          properties: {
-            route: { type: 'string' },
-            page: { type: 'string', enum: pages },
-            usecase: { type: 'string' },
-          },
-        },
-      },
       reason: { type: 'string' },
     },
   };
 }
 
 const LADDER = [
-  'Step 3: pick the usecases the new rule changes (existing); the requests that call them follow.',
-  'Step 5: a new capability is a new route with its own new usecase (create).',
-  'Nothing to do on the backend: existing [] and create [].',
+  "A rule about data that an operation writes is guaranteed in that operation's usecase: pick it (existing). The requests that call it follow.",
+  'New routes or usecases are not chosen here: they come from the page contract.',
+  'Nothing on the backend only for a rule about display alone; then say why in reason.',
 ].join('\n');
 
 /** Pure. A prompt only for `rule added`; every other item is null and `describeEffort` answers it. */
@@ -342,54 +323,24 @@ interface ExistingChoice {
   usecase: string;
 }
 
-interface CreateChoice {
-  route: string;
-  page: string;
-  usecase: string;
-}
-
 const OUTSIDE_SCHEMA = 'answer outside the schema';
+const EMPTY_NEEDS_REASON = 'empty answer for a new rule needs a reason';
 
 function schemaFailure(value: unknown, units: CatalogUnit[]): string | null {
   if (!isRecord(value)) return OUTSIDE_SCHEMA;
   const keys = Object.keys(value).sort();
-  if (keys.join(',') !== 'create,existing,reason') return OUTSIDE_SCHEMA;
+  if (keys.join(',') !== 'existing,reason') return OUTSIDE_SCHEMA;
   if (typeof value.reason !== 'string') return OUTSIDE_SCHEMA;
-  if (!Array.isArray(value.existing) || !Array.isArray(value.create)) return OUTSIDE_SCHEMA;
+  if (!Array.isArray(value.existing)) return OUTSIDE_SCHEMA;
   const usecases = new Set(units.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
-  const pages = new Set(units.filter(unit => unit.kind === 'request').map(unit => unit.id));
   for (const entry of value.existing) {
     if (!isRecord(entry) || Object.keys(entry).sort().join(',') !== 'usecase') return OUTSIDE_SCHEMA;
     if (typeof entry.usecase !== 'string' || !usecases.has(entry.usecase)) {
       return `unknown usecase: ${typeof entry.usecase === 'string' ? entry.usecase : ''}`;
     }
   }
-  for (const entry of value.create) {
-    if (!isRecord(entry) || Object.keys(entry).sort().join(',') !== 'page,route,usecase') return OUTSIDE_SCHEMA;
-    if (typeof entry.route !== 'string' || entry.route.length === 0) return OUTSIDE_SCHEMA;
-    if (typeof entry.page !== 'string' || !pages.has(entry.page)) return OUTSIDE_SCHEMA;
-    if (typeof entry.usecase !== 'string' || entry.usecase.length === 0) return OUTSIDE_SCHEMA;
-  }
+  if (value.existing.length === 0 && value.reason.trim() === '') return EMPTY_NEEDS_REASON;
   return null;
-}
-
-function takenIds(defs: Record<string, string>): { usecases: Set<string>; routes: Set<string> } {
-  const usecases = new Set<string>();
-  const routes = new Set<string>();
-  eachDefinition(defs, (_defPath, artifactType, data) => {
-    if (artifactType === 'usecase') {
-      const id = unitId(artifactType, data);
-      if (id) usecases.add(id);
-    }
-    if (artifactType !== 'requestService') return;
-    const requests = Array.isArray(data.requests) ? data.requests : [];
-    for (const request of requests) {
-      if (!isRecord(request) || typeof request.route !== 'string') continue;
-      routes.add(request.route);
-      routes.add(routeId(request.route));
-    }
-  });
-  return { usecases, routes };
 }
 
 /** Requests whose some route `uses` cites `usecaseId`. */
@@ -416,8 +367,7 @@ export function finishEffortFrom(input: EffortInput, defs: Record<string, string
   const units = catalogOf(defs);
   const invalid = schemaFailure(modelOutput, units);
   if (invalid) return abend(item, invalid);
-  const output = modelOutput as { existing: ExistingChoice[]; create: CreateChoice[] };
-  const taken = takenIds(defs);
+  const output = modelOutput as { existing: ExistingChoice[]; reason: string };
   const byKey = new Map(units.map(unit => [`${unit.kind}:${unit.id}`, unit]));
   const regenerate: EffortUnitRef[] = [];
   const seen = new Set<string>();
@@ -433,22 +383,9 @@ export function finishEffortFrom(input: EffortInput, defs: Record<string, string
     remember({ kind: 'usecase', id: choice.usecase, path: unit.path });
     for (const request of requestsUsing(defs, choice.usecase)) remember(request);
   }
-  const create: EffortUnitRef[] = [];
-  for (const choice of output.create) {
-    if (taken.routes.has(choice.route)) return abend(item, `name already exists: ${choice.route}`);
-    if (taken.usecases.has(choice.usecase)) return abend(item, `name already exists: ${choice.usecase}`);
-    const page = byKey.get(`request:${choice.page}`);
-    if (!page) return abend(item, OUTSIDE_SCHEMA);
-    create.push({ kind: 'route', id: choice.route, path: page.path });
-    create.push({
-      kind: 'usecase',
-      id: choice.usecase,
-      path: `l1/${input.module}/layer_2_application/usecases/${choice.usecase}.defs.ts`,
-    });
-    remember({ kind: 'request', id: page.id, path: page.path });
-  }
+  if (output.existing.length === 0) console.info(item, output.reason);
   const existingUnits = sortUnits(regenerate);
-  return computed(item, existingUnits, existingUnits, [], sortUnits(create));
+  return computed(item, existingUnits, existingUnits, [], []);
 }
 
 async function loadModuleDefs(moduleName: string): Promise<Record<string, string>> {

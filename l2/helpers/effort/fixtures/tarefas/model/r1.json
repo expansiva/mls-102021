@@ -2,6 +2,5 @@
   "existing": [
     { "usecase": "createTarefa" }
   ],
-  "create": [],
-  "reason": "The new rule applies to creating a task and to the create route on minhas_tarefas."
+  "reason": "The new rule applies to data the create operation writes, so it is guaranteed in createTarefa."
 }
