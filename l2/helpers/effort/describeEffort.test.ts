@@ -318,6 +318,26 @@ function unitEnum(request: EffortPromptRequest): string[] {
   return [...schema.properties.existing.items.properties.unit.enum].sort();
 }
 
+function usesEnum(request: EffortPromptRequest): string[] {
+  const schema = request.schema as {
+    properties: { create: { items: { properties: { uses: { enum: string[] } } } } };
+  };
+  return [...schema.properties.create.items.properties.uses.enum].sort();
+}
+
+function usecaseIds(defs: Record<string, string>): string[] {
+  const ids: string[] = [];
+  for (const source of Object.values(defs)) {
+    const parsed = parseDefinitionSource(source);
+    if (!('definition' in parsed) || !parsed.definition || typeof parsed.definition !== 'object') continue;
+    const definition = parsed.definition as { artifactType?: string; data?: { usecaseId?: unknown } };
+    if (definition.artifactType === 'usecase' && typeof definition.data?.usecaseId === 'string') {
+      ids.push(definition.data.usecaseId);
+    }
+  }
+  return [...new Set(ids)].sort();
+}
+
 void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtures', () => {
   const phrase = 'Uma tarefa nova começa com prioridade média.';
   const request = effortPromptFrom(addedRule('novaTarefaPrioridadeMedia', phrase), TAREFAS);
@@ -325,6 +345,8 @@ void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtur
   assert.equal(request.prompt.includes('novaTarefaPrioridadeMedia'), true);
   assert.equal(request.prompt.includes(phrase), true);
   assert.deepEqual(unitEnum(request), fixtureIds(TAREFAS));
+  assert.deepEqual(usesEnum(request), usecaseIds(TAREFAS));
+  assert.equal(request.prompt.includes('A new route names the usecase it calls; a new usecase goes in create too.'), true);
   assert.equal(effortPromptFrom(itemOf('rule', 'changed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
   assert.equal(effortPromptFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
 });
@@ -346,13 +368,18 @@ void test('finishEffort aplica a resposta gravada do R1 e do R4', () => {
   const created = finishEffortFrom(r4, TAREFAS, recordedR4);
   assert.equal(created.status, 'computed');
   assert.equal(created.contract, 'keep');
-  assert.deepEqual(created.regenerateDefs, []);
-  assert.deepEqual(created.materialize, []);
+  assert.deepEqual(keysOf(created.regenerateDefs), ['request:tarefas_equipe']);
+  assert.deepEqual(keysOf(created.materialize), ['request:tarefas_equipe']);
   assert.deepEqual(keysOf(created.create), ['route:exportarTarefas', 'usecase:exportarTarefas']);
   assert.deepEqual(created.create.map(unit => unit.path), [
     'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts',
     'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts',
   ]);
+
+  const routeOnly = JSON.parse(readFileSync(join(HERE, 'fixtures/tarefas/model/r4_rota_sem_usecase.json'), 'utf8'));
+  const missingUsecase = finishEffortFrom(r4, TAREFAS, routeOnly);
+  assert.equal(missingUsecase.status, 'abend');
+  assert.equal(missingUsecase.abend?.reason, 'route needs its usecase');
 });
 
 void test('finishEffort abenda unidade inexistente, nome existente e forma fora do schema', () => {
@@ -372,6 +399,14 @@ void test('finishEffort abenda unidade inexistente, nome existente e forma fora 
   });
   assert.equal(taken.status, 'abend');
   assert.equal(taken.abend?.reason.includes('createTarefa'), true);
+
+  const unknownUse = finishEffortFrom(r1, TAREFAS, {
+    existing: [],
+    create: [{ kind: 'route', name: 'rotaNova', page: 'minhas_tarefas', uses: 'naoExiste' }],
+    reason: 'no',
+  });
+  assert.equal(unknownUse.status, 'abend');
+  assert.equal(unknownUse.abend?.reason, 'route needs its usecase');
 
   const malformed = finishEffortFrom(r1, TAREFAS, { existing: [] });
   assert.equal(malformed.status, 'abend');
