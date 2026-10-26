@@ -45,7 +45,7 @@ function withPageTests(text: string, moduleName: string, pageTests: readonly str
  * lends, through `moduleTick.ts` in the persistence folder (next to the composition root the runtime already loads).
  * '' when the module has no scheduled process.
  */
-async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string> {
+export async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string> {
   const scheduled: string[] = [];
   for (const unit of ctx.units.filter(item => item.definition.artifactType === 'workflowProcess')) {
     const trigger = unit.definition.data.trigger;
@@ -54,8 +54,8 @@ async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string
   }
   if (!scheduled.length) return '';
   const info = moduleTickFile(run.project, run.module);
+  if (!run.force && storExists(info)) return 'tick: kept: exists';
   const source = moduleTickSource(run.project, run.module, scheduled.sort());
-  if (await readOptional(info) === source) return `tick: ${scheduled.join(', ')} (unchanged)`;
   const stored = await writeSource(info, source);
   const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
   const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));

@@ -1,0 +1,126 @@
+/// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/register70/writeModuleTick.test.ts" enhancement="_blank"/>
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import type { M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import type { M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
+import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { moduleTickFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { writeModuleTick } from '/_102021_/l2/agentMaterializeL1/steps/register70/agentM12Register.js';
+
+const PROJECT = 1;
+const MODULE = 'mod';
+
+interface FakeFile extends M12FileInfo {
+  status: string;
+  content: string;
+  getContent(): Promise<string>;
+  getValueInfo(): Promise<{ content: string }>;
+}
+
+function keyOf(info: M12FileInfo): string {
+  return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
+}
+
+function install(present: Array<{ info: M12FileInfo; content: string; status?: string }>): void {
+  const files: Record<string, FakeFile> = {};
+  const put = (info: M12FileInfo, content: string, status = 'changed'): FakeFile => {
+    const stored: FakeFile = {
+      ...info, status, content,
+      getContent: async () => stored.content,
+      getValueInfo: async () => ({ content: stored.content }),
+    };
+    files[keyOf(info)] = stored;
+    return stored;
+  };
+  for (const item of present) put(item.info, item.content, item.status);
+  (globalThis as { mls: unknown }).mls = {
+    stor: {
+      files,
+      getKeyToFile: keyOf,
+      addOrUpdateFile: async (info: M12FileInfo) => files[keyOf(info)] ?? put(info, '', 'new'),
+      localStor: {
+        setContent: async (stored: FakeFile, value: { content?: string | null }) => { stored.content = value.content ?? ''; return true; },
+      },
+    },
+  };
+}
+
+const processFile: M12FileInfo = { project: PROJECT, level: 1, folder: `${MODULE}/workflows`, shortName: 'aviso', extension: '.ts' };
+const tick = moduleTickFile(PROJECT, MODULE);
+
+function scheduledUnit(): M12Unit {
+  return {
+    layer: 'workflows',
+    unitId: 'aviso',
+    def: processFile,
+    defRef: '',
+    output: processFile,
+    outputRef: '',
+    definition: { artifactType: 'workflowProcess', data: { processId: 'aviso', trigger: { kind: 'scheduled' } } } as M12Unit['definition'],
+    declared: { artifactType: 'workflowProcess', data: {} } as M12Unit['declared'],
+    planIssue: '',
+    text: '',
+  };
+}
+
+function harness(force: boolean, units: M12Unit[]): { ctx: M12Context; run: M12RunArgs; compiles: () => number } {
+  let compiles = 0;
+  const compiler: M12Compiler = {
+    available: () => { compiles += 1; return false; },
+    enter: () => undefined,
+    leave: () => undefined,
+    read: async () => null,
+    model: async () => null,
+    preload: async () => [],
+    compile: async () => ({ errors: [] }),
+  };
+  return {
+    compiles: () => compiles,
+    run: { project: PROJECT, module: MODULE, scope: '', target: '', force },
+    ctx: { run: { project: PROJECT, module: MODULE, scope: '', target: '', force }, units, appEnv: 'presentation', read: async () => null, compiler },
+  };
+}
+
+void test('a module with no scheduled process writes no tick', async () => {
+  install([]);
+  const built = harness(false, []);
+  assert.equal(await writeModuleTick(built.ctx, built.run), '');
+  assert.equal(built.compiles(), 0);
+});
+
+void test('an existing moduleTick.ts is kept without compiling', async () => {
+  install([
+    { info: processFile, content: 'export {}\n' },
+    { info: tick, content: 'export const stale = 1;\n' },
+  ]);
+  const built = harness(false, [scheduledUnit()]);
+  assert.equal(await writeModuleTick(built.ctx, built.run), 'tick: kept: exists');
+  assert.equal(await readOptional(tick), 'export const stale = 1;\n');
+  assert.equal(built.compiles(), 0);
+});
+
+void test('a missing moduleTick.ts is written', async () => {
+  install([{ info: processFile, content: 'export {}\n' }]);
+  const built = harness(false, [scheduledUnit()]);
+  const line = await writeModuleTick(built.ctx, built.run);
+  assert.match(line, /^tick: aviso in /u);
+  assert.match(await readOptional(tick) ?? '', /aviso/u);
+  assert.equal(built.compiles(), 1);
+});
+
+void test('force rewrites an existing moduleTick.ts', async () => {
+  install([
+    { info: processFile, content: 'export {}\n' },
+    { info: tick, content: 'export const stale = 1;\n' },
+  ]);
+  const built = harness(true, [scheduledUnit()]);
+  const line = await writeModuleTick(built.ctx, built.run);
+  assert.match(line, /^tick: aviso in /u);
+  assert.match(await readOptional(tick) ?? '', /Generated by agentMaterializeL1|onTick|aviso/u);
+  assert.equal(built.compiles(), 1);
+});
