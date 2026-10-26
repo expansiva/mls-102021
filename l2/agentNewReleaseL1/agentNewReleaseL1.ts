@@ -1,7 +1,14 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { checkAfterDefs, snapshotOf } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
+import {
+  checkAfterDefs,
+  generatorGateReasons,
+  parsePortrait,
+  PORTRAIT_LEGACY,
+  snapshotOf,
+  type ReleasePortraitFile,
+} from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
 import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
 import {
   editNotes,
@@ -102,7 +109,7 @@ async function beforePromptImplicit(
       if (removedFirst.length > 0) await recordPhase(moduleName, phase, 'ok', removedFirst.join('\n'));
       phase = 'portrait';
       const portrait = snapshotFile(moduleName);
-      await writeJson(portrait, await snapshotOf(defs));
+      await writeJson(portrait, await portraitFile(moduleName, defs));
       await recordPhase(moduleName, phase, 'ok', 'written');
       return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effort, masterProject), removedFirst));
     }
@@ -163,7 +170,16 @@ async function checkAfterGenerator(
   const portraitPath = displayPath(portrait);
   if (!fileExists(portrait)) return await close(agent, context, moduleName, 'guard', 'refused', reportMissingSnapshot(portraitPath));
 
-  const before = await readPortrait(portrait, portraitPath);
+  const read = await readPortrait(portrait, portraitPath);
+  if (!read.ok) return await close(agent, context, moduleName, 'guard', 'refused', PORTRAIT_LEGACY);
+  const gate = generatorGateReasons({
+    pipeline: await readOptionalJson(defsStateFile(moduleName, 'pipeline')),
+    input20: await readOptionalJson(defsStateFile(moduleName, 'input20')),
+    pipelineUpdatedAt: read.portrait.generator.pipelineUpdatedAt,
+  });
+  if (gate.length > 0) return await close(agent, context, moduleName, 'guard', 'refused', gate.join('\n'));
+
+  const before = read.portrait.defs;
   const after = await snapshotOf(defs);
   const guard = checkAfterDefs(before, after, plan.allowed);
   if (guard.outside.length > 0) return await close(agent, context, moduleName, 'guard', 'failed', reportOutside(guard.outside));
@@ -256,6 +272,34 @@ async function deleteIndexed(
   return { ok: true, deleted };
 }
 
+/** `l1/<module>/pipeline/agentDefsL1/<shortName>.json`. */
+function defsStateFile(moduleName: string, shortName: 'pipeline' | 'input20'): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName,
+    extension: '.json',
+  };
+}
+
+async function readOptionalJson(file: Ns5FileInfo): Promise<unknown> {
+  if (!fileExists(file)) return null;
+  return readJson<unknown>(file);
+}
+
+async function portraitFile(moduleName: string, defs: Record<string, string>): Promise<ReleasePortraitFile> {
+  const pipeline = await readOptionalJson(defsStateFile(moduleName, 'pipeline'));
+  const updatedAt = pipeline && typeof pipeline === 'object' && !Array.isArray(pipeline)
+    ? (pipeline as { updatedAt?: unknown }).updatedAt
+    : '';
+  return {
+    defs: await snapshotOf(defs),
+    generator: { pipelineUpdatedAt: typeof updatedAt === 'string' ? updatedAt : '' },
+  };
+}
+
 /** `l1/<module>/pipeline/agentNewReleaseL1/snapshot.json`. */
 function snapshotFile(moduleName: string): Ns5FileInfo {
   const base = moduleFile(moduleName);
@@ -268,15 +312,13 @@ function snapshotFile(moduleName: string): Ns5FileInfo {
   };
 }
 
-async function readPortrait(file: Ns5FileInfo, path: string): Promise<Record<string, string>> {
-  const parsed = await readJson<unknown>(file);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`snapshot is not a path map: ${path}`);
-  const portrait: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (typeof value !== 'string') throw new Error(`snapshot is not a path map: ${path}`);
-    portrait[key] = value;
+async function readPortrait(file: Ns5FileInfo, path: string): Promise<ReturnType<typeof parsePortrait>> {
+  try {
+    return parsePortrait(await readJson<unknown>(file));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${detail}: ${path}`);
   }
-  return portrait;
 }
 
 async function deletePortrait(file: Ns5FileInfo): Promise<void> {

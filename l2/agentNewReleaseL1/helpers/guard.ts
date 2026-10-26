@@ -18,7 +18,7 @@ export function isProductDefPath(path: string): boolean {
   return parts.length > 3 && !parts.some(part => PRODUCT_SKIP.has(part));
 }
 
-/** Path to sha256, product defs only. */
+/** Path to sha256, product defs only. The agent wraps this map in the portrait file. */
 export async function snapshotOf(files: Record<string, string>): Promise<Record<string, string>> {
   const snapshot: Record<string, string> = {};
   for (const path of Object.keys(files).sort()) {
@@ -82,6 +82,99 @@ function controllerPath(requestPath: string, pageId: string): string {
   const match = /^l1\/([^/]+)\//.exec(requestPath);
   if (!match || !pageId) return '';
   return `l1/${match[1]}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`;
+}
+
+/** Portrait file written on the first call. `pipelineUpdatedAt` is empty when `pipeline.json` is absent. */
+export interface ReleasePortraitFile {
+  defs: Record<string, string>;
+  generator: { pipelineUpdatedAt: string };
+}
+
+export type ParsedPortrait =
+  | { ok: true; portrait: ReleasePortraitFile }
+  | { ok: false; legacy: true };
+
+/**
+ * New portrait, or the flat path map from before the generator stamp.
+ * Anything else is not a portrait.
+ */
+export function parsePortrait(parsed: unknown): ParsedPortrait {
+  if (!isRecord(parsed)) throw new Error('snapshot is not a path map');
+  if (isRecord(parsed.defs) && isRecord(parsed.generator) && typeof parsed.generator.pipelineUpdatedAt === 'string') {
+    return {
+      ok: true,
+      portrait: {
+        defs: stringMap(parsed.defs),
+        generator: { pipelineUpdatedAt: parsed.generator.pipelineUpdatedAt },
+      },
+    };
+  }
+  if (Object.values(parsed).every(value => typeof value === 'string')) return { ok: false, legacy: true };
+  throw new Error('snapshot is not a path map');
+}
+
+export const PORTRAIT_LEGACY = 'the portrait is from an older version; run the first call again';
+
+export interface GeneratorGateInput {
+  pipeline: unknown;
+  input20: unknown;
+  pipelineUpdatedAt: string;
+}
+
+/**
+ * Why `/check` refuses before the def lock.
+ * `pipeline` and `input20` are the parsed files, or null when absent.
+ */
+export function generatorGateReasons(input: GeneratorGateInput): string[] {
+  const reasons: string[] = [];
+  const input20 = isRecord(input.input20) ? input.input20 : null;
+  if (!input20 || input20.consumersReleased !== true) {
+    const codes = input20 ? blockingCodes(input20.problems) : '';
+    reasons.push(codes.length > 0
+      ? `the defs generator did not release the consumer phases (${codes})`
+      : 'the defs generator did not release the consumer phases');
+  }
+  const pipeline = isRecord(input.pipeline) ? input.pipeline : null;
+  const status = pipeline && typeof pipeline.status === 'string' && pipeline.status.length > 0
+    ? pipeline.status
+    : 'missing';
+  if (!pipeline || pipeline.status !== 'complete') reasons.push(`the generator pipeline is ${status}`);
+  const steps = pipeline && isRecord(pipeline.steps) ? pipeline.steps : null;
+  const finalize = steps && isRecord(steps.finalize80) ? steps.finalize80 : null;
+  const updatedAt = finalize && typeof finalize.updatedAt === 'string' ? finalize.updatedAt : '';
+  if (!finalize || finalize.status !== 'approved' || !(updatedAt > input.pipelineUpdatedAt)) {
+    reasons.push('the generator did not finish after the portrait');
+  }
+  return reasons;
+}
+
+/** Error-severity codes and counts, same shape as the defs generator's blocking reason. */
+function blockingCodes(problems: unknown): string {
+  if (!Array.isArray(problems)) return '';
+  const counts = new Map<string, number>();
+  const owners = new Map<string, string[]>();
+  for (const problem of problems) {
+    if (!isRecord(problem) || problem.severity !== 'error' || typeof problem.code !== 'string' || problem.code.length === 0) continue;
+    counts.set(problem.code, (counts.get(problem.code) || 0) + 1);
+    const refs = owners.get(problem.code) || [];
+    const ownerRef = typeof problem.ownerRef === 'string' ? problem.ownerRef : '';
+    if (ownerRef && refs.length < 3 && !refs.includes(ownerRef)) refs.push(ownerRef);
+    owners.set(problem.code, refs);
+  }
+  return [...counts.keys()].sort().map(code => {
+    const refs = owners.get(code) || [];
+    const head = `${code}:${counts.get(code)}`;
+    return refs.length > 0 ? `${head} (${refs.join(', ')})` : head;
+  }).join(',');
+}
+
+function stringMap(value: Record<string, unknown>): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item !== 'string') throw new Error('snapshot is not a path map');
+    map[key] = item;
+  }
+  return map;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

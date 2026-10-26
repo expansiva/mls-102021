@@ -328,6 +328,26 @@ const OTHER_TS = 'l1/tarefas/layer_2_application/workflows/processoTarefa.ts';
 const ENGINE = 'l1/tarefas/layer_1_external/adapters/workflow/engine.ts';
 const TICK = 'l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts';
 const SNAPSHOT = 'l1/tarefas/pipeline/agentNewReleaseL1/snapshot.json';
+const PIPELINE = 'l1/tarefas/pipeline/agentDefsL1/pipeline.json';
+const INPUT20 = 'l1/tarefas/pipeline/agentDefsL1/input20.json';
+
+function putHost(files: Record<string, HostFile>, productPath: string, content: string): void {
+  const file = infoOf(productPath, content);
+  files[keyOf(file)] = file;
+}
+
+/** A generator that finished after an empty portrait stamp. */
+function releaseGenerator(files: Record<string, HostFile>, released = true, finalizeAt = '2026-10-26T18:00:00.000Z'): void {
+  putHost(files, PIPELINE, JSON.stringify({
+    status: 'complete',
+    updatedAt: '2026-10-26T12:00:00.000Z',
+    steps: { finalize80: { status: 'approved', updatedAt: finalizeAt } },
+  }));
+  putHost(files, INPUT20, JSON.stringify({
+    consumersReleased: released,
+    problems: released ? [] : [{ severity: 'error', code: 'DONE_ABSENT', ownerRef: 'tarefa' }],
+  }));
+}
 
 function workflowEffort(edit: (answer: EffortAnswer) => void): string {
   const base = JSON.parse(readFileSync(join(HERE, 'fixtures', 'R3.changeEffort.json'), 'utf8')) as ChangeEffortFile;
@@ -419,8 +439,12 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
   assert.match(generated.message, /@@agentDefsL1 tarefas \/run/u);
   assert.match(generated.message, /@@agentNewReleaseL1 tarefas \/check/u);
   assert.equal(generated.message.trim().split('\n').at(-2), '@@agentDefsL1 tarefas /run');
-  const portrait = JSON.parse(generated.files[keyOf(infoOf(SNAPSHOT))].content) as Record<string, string>;
-  assert.equal(Object.prototype.hasOwnProperty.call(portrait, FLOW_DEF), false);
+  const portrait = JSON.parse(generated.files[keyOf(infoOf(SNAPSHOT))].content) as {
+    defs: Record<string, string>;
+    generator: { pipelineUpdatedAt: string };
+  };
+  assert.equal(Object.prototype.hasOwnProperty.call(portrait.defs, FLOW_DEF), false);
+  assert.equal(portrait.generator.pipelineUpdatedAt, '');
   assert.equal(generated.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
   assert.equal(generated.files[keyOf(infoOf(ENGINE))].status, 'deleted');
   assert.equal(generated.files[keyOf(infoOf(TICK))].status, 'deleted');
@@ -437,6 +461,7 @@ test('W2 and W3 go through the generator and the check deletes the module engine
   assert.match(w2Started.message, /^done: /u);
   assert.equal(w2Started.message.includes('@@agentDefsL1'), true);
   assert.notEqual(w2Started.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  releaseGenerator(w2Started.files);
   const w2 = await runRelease(w2Effort, [], undefined, { reuse: w2Started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
   assert.match(w2.message, /^done: /u);
   assert.equal(w2.files[keyOf(infoOf(ENGINE))].status, 'deleted');
@@ -450,6 +475,7 @@ test('W2 and W3 go through the generator and the check deletes the module engine
     answer.materialize = [unit('workflow', 'processoTarefa', OTHER_DEF)];
   });
   const w3Started = await runRelease(w3Effort, [OTHER_TS, ENGINE, SNAPSHOT]);
+  releaseGenerator(w3Started.files);
   const w3 = await runRelease(w3Effort, [], undefined, { reuse: w3Started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
   assert.equal(w3.files[keyOf(infoOf(ENGINE))].status, 'deleted');
   assert.equal(w3.files[keyOf(infoOf(TICK))], undefined);
@@ -472,6 +498,7 @@ test('a generator check deletes the module engine and clock when the effort rege
   const started = await runRelease(effort, [ENGINE, TICK, SNAPSHOT]);
   assert.notEqual(started.files[keyOf(infoOf(ENGINE))].status, 'deleted');
   assert.notEqual(started.files[keyOf(infoOf(TICK))].status, 'deleted');
+  releaseGenerator(started.files);
   const checked = await runRelease(effort, [], undefined, {
     reuse: started.files,
     prompt: '@@agentNewReleaseL1 tarefas /check',
@@ -510,6 +537,7 @@ test('the generator check also deletes the .ts of effort units whose def the gen
   });
   const started = await runRelease(effort, [REQUEST_TS, USECASE_TS, SNAPSHOT]);
   assert.notEqual(started.files[keyOf(infoOf(USECASE_TS))].status, 'deleted');
+  releaseGenerator(started.files);
   const checked = await runRelease(effort, [], undefined, {
     reuse: started.files,
     prompt: '@@agentNewReleaseL1 tarefas /check',
@@ -519,4 +547,36 @@ test('the generator check also deletes the .ts of effort units whose def the gen
   assert.equal(checked.files[keyOf(infoOf(REQUEST_TS))].status, 'deleted');
   assert.equal(checked.message.includes('@@agentMaterializeL1'), true);
   assert.notEqual(checked.files[keyOf(infoOf(USECASE_DEFS))].status, 'deleted');
+});
+
+test('a check refuses when the generator did not release, when finalize is not after the portrait, and when the portrait is the old map', async () => {
+  const effort = workflowEffort(answer => {
+    answer.contract = 'change';
+    answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', FLOW_DEF)];
+  });
+  const started = await runRelease(effort, [SNAPSHOT], undefined, {
+    prepare: files => {
+      putHost(files, PIPELINE, JSON.stringify({ status: 'complete', updatedAt: '2026-10-26T12:00:00.000Z', steps: {} }));
+    },
+  });
+  const portrait = JSON.parse(started.files[keyOf(infoOf(SNAPSHOT))].content) as { generator: { pipelineUpdatedAt: string } };
+  assert.equal(portrait.generator.pipelineUpdatedAt, '2026-10-26T12:00:00.000Z');
+
+  releaseGenerator(started.files, false);
+  const held = await runRelease(effort, [], undefined, { reuse: started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
+  assert.match(held.message, /^refused: the defs generator did not release the consumer phases \(DONE_ABSENT:1 \(tarefa\)\)/u);
+  assert.notEqual(held.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
+  const heldLog = JSON.parse(held.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.equal(heldLog.phases.at(-1)?.phase, 'guard');
+  assert.equal(heldLog.phases.at(-1)?.status, 'refused');
+
+  releaseGenerator(started.files, true, '2026-10-26T12:00:00.000Z');
+  const stale = await runRelease(effort, [], undefined, { reuse: started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
+  assert.match(stale.message, /^refused: the generator did not finish after the portrait/u);
+  assert.notEqual(stale.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
+
+  putHost(started.files, SNAPSHOT, JSON.stringify({ [FLOW_DEF]: 'abc' }));
+  const legacy = await runRelease(effort, [], undefined, { reuse: started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
+  assert.match(legacy.message, /^refused: the portrait is from an older version; run the first call again/u);
+  assert.notEqual(legacy.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
 });
