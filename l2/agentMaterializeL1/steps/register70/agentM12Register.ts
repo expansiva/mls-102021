@@ -3,7 +3,7 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_REGISTER_AGENT_NAME, clip, errorText, parseM12StepInvocation, type M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { readOptional, readUnitStatus, removeStorFile, stateReady, unproven, usable, writeJson, writeSource, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readOptional, readUnitStatus, removeStorFile, stateReady, storExists, unproven, writeJson, writeSource, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { moduleTickFile, moduleTickSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
@@ -19,7 +19,7 @@ export function createAgent(): IAgentAsync {
 async function readyPageTests(run: M12RunArgs, pageIds: readonly string[]): Promise<string[]> {
   const out: string[] = [];
   for (const pageId of pageIds) {
-    if (stateReady(await readUnitStatus(run.project, run.module, 'tests', pageId))) out.push(fileRef(pageTestsFile(run.project, run.module, pageId)));
+    if (storExists(pageTestsFile(run.project, run.module, pageId))) out.push(fileRef(pageTestsFile(run.project, run.module, pageId)));
   }
   return out.sort();
 }
@@ -50,7 +50,7 @@ async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise<string
   for (const unit of ctx.units.filter(item => item.definition.artifactType === 'workflowProcess')) {
     const trigger = unit.definition.data.trigger;
     if (!trigger || typeof trigger !== 'object' || (trigger as { kind?: unknown }).kind !== 'scheduled') continue;
-    if (usable(await readUnitStatus(run.project, run.module, 'workflows', unit.unitId))) scheduled.push(String(unit.definition.data.processId ?? unit.unitId));
+    if (storExists(unit.output)) scheduled.push(String(unit.definition.data.processId ?? unit.unitId));
   }
   if (!scheduled.length) return '';
   const info = moduleTickFile(run.project, run.module);
@@ -76,13 +76,13 @@ async function register(run: M12RunArgs): Promise<string> {
   let allReady = true;
   for (const unit of ctx.units) {
     const status = await readUnitStatus(project, moduleName, unit.layer, unit.unitId);
-    if (usable(status)) ready.push({ defPath: unit.defRef, artifactType: unit.definition.artifactType });
+    if (storExists(unit.output)) ready.push({ defPath: unit.defRef, artifactType: unit.definition.artifactType });
     if (!stateReady(status) || unproven(status)) allReady = false;
   }
   // The whole module or nothing: a registration without some controller would publish pages with no route.
   const missingControllers = [];
   for (const unit of ctx.units.filter(item => item.layer === 'controllers')) {
-    if (!usable(await readUnitStatus(project, moduleName, 'controllers', unit.unitId))) missingControllers.push(unit.unitId);
+    if (!storExists(unit.output)) missingControllers.push(unit.unitId);
   }
   if (missingControllers.length) return `pending: controller(s) not generated: ${missingControllers.join(', ')}; the module was not registered.`;
   const tick = await writeModuleTick(ctx, run);

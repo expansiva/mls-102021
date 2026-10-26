@@ -53,16 +53,6 @@ export function unproven(status: M12UnitStatus | null): boolean {
   return stateReady(status) && status!.code === COMPILE_UNAVAILABLE_L1;
 }
 
-/** A unit whose file can be registered and used by the next step. */
-export function usable(status: M12UnitStatus | null): boolean {
-  return stateReady(status);
-}
-
-/** Units that left a file a dependent unit can import (a held unit keeps its file). */
-export function fileReady(status: M12UnitStatus | null): boolean {
-  return stateReady(status) || (!!status && status.status === 'blocked' && Object.keys(status.outputs).length > 0 && status.code !== 'COMPILE_FAILED');
-}
-
 interface StorFile {
   status?: string;
   updatedAt?: string;
@@ -260,67 +250,16 @@ export async function writeUnitStatus(project: number, moduleName: string, statu
   return full;
 }
 
-export type M12OutputCheck = 'absent' | 'generated' | 'editedLocally';
-
-/** Whether the bytes on disk are still the ones this agent generated last time. */
-export async function outputCheck(status: M12UnitStatus | null, info: M12FileInfo): Promise<M12OutputCheck> {
-  const text = await readOptional(info);
-  if (text === null) return 'absent';
-  const recorded = status?.outputs?.[fileRef(info)];
-  if (!recorded) return 'editedLocally';
-  return await sha256Text(text) === recorded ? 'generated' : 'editedLocally';
-}
-
-export type M12ReuseDecision = { kind: 'reuse' } | { kind: 'generate' } | { kind: 'protect'; path: string };
+export type M12ReuseDecision = { kind: 'reuse' } | { kind: 'generate' };
 
 /**
  * Skip when every output file is in the stor and not `deleted`. Generate when `force` is set or any output is
  * missing. A receipt, its hash and its date do not decide. The check is the file identity, so `x.ts` and
  * `x.defs.ts` are different files.
  */
-export async function reuseDecision(outputs: readonly M12FileInfo[], force: boolean): Promise<M12ReuseDecision>;
-/**
- * Callers that still pass the receipt keep the previous rule until they move to existence. `protect` is only
- * returned on this path.
- */
-export async function reuseDecision(
-  status: M12UnitStatus | null,
-  inputHash: string,
-  outputs: readonly M12FileInfo[],
-  force: boolean,
-): Promise<M12ReuseDecision>;
-export async function reuseDecision(
-  statusOrOutputs: M12UnitStatus | null | readonly M12FileInfo[],
-  inputHashOrForce: string | boolean,
-  outputs?: readonly M12FileInfo[],
-  force?: boolean,
-): Promise<M12ReuseDecision> {
-  if (Array.isArray(statusOrOutputs)) return reuseByExistence(statusOrOutputs, inputHashOrForce === true);
-  return reuseByReceipt(statusOrOutputs as M12UnitStatus | null, String(inputHashOrForce), outputs ?? [], force === true);
-}
-
-function reuseByExistence(outputs: readonly M12FileInfo[], force: boolean): M12ReuseDecision {
+export async function reuseDecision(outputs: readonly M12FileInfo[], force: boolean): Promise<M12ReuseDecision> {
   if (force) return { kind: 'generate' };
   return outputs.every(storExists) ? { kind: 'reuse' } : { kind: 'generate' };
-}
-
-async function reuseByReceipt(
-  status: M12UnitStatus | null,
-  inputHash: string,
-  outputs: readonly M12FileInfo[],
-  force: boolean,
-): Promise<M12ReuseDecision> {
-  if (force) return { kind: 'generate' };
-  const checks = await Promise.all(outputs.map(async info => ({ info, check: await outputCheck(status, info) })));
-  if (status === null || Object.keys(status.outputs).length === 0) {
-    const foreign = checks.find(item => item.check !== 'absent');
-    if (foreign) return { kind: 'protect', path: fileRef(foreign.info) };
-    return { kind: 'generate' };
-  }
-  const edited = checks.find(item => item.check === 'editedLocally');
-  if (edited) return { kind: 'protect', path: fileRef(edited.info) };
-  const ok = stateReady(status) && status.inputHash === inputHash && checks.every(item => item.check === 'generated');
-  return ok ? { kind: 'reuse' } : { kind: 'generate' };
 }
 
 export async function writeDraft(project: number, moduleName: string, layer: M12Layer, unitId: string, part: string, text: string): Promise<void> {

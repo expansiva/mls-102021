@@ -12,12 +12,12 @@ import { compileDiagnostics, compileM12Files, isUnavailable, type M12Compiler } 
 import {
   COMPILE_UNAVAILABLE_L1,
   createReader,
-  fileReady,
   hashParts,
   readOptional,
   readUnitStatus,
   removeStorFile,
   reuseDecision,
+  storExists,
   writeSource,
   writeText,
   writeUnitStatus,
@@ -134,17 +134,18 @@ export function dependencyUnits(ctx: M12Context, unit: M12Unit): M12Unit[] {
 }
 
 /**
- * Dependencies whose file is not there to import, with their state. Empty = ready. Only a dependency of the
+ * Dependencies whose `.ts` is not in the stor. Empty = ready. A receipt does not decide. Only a dependency of the
  * same or an earlier layer is imported when the unit is emitted; a later one (the usecase an outbound event
- * names) is a reference, not an import, and does not block.
+ * names) is a reference, not an import, and does not block. `.defs.ts` is not the output.
  */
 export async function blockingDependencies(ctx: M12Context, unit: M12Unit): Promise<string[]> {
   const out: string[] = [];
   const own = M12_LAYERS.indexOf(unit.layer);
   for (const dep of dependencyUnits(ctx, unit)) {
     if (M12_LAYERS.indexOf(dep.layer) > own) continue;
+    if (storExists(dep.output)) continue;
     const status = await readUnitStatus(ctx.run.project, ctx.run.module, dep.layer, dep.unitId);
-    if (!fileReady(status)) out.push(`${dep.defRef} (${status?.status ?? 'not materialized'}${status?.code ? ` ${status.code}` : ''})`);
+    out.push(`${dep.defRef} (${status?.status ?? 'not materialized'}${status?.code ? ` ${status.code}` : ''})`);
   }
   return out;
 }
