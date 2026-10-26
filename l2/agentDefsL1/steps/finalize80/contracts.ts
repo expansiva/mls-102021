@@ -166,6 +166,17 @@ export interface D1FinalizeReport {
    * before each delete; absent when no dispatch was ever consumed. Not an authorization.
    */
   pool?: PoolTraceLine[];
+  /**
+   * Model spend of this task, summed from step `interaction.cost`. Absent on reports
+   * written before the field existed. Not a billing invoice.
+   */
+  cost?: D1PhaseCost;
+}
+
+/** Calls and spend grouped by the step id before the first `-` in `planId`. */
+export interface D1PhaseCost {
+  total: number;
+  byPhase: Record<string, { calls: number; cost: number }>;
 }
 
 export function parseFinalizeReport(text: string): D1FinalizeReport | null {
@@ -186,7 +197,19 @@ export function parseFinalizeReport(text: string): D1FinalizeReport | null {
   if (!isEnumBlock(report.enumerations)) return null;
   if (report.outcome !== 'complete' && report.outcome !== 'held') return null;
   if (report.defsStatus !== 'complete' && report.defsStatus !== 'incomplete' && report.defsStatus !== 'notRun') return null;
+  if ('cost' in report && !isPhaseCost(report.cost)) return null;
   return report;
+}
+
+function isPhaseCost(value: unknown): value is D1PhaseCost {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const cost = value as D1PhaseCost;
+  if (typeof cost.total !== 'number' || !Number.isFinite(cost.total)) return false;
+  if (!cost.byPhase || typeof cost.byPhase !== 'object' || Array.isArray(cost.byPhase)) return false;
+  return Object.values(cost.byPhase).every(phase =>
+    !!phase && typeof phase === 'object' && !Array.isArray(phase)
+    && Number.isInteger(phase.calls) && phase.calls >= 0
+    && typeof phase.cost === 'number' && Number.isFinite(phase.cost));
 }
 
 function isCallAccount(value: unknown): value is D1CallAccount {
