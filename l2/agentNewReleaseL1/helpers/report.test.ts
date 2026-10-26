@@ -20,7 +20,7 @@ import {
 import { createAgent } from '/_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
-import type { ChangeEffortFile, EffortAnswer, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
+import type { ChangeEffortFile, EffortAnswer, EffortUnitRef, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MASTER = '102021';
@@ -88,10 +88,11 @@ test('R4 first call names the effort units and the defs run followed by /check',
   const message = reportGeneratorStart('tarefas', generatorUnits(effort, MASTER));
   assert.match(message, /route exportarTarefas l1\/tarefas\/layer_2_application\/requests\/tarefas_equipe\.defs\.ts/u);
   assert.match(message, /usecase exportarTarefas l1\/tarefas\/layer_2_application\/usecases\/exportarTarefas\.defs\.ts/u);
-  assert.match(message, /@@agentDefsL1 tarefas \/run/u);
+  assert.equal(message.includes('/run'), false);
+  assert.match(message, /@@agentDefsL1 tarefas \/units route:exportarTarefas usecase:exportarTarefas request:tarefas_equipe/u);
   assert.match(message, /@@agentNewReleaseL1 tarefas \/check/u);
   const lines = message.trim().split('\n');
-  assert.equal(lines[lines.length - 2], '@@agentDefsL1 tarefas /run');
+  assert.equal(lines[lines.length - 2], '@@agentDefsL1 tarefas /units route:exportarTarefas usecase:exportarTarefas request:tarefas_equipe');
   assert.equal(lines[lines.length - 1], '@@agentNewReleaseL1 tarefas /check');
 });
 
@@ -439,6 +440,7 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
   const generatorEffort = workflowEffort(answer => {
     answer.contract = 'change';
     answer.remove.push(unit('workflow', 'resumoDiarioTarefas', FLOW_DEF));
+    answer.regenerateDefs = [unit('request', 'minhas_tarefas', REQUEST_DEFS)];
   });
   const generated = await runRelease(generatorEffort, [FLOW_DEF, FLOW_TS, ENGINE, TICK, SNAPSHOT], undefined, {
     prepare: files => {
@@ -447,9 +449,10 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
       files[keyOf(infoOf(SNAPSHOT))].content = '{}\n';
     },
   });
-  assert.match(generated.message, /@@agentDefsL1 tarefas \/run/u);
+  assert.equal(generated.message.includes('/run'), false);
+  assert.match(generated.message, /@@agentDefsL1 tarefas \/units request:minhas_tarefas/u);
   assert.match(generated.message, /@@agentNewReleaseL1 tarefas \/check/u);
-  assert.equal(generated.message.trim().split('\n').at(-2), '@@agentDefsL1 tarefas /run');
+  assert.equal(generated.message.trim().split('\n').at(-2), '@@agentDefsL1 tarefas /units request:minhas_tarefas');
   const portrait = JSON.parse(generated.files[keyOf(infoOf(SNAPSHOT))].content) as {
     defs: Record<string, string>;
     generator: { pipelineUpdatedAt: string };
@@ -470,14 +473,16 @@ test('W2 and W3 go through the generator and the check deletes the module engine
   });
   const w2Started = await runRelease(w2Effort, [FLOW_TS, ENGINE, TICK, SNAPSHOT]);
   assert.match(w2Started.message, /^done: /u);
-  assert.equal(w2Started.message.includes('@@agentDefsL1'), true);
+  assert.match(w2Started.message, /@@agentDefsL1 tarefas \/units workflow:resumoDiarioTarefas/u);
+  assert.equal(w2Started.message.includes('/run'), false);
+  assert.equal(w2Started.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
   assert.notEqual(w2Started.files[keyOf(infoOf(ENGINE))].status, 'deleted');
   releaseGenerator(w2Started.files);
   const w2 = await runRelease(w2Effort, [], undefined, { reuse: w2Started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
   assert.match(w2.message, /^done: /u);
   assert.equal(w2.files[keyOf(infoOf(ENGINE))].status, 'deleted');
   assert.equal(w2.files[keyOf(infoOf(TICK))].status, 'deleted');
-  assert.notEqual(w2.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+  assert.equal(w2.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
   const w2Log = JSON.parse(w2.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
   assert.equal(w2Log.phases.filter(line => line.phase === 'sources').at(-1)?.note.includes(ENGINE), true);
 
@@ -590,4 +595,122 @@ test('a check refuses when the generator did not release, when finalize is not a
   const legacy = await runRelease(effort, [], undefined, { reuse: started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
   assert.match(legacy.message, /^refused: the portrait is from an older version; run the first call again/u);
   assert.notEqual(legacy.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
+});
+
+const ENTITY_DEFS = 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts';
+const ENTITY_TS = 'l1/tarefas/layer_3_domain/entities/tarefa.ts';
+const REPOSITORY_DEFS = 'l1/tarefas/layer_1_external/adapters/persistence/tarefaRepositoryAdapter.defs.ts';
+const REPOSITORY_TS = 'l1/tarefas/layer_1_external/adapters/persistence/tarefaRepositoryAdapter.ts';
+const PAGE_CONTROLLER = 'l1/tarefas/layer_1_external/adapters/http/controllers/minhas_tarefas.defs.ts';
+
+/** Field removal whose request still cites the field, so the first call sends that request to `/units`. */
+function fieldRequestEffort(): string {
+  const base = JSON.parse(readFileSync(join(HERE, 'fixtures', 'R1.changeEffort.json'), 'utf8')) as ChangeEffortFile;
+  const fieldId = 'details.etiquetas';
+  const item: L4DiffItem = {
+    changeId: `field:${fieldId}`,
+    kind: 'field',
+    op: 'removed',
+    entity: 'Tarefa',
+    source: 'ontology/Tarefa.defs.ts',
+    before: { fieldId },
+  };
+  base.request.items = [item];
+  base.perItem = [{
+    item: item.changeId,
+    answers: base.masters.map(master => {
+      const answer: EffortAnswer = {
+        master,
+        item: item.changeId,
+        status: 'computed',
+        create: [],
+        regenerateDefs: [],
+        materialize: [],
+        remove: [],
+        runAgents: [],
+        contract: 'keep',
+      };
+      if (master.project === MASTER) {
+        answer.regenerateDefs = [
+          unit('entity', 'tarefa', ENTITY_DEFS),
+          unit('repository', 'tarefaRepository', REPOSITORY_DEFS),
+          unit('request', 'minhas_tarefas', REQUEST_DEFS),
+        ];
+      }
+      return answer;
+    }),
+  }];
+  return JSON.stringify(reseal(base));
+}
+
+function cloneHost(files: Record<string, HostFile>): Record<string, HostFile> {
+  const copy: Record<string, HostFile> = {};
+  for (const file of Object.values(files)) {
+    const path = `l${file.level}/${file.folder}/${file.shortName}${file.extension}`;
+    const next = infoOf(path, file.content);
+    next.status = file.status;
+    copy[keyOf(next)] = next;
+  }
+  return copy;
+}
+
+/** The generator put the request back without the field citation. */
+function rewriteRequest(files: Record<string, HostFile>): void {
+  const request = files[keyOf(infoOf(REQUEST_DEFS))];
+  request.status = 'changed';
+  request.content = request.content.split('details.etiquetas').join('details.titulo');
+  const source = files[keyOf(infoOf(REQUEST_TS))];
+  if (source) {
+    source.status = 'changed';
+    source.content = 'export {}\n';
+  }
+}
+
+test('a check keeps the portrait allow-list after the generator drops the field citation', async () => {
+  const effort = fieldRequestEffort();
+  const started = await runRelease(effort, [ENTITY_TS, REPOSITORY_TS, REQUEST_TS, SNAPSHOT]);
+  assert.equal(started.message.includes('/run'), false);
+  assert.match(started.message, /@@agentDefsL1 tarefas \/units request:minhas_tarefas/u);
+  const portrait = JSON.parse(started.files[keyOf(infoOf(SNAPSHOT))].content) as {
+    generator: { allowed: string[] };
+  };
+  assert.equal(portrait.generator.allowed.includes(REQUEST_DEFS), true);
+  assert.equal(portrait.generator.allowed.includes(PAGE_CONTROLLER), true);
+
+  const outsideFiles = cloneHost(started.files);
+  rewriteRequest(outsideFiles);
+  releaseGenerator(outsideFiles);
+  const usecase = outsideFiles[keyOf(infoOf(USECASE_DEFS))];
+  usecase.content = `${usecase.content}\n`;
+  const outside = await runRelease(effort, [], undefined, {
+    reuse: outsideFiles,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(outside.message, /^failed: changed outside the plan:/u);
+  assert.match(outside.message, /usecases\/createTarefa\.defs\.ts/u);
+  assert.equal(outside.message.includes('@@agentMaterializeL1'), false);
+  assert.notEqual(outside.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
+
+  const bare = cloneHost(started.files);
+  rewriteRequest(bare);
+  delete bare[keyOf(infoOf(SNAPSHOT))];
+  releaseGenerator(bare);
+  const pending = await runRelease(effort, [], undefined, {
+    reuse: bare,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(pending.message, /^refused: no generator run is pending/u);
+
+  rewriteRequest(started.files);
+  releaseGenerator(started.files);
+  const checked = await runRelease(effort, [], undefined, {
+    reuse: started.files,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(checked.message, /^done: /u);
+  assert.equal(checked.message.includes('changed outside the plan'), false);
+  assert.equal(checked.files[keyOf(infoOf(REQUEST_TS))].status, 'deleted');
+  assert.equal(checked.files[keyOf(infoOf(ENTITY_TS))].status, 'deleted');
+  assert.equal(checked.files[keyOf(infoOf(REPOSITORY_TS))].status, 'deleted');
+  assert.equal(checked.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
 });

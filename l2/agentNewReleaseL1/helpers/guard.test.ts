@@ -46,6 +46,14 @@ test('the portrait envelope keeps the def map and a flat map is the older versio
   if (!current.ok) return;
   assert.equal(current.portrait.defs[REQUEST], 'abc');
   assert.equal(current.portrait.generator.pipelineUpdatedAt, '2026-10-26T12:00:00.000Z');
+  assert.deepEqual(current.portrait.generator.allowed, []);
+  const listed = parsePortrait({
+    defs: { [REQUEST]: 'abc' },
+    generator: { pipelineUpdatedAt: '2026-10-26T12:00:00.000Z', allowed: [REQUEST, CONTROLLER] },
+  });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.deepEqual(listed.portrait.generator.allowed, [REQUEST, CONTROLLER]);
   assert.equal(parsePortrait({ [REQUEST]: 'abc' }).ok, false);
   assert.throws(() => parsePortrait(null), /snapshot is not a path map/u);
 });

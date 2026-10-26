@@ -9,10 +9,9 @@ import {
   snapshotOf,
   type ReleasePortraitFile,
 } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
-import { effortWithoutRemovedUnits, planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
+import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
 import {
   editNotes,
-  generatorUnits,
   parseNewReleaseInvocation,
   reportCheckWithoutGenerator,
   reportDeleteFailed,
@@ -105,13 +104,25 @@ async function beforePromptImplicit(
     const removedFirst = [...removedWorkflows.deleted, ...removedRuntime.deleted];
     for (const defPath of plan.removes) delete defs[defPath];
 
-    if (plan.path === 'generator') {
-      if (removedFirst.length > 0) await recordPhase(moduleName, phase, 'ok', removedFirst.join('\n'));
+    if (plan.units.length > 0) {
+      phase = 'defs';
+      const written = await writeEdits(project, plan.edits);
+      if (!written.ok) return await close(agent, context, moduleName, phase, 'failed', written.message);
+      await recordPhase(moduleName, phase, 'ok', String(written.paths.length));
+      for (const edit of plan.edits) defs[edit.path] = edit.source;
+
+      phase = 'sources';
+      const removedUnits = await deleteWorkflowRemovals(project, plan.deleteDefs);
+      if (!removedUnits.ok) return await close(agent, context, moduleName, phase, 'failed', removedUnits.message);
+      const deletedSources = [...removedFirst, ...removedUnits.deleted];
+      if (deletedSources.length > 0) await recordPhase(moduleName, phase, 'ok', deletedSources.join('\n'));
+      for (const defPath of plan.deleteDefs) delete defs[defPath];
+
       phase = 'portrait';
       const portrait = snapshotFile(moduleName);
-      await writeJson(portrait, await portraitFile(moduleName, defs));
+      await writeJson(portrait, await portraitFile(moduleName, defs, plan.allowed));
       await recordPhase(moduleName, phase, 'ok', 'written');
-      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effortWithoutRemovedUnits(effort, masterProject), masterProject), removedFirst));
+      return finish(agent, context, 'done', reportGeneratorStart(moduleName, plan.units, deletedSources));
     }
 
     const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
@@ -165,9 +176,10 @@ async function checkAfterGenerator(
 ): Promise<mls.msg.AgentIntent[]> {
   if (!plan.ok) return await close(agent, context, moduleName, 'plan', 'refused', plan.reason);
   await recordPhase(moduleName, 'plan', 'ok', plan.path);
-  if (plan.path !== 'generator') return await close(agent, context, moduleName, 'guard', 'refused', reportCheckWithoutGenerator());
   const portrait = snapshotFile(moduleName);
   const portraitPath = displayPath(portrait);
+  // The units the generator rebuilt no longer need the generator, so a pending run is the portrait, not the plan.
+  if (plan.path !== 'generator' && !fileExists(portrait)) return await close(agent, context, moduleName, 'guard', 'refused', reportCheckWithoutGenerator());
   if (!fileExists(portrait)) return await close(agent, context, moduleName, 'guard', 'refused', reportMissingSnapshot(portraitPath));
 
   const read = await readPortrait(portrait, portraitPath);
@@ -181,7 +193,7 @@ async function checkAfterGenerator(
 
   const before = read.portrait.defs;
   const after = await snapshotOf(defs);
-  const guard = checkAfterDefs(before, after, plan.allowed);
+  const guard = checkAfterDefs(before, after, read.portrait.generator.allowed);
   if (guard.outside.length > 0) return await close(agent, context, moduleName, 'guard', 'failed', reportOutside(guard.outside));
 
   const changedByGenerator = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
@@ -200,6 +212,23 @@ async function checkAfterGenerator(
   await deletePortrait(portrait);
   await recordPhase(moduleName, 'guard', 'ok', 'checked');
   return finish(agent, context, 'done', reportMaterialize(moduleName, createdOrChanged, deletedSources));
+}
+
+async function writeEdits(
+  project: number,
+  edits: readonly { path: string; source: string }[],
+): Promise<{ ok: true; paths: string[] } | { ok: false; message: string }> {
+  const paths: string[] = [];
+  for (const edit of edits) {
+    try {
+      await writeSourceText(fileInfoFromPath(project, edit.path), edit.source);
+      paths.push(edit.path);
+    } catch (error) {
+      const listed = paths.length > 0 ? `\nAlready written:\n${paths.join('\n')}` : '';
+      return { ok: false, message: `failed to write ${edit.path}: ${messageOf(error)}${listed}` };
+    }
+  }
+  return { ok: true, paths };
 }
 
 /** Module engine and clock. Deleted whenever this release touches a workflow. */
@@ -289,14 +318,14 @@ async function readOptionalJson(file: Ns5FileInfo): Promise<unknown> {
   return readJson<unknown>(file);
 }
 
-async function portraitFile(moduleName: string, defs: Record<string, string>): Promise<ReleasePortraitFile> {
+async function portraitFile(moduleName: string, defs: Record<string, string>, allowed: readonly string[]): Promise<ReleasePortraitFile> {
   const pipeline = await readOptionalJson(defsStateFile(moduleName, 'pipeline'));
   const updatedAt = pipeline && typeof pipeline === 'object' && !Array.isArray(pipeline)
     ? (pipeline as { updatedAt?: unknown }).updatedAt
     : '';
   return {
     defs: await snapshotOf(defs),
-    generator: { pipelineUpdatedAt: typeof updatedAt === 'string' ? updatedAt : '' },
+    generator: { pipelineUpdatedAt: typeof updatedAt === 'string' ? updatedAt : '', allowed: [...allowed] },
   };
 }
 

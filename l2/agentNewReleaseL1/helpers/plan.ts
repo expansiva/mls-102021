@@ -26,11 +26,22 @@ export interface NewReleaseEdit {
 export type NewReleasePath = 'def-edit' | 'generator';
 
 export type NewReleasePlan =
-  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[]; removes: string[]; flow: boolean }
+  | {
+    ok: true;
+    path: NewReleasePath;
+    edits: NewReleaseEdit[];
+    targets: string[];
+    allowed: string[];
+    removes: string[];
+    flow: boolean;
+    /** Units the defs generator rebuilds with `/units`, in effort order, without repeats. */
+    units: EffortUnitRef[];
+    /** `.defs.ts` paths of `regenerateDefs` units in `units`. Created units are not listed. */
+    deleteDefs: string[];
+  }
   | { ok: false; reason: string };
 
 const APPLIED = new Set(['usecase', 'entity', 'request']);
-const GENERATOR_CREATE = new Set(['route', 'usecase']);
 
 /** Pure. Applies one master's rule add/remove onto the def sources. Does not write. */
 export function planNewReleaseL1(
@@ -49,44 +60,96 @@ export function planNewReleaseL1(
     return { ok: false, reason: `change effort has no answer from master ${masterProject}` };
   }
   const refusals: string[] = [];
-  // A workflow def to regenerate comes from the defs generator, like a new route: the def-edit path writes no workflow def.
-  const generator = answers.some(answer => answer.contract === 'change')
-    || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)))
-    || answers.some(answer => answer.regenerateDefs.some(unit => unit.kind === 'workflow'));
-  for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
+  for (const answer of answers) refusals.push(...refusalOf(answer));
   if (refusals.length > 0) return { ok: false, reason: refusals.join('\n') };
   const removes = workflowRemoves(answers);
   const flow = flowOf(answers, removes);
-  if (generator) {
-    return { ok: true, path: 'generator', edits: [], targets: targetsOf(answers), allowed: allowedPaths(answers, defs), removes, flow };
-  }
+  const scoped = collectUnits(file, answers, defs);
+  if (!scoped.ok) return scoped;
+  const path: NewReleasePath = scoped.units.length > 0 ? 'generator' : 'def-edit';
+  return {
+    ok: true,
+    path,
+    edits: scoped.edits,
+    targets: targetsOf(answers),
+    allowed: path === 'generator' ? allowedPaths(answers, defs) : [],
+    removes,
+    flow,
+    units: scoped.units,
+    deleteDefs: scoped.deleteDefs,
+  };
+}
 
+/**
+ * Mechanical edits first. A regenerate unit the mechanical path does not cover, every create,
+ * a workflow that stays, and every regenerate unit of a contract change go to `/units`.
+ */
+function collectUnits(
+  file: ChangeEffortFile,
+  answers: EffortAnswer[],
+  defs: Record<string, string>,
+): { ok: true; edits: NewReleaseEdit[]; units: EffortUnitRef[]; deleteDefs: string[] } | { ok: false; reason: string } {
   const sources = { ...defs };
   const edits: NewReleaseEdit[] = [];
-  for (const answer of answers) {
-    const item = itemOf(file, answer.item);
-    if (!item) continue;
-    if (isRuleEdit(item)) {
-      const ruleId = ruleIdOf(item);
-      const op = item.op === 'added' ? 'added' : 'removed';
-      const usecases = new Set(answer.regenerateDefs.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
-      for (const unit of answer.regenerateDefs) {
-        if (!APPLIED.has(unit.kind)) continue;
-        const applied = applyUnit(sources, unit, op, ruleId, usecases);
-        if (!applied.ok) return { ok: false, reason: `${answer.item}: ${applied.reason}` };
-        if (applied.edit) edits.push(applied.edit);
-      }
-      continue;
+  const units: EffortUnitRef[] = [];
+  const deleteDefs: string[] = [];
+  const seen = new Set<string>();
+  const send = (unit: EffortUnitRef, removeDef: boolean) => {
+    const key = `${unit.kind}:${unit.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      units.push(unit);
     }
-    const removal = structuralRemoval(item);
-    if (!removal) continue;
+    if (removeDef && unit.path && !deleteDefs.includes(unit.path)) deleteDefs.push(unit.path);
+  };
+  for (const answer of answers) {
+    for (const unit of answer.create) send(unit, false);
+    const item = itemOf(file, answer.item);
+    const ruleEdit = !!item && isRuleEdit(item);
+    const removal = item ? structuralRemoval(item) : null;
+    if (ruleEdit && !ruleIdOf(item)) return { ok: false, reason: `${answer.item}: rule id is missing` };
+    if (removal && !removalReady(removal)) return { ok: false, reason: `${answer.item}: ${removal.kind} id is missing` };
+    const contractChange = answer.contract === 'change';
     for (const unit of answer.regenerateDefs) {
-      const applied = applyRemoval(sources, unit, removal);
-      if (!applied.ok) return { ok: false, reason: `${answer.item}: ${applied.reason}` };
-      if (applied.edit) edits.push(applied.edit);
+      if (contractChange || unit.kind === 'workflow') {
+        send(unit, true);
+        continue;
+      }
+      if (ruleEdit) {
+        const ruleId = ruleIdOf(item);
+        const op = item.op === 'added' ? 'added' : 'removed';
+        const usecases = new Set(answer.regenerateDefs.filter(row => row.kind === 'usecase').map(row => row.id));
+        if (!APPLIED.has(unit.kind) || (op === 'added' && unit.kind === 'request' && !requestCitesUsecase(defs[unit.path], usecases))) {
+          send(unit, true);
+          continue;
+        }
+        const applied = applyUnit(sources, unit, op, ruleId, usecases);
+        if (!applied.ok) {
+          if (applied.reason === 'cannot tell which route takes the rule') {
+            send(unit, true);
+            continue;
+          }
+          return { ok: false, reason: `${answer.item}: ${applied.reason}` };
+        }
+        if (applied.edit) edits.push(applied.edit);
+        continue;
+      }
+      if (removal) {
+        const applied = applyRemoval(sources, unit, removal);
+        if (!applied.ok) {
+          if (applied.reason.endsWith('and is not applied mechanically')) {
+            send(unit, true);
+            continue;
+          }
+          return { ok: false, reason: `${answer.item}: ${applied.reason}` };
+        }
+        if (applied.edit) edits.push(applied.edit);
+        continue;
+      }
+      send(unit, true);
     }
   }
-  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [], removes, flow };
+  return { ok: true, edits, units, deleteDefs };
 }
 
 /** A workflow unit in this master's answers, or any workflow removal, rebuilds the module engine and clock. */
@@ -100,32 +163,13 @@ function flowOf(answers: EffortAnswer[], removes: readonly string[]): boolean {
   return false;
 }
 
-function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<string, string>, generator: boolean): string[] {
+function refusalOf(answer: EffortAnswer): string[] {
   const reasons: string[] = [];
   if (answer.status === 'abend') reasons.push(`status is abend (${answer.abend?.reason || 'no reason'})`);
   for (const unit of answer.remove) {
     if (unit.kind !== 'workflow') reasons.push(`remove of ${unit.kind} ${unit.id} is not applied by this agent`);
   }
   if (answer.runAgents.length > 0) reasons.push('runAgents is not applied by this agent');
-  if (!generator && answer.create.length > 0) reasons.push('create is not applied by this agent');
-  if (!generator && answer.contract === 'change') reasons.push('contract change is not applied by this agent');
-  if (generator) return reasons.map(reason => `${answer.item}: ${reason}`);
-  const item = itemOf(file, answer.item);
-  const ruleEdit = !!item && isRuleEdit(item);
-  const removal = item ? structuralRemoval(item) : null;
-  if (answer.regenerateDefs.length > 0 && !ruleEdit && !removal) reasons.push('regenerateDefs is not from a rule added or removed');
-  if (removal && !removalReady(removal)) reasons.push(`${removal.kind} id is missing`);
-  if (ruleEdit && !ruleIdOf(item)) reasons.push('rule id is missing');
-  if (ruleEdit && item.op === 'added') {
-    for (const unit of answer.regenerateDefs) {
-      if (!APPLIED.has(unit.kind)) reasons.push(`cannot apply ${unit.kind} ${unit.id}`);
-    }
-    const usecases = new Set(answer.regenerateDefs.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
-    for (const unit of answer.regenerateDefs) {
-      if (unit.kind !== 'request') continue;
-      if (!requestCitesUsecase(defs[unit.path], usecases)) reasons.push('cannot tell which route takes the rule');
-    }
-  }
   return reasons.map(reason => `${answer.item}: ${reason}`);
 }
 

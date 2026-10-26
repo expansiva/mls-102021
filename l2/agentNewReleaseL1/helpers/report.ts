@@ -49,7 +49,7 @@ export function generatorUnits(effort: ChangeEffortFile, masterProject: string):
   return units;
 }
 
-/** First generator call: the effort units, then the defs run and the check. */
+/** First generator call: the effort units, then `/units` for those units and the check. Never `/run`. */
 export function reportGeneratorStart(
   moduleName: string,
   units: readonly EffortUnitRef[],
@@ -57,7 +57,8 @@ export function reportGeneratorStart(
 ): string {
   const lines = [...deleted, 'The generator will change:'];
   for (const unit of units) lines.push(`${unit.kind} ${unit.id} ${unit.path}`);
-  lines.push(`@@agentDefsL1 ${moduleName} /run`);
+  const scope = units.map(unit => `${unit.kind}:${unit.id}`).join(' ');
+  lines.push(`@@agentDefsL1 ${moduleName} /units${scope ? ` ${scope}` : ''}`);
   lines.push(`@@agentNewReleaseL1 ${moduleName} /check`);
   return lines.join('\n');
 }

@@ -84,10 +84,14 @@ function controllerPath(requestPath: string, pageId: string): string {
   return `l1/${match[1]}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`;
 }
 
-/** Portrait file written on the first call. `pipelineUpdatedAt` is empty when `pipeline.json` is absent. */
+/**
+ * Portrait file written on the first call. `pipelineUpdatedAt` is empty when `pipeline.json` is absent.
+ * `allowed` is what the first call let the generator touch: the plan at `/check` time can no longer tell,
+ * because the generator already rewrote the units.
+ */
 export interface ReleasePortraitFile {
   defs: Record<string, string>;
-  generator: { pipelineUpdatedAt: string };
+  generator: { pipelineUpdatedAt: string; allowed: string[] };
 }
 
 export type ParsedPortrait =
@@ -105,7 +109,12 @@ export function parsePortrait(parsed: unknown): ParsedPortrait {
       ok: true,
       portrait: {
         defs: stringMap(parsed.defs),
-        generator: { pipelineUpdatedAt: parsed.generator.pipelineUpdatedAt },
+        generator: {
+          pipelineUpdatedAt: parsed.generator.pipelineUpdatedAt,
+          allowed: Array.isArray(parsed.generator.allowed) && parsed.generator.allowed.every(item => typeof item === 'string')
+            ? parsed.generator.allowed as string[]
+            : [],
+        },
       },
     };
   }
