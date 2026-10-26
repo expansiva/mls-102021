@@ -67,10 +67,27 @@ export function reportOutside(outside: readonly string[]): string {
   return ['changed outside the plan:', ...outside].join('\n');
 }
 
-/** One materialize command per created or changed path. */
-export function reportMaterialize(paths: readonly string[]): string {
-  if (paths.length === 0) return 'nothing to materialize';
-  return paths.map(target => `@@agentMaterializeL1 ${JSON.stringify({ target })}`).join('\n');
+/** `<unit>.defs.ts` → `<unit>.ts`. Any other path is not a generated source. */
+export function sourcePathOfDef(defPath: string): string | null {
+  const suffix = '.defs.ts';
+  if (!defPath.endsWith(suffix)) return null;
+  return `${defPath.slice(0, -suffix.length)}.ts`;
+}
+
+function scopeCommand(moduleName: string): string {
+  return `@@agentMaterializeL1 ${JSON.stringify({ scope: moduleName })}`;
+}
+
+/** Deleted `.ts` paths, then one materialize command for the module. No created or changed path says nothing to materialize. */
+export function reportMaterialize(moduleName: string, changed: readonly string[], deleted: readonly string[]): string {
+  if (changed.length === 0) return 'nothing to materialize';
+  return [...deleted, scopeCommand(moduleName)].join('\n');
+}
+
+/** `deleteFile` failed. Names the path and lists the `.ts` files already deleted. */
+export function reportDeleteFailed(path: string, error: string, deleted: readonly string[]): string {
+  const listed = deleted.length > 0 ? `\nAlready deleted:\n${deleted.join('\n')}` : '';
+  return `failed to delete ${path}: ${error}${listed}`;
 }
 
 /** Which rule each edited def gained or lost, in edit order, for this master only. */
@@ -94,10 +111,9 @@ export function editNotes(effort: ChangeEffortFile, masterProject: string, paths
   return notes;
 }
 
-/** Completed-task text for a def edit. Empty plan says nothing to apply and lists no command. */
-export function reportNewRelease(notes: NewReleaseEditNote[], targets: string[]): string {
-  if (notes.length === 0 && targets.length === 0) return 'nothing to apply';
+/** Completed-task text after a def edit that has something to apply. The caller keeps an empty plan on `nothing to apply`. */
+export function reportNewRelease(notes: NewReleaseEditNote[], moduleName: string, deleted: readonly string[]): string {
   const lines = notes.map(note => `${note.path}: ${note.op} ${note.ruleId}`);
-  for (const target of targets) lines.push(`@@agentMaterializeL1 ${JSON.stringify({ target })}`);
+  lines.push(...deleted, scopeCommand(moduleName));
   return lines.join('\n');
 }

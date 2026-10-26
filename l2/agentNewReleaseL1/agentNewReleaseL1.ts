@@ -8,11 +8,13 @@ import {
   generatorUnits,
   parseNewReleaseInvocation,
   reportCheckWithoutGenerator,
+  reportDeleteFailed,
   reportGeneratorStart,
   reportMaterialize,
   reportMissingSnapshot,
   reportNewRelease,
   reportOutside,
+  sourcePathOfDef,
 } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import {
   displayPath,
@@ -85,7 +87,7 @@ async function beforePromptImplicit(
 
   const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
   if (plan.edits.length === 0 && plan.targets.length === 0) {
-    return finish(agent, context, 'completed', reportNewRelease(notes, plan.targets));
+    return finish(agent, context, 'completed', 'nothing to apply');
   }
 
   const written: string[] = [];
@@ -98,7 +100,9 @@ async function beforePromptImplicit(
       return finish(agent, context, 'failed', `failed to write ${edit.path}: ${messageOf(error)}${listed}`);
     }
   }
-  return finish(agent, context, 'completed', reportNewRelease(notes, plan.targets));
+  const removed = await deleteGeneratedSources(project, plan.targets);
+  if (!removed.ok) return finish(agent, context, 'failed', removed.message);
+  return finish(agent, context, 'completed', reportNewRelease(notes, invocation.module, removed.deleted));
 }
 
 async function checkAfterGenerator(
@@ -125,12 +129,38 @@ async function checkAfterGenerator(
   if (guard.outside.length > 0) return finish(agent, context, 'failed', reportOutside(guard.outside));
 
   const createdOrChanged = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
+  const removed = await deleteGeneratedSources(mls.actualProject || 0, createdOrChanged);
+  if (!removed.ok) return finish(agent, context, 'failed', removed.message);
   try {
     await deletePortrait(portrait);
   } catch (error) {
     return finish(agent, context, 'failed', `failed to delete ${portraitPath}: ${messageOf(error)}`);
   }
-  return finish(agent, context, 'completed', reportMaterialize(createdOrChanged));
+  return finish(agent, context, 'completed', reportMaterialize(moduleName, createdOrChanged, removed.deleted));
+}
+
+/** Deletes the `.ts` next to each `.defs.ts` when that file is in the index. A missing `.ts` is skipped. A `.defs.ts` is never deleted. */
+async function deleteGeneratedSources(
+  project: number,
+  defPaths: readonly string[],
+): Promise<{ ok: true; deleted: string[] } | { ok: false; message: string }> {
+  const deleted: string[] = [];
+  for (const defPath of defPaths) {
+    const sourcePath = sourcePathOfDef(defPath);
+    if (!sourcePath) continue;
+    const info = fileInfoFromProductPath(project, sourcePath, '.ts');
+    if (!info) continue;
+    const indexed = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[mls.stor.getKeyToFile(info)];
+    if (!indexed || indexed.status === 'deleted' || indexed.extension === '.defs.ts') continue;
+    try {
+      const { deleteFile } = await import('/_102027_/l2/libStor.js');
+      await deleteFile(indexed);
+      deleted.push(sourcePath);
+    } catch (error) {
+      return { ok: false, message: reportDeleteFailed(sourcePath, messageOf(error), deleted) };
+    }
+  }
+  return { ok: true, deleted };
 }
 
 /** `l1/<module>/pipeline/agentNewReleaseL1/snapshot.json`. */
@@ -224,9 +254,17 @@ async function readDef(file: StorFile, defPath: string): Promise<string> {
 }
 
 function fileInfoFromPath(project: number, defPath: string): Ns5FileInfo {
-  const match = /^l1\/(.+)\/([^/]+)\.defs\.ts$/u.exec(defPath);
-  if (!match?.[1] || !match[2]) throw new Error(`cannot write ${defPath}: path is not an l1 def`);
-  return { project, level: 1, folder: match[1], shortName: match[2], extension: '.defs.ts' };
+  const info = fileInfoFromProductPath(project, defPath, '.defs.ts');
+  if (!info) throw new Error(`cannot write ${defPath}: path is not an l1 def`);
+  return info;
+}
+
+function fileInfoFromProductPath(project: number, productPath: string, extension: '.ts' | '.defs.ts'): Ns5FileInfo | null {
+  if (!productPath.endsWith(extension)) return null;
+  const stem = productPath.slice('l1/'.length, -extension.length);
+  const slash = stem.lastIndexOf('/');
+  if (!productPath.startsWith('l1/') || slash <= 0) return null;
+  return { project, level: 1, folder: stem.slice(0, slash), shortName: stem.slice(slash + 1), extension };
 }
 
 function messageOf(error: unknown): string {

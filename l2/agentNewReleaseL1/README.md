@@ -9,10 +9,10 @@ Two invocations:
 
 ## Def edit
 
-When the effort is a rule add or remove, the agent writes each changed def with `writeSourceText`. The task ends `completed` with one line per edit (`path: added|removed <ruleId>`) and one materialize command per target:
+When the effort is a rule add or remove, the agent writes each changed def with `writeSourceText`. For each target `.defs.ts` it deletes the sibling `.ts` with `deleteFile` when that file is in the index. A missing `.ts` is skipped. A `.defs.ts` is never deleted. A delete error ends `failed`, names the path, and lists the `.ts` files already deleted. The task ends `completed` with one line per edit (`path: added|removed <ruleId>`), the deleted `.ts` paths, and one materialize command for the module:
 
 ```
-@@agentMaterializeL1 {"target":"<path>"}
+@@agentMaterializeL1 {"scope":"<module>"}
 ```
 
 A missing module, an extra argument, an unknown flag, a missing `changeEffort.json` (the message cites that path), a plan refusal, or a plan with nothing to edit and nothing to materialize (`nothing to apply`) finishes without writing. The refusal text is the plan's reason. A write error ends `failed`, names the path and the error, and lists the defs already written.
@@ -34,7 +34,7 @@ A `create` of kind `route` or `usecase`, or a file whose `status` is `contract`,
 
 `/check` without that portrait is refused and the message cites `l1/<module>/pipeline/agentNewReleaseL1/snapshot.json`. With the portrait, the agent reads the product defs again and compares hashes with the paths the plan allows: the `create` and `regenerateDefs` units of this master, plus the page controller of each request. A path that was created, changed or deleted and is not allowed ends `failed`. The message lists those paths under `changed outside the plan:` and contains no `@@agentMaterializeL1` command. The portrait stays.
 
-When nothing is outside the plan, the task ends `completed` with one `@@agentMaterializeL1 {"target":…}` per created or changed path, and the portrait is deleted. A path that only disappeared is not a materialize target.
+When nothing is outside the plan, the agent deletes the sibling `.ts` of each created or changed path the guard accepted, then deletes the portrait. The task ends `completed` with those deleted `.ts` paths and one `@@agentMaterializeL1 {"scope":"<module>"}`. A path that only disappeared is not a materialize target, and then the message is `nothing to materialize`. A delete error ends `failed` and leaves the portrait.
 
 The portrait and the check ignore everything under `l1/<module>/pipeline/` and `l1/<module>/materialization/`. Those bytes are not product defs. A product def that changes and is not in the allowed set, including `support70`, is reported as outside.
 
