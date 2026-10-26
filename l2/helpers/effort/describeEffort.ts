@@ -401,7 +401,6 @@ function columnPath(path: string): boolean {
 }
 
 const GRANT_TEXT = new Set(['title', 'description']);
-const GRANT_LIST_TYPES = new Set(['authorityMap', 'accessScope', 'persistenceSeeds']);
 
 function grantIdOf(changeId: string): string {
   return idAfter(changeId, 'grant:');
@@ -453,16 +452,23 @@ function grantDefs(defs: Record<string, string>): GrantDef[] {
   return found;
 }
 
+const GRANT_LIST_KIND: Record<string, 'authority' | 'scope' | 'seeds'> = {
+  authorityMap: 'authority',
+  accessScope: 'scope',
+  persistenceSeeds: 'seeds',
+};
+
 function sharedUnit(def: GrantDef): EffortUnitRef | null {
-  if (!GRANT_LIST_TYPES.has(def.artifactType) || !def.artifactId) return null;
-  return { kind: 'shared', id: def.artifactId, path: def.path };
+  const kind = GRANT_LIST_KIND[def.artifactType];
+  if (!kind || !def.artifactId) return null;
+  return { kind, id: def.artifactId, path: def.path };
 }
 
 function controllerUnit(def: GrantDef): EffortUnitRef | null {
   if (def.artifactType !== 'httpController') return null;
   const pageId = typeof def.data.pageId === 'string' ? def.data.pageId : '';
   if (!pageId) return null;
-  return { kind: 'route', id: pageId, path: def.path };
+  return { kind: 'controller', id: pageId, path: def.path };
 }
 
 function requestForPage(defs: GrantDef[], pageId: string): EffortUnitRef | null {

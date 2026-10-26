@@ -508,21 +508,24 @@ void test('A2 dataScope muda regenera quem cita e materializa o request da pági
   assert.deepEqual(answer.create, []);
   assert.deepEqual(answer.remove, []);
   assert.deepEqual(keysOf(answer.regenerateDefs), [
-    'route:inicio',
-    'route:minhas_tarefas',
-    'shared:accessScope',
-    'shared:authorityMap',
-    'shared:seeds',
+    'authority:authorityMap',
+    'controller:inicio',
+    'controller:minhas_tarefas',
+    'scope:accessScope',
+    'seeds:seeds',
   ]);
   assert.deepEqual(keysOf(answer.materialize), [
+    'authority:authorityMap',
+    'controller:inicio',
+    'controller:minhas_tarefas',
     'request:inicio',
     'request:minhas_tarefas',
-    'route:inicio',
-    'route:minhas_tarefas',
-    'shared:accessScope',
-    'shared:authorityMap',
-    'shared:seeds',
+    'scope:accessScope',
+    'seeds:seeds',
   ]);
+  for (const key of [...keysOf(answer.regenerateDefs), ...keysOf(answer.materialize)]) {
+    assert.equal(key.startsWith('shared:') || key.startsWith('route:'), false, key);
+  }
 });
 
 void test('A3 grant novo regenera e materializa mapa, escopo e sementes', () => {
@@ -534,22 +537,22 @@ void test('A3 grant novo regenera e materializa mapa, escopo e sementes', () => 
     dataScope: { mode: 'organization' },
   };
   const answer = describeEffortFrom(grantItem('added', 'membroVeParticipantes', undefined, after), TAREFAS);
-  const keys = ['shared:accessScope', 'shared:authorityMap', 'shared:seeds'];
+  const keys = ['authority:authorityMap', 'scope:accessScope', 'seeds:seeds'];
   assert.equal(answer.status, 'computed');
   assert.equal(answer.contract, 'keep');
   assert.deepEqual(keysOf(answer.regenerateDefs), keys);
   assert.deepEqual(keysOf(answer.materialize), keys);
-  assert.equal(keysOf(answer.materialize).some(key => key.startsWith('route:')), false);
+  assert.equal(keysOf(answer.materialize).some(key => key.startsWith('controller:')), false);
 });
 
 void test('A4 grant removido regenera e materializa quem cita, sem request', () => {
   const before = { ...GRANT_BASE, grantId: 'membroChecklistPropria' };
   const answer = describeEffortFrom(grantItem('removed', 'membroChecklistPropria', before), TAREFAS);
   const keys = [
-    'route:minhas_tarefas',
-    'shared:accessScope',
-    'shared:authorityMap',
-    'shared:seeds',
+    'authority:authorityMap',
+    'controller:minhas_tarefas',
+    'scope:accessScope',
+    'seeds:seeds',
   ];
   assert.equal(answer.status, 'computed');
   assert.equal(answer.contract, 'keep');
