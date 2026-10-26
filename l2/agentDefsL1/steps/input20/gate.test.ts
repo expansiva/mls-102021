@@ -647,3 +647,25 @@ void test('a pool usecase a previous route still calls is not pruned', () => {
   assert.equal(kept.removed.some(item => item.id === GET_ID), false);
   assert.equal(kept.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE' && item.message.includes(route)), true);
 });
+
+function plan20Paths(artifacts: D1InputArtifacts): string[] {
+  const planner = artifacts.planner as { steps: { plan20: { artifactPaths: string[] } } };
+  return planner.steps.plan20.artifactPaths;
+}
+
+void test('a planner approval under tobe/plan still approves the root backend.json', () => {
+  const artifacts = clone(loadHead());
+  const paths = plan20Paths(artifacts);
+  const at = paths.indexOf(BACKEND_PATH);
+  assert.ok(at >= 0);
+  paths[at] = `l4/${MODULE}/tobe/plan/pool/l2/web/backend.json`;
+  assert.equal(codes(build(artifacts), 'error').includes('PLANNER_RUN_DIVERGENT'), false);
+});
+
+void test('a planner approval on another backend path stays divergent', () => {
+  const artifacts = clone(loadHead());
+  const paths = plan20Paths(artifacts);
+  const at = paths.indexOf(BACKEND_PATH);
+  paths[at] = `l4/${MODULE}/notes/tobe/plan/pool/l2/web/backend.json`;
+  assert.equal(codes(build(artifacts), 'error').includes('PLANNER_RUN_DIVERGENT'), true);
+});

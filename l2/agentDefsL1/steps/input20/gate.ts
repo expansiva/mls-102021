@@ -1264,7 +1264,10 @@ function readPlannerRun(
   const plan20 = rec(rec(planner.steps).plan20);
   const artifacts = strings(plan20.artifactPaths);
   const backendArtifact = `l4/${moduleName}/${BACKEND_PATH_TAIL}`;
-  if (text(planner.flowId) !== D1_PLANNER_FLOW || text(plan20.status) !== 'approved' || !artifacts.includes(backendArtifact) || !text(planner.thread)) {
+  // Draft registration sits at l4/<module>/tobe/plan/…; the file itself stays at the module root.
+  const draftBackendArtifact = `l4/${moduleName}/tobe/plan/${BACKEND_PATH_TAIL}`;
+  const approvesBackend = artifacts.includes(backendArtifact) || artifacts.includes(draftBackendArtifact);
+  if (text(planner.flowId) !== D1_PLANNER_FLOW || text(plan20.status) !== 'approved' || !approvesBackend || !text(planner.thread)) {
     error(problems, 'PLANNER_RUN_DIVERGENT', paths.planner, 'Planner run does not approve this backend.json for this module.');
   }
   if (!text(planner.thread)) return null;
