@@ -98,35 +98,34 @@ async function beforePromptImplicit(
     await recordPhase(moduleName, phase, 'ok', plan.path);
 
     phase = 'sources';
-    const removedWorkflows = await deleteWorkflowRemovals(project, plan.removes);
+    const generator = plan.units.length > 0;
+    // With `/units`, only the removed workflow def goes now. Its `.ts` and the module engine wait for `/check`.
+    const removedWorkflows = generator
+      ? await deleteDefOnly(project, plan.removes)
+      : await deleteWorkflowRemovals(project, plan.removes);
     if (!removedWorkflows.ok) return await close(agent, context, moduleName, phase, 'failed', removedWorkflows.message);
-    const removedRuntime = plan.removes.length > 0
+    const removedRuntime = !generator && plan.removes.length > 0
       ? await deleteExactTs(project, flowRuntimePaths(moduleName), removedWorkflows.deleted)
       : { ok: true as const, deleted: [] as string[] };
     if (!removedRuntime.ok) return await close(agent, context, moduleName, phase, 'failed', removedRuntime.message);
     const removedFirst = [...removedWorkflows.deleted, ...removedRuntime.deleted];
     for (const defPath of plan.removes) delete defs[defPath];
 
-    if (plan.units.length > 0) {
+    if (generator) {
       phase = 'defs';
       const written = await writeEdits(project, plan.edits);
       if (!written.ok) return await close(agent, context, moduleName, phase, 'failed', written.message);
       await recordPhase(moduleName, phase, 'ok', String(written.paths.length));
       for (const edit of plan.edits) defs[edit.path] = edit.source;
 
-      phase = 'sources';
-      const removedUnits = await deleteWorkflowRemovals(project, plan.deleteDefs);
-      if (!removedUnits.ok) return await close(agent, context, moduleName, phase, 'failed', removedUnits.message);
-      const deletedSources = [...removedFirst, ...removedUnits.deleted];
-      if (deletedSources.length > 0) await recordPhase(moduleName, phase, 'ok', deletedSources.join('\n'));
-      for (const defPath of plan.deleteDefs) delete defs[defPath];
+      if (removedFirst.length > 0) await recordPhase(moduleName, 'sources', 'ok', removedFirst.join('\n'));
 
       phase = 'portrait';
       const portrait = snapshotFile(moduleName);
       await writeJson(portrait, await portraitFile(moduleName, defs, plan.allowed));
       await recordPhase(moduleName, phase, 'ok', 'written');
       const touched = mechanicalUnitLines(effort, masterProject, plan.edits.map(edit => edit.path));
-      const started = reportGeneratorStart(moduleName, plan.units, deletedSources);
+      const started = reportGeneratorStart(moduleName, plan.units, removedFirst);
       const message = touched.length > 0 ? `${touched.join('\n')}\n${started}` : started;
       return finish(agent, context, 'done', message);
     }
@@ -210,7 +209,8 @@ async function checkAfterGenerator(
   // (a def the generator leaves as it was still needs its .ts redone).
   const createdOrChanged = [...new Set([...changedByGenerator, ...plan.targets])];
   const project = mls.actualProject || 0;
-  const removed = await deleteGeneratedSources(project, createdOrChanged);
+  // Edited units, materialize targets, and a removed workflow: their `.ts` is deleted only after the guard accepts.
+  const removed = await deleteGeneratedSources(project, [...new Set([...createdOrChanged, ...plan.removes])]);
   if (!removed.ok) return await close(agent, context, moduleName, 'sources', 'failed', removed.message);
   const removedFlow = plan.flow
     ? await deleteExactTs(project, flowRuntimePaths(moduleName), removed.deleted)
@@ -248,6 +248,14 @@ function flowRuntimePaths(moduleName: string): string[] {
     `l1/${moduleName}/layer_1_external/adapters/workflow/engine.ts`,
     `l1/${moduleName}/layer_1_external/adapters/persistence/moduleTick.ts`,
   ];
+}
+
+/** Deletes a removed workflow's `.defs.ts` and leaves the sibling `.ts` for `/check`. A missing file is skipped. */
+async function deleteDefOnly(
+  project: number,
+  defPaths: readonly string[],
+): Promise<{ ok: true; deleted: string[] } | { ok: false; message: string }> {
+  return deleteIndexed(project, defPaths.map(path => ({ path, extension: '.defs.ts' as const })), []);
 }
 
 /**

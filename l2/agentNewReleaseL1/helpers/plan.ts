@@ -36,8 +36,6 @@ export type NewReleasePlan =
     flow: boolean;
     /** Units the defs generator rebuilds with `/units`, in effort order, without repeats. */
     units: EffortUnitRef[];
-    /** `.defs.ts` paths of `regenerateDefs` units in `units`. Created units are not listed. */
-    deleteDefs: string[];
   }
   | { ok: false; reason: string };
 
@@ -76,57 +74,54 @@ export function planNewReleaseL1(
     removes,
     flow,
     units: scoped.units,
-    deleteDefs: scoped.deleteDefs,
   };
 }
 
+/** Keys of an entity `changed` item that are prose. A difference only in these does not go to `/units`. */
+const ENTITY_TEXT_KEYS = new Set(['description', 'title', 'capabilities', 'rules']);
+
 /**
- * Mechanical edits first. A regenerate unit the mechanical path does not cover, every create,
- * a workflow that stays, and every regenerate unit of a contract change go to `/units`.
+ * Mechanical edits first. Then `/units` receives every `create`, every workflow that stays,
+ * every `regenerateDefs` unit of a contract change, and any other `regenerateDefs` unit this
+ * request did not edit. An entity `changed` item whose differing keys are all prose does not
+ * send its units. A unit edited by any item of this request is not sent again.
  */
 function collectUnits(
   file: ChangeEffortFile,
   answers: EffortAnswer[],
   defs: Record<string, string>,
-): { ok: true; edits: NewReleaseEdit[]; units: EffortUnitRef[]; deleteDefs: string[] } | { ok: false; reason: string } {
+): { ok: true; edits: NewReleaseEdit[]; units: EffortUnitRef[] } | { ok: false; reason: string } {
   const sources = { ...defs };
   const edits: NewReleaseEdit[] = [];
-  const units: EffortUnitRef[] = [];
-  const deleteDefs: string[] = [];
-  const seen = new Set<string>();
-  const send = (unit: EffortUnitRef, removeDef: boolean) => {
-    const key = `${unit.kind}:${unit.id}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      units.push(unit);
-    }
-    if (removeDef && unit.path && !deleteDefs.includes(unit.path)) deleteDefs.push(unit.path);
-  };
+  const deferred: Array<{ unit: EffortUnitRef; force: boolean }> = [];
+  const hold = (unit: EffortUnitRef, force: boolean) => deferred.push({ unit, force });
   for (const answer of answers) {
-    for (const unit of answer.create) send(unit, false);
+    for (const unit of answer.create) hold(unit, true);
     const item = itemOf(file, answer.item);
     const ruleEdit = !!item && isRuleEdit(item);
     const removal = item ? structuralRemoval(item) : null;
     if (ruleEdit && !ruleIdOf(item)) return { ok: false, reason: `${answer.item}: rule id is missing` };
     if (removal && !removalReady(removal)) return { ok: false, reason: `${answer.item}: ${removal.kind} id is missing` };
     const contractChange = answer.contract === 'change';
+    const textOnly = !!item && entityTextOnly(item);
     for (const unit of answer.regenerateDefs) {
       if (contractChange || unit.kind === 'workflow') {
-        send(unit, true);
+        hold(unit, true);
         continue;
       }
+      if (textOnly) continue;
       if (ruleEdit) {
         const ruleId = ruleIdOf(item);
         const op = item.op === 'added' ? 'added' : 'removed';
         const usecases = new Set(answer.regenerateDefs.filter(row => row.kind === 'usecase').map(row => row.id));
         if (!APPLIED.has(unit.kind) || (op === 'added' && unit.kind === 'request' && !requestCitesUsecase(defs[unit.path], usecases))) {
-          send(unit, true);
+          hold(unit, false);
           continue;
         }
         const applied = applyUnit(sources, unit, op, ruleId, usecases);
         if (!applied.ok) {
           if (applied.reason === 'cannot tell which route takes the rule') {
-            send(unit, true);
+            hold(unit, false);
             continue;
           }
           return { ok: false, reason: `${answer.item}: ${applied.reason}` };
@@ -138,7 +133,7 @@ function collectUnits(
         const applied = applyRemoval(sources, unit, removal);
         if (!applied.ok) {
           if (applied.reason.endsWith('and is not applied mechanically')) {
-            send(unit, true);
+            hold(unit, false);
             continue;
           }
           return { ok: false, reason: `${answer.item}: ${applied.reason}` };
@@ -146,10 +141,34 @@ function collectUnits(
         if (applied.edit) edits.push(applied.edit);
         continue;
       }
-      send(unit, true);
+      hold(unit, false);
     }
   }
-  return { ok: true, edits, units, deleteDefs };
+  const edited = new Set(edits.map(edit => edit.path));
+  const units: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  for (const entry of deferred) {
+    const key = `${entry.unit.kind}:${entry.unit.id}`;
+    if (seen.has(key)) continue;
+    if (!entry.force && edited.has(entry.unit.path)) continue;
+    seen.add(key);
+    units.push(entry.unit);
+  }
+  return { ok: true, edits, units };
+}
+
+/** Entity `changed` whose every differing key is prose (`description`, `title`, `capabilities`, `rules`). */
+function entityTextOnly(item: L4DiffItem): boolean {
+  if (item.kind !== 'entity' || item.op !== 'changed') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const before = item.before;
+  const after = item.after;
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+    if (!ENTITY_TEXT_KEYS.has(key)) return false;
+  }
+  return true;
 }
 
 /** A workflow unit in this master's answers, or any workflow removal, rebuilds the module engine and clock. */

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { effortWithoutRemovedUnits, planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
-import { editNotes, generatorUnits, reportGeneratorStart, reportNewRelease } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
+import { editNotes, generatorUnits, mechanicalUnitLines, reportGeneratorStart, reportNewRelease } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
 import type { ChangeEffortFile, EffortAnswer, EffortUnitRef, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -190,7 +190,6 @@ test('a contract change takes /units; an entity create joins that list; remove a
   if (!createPlan.ok) return;
   assert.equal(createPlan.path, 'generator');
   assert.equal(createPlan.units.some(row => row.kind === 'entity' && row.id === 'tarefa'), true);
-  assert.equal(createPlan.deleteDefs.includes('l1/tarefas/layer_3_domain/entities/tarefa.defs.ts'), false);
 
   const removed = loadEffort('R3.changeEffort.json');
   const process = reseal(mutate(removed, answer => {
@@ -281,7 +280,6 @@ test('a workflow remove is accepted and a remove that is not a workflow is refus
   assert.equal(stillRules.ok, true, stillRules.ok ? '' : stillRules.reason);
   if (!stillRules.ok) return;
   assert.deepEqual(stillRules.units.map(row => `${row.kind}:${row.id}`), ['usecase:devolver']);
-  assert.deepEqual(stillRules.deleteDefs, ['l1/tarefas/layer_2_application/usecases/devolver.defs.ts']);
 
   const withRoute = reseal(mutate(removed, answer => {
     answer.contract = 'change';
@@ -602,7 +600,6 @@ test('a request or a column that still cites the field goes to /units and is not
   if (!requestPlan.ok) return;
   assert.deepEqual(requestPlan.edits, []);
   assert.deepEqual(requestPlan.units.map(row => `${row.kind}:${row.id}`), ['request:minhas_tarefas']);
-  assert.deepEqual(requestPlan.deleteDefs, [REQUEST]);
 
   const defs = { ...DEFS };
   defs[REPOSITORY] = DEFS[REPOSITORY]!.replace('"columns": [', '"columns": [{ "column": "etiquetas" },');
@@ -613,7 +610,7 @@ test('a request or a column that still cites the field goes to /units and is not
   assert.equal(columnPlan.ok, true, columnPlan.ok ? '' : columnPlan.reason);
   if (!columnPlan.ok) return;
   assert.deepEqual(columnPlan.edits, []);
-  assert.deepEqual(columnPlan.deleteDefs, [REPOSITORY]);
+  assert.deepEqual(columnPlan.units.map(row => `${row.kind}:${row.id}`), ['repository:tarefaRepository']);
 });
 
 test('the maintenance slice edits entity, repository and seeds; the request unit goes to /units', () => {
@@ -670,7 +667,6 @@ test('the maintenance slice edits entity, repository and seeds; the request unit
   if (!wholePlan.ok) return;
   assert.equal(wholePlan.path, 'generator');
   assert.deepEqual([...new Set(wholePlan.edits.map(edit => edit.path))], [ENTITY, REPOSITORY, SEEDS]);
-  assert.deepEqual(wholePlan.deleteDefs, [REQUEST]);
   assert.deepEqual(wholePlan.units.map(row => `${row.kind}:${row.id}`), ['request:minhas_tarefas']);
   const closure = reportGeneratorStart('tarefas', wholePlan.units);
   assert.equal(closure.includes('/run'), false);
@@ -692,4 +688,69 @@ test('a generator plan carries the effort targets and leaves out a unit the effo
   assert.deepEqual(plan.units, []);
   assert.deepEqual(plan.targets, [request]);
   assert.deepEqual(plan.removes, [flow]);
+});
+
+test('an entity change that is only prose does not send units, and a new route with a removed field sends only the new units', () => {
+  const prose = removalEffort([{
+    changeId: 'entity:Tarefa',
+    kind: 'entity',
+    op: 'changed',
+    entity: 'Tarefa',
+    source: 'ontology/Tarefa.defs.ts',
+    before: { description: 'antes', capabilities: { create: 'a' }, rules: ['old'] },
+    after: { description: 'depois', capabilities: { create: 'b' }, rules: ['resumoDiarioOitoHoras'] },
+  }], answer => {
+    answer.regenerateDefs = [
+      unit('entity', 'tarefa', ENTITY),
+      unit('request', 'inicio', 'l1/tarefas/layer_2_application/requests/inicio.defs.ts'),
+      unit('usecase', 'createTarefa', CREATE),
+      unit('usecase', 'updateTarefa', UPDATE),
+    ];
+    answer.materialize = answer.regenerateDefs.map(row => ({ ...row }));
+  });
+  const prosePlan = planNewReleaseL1(prose, MASTER, DEFS);
+  assert.equal(prosePlan.ok, true, prosePlan.ok ? '' : prosePlan.reason);
+  if (!prosePlan.ok) return;
+  assert.equal(prosePlan.path, 'def-edit');
+  assert.deepEqual(prosePlan.units, []);
+  assert.deepEqual(prosePlan.edits, []);
+
+  const route = 'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts';
+  const created = 'l1/tarefas/layer_2_application/usecases/exportarTarefas.defs.ts';
+  const mixed = removalEffort([fieldItem('details.etiquetas')], answer => {
+    answer.create = [
+      unit('route', 'exportarTarefas', route),
+      unit('usecase', 'exportarTarefas', created),
+    ];
+    answer.regenerateDefs = [
+      unit('entity', 'tarefa', ENTITY),
+      unit('repository', 'tarefaRepository', REPOSITORY),
+    ];
+    answer.materialize = answer.regenerateDefs.map(row => ({ ...row }));
+  });
+  const mixedPlan = planNewReleaseL1(mixed, MASTER, DEFS);
+  assert.equal(mixedPlan.ok, true, mixedPlan.ok ? '' : mixedPlan.reason);
+  if (!mixedPlan.ok) return;
+  assert.deepEqual(mixedPlan.edits.map(edit => edit.path), [ENTITY, REPOSITORY]);
+  assert.deepEqual(mixedPlan.units.map(row => `${row.kind}:${row.id}`), ['route:exportarTarefas', 'usecase:exportarTarefas']);
+});
+
+test('the closure names a unit once when several items cite it', () => {
+  const effort = removalEffort([
+    journeyItem('resumoDiario'),
+    stepItem('resumoDiario', 'lerResumo'),
+    stepItem('resumoDiario', 'verVencendo'),
+  ], answer => {
+    answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS)];
+    answer.materialize = [unit('seeds', 'seeds', SEEDS)];
+  });
+  const plan = planNewReleaseL1(effort, MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  const lines = mechanicalUnitLines(effort, MASTER, plan.edits.map(edit => edit.path));
+  assert.equal(lines.filter(line => line.startsWith('seeds seeds:')).length, lines.length);
+  assert.equal(new Set(lines).size, lines.length);
+  assert.equal(lines.filter(line => line.includes('removed journey')).length, 1);
+  assert.equal(lines.filter(line => line.includes('removed step')).length, 1);
+  assert.equal(lines.filter(line => line.includes(': materialize ')).length, 1);
 });

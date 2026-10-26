@@ -212,6 +212,12 @@ export function mechanicalUnitLines(effort: ChangeEffortFile, masterProject: str
   const filtered = effortWithoutRemovedUnits(effort, masterProject);
   const items = new Map(filtered.request.items.map(item => [item.changeId, item]));
   const lines: string[] = [];
+  const seenLine = new Set<string>();
+  const push = (line: string) => {
+    if (seenLine.has(line)) return;
+    seenLine.add(line);
+    lines.push(line);
+  };
   for (const path of editedPaths) {
     for (const row of filtered.perItem) {
       const answer = row.answers.find(candidate =>
@@ -229,20 +235,18 @@ export function mechanicalUnitLines(effort: ChangeEffortFile, masterProject: str
           : removal.kind === 'journey'
             ? 'removed journey'
             : 'removed step';
-        lines.push(`${named.kind} ${named.id}: ${verb} ${path}`);
+        push(`${named.kind} ${named.id}: ${verb} ${path}`);
         continue;
       }
       if (item.kind === 'rule' && (item.op === 'added' || item.op === 'removed')) {
-        lines.push(`${named.kind} ${named.id}: edit ${path}`);
+        push(`${named.kind} ${named.id}: edit ${path}`);
       }
     }
   }
-  const removedWorkflows = new Set<string>();
   for (const answer of masterAnswers(filtered, masterProject)) {
     for (const unit of answer.remove) {
-      if (unit.kind !== 'workflow' || removedWorkflows.has(unit.path)) continue;
-      removedWorkflows.add(unit.path);
-      lines.push(`workflow ${unit.id}: removed ${unit.path}`);
+      if (unit.kind !== 'workflow') continue;
+      push(`workflow ${unit.id}: removed ${unit.path}`);
     }
   }
   const seen = new Set<string>();
