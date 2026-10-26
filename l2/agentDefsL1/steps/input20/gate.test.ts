@@ -824,3 +824,32 @@ void test('a unit outside the list whose def is absent is preserved and not crea
   assert.equal(reviewItem?.message, `${absent.id} is outside the unit list; def absent.`);
   assert.equal(held.problems.some(item => item.severity === 'error' && item.path === absent.defPath), false);
 });
+
+void test('a listed done unit whose def is absent is created; a run keeps DONE_ABSENT', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  const done = head.files.find(file => file.identity === 'listProduto' && file.artifactType === 'usecase');
+  const other = head.files.find(file => file.identity === 'createProduto' && file.artifactType === 'usecase');
+  assert.ok(done && other);
+  setUsecaseStatus(artifacts, 'listProduto', 'done');
+  const identity = { project: PROJECT, moduleName: MODULE };
+
+  const run = buildD1InputSnapshot(identity, artifacts, null);
+  const runFile = run.files.find(file => file.defPath === done.defPath);
+  assert.equal(runFile?.action, 'preserve');
+  assert.equal(runFile?.contentHash, undefined);
+  assert.equal(run.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.severity === 'error' && problem.path === done.defPath), true);
+  assert.equal(run.consumersReleased, false);
+
+  const listed = buildD1InputSnapshot(identity, artifacts, null, new Map(), [{ kind: 'usecase', id: done.identity }]);
+  const listedFile = listed.files.find(file => file.defPath === done.defPath);
+  assert.equal(listedFile?.action, 'create');
+  assert.equal(listedFile?.contentHash, undefined);
+  assert.equal(listed.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.path === done.defPath), false);
+  assert.equal(listed.consumersReleased, true);
+  const outsideCreate = listed.files.find(file => file.defPath === other.defPath);
+  assert.equal(outsideCreate?.action, 'preserve');
+  assert.equal(outsideCreate?.contentHash, undefined);
+  const outsideReview = listed.problems.find(problem => problem.code === 'SCOPE_OUTSIDE_ABSENT' && problem.path === other.defPath);
+  assert.equal(outsideReview?.severity, 'review');
+});

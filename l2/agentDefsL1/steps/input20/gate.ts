@@ -404,6 +404,18 @@ function applyUnitScope(
     if (files.some(file => fileMatchesUnit(file, unit))) continue;
     review(problems, 'SCOPE_UNIT_UNMATCHED', 'units.json', `Unit ${unit.kind}:${unit.id} matches no planned file.`, `${unit.kind}:${unit.id}`);
   }
+  // A listed unit whose plan says done, and whose def is absent, is a create. The plan status does not refuse it.
+  for (const file of files) {
+    if (outside.includes(file) || present.get(file.defPath) || file.action !== 'preserve') continue;
+    const absentDone = problems.some(problem => problem.severity === 'error' && problem.code === 'DONE_ABSENT' && problem.path === file.defPath);
+    if (!absentDone) continue;
+    file.action = 'create';
+    delete file.contentHash;
+    for (let index = problems.length - 1; index >= 0; index -= 1) {
+      const problem = problems[index];
+      if (problem.severity === 'error' && problem.code === 'DONE_ABSENT' && problem.path === file.defPath) problems.splice(index, 1);
+    }
+  }
   // A listed def that is already on disk is rewritten. `create` keeps no receipt hash, so the writer would refuse.
   for (const file of files) {
     if (outside.includes(file)) continue;
