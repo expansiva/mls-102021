@@ -460,6 +460,76 @@ void test('F5 campo removido regenera e materializa quem cita, sem tabela', () =
   assert.deepEqual(keysOf(answer.materialize), keys);
 });
 
+function defOf(artifactType: string, data: Record<string, unknown>): string {
+  return `export const definition = ${JSON.stringify({ artifactType, data })} as const;\n`;
+}
+
+void test('campo removido materializa o .ts irmão que cita o segmento', () => {
+  const entityPath = 'l1/mod/layer_1_domain/entities/nota.defs.ts';
+  const usecasePath = 'l1/mod/layer_2_application/usecases/iniciar.defs.ts';
+  const otherPath = 'l1/mod/layer_2_application/usecases/outro.defs.ts';
+  const workflowPath = 'l1/mod/layer_2_application/workflows/fluxo.defs.ts';
+  const defs: Record<string, string> = {
+    [entityPath]: defOf('domainEntity', { entityId: 'Nota', fields: [{ name: 'rotulo.marca' }] }),
+    [usecasePath]: defOf('usecase', { usecaseId: 'iniciar', entityId: 'Nota' }),
+    [otherPath]: defOf('usecase', { usecaseId: 'outro', entityId: 'Nota' }),
+    [workflowPath]: defOf('workflowProcess', { processId: 'fluxo' }),
+  };
+  const sources: Record<string, string> = {
+    [entityPath]: 'const marca = 1;',
+    [usecasePath]: 'return marca;',
+    [otherPath]: 'const marcaX = 1; const xmarca = 2;',
+    [workflowPath]: 'step(marca);',
+  };
+  const removed = fieldItem('removed', 'rotulo.marca', 'Nota', { fieldId: 'rotulo.marca' });
+  const answer = describeEffortFrom(removed, defs, sources);
+  assert.deepEqual(keysOf(answer.regenerateDefs), ['entity:nota']);
+  assert.deepEqual(keysOf(answer.materialize), ['entity:nota', 'usecase:iniciar', 'workflow:fluxo']);
+  assert.equal(answer.regenerateDefs.filter(unit => unit.kind === 'entity').length, 1);
+  assert.deepEqual(describeEffortFrom(removed, defs), describeEffortFrom(removed, defs, undefined));
+  const added = describeEffortFrom(
+    fieldItem('added', 'rotulo.marca', 'Nota', undefined, { fieldId: 'rotulo.marca' }),
+    defs,
+    sources,
+  );
+  assert.deepEqual(keysOf(added.materialize), ['entity:nota']);
+  assert.deepEqual(keysOf(added.regenerateDefs), ['entity:nota']);
+});
+
+void test('describeEffort lê o .ts irmão e materializa quem cita o segmento', async () => {
+  const folder = 'tarefas/layer_2_application/usecases';
+  const defPath = 'l1/tarefas/layer_2_application/usecases/iniciar.defs.ts';
+  const defs = { [defPath]: defOf('usecase', { usecaseId: 'iniciar', entityId: 'Nota' }) };
+  const sources = { [defPath]: 'return marca;' };
+  const removed = fieldItem('removed', 'rotulo.marca', 'Nota', { fieldId: 'rotulo.marca' });
+  const file = {
+    project: 102047,
+    level: 1,
+    folder,
+    shortName: 'iniciar',
+    status: 'active',
+    getContent: async () => '',
+  };
+  const previous = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { mls?: unknown }).mls = {
+    actualProject: 102047,
+    stor: {
+      files: {
+        def: { ...file, extension: '.defs.ts', getContent: async () => defs[defPath] },
+        source: { ...file, extension: '.ts', getContent: async () => sources[defPath] },
+      },
+    },
+  };
+  try {
+    const answer = await describeEffort(removed);
+    assert.deepEqual(answer, describeEffortFrom(removed, defs, sources));
+    assert.deepEqual(keysOf(answer.materialize), ['usecase:iniciar']);
+    assert.deepEqual(answer.regenerateDefs, []);
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previous;
+  }
+});
+
 const GRANT_BASE = {
   grantId: 'membroTarefasProprias',
   title: 'Tarefas próprias',

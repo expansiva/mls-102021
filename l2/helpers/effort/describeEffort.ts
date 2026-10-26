@@ -669,7 +669,35 @@ function integrationEffort(input: EffortInput, defs: Record<string, string>): Ef
   return computed(item.changeId, units, regenerateSource ? [] : units);
 }
 
-function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+function lastSegment(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return dot < 0 ? path : path.slice(dot + 1);
+}
+
+/** Whole word: the segment is not part of a longer identifier. */
+function citesWholeWord(text: string, segment: string): boolean {
+  if (!segment) return false;
+  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9_$])${escaped}([^A-Za-z0-9_$]|$)`).test(text);
+}
+
+/** Usecase, entity and request use `kindOf`/`unitId`. A workflow uses `processId`, as `workflowUnits` does. */
+function listedUnit(defPath: string, artifactType: string, data: Record<string, unknown>): EffortUnitRef | null {
+  if (artifactType === 'workflowProcess') {
+    const id = typeof data.processId === 'string' ? data.processId : '';
+    return id ? { kind: 'workflow', id, path: defPath } : null;
+  }
+  const kind = kindOf(artifactType);
+  if (!kind) return null;
+  const id = unitId(artifactType, data);
+  return id ? { kind, id, path: defPath } : null;
+}
+
+function fieldEffort(
+  input: EffortInput,
+  defs: Record<string, string>,
+  sources?: Record<string, string>,
+): EffortAnswer | null {
   const item = input.item;
   if (item.kind !== 'field') return null;
   const changeClass = fieldClass(item);
@@ -718,6 +746,14 @@ function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAn
     takeAll(found.writers);
     takeAll(changeClass === 'added' ? found.outputSiblings : found.citing.filter(unit => unit.kind === 'request'));
     for (const unit of picked) takeRegen(unit);
+    if (changeClass === 'removed' && sources) {
+      const segment = lastSegment(path);
+      eachDefinition(defs, (defPath, artifactType, data) => {
+        const unit = listedUnit(defPath, artifactType, data);
+        if (!unit || !citesWholeWord(sources[defPath] ?? '', segment)) return;
+        remember(picked, seen, unit);
+      });
+    }
   }
   if (picked.length === 0) {
     console.info(item.changeId, NO_FIELD_UNIT);
@@ -983,8 +1019,12 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
   return computed(item.changeId, units, units);
 }
 
-/** Pure. `defs` maps each product def path to its `.defs.ts` source. */
-export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
+/** Pure. `defs` maps each product def path to its `.defs.ts` source. `sources` maps the same path to the sibling `.ts` text; omitted keeps the previous answer. */
+export function describeEffortFrom(
+  input: EffortInput,
+  defs: Record<string, string>,
+  sources?: Record<string, string>,
+): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
   if (proseOnlyChange(input.item)) {
@@ -1020,7 +1060,7 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
   }
   const transition = transitionEffort(input, defs);
   if (transition) return transition;
-  const field = fieldEffort(input, defs);
+  const field = fieldEffort(input, defs, sources);
   if (field) return field;
   const grant = grantEffort(input, defs);
   if (grant) return grant;
@@ -1031,16 +1071,20 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 
-function productPath(file: StorFile, moduleName: string): string | null {
+function productPath(file: StorFile, moduleName: string, extension: '.defs.ts' | '.ts' = '.defs.ts'): string | null {
   const appProject = typeof mls.actualProject === 'number' ? mls.actualProject : Number.NaN;
   if (Number(file.project) !== appProject || Number(file.level) !== 1) return null;
-  if (file.status === 'deleted' || file.extension !== '.defs.ts' || !file.shortName) return null;
+  if (file.status === 'deleted' || file.extension !== extension || !file.shortName) return null;
   const folder = String(file.folder || '');
   const prefix = `${moduleName}/`;
   if (folder !== moduleName && !folder.startsWith(prefix)) return null;
   const parts = folder.split('/');
   if (parts.includes('pipeline') || parts.includes('materialization')) return null;
-  return `l1/${folder}/${file.shortName}.defs.ts`;
+  return `l1/${folder}/${file.shortName}${extension}`;
+}
+
+function siblingSourcePath(defPath: string): string {
+  return defPath.endsWith('.defs.ts') ? `${defPath.slice(0, -'.defs.ts'.length)}.ts` : '';
 }
 
 async function readStorText(file: StorFile, defPath: string): Promise<string> {
@@ -1235,22 +1279,37 @@ export function finishEffortFrom(input: EffortInput, defs: Record<string, string
   return computed(item, existingUnits, existingUnits, [], []);
 }
 
-async function loadModuleDefs(moduleName: string): Promise<Record<string, string>> {
+async function loadModuleFiles(moduleName: string, extension: '.defs.ts' | '.ts'): Promise<Record<string, string>> {
   const files = (mls.stor?.files ?? {}) as Record<string, StorFile | undefined>;
-  const defs: Record<string, string> = {};
+  const texts: Record<string, string> = {};
   for (const file of Object.values(files)) {
     if (!file) continue;
-    const defPath = productPath(file, moduleName);
-    if (!defPath) continue;
-    const source = await readStorText(file, defPath);
-    if (source) defs[defPath] = source;
+    const path = productPath(file, moduleName, extension);
+    if (!path) continue;
+    const source = await readStorText(file, path);
+    if (source) texts[path] = source;
   }
-  return defs;
+  return texts;
+}
+
+async function loadModuleDefs(moduleName: string): Promise<Record<string, string>> {
+  return loadModuleFiles(moduleName, '.defs.ts');
+}
+
+/** Sibling `.ts` of each def, keyed by the `.defs.ts` path. A missing sibling is an empty string. */
+async function loadModuleSources(moduleName: string, defs: Record<string, string>): Promise<Record<string, string>> {
+  const texts = await loadModuleFiles(moduleName, '.ts');
+  const sources: Record<string, string> = {};
+  for (const defPath of Object.keys(defs)) {
+    sources[defPath] = texts[siblingSourcePath(defPath)] ?? '';
+  }
+  return sources;
 }
 
 /** Reads product `.defs.ts` under `l1/<module>/` from `mls.stor.files` and classifies the item. */
 export async function describeEffort(input: EffortInput): Promise<EffortAnswer> {
-  return describeEffortFrom(input, await loadModuleDefs(input.module));
+  const defs = await loadModuleDefs(input.module);
+  return describeEffortFrom(input, defs, await loadModuleSources(input.module, defs));
 }
 
 /** Same read as `describeEffort`. Null unless the item is `rule added`. */
