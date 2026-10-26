@@ -397,6 +397,14 @@ function applyUnitScope(
     if (files.some(file => fileMatchesUnit(file, unit))) continue;
     review(problems, 'SCOPE_UNIT_UNMATCHED', 'units.json', `Unit ${unit.kind}:${unit.id} matches no planned file.`, `${unit.kind}:${unit.id}`);
   }
+  // A listed def that is already on disk is rewritten. `create` keeps no receipt hash, so the writer would refuse.
+  for (const file of files) {
+    if (outside.includes(file)) continue;
+    const hash = present.get(file.defPath) || '';
+    if (!hash || file.action !== 'create') continue;
+    file.action = 'recompose';
+    file.contentHash = hash;
+  }
 }
 
 function planFiles(input: {
