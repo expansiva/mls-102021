@@ -131,8 +131,10 @@ void test('field só com title diferente é computed vazio, mesmo sem defs', () 
   }
 });
 
-void test('field com type diferente segue a classificação de hoje', () => {
+void test('field changed sem before e after continua abend', () => {
   const item = fieldChange({ title: 'Nota', type: 'string' }, { title: 'Nota', type: 'text' });
+  delete item.before;
+  delete item.after;
   const answer = describeEffortFrom(input(item), AGENDA);
   assert.equal(answer.status, 'abend');
   assert.equal(answer.abend?.reason, 'kind/op fora da v1: field changed');
@@ -180,6 +182,37 @@ void test('describeEffort lê o .defs.ts do actualProject e ignora o do master',
     const masterCopy = await describeEffort(item);
     assert.equal(masterCopy.status, 'abend');
     assert.equal(masterCopy.abend?.reason, 'módulo sem defs gerados');
+  } finally {
+    (globalThis as { mls?: unknown }).mls = previous;
+  }
+});
+
+void test('describeEffort lê defs de persistência sob l1 e ignora pipeline', async () => {
+  const source = TAREFAS['l1/tarefas/layer_1_external/adapters/persistence/tarefa.defs.ts'];
+  assert.equal(typeof source, 'string');
+  const kept = {
+    project: 102047,
+    level: 1,
+    folder: 'tarefas/layer_1_external/adapters/persistence',
+    shortName: 'tarefa',
+    extension: '.defs.ts',
+    getContent: async () => source,
+  };
+  const dropped = { ...kept, folder: 'tarefas/pipeline/adapters', shortName: 'tarefa' };
+  const previous = (globalThis as { mls?: unknown }).mls;
+  (globalThis as { mls?: unknown }).mls = { actualProject: 102047, stor: { files: { kept, dropped } } };
+  try {
+    const answer = await describeEffort(input({
+      changeId: 'field:prioridade',
+      kind: 'field',
+      op: 'changed',
+      entity: 'Tarefa',
+      source: 'l4',
+      before: { required: true, title: 'Prioridade', description: '', type: 'enum', derived: false, fieldId: 'prioridade' },
+      after: { required: false, title: 'Prioridade', description: '', type: 'enum', derived: false, fieldId: 'prioridade' },
+    }, 'tarefas'));
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(keysOf(answer.materialize), ['table:tarefa']);
   } finally {
     (globalThis as { mls?: unknown }).mls = previous;
   }
@@ -326,6 +359,114 @@ void test('effortPrompt só para regra adicionada, com o enum dos ids das fixtur
   assert.equal(request.prompt.includes('Nothing on the backend only for a rule about display alone; then say why in reason.'), true);
   assert.equal(effortPromptFrom(itemOf('rule', 'changed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
   assert.equal(effortPromptFrom(itemOf('rule', 'removed', 'rule:devolucaoExigeMotivo', 'tarefas'), TAREFAS), null);
+  assert.equal(effortPromptFrom(fieldItem('changed', 'prioridade', 'Tarefa', { required: true }, { required: false }), TAREFAS), null);
+});
+
+function fieldItem(
+  op: L4DiffItem['op'],
+  path: string,
+  entity: string,
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  const item: L4DiffItem = { changeId: `field:${path}`, kind: 'field', op, entity, source: 'l4' };
+  if (before) item.before = before;
+  if (after) item.after = after;
+  return input(item, 'tarefas');
+}
+
+const FIELD_BASE = { fieldId: 'prioridade', type: 'enum', derived: false, title: 'Prioridade', description: '' };
+
+void test('F1 required muda só materialize da entidade, tabela, adaptador, escritores e requests que citam', () => {
+  const answer = describeEffortFrom(fieldItem('changed', 'prioridade', 'Tarefa', { ...FIELD_BASE, required: true }, { ...FIELD_BASE, required: false }), TAREFAS);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.regenerateDefs, []);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'entity:tarefa',
+    'request:inicio',
+    'request:minhas_tarefas',
+    'request:tarefas_equipe',
+    'table:tarefa',
+    'table:tarefaRepository',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ]);
+});
+
+void test('F2 prazo só texto fica vazio', () => {
+  const before = { fieldId: 'prazo', type: 'date', derived: false, title: 'Prazo', description: 'Data' };
+  const after = { ...before, title: 'Vencimento', description: 'Dia' };
+  const answer = describeEffortFrom(fieldItem('changed', 'prazo', 'Tarefa', before, after), TAREFAS);
+  assert.equal(answer.status, 'computed');
+  assert.deepEqual(answer.materialize, []);
+  assert.deepEqual(answer.regenerateDefs, []);
+});
+
+void test('F3 campo novo em details regenera e materializa sem tabela', () => {
+  const answer = describeEffortFrom(fieldItem('added', 'details.estimativaHoras', 'Tarefa', undefined, {
+    fieldId: 'details.estimativaHoras', type: 'number', derived: false, title: 'Horas', description: '',
+  }), TAREFAS);
+  const keys = [
+    'entity:tarefa',
+    'request:minhas_tarefas',
+    'request:tarefas_equipe',
+    'table:tarefaRepository',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ];
+  assert.equal(answer.status, 'computed');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+  assert.equal(keysOf(answer.materialize).includes('table:tarefa'), false);
+});
+
+void test('F4 valor novo regenera entidade e tabela e materializa quem cita prioridade', () => {
+  const before = { ...FIELD_BASE, values: ['baixa', 'media', 'alta'] };
+  const after = { ...FIELD_BASE, values: ['baixa', 'media', 'alta', 'urgente'] };
+  const answer = describeEffortFrom(fieldItem('changed', 'prioridade', 'Tarefa', before, after), TAREFAS);
+  assert.deepEqual(keysOf(answer.regenerateDefs), ['entity:tarefa', 'table:tarefa']);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'entity:tarefa',
+    'request:inicio',
+    'request:minhas_tarefas',
+    'request:tarefas_equipe',
+    'table:tarefa',
+    'table:tarefaRepository',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ]);
+});
+
+void test('F5 campo removido regenera e materializa quem cita, sem tabela', () => {
+  const answer = describeEffortFrom(fieldItem('removed', 'details.etiquetas', 'Tarefa', {
+    fieldId: 'details.etiquetas', type: 'string', derived: false, title: 'Etiquetas', description: '',
+  }), TAREFAS);
+  const keys = [
+    'entity:tarefa',
+    'request:minhas_tarefas',
+    'table:tarefaRepository',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ];
+  assert.equal(answer.status, 'computed');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('F6 maxLength materializa escritores e requests de escrita', () => {
+  const before = { fieldId: 'titulo', type: 'string', derived: false, title: 'Título', description: '', maxLength: 200 };
+  const after = { ...before, maxLength: 100 };
+  const answer = describeEffortFrom(fieldItem('changed', 'titulo', 'Tarefa', before, after), TAREFAS);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.regenerateDefs, []);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'request:minhas_tarefas',
+    'request:tarefas_equipe',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ]);
 });
 
 void test('finishEffort aplica a resposta gravada do R1 e do R4', () => {

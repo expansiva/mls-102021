@@ -158,6 +158,304 @@ function workflowUnits(defs: Record<string, string>, processId: string): EffortU
   return sortUnits(units);
 }
 
+const FORM_ATTRIBUTES = new Set(['type', 'values', 'required', 'collection', 'to']);
+const TEXT_ATTRIBUTES = new Set(['title', 'description']);
+const CITE_VALUE_KEYS = new Set(['name', 'field', 'path', 'column']);
+const NO_FIELD_UNIT = 'no backend unit cites this field';
+
+function sameName(left: string, right: string): boolean {
+  return left.localeCompare(right, 'en', { sensitivity: 'accent' }) === 0;
+}
+
+function lowerFirst(value: string): string {
+  return value ? value.charAt(0).toLowerCase() + value.slice(1) : '';
+}
+
+function fieldPathOf(changeId: string): string {
+  return idAfter(changeId, 'field:');
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Keys whose value differs. Null when `before` or `after` is not an object. */
+function changedAttributeKeys(item: EffortInput['item']): string[] | null {
+  if (!isRecord(item.before) || !isRecord(item.after)) return null;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  const changed: string[] = [];
+  for (const key of keys) {
+    if (!sameJson(item.before[key], item.after[key])) changed.push(key);
+  }
+  return changed;
+}
+
+type FieldClass = 'added' | 'removed' | 'form' | 'validation';
+
+function fieldClass(item: EffortInput['item']): FieldClass | null {
+  if (item.op === 'added') return 'added';
+  if (item.op === 'removed') return 'removed';
+  if (item.op !== 'changed') return null;
+  const changed = changedAttributeKeys(item);
+  if (!changed || changed.length === 0) return null;
+  if (changed.some(key => FORM_ATTRIBUTES.has(key))) return 'form';
+  if (changed.some(key => !TEXT_ATTRIBUTES.has(key))) return 'validation';
+  return null;
+}
+
+function textHits(text: string, full: string, last: string): boolean {
+  return text === full || text === last;
+}
+
+/** Whole-string cite: a key, a `name`/`field`/`path`/`column` value, or a `columns` entry. Not prose. */
+function citesPath(value: unknown, full: string, last: string): boolean {
+  const walk = (node: unknown, parentKey: string | null): boolean => {
+    if (typeof node === 'string') {
+      if (parentKey === 'columns' || (parentKey !== null && CITE_VALUE_KEYS.has(parentKey))) {
+        return textHits(node, full, last);
+      }
+      return false;
+    }
+    if (Array.isArray(node)) return node.some(entry => walk(entry, parentKey));
+    if (!isRecord(node)) return false;
+    for (const [key, child] of Object.entries(node)) {
+      if (textHits(key, full, last)) return true;
+      if (walk(child, key)) return true;
+    }
+    return false;
+  };
+  return walk(value, null);
+}
+
+/** The object that names the field also stores `attribute` as its own key. */
+function storesAttribute(value: unknown, full: string, last: string, attribute: string): boolean {
+  const walk = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(entry => walk(entry));
+    if (!isRecord(node)) return false;
+    const namesField = Object.entries(node).some(([key, child]) => {
+      if (textHits(key, full, last)) return true;
+      if (typeof child === 'string' && CITE_VALUE_KEYS.has(key) && textHits(child, full, last)) return true;
+      if (key === 'columns' && Array.isArray(child) && child.some(entry => typeof entry === 'string' && textHits(entry, full, last))) {
+        return true;
+      }
+      return false;
+    });
+    if (namesField && Object.prototype.hasOwnProperty.call(node, attribute)) return true;
+    return Object.values(node).some(child => walk(child));
+  };
+  return walk(value);
+}
+
+interface FieldUnits {
+  entity: EffortUnitRef | null;
+  table: EffortUnitRef | null;
+  adapter: EffortUnitRef | null;
+  writers: EffortUnitRef[];
+  writeRequests: EffortUnitRef[];
+  citing: EffortUnitRef[];
+  outputSiblings: EffortUnitRef[];
+  storing: (attribute: string) => EffortUnitRef[];
+}
+
+function entityData(defs: Record<string, string>, entity: string): Record<string, unknown> | null {
+  let found: Record<string, unknown> | null = null;
+  eachDefinition(defs, (_defPath, artifactType, data) => {
+    if (found || artifactType !== 'domainEntity') return;
+    if (typeof data.entityId === 'string' && sameName(data.entityId, entity)) found = data;
+  });
+  return found;
+}
+
+function fieldPrefix(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return dot < 0 ? '' : path.slice(0, dot + 1);
+}
+
+function isSiblingField(name: string, path: string): boolean {
+  if (name === path) return false;
+  const prefix = fieldPrefix(path);
+  if (!name.startsWith(prefix)) return false;
+  const rest = name.slice(prefix.length);
+  return rest.length > 0 && !rest.includes('.');
+}
+
+function nonDerivedSiblings(data: Record<string, unknown> | null, path: string): Set<string> {
+  const names = new Set<string>();
+  if (!data) return names;
+  const fields = Array.isArray(data.fields) ? data.fields : [];
+  for (const field of fields) {
+    if (!isRecord(field) || typeof field.name !== 'string') continue;
+    if (field.derived === true) continue;
+    if (isSiblingField(field.name, path)) names.add(field.name);
+  }
+  return names;
+}
+
+function outputCitesSibling(data: Record<string, unknown>, entity: string, siblings: Set<string>): boolean {
+  if (siblings.size === 0) return false;
+  const requests = Array.isArray(data.requests) ? data.requests : [];
+  const cites = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(entry => cites(entry));
+    if (!isRecord(node)) return false;
+    for (const [key, child] of Object.entries(node)) {
+      if ((key === 'field' || key === 'path') && typeof child === 'string' && siblings.has(child)) return true;
+      if (cites(child)) return true;
+    }
+    return false;
+  };
+  return requests.some(request => {
+    if (!isRecord(request) || !Array.isArray(request.output)) return false;
+    return request.output.some(node =>
+      isRecord(node) && typeof node.entity === 'string' && sameName(node.entity, entity) && cites(node));
+  });
+}
+
+function remember(units: EffortUnitRef[], seen: Set<string>, unit: EffortUnitRef): void {
+  const key = `${unit.kind}:${unit.id}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  units.push(unit);
+}
+
+function fieldUnits(defs: Record<string, string>, entity: string, path: string): FieldUnits {
+  const full = path;
+  const last = path.includes('.') ? path.slice(path.lastIndexOf('.') + 1) : path;
+  const siblings = nonDerivedSiblings(entityData(defs, entity), path);
+  let entityUnit: EffortUnitRef | null = null;
+  let tableUnit: EffortUnitRef | null = null;
+  let adapterUnit: EffortUnitRef | null = null;
+  const writers: EffortUnitRef[] = [];
+  const citing: EffortUnitRef[] = [];
+  const outputSiblings: EffortUnitRef[] = [];
+  const writerIds = new Set<string>();
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    const entityId = typeof data.entityId === 'string' ? data.entityId : '';
+    const ofEntity = entityId !== '' && sameName(entityId, entity);
+    if (artifactType === 'domainEntity' && ofEntity) {
+      const id = lowerFirst(entityId);
+      if (!id) return;
+      entityUnit = { kind: 'entity', id, path: defPath };
+      if (citesPath(data, full, last)) citing.push(entityUnit);
+      return;
+    }
+    if (artifactType === 'table' && ofEntity) {
+      const id = typeof data.tableId === 'string' ? data.tableId : '';
+      if (!id) return;
+      tableUnit = { kind: 'table', id, path: defPath };
+      if (citesPath(data, full, last)) citing.push(tableUnit);
+      return;
+    }
+    if (artifactType === 'repositoryAdapter' && ofEntity) {
+      const portId = typeof data.portId === 'string' ? data.portId : '';
+      const id = lowerFirst(portId);
+      if (!id) return;
+      adapterUnit = { kind: 'table', id, path: defPath };
+      if (citesPath(data, full, last)) citing.push(adapterUnit);
+      return;
+    }
+    if (artifactType === 'usecase' && ofEntity) {
+      const operation = typeof data.operation === 'string' ? data.operation : '';
+      if (operation !== 'create' && operation !== 'update') return;
+      const id = unitId(artifactType, data);
+      if (!id) return;
+      const unit = { kind: 'usecase' as const, id, path: defPath };
+      writers.push(unit);
+      writerIds.add(id);
+      if (citesPath(data, full, last)) citing.push(unit);
+      return;
+    }
+    if (artifactType === 'requestService') {
+      const id = unitId(artifactType, data);
+      if (!id) return;
+      const unit = { kind: 'request' as const, id, path: defPath };
+      if (citesPath(data, full, last)) citing.push(unit);
+      if (outputCitesSibling(data, entity, siblings)) outputSiblings.push(unit);
+    }
+  });
+  const writeRequests: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType !== 'requestService') return;
+    const id = unitId(artifactType, data);
+    if (!id) return;
+    const requests = Array.isArray(data.requests) ? data.requests : [];
+    const writes = requests.some(request =>
+      isRecord(request) && Array.isArray(request.uses) && request.uses.some(use => typeof use === 'string' && writerIds.has(use)));
+    if (writes) writeRequests.push({ kind: 'request', id, path: defPath });
+  });
+  const storing = (attribute: string): EffortUnitRef[] => {
+    const stored: EffortUnitRef[] = [];
+    eachDefinition(defs, (defPath, artifactType, data) => {
+      if (!storesAttribute(data, full, last, attribute)) return;
+      if (artifactType === 'domainEntity' && entityUnit && entityUnit.path === defPath) stored.push(entityUnit);
+      if (artifactType === 'table' && tableUnit && tableUnit.path === defPath) stored.push(tableUnit);
+      if (artifactType === 'repositoryAdapter' && adapterUnit && adapterUnit.path === defPath) stored.push(adapterUnit);
+    });
+    return stored;
+  };
+  return { entity: entityUnit, table: tableUnit, adapter: adapterUnit, writers, writeRequests, citing, outputSiblings, storing };
+}
+
+function columnPath(path: string): boolean {
+  return path.length > 0 && !path.includes('.');
+}
+
+function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind !== 'field') return null;
+  const changeClass = fieldClass(item);
+  if (!changeClass) return null;
+  const path = fieldPathOf(item.changeId);
+  const entity = item.entity;
+  if (!path || !entity) return null;
+  const found = fieldUnits(defs, entity, path);
+  const picked: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  const take = (unit: EffortUnitRef | null): void => {
+    if (unit) remember(picked, seen, unit);
+  };
+  const takeAll = (units: EffortUnitRef[]): void => {
+    for (const unit of units) remember(picked, seen, unit);
+  };
+  const regen: EffortUnitRef[] = [];
+  const regenSeen = new Set<string>();
+  const takeRegen = (unit: EffortUnitRef | null): void => {
+    if (unit) remember(regen, regenSeen, unit);
+  };
+  if (changeClass === 'validation') {
+    takeAll(found.writers);
+    takeAll(found.writeRequests);
+  } else if (changeClass === 'form') {
+    take(found.entity);
+    if (found.table && found.citing.some(unit => unit.path === found.table?.path)) take(found.table);
+    take(found.adapter);
+    takeAll(found.writers);
+    takeAll(found.citing.filter(unit => unit.kind === 'request'));
+    takeAll(found.writeRequests);
+    const changed = changedAttributeKeys(item) ?? [];
+    if (changed.includes('values')) {
+      if (found.entity && found.citing.some(unit => unit.path === found.entity?.path)) takeRegen(found.entity);
+      if (found.table && found.citing.some(unit => unit.path === found.table?.path)) takeRegen(found.table);
+    }
+    for (const attribute of changed) {
+      if (!FORM_ATTRIBUTES.has(attribute) || attribute === 'values') continue;
+      for (const unit of found.storing(attribute)) takeRegen(unit);
+    }
+  } else {
+    take(found.entity);
+    take(found.adapter);
+    const tableCites = found.table !== null && found.citing.some(unit => unit.path === found.table?.path);
+    if (changeClass === 'added' ? columnPath(path) || tableCites : tableCites) take(found.table);
+    takeAll(found.writers);
+    takeAll(changeClass === 'added' ? found.outputSiblings : found.citing.filter(unit => unit.kind === 'request'));
+    for (const unit of picked) takeRegen(unit);
+  }
+  if (picked.length === 0) {
+    console.info(item.changeId, NO_FIELD_UNIT);
+    return computed(item.changeId, []);
+  }
+  return computed(item.changeId, sortUnits(picked), sortUnits(regen));
+}
+
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
@@ -181,6 +479,8 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
     const units = workflowUnits(defs, taskProcessId(item));
     return computed(item, units, units);
   }
+  const field = fieldEffort(input, defs);
+  if (field) return field;
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 
