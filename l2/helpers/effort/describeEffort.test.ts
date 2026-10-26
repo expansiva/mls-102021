@@ -906,19 +906,22 @@ void test('I2 outbound com outro atributo e o mesmo on materializa o def e quem 
   const before = { ...OUTBOUND_BASE };
   const after = { ...OUTBOUND_BASE, consumer: 'outro' };
   const answer = describeEffortFrom(outboundItem('changed', 'tarefaConcluida', before, after), TAREFAS);
-  const keys = ['shared:outbound', 'usecase:aceitar'];
+  const keys = ['events:outbound', 'usecase:aceitar'];
   assert.equal(answer.status, 'computed');
   assert.equal(answer.contract, 'keep');
   assert.deepEqual(answer.create, []);
   assert.deepEqual(answer.remove, []);
   assert.deepEqual(answer.regenerateDefs, []);
   assert.deepEqual(keysOf(answer.materialize), keys);
+  for (const key of [...keysOf(answer.regenerateDefs), ...keysOf(answer.materialize)]) {
+    assert.equal(key.startsWith('shared:'), false, key);
+  }
 });
 
 void test('I3 outbound added na operação update materializa o def e o usecase da operação', () => {
   const after = { ...OUTBOUND_BASE, id: 'tarefaAtualizada', on: 'Tarefa.update' };
   const answer = describeEffortFrom(outboundItem('added', 'tarefaAtualizada', undefined, after), TAREFAS);
-  const keys = ['shared:outbound', 'usecase:updateTarefa'];
+  const keys = ['events:outbound', 'usecase:updateTarefa'];
   assert.equal(answer.status, 'computed');
   assert.equal(answer.contract, 'keep');
   assert.deepEqual(keysOf(answer.regenerateDefs), keys);
@@ -928,7 +931,7 @@ void test('I3 outbound added na operação update materializa o def e o usecase 
 void test('I4 outbound removed regenera e materializa o def e quem cita', () => {
   const before = { ...OUTBOUND_BASE, id: 'tarefaCancelada', on: 'Tarefa.cancelar' };
   const answer = describeEffortFrom(outboundItem('removed', 'tarefaCancelada', before), TAREFAS);
-  const keys = ['shared:outbound', 'usecase:cancelar'];
+  const keys = ['events:outbound', 'usecase:cancelar'];
   assert.equal(answer.status, 'computed');
   assert.equal(answer.contract, 'keep');
   assert.deepEqual(keysOf(answer.regenerateDefs), keys);
@@ -939,7 +942,7 @@ void test('outbound changed with a new on regenerates the event def, citers and 
   const before = { ...OUTBOUND_BASE, on: 'Tarefa.aceitar' };
   const after = { ...OUTBOUND_BASE, on: 'Tarefa.cancelar' };
   const answer = describeEffortFrom(outboundItem('changed', 'tarefaConcluida', before, after), TAREFAS);
-  const keys = ['shared:outbound', 'usecase:aceitar', 'usecase:cancelar'];
+  const keys = ['events:outbound', 'usecase:aceitar', 'usecase:cancelar'];
   assert.equal(answer.status, 'computed');
   assert.deepEqual(keysOf(answer.regenerateDefs), keys);
   assert.deepEqual(keysOf(answer.materialize), keys);

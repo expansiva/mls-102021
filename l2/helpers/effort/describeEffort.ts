@@ -603,7 +603,7 @@ function eventDefUnits(defs: Record<string, string>): EffortUnitRef[] {
   const units: EffortUnitRef[] = [];
   for (const def of grantDefs(defs)) {
     if (def.artifactType !== 'integrationOutbound' || !def.artifactId) continue;
-    units.push({ kind: 'shared', id: def.artifactId, path: def.path });
+    units.push({ kind: 'events', id: def.artifactId, path: def.path });
   }
   return units;
 }
