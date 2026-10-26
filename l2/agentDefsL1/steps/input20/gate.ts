@@ -502,11 +502,12 @@ function planFiles(input: {
     }).filter(Boolean)));
     const serviceId = `requestService:${page.pageId}`;
     const servicePath = requestServiceDefPath(moduleName, page.pageId);
+    const idle = usecaseIds.every(id => byId.get(id)?.action === 'preserve');
     const pageAction = mixed
-      ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`)
+      ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`, idle)
       : actionFor(status, defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`);
     const serviceAction = mixed
-      ? recomposeOrConflict(servicePath, input.present, input.previous, input.receipts, input.problems, serviceId)
+      ? recomposeOrConflict(servicePath, input.present, input.previous, input.receipts, input.problems, serviceId, idle)
       : actionFor(status, servicePath, input.present, input.previous, input.receipts, input.problems, serviceId);
     add({
       id: serviceId,
@@ -635,12 +636,17 @@ function recomposeOrConflict(
   receipts: WriterIndex,
   problems: D1InputProblem[],
   ownerRef: string,
+  idle: boolean,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
   const view = receiptView(previous, defPath, receipts);
   if (hash && view.inventoried === hash && view.agrees) return 'recompose';
   if (!hash && !view.inventoried) return 'create';
   if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
+  if (idle && hash) {
+    review(problems, 'EXISTING_UNRESOLVED', defPath, `${ownerRef} is preserved: no usecase of the page is generated or changed.`, ownerRef);
+    return 'preserve';
+  }
   error(problems, 'EXISTING_UNRESOLVED', defPath, `Recompose of ${ownerRef} needs an inventoried path and hash.`, ownerRef);
   return 'conflict';
 }

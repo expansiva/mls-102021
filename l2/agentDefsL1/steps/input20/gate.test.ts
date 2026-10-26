@@ -669,3 +669,73 @@ void test('a planner approval on another backend path stays divergent', () => {
   paths[at] = `l4/${MODULE}/notes/tobe/plan/pool/l2/web/backend.json`;
   assert.equal(codes(build(artifacts), 'error').includes('PLANNER_RUN_DIVERGENT'), true);
 });
+
+const PAGE = 'produtos';
+const PAGE_UNITS = [`usecase:listProduto`, `usecase:createProduto`, `requestService:${PAGE}`, `controller:${PAGE}`];
+const PAGE_HASH = `sha256:${'ef'.repeat(32)}`;
+
+function setUsecaseStatus(artifacts: D1InputArtifacts, usecaseId: string, status: string): void {
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
+  const row = backend.usecases.find(item => item.usecaseId === usecaseId)!;
+  const from = row.status;
+  row.status = status;
+  effort.usecases.find(item => item.usecaseId === usecaseId)!.status = status;
+  effort.totals.usecases[from] -= 1;
+  effort.totals.usecases[status] += 1;
+}
+
+function pageDefs(head: D1InputSnapshot, ids: string[]): D1InputArtifacts['presentDefs'] {
+  return head.files.filter(file => ids.includes(file.id)).map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
+}
+
+void test('a mixed page whose usecases are all preserved keeps controller and request service', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  setUsecaseStatus(artifacts, 'listProduto', 'done');
+  artifacts.presentDefs = pageDefs(head, PAGE_UNITS);
+  const snapshot = build(artifacts);
+  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
+    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'preserve', id);
+    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
+    assert.ok(problem, id);
+    assert.equal(problem.severity, 'review');
+    assert.match(problem.message, /is preserved: no usecase of the page is generated or changed/);
+  }
+  const errors = snapshot.problems.filter(item => item.severity === 'error').map(item => item.code);
+  assert.equal(snapshot.consumersReleased, true, errors.join(','));
+});
+
+void test('a mixed page still blocks when a toCreate usecase has no def', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  setUsecaseStatus(artifacts, 'listProduto', 'done');
+  artifacts.presentDefs = pageDefs(head, PAGE_UNITS.filter(id => id !== 'usecase:createProduto'));
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.files.find(file => file.id === 'usecase:createProduto')?.action, 'create');
+  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
+    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'conflict', id);
+    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
+    assert.equal(problem?.severity, 'error');
+  }
+  assert.equal(snapshot.consumersReleased, false);
+});
+
+void test('a mixed page with a usecase to update still blocks the controller', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  setUsecaseStatus(artifacts, 'listProduto', 'done');
+  setUsecaseStatus(artifacts, 'createProduto', 'toUpdate');
+  const create = head.files.find(file => file.id === 'usecase:createProduto')!;
+  const previous = clone(head);
+  previous.files.find(file => file.defPath === create.defPath)!.contentHash = PAGE_HASH;
+  artifacts.presentDefs = pageDefs(head, PAGE_UNITS);
+  const snapshot = build(artifacts, previous);
+  assert.equal(snapshot.files.find(file => file.id === 'usecase:createProduto')?.action, 'update');
+  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
+    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'conflict', id);
+    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
+    assert.equal(problem?.severity, 'error');
+  }
+  assert.equal(snapshot.consumersReleased, false);
+});
