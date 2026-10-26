@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { compareModule } from '/_102021_/l2/agentNewReleaseL1/helpers/compare.js';
 import { prepareModule } from '/_102021_/l2/agentNewReleaseL1/helpers/prepare.js';
 import {
   parseNewReleaseInvocation,
@@ -29,7 +30,11 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   const invocation = parseNewReleaseInvocation(userPrompt || context.message.content || '');
   if (!invocation.ok) return finish(agent, context, 'refused', invocation.help);
-  if (invocation.compare) return finish(agent, context, 'refused', 'not implemented');
+  if (invocation.compare) {
+    const compared = await compareModule(invocation.module);
+    if (!compared.ok) return finish(agent, context, compared.kind, compared.text);
+    return finish(agent, context, 'done', compared.text);
+  }
   const prepared = await prepareModule(invocation.module);
   if (!prepared.ok) return finish(agent, context, prepared.kind, prepared.text);
   return finish(agent, context, 'done', prepared.text);

@@ -1,0 +1,348 @@
+/// <mls fileReference="_102021_/l2/agentNewReleaseL1/helpers/compare.ts" enhancement="_blank"/>
+
+import {
+  displayPath,
+  fileExists,
+  moduleFile,
+  readSourceText,
+  writeSourceText,
+  type Ns5FileInfo,
+} from '/_102035_/l2/solution/fs.js';
+import { removeIndexed, undoPrepared, type PreparedRecord } from '/_102021_/l2/agentNewReleaseL1/helpers/undo.js';
+
+export type CompareOutcome =
+  | { ok: true; text: string }
+  | { ok: false; kind: 'refused' | 'failed'; text: string };
+
+type Verdict = 'igual' | 'mudou' | 'nova' | 'removida';
+
+interface ListedFile {
+  info: Ns5FileInfo;
+  rel: string;
+}
+
+interface UnitRow {
+  kind: string;
+  id: string;
+  verdict: Verdict;
+  path: string;
+  rel: string;
+}
+
+/** `@@agentNewReleaseL1 <module> /compare`. Restores the plan on every path and drops `_old` last. */
+export async function compareModule(moduleName: string): Promise<CompareOutcome> {
+  const project = mls.actualProject || 0;
+  const oldRoot = `${moduleName}_old`;
+  if (listUnder(project, oldRoot).length === 0) {
+    return { ok: false, kind: 'refused', text: 'no prepared run' };
+  }
+  const gate = await generatorGate(moduleName);
+  if (!gate.complete) {
+    const undone = await undoPrepared(moduleName);
+    if (!undone.ok) return { ok: false, kind: 'failed', text: `${gate.reason}\nundo failed: ${undone.text}` };
+    return { ok: false, kind: 'failed', text: gate.reason };
+  }
+
+  try {
+    const freshFiles = listUnder(project, moduleName).map(file => listedOf(file, moduleName)).filter((file): file is ListedFile => !!file);
+    const oldFiles = listUnder(project, oldRoot).map(file => listedOf(file, oldRoot)).filter((file): file is ListedFile => !!file);
+    const freshDefs = new Map(freshFiles.filter(file => isDef(file.rel)).map(file => [file.rel, file]));
+    const oldDefs = new Map(oldFiles.filter(file => isDef(file.rel)).map(file => [file.rel, file]));
+    const texts = new Map<string, string>();
+    for (const file of [...freshDefs.values(), ...oldDefs.values()]) texts.set(storeKey(file.info), await readSourceText(file.info));
+    const rows = rowsOf(moduleName, freshDefs, oldDefs, texts);
+    const allEqual = rows.every(row => row.verdict === 'igual');
+    const copies = await stageCopies(moduleName, rows, oldFiles, allEqual);
+    for (const copy of copies) await writeSourceText(copy.info, copy.text);
+    for (const drop of dropsOf(rows, freshFiles)) await removeIndexed(drop);
+    await restorePlan(moduleName);
+    for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
+    const lines = rows.map(row => `${row.kind} ${row.id}: ${row.verdict} ${row.path}`);
+    lines.push('creation plan: written and undone', 'planner run: written and undone', `@@agentMaterializeL1 {"scope":"${moduleName}"}`);
+    return { ok: true, text: lines.join('\n') };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    // The creation copy and the planner record must not stay behind. `_old` stays, so a later call can still undo.
+    try {
+      await restorePlan(moduleName);
+    } catch (restoreError) {
+      const detail = restoreError instanceof Error ? restoreError.message : String(restoreError);
+      return { ok: false, kind: 'failed', text: `${reason}\nplan restore failed: ${detail}` };
+    }
+    return { ok: false, kind: 'failed', text: `${reason}\ncreation plan: undone; l1/${moduleName}_old was kept` };
+  }
+}
+
+/** Parsed definition without model prose (`doc` at any depth) and without the envelope `status`. Keys are sorted. */
+export function structureOf(source: string): unknown {
+  return canonicalize(stripEnvelope(parseDefinition(source)));
+}
+
+function parseDefinition(source: string): Record<string, unknown> {
+  const matched = source.match(/export const definition = (\{[\s\S]*\}) as const;/u);
+  if (!matched) throw new Error('definition export is missing');
+  const parsed = JSON.parse(matched[1]) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('definition is not an object');
+  return parsed as Record<string, unknown>;
+}
+
+function stripEnvelope(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(item => stripDoc(item));
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'status') continue;
+    out[key] = stripDoc(item);
+  }
+  return out;
+}
+
+function stripDoc(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(item => stripDoc(item));
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'doc') continue;
+    out[key] = stripDoc(item);
+  }
+  return out;
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(item => canonicalize(item));
+  if (!value || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    out[key] = canonicalize((value as Record<string, unknown>)[key]);
+  }
+  return out;
+}
+
+async function generatorGate(moduleName: string): Promise<{ complete: boolean; reason: string }> {
+  const reportInfo = defsFile(moduleName, 'report');
+  const pipelineInfo = defsFile(moduleName, 'pipeline');
+  const pipeline = fileExists(pipelineInfo) ? parseObject(await readSourceText(pipelineInfo)) : null;
+  if (!fileExists(reportInfo)) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report' };
+  const report = parseObject(await readSourceText(reportInfo));
+  if (!report) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report' };
+  if (report.outcome === 'complete' && report.defsStatus === 'complete') return { complete: true, reason: '' };
+  const blocking = typeof report.blocking === 'string' ? report.blocking.trim() : '';
+  return { complete: false, reason: blocking || pipelineReason(pipeline) || 'no generator report' };
+}
+
+function pipelineReason(pipeline: Record<string, unknown> | null): string {
+  if (!pipeline) return '';
+  const waiting = typeof pipeline.awaitingStep === 'string' ? pipeline.awaitingStep : '';
+  const error = typeof pipeline.error === 'string' ? pipeline.error : '';
+  return [waiting ? `awaitingStep ${waiting}` : '', error].filter(Boolean).join('; ');
+}
+
+function parseObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not parse a generator file: ${reason}`);
+    return null;
+  }
+}
+
+function rowsOf(
+  moduleName: string,
+  fresh: Map<string, ListedFile>,
+  previous: Map<string, ListedFile>,
+  texts: Map<string, string>,
+): UnitRow[] {
+  const rels = [...new Set([...fresh.keys(), ...previous.keys()])].sort();
+  return rels.map(rel => {
+    const next = fresh.get(rel);
+    const prior = previous.get(rel);
+    const verdict: Verdict = !prior ? 'nova' : !next ? 'removida' : sameText(texts, next, prior) ? 'igual' : 'mudou';
+    const sample = (next || prior) as ListedFile;
+    const parsed = definitionOrNull(texts.get(storeKey(sample.info)) || '');
+    const kind = typeof parsed?.artifactType === 'string' ? parsed.artifactType : 'def';
+    const id = typeof parsed?.artifactId === 'string' ? parsed.artifactId : rel.split('/').pop()?.replace(/\.defs\.ts$/u, '') || 'unknown';
+    const path = `l1/${moduleName}/${rel}`;
+    return { kind, id, verdict, path, rel };
+  });
+}
+
+function sameText(texts: Map<string, string>, next: ListedFile, prior: ListedFile): boolean {
+  try {
+    const left = structureOf(texts.get(storeKey(next.info)) || '');
+    const right = structureOf(texts.get(storeKey(prior.info)) || '');
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not compare ${next.rel}: ${reason}`);
+    return false;
+  }
+}
+
+function definitionOrNull(source: string): Record<string, unknown> | null {
+  try {
+    return parseDefinition(source);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read a definition: ${reason}`);
+    return null;
+  }
+}
+
+function isDef(rel: string): boolean {
+  return rel.endsWith('.defs.ts') && !rel.startsWith('pipeline/') && !rel.startsWith('materialization/');
+}
+
+async function stageCopies(
+  moduleName: string,
+  rows: readonly UnitRow[],
+  oldFiles: readonly ListedFile[],
+  allEqual: boolean,
+): Promise<Array<{ info: Ns5FileInfo; text: string }>> {
+  const wanted = new Set<string>();
+  for (const row of rows) {
+    if (row.verdict !== 'igual') continue;
+    wanted.add(row.rel);
+    const source = row.rel.replace(/\.defs\.ts$/u, '.ts');
+    wanted.add(source);
+    if (row.rel.includes('/controllers/')) wanted.add(source.replace(/\.ts$/u, '.test.ts'));
+    const name = row.rel.split('/').pop()?.replace(/\.defs\.ts$/u, '') || '';
+    for (const file of oldFiles) {
+      if (!file.rel.startsWith('pipeline/agentMaterializeL1/')) continue;
+      if (isSharedMaterialize(file.rel)) continue;
+      if (namesUnit(file.rel, name)) wanted.add(file.rel);
+    }
+  }
+  if (allEqual) {
+    for (const file of oldFiles) {
+      if (isSharedRestore(file.rel)) wanted.add(file.rel);
+    }
+  }
+  const copies: Array<{ info: Ns5FileInfo; text: string }> = [];
+  for (const file of oldFiles) {
+    if (!wanted.has(file.rel)) continue;
+    copies.push({ info: onModule(file.info, `${moduleName}_old`, moduleName), text: await readSourceText(file.info) });
+  }
+  return copies;
+}
+
+function dropsOf(rows: readonly UnitRow[], freshFiles: readonly ListedFile[]): Ns5FileInfo[] {
+  const drops: Ns5FileInfo[] = [];
+  for (const row of rows) {
+    if (row.verdict !== 'mudou' && row.verdict !== 'nova') continue;
+    const base = row.rel.replace(/\.defs\.ts$/u, '');
+    for (const file of freshFiles) {
+      if (file.rel === `${base}.ts` || file.rel === `${base}.test.ts`) drops.push(file.info);
+    }
+  }
+  return drops;
+}
+
+function namesUnit(rel: string, unit: string): boolean {
+  const file = rel.split('/').pop() || '';
+  const stem = file.replace(/\.[^.]+$/u, '');
+  return stem === unit || stem === `${unit}_code` || stem === `${unit}_cases`;
+}
+
+function isSharedMaterialize(rel: string): boolean {
+  return rel === 'pipeline/agentMaterializeL1/registration.json'
+    || rel === 'pipeline/agentMaterializeL1/report.json'
+    || rel.startsWith('pipeline/agentMaterializeL1/seedRows/');
+}
+
+function isSharedRestore(rel: string): boolean {
+  return isSharedMaterialize(rel) || rel.startsWith('materialization/') || rel.includes('/seedRows/');
+}
+
+async function restorePlan(moduleName: string): Promise<void> {
+  const prepared = preparedFile(moduleName);
+  if (!fileExists(prepared)) throw new Error(`missing ${displayPath(prepared)}`);
+  const record = JSON.parse(await readSourceText(prepared)) as PreparedRecord;
+  await writeSourceText(l4File(moduleName, 'pool/l2/web', 'backend'), await readSourceText(savedFile(moduleName, 'pool/l2/web', 'backend')));
+  await writeSourceText(l4File(moduleName, 'pool/l2/web', 'effort'), await readSourceText(savedFile(moduleName, 'pool/l2/web', 'effort')));
+  const planner = l4File(moduleName, 'pool/l1', 'pipeline');
+  if (record.plannerAbsent) {
+    await removeIndexed(planner);
+    return;
+  }
+  await writeSourceText(planner, await readSourceText(savedFile(moduleName, 'pool/l1', 'pipeline')));
+}
+
+function onModule(info: Ns5FileInfo, from: string, to: string): Ns5FileInfo {
+  const folder = info.folder === from ? to : `${to}${info.folder.slice(from.length)}`;
+  return { project: info.project, level: 1, folder, shortName: info.shortName, extension: info.extension };
+}
+
+function listedOf(file: mls.stor.IFileInfo, root: string): ListedFile | null {
+  const info = asInfo(file);
+  const folder = info.folder;
+  if (folder !== root && !folder.startsWith(`${root}/`)) return null;
+  const tail = folder === root ? '' : folder.slice(root.length + 1);
+  const rel = tail ? `${tail}/${info.shortName}${info.extension}` : `${info.shortName}${info.extension}`;
+  return { info, rel };
+}
+
+function storeKey(info: Ns5FileInfo): string {
+  return `${info.project}|${info.level}|${info.folder}|${info.shortName}|${info.extension}`;
+}
+
+function defsFile(moduleName: string, shortName: string): Ns5FileInfo {
+  return {
+    project: moduleFile(moduleName).project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName,
+    extension: '.json',
+  };
+}
+
+function preparedFile(moduleName: string): Ns5FileInfo {
+  return {
+    project: moduleFile(moduleName).project,
+    level: 1,
+    folder: `${moduleName}_old/pipeline/agentNewReleaseL1`,
+    shortName: 'prepared',
+    extension: '.json',
+  };
+}
+
+function l4File(moduleName: string, tail: string, shortName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return { project: base.project, level: 4, folder: `${base.folder}/${tail}`, shortName, extension: '.json' };
+}
+
+function savedFile(moduleName: string, tail: string, shortName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 1,
+    folder: `${moduleName}_old/pipeline/agentNewReleaseL1/saved/l4/${base.folder}/${tail}`,
+    shortName,
+    extension: '.json',
+  };
+}
+
+function listUnder(project: number, rootFolder: string): mls.stor.IFileInfo[] {
+  const files: mls.stor.IFileInfo[] = [];
+  for (const file of Object.values(mls.stor.files || {})) {
+    if (!file || file.status === 'deleted') continue;
+    if (Number(file.project) !== project || Number(file.level) !== 1) continue;
+    const folder = String(file.folder || '');
+    if (folder !== rootFolder && !folder.startsWith(`${rootFolder}/`)) continue;
+    if (!file.shortName || !file.extension) continue;
+    files.push(file);
+  }
+  return files;
+}
+
+function asInfo(file: mls.stor.IFileInfo): Ns5FileInfo {
+  return {
+    project: Number(file.project),
+    level: Number(file.level) as 1,
+    folder: String(file.folder || ''),
+    shortName: String(file.shortName),
+    extension: String(file.extension),
+  };
+}

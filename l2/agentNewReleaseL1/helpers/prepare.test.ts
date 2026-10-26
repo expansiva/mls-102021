@@ -25,61 +25,61 @@ function keyOf(file: { project?: number; level?: number; folder?: string; shortN
   return `${file.project}|${file.level}|${file.folder}|${file.shortName}|${file.extension}`;
 }
 
-function installStor(options?: { failOnCopy?: number }): { files: Record<string, MemFile>; texts: () => Record<string, string> } {
+function installStor(options?: { failOnCopy?: number }): { files: Record<string, MemFile>; texts: () => Record<string, string>; restore: () => void } {
+  const host = (globalThis as { mls: { actualProject: number; events?: { fireFileAction?: (...args: unknown[]) => void }; stor: { files: Record<string, MemFile>; getKeyToFile: typeof keyOf; addOrUpdateFile: (params: MemFile) => Promise<MemFile>; localStor: { setContent: (file: MemFile, info: { content: string }) => Promise<void>; deleteFile: (file: MemFile) => Promise<void> } } } }).mls;
+  const hadEvents = !!host.events;
+  const previousAction = host.events?.fireFileAction;
+  if (!host.events) host.events = { fireFileAction() {} };
+  else if (typeof host.events.fireFileAction !== 'function') host.events.fireFileAction = () => {};
+  const previousFiles = host.stor.files;
+  const previousProject = host.actualProject;
+  const previousKey = host.stor.getKeyToFile;
+  const previousAdd = host.stor.addOrUpdateFile;
+  const previousLocal = host.stor.localStor;
   const files: Record<string, MemFile> = {};
   let copies = 0;
-  const put = (level: number, folder: string, shortName: string, extension: string, content: string) => {
-    const file: MemFile = {
-      project: PROJECT,
-      level,
-      folder,
-      shortName,
-      extension,
-      status: 'published',
-      content,
-      getContent() { return Promise.resolve(this.content); },
-      getValueInfo() { return Promise.resolve({ content: this.content }); },
-    };
-    files[keyOf(file)] = file;
+  host.actualProject = PROJECT;
+  host.stor.files = files;
+  host.stor.getKeyToFile = keyOf;
+  host.stor.addOrUpdateFile = async (params: MemFile) => {
+    const key = keyOf(params);
+    if (!files[key]) {
+      const file: MemFile = {
+        ...params,
+        status: 'new',
+        content: '',
+        getContent() { return Promise.resolve(this.content); },
+        getValueInfo() { return Promise.resolve({ content: this.content }); },
+      };
+      files[key] = file;
+    }
+    return files[key];
   };
-  (globalThis as { mls: unknown }).mls = {
-    actualProject: PROJECT,
-    events: { fireFileAction() {} },
-    stor: {
-      files,
-      getKeyToFile: keyOf,
-      addOrUpdateFile: async (params: MemFile) => {
-        const key = keyOf(params);
-        if (!files[key]) {
-          const file: MemFile = {
-            ...params,
-            status: 'new',
-            content: '',
-            getContent() { return Promise.resolve(this.content); },
-            getValueInfo() { return Promise.resolve({ content: this.content }); },
-          };
-          files[key] = file;
-        }
-        return files[key];
-      },
-      localStor: {
-        setContent: async (file: MemFile, info: { content: string }) => {
-          if (file.level === 1 && String(file.folder).includes('_old') && options?.failOnCopy) {
-            copies += 1;
-            if (copies === options.failOnCopy) throw new Error('disk full');
-          }
-          file.content = info.content;
-          if (file.status === 'new') file.status = 'changed';
-        },
-        deleteFile: async (file: MemFile) => {
-          file.status = 'deleted';
-        },
-      },
+  host.stor.localStor = {
+    setContent: async (file: MemFile, info: { content: string }) => {
+      if (file.level === 1 && String(file.folder).includes('_old') && options?.failOnCopy) {
+        copies += 1;
+        if (copies === options.failOnCopy) throw new Error('disk full');
+      }
+      file.content = info.content;
+      if (file.status === 'new') file.status = 'changed';
+    },
+    deleteFile: async (file: MemFile) => {
+      file.status = 'deleted';
     },
   };
   return {
     files,
     texts: () => Object.fromEntries(Object.values(files).filter(file => file.status !== 'deleted').map(file => [pathOf(file), file.content])),
+    restore() {
+      if (!hadEvents) delete host.events;
+      else if (host.events) host.events.fireFileAction = previousAction;
+      host.stor.files = previousFiles;
+      host.stor.getKeyToFile = previousKey;
+      host.stor.addOrUpdateFile = previousAdd;
+      host.stor.localStor = previousLocal;
+      host.actualProject = previousProject;
+    },
   };
 }
 
@@ -161,8 +161,9 @@ async function run(prompt: string): Promise<string> {
 
 describe('prepare', { concurrency: 1 }, () => {
 
-test('prepare moves every l1 file, writes a creation plan, and rewrites the planner', async () => {
+test('prepare moves every l1 file, writes a creation plan, and rewrites the planner', async (t) => {
   const stor = installStor();
+  t.after(() => stor.restore());
   seed(stor, true);
   const before = stor.texts();
   const result = await run('@@agentNewReleaseL1 tarefas');
@@ -213,8 +214,9 @@ test('prepare moves every l1 file, writes a creation plan, and rewrites the plan
   assert.equal(Object.keys(restored).some(path => path.startsWith('l1/tarefas_old/')), false);
 });
 
-test('prepare refuses when _old exists, effort is missing, or l1 is empty', async () => {
+test('prepare refuses when _old exists, effort is missing, or l1 is empty', async (t) => {
   const oldPresent = installStor();
+  t.after(() => oldPresent.restore());
   seed(oldPresent, true);
   const marker: MemFile = {
     project: PROJECT, level: 1, folder: 'tarefas_old', shortName: 'keep', extension: '.txt', status: 'published', content: 'x',
@@ -225,12 +227,16 @@ test('prepare refuses when _old exists, effort is missing, or l1 is empty', asyn
   assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: l1/tarefas_old already exists');
   assert.equal(oldPresent.texts()['l1/tarefas/note.md'], 'header keep-me\n');
 
+  oldPresent.restore();
   const noEffort = installStor();
+  t.after(() => noEffort.restore());
   seed(noEffort, true);
   delete noEffort.files[keyOf({ project: PROJECT, level: 4, folder: 'tarefas/pool/l4', shortName: 'changeEffort', extension: '.json' })];
   assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: changeEffort.json not found: l4/tarefas/pool/l4/changeEffort.json');
 
+  noEffort.restore();
   const empty = installStor();
+  t.after(() => empty.restore());
   const effortOnly: MemFile = {
     project: PROJECT, level: 4, folder: 'tarefas/pool/l4', shortName: 'changeEffort', extension: '.json', status: 'published', content: '{}\n',
     getContent() { return Promise.resolve(this.content); },
@@ -240,8 +246,9 @@ test('prepare refuses when _old exists, effort is missing, or l1 is empty', asyn
   assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: l1/tarefas has no files');
 });
 
-test('a failure while moving rolls the copies back', async () => {
+test('a failure while moving rolls the copies back', async (t) => {
   const stor = installStor({ failOnCopy: 2 });
+  t.after(() => stor.restore());
   seed(stor, true);
   const before = stor.texts();
   const result = await run('@@agentNewReleaseL1 tarefas');
@@ -249,8 +256,9 @@ test('a failure while moving rolls the copies back', async () => {
   assert.deepEqual(stor.texts(), before);
 });
 
-test('undo removes a planner record that did not exist', async () => {
+test('undo removes a planner record that did not exist', async (t) => {
   const stor = installStor();
+  t.after(() => stor.restore());
   seed(stor, false);
   const before = stor.texts();
   assert.match(await run('@@agentNewReleaseL1 tarefas'), /^done: prepared\n/);
