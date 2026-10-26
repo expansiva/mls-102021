@@ -140,16 +140,18 @@ void test('field changed sem before e after continua abend', () => {
   assert.equal(answer.abend?.reason, 'kind/op fora da v1: field changed');
 });
 
-void test('field changed sem forma e task added abend; grant changed entra na v1', () => {
-  const abendCases: L4DiffItem[] = [
-    { changeId: 'field:attendanceNote', kind: 'field', op: 'changed', entity: 'Consulta', source: 'l4' },
-    { changeId: 'task:abrirAgenda', kind: 'task', op: 'added', entity: '', source: 'l4' },
-  ];
-  for (const item of abendCases) {
-    const answer = describeEffortFrom(input(item), AGENDA);
-    assert.equal(answer.status, 'abend', item.changeId);
-    assert.deepEqual(answer.materialize, []);
-  }
+void test('field changed sem forma abend; task added sem processo fica vazio; grant changed entra na v1', () => {
+  const field = describeEffortFrom(input({
+    changeId: 'field:attendanceNote', kind: 'field', op: 'changed', entity: 'Consulta', source: 'l4',
+  }), AGENDA);
+  assert.equal(field.status, 'abend');
+  assert.deepEqual(field.materialize, []);
+  const task = describeEffortFrom(input({
+    changeId: 'task:abrirAgenda', kind: 'task', op: 'added', entity: '', source: 'l4',
+  }), AGENDA);
+  assert.equal(task.status, 'computed');
+  assert.deepEqual(task.regenerateDefs, []);
+  assert.deepEqual(task.materialize, []);
   const grant = describeEffortFrom(input({
     changeId: 'grant:recepcionista', kind: 'grant', op: 'changed', entity: '', source: 'l4',
   }), AGENDA);
@@ -745,6 +747,114 @@ void test('R5 removed resumoDiario regenerates the seeds that cite it', () => {
   assert.equal(answer.contract, 'keep');
   assert.deepEqual(keysOf(answer.regenerateDefs), ['seeds:seeds']);
   assert.deepEqual(keysOf(answer.materialize), ['seeds:seeds']);
+});
+
+function workflowChange(
+  kind: L4DiffItem['kind'],
+  op: L4DiffItem['op'],
+  changeId: string,
+  entity = '',
+  before?: unknown,
+  after?: unknown,
+): EffortInput {
+  return input({ changeId, kind, op, entity, source: 'l4', before, after }, 'tarefas');
+}
+
+void test('W1 process task and transition text only stay empty', () => {
+  const cases = [
+    workflowChange('process', 'changed', 'process:resumoDiarioTarefas', '', { title: 'Daily', schedule: '0 8 * * *' }, { title: 'Morning', schedule: '0 8 * * *' }),
+    workflowChange('task', 'changed', 'task:processoTarefa.revisar', '', { title: 'Review', description: 'Look' }, { title: 'Check', description: 'Look again' }),
+    workflowChange('transition', 'changed', 'transition:retomar', 'Tarefa', { title: 'Resume', description: 'Back' }, { title: 'Continue', description: 'Back to work' }),
+  ];
+  for (const item of cases) {
+    const info = mock.method(console, 'info', () => undefined);
+    try {
+      const answer = describeEffortFrom(item, TAREFAS);
+      assert.equal(answer.status, 'computed');
+      assert.equal(answer.contract, 'keep');
+      assert.deepEqual(answer.regenerateDefs, []);
+      assert.deepEqual(answer.materialize, []);
+      assert.deepEqual(answer.remove, []);
+      assert.deepEqual(info.mock.calls.map(call => call.arguments), [[item.item.changeId]]);
+    } finally {
+      info.mock.restore();
+    }
+  }
+});
+
+void test('W2 process attribute change regenerates that workflow', () => {
+  const answer = describeEffortFrom(
+    workflowChange('process', 'changed', 'process:resumoDiarioTarefas', '', { schedule: '0 8 * * *' }, { schedule: '0 9 * * *' }),
+    TAREFAS,
+  );
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(keysOf(answer.regenerateDefs), ['workflow:resumoDiarioTarefas']);
+  assert.deepEqual(keysOf(answer.materialize), ['workflow:resumoDiarioTarefas']);
+  assert.deepEqual(answer.regenerateDefs.map(unit => unit.path), [
+    'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts',
+  ]);
+});
+
+void test('W3 task added changed and removed regenerate the process workflow', () => {
+  for (const op of ['added', 'changed', 'removed'] as const) {
+    const answer = describeEffortFrom(
+      workflowChange('task', op, 'task:processoTarefa.revisar', '', { next: 'aceitar' }, { next: 'devolver' }),
+      TAREFAS,
+    );
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(keysOf(answer.regenerateDefs), ['workflow:processoTarefa']);
+    assert.deepEqual(keysOf(answer.materialize), ['workflow:processoTarefa']);
+    assert.deepEqual(answer.remove, []);
+  }
+});
+
+void test('W4 transition retomar cites entity usecase workflow and the requests that use it', () => {
+  const expected = [
+    'entity:tarefa',
+    'request:inicio',
+    'request:minhas_tarefas',
+    'usecase:retomar',
+    'workflow:processoTarefa',
+  ];
+  for (const op of ['removed', 'changed'] as const) {
+    const answer = describeEffortFrom(
+      workflowChange('transition', op, 'transition:retomar', 'Tarefa', { guard: 'open' }, { guard: 'closed' }),
+      TAREFAS,
+    );
+    assert.equal(answer.status, 'computed');
+    assert.equal(answer.contract, 'keep');
+    assert.deepEqual(answer.remove, []);
+    assert.deepEqual(keysOf(answer.regenerateDefs), expected);
+    assert.deepEqual(keysOf(answer.materialize), expected);
+  }
+  const added = describeEffortFrom(workflowChange('transition', 'added', 'transition:retomar', 'Tarefa'), TAREFAS);
+  assert.deepEqual(keysOf(added.regenerateDefs), ['entity:tarefa']);
+  assert.deepEqual(keysOf(added.materialize), ['entity:tarefa']);
+  assert.deepEqual(added.remove, []);
+
+  const devolver = describeEffortFrom(workflowChange('transition', 'removed', 'transition:devolver', 'Tarefa'), TAREFAS);
+  assert.deepEqual(keysOf(devolver.materialize), [
+    'entity:tarefa',
+    'request:inicio',
+    'request:minhas_tarefas',
+    'usecase:devolver',
+    'workflow:processoTarefa',
+  ]);
+  const cancelar = describeEffortFrom(workflowChange('transition', 'removed', 'transition:cancelar', 'Tarefa'), TAREFAS);
+  assert.deepEqual(keysOf(cancelar.materialize), [
+    'entity:tarefa',
+    'request:minhas_tarefas',
+    'request:tarefas_equipe',
+    'usecase:cancelar',
+  ]);
+});
+
+void test('process added stays outside v1', () => {
+  const answer = describeEffortFrom(workflowChange('process', 'added', 'process:resumoDiarioTarefas'), TAREFAS);
+  assert.equal(answer.status, 'abend');
+  assert.match(answer.abend?.reason ?? '', /process added/);
 });
 
 void test('journey actorRef change cites the journey; rule field grant and text stay as they are', () => {

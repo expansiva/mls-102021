@@ -163,6 +163,8 @@ const TEXT_ATTRIBUTES = new Set(['title', 'description']);
 const CITE_VALUE_KEYS = new Set(['name', 'field', 'path', 'column']);
 const NO_FIELD_UNIT = 'no backend unit cites this field';
 const NO_GRANT_UNIT = 'no backend unit cites this grant';
+const NO_WORKFLOW_UNIT = 'no backend workflow def for this process';
+const NO_TRANSITION_UNIT = 'no backend unit cites this transition';
 
 function sameName(left: string, right: string): boolean {
   return left.localeCompare(right, 'en', { sensitivity: 'accent' }) === 0;
@@ -510,6 +512,23 @@ function journeyEffort(input: EffortInput, defs: Record<string, string>): Effort
   return computed(item.changeId, units, units);
 }
 
+const WORKFLOW_KINDS = new Set(['process', 'task', 'transition']);
+
+/**
+ * `process`, `task` or `transition` `changed` whose every difference is `title` or `description`.
+ * No difference counts as text. `isTextOnlyChange` covers `field` only for this check's log.
+ */
+function workflowTextOnly(item: EffortInput['item']): boolean {
+  if (!WORKFLOW_KINDS.has(item.kind) || item.op !== 'changed') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  for (const key of keys) {
+    if (sameJson(item.before[key], item.after[key])) continue;
+    if (!GRANT_TEXT.has(key)) return false;
+  }
+  return true;
+}
+
 /** `changed` whose every difference is `title` or `description`. No difference counts as text. */
 function grantTextOnly(item: EffortInput['item']): boolean {
   if (item.kind !== 'grant' || item.op !== 'changed') return false;
@@ -680,10 +699,104 @@ function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAn
   return computed(item.changeId, sortUnits(picked), sortUnits(regen));
 }
 
+function entityUnitOf(defs: Record<string, string>, entityId: string): EffortUnitRef | null {
+  if (!entityId) return null;
+  let found: EffortUnitRef | null = null;
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (found || artifactType !== 'domainEntity') return;
+    const id = typeof data.entityId === 'string' ? data.entityId : '';
+    if (!id || !sameName(id, entityId)) return;
+    found = { kind: 'entity', id: lowerFirst(id), path: defPath };
+  });
+  return found;
+}
+
+/** Citation is the key, not any string that repeats the id (`uses`, `usecaseId`). */
+function citesTransitionKey(
+  data: Record<string, unknown>,
+  artifactType: string,
+  transitionId: string,
+  operationValue: string,
+  entityId: string,
+): boolean {
+  const walk = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(entry => walk(entry));
+    if (!isRecord(node)) return false;
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === 'string') {
+        if (key === 'transitionId' && value === transitionId) return true;
+        if (key === 'transitionRef' && value === transitionId && artifactType === 'usecase') {
+          const owner = typeof data.entityId === 'string' ? data.entityId : '';
+          if (sameName(owner, entityId)) return true;
+        }
+        if (key === 'operation' && operationValue && value === operationValue) return true;
+        continue;
+      }
+      if (walk(value)) return true;
+    }
+    return false;
+  };
+  return walk(data);
+}
+
+function routeUsesUsecase(data: Record<string, unknown>, usecaseIds: Set<string>): boolean {
+  const requests = Array.isArray(data.requests) ? data.requests : [];
+  return requests.some(request => {
+    if (!isRecord(request) || !Array.isArray(request.uses)) return false;
+    return request.uses.some(use => typeof use === 'string' && usecaseIds.has(use));
+  });
+}
+
+function transitionEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind !== 'transition') return null;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const transitionId = idAfter(item.changeId, 'transition:');
+  const entityId = item.entity;
+  if (item.op === 'added') {
+    const unit = entityUnitOf(defs, entityId);
+    const units = unit ? [unit] : [];
+    return computed(item.changeId, units, units);
+  }
+  const operationValue = entityId && transitionId ? `${entityId}.${transitionId}` : '';
+  const units: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  const usecaseIds = new Set<string>();
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (!transitionId || !citesTransitionKey(data, artifactType, transitionId, operationValue, entityId)) return;
+    if (artifactType === 'domainEntity') {
+      const id = unitId(artifactType, data);
+      if (id) remember(units, seen, { kind: 'entity', id, path: defPath });
+      return;
+    }
+    if (artifactType === 'usecase') {
+      const id = typeof data.usecaseId === 'string' ? data.usecaseId : '';
+      if (!id) return;
+      usecaseIds.add(id);
+      remember(units, seen, { kind: 'usecase', id, path: defPath });
+      return;
+    }
+    if (artifactType === 'workflowProcess') {
+      const processId = typeof data.processId === 'string' ? data.processId : '';
+      if (processId) remember(units, seen, { kind: 'workflow', id: processId, path: defPath });
+    }
+  });
+  if (usecaseIds.size > 0) {
+    eachDefinition(defs, (defPath, artifactType, data) => {
+      if (artifactType !== 'requestService' || !routeUsesUsecase(data, usecaseIds)) return;
+      const pageId = typeof data.pageId === 'string' ? data.pageId : '';
+      if (pageId) remember(units, seen, { kind: 'request', id: pageId, path: defPath });
+    });
+  }
+  const sorted = sortUnits(units);
+  if (sorted.length === 0) console.info(item.changeId, NO_TRANSITION_UNIT);
+  return computed(item.changeId, sorted, sorted);
+}
+
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
-  if (grantTextOnly(input.item) || journeyTextOnly(input.item)) {
+  if (grantTextOnly(input.item) || journeyTextOnly(input.item) || workflowTextOnly(input.item)) {
     console.info(item);
     return computed(item, []);
   }
@@ -703,10 +816,18 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
     const units = workflowUnits(defs, idAfter(item, 'process:'));
     return computed(item, [], [], units);
   }
-  if (kind === 'task' && op === 'removed') {
-    const units = workflowUnits(defs, taskProcessId(item));
+  if (kind === 'process' && op === 'changed') {
+    const units = workflowUnits(defs, idAfter(item, 'process:'));
+    if (units.length === 0) console.info(item, NO_WORKFLOW_UNIT);
     return computed(item, units, units);
   }
+  if (kind === 'task' && (op === 'added' || op === 'changed' || op === 'removed')) {
+    const units = workflowUnits(defs, taskProcessId(item));
+    if (units.length === 0) console.info(item, NO_WORKFLOW_UNIT);
+    return computed(item, units, units);
+  }
+  const transition = transitionEffort(input, defs);
+  if (transition) return transition;
   const field = fieldEffort(input, defs);
   if (field) return field;
   const grant = grantEffort(input, defs);
