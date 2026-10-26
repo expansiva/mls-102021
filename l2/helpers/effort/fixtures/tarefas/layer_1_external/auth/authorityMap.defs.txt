@@ -1,0 +1,47 @@
+/// <mls fileReference="_102047_/l1/tarefas/layer_1_external/auth/authorityMap.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "authorityMap",
+  "artifactId": "authorityMap",
+  "moduleName": "tarefas",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/tarefas/layer_2_application/scope/accessScope.defs.ts"
+  ],
+  "data": {
+    "mapId": "authorityMap",
+    "entries": [
+      {
+        "grantId": "gestorListas",
+        "actorRef": "gestor"
+      },
+      {
+        "grantId": "gestorParticipantes",
+        "actorRef": "gestor"
+      },
+      {
+        "grantId": "gestorTodasTarefas",
+        "actorRef": "gestor"
+      },
+      {
+        "grantId": "membroChecklistPropria",
+        "actorRef": "membroEquipe"
+      },
+      {
+        "grantId": "membroConsultarListas",
+        "actorRef": "membroEquipe"
+      },
+      {
+        "grantId": "membroEscolherResponsavel",
+        "actorRef": "membroEquipe"
+      },
+      {
+        "grantId": "membroTarefasProprias",
+        "actorRef": "membroEquipe"
+      }
+    ]
+  }
+} as const;
+
+export default definition;

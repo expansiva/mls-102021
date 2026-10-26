@@ -140,17 +140,21 @@ void test('field changed sem before e after continua abend', () => {
   assert.equal(answer.abend?.reason, 'kind/op fora da v1: field changed');
 });
 
-void test('field, grant e task added abend', () => {
-  const cases: L4DiffItem[] = [
+void test('field changed sem forma e task added abend; grant changed entra na v1', () => {
+  const abendCases: L4DiffItem[] = [
     { changeId: 'field:attendanceNote', kind: 'field', op: 'changed', entity: 'Consulta', source: 'l4' },
-    { changeId: 'grant:recepcionista', kind: 'grant', op: 'changed', entity: '', source: 'l4' },
     { changeId: 'task:abrirAgenda', kind: 'task', op: 'added', entity: '', source: 'l4' },
   ];
-  for (const item of cases) {
+  for (const item of abendCases) {
     const answer = describeEffortFrom(input(item), AGENDA);
     assert.equal(answer.status, 'abend', item.changeId);
     assert.deepEqual(answer.materialize, []);
   }
+  const grant = describeEffortFrom(input({
+    changeId: 'grant:recepcionista', kind: 'grant', op: 'changed', entity: '', source: 'l4',
+  }), AGENDA);
+  assert.equal(grant.status, 'computed');
+  assert.equal(grant.contract, 'keep');
 });
 
 void test('módulo sem defs abend', () => {
@@ -452,6 +456,108 @@ void test('F5 campo removido regenera e materializa quem cita, sem tabela', () =
   assert.equal(answer.status, 'computed');
   assert.deepEqual(keysOf(answer.regenerateDefs), keys);
   assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+const GRANT_BASE = {
+  grantId: 'membroTarefasProprias',
+  title: 'Tarefas próprias',
+  description: 'Vê as próprias tarefas',
+  actorRef: 'membroEquipe',
+  entityRefs: ['Tarefa'],
+  disclosure: 'fullRecord',
+  dataScope: { mode: 'own' },
+};
+
+function grantItem(
+  op: L4DiffItem['op'],
+  grantId: string,
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  const item: L4DiffItem = { changeId: `grant:${grantId}`, kind: 'grant', op, entity: '', source: 'l4' };
+  if (before) item.before = before;
+  if (after) item.after = after;
+  return input(item, 'tarefas');
+}
+
+void test('A1 grant só com description fica vazio e avisa o item', () => {
+  const before = { ...GRANT_BASE };
+  const after = { ...GRANT_BASE, description: 'Outra frase' };
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = describeEffortFrom(grantItem('changed', 'membroTarefasProprias', before, after), TAREFAS);
+    assert.equal(answer.status, 'computed');
+    assert.equal(answer.contract, 'keep');
+    assert.deepEqual(answer.create, []);
+    assert.deepEqual(answer.remove, []);
+    assert.deepEqual(answer.regenerateDefs, []);
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, ['grant:membroTarefasProprias']);
+    assert.equal(effortPromptFrom(grantItem('changed', 'membroTarefasProprias', before, after), TAREFAS), null);
+  } finally {
+    info.mock.restore();
+  }
+});
+
+void test('A2 dataScope muda regenera quem cita e materializa o request da página', () => {
+  const before = { ...GRANT_BASE, dataScope: { mode: 'own' } };
+  const after = { ...GRANT_BASE, dataScope: { mode: 'all' } };
+  const answer = describeEffortFrom(grantItem('changed', 'membroTarefasProprias', before, after), TAREFAS);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(keysOf(answer.regenerateDefs), [
+    'route:inicio',
+    'route:minhas_tarefas',
+    'shared:accessScope',
+    'shared:authorityMap',
+    'shared:seeds',
+  ]);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'request:inicio',
+    'request:minhas_tarefas',
+    'route:inicio',
+    'route:minhas_tarefas',
+    'shared:accessScope',
+    'shared:authorityMap',
+    'shared:seeds',
+  ]);
+});
+
+void test('A3 grant novo regenera e materializa mapa, escopo e sementes', () => {
+  const after = {
+    grantId: 'membroVeParticipantes',
+    actorRef: 'membroEquipe',
+    entityRefs: ['Participante'],
+    disclosure: 'fullRecord',
+    dataScope: { mode: 'organization' },
+  };
+  const answer = describeEffortFrom(grantItem('added', 'membroVeParticipantes', undefined, after), TAREFAS);
+  const keys = ['shared:accessScope', 'shared:authorityMap', 'shared:seeds'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+  assert.equal(keysOf(answer.materialize).some(key => key.startsWith('route:')), false);
+});
+
+void test('A4 grant removido regenera e materializa quem cita, sem request', () => {
+  const before = { ...GRANT_BASE, grantId: 'membroChecklistPropria' };
+  const answer = describeEffortFrom(grantItem('removed', 'membroChecklistPropria', before), TAREFAS);
+  const keys = [
+    'route:minhas_tarefas',
+    'shared:accessScope',
+    'shared:authorityMap',
+    'shared:seeds',
+  ];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+  assert.equal(effortPromptFrom(grantItem('removed', 'membroChecklistPropria', before), TAREFAS), null);
 });
 
 void test('F6 maxLength materializa escritores e requests de escrita', () => {

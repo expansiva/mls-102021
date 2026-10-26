@@ -162,6 +162,7 @@ const FORM_ATTRIBUTES = new Set(['type', 'values', 'required', 'collection', 'to
 const TEXT_ATTRIBUTES = new Set(['title', 'description']);
 const CITE_VALUE_KEYS = new Set(['name', 'field', 'path', 'column']);
 const NO_FIELD_UNIT = 'no backend unit cites this field';
+const NO_GRANT_UNIT = 'no backend unit cites this grant';
 
 function sameName(left: string, right: string): boolean {
   return left.localeCompare(right, 'en', { sensitivity: 'accent' }) === 0;
@@ -399,6 +400,119 @@ function columnPath(path: string): boolean {
   return path.length > 0 && !path.includes('.');
 }
 
+const GRANT_TEXT = new Set(['title', 'description']);
+const GRANT_LIST_TYPES = new Set(['authorityMap', 'accessScope', 'persistenceSeeds']);
+
+function grantIdOf(changeId: string): string {
+  return idAfter(changeId, 'grant:');
+}
+
+/** `changed` whose every difference is `title` or `description`. No difference counts as text. */
+function grantTextOnly(item: EffortInput['item']): boolean {
+  if (item.kind !== 'grant' || item.op !== 'changed') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  for (const key of keys) {
+    if (sameJson(item.before[key], item.after[key])) continue;
+    if (!GRANT_TEXT.has(key)) return false;
+  }
+  return true;
+}
+
+/** A whole string equal to the grant id or to `grant:<id>`. Not a fragment of prose. */
+function citesGrant(value: unknown, grantId: string): boolean {
+  const prefixed = `grant:${grantId}`;
+  const walk = (node: unknown): boolean => {
+    if (typeof node === 'string') return node === grantId || node === prefixed;
+    if (Array.isArray(node)) return node.some(entry => walk(entry));
+    if (!isRecord(node)) return false;
+    return Object.values(node).some(child => walk(child));
+  };
+  return walk(value);
+}
+
+interface GrantDef {
+  path: string;
+  artifactType: string;
+  artifactId: string;
+  data: Record<string, unknown>;
+}
+
+function grantDefs(defs: Record<string, string>): GrantDef[] {
+  const found: GrantDef[] = [];
+  for (const defPath of Object.keys(defs)) {
+    const parsed = parseDefinitionSource(defs[defPath] ?? '');
+    if (!('definition' in parsed) || !isRecord(parsed.definition)) continue;
+    const definition = parsed.definition;
+    const artifactType = typeof definition.artifactType === 'string' ? definition.artifactType : '';
+    const data = isRecord(definition.data) ? definition.data : null;
+    if (!artifactType || !data) continue;
+    const artifactId = typeof definition.artifactId === 'string' ? definition.artifactId : '';
+    found.push({ path: defPath, artifactType, artifactId, data });
+  }
+  return found;
+}
+
+function sharedUnit(def: GrantDef): EffortUnitRef | null {
+  if (!GRANT_LIST_TYPES.has(def.artifactType) || !def.artifactId) return null;
+  return { kind: 'shared', id: def.artifactId, path: def.path };
+}
+
+function controllerUnit(def: GrantDef): EffortUnitRef | null {
+  if (def.artifactType !== 'httpController') return null;
+  const pageId = typeof def.data.pageId === 'string' ? def.data.pageId : '';
+  if (!pageId) return null;
+  return { kind: 'route', id: pageId, path: def.path };
+}
+
+function requestForPage(defs: GrantDef[], pageId: string): EffortUnitRef | null {
+  for (const def of defs) {
+    if (def.artifactType !== 'requestService') continue;
+    if (def.data.pageId !== pageId) continue;
+    return { kind: 'request', id: pageId, path: def.path };
+  }
+  return null;
+}
+
+function grantEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind !== 'grant') return null;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const grantId = grantIdOf(item.changeId);
+  const parsed = grantDefs(defs);
+  const regenerate: EffortUnitRef[] = [];
+  const materialize: EffortUnitRef[] = [];
+  const seenRegen = new Set<string>();
+  const seenMat = new Set<string>();
+  const takeRegen = (unit: EffortUnitRef | null): void => {
+    if (unit) remember(regenerate, seenRegen, unit);
+  };
+  const takeMat = (unit: EffortUnitRef | null): void => {
+    if (unit) remember(materialize, seenMat, unit);
+  };
+  if (item.op === 'added') {
+    for (const def of parsed) {
+      const unit = sharedUnit(def);
+      takeRegen(unit);
+      takeMat(unit);
+    }
+    if (materialize.length === 0) console.info(item.changeId, NO_GRANT_UNIT);
+    return computed(item.changeId, sortUnits(materialize), sortUnits(regenerate));
+  }
+  for (const def of parsed) {
+    if (!citesGrant(def.data, grantId)) continue;
+    const shared = sharedUnit(def);
+    const controller = controllerUnit(def);
+    const unit = shared ?? controller;
+    if (!unit) continue;
+    takeRegen(unit);
+    takeMat(unit);
+    if (item.op === 'changed' && controller) takeMat(requestForPage(parsed, controller.id));
+  }
+  if (materialize.length === 0) console.info(item.changeId, NO_GRANT_UNIT);
+  return computed(item.changeId, sortUnits(materialize), sortUnits(regenerate));
+}
+
 function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
   const item = input.item;
   if (item.kind !== 'field') return null;
@@ -459,6 +573,10 @@ function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAn
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
+  if (grantTextOnly(input.item)) {
+    console.info(item);
+    return computed(item, []);
+  }
   if (isTextOnlyChange(input.item)) return computed(item, []);
   if (Object.keys(defs).length === 0) return abend(item, NO_DEFS);
   const { kind, op } = input.item;
@@ -481,6 +599,8 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
   }
   const field = fieldEffort(input, defs);
   if (field) return field;
+  const grant = grantEffort(input, defs);
+  if (grant) return grant;
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 
