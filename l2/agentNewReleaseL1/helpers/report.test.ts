@@ -372,11 +372,16 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
   });
   assert.equal(silent.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
   assert.equal(silent.files[keyOf(infoOf(FLOW_TS))].status, 'deleted');
-  assert.notEqual(silent.files[keyOf(infoOf(ENGINE))].status, 'deleted');
-  assert.notEqual(silent.files[keyOf(infoOf(TICK))].status, 'deleted');
+  assert.equal(silent.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.equal(silent.files[keyOf(infoOf(TICK))].status, 'deleted');
   assert.notEqual(silent.files[keyOf(infoOf(OTHER_DEF))].status, 'deleted');
-  assert.equal(silent.message.includes(ENGINE), false);
-  assert.equal(silent.message.includes(TICK), false);
+  assert.equal(silent.message.includes(ENGINE), true);
+  assert.equal(silent.message.includes(TICK), true);
+  const silentLog = JSON.parse(silent.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  const silentSources = silentLog.phases.filter(line => line.phase === 'sources').at(-1);
+  assert.equal(silentSources?.status, 'ok');
+  assert.equal(silentSources?.note.includes(ENGINE), true);
+  assert.equal(silentSources?.note.includes(TICK), true);
 
   const refused = await runRelease(workflowEffort(answer => {
     answer.remove.push(unit('entity', 'tarefa', 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts'));
@@ -417,6 +422,65 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
   const portrait = JSON.parse(generated.files[keyOf(infoOf(SNAPSHOT))].content) as Record<string, string>;
   assert.equal(Object.prototype.hasOwnProperty.call(portrait, FLOW_DEF), false);
   assert.equal(generated.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+  assert.equal(generated.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.equal(generated.files[keyOf(infoOf(TICK))].status, 'deleted');
+  assert.equal(generated.message.includes(ENGINE), true);
+  assert.equal(generated.message.includes(TICK), true);
+});
+
+test('W2 and W3 go through the generator and the check deletes the module engine and clock; a rule effort deletes neither', async () => {
+  const w2Effort = workflowEffort(answer => {
+    answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', FLOW_DEF)];
+    answer.materialize = [unit('workflow', 'resumoDiarioTarefas', FLOW_DEF)];
+  });
+  const w2Started = await runRelease(w2Effort, [FLOW_TS, ENGINE, TICK, SNAPSHOT]);
+  assert.match(w2Started.message, /^done: /u);
+  assert.equal(w2Started.message.includes('@@agentDefsL1'), true);
+  assert.notEqual(w2Started.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  const w2 = await runRelease(w2Effort, [], undefined, { reuse: w2Started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
+  assert.match(w2.message, /^done: /u);
+  assert.equal(w2.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.equal(w2.files[keyOf(infoOf(TICK))].status, 'deleted');
+  assert.notEqual(w2.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+  const w2Log = JSON.parse(w2.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.equal(w2Log.phases.filter(line => line.phase === 'sources').at(-1)?.note.includes(ENGINE), true);
+
+  const w3Effort = workflowEffort(answer => {
+    answer.regenerateDefs = [unit('workflow', 'processoTarefa', OTHER_DEF)];
+    answer.materialize = [unit('workflow', 'processoTarefa', OTHER_DEF)];
+  });
+  const w3Started = await runRelease(w3Effort, [OTHER_TS, ENGINE, SNAPSHOT]);
+  const w3 = await runRelease(w3Effort, [], undefined, { reuse: w3Started.files, prompt: '@@agentNewReleaseL1 tarefas /check' });
+  assert.equal(w3.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.equal(w3.files[keyOf(infoOf(TICK))], undefined);
+  assert.equal(w3.message.includes(TICK), false);
+  assert.equal(w3.message.includes(ENGINE), true);
+
+  const rule = readFileSync(join(HERE, 'fixtures', 'R1.changeEffort.json'), 'utf8');
+  const kept = await runRelease(rule, [REQUEST_TS, USECASE_TS, ENGINE, TICK]);
+  assert.equal(kept.files[keyOf(infoOf(ENGINE))].status, 'changed');
+  assert.equal(kept.files[keyOf(infoOf(TICK))].status, 'changed');
+  assert.equal(kept.message.includes(ENGINE), false);
+  assert.equal(kept.message.includes(TICK), false);
+});
+
+test('a generator check deletes the module engine and clock when the effort regenerates a workflow', async () => {
+  const effort = workflowEffort(answer => {
+    answer.contract = 'change';
+    answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', FLOW_DEF)];
+  });
+  const started = await runRelease(effort, [ENGINE, TICK, SNAPSHOT]);
+  assert.notEqual(started.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.notEqual(started.files[keyOf(infoOf(TICK))].status, 'deleted');
+  const checked = await runRelease(effort, [], undefined, {
+    reuse: started.files,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(checked.message, /^done: /u);
+  assert.equal(checked.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.equal(checked.files[keyOf(infoOf(TICK))].status, 'deleted');
+  const log = JSON.parse(checked.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.equal(log.phases.filter(line => line.phase === 'sources').at(-1)?.note.includes(TICK), true);
 });
 
 test('a call without a module is a refusal on a completed step', async () => {

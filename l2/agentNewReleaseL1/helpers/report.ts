@@ -85,7 +85,7 @@ function scopeCommand(moduleName: string): string {
 
 /** Deleted `.ts` paths, then one materialize command for the module. No created or changed path says nothing to materialize. */
 export function reportMaterialize(moduleName: string, changed: readonly string[], deleted: readonly string[]): string {
-  if (changed.length === 0) return 'nothing to materialize';
+  if (changed.length === 0) return deleted.length > 0 ? deleted.join('\n') : 'nothing to materialize';
   return [...deleted, scopeCommand(moduleName)].join('\n');
 }
 

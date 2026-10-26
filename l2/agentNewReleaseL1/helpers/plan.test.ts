@@ -80,6 +80,7 @@ test('R1 adds the rule on createTarefa and only on cmdCriarTarefa', () => {
     'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts',
   ]);
   assert.deepEqual(plan.targets, paths);
+  assert.equal(plan.flow, false);
   const usecase = dataOf(plan.edits[1]!.source);
   const applied = usecase.rulesApplied as string[];
   assert.equal(applied[applied.length - 1], 'novaTarefaPrioridadeMedia');
@@ -252,6 +253,7 @@ test('a workflow remove is accepted and a remove that is not a workflow is refus
   if (!plan.ok) return;
   assert.equal(plan.path, 'def-edit');
   assert.deepEqual(plan.removes, [flow]);
+  assert.equal(plan.flow, true);
   assert.deepEqual(plan.edits, []);
   assert.deepEqual(plan.targets, []);
 
@@ -377,5 +379,30 @@ test('a removed flow with its task item is applied: the regenerate of the remove
   if (!plan.ok) return;
   assert.equal(plan.path, 'def-edit');
   assert.deepEqual(plan.removes, [flow]);
+  assert.equal(plan.flow, true);
   assert.deepEqual(plan.targets, []);
+});
+
+test('W2 and W3 mark flow when a workflow is regenerated and a rule effort does not', () => {
+  const resumo = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+  const processo = 'l1/tarefas/layer_2_application/workflows/processoTarefa.defs.ts';
+  const w2 = planNewReleaseL1(reseal(mutate(loadEffort('R3.changeEffort.json'), answer => {
+    answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', resumo)];
+    answer.materialize = [unit('workflow', 'resumoDiarioTarefas', resumo)];
+  })), MASTER, DEFS);
+  assert.equal(w2.ok, true, w2.ok ? '' : w2.reason);
+  if (!w2.ok) return;
+  assert.equal(w2.flow, true);
+  assert.equal(w2.path, 'generator');
+  assert.deepEqual(w2.allowed, [resumo]);
+
+  const w3 = planNewReleaseL1(reseal(mutate(loadEffort('R3.changeEffort.json'), answer => {
+    answer.regenerateDefs = [unit('workflow', 'processoTarefa', processo)];
+    answer.materialize = [unit('workflow', 'processoTarefa', processo)];
+  })), MASTER, DEFS);
+  assert.equal(w3.ok, true, w3.ok ? '' : w3.reason);
+  if (!w3.ok) return;
+  assert.equal(w3.flow, true);
+  assert.equal(w3.path, 'generator');
+  assert.deepEqual(w3.allowed, [processo]);
 });

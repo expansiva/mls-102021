@@ -18,7 +18,7 @@ export interface NewReleaseEdit {
 export type NewReleasePath = 'def-edit' | 'generator';
 
 export type NewReleasePlan =
-  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[]; removes: string[] }
+  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[]; removes: string[]; flow: boolean }
   | { ok: false; reason: string };
 
 const APPLIED = new Set(['usecase', 'entity', 'request']);
@@ -41,12 +41,16 @@ export function planNewReleaseL1(
     return { ok: false, reason: `change effort has no answer from master ${masterProject}` };
   }
   const refusals: string[] = [];
-  const generator = file.status === 'contract' || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)));
+  // A workflow def to regenerate comes from the defs generator, like a new route: the def-edit path writes no workflow def.
+  const generator = file.status === 'contract'
+    || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)))
+    || answers.some(answer => answer.regenerateDefs.some(unit => unit.kind === 'workflow'));
   for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
   if (refusals.length > 0) return { ok: false, reason: refusals.join('\n') };
   const removes = workflowRemoves(answers);
+  const flow = flowOf(answers, removes);
   if (generator) {
-    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs), removes };
+    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs), removes, flow };
   }
 
   const sources = { ...defs };
@@ -64,7 +68,18 @@ export function planNewReleaseL1(
       if (applied.edit) edits.push(applied.edit);
     }
   }
-  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [], removes };
+  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [], removes, flow };
+}
+
+/** A workflow unit in this master's answers, or any workflow removal, rebuilds the module engine and clock. */
+function flowOf(answers: EffortAnswer[], removes: readonly string[]): boolean {
+  if (removes.length > 0) return true;
+  for (const answer of answers) {
+    for (const unit of [...answer.create, ...answer.regenerateDefs, ...answer.materialize]) {
+      if (unit.kind === 'workflow') return true;
+    }
+  }
+  return false;
 }
 
 function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<string, string>, generator: boolean): string[] {
