@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import type { D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
-import { createD1AgentStep, createEntryPipeline, pipelineFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
+import { createD1AgentStep, createEntryPipeline, pipelineFile, unitsFile } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
@@ -263,6 +263,105 @@ void test('resolve25 with no open part calls no model', async () => {
   assert.equal(intents.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-done'), true);
   const receipt = await readResolveReceipt(PROJECT, MODULE);
   assert.deepEqual([receipt?.llmCalls, receipt?.routes.length], [0, 0]);
+});
+
+function withThirdRoute(host: TestHost): void {
+  const file = contractFile(host, 'movimentacoes');
+  file.content = file.content.replace(
+    "'controleEstoque.movimentacoes.load': {",
+    `'controleEstoque.movimentacoes.loadCopia': {
+    kind: 'qry';
+    input: { produtoId?: string; page?: number; pageSize?: number };
+    output: { movimentacoes: MovimentacaoEstoqueLoad[]; produtos: ProdutoLoad[]; pageHistoricoMovimentacoes: number; pageSizeHistoricoMovimentacoes: number; hasMoreHistoricoMovimentacoes: boolean };
+    meta: { output: { movimentacoes: { entity: 'MovimentacaoEstoque'; many: true }; produtos: { entity: 'Produto'; many: true } }; lists: { historicoMovimentacoes: { key: 'movimentacoes'; page: 'pageHistoricoMovimentacoes'; pageSize: 'pageSizeHistoricoMovimentacoes'; hasMore: 'hasMoreHistoricoMovimentacoes' } }; params: { produtoId: { filters: 'movimentacoes'; field: 'produtoId' }; page: { pages: 'historicoMovimentacoes' }; pageSize: { pages: 'historicoMovimentacoes' } } };
+    rules: ['movimentacaoEstoqueImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo', 'quantidadeMinimaValida', 'saldoAtualProduto', 'avisoSaldoMinimoProduto'];
+    access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
+  };
+  'controleEstoque.movimentacoes.load': {`,
+  );
+}
+
+async function writeScope(units: string[]): Promise<void> {
+  await writeJson(unitsFile(PROJECT, MODULE), { schemaVersion: 1, units });
+}
+
+void test('resolve25 with a unit list asks only the listed route', async () => {
+  await readyHost(withThirdRoute);
+  const run = await throughInput();
+  const open = resolveUnits(await readD1InputArtifacts(PROJECT, MODULE));
+  assert.equal(open.length, 3);
+  const listed = open[0];
+  await writeScope([`route:${listed.route}`]);
+  const intents = await resolveMain(run);
+  const args = workerArgsOf(intents);
+  assert.equal(args.length, 1);
+  assert.match(JSON.stringify(intents), /1 routes were asked\. 2 routes were not asked because they are outside the list/);
+  const work = await readResolveWork(PROJECT, MODULE);
+  assert.ok(work);
+  assert.equal(work.units.length, 3);
+  await answer(run, agentStep(251, args[0]), gap => gap.candidates[0]);
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(290, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  assert.equal(receipt.llmCalls, 1);
+  assert.equal(receipt.routes.length, 3);
+  const asked = receipt.routes.find(row => row.route === listed.route);
+  assert.ok(asked);
+  assert.equal(asked.answers.every(item => item.call === `resolve25-worker-${listed.unitId}`), true);
+  for (const row of receipt.routes.filter(item => item.route !== listed.route)) {
+    for (const item of row.answers) assert.deepEqual([item.choice, item.call], [D1_GAP_NONE, ''], item.path);
+  }
+});
+
+void test('resolve25 with a unit list that names no route calls no model', async () => {
+  await readyHost(withThirdRoute);
+  const run = await throughInput();
+  await writeScope(['usecase:one']);
+  const intents = await resolveMain(run);
+  assert.equal(workerArgsOf(intents).length, 0);
+  assert.equal(intents.some(intent => intent.type === 'add-step' && intent.step.planning?.planId === 'resolve25-fanout'), false);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  assert.equal(receipt.llmCalls, 0);
+  assert.equal(receipt.routes.length, 3);
+});
+
+void test('resolve25 reuses a previous answer for a route outside the unit list', async () => {
+  await readyHost(withThirdRoute);
+  const run = await throughInput();
+  const open = resolveUnits(await readD1InputArtifacts(PROJECT, MODULE));
+  assert.equal(open.length, 3);
+  const intents = await resolveMain(run);
+  const args = workerArgsOf(intents);
+  const work = await readResolveWork(PROJECT, MODULE);
+  assert.ok(work);
+  for (const [index, unit] of work.units.entries()) {
+    const route = await routeOf(unit.route);
+    await answer(run, agentStep(251 + index * 10, args[index]), gap => metaResolver(route, gap));
+  }
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(290, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const previous = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(previous);
+  const keptRoute = open[1].route;
+  const askedRoute = open[0].route;
+  await writeResolveReceipt({
+    ...previous,
+    routes: previous.routes.filter(row => row.route !== askedRoute),
+  });
+  await writeScope([`route:${askedRoute}`]);
+  const again = await resolveMain(run);
+  const againArgs = workerArgsOf(again);
+  assert.equal(againArgs.length, 1);
+  await answer(run, agentStep(400, againArgs[0]), gap => gap.candidates[0]);
+  await run.agent.beforePromptStep!(meta(), run.ctx, run.parent, agentStep(410, JSON.stringify({ planId: 'resolve25-barrier', moduleName: MODULE, project: PROJECT, command: 'run' }), 'resolve25-barrier'), run.seq++);
+  const receipt = await readResolveReceipt(PROJECT, MODULE);
+  assert.ok(receipt);
+  const reused = receipt.routes.find(row => row.route === keptRoute);
+  const prior = previous.routes.find(row => row.route === keptRoute);
+  assert.ok(reused && prior);
+  assert.deepEqual(reused.answers.map(item => item.choice), prior.answers.map(item => item.choice));
+  assert.equal(receipt.routes.length, 3);
+  assert.equal(receipt.llmCalls, 1);
 });
 
 void test('resolve25 refuses sources that changed after input20 sealed them', async () => {

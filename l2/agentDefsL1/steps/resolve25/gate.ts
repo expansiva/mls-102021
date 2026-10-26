@@ -206,14 +206,17 @@ export function unaskedGaps(
 /**
  * True when every gap `applyResolutions` still opens, with this receipt's choices, is already on the receipt.
  * A choice that closed its gap may stay on the receipt. A new path the choices opened is not covered.
+ * `routes`, when set, limits that check to those route ids (a unit list). An empty set matches nothing.
  */
 export function receiptAnswersDerived(
   receipt: D1ResolveReceipt,
   artifacts: Pick<D1InputArtifacts, 'contractTexts' | 'entities'>,
+  routes: ReadonlySet<string> | null = null,
 ): boolean {
   const byRoute = new Map(receipt.routes.map(row => [row.route, row.answers]));
   for (const [, definition] of readContractV2(artifacts.contractTexts)) {
     for (const route of definition.routes) {
+      if (routes && !routes.has(route.route)) continue;
       const answers = byRoute.get(route.route) || [];
       const derived = applyResolutions(
         { route, definition, entities: artifacts.entities },

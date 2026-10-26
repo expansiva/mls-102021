@@ -1,9 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/resolve25/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { D1_RESOLVE_VERSION, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
-import { buildResolveReceipt, keptRoutes } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
+import { buildResolveReceipt, keptRoutes, receiptAnswersDerived } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
 
 function gapKey(route: string, path: string, reason: string, candidates: string[]): string {
   return JSON.stringify([route, path, 'usecase', reason, [...candidates].sort()]);
@@ -69,5 +72,24 @@ describe('keptRoutes', () => {
       gap('campo', 'onde', ['desconto', 'none'], 'g1'),
     ]);
     assert.equal(keptRoutes(receipt, [more]).size, 0);
+  });
+});
+
+describe('receiptAnswersDerived', () => {
+  const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/controleEstoque-39a5166/l2/controleEstoque/web/contracts/movimentacoes.defs.txt'), 'utf8');
+  const artifacts = { contractTexts: { movimentacoes: source }, entities: {} as Record<string, unknown> };
+  const empty: D1ResolveReceipt = {
+    schemaVersion: D1_RESOLVE_VERSION,
+    project: 1,
+    moduleName: 'm',
+    sourceKey: 'src',
+    llmCalls: 9,
+    routes: [],
+  };
+
+  it('with a route set ignores gaps on every other route', () => {
+    assert.equal(receiptAnswersDerived(empty, artifacts), false);
+    assert.equal(receiptAnswersDerived(empty, artifacts, new Set()), true);
+    assert.equal(receiptAnswersDerived(empty, artifacts, new Set(['controleEstoque.movimentacoes.load'])), false);
   });
 });
