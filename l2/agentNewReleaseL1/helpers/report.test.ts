@@ -86,8 +86,8 @@ test('R4 first call names the effort units and the defs run followed by /check',
   if (!plan.ok) return;
   assert.equal(plan.path, 'generator');
   const message = reportGeneratorStart('tarefas', generatorUnits(effort, MASTER));
-  assert.match(message, /route exportarTarefas l1\/tarefas\/layer_2_application\/requests\/tarefas_equipe\.defs\.ts/u);
-  assert.match(message, /usecase exportarTarefas l1\/tarefas\/layer_2_application\/usecases\/exportarTarefas\.defs\.ts/u);
+  assert.match(message, /route exportarTarefas: units l1\/tarefas\/layer_2_application\/requests\/tarefas_equipe\.defs\.ts/u);
+  assert.match(message, /usecase exportarTarefas: units l1\/tarefas\/layer_2_application\/usecases\/exportarTarefas\.defs\.ts/u);
   assert.equal(message.includes('/run'), false);
   assert.match(message, /@@agentDefsL1 tarefas \/units route:exportarTarefas usecase:exportarTarefas request:tarefas_equipe/u);
   assert.match(message, /@@agentNewReleaseL1 tarefas \/check/u);
@@ -342,6 +342,7 @@ const TICK = 'l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts';
 const SNAPSHOT = 'l1/tarefas/pipeline/agentNewReleaseL1/snapshot.json';
 const PIPELINE = 'l1/tarefas/pipeline/agentDefsL1/pipeline.json';
 const INPUT20 = 'l1/tarefas/pipeline/agentDefsL1/input20.json';
+const REPORT = 'l1/tarefas/pipeline/agentDefsL1/report.json';
 
 function putHost(files: Record<string, HostFile>, productPath: string, content: string): void {
   const file = infoOf(productPath, content);
@@ -391,7 +392,8 @@ test('removing resumoDiarioTarefas deletes the flow and the generated files that
     },
   });
   assert.match(cited.message, /^done: /u);
-  assert.equal(cited.message.trim().split('\n').at(-1), '@@agentMaterializeL1 {"scope":"tarefas"}');
+  assert.match(cited.message, /@@agentMaterializeL1 \{"scope":"tarefas"\}/u);
+  assert.equal(cited.message.trim().split('\n').at(-1), 'outside effort: 0');
   for (const path of [FLOW_DEF, FLOW_TS, ENGINE, TICK]) assert.equal(cited.files[keyOf(infoOf(path))].status, 'deleted');
   assert.notEqual(cited.files[keyOf(infoOf(OTHER_DEF))].status, 'deleted');
   assert.notEqual(cited.files[keyOf(infoOf(OTHER_TS))].status, 'deleted');
@@ -688,6 +690,8 @@ test('a check keeps the portrait allow-list after the generator drops the field 
   });
   assert.match(outside.message, /^failed: changed outside the plan:/u);
   assert.match(outside.message, /usecases\/createTarefa\.defs\.ts/u);
+  assert.match(outside.message, /outside effort: 1/u);
+  assert.match(outside.message, /usecases\/createTarefa\.defs\.ts: not in the effort plan/u);
   assert.equal(outside.message.includes('@@agentMaterializeL1'), false);
   assert.notEqual(outside.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
 
@@ -703,14 +707,102 @@ test('a check keeps the portrait allow-list after the generator drops the field 
 
   rewriteRequest(started.files);
   releaseGenerator(started.files);
+  const pricedFiles = cloneHost(started.files);
+  putHost(pricedFiles, REPORT, JSON.stringify({
+    cost: {
+      total: 0.33,
+      byPhase: {
+        usecases50: { calls: 1, cost: 0.3 },
+        resolve25: { calls: 2, cost: 0.03 },
+      },
+    },
+  }));
   const checked = await runRelease(effort, [], undefined, {
     reuse: started.files,
     prompt: '@@agentNewReleaseL1 tarefas /check',
   });
   assert.match(checked.message, /^done: /u);
   assert.equal(checked.message.includes('changed outside the plan'), false);
+  assert.match(checked.message, /model calls: none/u);
+  assert.equal(checked.message.trim().split('\n').at(-1), 'outside effort: 0');
   assert.equal(checked.files[keyOf(infoOf(REQUEST_TS))].status, 'deleted');
   assert.equal(checked.files[keyOf(infoOf(ENTITY_TS))].status, 'deleted');
   assert.equal(checked.files[keyOf(infoOf(REPOSITORY_TS))].status, 'deleted');
   assert.equal(checked.files[keyOf(infoOf(SNAPSHOT))].status, 'deleted');
+
+  const priced = await runRelease(effort, [], undefined, {
+    reuse: pricedFiles,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(priced.message, /model calls: resolve25 2 \$0\.0300; usecases50 1 \$0\.3000; total \$0\.3300/u);
+  assert.equal(priced.message.trim().split('\n').at(-1), 'outside effort: 0');
+});
+
+const SEEDS_DEFS = 'l1/tarefas/layer_1_external/adapters/persistence/seeds.defs.ts';
+const FLOW_ONLY = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+
+function removalEffort(items: L4DiffItem[], fill: (answer: EffortAnswer, item: L4DiffItem) => void): ChangeEffortFile {
+  const file = JSON.parse(readFileSync(join(HERE, 'fixtures', 'R1.changeEffort.json'), 'utf8')) as ChangeEffortFile;
+  file.request.items = items;
+  file.perItem = items.map(item => ({
+    item: item.changeId,
+    answers: file.masters.map(master => {
+      const answer: EffortAnswer = {
+        master,
+        item: item.changeId,
+        status: 'computed',
+        create: [],
+        regenerateDefs: [],
+        materialize: [],
+        remove: [],
+        runAgents: [],
+        contract: 'keep',
+      };
+      if (master.project === MASTER) fill(answer, item);
+      return answer;
+    }),
+  }));
+  return reseal(file);
+}
+
+test('the mechanical maintenance slice lists each unit and outside effort 0', async () => {
+  const fieldId = 'details.etiquetas';
+  const items: L4DiffItem[] = [
+    { changeId: 'rule:resumoDiarioOitoHoras', kind: 'rule', op: 'removed', entity: '', source: 'rules.defs.ts', before: { ruleId: 'resumoDiarioOitoHoras' } },
+    { changeId: `field:${fieldId}`, kind: 'field', op: 'removed', entity: 'Tarefa', source: 'ontology/Tarefa.defs.ts', before: { fieldId } },
+    { changeId: 'process:resumoDiarioTarefas', kind: 'process', op: 'removed', entity: '', source: 'workflows.defs.ts' },
+    { changeId: 'journey:resumoDiario', kind: 'journey', op: 'removed', entity: '', source: 'journeys.defs.ts', before: { journeyId: 'resumoDiario' } },
+  ];
+  const effort = removalEffort(items, (answer, item) => {
+    if (item.changeId === 'rule:resumoDiarioOitoHoras') {
+      answer.regenerateDefs = [unit('entity', 'tarefa', ENTITY_DEFS)];
+      answer.materialize = [unit('entity', 'tarefa', ENTITY_DEFS)];
+    }
+    if (item.changeId === `field:${fieldId}`) {
+      answer.regenerateDefs = [
+        unit('entity', 'tarefa', ENTITY_DEFS),
+        unit('repository', 'tarefaRepository', REPOSITORY_DEFS),
+        unit('usecase', 'createTarefa', USECASE_DEFS),
+        unit('usecase', 'updateTarefa', 'l1/tarefas/layer_2_application/usecases/updateTarefa.defs.ts'),
+      ];
+      answer.materialize = answer.regenerateDefs.map(row => ({ ...row }));
+    }
+    if (item.changeId === 'process:resumoDiarioTarefas') {
+      answer.remove = [unit('workflow', 'resumoDiarioTarefas', FLOW_ONLY)];
+    }
+    if (item.changeId === 'journey:resumoDiario') {
+      answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS_DEFS)];
+      answer.materialize = [unit('seeds', 'seeds', SEEDS_DEFS)];
+    }
+  });
+  const ran = await runRelease(JSON.stringify(effort), [ENTITY_TS, REPOSITORY_TS, FLOW_ONLY, FLOW_TS]);
+  assert.match(ran.message, /^done: /u);
+  assert.equal(ran.message.includes('@@agentDefsL1'), false);
+  assert.match(ran.message, new RegExp(`entity tarefa: edit ${ENTITY_DEFS.replace(/[.]/gu, '\\.')}`));
+  assert.match(ran.message, new RegExp(`entity tarefa: removed field ${ENTITY_DEFS.replace(/[.]/gu, '\\.')}`));
+  assert.match(ran.message, new RegExp(`repository tarefaRepository: removed field ${REPOSITORY_DEFS.replace(/[.]/gu, '\\.')}`));
+  assert.match(ran.message, new RegExp(`seeds seeds: removed journey ${SEEDS_DEFS.replace(/[.]/gu, '\\.')}`));
+  assert.match(ran.message, new RegExp(`usecase createTarefa: materialize ${USECASE_DEFS.replace(/[.]/gu, '\\.')}`));
+  assert.match(ran.message, new RegExp(FLOW_ONLY.replace(/[.]/gu, '\\.')));
+  assert.equal(ran.message.trim().split('\n').at(-1), 'outside effort: 0');
 });

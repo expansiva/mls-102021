@@ -11,12 +11,15 @@ import {
 } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
 import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
 import {
+  checkUnitLines,
   editNotes,
+  formatModelCalls,
+  mechanicalUnitLines,
   parseNewReleaseInvocation,
+  reportCheck,
   reportCheckWithoutGenerator,
   reportDeleteFailed,
   reportGeneratorStart,
-  reportMaterialize,
   reportMissingSnapshot,
   reportNewRelease,
   reportOutside,
@@ -88,7 +91,7 @@ async function beforePromptImplicit(
     const plan = planNewReleaseL1(effort, masterProject, defs);
     if (invocation.check) {
       phase = 'guard';
-      return await checkAfterGenerator(agent, context, moduleName, defs, plan);
+      return await checkAfterGenerator(agent, context, moduleName, defs, plan, effort, masterProject);
     }
 
     if (!plan.ok) return await close(agent, context, moduleName, phase, 'refused', plan.reason);
@@ -122,7 +125,10 @@ async function beforePromptImplicit(
       const portrait = snapshotFile(moduleName);
       await writeJson(portrait, await portraitFile(moduleName, defs, plan.allowed));
       await recordPhase(moduleName, phase, 'ok', 'written');
-      return finish(agent, context, 'done', reportGeneratorStart(moduleName, plan.units, deletedSources));
+      const touched = mechanicalUnitLines(effort, masterProject, plan.edits.map(edit => edit.path));
+      const started = reportGeneratorStart(moduleName, plan.units, deletedSources);
+      const message = touched.length > 0 ? `${touched.join('\n')}\n${started}` : started;
+      return finish(agent, context, 'done', message);
     }
 
     const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
@@ -152,7 +158,8 @@ async function beforePromptImplicit(
     if (!removedFlow.ok) return await close(agent, context, moduleName, phase, 'failed', removedFlow.message);
     const deletedSources = [...removedFirst, ...removed.deleted, ...removedFlow.deleted];
     await recordPhase(moduleName, phase, 'ok', deletedSources.join('\n'));
-    return finish(agent, context, 'done', reportNewRelease(notes, moduleName, deletedSources));
+    const touched = mechanicalUnitLines(effort, masterProject, plan.edits.map(edit => edit.path));
+    return finish(agent, context, 'done', `${reportNewRelease(notes, moduleName, deletedSources)}\n${touched.join('\n')}${touched.length > 0 ? '\n' : ''}outside effort: 0`);
   } catch (error) {
     const message = messageOf(error);
     let note = message;
@@ -173,6 +180,8 @@ async function checkAfterGenerator(
   moduleName: string,
   defs: Record<string, string>,
   plan: ReturnType<typeof planNewReleaseL1>,
+  effort: ChangeEffortFile,
+  masterProject: string,
 ): Promise<mls.msg.AgentIntent[]> {
   if (!plan.ok) return await close(agent, context, moduleName, 'plan', 'refused', plan.reason);
   await recordPhase(moduleName, 'plan', 'ok', plan.path);
@@ -211,7 +220,9 @@ async function checkAfterGenerator(
   await recordPhase(moduleName, 'sources', 'ok', deletedSources.join('\n'));
   await deletePortrait(portrait);
   await recordPhase(moduleName, 'guard', 'ok', 'checked');
-  return finish(agent, context, 'done', reportMaterialize(moduleName, createdOrChanged, deletedSources));
+  const units = checkUnitLines(effort, masterProject, createdOrChanged, changedByGenerator, defs);
+  const modelCalls = formatModelCalls(await readOptionalJson(defsStateFile(moduleName, 'report')));
+  return finish(agent, context, 'done', reportCheck(moduleName, createdOrChanged, deletedSources, { units, modelCalls }));
 }
 
 async function writeEdits(
@@ -302,7 +313,7 @@ async function deleteIndexed(
 }
 
 /** `l1/<module>/pipeline/agentDefsL1/<shortName>.json`. */
-function defsStateFile(moduleName: string, shortName: 'pipeline' | 'input20'): Ns5FileInfo {
+function defsStateFile(moduleName: string, shortName: 'pipeline' | 'input20' | 'report'): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
