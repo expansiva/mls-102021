@@ -962,8 +962,12 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
         const beforeHas = Object.prototype.hasOwnProperty.call(beforeCaps, capId);
         const afterHas = Object.prototype.hasOwnProperty.call(afterCaps, capId);
         if (beforeHas && afterHas) {
-          if (!sameJson(beforeCaps[capId], afterCaps[capId])) return entityUnhandled(item.changeId, key);
-          continue;
+          const was = beforeCaps[capId];
+          const now = afterCaps[capId];
+          if (sameJson(was, now)) continue;
+          // A capability value is its sentence. A new sentence for an id that stays is prose.
+          if (typeof was === 'string' && typeof now === 'string') continue;
+          return entityUnhandled(item.changeId, key);
         }
         for (const unit of unitsCitingText(defs, capId)) remember(picked, seen, unit);
       }

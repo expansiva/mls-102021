@@ -977,6 +977,38 @@ const ENTITY_BASE = {
   storage: { table: 'tarefa' },
 };
 
+void test('a capability that stays with a new sentence is prose; a non-text value that changes still abends', () => {
+  const cited = ['entity:tarefa', 'request:inicio', 'usecase:createTarefa', 'usecase:updateTarefa'];
+  const before = {
+    ...ENTITY_BASE,
+    capabilities: { create: 'Registra a tarefa.', 'tarefas.resumoDiario': 'Todo dia as 8h.' },
+  };
+  const m3 = describeEffortFrom(entityItem(before, {
+    ...before,
+    description: 'Sem etiquetas',
+    capabilities: { create: 'Registra a tarefa sem etiquetas.' },
+    rules: ['devolucaoExigeMotivo'],
+  }), TAREFAS);
+  assert.equal(m3.status, 'computed');
+  assert.deepEqual(keysOf(m3.regenerateDefs), cited);
+  assert.deepEqual(keysOf(m3.materialize), cited);
+
+  const phraseOnly = describeEffortFrom(entityItem(before, {
+    ...before,
+    capabilities: { ...before.capabilities, create: 'Outra frase.' },
+  }), TAREFAS);
+  assert.equal(phraseOnly.status, 'computed');
+  assert.deepEqual(phraseOnly.materialize, []);
+  assert.deepEqual(phraseOnly.regenerateDefs, []);
+
+  const object = describeEffortFrom(entityItem(ENTITY_BASE, {
+    ...ENTITY_BASE,
+    capabilities: { 'tarefas.resumoDiario': { enabled: false } },
+  }), TAREFAS);
+  assert.equal(object.status, 'abend');
+  assert.equal(object.abend?.reason, 'entity Tarefa changed in capabilities; not handled yet');
+});
+
 void test('entity changed answers by attribute', () => {
   const cited = [
     'entity:tarefa',
