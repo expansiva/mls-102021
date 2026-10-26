@@ -146,7 +146,11 @@ export async function entityNames(ctx: M12Context): Promise<M12EntityNames[]> {
   for (const item of ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity')) {
     const entityId = String(item.definition.data.entityId ?? item.definition.artifactId);
     const names = ontologyNames(entityId, await ctx.read(ontologyRef(item.definition, item.outputRef)));
-    if (names) out.push(names);
+    if (!names) continue;
+    // `derived` on an MDM entity means the platform keeps the field. A read through `ctx.mdm` is legitimate,
+    // so those paths stay out of the usecase gate. A module entity with a port still contributes its paths.
+    if (item.definition.data.storageTarget === 'mdm') names.derived = [];
+    out.push(names);
   }
   return out;
 }
@@ -257,9 +261,22 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     const ruleIds = citedBy.get(String(item.definition.data.entityId ?? ''));
     if (!ruleIds || sent.has(item.defRef)) continue;
     const generated = await readOptional(item.output);
-    parts.push(section(`Entity cited by a rule: ${item.definition.artifactType} ${item.definition.artifactId} (${ruleIds.join(', ')})`, [
-      `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`. Read its records through this port and its fields by these names.`,
-      generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(item.definition.data, null, 2)),
+    const shown = generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(item.definition.data, null, 2));
+    const heading = `Entity cited by a rule: ${item.definition.artifactType} ${item.definition.artifactId} (${ruleIds.join(', ')})`;
+    const importFrom = `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`;
+    if (item.definition.artifactType === 'domainEntity' && item.definition.data.storageTarget === 'mdm') {
+      const citedOntology = await ctx.read(ontologyRef(item.definition, item.outputRef));
+      parts.push(section(heading, [
+        importFrom,
+        'Read it from the platform MDM; it has no repository port in this module.',
+        mdmContextSection(ctx.run.module, await ctx.read(MDM_ONTOLOGY_REF), await ctx.read(MDM_FACADE_REF), [], await ctx.read(MDM_MODULE_REF), entitySubtype(citedOntology)),
+        shown,
+      ].join('\n\n')));
+      continue;
+    }
+    parts.push(section(heading, [
+      `${importFrom} Read its records through this port and its fields by these names.`,
+      shown,
     ].join('\n\n')));
   }
   // A sibling the recipe derived for the same entity: how this codebase reads ports and builds outputs.
