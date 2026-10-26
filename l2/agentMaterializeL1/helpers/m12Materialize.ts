@@ -281,15 +281,10 @@ export async function materializeUnit(ctx: M12Context, unit: M12Unit): Promise<M
     }
     const inputHash = await unitInputHash(ctx, unit);
     const prior = await readUnitStatus(project, moduleName, unit.layer, unit.unitId);
-    const decision = await reuseDecision(prior, inputHash, [unit.output], force);
+    const decision = await reuseDecision([unit.output], force);
     if (decision.kind === 'reuse') {
-      await writeUnitStatus(project, moduleName, { ...base(unit), status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior!.outputs });
-      return { status: 'reused', code: prior!.code, line: `${unit.unitId}: reused` };
-    }
-    if (decision.kind === 'protect') {
-      const diagnostic = `EDITED_LOCALLY: ${decision.path} was not written by this agent (use "force": true).`;
-      await writeUnitStatus(project, moduleName, { ...base(unit), status: 'skipped', code: 'EDITED_LOCALLY', diagnostic, inputHash, outputs: prior?.outputs ?? {} });
-      return { status: 'skipped', code: 'EDITED_LOCALLY', line: `${unit.unitId}: skipped, ${diagnostic}` };
+      await writeUnitStatus(project, moduleName, { ...base(unit), status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {} });
+      return { status: 'reused', code: prior?.code ?? '', line: `${unit.unitId}: reused` };
     }
     const emitted = await emitUnit(ctx, unit);
     if ('code' in emitted) {

@@ -271,16 +271,45 @@ export async function outputCheck(status: M12UnitStatus | null, info: M12FileInf
   return await sha256Text(text) === recorded ? 'generated' : 'editedLocally';
 }
 
+export type M12ReuseDecision = { kind: 'reuse' } | { kind: 'generate' } | { kind: 'protect'; path: string };
+
 /**
- * Reuse decision of one unit: reusable when the inputs did not change and every output is the one this agent
- * wrote. An output edited locally, or written by someone else, is never overwritten without "force".
+ * Skip when every output file is in the stor and not `deleted`. Generate when `force` is set or any output is
+ * missing. A receipt, its hash and its date do not decide. The check is the file identity, so `x.ts` and
+ * `x.defs.ts` are different files.
+ */
+export async function reuseDecision(outputs: readonly M12FileInfo[], force: boolean): Promise<M12ReuseDecision>;
+/**
+ * Callers that still pass the receipt keep the previous rule until they move to existence. `protect` is only
+ * returned on this path.
  */
 export async function reuseDecision(
   status: M12UnitStatus | null,
   inputHash: string,
   outputs: readonly M12FileInfo[],
   force: boolean,
-): Promise<{ kind: 'reuse' } | { kind: 'generate' } | { kind: 'protect'; path: string }> {
+): Promise<M12ReuseDecision>;
+export async function reuseDecision(
+  statusOrOutputs: M12UnitStatus | null | readonly M12FileInfo[],
+  inputHashOrForce: string | boolean,
+  outputs?: readonly M12FileInfo[],
+  force?: boolean,
+): Promise<M12ReuseDecision> {
+  if (Array.isArray(statusOrOutputs)) return reuseByExistence(statusOrOutputs, inputHashOrForce === true);
+  return reuseByReceipt(statusOrOutputs as M12UnitStatus | null, String(inputHashOrForce), outputs ?? [], force === true);
+}
+
+function reuseByExistence(outputs: readonly M12FileInfo[], force: boolean): M12ReuseDecision {
+  if (force) return { kind: 'generate' };
+  return outputs.every(storExists) ? { kind: 'reuse' } : { kind: 'generate' };
+}
+
+async function reuseByReceipt(
+  status: M12UnitStatus | null,
+  inputHash: string,
+  outputs: readonly M12FileInfo[],
+  force: boolean,
+): Promise<M12ReuseDecision> {
   if (force) return { kind: 'generate' };
   const checks = await Promise.all(outputs.map(async info => ({ info, check: await outputCheck(status, info) })));
   if (status === null || Object.keys(status.outputs).length === 0) {
