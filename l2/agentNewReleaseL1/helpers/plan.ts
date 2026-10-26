@@ -18,7 +18,7 @@ export interface NewReleaseEdit {
 export type NewReleasePath = 'def-edit' | 'generator';
 
 export type NewReleasePlan =
-  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[] }
+  | { ok: true; path: NewReleasePath; edits: NewReleaseEdit[]; targets: string[]; allowed: string[]; removes: string[] }
   | { ok: false; reason: string };
 
 const APPLIED = new Set(['usecase', 'entity', 'request']);
@@ -35,7 +35,8 @@ export function planNewReleaseL1(
     return { ok: false, reason: gate.issues.map(issue => issue.path ? `${issue.code} at ${issue.path}` : issue.code).join('; ') };
   }
   const file = gate.file;
-  const answers = file.perItem.flatMap(row => row.answers.filter(answer => answer.master.project === masterProject));
+  const ofMaster = file.perItem.flatMap(row => row.answers.filter(answer => answer.master.project === masterProject));
+  const answers = withoutRemovedUnits(ofMaster);
   if (answers.length === 0) {
     return { ok: false, reason: `change effort has no answer from master ${masterProject}` };
   }
@@ -43,8 +44,9 @@ export function planNewReleaseL1(
   const generator = file.status === 'contract' || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)));
   for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
   if (refusals.length > 0) return { ok: false, reason: refusals.join('\n') };
+  const removes = workflowRemoves(answers);
   if (generator) {
-    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs) };
+    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs), removes };
   }
 
   const sources = { ...defs };
@@ -62,13 +64,15 @@ export function planNewReleaseL1(
       if (applied.edit) edits.push(applied.edit);
     }
   }
-  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [] };
+  return { ok: true, path: 'def-edit', edits, targets: targetsOf(answers), allowed: [], removes };
 }
 
 function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<string, string>, generator: boolean): string[] {
   const reasons: string[] = [];
   if (answer.status === 'abend') reasons.push(`status is abend (${answer.abend?.reason || 'no reason'})`);
-  if (answer.remove.length > 0) reasons.push('remove is not applied by this agent');
+  for (const unit of answer.remove) {
+    if (unit.kind !== 'workflow') reasons.push(`remove of ${unit.kind} ${unit.id} is not applied by this agent`);
+  }
   if (answer.runAgents.length > 0) reasons.push('runAgents is not applied by this agent');
   if (!generator && answer.create.length > 0) reasons.push('create is not applied by this agent');
   if (!generator && answer.contract === 'change') reasons.push('contract change is not applied by this agent');
@@ -112,6 +116,33 @@ function ruleIdOf(item: L4DiffItem): string {
   if (!side || typeof side !== 'object' || Array.isArray(side)) return '';
   const ruleId = (side as { ruleId?: unknown }).ruleId;
   return typeof ruleId === 'string' ? ruleId : '';
+}
+
+/**
+ * A workflow this effort removes is not also regenerated or materialized: the task item of a removed process
+ * says to regenerate the same def, and a removal wins over that (the same rule as the merged effort).
+ */
+function withoutRemovedUnits(answers: EffortAnswer[]): EffortAnswer[] {
+  const removed = new Set(workflowRemoves(answers));
+  if (removed.size === 0) return answers;
+  return answers.map(answer => ({
+    ...answer,
+    regenerateDefs: answer.regenerateDefs.filter(unit => !removed.has(unit.path)),
+    materialize: answer.materialize.filter(unit => !removed.has(unit.path)),
+  }));
+}
+
+function workflowRemoves(answers: EffortAnswer[]): string[] {
+  const seen = new Set<string>();
+  const removes: string[] = [];
+  for (const answer of answers) {
+    for (const unit of answer.remove) {
+      if (unit.kind !== 'workflow' || seen.has(unit.path)) continue;
+      seen.add(unit.path);
+      removes.push(unit.path);
+    }
+  }
+  return removes;
 }
 
 function targetsOf(answers: EffortAnswer[]): string[] {

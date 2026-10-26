@@ -87,16 +87,22 @@ async function beforePromptImplicit(
 
     if (!plan.ok) return await close(agent, context, moduleName, phase, 'refused', plan.reason);
     await recordPhase(moduleName, phase, 'ok', plan.path);
+
+    phase = 'sources';
+    const removedWorkflows = await deleteWorkflowRemovals(project, plan.removes, workflowIds(effort, masterProject));
+    if (!removedWorkflows.ok) return await close(agent, context, moduleName, phase, 'failed', removedWorkflows.message);
+    for (const defPath of plan.removes) delete defs[defPath];
+
     if (plan.path === 'generator') {
       phase = 'portrait';
       const portrait = snapshotFile(moduleName);
       await writeJson(portrait, await snapshotOf(defs));
       await recordPhase(moduleName, phase, 'ok', 'written');
-      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effort, masterProject)));
+      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effort, masterProject), removedWorkflows.deleted));
     }
 
     const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
-    if (plan.edits.length === 0 && plan.targets.length === 0) {
+    if (plan.edits.length === 0 && plan.targets.length === 0 && plan.removes.length === 0) {
       return finish(agent, context, 'done', 'nothing to apply');
     }
 
@@ -117,7 +123,7 @@ async function beforePromptImplicit(
     const removed = await deleteGeneratedSources(project, plan.targets);
     if (!removed.ok) return await close(agent, context, moduleName, phase, 'failed', removed.message);
     await recordPhase(moduleName, phase, 'ok', String(removed.deleted.length));
-    return finish(agent, context, 'done', reportNewRelease(notes, moduleName, removed.deleted));
+    return finish(agent, context, 'done', reportNewRelease(notes, moduleName, [...removedWorkflows.deleted, ...removed.deleted]));
   } catch (error) {
     const message = messageOf(error);
     let note = message;
@@ -158,6 +164,68 @@ async function checkAfterGenerator(
   await deletePortrait(portrait);
   await recordPhase(moduleName, 'guard', 'ok', 'checked');
   return finish(agent, context, 'done', reportMaterialize(moduleName, createdOrChanged, removed.deleted));
+}
+
+/** `processId` of each workflow def this master removes. */
+function workflowIds(effort: ChangeEffortFile, masterProject: string): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const row of effort.perItem) {
+    for (const answer of row.answers) {
+      if (answer.master.project !== masterProject) continue;
+      for (const unit of answer.remove) {
+        if (unit.kind === 'workflow') ids.set(unit.path, unit.id);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Deletes one removed workflow: its `.defs.ts`, the `.ts` of the same name, and the two generated
+ * module files when their text contains the process id. A missing file is skipped.
+ */
+async function deleteWorkflowRemovals(
+  project: number,
+  defPaths: readonly string[],
+  processIds: ReadonlyMap<string, string>,
+): Promise<{ ok: true; deleted: string[] } | { ok: false; message: string }> {
+  const deleted: string[] = [];
+  for (const defPath of defPaths) {
+    const moduleName = moduleOfL1(defPath);
+    const cited = moduleName
+      ? [
+        `l1/${moduleName}/layer_1_external/adapters/workflow/engine.ts`,
+        `l1/${moduleName}/layer_1_external/adapters/persistence/moduleTick.ts`,
+      ]
+      : [];
+    const processId = processIds.get(defPath) ?? '';
+    const steps: Array<{ path: string; extension: '.ts' | '.defs.ts'; cited: boolean }> = [
+      { path: defPath, extension: '.defs.ts', cited: false },
+      { path: sourcePathOfDef(defPath) ?? '', extension: '.ts', cited: false },
+      ...cited.map(path => ({ path, extension: '.ts' as const, cited: true })),
+    ];
+    for (const step of steps) {
+      if (!step.path || deleted.includes(step.path)) continue;
+      const info = fileInfoFromProductPath(project, step.path, step.extension);
+      if (!info) continue;
+      const indexed = (mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>)[mls.stor.getKeyToFile(info)];
+      if (!indexed || indexed.status === 'deleted' || indexed.extension !== step.extension) continue;
+      if (step.cited && (!processId || !(await readSourceText(info)).includes(processId))) continue;
+      try {
+        const { deleteFile } = await import('/_102027_/l2/libStor.js');
+        await deleteFile(indexed);
+        deleted.push(step.path);
+      } catch (error) {
+        return { ok: false, message: reportDeleteFailed(step.path, messageOf(error), deleted) };
+      }
+    }
+  }
+  return { ok: true, deleted };
+}
+
+function moduleOfL1(productPath: string): string {
+  const parts = productPath.split('/');
+  return parts[0] === 'l1' && parts[1] ? parts[1] : '';
 }
 
 /** Deletes the `.ts` next to each `.defs.ts` when that file is in the index. A missing `.ts` is skipped. A `.defs.ts` is never deleted. */

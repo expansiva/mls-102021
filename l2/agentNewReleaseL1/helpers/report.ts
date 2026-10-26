@@ -47,8 +47,12 @@ export function generatorUnits(effort: ChangeEffortFile, masterProject: string):
 }
 
 /** First generator call: the effort units, then the defs run and the check. */
-export function reportGeneratorStart(moduleName: string, units: readonly EffortUnitRef[]): string {
-  const lines = ['The generator will change:'];
+export function reportGeneratorStart(
+  moduleName: string,
+  units: readonly EffortUnitRef[],
+  deleted: readonly string[] = [],
+): string {
+  const lines = [...deleted, 'The generator will change:'];
   for (const unit of units) lines.push(`${unit.kind} ${unit.id} ${unit.path}`);
   lines.push(`@@agentDefsL1 ${moduleName} /run`);
   lines.push(`@@agentNewReleaseL1 ${moduleName} /check`);

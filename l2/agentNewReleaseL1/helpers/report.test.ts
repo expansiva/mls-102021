@@ -321,6 +321,104 @@ function loadTarefas(): Record<string, string> {
   return defs;
 }
 
+const FLOW_DEF = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+const FLOW_TS = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.ts';
+const OTHER_DEF = 'l1/tarefas/layer_2_application/workflows/processoTarefa.defs.ts';
+const OTHER_TS = 'l1/tarefas/layer_2_application/workflows/processoTarefa.ts';
+const ENGINE = 'l1/tarefas/layer_1_external/adapters/workflow/engine.ts';
+const TICK = 'l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts';
+const SNAPSHOT = 'l1/tarefas/pipeline/agentNewReleaseL1/snapshot.json';
+
+function workflowEffort(edit: (answer: EffortAnswer) => void): string {
+  const base = JSON.parse(readFileSync(join(HERE, 'fixtures', 'R3.changeEffort.json'), 'utf8')) as ChangeEffortFile;
+  const effort = reseal(mutate(base, answer => {
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+    edit(answer);
+  }));
+  effort.request.items[0] = {
+    changeId: effort.request.items[0]!.changeId,
+    kind: 'process',
+    op: 'removed',
+    entity: '',
+    source: 'process.defs.ts',
+  };
+  return JSON.stringify(reseal(effort));
+}
+
+test('removing resumoDiarioTarefas deletes the flow and the generated files that cite it', async () => {
+  const effort = workflowEffort(answer => {
+    answer.remove.push(unit('workflow', 'resumoDiarioTarefas', FLOW_DEF));
+  });
+  const cited = await runRelease(effort, [FLOW_DEF, FLOW_TS, OTHER_DEF, OTHER_TS, ENGINE, TICK], undefined, {
+    prepare: files => {
+      files[keyOf(infoOf(ENGINE))].content = 'register(resumoDiarioTarefas)\n';
+      files[keyOf(infoOf(TICK))].content = 'tick resumoDiarioTarefas\n';
+      files[keyOf(infoOf(OTHER_DEF))].content = 'export const processoTarefa = {}\n';
+      files[keyOf(infoOf(OTHER_TS))].content = 'export const processoTarefa = {}\n';
+    },
+  });
+  assert.match(cited.message, /^done: /u);
+  assert.equal(cited.message.trim().split('\n').at(-1), '@@agentMaterializeL1 {"scope":"tarefas"}');
+  for (const path of [FLOW_DEF, FLOW_TS, ENGINE, TICK]) assert.equal(cited.files[keyOf(infoOf(path))].status, 'deleted');
+  assert.notEqual(cited.files[keyOf(infoOf(OTHER_DEF))].status, 'deleted');
+  assert.notEqual(cited.files[keyOf(infoOf(OTHER_TS))].status, 'deleted');
+
+  const silent = await runRelease(effort, [FLOW_DEF, FLOW_TS, OTHER_DEF, ENGINE, TICK], undefined, {
+    prepare: files => {
+      files[keyOf(infoOf(ENGINE))].content = 'register(processoTarefa)\n';
+      files[keyOf(infoOf(TICK))].content = 'tick processoTarefa\n';
+    },
+  });
+  assert.equal(silent.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+  assert.equal(silent.files[keyOf(infoOf(FLOW_TS))].status, 'deleted');
+  assert.notEqual(silent.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+  assert.notEqual(silent.files[keyOf(infoOf(TICK))].status, 'deleted');
+  assert.notEqual(silent.files[keyOf(infoOf(OTHER_DEF))].status, 'deleted');
+  assert.equal(silent.message.includes(ENGINE), false);
+  assert.equal(silent.message.includes(TICK), false);
+
+  const refused = await runRelease(workflowEffort(answer => {
+    answer.remove.push(unit('entity', 'tarefa', 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts'));
+  }), [FLOW_DEF]);
+  assert.match(refused.message, /^refused: /u);
+  assert.match(refused.message, /remove of entity tarefa is not applied/u);
+  assert.notEqual(refused.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+
+  const failed = await runRelease(effort, [FLOW_DEF, FLOW_TS, ENGINE], file => {
+    if (file.shortName === 'engine') throw new Error('disk full');
+    file.status = 'deleted';
+  }, {
+    prepare: files => {
+      files[keyOf(infoOf(ENGINE))].content = 'resumoDiarioTarefas\n';
+    },
+  });
+  assert.match(failed.message, /^failed: failed to delete l1\/tarefas\/layer_1_external\/adapters\/workflow\/engine\.ts: disk full/u);
+  assert.match(failed.message, /Already deleted:\n/u);
+  assert.match(failed.message, new RegExp(FLOW_DEF.replace(/[.]/gu, '\\.'), 'u'));
+  assert.equal(failed.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+  assert.equal(failed.files[keyOf(infoOf(FLOW_TS))].status, 'deleted');
+  assert.notEqual(failed.files[keyOf(infoOf(ENGINE))].status, 'deleted');
+
+  const generatorEffort = workflowEffort(answer => {
+    answer.contract = 'change';
+    answer.remove.push(unit('workflow', 'resumoDiarioTarefas', FLOW_DEF));
+  });
+  const generated = await runRelease(generatorEffort, [FLOW_DEF, FLOW_TS, ENGINE, TICK, SNAPSHOT], undefined, {
+    prepare: files => {
+      files[keyOf(infoOf(ENGINE))].content = 'resumoDiarioTarefas\n';
+      files[keyOf(infoOf(TICK))].content = 'resumoDiarioTarefas\n';
+      files[keyOf(infoOf(SNAPSHOT))].content = '{}\n';
+    },
+  });
+  assert.match(generated.message, /@@agentDefsL1 tarefas \/run/u);
+  assert.match(generated.message, /@@agentNewReleaseL1 tarefas \/check/u);
+  assert.equal(generated.message.trim().split('\n').at(-2), '@@agentDefsL1 tarefas /run');
+  const portrait = JSON.parse(generated.files[keyOf(infoOf(SNAPSHOT))].content) as Record<string, string>;
+  assert.equal(Object.prototype.hasOwnProperty.call(portrait, FLOW_DEF), false);
+  assert.equal(generated.files[keyOf(infoOf(FLOW_DEF))].status, 'deleted');
+});
+
 test('a call without a module is a refusal on a completed step', async () => {
   const usage = await runRelease('', [], undefined, { prompt: '@@agentNewReleaseL1' });
   assert.equal(usage.status, 'completed');

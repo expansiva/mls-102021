@@ -186,8 +186,9 @@ test('a contract file status takes the generator; entity create, remove, abend a
 
   const removed = loadEffort('R3.changeEffort.json');
   const process = reseal(mutate(removed, answer => {
-    answer.remove.push(unit('workflow', 'resumo', 'l1/tarefas/layer_4_workflow/resumo.defs.ts'));
+    answer.remove.push(unit('entity', 'tarefa', 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts'));
     answer.regenerateDefs = [];
+    answer.materialize = [];
   }));
   process.request.items[0] = {
     changeId: process.request.items[0]!.changeId,
@@ -199,7 +200,7 @@ test('a contract file status takes the generator; entity create, remove, abend a
   const removePlan = planNewReleaseL1(reseal(process), MASTER, DEFS);
   assert.equal(removePlan.ok, false);
   if (removePlan.ok) return;
-  assert.match(removePlan.reason, /remove is not applied/);
+  assert.match(removePlan.reason, /remove of entity tarefa is not applied/);
 
   const contract = reseal(mutate(base, answer => {
     answer.contract = 'change';
@@ -229,6 +230,56 @@ test('a contract file status takes the generator; entity create, remove, abend a
   assert.equal(noRoutePlan.ok, false);
   if (noRoutePlan.ok) return;
   assert.match(noRoutePlan.reason, /cannot tell which route takes the rule/);
+});
+
+test('a workflow remove is accepted and a remove that is not a workflow is refused', () => {
+  const removed = loadEffort('R3.changeEffort.json');
+  const flow = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+  const process = reseal(mutate(removed, answer => {
+    answer.remove.push(unit('workflow', 'resumoDiarioTarefas', flow));
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+  }));
+  process.request.items[0] = {
+    changeId: process.request.items[0]!.changeId,
+    kind: 'process',
+    op: 'removed',
+    entity: '',
+    source: 'process.defs.ts',
+  };
+  const plan = planNewReleaseL1(reseal(process), MASTER, DEFS);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
+  assert.deepEqual(plan.removes, [flow]);
+  assert.deepEqual(plan.edits, []);
+  assert.deepEqual(plan.targets, []);
+
+  const mixed = reseal(mutate(removed, answer => {
+    answer.remove.push(unit('workflow', 'resumoDiarioTarefas', flow));
+    answer.regenerateDefs = [unit('usecase', 'devolver', 'l1/tarefas/layer_2_application/usecases/devolver.defs.ts')];
+  }));
+  mixed.request.items[0] = {
+    changeId: mixed.request.items[0]!.changeId,
+    kind: 'process',
+    op: 'removed',
+    entity: '',
+    source: 'process.defs.ts',
+  };
+  const stillRules = planNewReleaseL1(reseal(mixed), MASTER, DEFS);
+  assert.equal(stillRules.ok, false);
+  if (stillRules.ok) return;
+  assert.match(stillRules.reason, /regenerateDefs is not from a rule/);
+
+  const withRoute = reseal(mutate(removed, answer => {
+    answer.contract = 'change';
+    answer.remove.push(unit('workflow', 'resumoDiarioTarefas', flow));
+  }));
+  const generator = planNewReleaseL1(withRoute, MASTER, DEFS);
+  assert.equal(generator.ok, true);
+  if (!generator.ok) return;
+  assert.equal(generator.path, 'generator');
+  assert.deepEqual(generator.removes, [flow]);
 });
 
 test('an effort with answers only from 102020 is refused on the def edit and on the generator', () => {
@@ -294,3 +345,37 @@ function diffValues(before: unknown, after: unknown, path = '$'): string[] {
   }
   return [`${path}: ${JSON.stringify(before)} -> ${JSON.stringify(after)}`];
 }
+
+test('a removed flow with its task item is applied: the regenerate of the removed flow is dropped', () => {
+  const flow = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+  const file = JSON.parse(JSON.stringify(loadEffort('R3.changeEffort.json'))) as ChangeEffortFile;
+  const first = file.perItem[0]!;
+  const processId = 'process:resumoDiarioTarefas';
+  const taskId = 'task:resumoDiarioTarefas.avisarVencendo';
+  file.request.items[0] = { changeId: processId, kind: 'process', op: 'removed', entity: '', source: 'workflows.defs.ts' };
+  first.item = processId;
+  for (const answer of first.answers) {
+    answer.item = processId;
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+    if (answer.master.project === MASTER) answer.remove = [unit('workflow', 'resumoDiarioTarefas', flow)];
+  }
+  const second = JSON.parse(JSON.stringify(first)) as typeof first;
+  second.item = taskId;
+  for (const answer of second.answers) {
+    answer.item = taskId;
+    answer.remove = [];
+    if (answer.master.project === MASTER) {
+      answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', flow)];
+      answer.materialize = [unit('workflow', 'resumoDiarioTarefas', flow)];
+    }
+  }
+  file.perItem.push(second);
+  file.request.items.push({ changeId: taskId, kind: 'task', op: 'removed', entity: '', source: 'workflows.defs.ts' });
+  const plan = planNewReleaseL1(reseal(file), MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
+  assert.deepEqual(plan.removes, [flow]);
+  assert.deepEqual(plan.targets, []);
+});
