@@ -388,11 +388,11 @@ void test('F1 required muda só materialize da entidade, tabela, adaptador, escr
   assert.deepEqual(answer.regenerateDefs, []);
   assert.deepEqual(keysOf(answer.materialize), [
     'entity:tarefa',
+    'repository:tarefaRepository',
     'request:inicio',
     'request:minhas_tarefas',
     'request:tarefas_equipe',
     'table:tarefa',
-    'table:tarefaRepository',
     'usecase:createTarefa',
     'usecase:updateTarefa',
   ]);
@@ -413,9 +413,9 @@ void test('F3 campo novo em details regenera e materializa sem tabela', () => {
   }), TAREFAS);
   const keys = [
     'entity:tarefa',
+    'repository:tarefaRepository',
     'request:minhas_tarefas',
     'request:tarefas_equipe',
-    'table:tarefaRepository',
     'usecase:createTarefa',
     'usecase:updateTarefa',
   ];
@@ -432,11 +432,11 @@ void test('F4 valor novo regenera entidade e tabela e materializa quem cita prio
   assert.deepEqual(keysOf(answer.regenerateDefs), ['entity:tarefa', 'table:tarefa']);
   assert.deepEqual(keysOf(answer.materialize), [
     'entity:tarefa',
+    'repository:tarefaRepository',
     'request:inicio',
     'request:minhas_tarefas',
     'request:tarefas_equipe',
     'table:tarefa',
-    'table:tarefaRepository',
     'usecase:createTarefa',
     'usecase:updateTarefa',
   ]);
@@ -448,8 +448,8 @@ void test('F5 campo removido regenera e materializa quem cita, sem tabela', () =
   }), TAREFAS);
   const keys = [
     'entity:tarefa',
+    'repository:tarefaRepository',
     'request:minhas_tarefas',
-    'table:tarefaRepository',
     'usecase:createTarefa',
     'usecase:updateTarefa',
   ];

@@ -350,7 +350,7 @@ function fieldUnits(defs: Record<string, string>, entity: string, path: string):
       const portId = typeof data.portId === 'string' ? data.portId : '';
       const id = lowerFirst(portId);
       if (!id) return;
-      adapterUnit = { kind: 'table', id, path: defPath };
+      adapterUnit = { kind: 'repository', id, path: defPath };
       if (citesPath(data, full, last)) citing.push(adapterUnit);
       return;
     }
