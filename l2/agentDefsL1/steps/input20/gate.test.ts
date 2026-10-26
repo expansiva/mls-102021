@@ -263,6 +263,50 @@ void test('an update keeps existing identity only with an inventoried hash', () 
   assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.ownerRef === `usecase:${usecaseId}`), false);
 });
 
+void test('existing as a defs path of this module resolves to the file id', () => {
+  const artifacts = clone(loadHead());
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>> };
+  artifacts.contractTexts = {};
+  artifacts.contracts = {};
+  const seed = backend.usecases.find(item => item.usecaseId === 'listProduto')!;
+  const effortSeed = effort.usecases.find(item => item.usecaseId === 'listProduto')!;
+  const picked: Array<{ usecaseId: string; existing: string }> = [];
+  for (let index = 0; index < 18; index += 1) {
+    const usecaseId = `pathUsecase${index}`;
+    const existing = index === 0
+      ? `_102047_/l1/${MODULE}/layer_2_application/usecases/${usecaseId}.defs.ts`
+      : `l1/${MODULE}/layer_2_application/usecases/${usecaseId}.defs.ts`;
+    const row = { ...seed, usecaseId, existing, status: 'toUpdate', entity: seed.entity, operation: seed.operation };
+    backend.usecases.push(row);
+    effort.usecases.push({ ...effortSeed, ...row });
+    picked.push({ usecaseId, existing });
+  }
+  const snapshot = build(artifacts);
+  for (const row of picked) {
+    const selected = snapshot.selection.usecases.find(usecase => usecase.usecaseId === row.usecaseId);
+    assert.equal(selected?.identity, row.usecaseId, row.usecaseId);
+    assert.equal(selected?.existing, row.existing);
+  }
+  assert.equal(snapshot.problems.some(problem => problem.message.includes('is not an id')), false);
+});
+
+void test('existing as a defs path of another module stays unresolved', () => {
+  const artifacts = clone(loadHead());
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>> };
+  const row = backend.usecases.find(item => item.usecaseId === 'listProduto')!;
+  const path = `l1/outroModulo/layer_2_application/usecases/${row.usecaseId}.defs.ts`;
+  row.existing = path;
+  const effortRow = effort.usecases.find(item => item.usecaseId === row.usecaseId)!;
+  effortRow.existing = path;
+  const snapshot = build(artifacts);
+  const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === row.usecaseId);
+  assert.ok(problem);
+  assert.match(problem.message, /l1\/outroModulo\/layer_2_application\/usecases\/listProduto\.defs\.ts/);
+  assert.match(problem.message, /is not an id/);
+});
+
 void test('alias existing keeps the inventoried id and does not mint the candidate', () => {
   const artifacts = clone(loadHead());
   const head = build(artifacts);
@@ -287,6 +331,27 @@ void test('alias existing keeps the inventoried id and does not mint the candida
   assert.equal(fileOf(snapshot, 'usecase', 'listProduto')?.action, 'update');
   assert.equal(snapshot.files.some(file => file.defPath.endsWith('/listProdutoNovo.defs.ts')), false);
   assert.equal(snapshot.selection.usecases.find(usecase => usecase.usecaseId === 'listProdutoNovo')?.identity, 'listProduto');
+});
+
+void test('a done usecase whose file exists keeps the file when the receipt diverges', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  const defPath = fileOf(head, 'usecase', 'listProduto')!.defPath;
+  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
+  backend.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
+  effort.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
+  effort.totals.usecases.toCreate -= 1;
+  effort.totals.usecases.done += 1;
+  artifacts.presentDefs = [{ path: defPath, sha256: `sha256:${'e'.repeat(64)}` }];
+  const snapshot = build(artifacts);
+  const problem = snapshot.problems.find(item => item.code === 'DONE_ABSENT' && item.ownerRef === 'usecase:listProduto');
+  assert.ok(problem);
+  assert.equal(problem.severity, 'review');
+  assert.match(problem.message, /receipt diverges and the file was preserved/);
+  assert.equal(fileOf(snapshot, 'usecase', 'listProduto')?.action, 'preserve');
+  assert.equal(snapshot.problems.some(item => item.code === 'DONE_ABSENT' && item.severity === 'error'), false);
+  assert.equal(snapshot.consumersReleased, head.consumersReleased);
 });
 
 void test('a done usecase with no file stays done and is not created', () => {
@@ -389,7 +454,7 @@ void test('resume accepts the writer receipt and keeps the plan', () => {
   assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a def changed outside the receipt stays refused', () => {
+void test('a present def whose receipt is from another project is preserved and does not block', () => {
   const { artifacts, first } = releasedHead();
   const written = first.files.filter(file => WRITTEN.has(file.artifactType));
   const target = written[0];
@@ -401,11 +466,14 @@ void test('a def changed outside the receipt stays refused', () => {
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
+  assert.equal(problem.severity, 'review');
   assert.match(problem.message, new RegExp(HASH));
   assert.match(problem.message, new RegExp(OTHER));
-  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'conflict');
+  assert.match(problem.message, /preserved/);
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
   assert.equal(resume.problems.filter(item => item.code === 'EXISTS_WITHOUT_RECEIPT').length, 1);
-  assert.equal(resume.consumersReleased, false);
+  assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.severity === 'error'), false);
+  assert.equal(resume.consumersReleased, first.consumersReleased);
 });
 
 void test('a missing def is planned again even when a writer receipt names it', () => {
@@ -420,7 +488,7 @@ void test('a missing def is planned again even when a writer receipt names it', 
   assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a present def with no receipt is still refused', () => {
+void test('a present def with no receipt is preserved and does not block', () => {
   const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
@@ -428,8 +496,11 @@ void test('a present def with no receipt is still refused', () => {
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
+  assert.equal(problem.severity, 'review');
   assert.match(problem.message, /exists without an inventoried path and hash/);
-  assert.equal(resume.consumersReleased, false);
+  assert.match(problem.message, /preserved/);
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
+  assert.equal(resume.consumersReleased, first.consumersReleased);
 });
 
 void test('disagreeing writer receipts do not authorize a present def', () => {
@@ -444,10 +515,13 @@ void test('disagreeing writer receipts do not authorize a present def', () => {
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
+  assert.equal(problem.severity, 'review');
   assert.match(problem.message, /disagreeing receipts/);
   assert.match(problem.message, new RegExp(HASH));
   assert.match(problem.message, new RegExp(OTHER));
-  assert.equal(resume.consumersReleased, false);
+  assert.match(problem.message, /preserved/);
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
+  assert.equal(resume.consumersReleased, first.consumersReleased);
 });
 
 void test('an inventoried hash still recomposes without a writer receipt', () => {

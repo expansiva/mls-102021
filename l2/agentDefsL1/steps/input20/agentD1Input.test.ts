@@ -11,11 +11,15 @@ import { createAgent } from '/_102021_/l2/agentDefsL1/agentDefsL1.js';
 import {
   createD1AgentStep,
   createEntryPipeline,
+  derivationFile,
+  displayPath,
   inputFile,
   pipelineFile,
   plannerPipelineFile,
+  type D1PipelineState,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
+import { seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { blockingReason } from '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
@@ -207,4 +211,95 @@ void test('input20 refuses v1.1 plans even when contracts parse, and writes no d
   assert.equal(host.files[contractKey]?.updatedAt, contractMtime);
   assert.equal(Object.keys(host.files).some(key => key.includes('layer_')), false);
   assert.equal(host.writes.some(key => key.includes('_4_') || key.includes('_5_') || key.includes('_2_')), false);
+});
+
+const STOCK = 'controleEstoque';
+
+function stockContext(): mls.msg.ExecutionContext {
+  const root: mls.msg.AIAgentStep = {
+    type: 'agent',
+    stepId: 1,
+    interaction: null,
+    stepTitle: 'defs',
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: 'agentDefsL1',
+    prompt: '',
+    rags: [],
+    planning: { planId: 'root', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  };
+  return {
+    message: { orderAt: 'msg-1', threadId: 'thread-1', content: '', senderId: 'u' },
+    task: {
+      PK: 'task-1',
+      iaCompressed: {
+        nextSteps: [root],
+        longMemory: { project: String(PROJECT), moduleName: STOCK },
+      },
+    },
+  } as unknown as mls.msg.ExecutionContext;
+}
+
+function completePipeline(approvedArtifact: string): D1PipelineState {
+  const at = '2026-09-21T12:00:00.000Z';
+  const approved = { status: 'approved' as const, updatedAt: at, artifactPaths: [approvedArtifact] };
+  return {
+    ...createEntryPipeline(PROJECT, STOCK, new Date(at)),
+    status: 'complete',
+    steps: {
+      entry10: approved,
+      input20: approved,
+      finalize80: approved,
+    },
+    updatedAt: at,
+  };
+}
+
+void test('a new input20 refusal rewrites a complete checkpoint that already approved input20', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const backend = fileInfoFromDisplay(PROJECT, `l4/${STOCK}/pool/l2/web/backend.json`);
+  assert.ok(backend);
+  const stored = host.files[fileKey(backend)];
+  assert.ok(stored);
+  const plan = JSON.parse(stored.content) as { schemaVersion: string };
+  plan.schemaVersion = '2026-09-21-p1-backend-v1.1';
+  stored.content = JSON.stringify(plan);
+  await writeJson(pipelineFile(PROJECT, STOCK), completePipeline(displayPath(derivationFile(PROJECT, STOCK))));
+
+  const agent = createAgent();
+  const ctx = stockContext();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const step = createD1AgentStep('input20', STOCK, PROJECT, 'run');
+  step.stepId = 20;
+  await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
+
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, STOCK))]?.content || '{}') as D1PipelineState;
+  assert.notEqual(pipeline.status, 'complete');
+  assert.equal(pipeline.status, 'awaitingStep');
+  assert.equal(pipeline.awaitingStep, 'input20');
+  assert.equal(pipeline.steps.input20?.status, 'failed');
+  assert.match(pipeline.steps.input20?.error || '', /SCHEMA_DIVERGENT:1/);
+  assert.equal(pipeline.steps.finalize80?.status, 'approved');
+});
+
+void test('a released input20 leaves an already approved checkpoint unchanged', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const artifact = displayPath(derivationFile(PROJECT, STOCK));
+  await writeJson(pipelineFile(PROJECT, STOCK), completePipeline(artifact));
+  const before = host.files[fileKey(pipelineFile(PROJECT, STOCK))]?.content;
+
+  const agent = createAgent();
+  const ctx = stockContext();
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  const step = createD1AgentStep('input20', STOCK, PROJECT, 'run');
+  step.stepId = 20;
+  const intents = await agent.beforePromptStep!(meta(), ctx, parent, step, 1);
+  assert.equal(intents.some(intent => intent.type === 'add-step'), true);
+
+  const pipeline = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, STOCK))]?.content || '{}') as D1PipelineState;
+  assert.equal(pipeline.status, 'complete');
+  assert.equal(pipeline.steps.input20?.status, 'approved');
+  assert.equal(host.files[fileKey(pipelineFile(PROJECT, STOCK))]?.content, before);
 });

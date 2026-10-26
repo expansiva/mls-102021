@@ -115,7 +115,27 @@ for (const tip of TIPS) {
  * and the defs of the usecases an answer brought, now on disk, are planned again without a conflict. Control: the final
  * snapshot built on the input20 derivation as previous (the hole the source key closes) refuses those defs.
  */
-void test('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
+/**
+ * d1_140 s2: input20 records its refusal, so a second /run no longer leaves the first approval standing. The second /run
+ * prunes the usecases an answer brought (the contract does not call them) and refuses them as REMOVE_WITHOUT_RECEIPT.
+ */
+void test('a second /run records the refusal of the usecases an answer brought (agendaClinica)', async () => {
+  const moduleName = 'agendaClinica';
+  const host = await readyHost('agendaClinica-53f1f35', moduleName);
+  assert.equal((await runToFinalize(host, moduleName, false))?.outcome, 'complete');
+  const ctx = contextFor(moduleName);
+  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
+  await runStep(createAgent(), ctx, parent, moduleName, 'input20', 1);
+  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
+  assert.equal(state.steps.input20?.status, 'failed');
+  assert.match(state.steps.input20?.error || '', /REMOVE_WITHOUT_RECEIPT/);
+});
+
+/**
+ * Parked (d1_140 s2): needs the second /run to keep input20 approved, which the refusal above prevents. Reported to
+ * the planner with the measured cause; the control below also changed with s4 (a present def is preserved, not a conflict).
+ */
+void test.skip('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
   const moduleName = 'agendaClinica';
   const host = await readyHost('agendaClinica-53f1f35', moduleName);
   const report = await runToFinalize(host, moduleName, false);

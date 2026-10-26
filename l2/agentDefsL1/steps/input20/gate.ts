@@ -193,7 +193,7 @@ export function buildD1InputSnapshot(
     }
     if (!isActive(text(left.status))) continue;
     const existing = text(left.existing);
-    const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing);
+    const identityId = resolveIdentity(problems, paths.backend, moduleName, usecaseId, existing);
     selectedUsecases.push({
       usecaseId,
       entity: text(left.entity),
@@ -592,7 +592,7 @@ function actionFor(
       return 'preserve';
     }
     if (!view.plan || !view.agrees || view.hash !== hash) {
-      error(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} is not an inventoried path and hash.`, ownerRef);
+      review(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} receipt diverges and the file was preserved.`, ownerRef);
       return 'preserve';
     }
     return 'preserve';
@@ -606,8 +606,8 @@ function actionFor(
   }
   if (!hash) return 'create';
   if (!view.plan || !view.agrees || view.hash !== hash) {
-    error(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, existsMessage(defPath, hash, view), ownerRef);
-    return 'conflict';
+    review(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, `${existsMessage(defPath, hash, view)} The file was preserved.`, ownerRef);
+    return 'preserve';
   }
   // The inventoried hash turns a present file into recompose. A writer receipt
   // only proves the bytes, so a create plan keeps its action and its snapshot hash.
@@ -693,11 +693,21 @@ function existsMessage(defPath: string, disk: string, view: ReceiptView): string
   return `toCreate file ${defPath} exists without an inventoried path and hash.`;
 }
 
-function resolveIdentity(problems: D1InputProblem[], path: string, usecaseId: string, existing: string): string {
+function resolveIdentity(problems: D1InputProblem[], path: string, moduleName: string, usecaseId: string, existing: string): string {
   if (!existing) return usecaseId;
   if (isSafeToken(existing)) return existing;
+  const fromPath = identityFromDefPath(existing, moduleName);
+  if (fromPath) return fromPath;
   error(problems, 'EXISTING_UNRESOLVED', path, `existing '${existing}' is not an id. A path prefix is not ownership.`, usecaseId);
   return usecaseId;
+}
+
+/** `l1/<module>/…/<id>.defs.ts`, optionally prefixed by `_<project>_/`. The module must be this run's. */
+function identityFromDefPath(existing: string, moduleName: string): string {
+  const body = existing.replace(/^_[0-9]+_\//, '');
+  const match = /^l1\/([^/]+)\/.+\/([^/]+)\.defs\.ts$/.exec(body);
+  if (!match || match[1] !== moduleName || !isSafeToken(match[2])) return '';
+  return match[2];
 }
 
 function collectRemoved(
