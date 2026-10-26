@@ -953,6 +953,82 @@ void test('inbound abends because it is not handled yet', () => {
   assert.equal(answer.contract, 'keep');
 });
 
+function entityItem(before: Record<string, unknown>, after: Record<string, unknown>): EffortInput {
+  return input({
+    changeId: 'entity:Tarefa',
+    kind: 'entity',
+    op: 'changed',
+    entity: 'Tarefa',
+    source: 'l4',
+    before,
+    after,
+  }, 'tarefas');
+}
+
+const ENTITY_BASE = {
+  entityId: 'Tarefa',
+  title: 'Tarefa',
+  description: 'Com etiquetas',
+  capabilities: { 'tarefas.resumoDiario': { enabled: true } },
+  rules: ['resumoDiarioOitoHoras', 'devolucaoExigeMotivo'],
+  storage: { table: 'tarefa' },
+};
+
+void test('entity changed answers by attribute', () => {
+  const cited = [
+    'entity:tarefa',
+    'request:inicio',
+    'usecase:createTarefa',
+    'usecase:updateTarefa',
+  ];
+  const mixed = describeEffortFrom(entityItem(ENTITY_BASE, {
+    ...ENTITY_BASE,
+    description: 'Sem etiquetas',
+    capabilities: {},
+    rules: ['devolucaoExigeMotivo'],
+  }), TAREFAS);
+  assert.equal(mixed.status, 'computed');
+  assert.equal(mixed.contract, 'keep');
+  assert.deepEqual(keysOf(mixed.regenerateDefs), cited);
+  assert.deepEqual(keysOf(mixed.materialize), cited);
+
+  const prose = describeEffortFrom(entityItem(ENTITY_BASE, { ...ENTITY_BASE, description: 'Outra frase' }), TAREFAS);
+  assert.equal(prose.status, 'computed');
+  assert.deepEqual(prose.materialize, []);
+  assert.deepEqual(prose.regenerateDefs, []);
+
+  const storage = describeEffortFrom(entityItem(ENTITY_BASE, { ...ENTITY_BASE, storage: { table: 'outra' } }), TAREFAS);
+  assert.equal(storage.status, 'abend');
+  assert.equal(storage.abend?.reason, 'entity Tarefa changed in storage; not handled yet');
+  assert.equal(storage.contract, 'keep');
+
+  const process = describeEffortFrom(
+    workflowChange('process', 'changed', 'process:resumoDiarioTarefas', '', { title: 'Daily', schedule: '0 8 * * *' }, { title: 'Morning', schedule: '0 8 * * *' }),
+    TAREFAS,
+  );
+  assert.equal(process.status, 'computed');
+  assert.deepEqual(process.materialize, []);
+
+  const rule = describeEffortFrom(itemOf('rule', 'changed', 'rule:resumoDiarioOitoHoras', 'tarefas'), TAREFAS);
+  assert.equal(rule.status, 'computed');
+  assert.deepEqual(keysOf(rule.materialize), cited);
+  const field = describeEffortFrom(fieldItem('changed', 'prioridade', 'Tarefa', { ...FIELD_BASE, required: true }, { ...FIELD_BASE, required: false }), TAREFAS);
+  assert.equal(field.status, 'computed');
+  assert.ok(field.materialize.length > 0);
+  const grant = describeEffortFrom(grantItem('removed', 'membroChecklistPropria', { ...GRANT_BASE, grantId: 'membroChecklistPropria' }), TAREFAS);
+  assert.equal(grant.status, 'computed');
+  assert.ok(grant.materialize.length > 0);
+  const journey = describeEffortFrom(journeyItem('removed', 'journey:criarTarefa', JOURNEY_BASE), TAREFAS);
+  assert.equal(journey.status, 'computed');
+  assert.ok(journey.materialize.length > 0);
+  const workflow = describeEffortFrom(workflowChange('task', 'added', 'task:processoTarefa.revisar'), TAREFAS);
+  assert.equal(workflow.status, 'computed');
+  assert.deepEqual(keysOf(workflow.materialize), ['workflow:processoTarefa']);
+  const outbound = describeEffortFrom(outboundItem('removed', 'tarefaCancelada', { ...OUTBOUND_BASE, id: 'tarefaCancelada', on: 'Tarefa.cancelar' }), TAREFAS);
+  assert.equal(outbound.status, 'computed');
+  assert.ok(outbound.materialize.length > 0);
+});
+
 void test('journey actorRef change cites the journey; rule field grant and text stay as they are', () => {
   const after = { ...JOURNEY_BASE, actorRef: 'gestor', index: { ...JOURNEY_BASE.index, actorRef: 'gestor' } };
   const journey = describeEffortFrom(journeyItem('changed', 'journey:criarTarefa', JOURNEY_BASE, after), TAREFAS);

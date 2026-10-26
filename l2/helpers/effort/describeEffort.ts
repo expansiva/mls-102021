@@ -1,7 +1,6 @@
 /// <mls fileReference="_102021_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { isTextOnlyChange } from '/_102035_/l2/solution/poolPlan.js';
 import type { EffortAnswer, EffortInput, EffortPromptRequest, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 const MASTER = { project: '102021', kind: 'l1', device: 'web' } as const;
@@ -404,13 +403,10 @@ function columnPath(path: string): boolean {
   return path.length > 0 && !path.includes('.');
 }
 
-const GRANT_TEXT = new Set(['title', 'description']);
-
 function grantIdOf(changeId: string): string {
   return idAfter(changeId, 'grant:');
 }
 
-const JOURNEY_PROSE = new Set(['title', 'description', 'goal', 'outcome']);
 const NO_JOURNEY_CITE = 'no backend unit cites this journey';
 const NO_STEP_CITE = 'no backend unit cites this step';
 
@@ -419,26 +415,6 @@ function indexWithoutTitle(value: unknown): unknown {
   const copy: Record<string, unknown> = { ...value };
   delete copy.title;
   return copy;
-}
-
-/**
- * `journey` or `step` `changed` whose every difference is prose.
- * On a journey, `title` inside `index` is prose; any other `index` key is not.
- * No difference counts as text.
- */
-function journeyTextOnly(item: EffortInput['item']): boolean {
-  if ((item.kind !== 'journey' && item.kind !== 'step') || item.op !== 'changed') return false;
-  if (!isRecord(item.before) || !isRecord(item.after)) return false;
-  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
-  for (const key of keys) {
-    if (sameJson(item.before[key], item.after[key])) continue;
-    if (item.kind === 'journey' && key === 'index') {
-      if (!sameJson(indexWithoutTitle(item.before[key]), indexWithoutTitle(item.after[key]))) return false;
-      continue;
-    }
-    if (!JOURNEY_PROSE.has(key)) return false;
-  }
-  return true;
 }
 
 function journeyIds(changeId: string): { journeyId: string; stepId: string } | null {
@@ -512,47 +488,6 @@ function journeyEffort(input: EffortInput, defs: Record<string, string>): Effort
   }));
   if (units.length === 0) console.info(item.changeId, citeJourney ? NO_JOURNEY_CITE : NO_STEP_CITE);
   return computed(item.changeId, units, units);
-}
-
-const WORKFLOW_KINDS = new Set(['process', 'task', 'transition']);
-
-/**
- * `process`, `task` or `transition` `changed` whose every difference is `title` or `description`.
- * No difference counts as text. `isTextOnlyChange` covers `field` only for this check's log.
- */
-function workflowTextOnly(item: EffortInput['item']): boolean {
-  if (!WORKFLOW_KINDS.has(item.kind) || item.op !== 'changed') return false;
-  if (!isRecord(item.before) || !isRecord(item.after)) return false;
-  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
-  for (const key of keys) {
-    if (sameJson(item.before[key], item.after[key])) continue;
-    if (!GRANT_TEXT.has(key)) return false;
-  }
-  return true;
-}
-
-/** `changed` whose every difference is `title` or `description`. No difference counts as text. */
-function outboundTextOnly(item: EffortInput['item']): boolean {
-  if (item.kind !== 'outbound' || item.op !== 'changed') return false;
-  if (!isRecord(item.before) || !isRecord(item.after)) return false;
-  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
-  for (const key of keys) {
-    if (sameJson(item.before[key], item.after[key])) continue;
-    if (!GRANT_TEXT.has(key)) return false;
-  }
-  return true;
-}
-
-/** `changed` whose every difference is `title` or `description`. No difference counts as text. */
-function grantTextOnly(item: EffortInput['item']): boolean {
-  if (item.kind !== 'grant' || item.op !== 'changed') return false;
-  if (!isRecord(item.before) || !isRecord(item.after)) return false;
-  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
-  for (const key of keys) {
-    if (sameJson(item.before[key], item.after[key])) continue;
-    if (!GRANT_TEXT.has(key)) return false;
-  }
-  return true;
 }
 
 /** A whole string equal to the grant id or to `grant:<id>`. Not a fragment of prose. */
@@ -885,16 +820,176 @@ function transitionEffort(input: EffortInput, defs: Record<string, string>): Eff
   return computed(item.changeId, sorted, sorted);
 }
 
+const PROSE_KEYS = new Set(['title', 'description']);
+const JOURNEY_PROSE = new Set(['goal', 'outcome']);
+
+function enumValueEntry(value: unknown): { code: string; attrs: Record<string, unknown> } | null {
+  if (typeof value === 'string') return { code: value, attrs: { value } };
+  if (!isRecord(value) || typeof value.value !== 'string') return null;
+  return { code: value.value, attrs: value };
+}
+
+/** Same codes; every differing key on a value is `title` or `description`. */
+function enumValuesTextOnly(before: unknown, after: unknown): boolean {
+  if (!Array.isArray(before) || !Array.isArray(after) || before.length !== after.length) return false;
+  const beforeByCode = new Map<string, Record<string, unknown>>();
+  const afterByCode = new Map<string, Record<string, unknown>>();
+  for (const raw of before) {
+    const entry = enumValueEntry(raw);
+    if (!entry || beforeByCode.has(entry.code)) return false;
+    beforeByCode.set(entry.code, entry.attrs);
+  }
+  for (const raw of after) {
+    const entry = enumValueEntry(raw);
+    if (!entry || afterByCode.has(entry.code)) return false;
+    afterByCode.set(entry.code, entry.attrs);
+  }
+  if (beforeByCode.size !== afterByCode.size) return false;
+  for (const [code, beforeAttrs] of beforeByCode) {
+    const afterAttrs = afterByCode.get(code);
+    if (!afterAttrs) return false;
+    const keys = new Set([...Object.keys(beforeAttrs), ...Object.keys(afterAttrs)]);
+    for (const key of keys) {
+      if (sameJson(beforeAttrs[key], afterAttrs[key])) continue;
+      if (!PROSE_KEYS.has(key)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * `changed` of any kind except `rule` whose every difference is prose.
+ * Prose is `title` and `description`. A journey or step also treats `goal` and `outcome` as prose.
+ * On a journey, `title` inside `index` is prose. On a field, enum labels with the same codes are prose.
+ * No difference counts as prose.
+ */
+function proseOnlyChange(item: EffortInput['item']): boolean {
+  if (item.op !== 'changed' || item.kind === 'rule') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  for (const key of keys) {
+    if (sameJson(item.before[key], item.after[key])) continue;
+    if (item.kind === 'journey' && key === 'index') {
+      if (!sameJson(indexWithoutTitle(item.before[key]), indexWithoutTitle(item.after[key]))) return false;
+      continue;
+    }
+    if (item.kind === 'field' && key === 'values') {
+      if (!enumValuesTextOnly(item.before[key], item.after[key])) return false;
+      continue;
+    }
+    if (PROSE_KEYS.has(key)) continue;
+    if ((item.kind === 'journey' || item.kind === 'step') && JOURNEY_PROSE.has(key)) continue;
+    return false;
+  }
+  return true;
+}
+
+function stringIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') return null;
+    ids.push(entry);
+  }
+  return ids;
+}
+
+function wholeTextEquals(value: unknown, id: string): boolean {
+  if (typeof value === 'string') return value === id;
+  if (Array.isArray(value)) return value.some(entry => wholeTextEquals(entry, id));
+  if (!isRecord(value)) return false;
+  return Object.values(value).some(child => wholeTextEquals(child, id));
+}
+
+function unitsCitingText(defs: Record<string, string>, id: string): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (!id || !wholeTextEquals(data, id)) return;
+    if (artifactType === 'domainEntity') {
+      const entityId = typeof data.entityId === 'string' ? data.entityId : '';
+      if (entityId) units.push({ kind: 'entity', id: lowerFirst(entityId), path: defPath });
+      return;
+    }
+    if (artifactType === 'usecase') {
+      const usecaseId = typeof data.usecaseId === 'string' ? data.usecaseId : '';
+      if (usecaseId) units.push({ kind: 'usecase', id: usecaseId, path: defPath });
+      return;
+    }
+    if (artifactType === 'requestService') {
+      const pageId = typeof data.pageId === 'string' ? data.pageId : '';
+      if (pageId) units.push({ kind: 'request', id: pageId, path: defPath });
+      return;
+    }
+    if (artifactType === 'workflowProcess') {
+      const processId = typeof data.processId === 'string' ? data.processId : '';
+      if (processId) units.push({ kind: 'workflow', id: processId, path: defPath });
+    }
+  });
+  return units;
+}
+
+function entityUnhandled(changeId: string, key: string): EffortAnswer {
+  return abend(changeId, `entity ${idAfter(changeId, 'entity:')} changed in ${key}; not handled yet`);
+}
+
+/** `entity` `changed`, one answer per attribute. `added` and `removed` stay on the kind path. */
+function entityEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind !== 'entity' || item.op !== 'changed') return null;
+  if (!isRecord(item.before) || !isRecord(item.after)) return entityUnhandled(item.changeId, 'shape');
+  const keys = changedAttributeKeys(item) ?? [];
+  const picked: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (key === 'title' || key === 'description') continue;
+    if (key === 'rules') {
+      const beforeIds = stringIds(item.before.rules ?? []);
+      const afterIds = stringIds(item.after.rules ?? []);
+      if (!beforeIds || !afterIds) return entityUnhandled(item.changeId, key);
+      const staying = new Set(afterIds);
+      for (const ruleId of beforeIds) {
+        if (staying.has(ruleId)) continue;
+        for (const unit of citingUnits(defs, ruleId)) remember(picked, seen, unit);
+      }
+      continue;
+    }
+    if (key === 'capabilities') {
+      const beforeCaps = item.before.capabilities === undefined ? {} : item.before.capabilities;
+      const afterCaps = item.after.capabilities === undefined ? {} : item.after.capabilities;
+      if (!isRecord(beforeCaps) || !isRecord(afterCaps)) return entityUnhandled(item.changeId, key);
+      const capKeys = new Set([...Object.keys(beforeCaps), ...Object.keys(afterCaps)]);
+      for (const capId of capKeys) {
+        const beforeHas = Object.prototype.hasOwnProperty.call(beforeCaps, capId);
+        const afterHas = Object.prototype.hasOwnProperty.call(afterCaps, capId);
+        if (beforeHas && afterHas) {
+          if (!sameJson(beforeCaps[capId], afterCaps[capId])) return entityUnhandled(item.changeId, key);
+          continue;
+        }
+        for (const unit of unitsCitingText(defs, capId)) remember(picked, seen, unit);
+      }
+      continue;
+    }
+    return entityUnhandled(item.changeId, key);
+  }
+  const units = sortUnits(picked);
+  if (units.length === 0) {
+    console.info(item.changeId);
+    return computed(item.changeId, []);
+  }
+  return computed(item.changeId, units, units);
+}
+
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
-  if (grantTextOnly(input.item) || outboundTextOnly(input.item) || journeyTextOnly(input.item) || workflowTextOnly(input.item)) {
+  if (proseOnlyChange(input.item)) {
     console.info(item);
     return computed(item, []);
   }
-  if (isTextOnlyChange(input.item)) return computed(item, []);
   if (Object.keys(defs).length === 0) return abend(item, NO_DEFS);
+  const entity = entityEffort(input, defs);
+  if (entity) return entity;
   const { kind, op } = input.item;
   if (kind === 'rule' && op === 'changed') {
     const units = citingUnits(defs, ruleIdOf(input.item));
