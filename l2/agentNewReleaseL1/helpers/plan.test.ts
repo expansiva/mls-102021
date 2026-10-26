@@ -406,3 +406,19 @@ test('W2 and W3 mark flow when a workflow is regenerated and a rule effort does 
   assert.equal(w3.path, 'generator');
   assert.deepEqual(w3.allowed, [processo]);
 });
+
+test('a generator plan carries the effort targets and leaves out a unit the effort removes', () => {
+  const flow = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+  const request = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts';
+  const plan = planNewReleaseL1(reseal(mutate(loadEffort('R3.changeEffort.json'), answer => {
+    answer.contract = 'change';
+    answer.remove = [unit('workflow', 'resumoDiarioTarefas', flow)];
+    answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', flow)];
+    answer.materialize = [unit('workflow', 'resumoDiarioTarefas', flow), unit('request', 'minhas_tarefas', request)];
+  })), MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'generator');
+  assert.deepEqual(plan.targets, [request]);
+  assert.deepEqual(plan.removes, [flow]);
+});

@@ -498,3 +498,25 @@ test('a run log that cannot be written does not hide the refusal reason', async 
   assert.equal(refused.status, 'completed');
   assert.match(refused.message, /^refused: changeEffort\.json not found: .*; run log: run log disk full/u);
 });
+
+test('the generator check also deletes the .ts of effort units whose def the generator left as it was', async () => {
+  const effort = workflowEffort(answer => {
+    answer.contract = 'change';
+    answer.regenerateDefs = [unit('request', 'minhas_tarefas', REQUEST_DEFS)];
+    answer.materialize = [
+      unit('request', 'minhas_tarefas', REQUEST_DEFS),
+      unit('usecase', 'createTarefa', USECASE_DEFS),
+    ];
+  });
+  const started = await runRelease(effort, [REQUEST_TS, USECASE_TS, SNAPSHOT]);
+  assert.notEqual(started.files[keyOf(infoOf(USECASE_TS))].status, 'deleted');
+  const checked = await runRelease(effort, [], undefined, {
+    reuse: started.files,
+    prompt: '@@agentNewReleaseL1 tarefas /check',
+  });
+  assert.match(checked.message, /^done: /u);
+  assert.equal(checked.files[keyOf(infoOf(USECASE_TS))].status, 'deleted');
+  assert.equal(checked.files[keyOf(infoOf(REQUEST_TS))].status, 'deleted');
+  assert.equal(checked.message.includes('@@agentMaterializeL1'), true);
+  assert.notEqual(checked.files[keyOf(infoOf(USECASE_DEFS))].status, 'deleted');
+});

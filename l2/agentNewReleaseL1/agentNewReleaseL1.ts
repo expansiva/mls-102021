@@ -168,7 +168,10 @@ async function checkAfterGenerator(
   const guard = checkAfterDefs(before, after, plan.allowed);
   if (guard.outside.length > 0) return await close(agent, context, moduleName, 'guard', 'failed', reportOutside(guard.outside));
 
-  const createdOrChanged = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
+  const changedByGenerator = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
+  // The union: what the generator changed or created, and the effort units to regenerate or materialize
+  // (a def the generator leaves as it was still needs its .ts redone).
+  const createdOrChanged = [...new Set([...changedByGenerator, ...plan.targets])];
   const project = mls.actualProject || 0;
   const removed = await deleteGeneratedSources(project, createdOrChanged);
   if (!removed.ok) return await close(agent, context, moduleName, 'sources', 'failed', removed.message);

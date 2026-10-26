@@ -50,7 +50,7 @@ export function planNewReleaseL1(
   const removes = workflowRemoves(answers);
   const flow = flowOf(answers, removes);
   if (generator) {
-    return { ok: true, path: 'generator', edits: [], targets: [], allowed: allowedPaths(answers, defs), removes, flow };
+    return { ok: true, path: 'generator', edits: [], targets: targetsOf(answers), allowed: allowedPaths(answers, defs), removes, flow };
   }
 
   const sources = { ...defs };
