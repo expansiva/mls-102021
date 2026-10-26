@@ -7,6 +7,14 @@ import {
   type M1Definition,
 } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { allowedPaths } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
+import {
+  applyStructuralRemoval,
+  citedToken,
+  citesRemoval,
+  removalReady,
+  structuralRemoval,
+  type StructuralRemoval,
+} from '/_102021_/l2/agentNewReleaseL1/helpers/removals.js';
 import { validateChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
 import type { ChangeEffortFile, EffortAnswer, EffortUnitRef, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -57,13 +65,23 @@ export function planNewReleaseL1(
   const edits: NewReleaseEdit[] = [];
   for (const answer of answers) {
     const item = itemOf(file, answer.item);
-    if (!item || !isRuleEdit(item)) continue;
-    const ruleId = ruleIdOf(item);
-    const op = item.op === 'added' ? 'added' : 'removed';
-    const usecases = new Set(answer.regenerateDefs.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
+    if (!item) continue;
+    if (isRuleEdit(item)) {
+      const ruleId = ruleIdOf(item);
+      const op = item.op === 'added' ? 'added' : 'removed';
+      const usecases = new Set(answer.regenerateDefs.filter(unit => unit.kind === 'usecase').map(unit => unit.id));
+      for (const unit of answer.regenerateDefs) {
+        if (!APPLIED.has(unit.kind)) continue;
+        const applied = applyUnit(sources, unit, op, ruleId, usecases);
+        if (!applied.ok) return { ok: false, reason: `${answer.item}: ${applied.reason}` };
+        if (applied.edit) edits.push(applied.edit);
+      }
+      continue;
+    }
+    const removal = structuralRemoval(item);
+    if (!removal) continue;
     for (const unit of answer.regenerateDefs) {
-      if (!APPLIED.has(unit.kind)) continue;
-      const applied = applyUnit(sources, unit, op, ruleId, usecases);
+      const applied = applyRemoval(sources, unit, removal);
       if (!applied.ok) return { ok: false, reason: `${answer.item}: ${applied.reason}` };
       if (applied.edit) edits.push(applied.edit);
     }
@@ -94,7 +112,9 @@ function refusalOf(file: ChangeEffortFile, answer: EffortAnswer, defs: Record<st
   if (generator) return reasons.map(reason => `${answer.item}: ${reason}`);
   const item = itemOf(file, answer.item);
   const ruleEdit = !!item && isRuleEdit(item);
-  if (answer.regenerateDefs.length > 0 && !ruleEdit) reasons.push('regenerateDefs is not from a rule added or removed');
+  const removal = item ? structuralRemoval(item) : null;
+  if (answer.regenerateDefs.length > 0 && !ruleEdit && !removal) reasons.push('regenerateDefs is not from a rule added or removed');
+  if (removal && !removalReady(removal)) reasons.push(`${removal.kind} id is missing`);
   if (ruleEdit && !ruleIdOf(item)) reasons.push('rule id is missing');
   if (ruleEdit && item.op === 'added') {
     for (const unit of answer.regenerateDefs) {
@@ -189,6 +209,30 @@ function targetsOf(answers: EffortAnswer[]): string[] {
     }
   }
   return targets;
+}
+
+function applyRemoval(
+  sources: Record<string, string>,
+  unit: EffortUnitRef,
+  removal: StructuralRemoval,
+): { ok: true; edit?: NewReleaseEdit } | { ok: false; reason: string } {
+  const current = sources[unit.path];
+  if (current === undefined) return { ok: false, reason: `definition not found at ${unit.path}` };
+  const parsed = parseDefinitionSource(current);
+  if (!('definition' in parsed)) return { ok: false, reason: parsed.issues.join('; ') };
+  const read = readDefinition(parsed.definition);
+  if ('issues' in read) return { ok: false, reason: read.issues.join('; ') };
+  const mechanical = applyStructuralRemoval(read, unit.kind, removal);
+  if (citesRemoval(read, removal)) {
+    return { ok: false, reason: `${unit.kind} ${unit.id} cites ${citedToken(removal)} and is not applied mechanically` };
+  }
+  if (!mechanical) return { ok: true };
+  const fileReference = fileReferenceOf(current);
+  const rendered = renderDefinition(read, fileReference);
+  if ('issues' in rendered) return { ok: false, reason: rendered.issues.join('; ') };
+  if (rendered.source === current) return { ok: true };
+  sources[unit.path] = rendered.source;
+  return { ok: true, edit: { path: unit.path, source: rendered.source } };
 }
 
 function applyUnit(

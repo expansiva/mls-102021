@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url';
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { effortWithoutRemovedUnits, planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
-import { generatorUnits, reportGeneratorStart } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
+import { editNotes, generatorUnits, reportGeneratorStart, reportNewRelease } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
-import type { ChangeEffortFile, EffortAnswer, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
+import type { ChangeEffortFile, EffortAnswer, EffortUnitRef, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFS_ROOT = join(HERE, '../../helpers/effort/fixtures/tarefas');
@@ -321,6 +321,53 @@ function unit(kind: EffortUnitRef['kind'], id: string, path: string): EffortUnit
   return { kind, id, path };
 }
 
+function removalEffort(items: L4DiffItem[], fill: (answer: EffortAnswer, item: L4DiffItem) => void): ChangeEffortFile {
+  const file = JSON.parse(JSON.stringify(loadEffort('R1.changeEffort.json'))) as ChangeEffortFile;
+  file.request.items = items;
+  file.perItem = items.map(item => ({
+    item: item.changeId,
+    answers: file.masters.map(master => {
+      const answer: EffortAnswer = {
+        master,
+        item: item.changeId,
+        status: 'computed',
+        create: [],
+        regenerateDefs: [],
+        materialize: [],
+        remove: [],
+        runAgents: [],
+        contract: 'keep',
+      };
+      if (master.project === MASTER) fill(answer, item);
+      return answer;
+    }),
+  }));
+  return reseal(file);
+}
+
+function fieldItem(fieldId: string): L4DiffItem {
+  return { changeId: `field:${fieldId}`, kind: 'field', op: 'removed', entity: 'Tarefa', source: 'ontology/Tarefa.defs.ts', before: { fieldId } };
+}
+
+function journeyItem(journeyId: string): L4DiffItem {
+  return { changeId: `journey:${journeyId}`, kind: 'journey', op: 'removed', entity: '', source: 'journeys.defs.ts', before: { journeyId } };
+}
+
+function stepItem(journeyId: string, stepId: string): L4DiffItem {
+  return { changeId: `step:${journeyId}/${stepId}`, kind: 'step', op: 'removed', entity: '', source: 'journeys.defs.ts', before: { journeyId, stepId } };
+}
+
+function ruleItem(ruleId: string): L4DiffItem {
+  return { changeId: `rule:${ruleId}`, kind: 'rule', op: 'removed', entity: '', source: 'rules.defs.ts', before: { ruleId } };
+}
+
+function withoutRow(data: Record<string, unknown>, key: string, value: string, list = 'fields'): Record<string, unknown> {
+  const copy = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+  const rows = copy[list] as Array<Record<string, unknown>>;
+  copy[list] = rows.filter(row => row[key] !== value);
+  return copy;
+}
+
 function definitionJson(source: string): string {
   const marker = 'export const definition = ';
   const start = source.indexOf(marker);
@@ -467,6 +514,149 @@ test('another master contract change stays on def-edit and a removed workflow dr
   assert.equal(generator.ok, true, generator.ok ? '' : generator.reason);
   if (!generator.ok) return;
   assert.equal(generator.path, 'generator');
+});
+
+const ENTITY = 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts';
+const REPOSITORY = 'l1/tarefas/layer_1_external/adapters/persistence/tarefaRepositoryAdapter.defs.ts';
+const REQUEST = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts';
+const SEEDS = 'l1/tarefas/layer_1_external/adapters/persistence/seeds.defs.ts';
+const FLOW = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+const CREATE = 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts';
+const UPDATE = 'l1/tarefas/layer_2_application/usecases/updateTarefa.defs.ts';
+
+test('a removed field drops that row from the entity and the repository and leaves the rest', () => {
+  const fieldId = 'details.etiquetas';
+  const effort = removalEffort([fieldItem(fieldId)], answer => {
+    answer.regenerateDefs = [
+      unit('entity', 'tarefa', ENTITY),
+      unit('repository', 'tarefaRepository', REPOSITORY),
+      unit('usecase', 'createTarefa', CREATE),
+      unit('usecase', 'updateTarefa', UPDATE),
+    ];
+    answer.materialize = answer.regenerateDefs.map(row => ({ ...row }));
+  });
+  const plan = planNewReleaseL1(effort, MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
+  assert.deepEqual(plan.edits.map(edit => edit.path), [ENTITY, REPOSITORY]);
+  assert.deepEqual(dataOf(plan.edits[0]!.source), withoutRow(dataOf(DEFS[ENTITY]!), 'name', fieldId));
+  assert.deepEqual(dataOf(plan.edits[1]!.source), withoutRow(dataOf(DEFS[REPOSITORY]!), 'field', fieldId, 'columns'));
+  const notes = reportNewRelease(editNotes(effort, MASTER, plan.edits.map(edit => edit.path)), 'tarefas', []);
+  assert.match(notes, new RegExp(`${ENTITY}: removed field ${fieldId}`));
+  assert.match(notes, new RegExp(`${REPOSITORY}: removed field ${fieldId}`));
+});
+
+test('a removed journey drops its scenario, owners and fixture strings and a removed step drops only its strings', () => {
+  const journey = removalEffort([journeyItem('resumoDiario')], answer => {
+    answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS)];
+    answer.materialize = [unit('seeds', 'seeds', SEEDS)];
+  });
+  const plan = planNewReleaseL1(journey, MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  const before = dataOf(DEFS[SEEDS]!);
+  const after = dataOf(plan.edits[0]!.source);
+  const beforeScenarios = before.scenarios as Array<Record<string, unknown>>;
+  const afterScenarios = after.scenarios as Array<Record<string, unknown>>;
+  assert.equal(afterScenarios.some(row => row.scenarioId === 'resumoDiario'), false);
+  assert.deepEqual(afterScenarios, beforeScenarios.filter(row => row.source !== 'journey:resumoDiario'));
+  const owners = (after.datasets as Array<Record<string, unknown>>).find(row => row.datasetId === 'tarefa')!.owners as string[];
+  assert.equal(owners.includes('resumoDiario'), false);
+  assert.equal(JSON.stringify(after).includes('journey:resumoDiario'), false);
+  const kept = afterScenarios.find(row => row.scenarioId === 'criarTarefa');
+  assert.deepEqual(kept, beforeScenarios.find(row => row.scenarioId === 'criarTarefa'));
+
+  const step = removalEffort([stepItem('resumoDiario', 'lerResumo')], answer => {
+    answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS)];
+  });
+  const stepPlan = planNewReleaseL1(step, MASTER, DEFS);
+  assert.equal(stepPlan.ok, true, stepPlan.ok ? '' : stepPlan.reason);
+  if (!stepPlan.ok) return;
+  const stepped = dataOf(stepPlan.edits[0]!.source);
+  assert.equal((stepped.scenarios as Array<Record<string, unknown>>).some(row => row.scenarioId === 'resumoDiario'), true);
+  assert.equal(JSON.stringify(stepped).includes('journey:resumoDiario/lerResumo'), false);
+  assert.equal(JSON.stringify(stepped).includes('journey:resumoDiario/verVencendo'), true);
+  const stepOwners = (stepped.datasets as Array<Record<string, unknown>>).find(row => row.datasetId === 'tarefa')!.owners as string[];
+  assert.equal(stepOwners.includes('resumoDiario'), true);
+  const stepNotes = editNotes(step, MASTER, stepPlan.edits.map(edit => edit.path));
+  assert.equal(stepNotes[0]?.line, 'removed step resumoDiario/lerResumo');
+});
+
+test('a request or a column that still cites the field is not edited and is refused', () => {
+  const fieldId = 'details.etiquetas';
+  const request = removalEffort([fieldItem(fieldId)], answer => {
+    answer.regenerateDefs = [unit('request', 'minhas_tarefas', REQUEST)];
+  });
+  const requestPlan = planNewReleaseL1(request, MASTER, DEFS);
+  assert.equal(requestPlan.ok, false);
+  if (requestPlan.ok) return;
+  assert.equal(requestPlan.reason, `field:details.etiquetas: request minhas_tarefas cites ${fieldId} and is not applied mechanically`);
+
+  const defs = { ...DEFS };
+  defs[REPOSITORY] = DEFS[REPOSITORY]!.replace('"columns": [', '"columns": [{ "column": "etiquetas" },');
+  const columns = removalEffort([fieldItem(fieldId)], answer => {
+    answer.regenerateDefs = [unit('repository', 'tarefaRepository', REPOSITORY)];
+  });
+  const columnPlan = planNewReleaseL1(columns, MASTER, defs);
+  assert.equal(columnPlan.ok, false);
+  if (columnPlan.ok) return;
+  assert.match(columnPlan.reason, /repository tarefaRepository cites details\.etiquetas and is not applied mechanically/);
+});
+
+test('the maintenance slice edits entity, repository and seeds; the request unit refuses', () => {
+  const items = [
+    ruleItem('resumoDiarioOitoHoras'),
+    fieldItem('details.etiquetas'),
+    { changeId: 'process:resumoDiarioTarefas', kind: 'process', op: 'removed', entity: '', source: 'workflows.defs.ts' } as L4DiffItem,
+    journeyItem('resumoDiario'),
+  ];
+  const slice = removalEffort(items, (answer, item) => {
+    if (item.changeId === 'rule:resumoDiarioOitoHoras') {
+      answer.regenerateDefs = [unit('entity', 'tarefa', ENTITY)];
+      answer.materialize = [unit('entity', 'tarefa', ENTITY)];
+    }
+    if (item.changeId === 'field:details.etiquetas') {
+      answer.regenerateDefs = [
+        unit('entity', 'tarefa', ENTITY),
+        unit('repository', 'tarefaRepository', REPOSITORY),
+        unit('usecase', 'createTarefa', CREATE),
+        unit('usecase', 'updateTarefa', UPDATE),
+      ];
+      answer.materialize = answer.regenerateDefs.map(row => ({ ...row }));
+    }
+    if (item.changeId === 'process:resumoDiarioTarefas') {
+      answer.remove = [unit('workflow', 'resumoDiarioTarefas', FLOW)];
+    }
+    if (item.changeId === 'journey:resumoDiario') {
+      answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS)];
+      answer.materialize = [unit('seeds', 'seeds', SEEDS)];
+    }
+  });
+  const plan = planNewReleaseL1(slice, MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
+  assert.deepEqual([...new Set(plan.edits.map(edit => edit.path))], [ENTITY, REPOSITORY, SEEDS]);
+  assert.equal(plan.removes.includes(FLOW), true);
+
+  const whole = removalEffort(items, (answer, item) => {
+    if (item.changeId === 'field:details.etiquetas') {
+      answer.regenerateDefs = [
+        unit('entity', 'tarefa', ENTITY),
+        unit('repository', 'tarefaRepository', REPOSITORY),
+        unit('request', 'minhas_tarefas', REQUEST),
+        unit('usecase', 'createTarefa', CREATE),
+      ];
+    }
+    if (item.changeId === 'journey:resumoDiario') answer.regenerateDefs = [unit('seeds', 'seeds', SEEDS)];
+    if (item.changeId === 'rule:resumoDiarioOitoHoras') answer.regenerateDefs = [unit('entity', 'tarefa', ENTITY)];
+    if (item.changeId === 'process:resumoDiarioTarefas') answer.remove = [unit('workflow', 'resumoDiarioTarefas', FLOW)];
+  });
+  const refused = planNewReleaseL1(whole, MASTER, DEFS);
+  assert.equal(refused.ok, false);
+  if (refused.ok) return;
+  assert.match(refused.reason, /request minhas_tarefas cites details\.etiquetas and is not applied mechanically/);
 });
 
 test('a generator plan carries the effort targets and leaves out a unit the effort removes', () => {

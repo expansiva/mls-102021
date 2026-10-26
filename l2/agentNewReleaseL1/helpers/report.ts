@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/helpers/report.ts" enhancement="_blank"/>
 
+import { citedToken, structuralRemoval } from '/_102021_/l2/agentNewReleaseL1/helpers/removals.js';
 import { moduleFile, readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { ChangeEffortFile, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -13,6 +14,8 @@ export interface NewReleaseEditNote {
   path: string;
   op: 'added' | 'removed';
   ruleId: string;
+  /** Set for a field, journey, or step. The closure line is `<path>: <line>`. */
+  line?: string;
 }
 
 const MODULE_NAME = /^[A-Za-z][A-Za-z0-9]*$/u;
@@ -105,7 +108,20 @@ export function editNotes(effort: ChangeEffortFile, masterProject: string, paths
         candidate.master.project === masterProject && candidate.regenerateDefs.some(unit => unit.path === path));
       if (!answer) continue;
       const item = items.get(answer.item);
-      if (!item || item.kind !== 'rule' || (item.op !== 'added' && item.op !== 'removed')) continue;
+      if (!item) continue;
+      const removal = structuralRemoval(item);
+      if (removal) {
+        const token = citedToken(removal);
+        if (!token) continue;
+        const line = removal.kind === 'field'
+          ? `removed field ${token}`
+          : removal.kind === 'journey'
+            ? `removed journey ${token}`
+            : `removed step ${token}`;
+        notes.push({ path, op: 'removed', ruleId: '', line });
+        continue;
+      }
+      if (item.kind !== 'rule' || (item.op !== 'added' && item.op !== 'removed')) continue;
       const side = item.op === 'added' ? item.after : item.before;
       const ruleId = side && typeof side === 'object' && !Array.isArray(side) && typeof (side as { ruleId?: unknown }).ruleId === 'string'
         ? (side as { ruleId: string }).ruleId
@@ -170,7 +186,7 @@ export async function recordPhase(
 
 /** Completed-task text after a def edit that has something to apply. The caller keeps an empty plan on `nothing to apply`. */
 export function reportNewRelease(notes: NewReleaseEditNote[], moduleName: string, deleted: readonly string[]): string {
-  const lines = notes.map(note => `${note.path}: ${note.op} ${note.ruleId}`);
+  const lines = notes.map(note => note.line ? `${note.path}: ${note.line}` : `${note.path}: ${note.op} ${note.ruleId}`);
   lines.push(...deleted, scopeCommand(moduleName));
   return lines.join('\n');
 }
