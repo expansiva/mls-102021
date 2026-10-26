@@ -406,6 +406,110 @@ function grantIdOf(changeId: string): string {
   return idAfter(changeId, 'grant:');
 }
 
+const JOURNEY_PROSE = new Set(['title', 'description', 'goal', 'outcome']);
+const NO_JOURNEY_CITE = 'no backend unit cites this journey';
+const NO_STEP_CITE = 'no backend unit cites this step';
+
+function indexWithoutTitle(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const copy: Record<string, unknown> = { ...value };
+  delete copy.title;
+  return copy;
+}
+
+/**
+ * `journey` or `step` `changed` whose every difference is prose.
+ * On a journey, `title` inside `index` is prose; any other `index` key is not.
+ * No difference counts as text.
+ */
+function journeyTextOnly(item: EffortInput['item']): boolean {
+  if ((item.kind !== 'journey' && item.kind !== 'step') || item.op !== 'changed') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  for (const key of keys) {
+    if (sameJson(item.before[key], item.after[key])) continue;
+    if (item.kind === 'journey' && key === 'index') {
+      if (!sameJson(indexWithoutTitle(item.before[key]), indexWithoutTitle(item.after[key]))) return false;
+      continue;
+    }
+    if (!JOURNEY_PROSE.has(key)) return false;
+  }
+  return true;
+}
+
+function journeyIds(changeId: string): { journeyId: string; stepId: string } | null {
+  if (changeId.startsWith('journey:')) return { journeyId: changeId.slice('journey:'.length), stepId: '' };
+  if (!changeId.startsWith('step:')) return null;
+  const rest = changeId.slice('step:'.length);
+  const slash = rest.indexOf('/');
+  if (slash <= 0 || slash === rest.length - 1) return { journeyId: '', stepId: '' };
+  return { journeyId: rest.slice(0, slash), stepId: rest.slice(slash + 1) };
+}
+
+function stringValueMatches(value: unknown, match: (text: string) => boolean): boolean {
+  const walk = (node: unknown): boolean => {
+    if (typeof node === 'string') return match(node);
+    if (Array.isArray(node)) return node.some(entry => walk(entry));
+    if (!isRecord(node)) return false;
+    return Object.values(node).some(child => walk(child));
+  };
+  return walk(value);
+}
+
+/** Whole string `journey:<id>` or `journey:<id>/…`. Not a fragment of another value. */
+function citesJourney(value: unknown, journeyId: string): boolean {
+  if (!journeyId) return false;
+  const exact = `journey:${journeyId}`;
+  const prefix = `${exact}/`;
+  return stringValueMatches(value, text => text === exact || text.startsWith(prefix));
+}
+
+/** Whole string `journey:<journey>/<step>`. */
+function citesStep(value: unknown, journeyId: string, stepId: string): boolean {
+  if (!journeyId || !stepId) return false;
+  const exact = `journey:${journeyId}/${stepId}`;
+  return stringValueMatches(value, text => text === exact);
+}
+
+function seedUnit(def: GrantDef): EffortUnitRef | null {
+  if (def.artifactType !== 'persistenceSeeds' || !def.artifactId) return null;
+  return { kind: 'seeds', id: def.artifactId, path: def.path };
+}
+
+function workflowUnit(def: GrantDef): EffortUnitRef | null {
+  if (def.artifactType !== 'workflowProcess') return null;
+  const processId = typeof def.data.processId === 'string' ? def.data.processId : '';
+  if (!processId) return null;
+  return { kind: 'workflow', id: processId, path: def.path };
+}
+
+function journeyEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind !== 'journey' && item.kind !== 'step') return null;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const ids = journeyIds(item.changeId) ?? { journeyId: '', stepId: '' };
+  const parsed = grantDefs(defs);
+  if (item.kind === 'journey' && item.op === 'added') {
+    const units = sortUnits(parsed.flatMap(def => {
+      const unit = seedUnit(def);
+      return unit ? [unit] : [];
+    }));
+    if (units.length === 0) console.info(item.changeId, NO_JOURNEY_CITE);
+    return computed(item.changeId, units, units);
+  }
+  const citeJourney = item.kind === 'journey' || item.op === 'added';
+  const units = sortUnits(parsed.flatMap(def => {
+    const cited = citeJourney
+      ? citesJourney(def.data, ids.journeyId)
+      : citesStep(def.data, ids.journeyId, ids.stepId);
+    if (!cited) return [];
+    const unit = seedUnit(def) ?? workflowUnit(def);
+    return unit ? [unit] : [];
+  }));
+  if (units.length === 0) console.info(item.changeId, citeJourney ? NO_JOURNEY_CITE : NO_STEP_CITE);
+  return computed(item.changeId, units, units);
+}
+
 /** `changed` whose every difference is `title` or `description`. No difference counts as text. */
 function grantTextOnly(item: EffortInput['item']): boolean {
   if (item.kind !== 'grant' || item.op !== 'changed') return false;
@@ -579,7 +683,7 @@ function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAn
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
-  if (grantTextOnly(input.item)) {
+  if (grantTextOnly(input.item) || journeyTextOnly(input.item)) {
     console.info(item);
     return computed(item, []);
   }
@@ -607,6 +711,8 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
   if (field) return field;
   const grant = grantEffort(input, defs);
   if (grant) return grant;
+  const journey = journeyEffort(input, defs);
+  if (journey) return journey;
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 

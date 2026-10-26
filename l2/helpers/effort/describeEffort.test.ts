@@ -649,3 +649,119 @@ void test('describeEffort só importa helpers e solution, e não escreve nem bus
     assert.equal(source.includes(banned), false, banned);
   }
 });
+
+const JOURNEY_BASE = {
+  journeyId: 'criarTarefa',
+  index: { journeyId: 'criarTarefa', actorRef: 'membro', title: 'Criar' },
+  actorRef: 'membro',
+  title: 'Criar',
+  description: '',
+  goal: 'Abrir',
+  outcome: 'Aberta',
+  entry: 'inicio',
+};
+
+function journeyItem(
+  op: L4DiffItem['op'],
+  changeId: string,
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  const kind: L4DiffItem['kind'] = changeId.startsWith('step:') ? 'step' : 'journey';
+  const item: L4DiffItem = { changeId, kind, op, entity: '', source: 'l4' };
+  if (before) item.before = before;
+  if (after) item.after = after;
+  return input(item, 'tarefas');
+}
+
+void test('J1 journey prose only is an empty computed answer', () => {
+  const after = {
+    ...JOURNEY_BASE,
+    title: 'Criar tarefa',
+    goal: 'Abrir a tarefa',
+    index: { ...JOURNEY_BASE.index, title: 'Criar tarefa' },
+  };
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = describeEffortFrom(journeyItem('changed', 'journey:criarTarefa', JOURNEY_BASE, after), TAREFAS);
+    assert.equal(answer.status, 'computed');
+    assert.equal(answer.contract, 'keep');
+    assert.deepEqual(answer.regenerateDefs, []);
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, ['journey:criarTarefa']);
+    assert.equal(effortPromptFrom(journeyItem('changed', 'journey:criarTarefa', JOURNEY_BASE, after), TAREFAS), null);
+  } finally {
+    info.mock.restore();
+  }
+});
+
+void test('J2 removed journey regenerates seeds and the workflow that cites it', () => {
+  const answer = describeEffortFrom(journeyItem('removed', 'journey:criarTarefa', JOURNEY_BASE), TAREFAS);
+  const keys = ['seeds:seeds', 'workflow:processoTarefa'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('J3 added journey regenerates seeds only', () => {
+  const after = { ...JOURNEY_BASE, journeyId: 'arquivarTarefa', index: { ...JOURNEY_BASE.index, journeyId: 'arquivarTarefa' } };
+  const answer = describeEffortFrom(journeyItem('added', 'journey:arquivarTarefa', undefined, after), TAREFAS);
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), ['seeds:seeds']);
+  assert.deepEqual(keysOf(answer.materialize), ['seeds:seeds']);
+  const step = journeyItem('added', 'step:arquivarTarefa/guardar', undefined, { journeyId: 'arquivarTarefa', stepId: 'guardar', kind: 'command' });
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const extra = describeEffortFrom(step, TAREFAS);
+    assert.equal(extra.status, 'computed');
+    assert.deepEqual(extra.regenerateDefs, []);
+    assert.deepEqual(extra.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, ['step:arquivarTarefa/guardar', 'no backend unit cites this journey']);
+    assert.equal(effortPromptFrom(step, TAREFAS), null);
+  } finally {
+    info.mock.restore();
+  }
+});
+
+void test('J4 removed step regenerates seeds and the workflow that cites it', () => {
+  const before = { journeyId: 'criarTarefa', stepId: 'preencherTarefa', kind: 'form', entity: 'Tarefa', effect: 'create' };
+  const answer = describeEffortFrom(journeyItem('removed', 'step:criarTarefa/preencherTarefa', before), TAREFAS);
+  const keys = ['seeds:seeds', 'workflow:processoTarefa'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+  const prose = describeEffortFrom(journeyItem('changed', 'step:criarTarefa/preencherTarefa', before, { ...before, title: 'Preencher', goal: 'Dados' }), TAREFAS);
+  assert.deepEqual(prose.materialize, []);
+  const effect = describeEffortFrom(journeyItem('changed', 'step:criarTarefa/preencherTarefa', before, { ...before, effect: 'update' }), TAREFAS);
+  assert.deepEqual(keysOf(effect.materialize), keys);
+});
+
+void test('R5 removed resumoDiario regenerates the seeds that cite it', () => {
+  const answer = describeEffortFrom(journeyItem('removed', 'journey:resumoDiario', { ...JOURNEY_BASE, journeyId: 'resumoDiario' }), TAREFAS);
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), ['seeds:seeds']);
+  assert.deepEqual(keysOf(answer.materialize), ['seeds:seeds']);
+});
+
+void test('journey actorRef change cites the journey; rule field grant and text stay as they are', () => {
+  const after = { ...JOURNEY_BASE, actorRef: 'gestor', index: { ...JOURNEY_BASE.index, actorRef: 'gestor' } };
+  const journey = describeEffortFrom(journeyItem('changed', 'journey:criarTarefa', JOURNEY_BASE, after), TAREFAS);
+  assert.deepEqual(keysOf(journey.materialize), ['seeds:seeds', 'workflow:processoTarefa']);
+  const rule = describeEffortFrom(itemOf('rule', 'changed', 'rule:resumoDiarioOitoHoras', 'tarefas'), TAREFAS);
+  assert.equal(rule.status, 'computed');
+  assert.deepEqual(rule.regenerateDefs, []);
+  assert.ok(rule.materialize.length > 0);
+  const field = describeEffortFrom(fieldItem('changed', 'prioridade', 'Tarefa', { ...FIELD_BASE, title: 'Prioridade' }, { ...FIELD_BASE, title: 'Ordem' }), TAREFAS);
+  assert.deepEqual(field.materialize, []);
+  const grant = describeEffortFrom(grantItem('removed', 'membroChecklistPropria', { ...GRANT_BASE, grantId: 'membroChecklistPropria' }), TAREFAS);
+  assert.deepEqual(keysOf(grant.materialize), [
+    'authority:authorityMap',
+    'controller:minhas_tarefas',
+    'scope:accessScope',
+    'seeds:seeds',
+  ]);
+});
