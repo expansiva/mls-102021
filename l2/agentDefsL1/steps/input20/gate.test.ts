@@ -800,3 +800,27 @@ void test('a unit scope preserves existing defs outside the list and leaves an i
   assert.equal(unmatched?.severity, 'review');
   assert.equal(unmatched?.ownerRef, 'entity:notInPlan');
 });
+
+void test('a unit outside the list whose def is absent is preserved and not created', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  const absent = head.files.find(file => file.identity === 'createProduto' && file.artifactType === 'usecase');
+  const listed = head.files.find(file => file.identity === 'listProduto' && file.artifactType === 'usecase');
+  assert.ok(absent && listed);
+  artifacts.presentDefs = head.files
+    .filter(file => file.defPath !== absent.defPath)
+    .map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
+  const identity = { project: PROJECT, moduleName: MODULE };
+  const open = buildD1InputSnapshot(identity, artifacts, null);
+  assert.equal(open.files.find(file => file.defPath === absent.defPath)?.action, 'create');
+
+  const held = buildD1InputSnapshot(identity, artifacts, null, new Map(), [{ kind: 'usecase', id: listed.identity }]);
+  const file = held.files.find(item => item.defPath === absent.defPath);
+  assert.equal(file?.action, 'preserve');
+  assert.equal(file?.contentHash, undefined);
+  const reviewItem = held.problems.find(item => item.code === 'SCOPE_OUTSIDE_ABSENT' && item.path === absent.defPath);
+  assert.equal(reviewItem?.severity, 'review');
+  assert.equal(reviewItem?.ownerRef, absent.id);
+  assert.equal(reviewItem?.message, `${absent.id} is outside the unit list; def absent.`);
+  assert.equal(held.problems.some(item => item.severity === 'error' && item.path === absent.defPath), false);
+});

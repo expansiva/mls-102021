@@ -724,6 +724,8 @@ function preservedPortIssues(
 ): boolean {
   if (file.action !== 'preserve') return false;
   const existing = request.preservedPorts[file.defPath];
+  // A unit outside the list whose def was never written is preserve with no hash. There is nothing to compare.
+  if (existing === undefined && !file.contentHash) return false;
   const found = readPortMethods(existing);
   if (!found) {
     error(problems, 'PORT_BYTES_MISSING', file.defPath, `Preserved port ${portId} has no readable methods. The file was not rewritten.`);

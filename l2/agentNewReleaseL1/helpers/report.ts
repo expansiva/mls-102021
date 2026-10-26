@@ -237,6 +237,14 @@ export function mechanicalUnitLines(effort: ChangeEffortFile, masterProject: str
       }
     }
   }
+  const removedWorkflows = new Set<string>();
+  for (const answer of masterAnswers(filtered, masterProject)) {
+    for (const unit of answer.remove) {
+      if (unit.kind !== 'workflow' || removedWorkflows.has(unit.path)) continue;
+      removedWorkflows.add(unit.path);
+      lines.push(`workflow ${unit.id}: removed ${unit.path}`);
+    }
+  }
   const seen = new Set<string>();
   for (const answer of masterAnswers(filtered, masterProject)) {
     for (const unit of answer.materialize) {

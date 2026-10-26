@@ -21,6 +21,8 @@ export interface D1PersistenceFile {
   identity: string;
   defPath: string;
   action: string;
+  /** Set when the preserved def is already on disk. Absent means the file was never written. */
+  contentHash?: string;
 }
 
 export interface D1PersistenceProblem {

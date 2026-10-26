@@ -387,6 +387,13 @@ function applyUnitScope(
     file.action = 'preserve';
     file.contentHash = hash;
   }
+  for (const file of outside) {
+    if (file.action !== 'create') continue;
+    if (present.get(file.defPath)) continue;
+    file.action = 'preserve';
+    delete file.contentHash;
+    review(problems, 'SCOPE_OUTSIDE_ABSENT', file.defPath, `${file.id} is outside the unit list; def absent.`, file.id);
+  }
   for (const problem of problems) {
     if (problem.severity !== 'error') continue;
     const byPath = outsidePaths.has(problem.path);

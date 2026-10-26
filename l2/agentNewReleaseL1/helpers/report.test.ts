@@ -803,6 +803,11 @@ test('the mechanical maintenance slice lists each unit and outside effort 0', as
   assert.match(ran.message, new RegExp(`repository tarefaRepository: removed field ${REPOSITORY_DEFS.replace(/[.]/gu, '\\.')}`));
   assert.match(ran.message, new RegExp(`seeds seeds: removed journey ${SEEDS_DEFS.replace(/[.]/gu, '\\.')}`));
   assert.match(ran.message, new RegExp(`usecase createTarefa: materialize ${USECASE_DEFS.replace(/[.]/gu, '\\.')}`));
+  const workflowLine = `workflow resumoDiarioTarefas: removed ${FLOW_ONLY}`;
+  const workflowAt = ran.message.indexOf(workflowLine);
+  const materializeAt = ran.message.indexOf(`usecase createTarefa: materialize ${USECASE_DEFS}`);
+  assert.ok(workflowAt >= 0 && workflowAt < materializeAt);
+  assert.equal(ran.message.split(workflowLine).length, 2);
   assert.match(ran.message, new RegExp(FLOW_ONLY.replace(/[.]/gu, '\\.')));
   assert.equal(ran.message.trim().split('\n').at(-1), 'outside effort: 0');
 });
