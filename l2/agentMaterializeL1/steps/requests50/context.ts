@@ -27,6 +27,56 @@ function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;
 }
 
+/** Prompt copy of the request def: no route `doc` (the contract already has it), and `{ field, path }` as one text when the two are the same. */
+function requestPromptData(data: Record<string, unknown>): Record<string, unknown> {
+  const copy = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+  if (!Array.isArray(copy.requests)) return copy;
+  copy.requests = copy.requests.map(row => {
+    if (!isRecord(row)) return row;
+    const next = { ...row };
+    delete next.doc;
+    if (next.output !== undefined) next.output = compactOutputFields(next.output);
+    return next;
+  });
+  return copy;
+}
+
+/** An output field entry whose `field` equals `path` (and is not `unresolved`) is that text. Anything else is walked as it is. */
+function compactOutputFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactOutputFields);
+  if (!isRecord(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 2 && keys.includes('field') && keys.includes('path') && typeof value.field === 'string' && typeof value.path === 'string') {
+    if (value.field !== 'unresolved' && value.field === value.path) return value.field;
+    return { field: value.field, path: value.path };
+  }
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) next[key] = compactOutputFields(child);
+  return next;
+}
+
+/** Entities the routes touch: `entity` on each output block, plus `entityId` of each cited usecase. Compared without case. */
+function routeEntities(data: Record<string, unknown>, usecases: readonly M12Unit[]): Set<string> {
+  const names = new Set<string>();
+  const rows = Array.isArray(data.requests) ? data.requests.filter(isRecord) : [];
+  for (const row of rows) collectEntities(row.output, names);
+  for (const item of usecases) {
+    const entityId = String(item.definition.data.entityId ?? '');
+    if (entityId) names.add(entityId.toLowerCase());
+  }
+  return names;
+}
+
+function collectEntities(value: unknown, names: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectEntities(item, names);
+    return;
+  }
+  if (!isRecord(value)) return;
+  if (typeof value.entity === 'string' && value.entity) names.add(value.entity.toLowerCase());
+  for (const child of Object.values(value)) collectEntities(child, names);
+}
+
 function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
@@ -312,18 +362,20 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   ].join('\n')));
   parts.push(section(`Contract ${contractRef} (the source of truth)`, fence('ts', contractText)));
   // Compact JSON: the def is a hint and its output tree is the largest section; indented, consultas (agendaClinica)
-  // went past M12_PROMPT_LIMIT and was never sent (07/10).
-  parts.push(section(`Request service def ${unit.defRef} (hints: uses, params and the output tree; where they diverge from the contract or the l4, the contract and the l4 win; an empty or unresolved field means "decide by the contract and the l4")`, fence('json', JSON.stringify(unit.definition.data))));
+  // went past M12_PROMPT_LIMIT and was never sent (07/10). The projection is the prompt text only: recipeDraft and
+  // the gate keep reading unit.definition.
+  parts.push(section(`Request service def ${unit.defRef} (hints: uses, params and the output tree; where they diverge from the contract or the l4, the contract and the l4 win; an empty or unresolved field means "decide by the contract and the l4"). An output entry written as plain text has field equal to path, and the doc of each route is in the contract.`, fence('json', JSON.stringify(requestPromptData(unit.definition.data)))));
   const draft = await recipeDraft(ctx, unit);
   parts.push(section('Recipe attempt', 'source' in draft
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this request service: ${draft.refusal.slice(0, 4000)}`));
   if (rules.length) parts.push(section('Rules (l4 text)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
-  // Every generated usecase of the module: what this page may call (the def's `uses` first).
+  // Signatures of the usecases the routes name (`uses` is a unitId) or the def depends on (a defRef).
   const uses = new Set(Array.isArray(unit.definition.data.requests)
     ? unit.definition.data.requests.filter(isRecord).flatMap(row => Array.isArray(row.uses) ? row.uses.map(String) : [])
     : []);
-  const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase')
+  const dependencies = new Set(unit.definition.dependencies);
+  const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase' && (uses.has(item.unitId) || dependencies.has(item.defRef)))
     .sort((left, right) => Number(uses.has(right.unitId)) - Number(uses.has(left.unitId)));
   for (const item of usecases) {
     const generated = await readOptional(item.output);
@@ -333,7 +385,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       fence('ts', exportSignatures(generated)),
     ].join('\n\n')));
   }
-  for (const entity of ctx.units.filter(item => item.definition.artifactType === 'domainEntity')) {
+  const touched = routeEntities(unit.definition.data, usecases);
+  for (const entity of ctx.units.filter(item => item.definition.artifactType === 'domainEntity' && touched.has(String(item.definition.data.entityId ?? item.definition.artifactId).toLowerCase()))) {
     const ref = `_${project}_/l4/${moduleName}/ontology/${String(entity.definition.data.entityId ?? entity.definition.artifactId)}.defs.ts`;
     const text = await ctx.read(ref);
     if (text) parts.push(section(`l4 ontology ${ref} (source)`, fence('ts', text.slice(0, 20000))));
