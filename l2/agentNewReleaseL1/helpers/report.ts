@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/helpers/report.ts" enhancement="_blank"/>
 
+import { moduleFile, readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { ChangeEffortFile, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
 export const NEW_RELEASE_USAGE = 'Usage: @@agentNewReleaseL1 <module> [/check]';
@@ -109,6 +110,58 @@ export function editNotes(effort: ChangeEffortFile, masterProject: string, paths
     }
   }
   return notes;
+}
+
+/** The step status is always `completed`. The prefix is what the reader sees. */
+export type ReleaseStatusKind = 'done' | 'refused' | 'failed';
+
+export function releaseStatusText(message: string, kind: ReleaseStatusKind): string {
+  const prefix = `${kind}: `;
+  return message.startsWith(prefix) ? message : `${prefix}${message}`;
+}
+
+/** Short motive for the step title. The full text stays in the step result. */
+export function releaseStepTitle(text: string): string {
+  const compact = text.replace(/\s+/gu, ' ').trim();
+  return compact.length <= 72 ? compact : `${compact.slice(0, 69)}...`;
+}
+
+export type ReleaseRunPhase = 'effort' | 'plan' | 'portrait' | 'defs' | 'sources' | 'guard';
+
+export interface ReleaseRunPhaseLine {
+  phase: ReleaseRunPhase;
+  status: 'ok' | 'refused' | 'failed';
+  note: string;
+}
+
+/** `l1/<module>/pipeline/agentNewReleaseL1/run.json`. The effort phase replaces the previous run. */
+export function runFile(moduleName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentNewReleaseL1`,
+    shortName: 'run',
+    extension: '.json',
+  };
+}
+
+export async function recordPhase(
+  moduleName: string,
+  phase: ReleaseRunPhase,
+  status: ReleaseRunPhaseLine['status'],
+  note: string,
+): Promise<void> {
+  const info = runFile(moduleName);
+  const line: ReleaseRunPhaseLine = { phase, status, note };
+  if (phase === 'effort') {
+    await writeJson(info, { phases: [line] });
+    return;
+  }
+  const current = await readJson<{ phases?: ReleaseRunPhaseLine[] }>(info);
+  const phases = Array.isArray(current?.phases) ? [...current.phases] : [];
+  phases.push(line);
+  await writeJson(info, { phases });
 }
 
 /** Completed-task text after a def edit that has something to apply. The caller keeps an empty plan on `nothing to apply`. */

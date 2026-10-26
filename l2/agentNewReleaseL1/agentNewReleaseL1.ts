@@ -14,7 +14,12 @@ import {
   reportMissingSnapshot,
   reportNewRelease,
   reportOutside,
+  recordPhase,
+  releaseStatusText,
+  releaseStepTitle,
   sourcePathOfDef,
+  type ReleaseRunPhase,
+  type ReleaseStatusKind,
 } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import {
   displayPath,
@@ -47,62 +52,84 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  const invocation = parseNewReleaseInvocation(userPrompt || context.message.content || '');
-  if (!invocation.ok) return finish(agent, context, 'completed', invocation.help);
-
-  setModuleRoot(invocation.module, null);
-  const effortFile = changeEffortOf(invocation.module);
-  const effortPath = displayPath(effortFile);
-  if (!fileExists(effortFile)) return finish(agent, context, 'completed', `changeEffort.json not found: ${effortPath}`);
-
-  let effort: ChangeEffortFile;
+  let moduleName = '';
+  let phase: ReleaseRunPhase = 'effort';
   try {
-    effort = JSON.parse(await readSourceText(effortFile)) as ChangeEffortFile;
-  } catch (error) {
-    return finish(agent, context, 'completed', `${effortPath}: ${messageOf(error)}`);
-  }
+    const invocation = parseNewReleaseInvocation(userPrompt || context.message.content || '');
+    if (!invocation.ok) return finish(agent, context, 'refused', invocation.help);
 
-  const project = mls.actualProject || 0;
-  let defs: Record<string, string>;
-  try {
-    defs = await loadModuleDefs(project, invocation.module);
-  } catch (error) {
-    return finish(agent, context, 'failed', messageOf(error));
-  }
+    moduleName = invocation.module;
+    setModuleRoot(moduleName, null);
+    phase = 'effort';
+    const effortFile = changeEffortOf(moduleName);
+    const effortPath = displayPath(effortFile);
+    if (!fileExists(effortFile)) {
+      return await close(agent, context, moduleName, phase, 'refused', `changeEffort.json not found: ${effortPath}`);
+    }
 
-  const masterProject = String(agent.agentProject);
-  const plan = planNewReleaseL1(effort, masterProject, defs);
-  if (invocation.check) return checkAfterGenerator(agent, context, invocation.module, defs, plan);
-
-  if (!plan.ok) return finish(agent, context, 'completed', plan.reason);
-  if (plan.path === 'generator') {
-    const portrait = snapshotFile(invocation.module);
+    let effort: ChangeEffortFile;
     try {
+      effort = JSON.parse(await readSourceText(effortFile)) as ChangeEffortFile;
+    } catch (error) {
+      return await close(agent, context, moduleName, phase, 'failed', `${effortPath}: ${messageOf(error)}`);
+    }
+    await recordPhase(moduleName, phase, 'ok', 'read');
+
+    const project = mls.actualProject || 0;
+    phase = 'plan';
+    const defs = await loadModuleDefs(project, moduleName);
+    const masterProject = String(agent.agentProject);
+    const plan = planNewReleaseL1(effort, masterProject, defs);
+    if (invocation.check) {
+      phase = 'guard';
+      return await checkAfterGenerator(agent, context, moduleName, defs, plan);
+    }
+
+    if (!plan.ok) return await close(agent, context, moduleName, phase, 'refused', plan.reason);
+    await recordPhase(moduleName, phase, 'ok', plan.path);
+    if (plan.path === 'generator') {
+      phase = 'portrait';
+      const portrait = snapshotFile(moduleName);
       await writeJson(portrait, await snapshotOf(defs));
-    } catch (error) {
-      return finish(agent, context, 'failed', `failed to write ${displayPath(portrait)}: ${messageOf(error)}`);
+      await recordPhase(moduleName, phase, 'ok', 'written');
+      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effort, masterProject)));
     }
-    return finish(agent, context, 'completed', reportGeneratorStart(invocation.module, generatorUnits(effort, masterProject)));
-  }
 
-  const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
-  if (plan.edits.length === 0 && plan.targets.length === 0) {
-    return finish(agent, context, 'completed', 'nothing to apply');
-  }
-
-  const written: string[] = [];
-  for (const edit of plan.edits) {
-    try {
-      await writeSourceText(fileInfoFromPath(project, edit.path), edit.source);
-      written.push(edit.path);
-    } catch (error) {
-      const listed = written.length > 0 ? `\nAlready written:\n${written.join('\n')}` : '';
-      return finish(agent, context, 'failed', `failed to write ${edit.path}: ${messageOf(error)}${listed}`);
+    const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));
+    if (plan.edits.length === 0 && plan.targets.length === 0) {
+      return finish(agent, context, 'done', 'nothing to apply');
     }
+
+    phase = 'defs';
+    const written: string[] = [];
+    for (const edit of plan.edits) {
+      try {
+        await writeSourceText(fileInfoFromPath(project, edit.path), edit.source);
+        written.push(edit.path);
+      } catch (error) {
+        const listed = written.length > 0 ? `\nAlready written:\n${written.join('\n')}` : '';
+        return await close(agent, context, moduleName, phase, 'failed', `failed to write ${edit.path}: ${messageOf(error)}${listed}`);
+      }
+    }
+    await recordPhase(moduleName, phase, 'ok', String(written.length));
+
+    phase = 'sources';
+    const removed = await deleteGeneratedSources(project, plan.targets);
+    if (!removed.ok) return await close(agent, context, moduleName, phase, 'failed', removed.message);
+    await recordPhase(moduleName, phase, 'ok', String(removed.deleted.length));
+    return finish(agent, context, 'done', reportNewRelease(notes, moduleName, removed.deleted));
+  } catch (error) {
+    const message = messageOf(error);
+    let note = message;
+    if (moduleName) {
+      try {
+        await recordPhase(moduleName, phase, 'failed', message);
+      } catch (writeError) {
+        note = `${message}; run log: ${messageOf(writeError)}`;
+      }
+    }
+    return finish(agent, context, 'failed', note);
   }
-  const removed = await deleteGeneratedSources(project, plan.targets);
-  if (!removed.ok) return finish(agent, context, 'failed', removed.message);
-  return finish(agent, context, 'completed', reportNewRelease(notes, invocation.module, removed.deleted));
 }
 
 async function checkAfterGenerator(
@@ -112,31 +139,25 @@ async function checkAfterGenerator(
   defs: Record<string, string>,
   plan: ReturnType<typeof planNewReleaseL1>,
 ): Promise<mls.msg.AgentIntent[]> {
-  if (!plan.ok) return finish(agent, context, 'completed', plan.reason);
-  if (plan.path !== 'generator') return finish(agent, context, 'completed', reportCheckWithoutGenerator());
+  if (!plan.ok) return await close(agent, context, moduleName, 'plan', 'refused', plan.reason);
+  await recordPhase(moduleName, 'plan', 'ok', plan.path);
+  if (plan.path !== 'generator') return await close(agent, context, moduleName, 'guard', 'refused', reportCheckWithoutGenerator());
   const portrait = snapshotFile(moduleName);
   const portraitPath = displayPath(portrait);
-  if (!fileExists(portrait)) return finish(agent, context, 'completed', reportMissingSnapshot(portraitPath));
+  if (!fileExists(portrait)) return await close(agent, context, moduleName, 'guard', 'refused', reportMissingSnapshot(portraitPath));
 
-  let before: Record<string, string>;
-  try {
-    before = await readPortrait(portrait, portraitPath);
-  } catch (error) {
-    return finish(agent, context, 'failed', messageOf(error));
-  }
+  const before = await readPortrait(portrait, portraitPath);
   const after = await snapshotOf(defs);
   const guard = checkAfterDefs(before, after, plan.allowed);
-  if (guard.outside.length > 0) return finish(agent, context, 'failed', reportOutside(guard.outside));
+  if (guard.outside.length > 0) return await close(agent, context, moduleName, 'guard', 'failed', reportOutside(guard.outside));
 
   const createdOrChanged = guard.changed.filter(path => Object.prototype.hasOwnProperty.call(after, path));
   const removed = await deleteGeneratedSources(mls.actualProject || 0, createdOrChanged);
-  if (!removed.ok) return finish(agent, context, 'failed', removed.message);
-  try {
-    await deletePortrait(portrait);
-  } catch (error) {
-    return finish(agent, context, 'failed', `failed to delete ${portraitPath}: ${messageOf(error)}`);
-  }
-  return finish(agent, context, 'completed', reportMaterialize(moduleName, createdOrChanged, removed.deleted));
+  if (!removed.ok) return await close(agent, context, moduleName, 'sources', 'failed', removed.message);
+  await recordPhase(moduleName, 'sources', 'ok', String(removed.deleted.length));
+  await deletePortrait(portrait);
+  await recordPhase(moduleName, 'guard', 'ok', 'checked');
+  return finish(agent, context, 'done', reportMaterialize(moduleName, createdOrChanged, removed.deleted));
 }
 
 /** Deletes the `.ts` next to each `.defs.ts` when that file is in the index. A missing `.ts` is skipped. A `.defs.ts` is never deleted. */
@@ -271,12 +292,31 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function close(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  moduleName: string,
+  phase: ReleaseRunPhase,
+  kind: 'refused' | 'failed',
+  message: string,
+): Promise<mls.msg.AgentIntent[]> {
+  let text = message;
+  try {
+    await recordPhase(moduleName, phase, kind, message);
+  } catch (error) {
+    // The run log is a record: its failure is named next to the reason, never in place of it.
+    text = `${message}; run log: ${messageOf(error)}`;
+  }
+  return finish(agent, context, kind, text);
+}
+
 function finish(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
-  status: 'completed' | 'failed',
+  kind: ReleaseStatusKind,
   message: string,
 ): mls.msg.AgentIntent[] {
+  const text = releaseStatusText(message, kind);
   const addMessage: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
     skipRootLLM: true,
@@ -284,8 +324,8 @@ function finish(
       action: 'addMessageAI',
       agentName: agent.agentName,
       inputAI: [
-        { type: 'system', content: `agentNewReleaseL1 deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.\n${message}` },
-        { type: 'human', content: message },
+        { type: 'system', content: `agentNewReleaseL1 deterministic bootstrap. The root LLM is skipped by AgentIntentAddMessageAI.skipRootLLM.\n${text}` },
+        { type: 'human', content: text },
       ],
       taskTitle: 'new release L1',
       threadId: context.message.threadId,
@@ -296,12 +336,12 @@ function finish(
   const result: mls.msg.AIPayload = {
     type: 'result',
     stepId: 0,
-    status,
+    status: 'completed',
     interaction: null,
     nextSteps: [],
-    stepTitle: 'Status',
-    result: message,
-    planning: { planId: 'status', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    stepTitle: releaseStepTitle(text),
+    result: text,
+    planning: { planId: 'status', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep;
   const step: mls.msg.AgentIntentAddStep = {
     type: 'add-step',

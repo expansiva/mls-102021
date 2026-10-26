@@ -15,6 +15,7 @@ import {
   reportMaterialize,
   reportNewRelease,
   reportOutside,
+  type ReleaseRunPhaseLine,
 } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import { createAgent } from '/_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
@@ -117,6 +118,7 @@ function unit(kind: EffortUnitRef['kind'], id: string, path: string): EffortUnit
 }
 
 const PROJECT = 102047;
+const RUN_JSON = 'l1/tarefas/pipeline/agentNewReleaseL1/run.json';
 const REQUEST_TS = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.ts';
 const USECASE_TS = 'l1/tarefas/layer_2_application/usecases/createTarefa.ts';
 const REQUEST_DEFS = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts';
@@ -147,13 +149,52 @@ test('R1 deletes both generated sources, leaves the defs, and returns one scope 
     if (file.shortName === 'createTarefa' && file.extension === '.ts') throw new Error('disk full');
     file.status = 'deleted';
   });
-  assert.equal(failed.status, 'failed');
-  assert.match(failed.message, /failed to delete l1\/tarefas\/layer_2_application\/usecases\/createTarefa\.ts: disk full/u);
+  assert.equal(failed.status, 'completed');
+  assert.equal(failed.mode, 'manual_later');
+  assert.match(failed.title, /^failed: /u);
+  assert.match(failed.message, /^failed: failed to delete l1\/tarefas\/layer_2_application\/usecases\/createTarefa\.ts: disk full/u);
   assert.match(failed.message, /Already deleted:\nl1\/tarefas\/layer_2_application\/requests\/minhas_tarefas\.ts/u);
   assert.equal(failed.files[keyOf(infoOf(REQUEST_TS))].status, 'deleted');
   assert.notEqual(failed.files[keyOf(infoOf(USECASE_TS))].status, 'deleted');
   assert.notEqual(failed.files[keyOf(infoOf(REQUEST_DEFS))].status, 'deleted');
   assert.notEqual(failed.files[keyOf(infoOf(USECASE_DEFS))].status, 'deleted');
+  const log = JSON.parse(failed.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.equal(log.phases.at(-1)?.phase, 'sources');
+  assert.equal(log.phases.at(-1)?.status, 'failed');
+  assert.equal(log.phases[0]?.phase, 'effort');
+});
+
+test('a missing effort refuses on a completed step and the next run replaces run.json', async () => {
+  const first = await runRelease('', [], undefined, { effort: false, staleRun: true });
+  assert.equal(first.status, 'completed');
+  assert.equal(first.mode, 'manual_later');
+  assert.match(first.message, /^refused: changeEffort\.json not found: /u);
+  assert.match(first.title, /^refused: /u);
+  const again = await runRelease('', [], undefined, { effort: false, reuse: first.files });
+  const log = JSON.parse(again.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.deepEqual(log.phases.map(line => line.phase), ['effort']);
+  assert.equal(log.phases[0]?.status, 'refused');
+  assert.equal(log.phases.some(line => line.note === 'stale'), false);
+});
+
+test('a thrown def read closes with failed: on a completed step', async () => {
+  const effort = readFileSync(join(HERE, 'fixtures', 'R1.changeEffort.json'), 'utf8');
+  const thrown = await runRelease(effort, [], undefined, {
+    prepare: files => {
+      const file = files[keyOf(infoOf('l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts'))];
+      file.getValueInfo = async () => {
+        throw new Error('defs unreadable');
+      };
+      file.getContent = undefined as unknown as HostFile['getContent'];
+    },
+  });
+  assert.equal(thrown.status, 'completed');
+  assert.equal(thrown.mode, 'manual_later');
+  assert.match(thrown.message, /^failed: l1\/tarefas\/.*minhas_tarefas\.defs\.ts: defs unreadable/u);
+  assert.equal(thrown.steps.every(status => status !== 'failed'), true);
+  const log = JSON.parse(thrown.files[keyOf(infoOf(RUN_JSON))].content) as { phases: ReleaseRunPhaseLine[] };
+  assert.equal(log.phases.at(-1)?.phase, 'plan');
+  assert.equal(log.phases.at(-1)?.status, 'failed');
 });
 
 interface HostFile {
@@ -195,15 +236,20 @@ async function runRelease(
   effort: string,
   sources: string[],
   unlink?: (file: HostFile) => void,
-): Promise<{ status: string; message: string; files: Record<string, HostFile> }> {
-  const files: Record<string, HostFile> = {};
+  options?: { effort?: boolean; staleRun?: boolean; reuse?: Record<string, HostFile>; prepare?: (files: Record<string, HostFile>) => void; prompt?: string; failWrite?: (file: HostFile) => boolean },
+): Promise<{ status: string; message: string; title: string; mode: string; steps: string[]; files: Record<string, HostFile> }> {
+  const files: Record<string, HostFile> = options?.reuse ?? {};
   const put = (productPath: string, content: string) => {
     const file = infoOf(productPath, content);
     files[keyOf(file)] = file;
   };
-  for (const [productPath, content] of Object.entries(loadTarefas())) put(productPath, content);
-  put('l4/tarefas/pool/l4/changeEffort.json', effort);
-  for (const source of sources) put(source, 'export {}\n');
+  if (!options?.reuse) {
+    for (const [productPath, content] of Object.entries(loadTarefas())) put(productPath, content);
+    if (options?.effort !== false) put('l4/tarefas/pool/l4/changeEffort.json', effort);
+    for (const source of sources) put(source, 'export {}\n');
+    put(RUN_JSON, options?.staleRun ? JSON.stringify({ phases: [{ phase: 'plan', status: 'ok', note: 'stale' }] }) : '{}\n');
+    options?.prepare?.(files);
+  }
   (globalThis as { mls: unknown }).mls = {
     actualProject: PROJECT,
     events: { fireFileAction() {} },
@@ -212,6 +258,7 @@ async function runRelease(
       getKeyToFile: keyOf,
       localStor: {
         setContent: async (file: HostFile, value: { content?: string | null }) => {
+          if (options?.failWrite?.(file)) throw new Error('run log disk full');
           file.content = value.content ?? '';
           return true;
         },
@@ -223,11 +270,19 @@ async function runRelease(
     },
   };
   const agent = createAgent();
-  const prompt = '@@agentNewReleaseL1 tarefas';
+  const prompt = options?.prompt ?? '@@agentNewReleaseL1 tarefas';
   const intents = await agent.beforePromptImplicit!(releaseMeta(), releaseContext(prompt), prompt);
-  const step = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  const steps = intents.filter((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  const step = steps[0];
   assert.ok(step);
-  return { status: step.step.status, message: String(step.step.result), files };
+  return {
+    status: step.step.status,
+    message: String(step.step.result),
+    title: String(step.step.stepTitle || ''),
+    mode: String(step.step.planning?.executionMode || ''),
+    steps: steps.map(item => item.step.status),
+    files,
+  };
 }
 
 function releaseMeta(): IAgentMeta {
@@ -265,3 +320,19 @@ function loadTarefas(): Record<string, string> {
   walk(root);
   return defs;
 }
+
+test('a call without a module is a refusal on a completed step', async () => {
+  const usage = await runRelease('', [], undefined, { prompt: '@@agentNewReleaseL1' });
+  assert.equal(usage.status, 'completed');
+  assert.equal(usage.mode, 'manual_later');
+  assert.match(usage.message, /^refused: Usage: @@agentNewReleaseL1 <module>/u);
+});
+
+test('a run log that cannot be written does not hide the refusal reason', async () => {
+  const refused = await runRelease('', [], undefined, {
+    effort: false,
+    failWrite: file => file.shortName === 'run',
+  });
+  assert.equal(refused.status, 'completed');
+  assert.match(refused.message, /^refused: changeEffort\.json not found: .*; run log: run log disk full/u);
+});
