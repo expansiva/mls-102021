@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { prepareModule } from '/_102021_/l2/agentNewReleaseL1/helpers/prepare.js';
 import {
   parseNewReleaseInvocation,
   releaseStatusText,
@@ -15,7 +16,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102021,
     agentFolder: 'agentNewReleaseL1',
-    agentDescription: 'Refuses every call with not implemented while the compare path is rewritten.',
+    agentDescription: 'Prepares an L1 module for a creation run, then compares on /compare.',
     visibility: 'public',
     beforePromptImplicit,
   };
@@ -28,7 +29,10 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   const invocation = parseNewReleaseInvocation(userPrompt || context.message.content || '');
   if (!invocation.ok) return finish(agent, context, 'refused', invocation.help);
-  return finish(agent, context, 'refused', 'not implemented');
+  if (invocation.compare) return finish(agent, context, 'refused', 'not implemented');
+  const prepared = await prepareModule(invocation.module);
+  if (!prepared.ok) return finish(agent, context, prepared.kind, prepared.text);
+  return finish(agent, context, 'done', prepared.text);
 }
 
 function finish(

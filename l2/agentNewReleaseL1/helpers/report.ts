@@ -2,22 +2,22 @@
 
 import { moduleFile, readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
-export const NEW_RELEASE_USAGE = 'Usage: @@agentNewReleaseL1 <module> [/check]';
+export const NEW_RELEASE_USAGE = 'Usage: @@agentNewReleaseL1 <module> [/compare]';
 
 export type NewReleaseInvocation =
-  | { ok: true; module: string; check: boolean }
+  | { ok: true; module: string; compare: boolean }
   | { ok: false; help: string };
 
 const MODULE_NAME = /^[A-Za-z][A-Za-z0-9]*$/u;
 
-/** `<module>` or `<module> /check`. Any other flag is the usage line. The agent still refuses both. */
+/** `<module>` prepares. `<module> /compare` is the second call. Any other flag is the usage line. */
 export function parseNewReleaseInvocation(userPrompt: string): NewReleaseInvocation {
   const text = userPrompt.trim().replace(/^@@agentNewReleaseL1\b/u, '').trim();
   const parts = text ? text.split(/\s+/u) : [];
   const moduleName = parts[0] ?? '';
   if (!MODULE_NAME.test(moduleName)) return { ok: false, help: NEW_RELEASE_USAGE };
-  if (parts.length === 1) return { ok: true, module: moduleName, check: false };
-  if (parts.length === 2 && parts[1] === '/check') return { ok: true, module: moduleName, check: true };
+  if (parts.length === 1) return { ok: true, module: moduleName, compare: false };
+  if (parts.length === 2 && parts[1] === '/compare') return { ok: true, module: moduleName, compare: true };
   return { ok: false, help: NEW_RELEASE_USAGE };
 }
 
