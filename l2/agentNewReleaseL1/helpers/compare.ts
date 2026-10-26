@@ -52,12 +52,15 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     for (const file of [...freshDefs.values(), ...oldDefs.values()]) texts.set(storeKey(file.info), await readSourceText(file.info));
     const rows = rowsOf(moduleName, freshDefs, oldDefs, texts);
     const allEqual = rows.every(row => row.verdict === 'igual');
-    const copies = await stageCopies(moduleName, rows, oldFiles, allEqual);
+    const engineBack = workflowEngineBack(rows);
+    const copies = await stageCopies(moduleName, rows, oldFiles, allEqual, engineBack);
     for (const copy of copies) await writeSourceText(copy.info, copy.text);
-    for (const drop of dropsOf(rows, freshFiles)) await removeIndexed(drop);
+    for (const drop of dropsOf(rows, freshFiles, oldFiles, engineBack)) await removeIndexed(drop);
     await restorePlan(moduleName);
     for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
     const lines = rows.map(row => `${row.kind} ${row.id}: ${row.verdict} ${row.path}`);
+    lines.push(...await effortLines(moduleName, rows));
+    lines.push(...costLines(gate.report));
     lines.push('creation plan: written and undone', 'planner run: written and undone', `@@agentMaterializeL1 {"scope":"${moduleName}"}`);
     return { ok: true, text: lines.join('\n') };
   } catch (error) {
@@ -118,16 +121,16 @@ function canonicalize(value: unknown): unknown {
   return out;
 }
 
-async function generatorGate(moduleName: string): Promise<{ complete: boolean; reason: string }> {
+async function generatorGate(moduleName: string): Promise<{ complete: boolean; reason: string; report: Record<string, unknown> | null }> {
   const reportInfo = defsFile(moduleName, 'report');
   const pipelineInfo = defsFile(moduleName, 'pipeline');
   const pipeline = fileExists(pipelineInfo) ? parseObject(await readSourceText(pipelineInfo)) : null;
-  if (!fileExists(reportInfo)) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report' };
+  if (!fileExists(reportInfo)) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report', report: null };
   const report = parseObject(await readSourceText(reportInfo));
-  if (!report) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report' };
-  if (report.outcome === 'complete' && report.defsStatus === 'complete') return { complete: true, reason: '' };
+  if (!report) return { complete: false, reason: pipelineReason(pipeline) || 'no generator report', report: null };
+  if (report.outcome === 'complete' && report.defsStatus === 'complete') return { complete: true, reason: '', report };
   const blocking = typeof report.blocking === 'string' ? report.blocking.trim() : '';
-  return { complete: false, reason: blocking || pipelineReason(pipeline) || 'no generator report' };
+  return { complete: false, reason: blocking || pipelineReason(pipeline) || 'no generator report', report };
 }
 
 function pipelineReason(pipeline: Record<string, unknown> | null): string {
@@ -195,11 +198,114 @@ function isDef(rel: string): boolean {
   return rel.endsWith('.defs.ts') && !rel.startsWith('pipeline/') && !rel.startsWith('materialization/');
 }
 
+const MASTER_PROJECT = '102021';
+const ENGINE_REL = 'layer_1_external/adapters/workflow/engine.ts';
+const TICK_REL = 'layer_1_external/adapters/persistence/moduleTick.ts';
+const RUN_COST_ABSENT = 'run cost: not recorded by the defs generator; read it from the /run task';
+
+/** Warning only. A missing or unreadable effort never changes what was restored. */
+async function effortLines(moduleName: string, rows: readonly UnitRow[]): Promise<string[]> {
+  const info = changeEffortOf(moduleName);
+  if (!fileExists(info)) return [`effort check: not available (${displayPath(info)} not found)`];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readSourceText(info));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read changeEffort.json: ${reason}`);
+    return [`effort check: not available (${reason})`];
+  }
+  const perItem = perItemOf(parsed);
+  if (!perItem) return ['effort check: not available (perItem is missing)'];
+  const listed = masterUnits(perItem);
+  if (!listed.sawMaster) return [`effort check: not available (no answer from master ${MASTER_PROJECT})`];
+  const byPath = new Map(rows.map(row => [row.path, row]));
+  const effortPaths = new Set(listed.units.map(unit => unit.path));
+  const lines: string[] = [];
+  for (const row of rows) {
+    if (row.verdict === 'igual') continue;
+    if (effortPaths.has(row.path)) continue;
+    lines.push(`effort missing: ${row.kind} ${row.id} ${row.path}: changed and not in the effort (defect)`);
+  }
+  const warned = new Set<string>();
+  for (const unit of listed.units) {
+    if (warned.has(unit.path)) continue;
+    const row = byPath.get(unit.path);
+    if (!row || row.verdict !== 'igual') continue;
+    warned.add(unit.path);
+    lines.push(`effort extra: ${unit.kind} ${unit.id} ${unit.path}: in the effort and unchanged (inefficiency)`);
+  }
+  if (lines.length === 0) return ['effort check: matches'];
+  return lines;
+}
+
+function perItemOf(value: unknown): unknown[] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const perItem = (value as { perItem?: unknown }).perItem;
+  return Array.isArray(perItem) ? perItem : null;
+}
+
+function masterUnits(perItem: readonly unknown[]): { sawMaster: boolean; units: Array<{ kind: string; id: string; path: string }> } {
+  const units: Array<{ kind: string; id: string; path: string }> = [];
+  let sawMaster = false;
+  for (const row of perItem) {
+    if (!row || typeof row !== 'object') continue;
+    const answers = (row as { answers?: unknown }).answers;
+    if (!Array.isArray(answers)) continue;
+    for (const answer of answers) {
+      if (!answer || typeof answer !== 'object') continue;
+      const master = (answer as { master?: { project?: unknown } }).master;
+      if (!master || String(master.project) !== MASTER_PROJECT) continue;
+      sawMaster = true;
+      for (const bucket of ['create', 'regenerateDefs', 'remove'] as const) {
+        const list = (answer as Record<string, unknown>)[bucket];
+        if (!Array.isArray(list)) continue;
+        for (const unit of list) {
+          if (!unit || typeof unit !== 'object') continue;
+          const record = unit as { kind?: unknown; id?: unknown; path?: unknown };
+          if (typeof record.path !== 'string' || !record.path) continue;
+          units.push({
+            kind: typeof record.kind === 'string' ? record.kind : 'def',
+            id: typeof record.id === 'string' ? record.id : 'unknown',
+            path: record.path,
+          });
+        }
+      }
+    }
+  }
+  return { sawMaster, units };
+}
+
+function costLines(report: Record<string, unknown> | null): string[] {
+  const cost = report?.cost;
+  if (!cost || typeof cost !== 'object' || Array.isArray(cost)) return [RUN_COST_ABSENT];
+  const record = cost as { total?: unknown; byPhase?: unknown };
+  if (record.total === undefined || !record.byPhase || typeof record.byPhase !== 'object' || Array.isArray(record.byPhase)) {
+    return [RUN_COST_ABSENT];
+  }
+  const phases = Object.keys(record.byPhase).sort();
+  const calls = phases.map(phase => {
+    const row = (record.byPhase as Record<string, unknown>)[phase];
+    const callsOf = row && typeof row === 'object' ? (row as { calls?: unknown; n?: unknown; cost?: unknown }) : {};
+    const count = typeof callsOf.calls === 'number' ? callsOf.calls : typeof callsOf.n === 'number' ? callsOf.n : 0;
+    const amount = typeof callsOf.cost === 'number' ? callsOf.cost : 0;
+    return `${phase} ${count} $${amount}`;
+  });
+  return [`run cost: ${String(record.total)}`, `model calls: ${calls.join('; ')}`];
+}
+
+/** The workflow engine comes back only when every workflow def of the module is unchanged. */
+function workflowEngineBack(rows: readonly UnitRow[]): boolean {
+  const flows = rows.filter(row => row.kind === 'workflowProcess');
+  return flows.length > 0 && flows.every(row => row.verdict === 'igual');
+}
+
 async function stageCopies(
   moduleName: string,
   rows: readonly UnitRow[],
   oldFiles: readonly ListedFile[],
   allEqual: boolean,
+  engineBack: boolean,
 ): Promise<Array<{ info: Ns5FileInfo; text: string }>> {
   const wanted = new Set<string>();
   for (const row of rows) {
@@ -220,6 +326,10 @@ async function stageCopies(
       if (isSharedRestore(file.rel)) wanted.add(file.rel);
     }
   }
+  if (engineBack) {
+    wanted.add(ENGINE_REL);
+    wanted.add(TICK_REL);
+  }
   const copies: Array<{ info: Ns5FileInfo; text: string }> = [];
   for (const file of oldFiles) {
     if (!wanted.has(file.rel)) continue;
@@ -228,7 +338,12 @@ async function stageCopies(
   return copies;
 }
 
-function dropsOf(rows: readonly UnitRow[], freshFiles: readonly ListedFile[]): Ns5FileInfo[] {
+function dropsOf(
+  rows: readonly UnitRow[],
+  freshFiles: readonly ListedFile[],
+  oldFiles: readonly ListedFile[],
+  engineBack: boolean,
+): Ns5FileInfo[] {
   const drops: Ns5FileInfo[] = [];
   for (const row of rows) {
     if (row.verdict !== 'mudou' && row.verdict !== 'nova') continue;
@@ -236,6 +351,11 @@ function dropsOf(rows: readonly UnitRow[], freshFiles: readonly ListedFile[]): N
     for (const file of freshFiles) {
       if (file.rel === `${base}.ts` || file.rel === `${base}.test.ts`) drops.push(file.info);
     }
+  }
+  const oldRels = new Set(oldFiles.map(file => file.rel));
+  for (const file of freshFiles) {
+    if (file.rel !== ENGINE_REL && file.rel !== TICK_REL) continue;
+    if (!engineBack || !oldRels.has(file.rel)) drops.push(file.info);
   }
   return drops;
 }
@@ -311,6 +431,11 @@ function preparedFile(moduleName: string): Ns5FileInfo {
 function l4File(moduleName: string, tail: string, shortName: string): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return { project: base.project, level: 4, folder: `${base.folder}/${tail}`, shortName, extension: '.json' };
+}
+
+function changeEffortOf(moduleName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return { project: base.project, level: base.level, folder: `${base.folder}/pool/l4`, shortName: 'changeEffort', extension: '.json' };
 }
 
 function savedFile(moduleName: string, tail: string, shortName: string): Ns5FileInfo {

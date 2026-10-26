@@ -325,6 +325,93 @@ test('a missing report uses the pipeline and still undoes', async (t) => {
   assert.equal(Object.keys(stor.texts()).some(path => path.includes('_old')), false);
 });
 
+function effortFile(units: { create?: unknown[]; regenerateDefs?: unknown[]; remove?: unknown[] }): string {
+  return `${JSON.stringify({
+    perItem: [{
+      answers: [{
+        master: { project: '102021', kind: 'l1' },
+        create: units.create || [],
+        regenerateDefs: units.regenerateDefs || [],
+        remove: units.remove || [],
+      }],
+    }],
+  })}\n`;
+}
+
+function workflowDef(id: string): string {
+  return defText({ ...createTarefa, artifactType: 'workflowProcess', artifactId: id, data: { workflowId: id } });
+}
+
+test('the close names effort gaps, a recorded cost, and restores the workflow engine only when every workflow is unchanged', async (t) => {
+  const changedPath = 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts';
+  const samePath = 'l1/tarefas/layer_2_application/requests/inicio.defs.ts';
+  const changed = structuredClone(createTarefa);
+  changed.data.rulesApplied = ['other'];
+  const same = defText(inicio);
+  const flow = workflowDef('avisar');
+
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  stor.add(1, 'tarefas/pipeline/agentDefsL1', 'report', '.json', '{"outcome":"complete","defsStatus":"complete","cost":{"total":1.25,"byPhase":{"usecases50":{"calls":2,"cost":0.5},"resolve25":{"calls":3,"cost":0.75}}}}\n');
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', defText(createTarefa));
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', defText(changed));
+  stor.add(1, 'tarefas_old/layer_2_application/requests', 'inicio', '.defs.ts', same);
+  stor.add(1, 'tarefas/layer_2_application/requests', 'inicio', '.defs.ts', same);
+  stor.add(1, 'tarefas_old/layer_2_application/workflows', 'avisar', '.defs.ts', flow);
+  stor.add(1, 'tarefas/layer_2_application/workflows', 'avisar', '.defs.ts', flow);
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/workflow', 'engine', '.ts', 'OLD_ENGINE\n');
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'moduleTick', '.ts', 'OLD_TICK\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/workflow', 'engine', '.ts', 'NEW_ENGINE\n');
+  stor.add(1, 'tarefas/layer_1_external/adapters/persistence', 'moduleTick', '.ts', 'NEW_TICK\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    regenerateDefs: [{ kind: 'request', id: 'inicio', path: samePath }],
+  }));
+  const gaps = await run();
+  assert.match(gaps, new RegExp(`effort missing: usecase createTarefa ${changedPath}: changed and not in the effort \\(defect\\)`));
+  assert.match(gaps, new RegExp(`effort extra: request inicio ${samePath}: in the effort and unchanged \\(inefficiency\\)`));
+  assert.match(gaps, /run cost: 1\.25/);
+  assert.match(gaps, /model calls: resolve25 3 \$0\.75; usecases50 2 \$0\.5/);
+  assert.ok(gaps.indexOf('effort missing:') < gaps.indexOf('creation plan:'));
+  assert.equal(stor.texts()['l1/tarefas/layer_1_external/adapters/workflow/engine.ts'], 'OLD_ENGINE\n');
+  assert.equal(stor.texts()['l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts'], 'OLD_TICK\n');
+  stor.restore();
+
+  const matched = installStor();
+  t.after(() => matched.restore());
+  seedPlan(matched.add);
+  completeReport(matched.add);
+  const body = defText(createTarefa);
+  matched.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  matched.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  matched.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    remove: [{ kind: 'usecase', id: 'ausente', path: 'l1/tarefas/missing.defs.ts' }],
+  }));
+  const even = await run();
+  assert.match(even, /effort check: matches/);
+  assert.match(even, /run cost: not recorded by the defs generator; read it from the \/run task/);
+  matched.restore();
+
+  const broken = installStor();
+  t.after(() => broken.restore());
+  seedPlan(broken.add);
+  completeReport(broken.add);
+  broken.add(1, 'tarefas_old/layer_2_application/workflows', 'avisar', '.defs.ts', flow);
+  broken.add(1, 'tarefas/layer_2_application/workflows', 'avisar', '.defs.ts', defText({
+    ...createTarefa, artifactType: 'workflowProcess', artifactId: 'avisar', data: { workflowId: 'other' },
+  }));
+  broken.add(1, 'tarefas_old/layer_1_external/adapters/workflow', 'engine', '.ts', 'OLD_ENGINE\n');
+  broken.add(1, 'tarefas/layer_1_external/adapters/workflow', 'engine', '.ts', 'NEW_ENGINE\n');
+  broken.add(1, 'tarefas_old/layer_1_external/adapters/persistence', 'moduleTick', '.ts', 'OLD_TICK\n');
+  broken.add(1, 'tarefas/layer_1_external/adapters/persistence', 'moduleTick', '.ts', 'NEW_TICK\n');
+  broken.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', '{');
+  const unread = await run();
+  assert.match(unread, /effort check: not available \(Expected property name or '}' in JSON at position 1/);
+  assert.match(unread, /run cost: not recorded by the defs generator; read it from the \/run task/);
+  assert.equal(broken.texts()['l1/tarefas/layer_1_external/adapters/workflow/engine.ts'], undefined);
+  assert.equal(broken.texts()['l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts'], undefined);
+});
+
 test('without a prepared tree the compare refuses and writes nothing', async (t) => {
   const stor = installStor();
   t.after(() => stor.restore());
