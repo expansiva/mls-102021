@@ -363,19 +363,24 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   parts.push(section(`Contract ${contractRef} (the source of truth)`, fence('ts', contractText)));
   // Compact JSON: the def is a hint and its output tree is the largest section; indented, consultas (agendaClinica)
   // went past M12_PROMPT_LIMIT and was never sent (07/10). The projection is the prompt text only: recipeDraft and
-  // the gate keep reading unit.definition.
-  parts.push(section(`Request service def ${unit.defRef} (hints: uses, params and the output tree; where they diverge from the contract or the l4, the contract and the l4 win; an empty or unresolved field means "decide by the contract and the l4"). An output entry written as plain text has field equal to path, and the doc of each route is in the contract.`, fence('json', JSON.stringify(requestPromptData(unit.definition.data)))));
+  // the gate keep reading unit.definition. A repair already followed these hints, so it does not repeat the def.
+  if (repair) {
+    parts.push('The route hints were in the first request; your previous answer already follows them.');
+  } else {
+    parts.push(section(`Request service def ${unit.defRef} (hints: uses, params and the output tree; where they diverge from the contract or the l4, the contract and the l4 win; an empty or unresolved field means "decide by the contract and the l4"). An output entry written as plain text has field equal to path, and the doc of each route is in the contract.`, fence('json', JSON.stringify(requestPromptData(unit.definition.data)))));
+  }
   const draft = await recipeDraft(ctx, unit);
   parts.push(section('Recipe attempt', 'source' in draft
     ? ['The deterministic recipe produced this file. Keep what is right; it is a draft, not the answer.', fence('ts', draft.source.slice(0, 16000))].join('\n\n')
     : `The deterministic recipe could not produce this request service: ${draft.refusal.slice(0, 4000)}`));
   if (rules.length) parts.push(section('Rules (l4 text)', rules.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
-  // Signatures of the usecases the routes name (`uses` is a unitId) or the def depends on (a defRef).
+  // Signatures of every usecase of the module: a route may call one the def does not name.
   const uses = new Set(Array.isArray(unit.definition.data.requests)
     ? unit.definition.data.requests.filter(isRecord).flatMap(row => Array.isArray(row.uses) ? row.uses.map(String) : [])
     : []);
   const dependencies = new Set(unit.definition.dependencies);
-  const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase' && (uses.has(item.unitId) || dependencies.has(item.defRef)))
+  const cited = ctx.units.filter(item => item.definition.artifactType === 'usecase' && (uses.has(item.unitId) || dependencies.has(item.defRef)));
+  const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase')
     .sort((left, right) => Number(uses.has(right.unitId)) - Number(uses.has(left.unitId)));
   for (const item of usecases) {
     const generated = await readOptional(item.output);
@@ -385,7 +390,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       fence('ts', exportSignatures(generated)),
     ].join('\n\n')));
   }
-  const touched = routeEntities(unit.definition.data, usecases);
+  const touched = routeEntities(unit.definition.data, cited);
   for (const entity of ctx.units.filter(item => item.definition.artifactType === 'domainEntity' && touched.has(String(item.definition.data.entityId ?? item.definition.artifactId).toLowerCase()))) {
     const ref = `_${project}_/l4/${moduleName}/ontology/${String(entity.definition.data.entityId ?? entity.definition.artifactId)}.defs.ts`;
     const text = await ctx.read(ref);

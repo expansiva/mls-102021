@@ -33,7 +33,7 @@ export interface MinhasContracts {
 
 const DOC = { raw: 'DOC_RAW_UNIQUE', purpose: 'DOC_PURPOSE_UNIQUE', input: 'DOC_INPUT_UNIQUE', processing: 'DOC_PROCESSING_UNIQUE', output: 'DOC_OUTPUT_UNIQUE' };
 
-test('the request prompt drops route docs, compacts equal output fields, and keeps only the cited usecases and entities', async () => {
+test('the request prompt drops route docs, compacts equal output fields, lists every usecase signature, and drops the def on repair', async () => {
   const previous = globalThis.mls;
   const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
   const listed = unit('usecase', 'listAbertas', { usecaseId: 'listAbertas', entityId: 'Tarefa' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listAbertas.ts`);
@@ -91,11 +91,18 @@ test('the request prompt drops route docs, compacts equal output fields, and kee
     assert.equal(human.includes('"field":"title"'), false);
     assert.match(human, /export async function listAbertas/u);
     assert.match(human, /export async function listNotas/u);
-    assert.equal(human.includes('archiveTudo'), false);
+    assert.match(human, /export async function archiveTudo/u);
     assert.match(human, /ontology\/task\.defs\.ts/u);
     assert.match(human, /ontology\/Nota\.defs\.ts/u);
     assert.equal(human.includes('ontology/Arquivo.defs.ts'), false);
     assert.equal(JSON.stringify(request.definition.data).includes('DOC_PURPOSE_UNIQUE'), true);
+    const repaired = await loadRequestContext(ctx as never, request, { problems: ['PROBLEM_UNIQUE'], previous: 'export const previousAnswer = true;\n' });
+    assert.equal(repaired.human.includes('Request service def'), false);
+    assert.equal(repaired.human.includes('DOC_PURPOSE_UNIQUE'), false);
+    assert.match(repaired.human, /The route hints were in the first request; your previous answer already follows them\./u);
+    assert.match(repaired.human, /PROBLEM_UNIQUE/u);
+    assert.match(repaired.human, /export const previousAnswer = true/u);
+    assert.match(repaired.human, /export async function archiveTudo/u);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }
