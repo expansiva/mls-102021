@@ -36,6 +36,11 @@ export type D1PlanStatus = D1ActiveStatus | 'toRemove';
 export type D1FileAction = 'create' | 'update' | 'preserve' | 'recompose' | 'remove' | 'conflict';
 export type D1ProblemSeverity = 'error' | 'review';
 
+export interface D1ScopeUnit {
+  kind: string;
+  id: string;
+}
+
 export interface D1InputProblem {
   severity: D1ProblemSeverity;
   code: string;

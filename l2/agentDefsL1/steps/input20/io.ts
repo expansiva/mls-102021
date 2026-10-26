@@ -4,11 +4,12 @@ import {
   derivationFile,
   displayPath,
   inputFile,
+  unitsFile,
   type D1FileInfo,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
-import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { readJson, readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import {
   D1_INPUT_VERSION,
   contractPath,
@@ -20,6 +21,7 @@ import {
   type D1InputSnapshot,
   type D1PresentDef,
   type D1RequestGapAnswer,
+  type D1ScopeUnit,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot, contractPageIds } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
@@ -71,6 +73,22 @@ function extractDefsObject(source: string): string {
   return '';
 }
 
+/** Absent or unreadable `units.json` is a full run: no scope. */
+export async function readUnitScope(project: number, moduleName: string): Promise<readonly D1ScopeUnit[] | null> {
+  const raw = await readJson<unknown>(unitsFile(project, moduleName));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const doc = raw as { schemaVersion?: unknown; units?: unknown };
+  if (doc.schemaVersion !== 1 || !Array.isArray(doc.units)) return null;
+  const scope: D1ScopeUnit[] = [];
+  for (const item of doc.units) {
+    if (typeof item !== 'string') return null;
+    const cut = item.indexOf(':');
+    if (cut <= 0 || cut === item.length - 1) return null;
+    scope.push({ kind: item.slice(0, cut), id: item.slice(cut + 1) });
+  }
+  return scope;
+}
+
 export async function readD1Input(project: number, moduleName: string): Promise<D1InputSnapshot | null> {
   const raw = await readText(inputFile(project, moduleName));
   if (!raw) return null;
@@ -100,9 +118,10 @@ export async function assembleD1Input(
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
 ): Promise<D1InputSnapshot> {
   const previous = await readD1Input(project, moduleName);
+  const scope = await readUnitScope(project, moduleName);
   const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
   const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
-  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
+  const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers, scope));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
@@ -110,6 +129,7 @@ export async function assembleD1Input(
     artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
     previous,
     answers,
+    scope,
   ));
   sealed.snapshotHash = await sha256Text(stableStringify(withoutHash(sealed)));
   return sealed;

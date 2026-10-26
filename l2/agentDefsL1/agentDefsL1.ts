@@ -14,6 +14,7 @@ import {
   planIdFromPrompt,
   pipelineFile,
   requireProject,
+  unitsFile,
   stoppedTrace,
   taskModule,
   taskProject,
@@ -29,7 +30,7 @@ import {
   updateStatus,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Dispatch.js';
 import { parsePipelineDocument } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
-import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { readText, removeOwned, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { decideEntry } from '/_102021_/l2/agentDefsL1/steps/entry10/gate.js';
 import '/_102021_/l2/agentDefsL1/steps/entry10/agentD1Entry.js';
 import '/_102021_/l2/agentDefsL1/steps/input20/agentD1Input.js';
@@ -75,6 +76,7 @@ async function beforePromptImplicit(
   }
 
   const command = invocation.command === 'resume' ? 'resume' : 'run';
+  if (invocation.command === 'run') await removeOwned(unitsFile(project, invocation.module));
   const raw = await readText(pipelineFile(project, invocation.module));
   const decision = decideEntry(command, project, invocation.module, raw, new Date());
   if (decision.kind === 'refusal') {
@@ -83,6 +85,10 @@ async function beforePromptImplicit(
       project: String(project),
       command,
     });
+  }
+
+  if (invocation.command === 'units') {
+    await writeJson(unitsFile(project, invocation.module), { schemaVersion: 1, units: invocation.units });
   }
 
   const addMessage: mls.msg.AgentIntentAddMessageAI = {

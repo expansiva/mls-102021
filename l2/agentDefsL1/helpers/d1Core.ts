@@ -75,15 +75,16 @@ const AGENT_PREFIXES = [
   /@@\s*agentDefsL1/gi,
 ];
 
-const COMMANDS = ['run', 'resume', 'help'] as const;
+const COMMANDS = ['run', 'units', 'resume', 'help'] as const;
 export type D1Command = typeof COMMANDS[number];
 
 export const MSG_PATH = "Path must not contain '..'.";
 export const MSG_CANDIDATE_DOTDOT = "Candidate path must not contain '..'.";
 export const MSG_CANDIDATE = 'Candidate runs are refused. Nothing was changed.';
 export const MSG_REBUILD = 'Rebuild all is refused. Nothing was deleted.';
-export const MSG_ONE_COMMAND = 'Pass one command: /run, /resume or /help.';
-export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /resume or /help.';
+export const MSG_ONE_COMMAND = 'Pass one command: /run, /units, /resume or /help.';
+export const MSG_USAGE = 'Pass @@agentDefsL1 <lowerCamel> /run, /units, /resume or /help.';
+export const MSG_UNITS = 'Pass at least one <kind>:<id> after /units.';
 export const MSG_MODULE = 'Module name must be lowerCamel (example: stockControl).';
 export const MSG_PROJECT = 'Project identity is missing.';
 export const MSG_PROJECT_MISMATCH = 'Project identity does not match this task.';
@@ -123,6 +124,7 @@ export interface D1ParsedInvocation {
   module: string;
   command: D1Command | '';
   refused: string;
+  units: string[];
 }
 
 export function isD1StepId(value: string): value is D1StepId {
@@ -257,6 +259,17 @@ export function reportFile(project: number, moduleName: string): D1FileInfo {
   };
 }
 
+/** `l1/<module>/pipeline/agentDefsL1/units.json` — the /units scope. A full /run removes it. */
+export function unitsFile(project: number, moduleName: string): D1FileInfo {
+  return {
+    project,
+    level: 1,
+    folder: `${moduleName}/pipeline/agentDefsL1`,
+    shortName: 'units',
+    extension: '.json',
+  };
+}
+
 /** `l1/<module>/pipeline/agentDefsL1/pipeline.json` in one project. */
 export function pipelineFile(project: number, moduleName: string): D1FileInfo {
   return {
@@ -291,6 +304,15 @@ export function requireProject(value: unknown): number | { refusal: string } {
   return { refusal: MSG_PROJECT };
 }
 
+function refusedInvocation(moduleName: string, refused: string): D1ParsedInvocation {
+  return { module: moduleName, command: '', refused, units: [] };
+}
+
+/** Same members as `EFFORT_UNIT_KINDS` in poolPlan. A value import of that module is outside this agent. */
+export const D1_UNIT_KINDS = ['page', 'route', 'usecase', 'entity', 'request', 'table', 'shared', 'contract', 'workflow', 'repository', 'authority', 'scope', 'seeds', 'controller', 'events'] as const;
+
+const UNIT_RE = /^([A-Za-z]+):([A-Za-z0-9_.]+)$/;
+
 export function parseD1Invocation(value: string): D1ParsedInvocation {
   let raw = String(value || '');
   for (const prefix of AGENT_PREFIXES) raw = raw.replace(prefix, ' ');
@@ -299,15 +321,15 @@ export function parseD1Invocation(value: string): D1ParsedInvocation {
   if (candidate) {
     const path = candidate[2] || '';
     if (raw.includes('..') || path.includes('..')) {
-      return { module: '', command: '', refused: MSG_CANDIDATE_DOTDOT };
+      return refusedInvocation('', MSG_CANDIDATE_DOTDOT);
     }
-    return { module: '', command: '', refused: MSG_CANDIDATE };
+    return refusedInvocation('', MSG_CANDIDATE);
   }
   if (REBUILD_ALL_RE.test(raw)) {
-    return { module: '', command: '', refused: MSG_REBUILD };
+    return refusedInvocation('', MSG_REBUILD);
   }
   if (raw.includes('..')) {
-    return { module: '', command: '', refused: MSG_PATH };
+    return refusedInvocation('', MSG_PATH);
   }
 
   const tokens = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
@@ -315,31 +337,42 @@ export function parseD1Invocation(value: string): D1ParsedInvocation {
   const words = tokens.filter(token => !token.startsWith('/'));
   const unknown = flags.filter(token => !COMMANDS.includes(token.slice(1).toLowerCase() as D1Command));
   if (unknown.length > 0) {
-    return { module: '', command: '', refused: `Unknown flag: ${unknown[0]}.` };
+    return refusedInvocation('', `Unknown flag: ${unknown[0]}.`);
   }
   if (flags.length !== 1) {
-    return { module: words[0] || '', command: '', refused: MSG_ONE_COMMAND };
+    return refusedInvocation(words[0] || '', MSG_ONE_COMMAND);
   }
   if (words.length === 0) {
-    return { module: '', command: '', refused: MSG_USAGE };
-  }
-  if (words.length !== 1) {
-    return { module: words[0], command: '', refused: `Unexpected argument: ${words[1]}.` };
+    return refusedInvocation('', MSG_USAGE);
   }
   const moduleName = words[0];
   if (!moduleTokenOk(moduleName)) {
-    return { module: moduleName, command: '', refused: MSG_MODULE };
+    return refusedInvocation(moduleName, MSG_MODULE);
   }
   const command = flags[0].slice(1).toLowerCase() as D1Command;
-  return { module: moduleName, command, refused: '' };
+  if (command !== 'units') {
+    if (words.length !== 1) return refusedInvocation(moduleName, `Unexpected argument: ${words[1]}.`);
+    return { module: moduleName, command, refused: '', units: [] };
+  }
+  const listed = words.slice(1);
+  if (listed.length === 0) return refusedInvocation(moduleName, MSG_UNITS);
+  for (const token of listed) {
+    const match = UNIT_RE.exec(token);
+    if (!match) return refusedInvocation(moduleName, `Unit '${token}' must be <kind>:<id>.`);
+    if (!(D1_UNIT_KINDS as readonly string[]).includes(match[1])) {
+      return refusedInvocation(moduleName, `Unknown unit kind: ${match[1]}.`);
+    }
+  }
+  return { module: moduleName, command, refused: '', units: listed };
 }
 
 export function helpText(moduleName: string, project: number): string {
   const pending = D1_FLOW_STEP_IDS.filter(id => !(D1_IMPLEMENTED_STEP_IDS as readonly string[]).includes(id));
   return [
     `agentDefsL1 ${moduleName} in project ${project}.`,
-    'Commands: /run, /resume, /help.',
+    'Commands: /run, /units, /resume, /help.',
     '/run records the checkpoint and runs the implemented steps. A step that is only declared stops the run.',
+    '/units <kind>:<id> … runs the same steps as /run and writes only the listed units.',
     '/resume continues an intact checkpoint and does not rewrite it.',
     '/candidate and /rebuild all are refused. Nothing is deleted.',
     `State file: ${displayPath(pipelineFile(project, moduleName))}.`,

@@ -28,6 +28,7 @@ import {
   type D1SelectedPort,
   type D1SelectedRequest,
   type D1SelectedTable,
+  type D1ScopeUnit,
   type D1SelectedUsecase,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
@@ -61,6 +62,7 @@ export function buildD1InputSnapshot(
   artifacts: D1InputArtifacts,
   previous: D1InputSnapshot | null,
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
+  scope: readonly D1ScopeUnit[] | null = null,
 ): D1InputSnapshot {
   const moduleName = identity.moduleName;
   const paths = inputPaths(moduleName);
@@ -313,6 +315,7 @@ export function buildD1InputSnapshot(
   }), present);
   noteRemovals(problems, removed, previous, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
+  if (scope) applyUnitScope(files, problems, scope, present);
 
   const pages = pageGroups(requests);
   const snapshot: D1InputSnapshot = {
@@ -347,6 +350,53 @@ export function contractPageIds(artifacts: Pick<D1InputArtifacts, 'menu' | 'need
   for (const row of rows(rec(artifacts.needs).pages)) ids.add(text(row.pageId));
   for (const row of rows(rec(artifacts.effort).screens)) ids.add(text(row.pageId));
   return [...ids].filter(id => isSafeToken(id)).sort();
+}
+
+const SCOPED_ACTIONS = new Set<D1FileAction>(['create', 'update', 'recompose', 'conflict']);
+
+function fileMatchesUnit(file: D1PlannedFile, unit: D1ScopeUnit): boolean {
+  const { kind, id } = unit;
+  if (kind === 'usecase') {
+    return file.artifactType === 'usecase' && (file.identity === id || file.ownerRefs.includes(`usecase:${id}`));
+  }
+  if (kind === 'request' || kind === 'page') {
+    return (file.artifactType === 'requestService' || file.artifactType === 'httpController') && file.identity === id;
+  }
+  if (kind === 'controller') return file.artifactType === 'httpController' && file.identity === id;
+  if (kind === 'route') return file.ownerRefs.includes(`endpoint:${id}`);
+  if (kind === 'entity') return file.artifactType === 'domainEntity' && file.identity === id;
+  if (kind === 'repository') return file.artifactType === 'repositoryAdapter' && (file.identity === id || file.id === `adapter:${id}`);
+  if (kind === 'table') return file.artifactType === 'table' && file.identity === id;
+  if (kind === 'seeds') return file.artifactType === 'persistenceSeeds' && (file.identity === id || file.id === `seeds:${id}`);
+  if (kind === 'workflow') return file.artifactType === 'workflowProcess' && file.identity === id;
+  return false;
+}
+
+function applyUnitScope(
+  files: D1PlannedFile[],
+  problems: D1InputProblem[],
+  scope: readonly D1ScopeUnit[],
+  present: Map<string, string>,
+): void {
+  const outside = files.filter(file => !scope.some(unit => fileMatchesUnit(file, unit)));
+  const outsidePaths = new Set(outside.map(file => file.defPath));
+  const outsideIds = new Set(outside.map(file => file.id));
+  for (const file of outside) {
+    const hash = present.get(file.defPath) || '';
+    if (!hash || !SCOPED_ACTIONS.has(file.action)) continue;
+    file.action = 'preserve';
+    file.contentHash = hash;
+  }
+  for (const problem of problems) {
+    if (problem.severity !== 'error') continue;
+    const byPath = outsidePaths.has(problem.path);
+    const byOwner = !!problem.ownerRef && outsideIds.has(problem.ownerRef);
+    if (byPath || byOwner) problem.severity = 'review';
+  }
+  for (const unit of scope) {
+    if (files.some(file => fileMatchesUnit(file, unit))) continue;
+    review(problems, 'SCOPE_UNIT_UNMATCHED', 'units.json', `Unit ${unit.kind}:${unit.id} matches no planned file.`, `${unit.kind}:${unit.id}`);
+  }
 }
 
 function planFiles(input: {

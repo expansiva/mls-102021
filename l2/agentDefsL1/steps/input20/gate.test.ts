@@ -739,3 +739,64 @@ void test('a mixed page with a usecase to update still blocks the controller', (
   }
   assert.equal(snapshot.consumersReleased, false);
 });
+
+void test('a unit scope preserves existing defs outside the list and leaves an in-list error blocking', () => {
+  const artifacts = clone(loadHead());
+  const head = build(artifacts);
+  const usecases = head.files.filter(file => file.artifactType === 'usecase');
+  assert.ok(usecases.length >= 2);
+  assert.ok(head.selection.pages.length >= 1);
+  const fresh = usecases.find(file => file.identity === 'createProduto');
+  const stale = usecases.find(file => file.identity === 'listProduto');
+  assert.ok(fresh && stale);
+  setUsecaseStatus(artifacts, 'listProduto', 'toUpdate');
+  const previous = clone(head);
+  for (const file of previous.files) {
+    if (file.defPath === fresh.defPath || file.defPath === stale.defPath) continue;
+    file.contentHash = PAGE_HASH;
+  }
+  artifacts.presentDefs = head.files
+    .filter(file => file.defPath !== fresh.defPath)
+    .map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
+  const identity = { project: PROJECT, moduleName: MODULE };
+  const open = buildD1InputSnapshot(identity, artifacts, previous);
+  assert.deepEqual(open, buildD1InputSnapshot(identity, artifacts, previous, new Map(), null));
+  assert.deepEqual(build(artifacts), buildD1InputSnapshot(identity, artifacts, null, new Map(), null));
+  const staleError = open.problems.find(item => item.severity === 'error' && item.path === stale.defPath);
+  assert.ok(staleError);
+  assert.equal(open.files.find(file => file.defPath === stale.defPath)?.action, 'conflict');
+
+  const held = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [{ kind: 'usecase', id: fresh.identity }]);
+  assert.equal(held.files.find(file => file.defPath === fresh.defPath)?.action, 'create');
+  assert.equal(held.files.find(file => file.defPath === stale.defPath)?.action, 'preserve');
+  assert.equal(held.files.find(file => file.defPath === stale.defPath)?.contentHash, PAGE_HASH);
+  const downgraded = held.problems.find(item => item.code === staleError.code && item.path === stale.defPath);
+  assert.equal(downgraded?.severity, 'review');
+  assert.equal(downgraded?.message, staleError.message);
+  for (const file of held.files) {
+    if (file.defPath === fresh.defPath) continue;
+    const before = open.files.find(item => item.defPath === file.defPath);
+    if (!before || !artifacts.presentDefs.some(item => item.path === file.defPath)) continue;
+    if (before.action === 'create' || before.action === 'update' || before.action === 'recompose' || before.action === 'conflict') {
+      assert.equal(file.action, 'preserve', file.id);
+      assert.equal(file.contentHash, PAGE_HASH);
+    }
+  }
+
+  const blocked = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [
+    { kind: 'usecase', id: fresh.identity },
+    { kind: 'usecase', id: stale.identity },
+  ]);
+  const still = blocked.problems.find(item => item.code === staleError.code && item.path === stale.defPath);
+  assert.equal(still?.severity, 'error');
+  assert.equal(blocked.files.find(file => file.defPath === stale.defPath)?.action, 'conflict');
+  assert.equal(blocked.consumersReleased, false);
+
+  const missed = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [
+    { kind: 'usecase', id: fresh.identity },
+    { kind: 'entity', id: 'notInPlan' },
+  ]);
+  const unmatched = missed.problems.find(item => item.code === 'SCOPE_UNIT_UNMATCHED');
+  assert.equal(unmatched?.severity, 'review');
+  assert.equal(unmatched?.ownerRef, 'entity:notInPlan');
+});
