@@ -42,7 +42,7 @@ export function planNewReleaseL1(
   }
   const refusals: string[] = [];
   // A workflow def to regenerate comes from the defs generator, like a new route: the def-edit path writes no workflow def.
-  const generator = file.status === 'contract'
+  const generator = answers.some(answer => answer.contract === 'change')
     || answers.some(answer => answer.create.some(unit => GENERATOR_CREATE.has(unit.kind)))
     || answers.some(answer => answer.regenerateDefs.some(unit => unit.kind === 'workflow'));
   for (const answer of answers) refusals.push(...refusalOf(file, answer, defs, generator));
@@ -137,14 +137,32 @@ function ruleIdOf(item: L4DiffItem): string {
  * A workflow this effort removes is not also regenerated or materialized: the task item of a removed process
  * says to regenerate the same def, and a removal wins over that (the same rule as the merged effort).
  */
+/** Same effort, with this master's removed workflows already dropped from regenerateDefs and materialize. */
+export function effortWithoutRemovedUnits(file: ChangeEffortFile, masterProject: string): ChangeEffortFile {
+  const filtered = withoutRemovedUnits(file.perItem.flatMap(row => row.answers.filter(answer => answer.master.project === masterProject)));
+  let index = 0;
+  return {
+    ...file,
+    perItem: file.perItem.map(row => ({
+      ...row,
+      answers: row.answers.map(answer => answer.master.project === masterProject ? filtered[index++]! : answer),
+    })),
+  };
+}
+
 function withoutRemovedUnits(answers: EffortAnswer[]): EffortAnswer[] {
-  const removed = new Set(workflowRemoves(answers));
+  const removed = new Set(workflowRemoves(answers).map(unitKey));
   if (removed.size === 0) return answers;
   return answers.map(answer => ({
     ...answer,
-    regenerateDefs: answer.regenerateDefs.filter(unit => !removed.has(unit.path)),
-    materialize: answer.materialize.filter(unit => !removed.has(unit.path)),
+    regenerateDefs: answer.regenerateDefs.filter(unit => !removed.has(unitKey(unit.path))),
+    materialize: answer.materialize.filter(unit => !removed.has(unitKey(unit.path))),
   }));
+}
+
+/** `l1/...` and `_102047_/l1/...` name the same def. */
+function unitKey(path: string): string {
+  return path.replace(/^\/+/u, '').replace(/^_\d+_\//u, '');
 }
 
 function workflowRemoves(answers: EffortAnswer[]): string[] {

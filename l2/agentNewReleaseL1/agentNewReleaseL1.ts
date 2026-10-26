@@ -9,7 +9,7 @@ import {
   snapshotOf,
   type ReleasePortraitFile,
 } from '/_102021_/l2/agentNewReleaseL1/helpers/guard.js';
-import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
+import { effortWithoutRemovedUnits, planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
 import {
   editNotes,
   generatorUnits,
@@ -111,7 +111,7 @@ async function beforePromptImplicit(
       const portrait = snapshotFile(moduleName);
       await writeJson(portrait, await portraitFile(moduleName, defs));
       await recordPhase(moduleName, phase, 'ok', 'written');
-      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effort, masterProject), removedFirst));
+      return finish(agent, context, 'done', reportGeneratorStart(moduleName, generatorUnits(effortWithoutRemovedUnits(effort, masterProject), masterProject), removedFirst));
     }
 
     const notes = editNotes(effort, masterProject, plan.edits.map(edit => edit.path));

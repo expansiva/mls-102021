@@ -7,7 +7,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
-import { planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
+import { effortWithoutRemovedUnits, planNewReleaseL1 } from '/_102021_/l2/agentNewReleaseL1/helpers/plan.js';
+import { generatorUnits, reportGeneratorStart } from '/_102021_/l2/agentNewReleaseL1/helpers/report.js';
 import { changeEffortFileStatus, mergeChangeEffort } from '/_102035_/l2/solution/gates/changeEffort/gate.js';
 import type { ChangeEffortFile, EffortAnswer, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -405,6 +406,67 @@ test('W2 and W3 mark flow when a workflow is regenerated and a rule effort does 
   assert.equal(w3.flow, true);
   assert.equal(w3.path, 'generator');
   assert.deepEqual(w3.allowed, [processo]);
+});
+
+test('another master contract change stays on def-edit and a removed workflow drops from targets and the generator list', () => {
+  const flow = 'l1/tarefas/layer_2_application/workflows/resumoDiarioTarefas.defs.ts';
+  const prefixed = `_102047_/${flow}`;
+  const request = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts';
+  const file = JSON.parse(JSON.stringify(loadEffort('R1.changeEffort.json'))) as ChangeEffortFile;
+  const rule = file.perItem[0]!;
+  const l2 = rule.answers.find(answer => answer.master.project === '102020');
+  if (!l2) throw new Error('missing l2 answer');
+  l2.contract = 'change';
+  const processId = 'process:resumoDiarioTarefas';
+  const taskId = 'task:resumoDiarioTarefas.avisarVencendo';
+  const process = JSON.parse(JSON.stringify(rule)) as typeof rule;
+  process.item = processId;
+  for (const answer of process.answers) {
+    answer.item = processId;
+    answer.create = [];
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+    answer.remove = [];
+    if (answer.master.project === MASTER) answer.remove = [unit('workflow', 'resumoDiarioTarefas', flow)];
+  }
+  const task = JSON.parse(JSON.stringify(rule)) as typeof rule;
+  task.item = taskId;
+  for (const answer of task.answers) {
+    answer.item = taskId;
+    answer.create = [];
+    answer.remove = [];
+    answer.regenerateDefs = [];
+    answer.materialize = [];
+    if (answer.master.project === MASTER) {
+      answer.regenerateDefs = [unit('workflow', 'resumoDiarioTarefas', prefixed)];
+      answer.materialize = [unit('workflow', 'resumoDiarioTarefas', prefixed), unit('request', 'minhas_tarefas', request)];
+    }
+  }
+  file.perItem.push(process, task);
+  file.request.items.push(
+    { changeId: processId, kind: 'process', op: 'removed', entity: '', source: 'workflows.defs.ts' },
+    { changeId: taskId, kind: 'task', op: 'removed', entity: '', source: 'workflows.defs.ts' },
+  );
+  const effort = reseal(file);
+  assert.equal(effort.status, 'contract');
+  const plan = planNewReleaseL1(effort, MASTER, DEFS);
+  assert.equal(plan.ok, true, plan.ok ? '' : plan.reason);
+  if (!plan.ok) return;
+  assert.equal(plan.path, 'def-edit');
+  assert.equal(plan.targets.includes(flow), false);
+  assert.equal(plan.targets.includes(prefixed), false);
+  assert.equal(plan.targets.includes(request), true);
+  const listed = reportGeneratorStart('tarefas', generatorUnits(effortWithoutRemovedUnits(effort, MASTER), MASTER));
+  assert.equal(listed.includes(flow), false);
+  assert.equal(listed.includes('resumoDiarioTarefas'), false);
+
+  const own = reseal(mutate(loadEffort('R1.changeEffort.json'), answer => {
+    answer.contract = 'change';
+  }));
+  const generator = planNewReleaseL1(own, MASTER, DEFS);
+  assert.equal(generator.ok, true, generator.ok ? '' : generator.reason);
+  if (!generator.ok) return;
+  assert.equal(generator.path, 'generator');
 });
 
 test('a generator plan carries the effort targets and leaves out a unit the effort removes', () => {

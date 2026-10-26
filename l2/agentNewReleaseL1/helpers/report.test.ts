@@ -124,6 +124,17 @@ const USECASE_TS = 'l1/tarefas/layer_2_application/usecases/createTarefa.ts';
 const REQUEST_DEFS = 'l1/tarefas/layer_2_application/requests/minhas_tarefas.defs.ts';
 const USECASE_DEFS = 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts';
 
+test('a materialize-only unit deletes the sibling .ts and leaves the .defs.ts', async () => {
+  const effort = readFileSync(join(HERE, 'fixtures', 'R2.changeEffort.json'), 'utf8');
+  const entity = 'l1/tarefas/layer_3_domain/entities/tarefa.defs.ts';
+  const entityTs = 'l1/tarefas/layer_3_domain/entities/tarefa.ts';
+  const ran = await runRelease(effort, [entityTs]);
+  assert.equal(ran.status, 'completed');
+  assert.equal(ran.message.includes('@@agentDefsL1'), false);
+  assert.equal(ran.files[keyOf(infoOf(entityTs))].status, 'deleted');
+  assert.notEqual(ran.files[keyOf(infoOf(entity))].status, 'deleted');
+});
+
 test('R1 deletes both generated sources, leaves the defs, and returns one scope command', async () => {
   const effort = readFileSync(join(HERE, 'fixtures', 'R1.changeEffort.json'), 'utf8');
   const both = await runRelease(effort, [REQUEST_TS, USECASE_TS]);
