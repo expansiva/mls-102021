@@ -116,16 +116,10 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
         }
         const inputHash = await unitInputHash(ctx, unit);
         const prior = await readUnitStatus(run.project, run.module, spec.layer, unit.unitId);
-        const decision = await reuseDecision(prior, inputHash, [unit.output], run.force);
+        const decision = await reuseDecision([unit.output], run.force);
         if (decision.kind === 'reuse') {
-          await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: prior!.code, diagnostic: prior!.diagnostic, inputHash, outputs: prior!.outputs });
+          await writeUnitStatus(run.project, run.module, { ...base, status: 'reused', code: '', diagnostic: '', inputHash, outputs: prior?.outputs ?? {} });
           lines.push(`${unit.unitId}: reused`);
-          continue;
-        }
-        if (decision.kind === 'protect') {
-          const diagnostic = `EDITED_LOCALLY: ${decision.path} was not written by this agent (use "force": true).`;
-          await writeUnitStatus(run.project, run.module, { ...base, status: 'skipped', code: 'EDITED_LOCALLY', diagnostic, inputHash, outputs: prior?.outputs ?? {} });
-          lines.push(`${unit.unitId}: skipped, ${diagnostic}`);
           continue;
         }
         workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force })));
