@@ -81,6 +81,54 @@ function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
 
+/** Keys a route file never reads: the usecase owns capabilities, transitions and lifecycle. */
+const ONTOLOGY_KEYS_DROPPED = ['capabilities', 'transitions', 'lifecycleStates'] as const;
+
+/** Problems shown in one repair prompt. The receipt keeps the full list. */
+const REPAIR_PROBLEM_LIMIT = 4000;
+
+/** Compact ontology for the prompt: the record minus the three keys a route does not read. Null when the file is not a JSON record. */
+function ontologyForPrompt(source: string): string | null {
+  const match = /=\s*(\{[\s\S]*\})\s*as const/.exec(source);
+  if (!match) {
+    console.warn('ontology record is not JSON: no object before `as const`');
+    return null;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(match[1]);
+  } catch (error) {
+    console.warn(`ontology record is not JSON: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+  if (!isRecord(value)) return null;
+  const copy: Record<string, unknown> = { ...value };
+  for (const key of ONTOLOGY_KEYS_DROPPED) delete copy[key];
+  return ['This is the ontology of the entity.', fence('json', JSON.stringify(copy))].join('\n\n');
+}
+
+/** The problem list of one repair prompt, at most REPAIR_PROBLEM_LIMIT characters, plus a count of what was left out. */
+function repairProblemText(problems: readonly string[]): string {
+  const kept: string[] = [];
+  let used = 0;
+  let index = 0;
+  for (; index < problems.length; index += 1) {
+    const line = `- ${problems[index]}`;
+    const next = used + (kept.length > 0 ? 1 : 0) + line.length;
+    if (next > REPAIR_PROBLEM_LIMIT) break;
+    kept.push(line);
+    used = next;
+  }
+  // One problem longer than the limit still shows, cut, instead of an empty list.
+  if (kept.length === 0 && problems.length > 0) {
+    kept.push(`- ${problems[0]}`.slice(0, REPAIR_PROBLEM_LIMIT));
+    index = 1;
+  }
+  const omitted = problems.length - index;
+  if (omitted > 0) kept.push(`${omitted} more problems omitted`);
+  return kept.join('\n');
+}
+
 export interface M12RequestContext {
   pageId: string;
   /** `export interface <Page>Contracts` of the page contract: the type `requests` is checked against. */
@@ -394,7 +442,9 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   for (const entity of ctx.units.filter(item => item.definition.artifactType === 'domainEntity' && touched.has(String(item.definition.data.entityId ?? item.definition.artifactId).toLowerCase()))) {
     const ref = `_${project}_/l4/${moduleName}/ontology/${String(entity.definition.data.entityId ?? entity.definition.artifactId)}.defs.ts`;
     const text = await ctx.read(ref);
-    if (text) parts.push(section(`l4 ontology ${ref} (source)`, fence('ts', text.slice(0, 20000))));
+    // A file that is not the JSON record keeps going as the source text, as before the trimming.
+    const ontology = text ? (ontologyForPrompt(text) ?? fence('ts', text.slice(0, 20000))) : null;
+    if (ontology) parts.push(section(`l4 ontology ${ref} (source)`, ontology));
   }
   parts.push(section('Entities of the module', ctx.units.filter(item => item.definition.artifactType === 'domainEntity').map(item => {
     const fields = Array.isArray(item.definition.data.fields) ? item.definition.data.fields.filter(isRecord).map(field => `${String(field.name ?? '')}${field.derived ? ' (derived)' : ''}`) : [];
@@ -460,7 +510,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   if (repair) {
     parts.push(section('Repair', [
       'The previous answer was refused. Fix exactly these problems and return the whole file again:',
-      ...repair.problems.map(problem => `- ${problem}`),
+      repairProblemText(repair.problems),
       repair.previous ? `\nPrevious answer:\n${fence('ts', repair.previous)}` : '',
     ].join('\n')));
   }
