@@ -857,6 +857,102 @@ void test('process added stays outside v1', () => {
   assert.match(answer.abend?.reason ?? '', /process added/);
 });
 
+const OUTBOUND_BASE = {
+  id: 'tarefaConcluida',
+  kind: 'outbound',
+  from: '',
+  to: '',
+  event: '',
+  writes: [],
+  effect: '',
+  transitionRef: '',
+  on: 'Tarefa.aceitar',
+  description: 'A tarefa foi aceita',
+  entityRefs: ['Tarefa'],
+  title: 'Tarefa concluída',
+};
+
+function outboundItem(
+  op: L4DiffItem['op'],
+  eventId: string,
+  before?: Record<string, unknown>,
+  after?: Record<string, unknown>,
+): EffortInput {
+  const item: L4DiffItem = { changeId: `outbound:${eventId}`, kind: 'outbound', op, entity: '', source: 'l4' };
+  if (before) item.before = before;
+  if (after) item.after = after;
+  return input(item, 'tarefas');
+}
+
+void test('I1 outbound só com title e description fica vazio e avisa o item', () => {
+  const before = { ...OUTBOUND_BASE };
+  const after = { ...OUTBOUND_BASE, title: 'Concluída', description: 'Outra frase' };
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = describeEffortFrom(outboundItem('changed', 'tarefaConcluida', before, after), TAREFAS);
+    assert.equal(answer.status, 'computed');
+    assert.equal(answer.contract, 'keep');
+    assert.deepEqual(answer.create, []);
+    assert.deepEqual(answer.remove, []);
+    assert.deepEqual(answer.regenerateDefs, []);
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, ['outbound:tarefaConcluida']);
+  } finally {
+    info.mock.restore();
+  }
+});
+
+void test('I2 outbound com outro atributo e o mesmo on materializa o def e quem cita', () => {
+  const before = { ...OUTBOUND_BASE };
+  const after = { ...OUTBOUND_BASE, consumer: 'outro' };
+  const answer = describeEffortFrom(outboundItem('changed', 'tarefaConcluida', before, after), TAREFAS);
+  const keys = ['shared:outbound', 'usecase:aceitar'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  assert.deepEqual(answer.regenerateDefs, []);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('I3 outbound added na operação update materializa o def e o usecase da operação', () => {
+  const after = { ...OUTBOUND_BASE, id: 'tarefaAtualizada', on: 'Tarefa.update' };
+  const answer = describeEffortFrom(outboundItem('added', 'tarefaAtualizada', undefined, after), TAREFAS);
+  const keys = ['shared:outbound', 'usecase:updateTarefa'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('I4 outbound removed regenera e materializa o def e quem cita', () => {
+  const before = { ...OUTBOUND_BASE, id: 'tarefaCancelada', on: 'Tarefa.cancelar' };
+  const answer = describeEffortFrom(outboundItem('removed', 'tarefaCancelada', before), TAREFAS);
+  const keys = ['shared:outbound', 'usecase:cancelar'];
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('outbound changed with a new on regenerates the event def, citers and the new operation', () => {
+  const before = { ...OUTBOUND_BASE, on: 'Tarefa.aceitar' };
+  const after = { ...OUTBOUND_BASE, on: 'Tarefa.cancelar' };
+  const answer = describeEffortFrom(outboundItem('changed', 'tarefaConcluida', before, after), TAREFAS);
+  const keys = ['shared:outbound', 'usecase:aceitar', 'usecase:cancelar'];
+  assert.equal(answer.status, 'computed');
+  assert.deepEqual(keysOf(answer.regenerateDefs), keys);
+  assert.deepEqual(keysOf(answer.materialize), keys);
+});
+
+void test('inbound abends because it is not handled yet', () => {
+  const item: L4DiffItem = { changeId: 'inbound:receber', kind: 'inbound', op: 'added', entity: '', source: 'l4' };
+  const answer = describeEffortFrom(input(item, 'tarefas'), TAREFAS);
+  assert.equal(answer.status, 'abend');
+  assert.equal(answer.abend?.reason, 'inbound integration change is not handled yet');
+  assert.equal(answer.contract, 'keep');
+});
+
 void test('journey actorRef change cites the journey; rule field grant and text stay as they are', () => {
   const after = { ...JOURNEY_BASE, actorRef: 'gestor', index: { ...JOURNEY_BASE.index, actorRef: 'gestor' } };
   const journey = describeEffortFrom(journeyItem('changed', 'journey:criarTarefa', JOURNEY_BASE, after), TAREFAS);

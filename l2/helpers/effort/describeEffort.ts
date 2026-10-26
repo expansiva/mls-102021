@@ -165,6 +165,8 @@ const NO_FIELD_UNIT = 'no backend unit cites this field';
 const NO_GRANT_UNIT = 'no backend unit cites this grant';
 const NO_WORKFLOW_UNIT = 'no backend workflow def for this process';
 const NO_TRANSITION_UNIT = 'no backend unit cites this transition';
+const NO_PUBLISHED_OPERATION = 'no usecase matches the published operation';
+const INBOUND_UNHANDLED = 'inbound integration change is not handled yet';
 
 function sameName(left: string, right: string): boolean {
   return left.localeCompare(right, 'en', { sensitivity: 'accent' }) === 0;
@@ -530,6 +532,18 @@ function workflowTextOnly(item: EffortInput['item']): boolean {
 }
 
 /** `changed` whose every difference is `title` or `description`. No difference counts as text. */
+function outboundTextOnly(item: EffortInput['item']): boolean {
+  if (item.kind !== 'outbound' || item.op !== 'changed') return false;
+  if (!isRecord(item.before) || !isRecord(item.after)) return false;
+  const keys = new Set([...Object.keys(item.before), ...Object.keys(item.after)]);
+  for (const key of keys) {
+    if (sameJson(item.before[key], item.after[key])) continue;
+    if (!GRANT_TEXT.has(key)) return false;
+  }
+  return true;
+}
+
+/** `changed` whose every difference is `title` or `description`. No difference counts as text. */
 function grantTextOnly(item: EffortInput['item']): boolean {
   if (item.kind !== 'grant' || item.op !== 'changed') return false;
   if (!isRecord(item.before) || !isRecord(item.after)) return false;
@@ -640,6 +654,84 @@ function grantEffort(input: EffortInput, defs: Record<string, string>): EffortAn
   }
   if (materialize.length === 0) console.info(item.changeId, NO_GRANT_UNIT);
   return computed(item.changeId, sortUnits(materialize), sortUnits(regenerate));
+}
+
+/** `on` is `<entity>.<operation>`. The operation is the text after the first dot. */
+function publishedOn(value: unknown): { entity: string; operation: string } | null {
+  if (typeof value !== 'string') return null;
+  const dot = value.indexOf('.');
+  if (dot <= 0 || dot >= value.length - 1) return null;
+  return { entity: value.slice(0, dot), operation: value.slice(dot + 1) };
+}
+
+function eventDefUnits(defs: Record<string, string>): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  for (const def of grantDefs(defs)) {
+    if (def.artifactType !== 'integrationOutbound' || !def.artifactId) continue;
+    units.push({ kind: 'shared', id: def.artifactId, path: def.path });
+  }
+  return units;
+}
+
+function citesPublishedEvent(data: Record<string, unknown>, eventId: string): boolean {
+  if (!eventId || !Array.isArray(data.effects)) return false;
+  return data.effects.some(entry => isRecord(entry) && entry.eventId === eventId);
+}
+
+function usecasesCitingEvent(defs: Record<string, string>, eventId: string): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType !== 'usecase' || !citesPublishedEvent(data, eventId)) return;
+    const id = typeof data.usecaseId === 'string' ? data.usecaseId : '';
+    if (id) units.push({ kind: 'usecase', id, path: defPath });
+  });
+  return units;
+}
+
+function usecaseForPublishedOn(defs: Record<string, string>, on: unknown): EffortUnitRef | null {
+  const published = publishedOn(on);
+  if (!published) return null;
+  let found: EffortUnitRef | null = null;
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (found || artifactType !== 'usecase') return;
+    const entityId = typeof data.entityId === 'string' ? data.entityId : '';
+    if (!sameName(entityId, published.entity)) return;
+    const transitionRef = typeof data.transitionRef === 'string' ? data.transitionRef : '';
+    const operation = typeof data.operation === 'string' ? data.operation : '';
+    if (transitionRef !== published.operation && operation !== published.operation) return;
+    const id = typeof data.usecaseId === 'string' ? data.usecaseId : '';
+    if (!id) return;
+    found = { kind: 'usecase', id, path: defPath };
+  });
+  return found;
+}
+
+function integrationEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.kind === 'inbound') return abend(item.changeId, INBOUND_UNHANDLED);
+  if (item.kind !== 'outbound') return null;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const eventId = idAfter(item.changeId, 'outbound:');
+  const beforeOn = isRecord(item.before) ? item.before.on : undefined;
+  const afterOn = isRecord(item.after) ? item.after.on : undefined;
+  const onChanged = item.op === 'changed' && !sameJson(beforeOn, afterOn);
+  const needsOperation = item.op === 'added' || onChanged;
+  const operation = needsOperation ? usecaseForPublishedOn(defs, afterOn) : null;
+  if (needsOperation && !operation) console.info(item.changeId, NO_PUBLISHED_OPERATION);
+  const includeCiting = item.op !== 'added';
+  const regenerateSource = item.op === 'changed' && !onChanged;
+  const picked: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  const take = (unit: EffortUnitRef): void => {
+    remember(picked, seen, unit);
+  };
+  for (const unit of eventDefUnits(defs)) take(unit);
+  if (includeCiting) {
+    for (const unit of usecasesCitingEvent(defs, eventId)) take(unit);
+  }
+  if (operation) take(operation);
+  const units = sortUnits(picked);
+  return computed(item.changeId, units, regenerateSource ? [] : units);
 }
 
 function fieldEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
@@ -796,7 +888,8 @@ function transitionEffort(input: EffortInput, defs: Record<string, string>): Eff
 /** Pure. `defs` maps each product def path to its `.defs.ts` source. */
 export function describeEffortFrom(input: EffortInput, defs: Record<string, string>): EffortAnswer {
   const item = input.item.changeId;
-  if (grantTextOnly(input.item) || journeyTextOnly(input.item) || workflowTextOnly(input.item)) {
+  if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
+  if (grantTextOnly(input.item) || outboundTextOnly(input.item) || journeyTextOnly(input.item) || workflowTextOnly(input.item)) {
     console.info(item);
     return computed(item, []);
   }
@@ -834,6 +927,8 @@ export function describeEffortFrom(input: EffortInput, defs: Record<string, stri
   if (grant) return grant;
   const journey = journeyEffort(input, defs);
   if (journey) return journey;
+  const integration = integrationEffort(input, defs);
+  if (integration) return integration;
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
 }
 
