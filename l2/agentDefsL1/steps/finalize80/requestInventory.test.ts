@@ -115,10 +115,6 @@ for (const tip of TIPS) {
  * and the defs of the usecases an answer brought, now on disk, are planned again without a conflict. Control: the final
  * snapshot built on the input20 derivation as previous (the hole the source key closes) refuses those defs.
  */
-/**
- * A second /run keeps a usecase an answer brought when a route that is still in the contract used it. The def on disk
- * is preserved (review), so the run stays released.
- */
 void test('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
   const moduleName = 'agendaClinica';
   const host = await readyHost('agendaClinica-53f1f35', moduleName);
@@ -151,10 +147,8 @@ void test('a second /run with the same sources calls no model and a def an answe
   // Control: with the derivation as previous, the same answers make those defs a conflict.
   await writeJson(inputFile(PROJECT, moduleName), derivation);
   const onDerivation = await assembleD1Input(PROJECT, moduleName, answersByRoute(await readResolveReceipt(PROJECT, moduleName)));
-  const preserved = onDerivation.problems.filter(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && answeredFiles.some(file => file.defPath === item.path));
-  assert.ok(preserved.length > 0);
-  assert.equal(preserved.every(item => item.severity === 'review'), true);
-  assert.equal(onDerivation.consumersReleased, true);
+  assert.ok(onDerivation.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && answeredFiles.some(file => file.defPath === item.path)));
+  assert.equal(onDerivation.consumersReleased, false);
 });
 
 /** Frozen plans that input20 refuses never reach finalize80. The refusal is the closed result. */

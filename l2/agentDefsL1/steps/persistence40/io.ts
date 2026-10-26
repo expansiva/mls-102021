@@ -89,7 +89,7 @@ async function persistenceRequest(
       usecases: Array<{ usecaseId: string; entity: string; operation: string; status: string }>;
       entities: string[];
     };
-    files: Array<{ artifactType: string; identity: string; defPath: string; action: string; contentHash?: string }>;
+    files: Array<{ artifactType: string; identity: string; defPath: string; action: string }>;
   },
   domain: D1DomainBuild,
 ): Promise<D1PersistenceRequest> {
@@ -142,7 +142,6 @@ async function persistenceRequest(
         identity: file.identity,
         defPath: file.defPath,
         action: file.action,
-        ...(file.contentHash ? { contentHash: file.contentHash } : {}),
       })),
     },
     domain,

@@ -1,5 +1,7 @@
 # agentNewReleaseL1
 
+This agent is being rewritten. Every accepted invocation currently refuses with `not implemented` and writes nothing.
+
 Applies one master's backend change effort onto the L1 defs of a module.
 
 Two invocations:

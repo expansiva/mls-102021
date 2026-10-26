@@ -28,7 +28,6 @@ import {
   type D1SelectedPort,
   type D1SelectedRequest,
   type D1SelectedTable,
-  type D1ScopeUnit,
   type D1SelectedUsecase,
   type D1SourceDigest,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
@@ -62,7 +61,6 @@ export function buildD1InputSnapshot(
   artifacts: D1InputArtifacts,
   previous: D1InputSnapshot | null,
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
-  scope: readonly D1ScopeUnit[] | null = null,
 ): D1InputSnapshot {
   const moduleName = identity.moduleName;
   const paths = inputPaths(moduleName);
@@ -195,7 +193,7 @@ export function buildD1InputSnapshot(
     }
     if (!isActive(text(left.status))) continue;
     const existing = text(left.existing);
-    const identityId = resolveIdentity(problems, paths.backend, moduleName, usecaseId, existing);
+    const identityId = resolveIdentity(problems, paths.backend, usecaseId, existing);
     selectedUsecases.push({
       usecaseId,
       entity: text(left.entity),
@@ -255,11 +253,6 @@ export function buildD1InputSnapshot(
     ids: new Map([...backendUsecases.values(), ...effortUsecases.values()].map(row => [text(row.usecaseId), `${text(row.entity)}.${text(row.operation)}`])),
     removed: new Set([...rows(backend.removed), ...rows(effort.removed)].filter(row => text(row.kind) === 'usecase').map(row => text(row.id))),
   };
-  const removedByPlan = new Set(planned.removed);
-  // A def that already exists can be created again from the contract. The plan's toRemove is applied after requests exist.
-  for (const id of removedByPlan) {
-    if (usecaseDefExists(id, artifacts.presentDefs, previous)) planned.removed.delete(id);
-  }
   // The contract is the source: a request may create the usecase it needs (selectedUsecases grows here).
   const requests = contractRequests(
     problems,
@@ -276,22 +269,14 @@ export function buildD1InputSnapshot(
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
-  const keptIds = keptByRouteIds(problems, paths.backend, removedByPlan, artifacts.presentDefs, previous, requests);
-  const removed = collectRemoved(
-    problems,
-    paths,
-    dropKeptUsecases(backend, keptIds),
-    dropKeptUsecases(effort, keptIds),
-    requests,
-    selectedUsecases,
-  );
+  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
-  notePrunedRemovals(problems, paths.backend, removed, previous, selectedUsecases, requests, contractV2.size > 0);
+  const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
   // With a v2 contract, a planned usecase no request calls is not generated. The plan stays an estimate.
   const generatedUsecases = contractV2.size > 0
     ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
     : selectedUsecases;
-  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
+  notePrunedRemovals(removed, previous, selectedUsecases, generatedUsecases, contractV2.size > 0);
   const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
@@ -315,7 +300,6 @@ export function buildD1InputSnapshot(
   }), present);
   noteRemovals(problems, removed, previous, present, receipts);
   if (hasCycle(files)) error(problems, 'DAG_CYCLE', 'input.json', 'Planned files have a dependency cycle.');
-  if (scope) applyUnitScope(files, problems, scope, present);
 
   const pages = pageGroups(requests);
   const snapshot: D1InputSnapshot = {
@@ -350,80 +334,6 @@ export function contractPageIds(artifacts: Pick<D1InputArtifacts, 'menu' | 'need
   for (const row of rows(rec(artifacts.needs).pages)) ids.add(text(row.pageId));
   for (const row of rows(rec(artifacts.effort).screens)) ids.add(text(row.pageId));
   return [...ids].filter(id => isSafeToken(id)).sort();
-}
-
-const SCOPED_ACTIONS = new Set<D1FileAction>(['create', 'update', 'recompose', 'conflict']);
-
-function fileMatchesUnit(file: D1PlannedFile, unit: D1ScopeUnit): boolean {
-  const { kind, id } = unit;
-  if (kind === 'usecase') {
-    return file.artifactType === 'usecase' && (file.identity === id || file.ownerRefs.includes(`usecase:${id}`));
-  }
-  if (kind === 'request' || kind === 'page') {
-    return (file.artifactType === 'requestService' || file.artifactType === 'httpController') && file.identity === id;
-  }
-  if (kind === 'controller') return file.artifactType === 'httpController' && file.identity === id;
-  if (kind === 'route') return file.ownerRefs.includes(`endpoint:${id}`);
-  if (kind === 'entity') return file.artifactType === 'domainEntity' && file.identity === id;
-  if (kind === 'repository') return file.artifactType === 'repositoryAdapter' && (file.identity === id || file.id === `adapter:${id}`);
-  if (kind === 'table') return file.artifactType === 'table' && file.identity === id;
-  if (kind === 'seeds') return file.artifactType === 'persistenceSeeds' && (file.identity === id || file.id === `seeds:${id}`);
-  if (kind === 'workflow') return file.artifactType === 'workflowProcess' && file.identity === id;
-  return false;
-}
-
-function applyUnitScope(
-  files: D1PlannedFile[],
-  problems: D1InputProblem[],
-  scope: readonly D1ScopeUnit[],
-  present: Map<string, string>,
-): void {
-  const outside = files.filter(file => !scope.some(unit => fileMatchesUnit(file, unit)));
-  const outsidePaths = new Set(outside.map(file => file.defPath));
-  const outsideIds = new Set(outside.map(file => file.id));
-  for (const file of outside) {
-    const hash = present.get(file.defPath) || '';
-    if (!hash || !SCOPED_ACTIONS.has(file.action)) continue;
-    file.action = 'preserve';
-    file.contentHash = hash;
-  }
-  for (const file of outside) {
-    if (file.action !== 'create') continue;
-    if (present.get(file.defPath)) continue;
-    file.action = 'preserve';
-    delete file.contentHash;
-    review(problems, 'SCOPE_OUTSIDE_ABSENT', file.defPath, `${file.id} is outside the unit list; def absent.`, file.id);
-  }
-  for (const problem of problems) {
-    if (problem.severity !== 'error') continue;
-    const byPath = outsidePaths.has(problem.path);
-    const byOwner = !!problem.ownerRef && outsideIds.has(problem.ownerRef);
-    if (byPath || byOwner) problem.severity = 'review';
-  }
-  for (const unit of scope) {
-    if (files.some(file => fileMatchesUnit(file, unit))) continue;
-    review(problems, 'SCOPE_UNIT_UNMATCHED', 'units.json', `Unit ${unit.kind}:${unit.id} matches no planned file.`, `${unit.kind}:${unit.id}`);
-  }
-  // A listed unit whose plan says done, and whose def is absent, is a create. The plan status does not refuse it.
-  for (const file of files) {
-    if (outside.includes(file) || present.get(file.defPath) || file.action !== 'preserve') continue;
-    const absentDone = problems.some(problem => problem.severity === 'error' && problem.code === 'DONE_ABSENT' && problem.path === file.defPath);
-    if (!absentDone) continue;
-    file.action = 'create';
-    delete file.contentHash;
-    for (let index = problems.length - 1; index >= 0; index -= 1) {
-      const problem = problems[index];
-      if (problem.severity === 'error' && problem.code === 'DONE_ABSENT' && problem.path === file.defPath) problems.splice(index, 1);
-    }
-  }
-  // A listed def that is already on disk is rewritten. `create` keeps no receipt hash, so the writer would refuse.
-  for (const file of files) {
-    if (outside.includes(file)) continue;
-    const hash = present.get(file.defPath) || '';
-    if (!hash || file.action !== 'create') continue;
-    file.action = 'recompose';
-    file.contentHash = hash;
-  }
 }
 
 function planFiles(input: {
@@ -579,12 +489,11 @@ function planFiles(input: {
     }).filter(Boolean)));
     const serviceId = `requestService:${page.pageId}`;
     const servicePath = requestServiceDefPath(moduleName, page.pageId);
-    const idle = usecaseIds.every(id => byId.get(id)?.action === 'preserve');
     const pageAction = mixed
-      ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`, idle)
+      ? recomposeOrConflict(defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`)
       : actionFor(status, defPath, input.present, input.previous, input.receipts, input.problems, `controller:${page.pageId}`);
     const serviceAction = mixed
-      ? recomposeOrConflict(servicePath, input.present, input.previous, input.receipts, input.problems, serviceId, idle)
+      ? recomposeOrConflict(servicePath, input.present, input.previous, input.receipts, input.problems, serviceId)
       : actionFor(status, servicePath, input.present, input.previous, input.receipts, input.problems, serviceId);
     add({
       id: serviceId,
@@ -683,7 +592,7 @@ function actionFor(
       return 'preserve';
     }
     if (!view.plan || !view.agrees || view.hash !== hash) {
-      review(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} receipt diverges and the file was preserved.`, ownerRef);
+      error(problems, 'DONE_ABSENT', defPath, `Done item ${ownerRef} is not an inventoried path and hash.`, ownerRef);
       return 'preserve';
     }
     return 'preserve';
@@ -697,8 +606,8 @@ function actionFor(
   }
   if (!hash) return 'create';
   if (!view.plan || !view.agrees || view.hash !== hash) {
-    review(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, `${existsMessage(defPath, hash, view)} The file was preserved.`, ownerRef);
-    return 'preserve';
+    error(problems, 'EXISTS_WITHOUT_RECEIPT', defPath, existsMessage(defPath, hash, view), ownerRef);
+    return 'conflict';
   }
   // The inventoried hash turns a present file into recompose. A writer receipt
   // only proves the bytes, so a create plan keeps its action and its snapshot hash.
@@ -713,17 +622,12 @@ function recomposeOrConflict(
   receipts: WriterIndex,
   problems: D1InputProblem[],
   ownerRef: string,
-  idle: boolean,
 ): D1FileAction {
   const hash = present.get(defPath) || '';
   const view = receiptView(previous, defPath, receipts);
   if (hash && view.inventoried === hash && view.agrees) return 'recompose';
   if (!hash && !view.inventoried) return 'create';
   if (hash && !view.inventoried && view.written === hash && view.agrees) return 'create';
-  if (idle && hash) {
-    review(problems, 'EXISTING_UNRESOLVED', defPath, `${ownerRef} is preserved: no usecase of the page is generated or changed.`, ownerRef);
-    return 'preserve';
-  }
   error(problems, 'EXISTING_UNRESOLVED', defPath, `Recompose of ${ownerRef} needs an inventoried path and hash.`, ownerRef);
   return 'conflict';
 }
@@ -789,21 +693,11 @@ function existsMessage(defPath: string, disk: string, view: ReceiptView): string
   return `toCreate file ${defPath} exists without an inventoried path and hash.`;
 }
 
-function resolveIdentity(problems: D1InputProblem[], path: string, moduleName: string, usecaseId: string, existing: string): string {
+function resolveIdentity(problems: D1InputProblem[], path: string, usecaseId: string, existing: string): string {
   if (!existing) return usecaseId;
   if (isSafeToken(existing)) return existing;
-  const fromPath = identityFromDefPath(existing, moduleName);
-  if (fromPath) return fromPath;
   error(problems, 'EXISTING_UNRESOLVED', path, `existing '${existing}' is not an id. A path prefix is not ownership.`, usecaseId);
   return usecaseId;
-}
-
-/** `l1/<module>/…/<id>.defs.ts`, optionally prefixed by `_<project>_/`. The module must be this run's. */
-function identityFromDefPath(existing: string, moduleName: string): string {
-  const body = existing.replace(/^_[0-9]+_\//, '');
-  const match = /^l1\/([^/]+)\/.+\/([^/]+)\.defs\.ts$/.exec(body);
-  if (!match || match[1] !== moduleName || !isSafeToken(match[2])) return '';
-  return match[2];
 }
 
 function collectRemoved(
@@ -1200,72 +1094,19 @@ function previousUsecaseFile(previous: D1InputSnapshot | null, usecaseId: string
   return previous?.files.find(file => file.identity === usecaseId || file.ownerRefs.includes(`usecase:${usecaseId}`));
 }
 
-function usecaseDefExists(usecaseId: string, present: D1InputArtifacts['presentDefs'], previous: D1InputSnapshot | null): boolean {
-  if (previousUsecaseFile(previous, usecaseId)) return true;
-  return present.some(item => item.path.endsWith(`/usecases/${usecaseId}.defs.ts`));
-}
-
-/** Routes that still call this usecase: a current request, or a previous request whose route is still in the contract. */
-function keptRoutes(usecaseId: string, requests: D1SelectedRequest[], previous: D1InputSnapshot | null): string[] {
-  const current = requests.filter(request => request.uses.includes(usecaseId)).map(request => request.route);
-  if (current.length) return [...new Set(current)].sort();
-  const live = new Set(requests.map(request => request.route));
-  const prior = (previous?.selection.requests || [])
-    .filter(request => request.uses.includes(usecaseId) && live.has(request.route))
-    .map(request => request.route);
-  return [...new Set(prior)].sort();
-}
-
-function noteKept(problems: D1InputProblem[], path: string, usecaseId: string, route: string): void {
-  review(problems, 'USECASE_KEPT_BY_ROUTE', path, `Usecase ${usecaseId} stays because route ${route} uses it.`, usecaseId);
-}
-
-function keptByRouteIds(
-  problems: D1InputProblem[],
-  path: string,
-  removedByPlan: ReadonlySet<string>,
-  present: D1InputArtifacts['presentDefs'],
-  previous: D1InputSnapshot | null,
-  requests: D1SelectedRequest[],
-): Set<string> {
-  const kept = new Set<string>();
-  for (const id of [...removedByPlan].sort()) {
-    if (!usecaseDefExists(id, present, previous)) continue;
-    const routes = keptRoutes(id, requests, previous);
-    if (!routes.length) continue;
-    kept.add(id);
-    noteKept(problems, path, id, routes[0]);
-  }
-  return kept;
-}
-
-function dropKeptUsecases(source: Record<string, unknown>, kept: ReadonlySet<string>): Record<string, unknown> {
-  return {
-    ...source,
-    removed: rows(source.removed).filter(row => text(row.kind) !== 'usecase' || !kept.has(text(row.id))),
-  };
-}
-
 function notePrunedRemovals(
-  problems: D1InputProblem[],
-  path: string,
   removed: D1RemovedItem[],
   previous: D1InputSnapshot | null,
   selected: D1SelectedUsecase[],
-  requests: D1SelectedRequest[],
+  generated: D1SelectedUsecase[],
   sawContract: boolean,
 ): void {
   if (!sawContract) return;
+  const kept = new Set(generated.map(usecase => usecase.usecaseId));
   const seen = new Set(removed.map(item => `${item.kind}:${item.id}`));
   for (const usecase of selected) {
-    if (usecase.routes.length > 0) continue;
+    if (kept.has(usecase.usecaseId)) continue;
     if (!previousUsecaseFile(previous, usecase.usecaseId)) continue;
-    const routes = keptRoutes(usecase.usecaseId, requests, previous);
-    if (routes.length) {
-      usecase.routes = routes;
-      noteKept(problems, path, usecase.usecaseId, routes[0]);
-      continue;
-    }
     const key = `usecase:${usecase.usecaseId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1284,7 +1125,7 @@ function noteUnrequested(
   if (!sawContract) return;
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
-    if (used.has(usecase.usecaseId) || usecase.routes.length > 0) continue;
+    if (used.has(usecase.usecaseId)) continue;
     const fate = previousUsecaseFile(previous, usecase.usecaseId) ? 'removed' : 'not generated';
     review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is ${fate}.`, usecase.usecaseId);
   }
@@ -1347,10 +1188,7 @@ function readPlannerRun(
   const plan20 = rec(rec(planner.steps).plan20);
   const artifacts = strings(plan20.artifactPaths);
   const backendArtifact = `l4/${moduleName}/${BACKEND_PATH_TAIL}`;
-  // Draft registration sits at l4/<module>/tobe/plan/…; the file itself stays at the module root.
-  const draftBackendArtifact = `l4/${moduleName}/tobe/plan/${BACKEND_PATH_TAIL}`;
-  const approvesBackend = artifacts.includes(backendArtifact) || artifacts.includes(draftBackendArtifact);
-  if (text(planner.flowId) !== D1_PLANNER_FLOW || text(plan20.status) !== 'approved' || !approvesBackend || !text(planner.thread)) {
+  if (text(planner.flowId) !== D1_PLANNER_FLOW || text(plan20.status) !== 'approved' || !artifacts.includes(backendArtifact) || !text(planner.thread)) {
     error(problems, 'PLANNER_RUN_DIVERGENT', paths.planner, 'Planner run does not approve this backend.json for this module.');
   }
   if (!text(planner.thread)) return null;

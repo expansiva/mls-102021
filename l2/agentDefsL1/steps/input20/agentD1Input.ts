@@ -10,7 +10,6 @@ import {
   taskProject,
   MSG_PROJECT_MISMATCH,
   type D1PipelineState,
-  type D1StepId,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import {
   D1_STEP_HOOKS,
@@ -129,13 +128,10 @@ export function blockingReason(snapshot: Pick<D1InputSnapshot, 'problems'>): str
   }).join(',');
 }
 
-const STEPS_AFTER_INPUT20: readonly D1StepId[] = [
-  'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70', 'finalize80',
-];
-
 function withConsumersHeld(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
   const current = pipeline.steps.input20;
   const paths = current?.artifactPaths || [];
+  if (current?.status === 'approved') return pipeline;
   if (
     pipeline.status === 'awaitingStep'
     && pipeline.awaitingStep === 'input20'
@@ -146,15 +142,6 @@ function withConsumersHeld(pipeline: D1PipelineState, artifact: string, reason: 
   ) {
     return pipeline;
   }
-  const held = heldInput(pipeline, artifact, reason, now);
-  // Later approved steps belong to the previous snapshot. Drop them only when the schema refuses the held state.
-  if (pipelineIssues(held).length === 0) return held;
-  const steps = { ...held.steps };
-  for (const stepId of STEPS_AFTER_INPUT20) delete steps[stepId];
-  return { ...held, steps };
-}
-
-function heldInput(pipeline: D1PipelineState, artifact: string, reason: string, now: string): D1PipelineState {
   return {
     ...pipeline,
     status: 'awaitingStep',

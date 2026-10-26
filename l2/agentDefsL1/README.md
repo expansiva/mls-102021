@@ -9,17 +9,9 @@ only declared in `docs/flow.json` reports that it is not implemented.
 
 ```
 @@agentDefsL1 <lowerCamel> /run
-@@agentDefsL1 <lowerCamel> /units <kind>:<id> …
 @@agentDefsL1 <lowerCamel> /resume
 @@agentDefsL1 <lowerCamel> /help
 ```
-
-`/units` runs the same steps as `/run` and writes only the listed units. The list is
-saved at `l1/<module>/pipeline/agentDefsL1/units.json`. A later `/run` deletes that
-file and is a full run again. `input20` still inventories the module. A def that
-already exists and is outside the list stays `preserve`. A problem on a unit
-outside the list is `review`. `resolve25` opens a worker only for a route on the
-list. `finalize80` closes on the units that were written.
 
 `/help` writes nothing. `/run` records a checkpoint when the module has none
 in this project. `/resume` continues an intact checkpoint and does not rewrite
@@ -49,7 +41,6 @@ English, no model, no writes:
 | path | this delivery |
 |---|---|
 | `l1/<module>/pipeline/agentDefsL1/pipeline.json` | written on the first `/run` |
-| `l1/<module>/pipeline/agentDefsL1/units.json` | written by `/units`. A later `/run` deletes it |
 | `l1/<module>/pipeline/pipeline.json` | planner file. Never written or removed |
 | `l1/<module>/pipeline/agentDefsL1/input20.json` | written by input20: the derivation with its gaps, its problems and the source key. Same bytes are not rewritten |
 | `l1/<module>/pipeline/agentDefsL1/resolve25.json` | written by resolve25: one answer per open part of a contract route. Kept while the source key is the same |

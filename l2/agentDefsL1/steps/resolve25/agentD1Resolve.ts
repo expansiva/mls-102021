@@ -35,7 +35,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Fanout.js';
 import { parsePipelineDocument, pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
-import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts, readUnitScope } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { assembleD1Input, d1SourceKey, persistD1Input, readD1Derivation, readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractV2 } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
 import { D1_RESOLVE_VERSION, type D1ResolveAttempt, type D1ResolveReceipt, type D1ResolveUnit, type D1ResolveWork } from '/_102021_/l2/agentDefsL1/steps/resolve25/contracts.js';
 import { answersByRoute, buildResolveReceipt, checkResolveReply, keptRoutes, receiptAnswersDerived, resolveUnits, settledGapAnswers, sourcesDrift, unaskedGaps } from '/_102021_/l2/agentDefsL1/steps/resolve25/gate.js';
@@ -102,14 +102,9 @@ export async function beforeD1ResolvePromptStep(
   }
   const kept = await readResolveReceipt(project, moduleName);
   const units = resolveUnits(artifacts);
-  const scope = await readUnitScope(project, moduleName);
-  const listed = scope === null ? null : new Set(scope.filter(item => item.kind === 'route').map(item => item.id));
-  const outsideUnits = listed ? units.filter(unit => !listed.has(unit.route)) : [];
   // Same sources: the receipt is kept only when it answers every gap the derivation with those answers opens now.
-  // With a unit list, that check covers only the listed routes.
-  if (kept && kept.sourceKey === sourceKey && receiptAnswersDerived(kept, artifacts, listed)) {
-    const note = listed ? ` 0 routes were asked. ${outsideUnits.length} routes were not asked because they are outside the list.` : '';
-    return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.${note}`, 0);
+  if (kept && kept.sourceKey === sourceKey && receiptAnswersDerived(kept, artifacts)) {
+    return finish(context, parentStep, step, hookSequential, pipeline, kept, `resolve25 kept the answers for ${moduleName}. No model was called.`, 0);
   }
   const work: D1ResolveWork = { schemaVersion: D1_RESOLVE_VERSION, project, moduleName, sourceKey, units, repairs: 0 };
   if (!units.length) {
@@ -118,14 +113,7 @@ export async function beforeD1ResolvePromptStep(
     return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 found no open part in the contract routes of ${moduleName}. No model was called.`, 0);
   }
   // A different source key keeps a route only when every gap still matches the receipt (gapKey). The rest is asked.
-  // Routes outside the unit list reuse a previous answer for any source key; a route with no match is not asked.
-  const reused = new Map<string, Record<string, string>>();
-  if (kept && kept.sourceKey !== sourceKey) {
-    for (const [unitId, answers] of keptRoutes(kept, listed ? units.filter(unit => listed.has(unit.route)) : units)) reused.set(unitId, answers);
-  }
-  if (kept && listed) {
-    for (const [unitId, answers] of keptRoutes(kept, outsideUnits)) reused.set(unitId, answers);
-  }
+  const reused = kept && kept.sourceKey !== sourceKey ? keptRoutes(kept, units) : new Map<string, Record<string, string>>();
   await writeResolveWork(work);
   const keptAttempts: D1ResolveAttempt[] = [];
   for (const unit of units) {
@@ -146,20 +134,6 @@ export async function beforeD1ResolvePromptStep(
       await writeResolveAttempt(project, moduleName, attempt);
       continue;
     }
-    if (listed && !listed.has(unit.route)) {
-      const attempt: D1ResolveAttempt = {
-        unitId: unit.unitId,
-        status: 'parsed',
-        trace: 'Outside the unit list. No model was called.',
-        unitAttempts: 0,
-        planId: '',
-        calls: 0,
-        answers: {},
-      };
-      keptAttempts.push(attempt);
-      await writeResolveAttempt(project, moduleName, attempt);
-      continue;
-    }
     // Each dispatch starts its units from zero: an attempt of an earlier run is neither an answer nor a call of this one.
     await writeResolveAttempt(project, moduleName, {
       unitId: unit.unitId,
@@ -171,19 +145,13 @@ export async function beforeD1ResolvePromptStep(
       answers: {},
     });
   }
-  const pending = units.filter(unit => listed ? listed.has(unit.route) && !reused.has(unit.unitId) : !reused.has(unit.unitId));
+  const pending = units.filter(unit => !reused.has(unit.unitId));
   if (!pending.length) {
     const receipt = buildResolveReceipt(work, keptAttempts);
     await writeResolveReceipt(receipt);
-    const message = listed
-      ? `resolve25 asked 0 routes. ${outsideUnits.length} routes were not asked because they are outside the list. No model was called.`
-      : `resolve25 kept the answered routes for ${moduleName} from the previous receipt. No model was called.`;
-    return finish(context, parentStep, step, hookSequential, pipeline, receipt, message, 0);
+    return finish(context, parentStep, step, hookSequential, pipeline, receipt, `resolve25 kept the answered routes for ${moduleName} from the previous receipt. No model was called.`, 0);
   }
-  const scopeNote = listed
-    ? `${pending.length} routes were asked. ${outsideUnits.length} routes were not asked because they are outside the list.`
-    : null;
-  return dispatchRound(context, parentStep, step, hookSequential, project, moduleName, pending, '', 'in_progress', 'resolve25 dispatched', scopeNote);
+  return dispatchRound(context, parentStep, step, hookSequential, project, moduleName, pending, '', 'in_progress', 'resolve25 dispatched');
 }
 
 export async function afterD1ResolvePromptStep(
@@ -339,10 +307,7 @@ async function barrier(
   // A route whose answers open a path not asked yet gets one more round, only those gaps. A further new path is none.
   const askedPaths = new Map<string, Set<string>>();
   const round = new Map<string, number>();
-  const scope = await readUnitScope(prompt.project, prompt.moduleName);
-  const listed = scope === null ? null : new Set(scope.filter(item => item.kind === 'route').map(item => item.id));
   for (const unit of work.units) {
-    if (listed && !listed.has(unit.route)) continue;
     const paths = askedPaths.get(unit.route) || new Set<string>();
     for (const gap of unit.gaps) paths.add(gap.path);
     askedPaths.set(unit.route, paths);
@@ -522,7 +487,6 @@ function dispatchRound(
   round: '' | 'round2',
   stepStatus: 'in_progress' | 'completed',
   status: string,
-  scopeNote: string | null = null,
 ): mls.msg.AgentIntent[] {
   const workerArgs = pending.map(unit => firstFanoutWorkerArg(RESOLVE_FANOUT, project, moduleName, unit.unitId));
   const fanout = fanoutStepFor(RESOLVE_FANOUT, project, moduleName, workerArgs, round);
@@ -538,6 +502,6 @@ function dispatchRound(
       executionMode: fanoutExecution(workerArgs),
     },
     addStepIntent(context, parentStep, barrierStepFor(RESOLVE_FANOUT, project, moduleName, [fanout.planning?.planId || 'resolve25-fanout'], round)),
-    updateStatus(context, parentStep, step, hookSequential, stepStatus, `${status} ${pending.length} route workers for ${gaps} open parts, at most 5 at once.${scopeNote ? ` ${scopeNote}` : ''}`),
+    updateStatus(context, parentStep, step, hookSequential, stepStatus, `${status} ${pending.length} route workers for ${gaps} open parts, at most 5 at once.`),
   ];
 }

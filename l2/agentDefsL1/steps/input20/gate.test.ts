@@ -263,50 +263,6 @@ void test('an update keeps existing identity only with an inventoried hash', () 
   assert.equal(snapshot.problems.some(problem => problem.code === 'EXISTING_UNRESOLVED' && problem.ownerRef === `usecase:${usecaseId}`), false);
 });
 
-void test('existing as a defs path of this module resolves to the file id', () => {
-  const artifacts = clone(loadHead());
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>> };
-  artifacts.contractTexts = {};
-  artifacts.contracts = {};
-  const seed = backend.usecases.find(item => item.usecaseId === 'listProduto')!;
-  const effortSeed = effort.usecases.find(item => item.usecaseId === 'listProduto')!;
-  const picked: Array<{ usecaseId: string; existing: string }> = [];
-  for (let index = 0; index < 18; index += 1) {
-    const usecaseId = `pathUsecase${index}`;
-    const existing = index === 0
-      ? `_102047_/l1/${MODULE}/layer_2_application/usecases/${usecaseId}.defs.ts`
-      : `l1/${MODULE}/layer_2_application/usecases/${usecaseId}.defs.ts`;
-    const row = { ...seed, usecaseId, existing, status: 'toUpdate', entity: seed.entity, operation: seed.operation };
-    backend.usecases.push(row);
-    effort.usecases.push({ ...effortSeed, ...row });
-    picked.push({ usecaseId, existing });
-  }
-  const snapshot = build(artifacts);
-  for (const row of picked) {
-    const selected = snapshot.selection.usecases.find(usecase => usecase.usecaseId === row.usecaseId);
-    assert.equal(selected?.identity, row.usecaseId, row.usecaseId);
-    assert.equal(selected?.existing, row.existing);
-  }
-  assert.equal(snapshot.problems.some(problem => problem.message.includes('is not an id')), false);
-});
-
-void test('existing as a defs path of another module stays unresolved', () => {
-  const artifacts = clone(loadHead());
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>> };
-  const row = backend.usecases.find(item => item.usecaseId === 'listProduto')!;
-  const path = `l1/outroModulo/layer_2_application/usecases/${row.usecaseId}.defs.ts`;
-  row.existing = path;
-  const effortRow = effort.usecases.find(item => item.usecaseId === row.usecaseId)!;
-  effortRow.existing = path;
-  const snapshot = build(artifacts);
-  const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === row.usecaseId);
-  assert.ok(problem);
-  assert.match(problem.message, /l1\/outroModulo\/layer_2_application\/usecases\/listProduto\.defs\.ts/);
-  assert.match(problem.message, /is not an id/);
-});
-
 void test('alias existing keeps the inventoried id and does not mint the candidate', () => {
   const artifacts = clone(loadHead());
   const head = build(artifacts);
@@ -331,27 +287,6 @@ void test('alias existing keeps the inventoried id and does not mint the candida
   assert.equal(fileOf(snapshot, 'usecase', 'listProduto')?.action, 'update');
   assert.equal(snapshot.files.some(file => file.defPath.endsWith('/listProdutoNovo.defs.ts')), false);
   assert.equal(snapshot.selection.usecases.find(usecase => usecase.usecaseId === 'listProdutoNovo')?.identity, 'listProduto');
-});
-
-void test('a done usecase whose file exists keeps the file when the receipt diverges', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  const defPath = fileOf(head, 'usecase', 'listProduto')!.defPath;
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
-  backend.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
-  effort.usecases.find(item => item.usecaseId === 'listProduto')!.status = 'done';
-  effort.totals.usecases.toCreate -= 1;
-  effort.totals.usecases.done += 1;
-  artifacts.presentDefs = [{ path: defPath, sha256: `sha256:${'e'.repeat(64)}` }];
-  const snapshot = build(artifacts);
-  const problem = snapshot.problems.find(item => item.code === 'DONE_ABSENT' && item.ownerRef === 'usecase:listProduto');
-  assert.ok(problem);
-  assert.equal(problem.severity, 'review');
-  assert.match(problem.message, /receipt diverges and the file was preserved/);
-  assert.equal(fileOf(snapshot, 'usecase', 'listProduto')?.action, 'preserve');
-  assert.equal(snapshot.problems.some(item => item.code === 'DONE_ABSENT' && item.severity === 'error'), false);
-  assert.equal(snapshot.consumersReleased, head.consumersReleased);
 });
 
 void test('a done usecase with no file stays done and is not created', () => {
@@ -454,7 +389,7 @@ void test('resume accepts the writer receipt and keeps the plan', () => {
   assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a present def whose receipt is from another project is preserved and does not block', () => {
+void test('a def changed outside the receipt stays refused', () => {
   const { artifacts, first } = releasedHead();
   const written = first.files.filter(file => WRITTEN.has(file.artifactType));
   const target = written[0];
@@ -466,14 +401,11 @@ void test('a present def whose receipt is from another project is preserved and 
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
-  assert.equal(problem.severity, 'review');
   assert.match(problem.message, new RegExp(HASH));
   assert.match(problem.message, new RegExp(OTHER));
-  assert.match(problem.message, /preserved/);
-  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
+  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'conflict');
   assert.equal(resume.problems.filter(item => item.code === 'EXISTS_WITHOUT_RECEIPT').length, 1);
-  assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.severity === 'error'), false);
-  assert.equal(resume.consumersReleased, first.consumersReleased);
+  assert.equal(resume.consumersReleased, false);
 });
 
 void test('a missing def is planned again even when a writer receipt names it', () => {
@@ -488,7 +420,7 @@ void test('a missing def is planned again even when a writer receipt names it', 
   assert.deepEqual(resume.problems, first.problems);
 });
 
-void test('a present def with no receipt is preserved and does not block', () => {
+void test('a present def with no receipt is still refused', () => {
   const { artifacts, first } = releasedHead();
   const target = first.files.find(file => file.artifactType === 'usecase');
   assert.ok(target);
@@ -496,11 +428,8 @@ void test('a present def with no receipt is preserved and does not block', () =>
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
-  assert.equal(problem.severity, 'review');
   assert.match(problem.message, /exists without an inventoried path and hash/);
-  assert.match(problem.message, /preserved/);
-  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
-  assert.equal(resume.consumersReleased, first.consumersReleased);
+  assert.equal(resume.consumersReleased, false);
 });
 
 void test('disagreeing writer receipts do not authorize a present def', () => {
@@ -515,13 +444,10 @@ void test('disagreeing writer receipts do not authorize a present def', () => {
   const resume = build(artifacts, first);
   const problem = resume.problems.find(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && item.path === target.defPath);
   assert.ok(problem);
-  assert.equal(problem.severity, 'review');
   assert.match(problem.message, /disagreeing receipts/);
   assert.match(problem.message, new RegExp(HASH));
   assert.match(problem.message, new RegExp(OTHER));
-  assert.match(problem.message, /preserved/);
-  assert.equal(resume.files.find(file => file.defPath === target.defPath)?.action, 'preserve');
-  assert.equal(resume.consumersReleased, first.consumersReleased);
+  assert.equal(resume.consumersReleased, false);
 });
 
 void test('an inventoried hash still recomposes without a writer receipt', () => {
@@ -536,320 +462,4 @@ void test('an inventoried hash still recomposes without a writer receipt', () =>
   assert.equal(file?.action, 'recompose');
   assert.equal(file?.contentHash, HASH);
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
-});
-
-const GET_ID = 'getProduto';
-const GET_DEF = `l1/${MODULE}/layer_2_application/usecases/${GET_ID}.defs.ts`;
-
-function planRecord(artifacts: D1InputArtifacts, key: 'backend' | 'effort'): { usecases: Array<Record<string, unknown>>; removed: unknown[]; totals?: { usecases: { toCreate: number } } } {
-  return artifacts[key] as { usecases: Array<Record<string, unknown>>; removed: unknown[]; totals?: { usecases: { toCreate: number } } };
-}
-
-function dropListedRead(artifacts: D1InputArtifacts): void {
-  for (const key of ['backend', 'effort'] as const) {
-    const plan = planRecord(artifacts, key);
-    plan.usecases = plan.usecases.filter(item => item.usecaseId !== 'listProduto');
-  }
-  planRecord(artifacts, 'effort').totals!.usecases.toCreate -= 1;
-}
-
-function markRemoved(artifacts: D1InputArtifacts, id: string): void {
-  const row = { kind: 'usecase', id, status: 'toRemove' };
-  for (const key of ['backend', 'effort'] as const) planRecord(artifacts, key).removed.push(row);
-}
-
-/** Two contract routes that read one entity, so the missing pool read is a get. */
-function twoGetRoutes(artifacts: D1InputArtifacts): void {
-  const pageId = 'produtos';
-  const source = artifacts.contractTexts[pageId];
-  const start = source.indexOf(`'${MODULE}.produtos.load':`);
-  const end = source.indexOf(`'${MODULE}.produtos.cadastrarProduto':`);
-  const load = source.slice(start, end);
-  const asGet = load
-    .replace('output: { produtos: ProdutoLoad[]; pageListaProdutos: number; pageSizeListaProdutos: number; hasMoreListaProdutos: boolean };', 'output: { produto: ProdutoLoad };')
-    .replace('many: true', 'many: false');
-  const second = asGet.replace(`${MODULE}.produtos.load`, `${MODULE}.produtos.lerProduto`);
-  artifacts.contractTexts[pageId] = source.replace(load, `${asGet}${second}`);
-}
-
-function addPoolGet(artifacts: D1InputArtifacts): void {
-  const row = { usecaseId: GET_ID, entity: 'Produto', operation: 'get', status: 'toCreate', existing: '' };
-  planRecord(artifacts, 'backend').usecases.push({ ...row, ports: [], reason: 'kept', tableRefs: [], noTable: 'mdm' });
-  planRecord(artifacts, 'effort').usecases.push(row);
-  planRecord(artifacts, 'effort').totals!.usecases.toCreate += 1;
-}
-
-void test('a removed get whose def exists and two routes read it stays', () => {
-  const artifacts = clone(loadHead());
-  dropListedRead(artifacts);
-  markRemoved(artifacts, GET_ID);
-  twoGetRoutes(artifacts);
-  artifacts.presentDefs = [{ path: GET_DEF, sha256: HASH }];
-  const snapshot = build(artifacts);
-  const errors = snapshot.problems.filter(item => item.severity === 'error').map(item => item.code);
-  assert.equal(errors.some(code => code === 'REQUEST_USECASE_UNPLANNED' || code.startsWith('REMOVE_')), false, errors.join(','));
-  const notice = snapshot.problems.filter(item => item.code === 'USECASE_KEPT_BY_ROUTE');
-  assert.equal(notice.length, 1);
-  assert.equal(notice[0].severity, 'review');
-  assert.match(notice[0].message, new RegExp(`${GET_ID}`));
-  assert.match(notice[0].message, new RegExp(`${MODULE}\\.produtos\\.`));
-  assert.equal(snapshot.removed.some(item => item.id === GET_ID), false);
-  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === GET_ID), true);
-  assert.equal(snapshot.consumersReleased, true, errors.join(','));
-});
-
-void test('a removed usecase with a def and no route is still removed', () => {
-  const artifacts = clone(loadHead());
-  markRemoved(artifacts, GET_ID);
-  artifacts.presentDefs = [{ path: GET_DEF, sha256: HASH }];
-  const snapshot = build(artifacts);
-  assert.equal(snapshot.removed.some(item => item.id === GET_ID), true);
-  assert.equal(snapshot.problems.some(item => item.code === 'REMOVE_WITHOUT_RECEIPT' && item.ownerRef === GET_ID), true);
-  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
-});
-
-void test('a removed usecase with no def stays unplanned when a route reads it', () => {
-  const artifacts = clone(loadHead());
-  dropListedRead(artifacts);
-  markRemoved(artifacts, GET_ID);
-  twoGetRoutes(artifacts);
-  const snapshot = build(artifacts);
-  assert.equal(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes(GET_ID)), true);
-  assert.equal(snapshot.removed.some(item => item.id === GET_ID), true);
-  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
-  assert.equal(snapshot.consumersReleased, false);
-});
-
-void test('a pool usecase a previous route still calls is not pruned', () => {
-  const artifacts = clone(loadHead());
-  addPoolGet(artifacts);
-  const base = build(loadHead());
-  base.files.push({
-    id: `usecase:${GET_ID}`,
-    artifactType: 'usecase',
-    defPath: GET_DEF,
-    action: 'create',
-    identity: GET_ID,
-    ownerRefs: [`usecase:${GET_ID}`],
-    dependsOn: [],
-  });
-  const route = `${MODULE}.produtos.load`;
-  const pruned = build(artifacts, clone(base));
-  assert.equal(pruned.selection.usecases.some(item => item.usecaseId === GET_ID), false);
-  assert.equal(pruned.removed.some(item => item.id === GET_ID), true);
-  assert.equal(pruned.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
-
-  const request = base.selection.requests.find(item => item.route === route);
-  assert.ok(request);
-  request.uses.push(GET_ID);
-  const kept = build(artifacts, base);
-  assert.deepEqual(kept.selection.usecases.find(item => item.usecaseId === GET_ID)?.routes, [route]);
-  assert.equal(kept.removed.some(item => item.id === GET_ID), false);
-  assert.equal(kept.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE' && item.message.includes(route)), true);
-});
-
-function plan20Paths(artifacts: D1InputArtifacts): string[] {
-  const planner = artifacts.planner as { steps: { plan20: { artifactPaths: string[] } } };
-  return planner.steps.plan20.artifactPaths;
-}
-
-void test('a planner approval under tobe/plan still approves the root backend.json', () => {
-  const artifacts = clone(loadHead());
-  const paths = plan20Paths(artifacts);
-  const at = paths.indexOf(BACKEND_PATH);
-  assert.ok(at >= 0);
-  paths[at] = `l4/${MODULE}/tobe/plan/pool/l2/web/backend.json`;
-  assert.equal(codes(build(artifacts), 'error').includes('PLANNER_RUN_DIVERGENT'), false);
-});
-
-void test('a planner approval on another backend path stays divergent', () => {
-  const artifacts = clone(loadHead());
-  const paths = plan20Paths(artifacts);
-  const at = paths.indexOf(BACKEND_PATH);
-  paths[at] = `l4/${MODULE}/notes/tobe/plan/pool/l2/web/backend.json`;
-  assert.equal(codes(build(artifacts), 'error').includes('PLANNER_RUN_DIVERGENT'), true);
-});
-
-const PAGE = 'produtos';
-const PAGE_UNITS = [`usecase:listProduto`, `usecase:createProduto`, `requestService:${PAGE}`, `controller:${PAGE}`];
-const PAGE_HASH = `sha256:${'ef'.repeat(32)}`;
-
-function setUsecaseStatus(artifacts: D1InputArtifacts, usecaseId: string, status: string): void {
-  const backend = artifacts.backend as { usecases: Array<Record<string, string>> };
-  const effort = artifacts.effort as { usecases: Array<Record<string, string>>; totals: { usecases: Record<string, number> } };
-  const row = backend.usecases.find(item => item.usecaseId === usecaseId)!;
-  const from = row.status;
-  row.status = status;
-  effort.usecases.find(item => item.usecaseId === usecaseId)!.status = status;
-  effort.totals.usecases[from] -= 1;
-  effort.totals.usecases[status] += 1;
-}
-
-function pageDefs(head: D1InputSnapshot, ids: string[]): D1InputArtifacts['presentDefs'] {
-  return head.files.filter(file => ids.includes(file.id)).map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
-}
-
-void test('a mixed page whose usecases are all preserved keeps controller and request service', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  setUsecaseStatus(artifacts, 'listProduto', 'done');
-  artifacts.presentDefs = pageDefs(head, PAGE_UNITS);
-  const snapshot = build(artifacts);
-  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
-    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'preserve', id);
-    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
-    assert.ok(problem, id);
-    assert.equal(problem.severity, 'review');
-    assert.match(problem.message, /is preserved: no usecase of the page is generated or changed/);
-  }
-  const errors = snapshot.problems.filter(item => item.severity === 'error').map(item => item.code);
-  assert.equal(snapshot.consumersReleased, true, errors.join(','));
-});
-
-void test('a mixed page still blocks when a toCreate usecase has no def', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  setUsecaseStatus(artifacts, 'listProduto', 'done');
-  artifacts.presentDefs = pageDefs(head, PAGE_UNITS.filter(id => id !== 'usecase:createProduto'));
-  const snapshot = build(artifacts);
-  assert.equal(snapshot.files.find(file => file.id === 'usecase:createProduto')?.action, 'create');
-  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
-    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'conflict', id);
-    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
-    assert.equal(problem?.severity, 'error');
-  }
-  assert.equal(snapshot.consumersReleased, false);
-});
-
-void test('a mixed page with a usecase to update still blocks the controller', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  setUsecaseStatus(artifacts, 'listProduto', 'done');
-  setUsecaseStatus(artifacts, 'createProduto', 'toUpdate');
-  const create = head.files.find(file => file.id === 'usecase:createProduto')!;
-  const previous = clone(head);
-  previous.files.find(file => file.defPath === create.defPath)!.contentHash = PAGE_HASH;
-  artifacts.presentDefs = pageDefs(head, PAGE_UNITS);
-  const snapshot = build(artifacts, previous);
-  assert.equal(snapshot.files.find(file => file.id === 'usecase:createProduto')?.action, 'update');
-  for (const id of [`requestService:${PAGE}`, `controller:${PAGE}`]) {
-    assert.equal(snapshot.files.find(file => file.id === id)?.action, 'conflict', id);
-    const problem = snapshot.problems.find(item => item.code === 'EXISTING_UNRESOLVED' && item.ownerRef === id);
-    assert.equal(problem?.severity, 'error');
-  }
-  assert.equal(snapshot.consumersReleased, false);
-});
-
-void test('a unit scope preserves existing defs outside the list and leaves an in-list error blocking', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  const usecases = head.files.filter(file => file.artifactType === 'usecase');
-  assert.ok(usecases.length >= 2);
-  assert.ok(head.selection.pages.length >= 1);
-  const fresh = usecases.find(file => file.identity === 'createProduto');
-  const stale = usecases.find(file => file.identity === 'listProduto');
-  assert.ok(fresh && stale);
-  setUsecaseStatus(artifacts, 'listProduto', 'toUpdate');
-  const previous = clone(head);
-  for (const file of previous.files) {
-    if (file.defPath === fresh.defPath || file.defPath === stale.defPath) continue;
-    file.contentHash = PAGE_HASH;
-  }
-  artifacts.presentDefs = head.files
-    .filter(file => file.defPath !== fresh.defPath)
-    .map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
-  const identity = { project: PROJECT, moduleName: MODULE };
-  const open = buildD1InputSnapshot(identity, artifacts, previous);
-  assert.deepEqual(open, buildD1InputSnapshot(identity, artifacts, previous, new Map(), null));
-  assert.deepEqual(build(artifacts), buildD1InputSnapshot(identity, artifacts, null, new Map(), null));
-  const staleError = open.problems.find(item => item.severity === 'error' && item.path === stale.defPath);
-  assert.ok(staleError);
-  assert.equal(open.files.find(file => file.defPath === stale.defPath)?.action, 'conflict');
-
-  const held = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [{ kind: 'usecase', id: fresh.identity }]);
-  assert.equal(held.files.find(file => file.defPath === fresh.defPath)?.action, 'create');
-  assert.equal(held.files.find(file => file.defPath === stale.defPath)?.action, 'preserve');
-  assert.equal(held.files.find(file => file.defPath === stale.defPath)?.contentHash, PAGE_HASH);
-  const downgraded = held.problems.find(item => item.code === staleError.code && item.path === stale.defPath);
-  assert.equal(downgraded?.severity, 'review');
-  assert.equal(downgraded?.message, staleError.message);
-  for (const file of held.files) {
-    if (file.defPath === fresh.defPath) continue;
-    const before = open.files.find(item => item.defPath === file.defPath);
-    if (!before || !artifacts.presentDefs.some(item => item.path === file.defPath)) continue;
-    if (before.action === 'create' || before.action === 'update' || before.action === 'recompose' || before.action === 'conflict') {
-      assert.equal(file.action, 'preserve', file.id);
-      assert.equal(file.contentHash, PAGE_HASH);
-    }
-  }
-
-  const blocked = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [
-    { kind: 'usecase', id: fresh.identity },
-    { kind: 'usecase', id: stale.identity },
-  ]);
-  const still = blocked.problems.find(item => item.code === staleError.code && item.path === stale.defPath);
-  assert.equal(still?.severity, 'error');
-  assert.equal(blocked.files.find(file => file.defPath === stale.defPath)?.action, 'conflict');
-  assert.equal(blocked.consumersReleased, false);
-
-  const missed = buildD1InputSnapshot(identity, artifacts, previous, new Map(), [
-    { kind: 'usecase', id: fresh.identity },
-    { kind: 'entity', id: 'notInPlan' },
-  ]);
-  const unmatched = missed.problems.find(item => item.code === 'SCOPE_UNIT_UNMATCHED');
-  assert.equal(unmatched?.severity, 'review');
-  assert.equal(unmatched?.ownerRef, 'entity:notInPlan');
-});
-
-void test('a unit outside the list whose def is absent is preserved and not created', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  const absent = head.files.find(file => file.identity === 'createProduto' && file.artifactType === 'usecase');
-  const listed = head.files.find(file => file.identity === 'listProduto' && file.artifactType === 'usecase');
-  assert.ok(absent && listed);
-  artifacts.presentDefs = head.files
-    .filter(file => file.defPath !== absent.defPath)
-    .map(file => ({ path: file.defPath, sha256: PAGE_HASH }));
-  const identity = { project: PROJECT, moduleName: MODULE };
-  const open = buildD1InputSnapshot(identity, artifacts, null);
-  assert.equal(open.files.find(file => file.defPath === absent.defPath)?.action, 'create');
-
-  const held = buildD1InputSnapshot(identity, artifacts, null, new Map(), [{ kind: 'usecase', id: listed.identity }]);
-  const file = held.files.find(item => item.defPath === absent.defPath);
-  assert.equal(file?.action, 'preserve');
-  assert.equal(file?.contentHash, undefined);
-  const reviewItem = held.problems.find(item => item.code === 'SCOPE_OUTSIDE_ABSENT' && item.path === absent.defPath);
-  assert.equal(reviewItem?.severity, 'review');
-  assert.equal(reviewItem?.ownerRef, absent.id);
-  assert.equal(reviewItem?.message, `${absent.id} is outside the unit list; def absent.`);
-  assert.equal(held.problems.some(item => item.severity === 'error' && item.path === absent.defPath), false);
-});
-
-void test('a listed done unit whose def is absent is created; a run keeps DONE_ABSENT', () => {
-  const artifacts = clone(loadHead());
-  const head = build(artifacts);
-  const done = head.files.find(file => file.identity === 'listProduto' && file.artifactType === 'usecase');
-  const other = head.files.find(file => file.identity === 'createProduto' && file.artifactType === 'usecase');
-  assert.ok(done && other);
-  setUsecaseStatus(artifacts, 'listProduto', 'done');
-  const identity = { project: PROJECT, moduleName: MODULE };
-
-  const run = buildD1InputSnapshot(identity, artifacts, null);
-  const runFile = run.files.find(file => file.defPath === done.defPath);
-  assert.equal(runFile?.action, 'preserve');
-  assert.equal(runFile?.contentHash, undefined);
-  assert.equal(run.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.severity === 'error' && problem.path === done.defPath), true);
-  assert.equal(run.consumersReleased, false);
-
-  const listed = buildD1InputSnapshot(identity, artifacts, null, new Map(), [{ kind: 'usecase', id: done.identity }]);
-  const listedFile = listed.files.find(file => file.defPath === done.defPath);
-  assert.equal(listedFile?.action, 'create');
-  assert.equal(listedFile?.contentHash, undefined);
-  assert.equal(listed.problems.some(problem => problem.code === 'DONE_ABSENT' && problem.path === done.defPath), false);
-  assert.equal(listed.consumersReleased, true);
-  const outsideCreate = listed.files.find(file => file.defPath === other.defPath);
-  assert.equal(outsideCreate?.action, 'preserve');
-  assert.equal(outsideCreate?.contentHash, undefined);
-  const outsideReview = listed.problems.find(problem => problem.code === 'SCOPE_OUTSIDE_ABSENT' && problem.path === other.defPath);
-  assert.equal(outsideReview?.severity, 'review');
 });

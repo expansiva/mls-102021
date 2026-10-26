@@ -16,12 +16,6 @@ with `readD1InputArtifacts`, the same loader as input20, and their `d1SourceKey`
 - Gaps: one worker per route (`resolve25-worker-r<n>`) on `helpers/d1Fanout.ts`, the fan-out, barrier and
   repair usecases50 also uses. The prompt carries the route JSDoc, the input and output types with the
   interfaces they name, the rules, and the gaps. The tool `resolveRouteGaps` has one `enum` per gap.
-- With `units.json` (`readUnitScope`), only a route named `route:<id>` on that list opens a worker. Every
-  other route with a gap reuses the previous receipt when the gap still matches (`keptRoutes`, any source
-  key). A route with no matching answer is recorded `parsed` with `calls: 0` and no choice, so the gap stays
-  `none` and no model is called. The same-source shortcut (`receiptAnswersDerived`) checks only the listed
-  routes. The trace states how many routes were asked and how many were left unasked because they are outside
-  the list. Without `units.json` every route with a gap is asked, as before.
 - The gate (`checkResolveReply`) accepts only a candidate for every gap. Otherwise the barrier opens one
   repair with the refusal; after it, a gap without an accepted choice is `none`. An operational failure
   pauses.

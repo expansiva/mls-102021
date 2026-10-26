@@ -12,11 +12,6 @@ the defs on disk and the source hashes. It does not run an earlier phase.
 
 `report.json` lists phases, generated, preserved and removed defs, owners,
 sources, enum consumption, coverage, future outputs and findings.
-`cost` sums finite `interaction.cost` on the steps of this task: `calls` is
-how many of those steps belong to the phase, `cost` is their sum to 4 decimal
-places, and the phase is the `planId` text before the first `-` (`other` when
-the step has no `planId`). No such step yields `{ total: 0, byPhase: {} }`.
-Reports written before this field still parse.
 `executableBackend` stays false. A future `.ts` that is absent is pending
 materialization. An absent L2 contract is `CONTRACT_ABSENT`.
 A persisted outbound that names `IQueueRuntime.publish` is

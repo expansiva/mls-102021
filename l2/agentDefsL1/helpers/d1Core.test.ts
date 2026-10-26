@@ -5,7 +5,6 @@ import test from 'node:test';
 
 import {
   D1_FLOW_STEP_IDS,
-  D1_UNIT_KINDS,
   D1_REPAIR_GLOBAL_MAX,
   D1_REPAIR_PER_UNIT,
   D1_STEP_DEPENDS_ON,
@@ -15,7 +14,6 @@ import {
   MSG_ONE_COMMAND,
   MSG_PATH,
   MSG_REBUILD,
-  MSG_UNITS,
   MSG_USAGE,
   createEntryPipeline,
   dynamicPlanId,
@@ -29,7 +27,6 @@ import {
   withAwaiting,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Core.js';
 import { pipelineIssues } from '/_102021_/l2/agentDefsL1/helpers/d1Schema.js';
-import { EFFORT_UNIT_KINDS } from '/_102035_/l2/solution/poolPlan.js';
 
 const AT = new Date('2026-09-21T12:00:00.000Z');
 
@@ -53,24 +50,6 @@ void test('invocation refuses a missing module, unknown flags, candidate, rebuil
   assert.equal(ok.refused, '');
   assert.equal(ok.module, 'agendaClinica');
   assert.equal(ok.command, 'run');
-  assert.deepEqual(ok.units, []);
-  assert.equal(parseD1Invocation('@@agentDefsL1 /units').refused, MSG_USAGE);
-  assert.equal(parseD1Invocation('@@agentDefsL1 /run').refused, MSG_USAGE);
-});
-
-void test('/units accepts kind:id words and refuses a bare module, an unknown kind or an extra /run word', () => {
-  const ok = parseD1Invocation('@@agentDefsL1 m /units usecase:a request:b');
-  assert.equal(ok.refused, '');
-  assert.equal(ok.module, 'm');
-  assert.equal(ok.command, 'units');
-  assert.deepEqual(ok.units, ['usecase:a', 'request:b']);
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /units').refused, MSG_UNITS);
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /units foo:a').refused, 'Unknown unit kind: foo.');
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /units usecase:').refused, "Unit 'usecase:' must be <kind>:<id>.");
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /run usecase:a').refused, 'Unexpected argument: usecase:a.');
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /resume usecase:a').refused, 'Unexpected argument: usecase:a.');
-  assert.equal(parseD1Invocation('@@agentDefsL1 m /help usecase:a').refused, 'Unexpected argument: usecase:a.');
-  assert.deepEqual([...D1_UNIT_KINDS], [...EFFORT_UNIT_KINDS]);
 });
 
 void test('a step prompt drops nothing: unknown fields and a bad project are refused', () => {

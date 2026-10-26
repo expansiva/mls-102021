@@ -23,7 +23,7 @@ import { earlierHold, buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/fin
 import type { D1CallAccount } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { loadFacadePlatformKeys } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
 import { assembleD1Finalize, writeD1Report } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
-import { parseFinalizeReport, type D1FinalizeReport, type D1PhaseCost } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
+import { parseFinalizeReport, type D1FinalizeReport } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
 import type { PoolTraceLine } from '/_102035_/l2/solution/pool.js';
 import { deleteTraced, dispatchConsumption, type DispatchConsumption } from '/_102021_/l2/agentDefsL1/steps/entry10/dispatch.js';
 
@@ -65,7 +65,7 @@ export async function beforeD1FinalizePromptStep(
     ? await dispatchConsumption(prompt.project, prompt.moduleName, entryDispatch(context), traced, new Date())
     : { lines: [], files: [] };
   const pool = [...traced, ...consumption.lines];
-  const report: D1FinalizeReport = { ...built, cost: interactionPhaseCost(context), ...(pool.length ? { pool } : {}) };
+  const report: D1FinalizeReport = pool.length ? { ...built, pool } : built;
   await writeD1Report(prompt.project, prompt.moduleName, report);
   const artifact = displayPath(reportFile(prompt.project, prompt.moduleName));
 
@@ -113,36 +113,6 @@ function entryDispatch(context: mls.msg.ExecutionContext): string[] {
   } catch {
     return [];
   }
-}
-
-/** Spend of this task. A step counts when `interaction.cost` is a finite number. Phase is `planId` before the first `-`, or `other`. */
-export function interactionPhaseCost(context: mls.msg.ExecutionContext): D1PhaseCost {
-  const byPhase: Record<string, { calls: number; cost: number }> = {};
-  let total = 0;
-  const walk = (steps: mls.msg.AIPayload[] | undefined) => {
-    if (!steps) return;
-    for (const item of steps) {
-      const raw = item.interaction && typeof (item.interaction as { cost?: unknown }).cost === 'number'
-        ? (item.interaction as { cost: number }).cost
-        : null;
-      if (raw !== null && Number.isFinite(raw)) {
-        const planId = 'planning' in item ? (item.planning?.planId || '') : '';
-        const phase = planId ? planId.split('-')[0] : 'other';
-        const row = byPhase[phase] || { calls: 0, cost: 0 };
-        row.calls += 1;
-        row.cost = roundCost(row.cost + raw);
-        byPhase[phase] = row;
-        total += raw;
-      }
-      if (item.nextSteps?.length) walk(item.nextSteps);
-    }
-  };
-  walk(context.task?.iaCompressed?.nextSteps);
-  return { total: roundCost(total), byPhase };
-}
-
-function roundCost(value: number): number {
-  return Math.round(value * 10000) / 10000;
 }
 
 function reportPool(text: string | null): PoolTraceLine[] {
