@@ -116,26 +116,10 @@ for (const tip of TIPS) {
  * snapshot built on the input20 derivation as previous (the hole the source key closes) refuses those defs.
  */
 /**
- * d1_140 s2: input20 records its refusal, so a second /run no longer leaves the first approval standing. The second /run
- * prunes the usecases an answer brought (the contract does not call them) and refuses them as REMOVE_WITHOUT_RECEIPT.
+ * A second /run keeps a usecase an answer brought when a route that is still in the contract used it. The def on disk
+ * is preserved (review), so the run stays released.
  */
-void test('a second /run records the refusal of the usecases an answer brought (agendaClinica)', async () => {
-  const moduleName = 'agendaClinica';
-  const host = await readyHost('agendaClinica-53f1f35', moduleName);
-  assert.equal((await runToFinalize(host, moduleName, false))?.outcome, 'complete');
-  const ctx = contextFor(moduleName);
-  const parent = ctx.task!.iaCompressed!.nextSteps![0] as mls.msg.AIAgentStep;
-  await runStep(createAgent(), ctx, parent, moduleName, 'input20', 1);
-  const state = JSON.parse(host.files[fileKey(pipelineFile(PROJECT, moduleName))]?.content || '{}') as D1PipelineState;
-  assert.equal(state.steps.input20?.status, 'failed');
-  assert.match(state.steps.input20?.error || '', /REMOVE_WITHOUT_RECEIPT/);
-});
-
-/**
- * Parked (d1_140 s2): needs the second /run to keep input20 approved, which the refusal above prevents. Reported to
- * the planner with the measured cause; the control below also changed with s4 (a present def is preserved, not a conflict).
- */
-void test.skip('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
+void test('a second /run with the same sources calls no model and a def an answer brought is not a conflict (agendaClinica)', async () => {
   const moduleName = 'agendaClinica';
   const host = await readyHost('agendaClinica-53f1f35', moduleName);
   const report = await runToFinalize(host, moduleName, false);
@@ -167,8 +151,10 @@ void test.skip('a second /run with the same sources calls no model and a def an 
   // Control: with the derivation as previous, the same answers make those defs a conflict.
   await writeJson(inputFile(PROJECT, moduleName), derivation);
   const onDerivation = await assembleD1Input(PROJECT, moduleName, answersByRoute(await readResolveReceipt(PROJECT, moduleName)));
-  assert.ok(onDerivation.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && answeredFiles.some(file => file.defPath === item.path)));
-  assert.equal(onDerivation.consumersReleased, false);
+  const preserved = onDerivation.problems.filter(item => item.code === 'EXISTS_WITHOUT_RECEIPT' && answeredFiles.some(file => file.defPath === item.path));
+  assert.ok(preserved.length > 0);
+  assert.equal(preserved.every(item => item.severity === 'review'), true);
+  assert.equal(onDerivation.consumersReleased, true);
 });
 
 /** Frozen plans that input20 refuses never reach finalize80. The refusal is the closed result. */

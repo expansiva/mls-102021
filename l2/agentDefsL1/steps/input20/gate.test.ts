@@ -537,3 +537,113 @@ void test('an inventoried hash still recomposes without a writer receipt', () =>
   assert.equal(file?.contentHash, HASH);
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
 });
+
+const GET_ID = 'getProduto';
+const GET_DEF = `l1/${MODULE}/layer_2_application/usecases/${GET_ID}.defs.ts`;
+
+function planRecord(artifacts: D1InputArtifacts, key: 'backend' | 'effort'): { usecases: Array<Record<string, unknown>>; removed: unknown[]; totals?: { usecases: { toCreate: number } } } {
+  return artifacts[key] as { usecases: Array<Record<string, unknown>>; removed: unknown[]; totals?: { usecases: { toCreate: number } } };
+}
+
+function dropListedRead(artifacts: D1InputArtifacts): void {
+  for (const key of ['backend', 'effort'] as const) {
+    const plan = planRecord(artifacts, key);
+    plan.usecases = plan.usecases.filter(item => item.usecaseId !== 'listProduto');
+  }
+  planRecord(artifacts, 'effort').totals!.usecases.toCreate -= 1;
+}
+
+function markRemoved(artifacts: D1InputArtifacts, id: string): void {
+  const row = { kind: 'usecase', id, status: 'toRemove' };
+  for (const key of ['backend', 'effort'] as const) planRecord(artifacts, key).removed.push(row);
+}
+
+/** Two contract routes that read one entity, so the missing pool read is a get. */
+function twoGetRoutes(artifacts: D1InputArtifacts): void {
+  const pageId = 'produtos';
+  const source = artifacts.contractTexts[pageId];
+  const start = source.indexOf(`'${MODULE}.produtos.load':`);
+  const end = source.indexOf(`'${MODULE}.produtos.cadastrarProduto':`);
+  const load = source.slice(start, end);
+  const asGet = load
+    .replace('output: { produtos: ProdutoLoad[]; pageListaProdutos: number; pageSizeListaProdutos: number; hasMoreListaProdutos: boolean };', 'output: { produto: ProdutoLoad };')
+    .replace('many: true', 'many: false');
+  const second = asGet.replace(`${MODULE}.produtos.load`, `${MODULE}.produtos.lerProduto`);
+  artifacts.contractTexts[pageId] = source.replace(load, `${asGet}${second}`);
+}
+
+function addPoolGet(artifacts: D1InputArtifacts): void {
+  const row = { usecaseId: GET_ID, entity: 'Produto', operation: 'get', status: 'toCreate', existing: '' };
+  planRecord(artifacts, 'backend').usecases.push({ ...row, ports: [], reason: 'kept', tableRefs: [], noTable: 'mdm' });
+  planRecord(artifacts, 'effort').usecases.push(row);
+  planRecord(artifacts, 'effort').totals!.usecases.toCreate += 1;
+}
+
+void test('a removed get whose def exists and two routes read it stays', () => {
+  const artifacts = clone(loadHead());
+  dropListedRead(artifacts);
+  markRemoved(artifacts, GET_ID);
+  twoGetRoutes(artifacts);
+  artifacts.presentDefs = [{ path: GET_DEF, sha256: HASH }];
+  const snapshot = build(artifacts);
+  const errors = snapshot.problems.filter(item => item.severity === 'error').map(item => item.code);
+  assert.equal(errors.some(code => code === 'REQUEST_USECASE_UNPLANNED' || code.startsWith('REMOVE_')), false, errors.join(','));
+  const notice = snapshot.problems.filter(item => item.code === 'USECASE_KEPT_BY_ROUTE');
+  assert.equal(notice.length, 1);
+  assert.equal(notice[0].severity, 'review');
+  assert.match(notice[0].message, new RegExp(`${GET_ID}`));
+  assert.match(notice[0].message, new RegExp(`${MODULE}\\.produtos\\.`));
+  assert.equal(snapshot.removed.some(item => item.id === GET_ID), false);
+  assert.equal(snapshot.selection.usecases.some(item => item.usecaseId === GET_ID), true);
+  assert.equal(snapshot.consumersReleased, true, errors.join(','));
+});
+
+void test('a removed usecase with a def and no route is still removed', () => {
+  const artifacts = clone(loadHead());
+  markRemoved(artifacts, GET_ID);
+  artifacts.presentDefs = [{ path: GET_DEF, sha256: HASH }];
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.removed.some(item => item.id === GET_ID), true);
+  assert.equal(snapshot.problems.some(item => item.code === 'REMOVE_WITHOUT_RECEIPT' && item.ownerRef === GET_ID), true);
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
+});
+
+void test('a removed usecase with no def stays unplanned when a route reads it', () => {
+  const artifacts = clone(loadHead());
+  dropListedRead(artifacts);
+  markRemoved(artifacts, GET_ID);
+  twoGetRoutes(artifacts);
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.problems.some(item => item.code === 'REQUEST_USECASE_UNPLANNED' && item.message.includes(GET_ID)), true);
+  assert.equal(snapshot.removed.some(item => item.id === GET_ID), true);
+  assert.equal(snapshot.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
+  assert.equal(snapshot.consumersReleased, false);
+});
+
+void test('a pool usecase a previous route still calls is not pruned', () => {
+  const artifacts = clone(loadHead());
+  addPoolGet(artifacts);
+  const base = build(loadHead());
+  base.files.push({
+    id: `usecase:${GET_ID}`,
+    artifactType: 'usecase',
+    defPath: GET_DEF,
+    action: 'create',
+    identity: GET_ID,
+    ownerRefs: [`usecase:${GET_ID}`],
+    dependsOn: [],
+  });
+  const route = `${MODULE}.produtos.load`;
+  const pruned = build(artifacts, clone(base));
+  assert.equal(pruned.selection.usecases.some(item => item.usecaseId === GET_ID), false);
+  assert.equal(pruned.removed.some(item => item.id === GET_ID), true);
+  assert.equal(pruned.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE'), false);
+
+  const request = base.selection.requests.find(item => item.route === route);
+  assert.ok(request);
+  request.uses.push(GET_ID);
+  const kept = build(artifacts, base);
+  assert.deepEqual(kept.selection.usecases.find(item => item.usecaseId === GET_ID)?.routes, [route]);
+  assert.equal(kept.removed.some(item => item.id === GET_ID), false);
+  assert.equal(kept.problems.some(item => item.code === 'USECASE_KEPT_BY_ROUTE' && item.message.includes(route)), true);
+});

@@ -253,6 +253,11 @@ export function buildD1InputSnapshot(
     ids: new Map([...backendUsecases.values(), ...effortUsecases.values()].map(row => [text(row.usecaseId), `${text(row.entity)}.${text(row.operation)}`])),
     removed: new Set([...rows(backend.removed), ...rows(effort.removed)].filter(row => text(row.kind) === 'usecase').map(row => text(row.id))),
   };
+  const removedByPlan = new Set(planned.removed);
+  // A def that already exists can be created again from the contract. The plan's toRemove is applied after requests exist.
+  for (const id of removedByPlan) {
+    if (usecaseDefExists(id, artifacts.presentDefs, previous)) planned.removed.delete(id);
+  }
   // The contract is the source: a request may create the usecase it needs (selectedUsecases grows here).
   const requests = contractRequests(
     problems,
@@ -269,14 +274,22 @@ export function buildD1InputSnapshot(
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
-  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
+  const keptIds = keptByRouteIds(problems, paths.backend, removedByPlan, artifacts.presentDefs, previous, requests);
+  const removed = collectRemoved(
+    problems,
+    paths,
+    dropKeptUsecases(backend, keptIds),
+    dropKeptUsecases(effort, keptIds),
+    requests,
+    selectedUsecases,
+  );
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
-  const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
+  notePrunedRemovals(problems, paths.backend, removed, previous, selectedUsecases, requests, contractV2.size > 0);
   // With a v2 contract, a planned usecase no request calls is not generated. The plan stays an estimate.
   const generatedUsecases = contractV2.size > 0
     ? selectedUsecases.filter(usecase => usecase.routes.length > 0)
     : selectedUsecases;
-  notePrunedRemovals(removed, previous, selectedUsecases, generatedUsecases, contractV2.size > 0);
+  noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
@@ -1104,19 +1117,72 @@ function previousUsecaseFile(previous: D1InputSnapshot | null, usecaseId: string
   return previous?.files.find(file => file.identity === usecaseId || file.ownerRefs.includes(`usecase:${usecaseId}`));
 }
 
+function usecaseDefExists(usecaseId: string, present: D1InputArtifacts['presentDefs'], previous: D1InputSnapshot | null): boolean {
+  if (previousUsecaseFile(previous, usecaseId)) return true;
+  return present.some(item => item.path.endsWith(`/usecases/${usecaseId}.defs.ts`));
+}
+
+/** Routes that still call this usecase: a current request, or a previous request whose route is still in the contract. */
+function keptRoutes(usecaseId: string, requests: D1SelectedRequest[], previous: D1InputSnapshot | null): string[] {
+  const current = requests.filter(request => request.uses.includes(usecaseId)).map(request => request.route);
+  if (current.length) return [...new Set(current)].sort();
+  const live = new Set(requests.map(request => request.route));
+  const prior = (previous?.selection.requests || [])
+    .filter(request => request.uses.includes(usecaseId) && live.has(request.route))
+    .map(request => request.route);
+  return [...new Set(prior)].sort();
+}
+
+function noteKept(problems: D1InputProblem[], path: string, usecaseId: string, route: string): void {
+  review(problems, 'USECASE_KEPT_BY_ROUTE', path, `Usecase ${usecaseId} stays because route ${route} uses it.`, usecaseId);
+}
+
+function keptByRouteIds(
+  problems: D1InputProblem[],
+  path: string,
+  removedByPlan: ReadonlySet<string>,
+  present: D1InputArtifacts['presentDefs'],
+  previous: D1InputSnapshot | null,
+  requests: D1SelectedRequest[],
+): Set<string> {
+  const kept = new Set<string>();
+  for (const id of [...removedByPlan].sort()) {
+    if (!usecaseDefExists(id, present, previous)) continue;
+    const routes = keptRoutes(id, requests, previous);
+    if (!routes.length) continue;
+    kept.add(id);
+    noteKept(problems, path, id, routes[0]);
+  }
+  return kept;
+}
+
+function dropKeptUsecases(source: Record<string, unknown>, kept: ReadonlySet<string>): Record<string, unknown> {
+  return {
+    ...source,
+    removed: rows(source.removed).filter(row => text(row.kind) !== 'usecase' || !kept.has(text(row.id))),
+  };
+}
+
 function notePrunedRemovals(
+  problems: D1InputProblem[],
+  path: string,
   removed: D1RemovedItem[],
   previous: D1InputSnapshot | null,
   selected: D1SelectedUsecase[],
-  generated: D1SelectedUsecase[],
+  requests: D1SelectedRequest[],
   sawContract: boolean,
 ): void {
   if (!sawContract) return;
-  const kept = new Set(generated.map(usecase => usecase.usecaseId));
   const seen = new Set(removed.map(item => `${item.kind}:${item.id}`));
   for (const usecase of selected) {
-    if (kept.has(usecase.usecaseId)) continue;
+    if (usecase.routes.length > 0) continue;
     if (!previousUsecaseFile(previous, usecase.usecaseId)) continue;
+    const routes = keptRoutes(usecase.usecaseId, requests, previous);
+    if (routes.length) {
+      usecase.routes = routes;
+      noteKept(problems, path, usecase.usecaseId, routes[0]);
+      continue;
+    }
     const key = `usecase:${usecase.usecaseId}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1135,7 +1201,7 @@ function noteUnrequested(
   if (!sawContract) return;
   const used = new Set(requests.flatMap(request => request.uses));
   for (const usecase of usecases) {
-    if (used.has(usecase.usecaseId)) continue;
+    if (used.has(usecase.usecaseId) || usecase.routes.length > 0) continue;
     const fate = previousUsecaseFile(previous, usecase.usecaseId) ? 'removed' : 'not generated';
     review(problems, 'USECASE_WITHOUT_REQUEST', path, `Usecase ${usecase.usecaseId} is in the pool and no contract request calls it. It is ${fate}.`, usecase.usecaseId);
   }
