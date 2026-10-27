@@ -35,13 +35,14 @@ Otherwise it compares each new `*.defs.ts` (not under `pipeline/` or `materializ
 
 - `igual`: the def, its sibling `.ts`, the controller `.test.ts`, and the materializer receipt of that unit come back from `_old`, byte for byte.
 - `mudou` or `nova`: the new def stays and no `.ts` stays with it.
+- A unit whose def is `igual` but whose sibling `.ts` in `_old` (and the controller `.test.ts`) cites a `field` item that was `removed`, or `changed` in shape (`type`, `values`, `required`, `collection`, `to`), counts as `mudou`. The def comes back from `_old`; the `.ts`, `.test.ts`, receipt and drafts do not. The close names `mudou (code cites removed field <field>)` or `changed field`. A longer identifier (`etiquetasX`) does not count.
 - `removida`: the def that exists only in `_old` does not come back, and neither does its `.ts`.
 
 `registration.json`, `report.json`, `materialization/`, and `seedRows` come back only when every def is `igual`. `engine.ts` and `moduleTick.ts` come back only when the module has at least one `workflowProcess` def and every one of them is `igual`.
 
-The saved `backend.json`, `effort.json`, and planner record are restored on every path. `_old` is deleted last.
+The saved `backend.json`, `effort.json`, and planner record are restored on every path. `_old` is deleted last: on success, when `/run` is incomplete, and after a successful restore. It stays only when restore itself fails; the close then says `kept <module>_old: restore failed at <path>`.
 
-The message is one line per unit, `<kind> <id>: igual|mudou|nova|removida <path>`, then the effort check against the master `102021` answers in `changeEffort.json` (`effort missing`, `effort extra`, `effort check: matches`, or `effort check: not available`). That check is a warning. It does not restore or delete anything. Then one cost line: `run cost: <total>` and `model calls: …` when the generator report has `cost`, otherwise `run cost: not recorded by the defs generator; read it from the /run task`. Then:
+The message is one line per unit, `<kind> <id>: igual|mudou|nova|removida <path>`, then the effort check against the master `102021` answers in `changeEffort.json` (`effort missing`, `effort extra`, `effort check: matches`, or `effort check: not available`). A `controller` of a page whose `request` is in the effort counts as in the effort. That check is a warning. It does not restore or delete anything. Then one cost line: `run cost: <total>` and `model calls: …` when the generator report has `cost`, otherwise `run cost: not recorded by the defs generator; read it from the /run task`. Then:
 
 ```
 creation plan: written and undone

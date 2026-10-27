@@ -48,13 +48,31 @@ async function restoreSaved(moduleName: string, record: PreparedRecord): Promise
   const backend = l4File(moduleName, 'pool/l2/web', 'backend');
   const effort = l4File(moduleName, 'pool/l2/web', 'effort');
   const planner = l4File(moduleName, 'pool/l1', 'pipeline');
-  await writeSourceText(backend, await readSourceText(savedFile(moduleName, 'pool/l2/web', 'backend')));
-  await writeSourceText(effort, await readSourceText(savedFile(moduleName, 'pool/l2/web', 'effort')));
+  await writeAt(backend, await readAt(savedFile(moduleName, 'pool/l2/web', 'backend')));
+  await writeAt(effort, await readAt(savedFile(moduleName, 'pool/l2/web', 'effort')));
   if (record.plannerAbsent) {
     await removeIndexed(planner);
     return;
   }
-  await writeSourceText(planner, await readSourceText(savedFile(moduleName, 'pool/l1', 'pipeline')));
+  await writeAt(planner, await readAt(savedFile(moduleName, 'pool/l1', 'pipeline')));
+}
+
+async function readAt(info: Ns5FileInfo): Promise<string> {
+  try {
+    return await readSourceText(info);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reason} at ${displayPath(info)}`);
+  }
+}
+
+async function writeAt(info: Ns5FileInfo, text: string): Promise<void> {
+  try {
+    await writeSourceText(info, text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reason} at ${displayPath(info)}`);
+  }
 }
 
 function listExceptRelease(project: number, oldRoot: string): mls.stor.IFileInfo[] {

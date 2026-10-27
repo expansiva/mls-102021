@@ -435,4 +435,84 @@ test('without a prepared tree the compare refuses and writes nothing', async (t)
   assert.deepEqual(stor.texts(), before);
 });
 
+function fieldEffort(op: 'removed' | 'changed', fieldId: string, before: Record<string, unknown>, after?: Record<string, unknown>): string {
+  return `${JSON.stringify({
+    request: { items: [{ changeId: `field:${fieldId}`, kind: 'field', op, before, after }] },
+    perItem: [{ answers: [{ master: { project: '102021', kind: 'l1' }, create: [], regenerateDefs: [], remove: [] }] }],
+  })}\n`;
+}
+
+test('a removed field cited in old source marks the equal def as mudou and restores only the def', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.ts', 'const tags = row.etiquetas;\n');
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.ts', 'NEW_TS\n');
+  stor.add(1, 'tarefas_old/pipeline/agentMaterializeL1/usecases', 'createTarefa', '.json', '{"receipt":"old"}\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', fieldEffort('removed', 'details.etiquetas', { fieldId: 'details.etiquetas' }));
+  const result = await run();
+  assert.match(result, /usecase createTarefa: mudou \(code cites removed field etiquetas\) l1\/tarefas\/layer_2_application\/usecases\/createTarefa\.defs\.ts/);
+  const texts = stor.texts();
+  assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts'], body);
+  assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], undefined);
+  assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/usecases/createTarefa.json'], undefined);
+  assert.equal(Object.keys(texts).some(path => path.includes('_old')), false);
+});
+
+test('etiquetasX in old source does not count as a cite of etiquetas', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.ts', 'const tags = row.etiquetasX + metiquetas;\n');
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.ts', 'NEW_TS\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', fieldEffort('removed', 'details.etiquetas', { fieldId: 'details.etiquetas' }));
+  const result = await run();
+  assert.match(result, /usecase createTarefa: igual /);
+  assert.equal(stor.texts()['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], 'const tags = row.etiquetasX + metiquetas;\n');
+});
+
+test('a failed restore keeps _old and names the path', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  const files = (globalThis as { mls: { stor: { files: Record<string, unknown> } } }).mls.stor.files;
+  delete files['102047|1|tarefas_old/pipeline/agentNewReleaseL1/saved/l4/tarefas/pool/l2/web|backend|.json'];
+  const result = await run();
+  assert.match(result, /kept tarefas_old: restore failed at l1\/tarefas_old\/pipeline\/agentNewReleaseL1\/saved\/l4\/tarefas\/pool\/l2\/web\/backend\.json/);
+  assert.equal(Object.keys(stor.texts()).some(path => path.includes('tarefas_old')), true);
+});
+
+test('a controller of a page whose request is in the effort is not missing', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const req = defText(inicio);
+  const changedCtrl = defText({ ...inicio, artifactType: 'controller', artifactId: 'inicio', data: { ...inicio.data, pageId: 'inicio' } });
+  const oldCtrl = defText({ ...inicio, artifactType: 'controller', artifactId: 'inicio', data: { ...inicio.data, pageId: 'inicio', requests: [] } });
+  stor.add(1, 'tarefas_old/layer_2_application/requests', 'inicio', '.defs.ts', req);
+  stor.add(1, 'tarefas/layer_2_application/requests', 'inicio', '.defs.ts', req);
+  stor.add(1, 'tarefas_old/layer_1_external/adapters/http/controllers', 'inicio', '.defs.ts', oldCtrl);
+  stor.add(1, 'tarefas/layer_1_external/adapters/http/controllers', 'inicio', '.defs.ts', changedCtrl);
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    regenerateDefs: [{ kind: 'request', id: 'inicio', path: 'l1/tarefas/layer_2_application/requests/inicio.defs.ts' }],
+  }));
+  const result = await run();
+  assert.match(result, /controller inicio: mudou /);
+  assert.equal(result.includes('effort missing: controller inicio'), false);
+  assert.match(result, /effort extra: request inicio /);
+});
+
 });

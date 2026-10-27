@@ -28,7 +28,11 @@ interface UnitRow {
   verdict: Verdict;
   path: string;
   rel: string;
+  /** Restore the old def and drop sibling sources. Set when old code cites a removed or reshaped field. */
+  citeField?: { field: string; op: 'removed' | 'changed' };
 }
+
+const SHAPE_KEYS = ['type', 'values', 'required', 'collection', 'to'] as const;
 
 /** `@@agentNewReleaseL1 <module> /compare`. Restores the plan on every path and drops `_old` last. */
 export async function compareModule(moduleName: string): Promise<CompareOutcome> {
@@ -40,7 +44,10 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
   const gate = await generatorGate(moduleName);
   if (!gate.complete) {
     const undone = await undoPrepared(moduleName);
-    if (!undone.ok) return { ok: false, kind: 'failed', text: `${gate.reason}\nundo failed: ${undone.text}` };
+    if (!undone.ok) {
+      const at = pathOfError(undone.text);
+      return { ok: false, kind: 'failed', text: `${gate.reason}\nkept ${moduleName}_old: restore failed at ${at}` };
+    }
     return { ok: false, kind: 'failed', text: gate.reason };
   }
 
@@ -52,6 +59,7 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     const texts = new Map<string, string>();
     for (const file of [...freshDefs.values(), ...oldDefs.values()]) texts.set(storeKey(file.info), await readSourceText(file.info));
     const rows = rowsOf(moduleName, freshDefs, oldDefs, texts);
+    await markCitedFields(moduleName, rows, oldFiles);
     const allEqual = rows.every(row => row.verdict === 'igual');
     const engineBack = workflowEngineBack(rows);
     const copies = await stageCopies(moduleName, rows, oldFiles, allEqual, engineBack);
@@ -60,7 +68,7 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     const kept = await readKept(moduleName);
     await restorePlan(moduleName);
     for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
-    const lines = rows.map(row => `${row.kind} ${row.id}: ${row.verdict} ${row.path}`);
+    const lines = rows.map(row => lineOf(row));
     lines.push(...await effortLines(moduleName, rows));
     lines.push(...costLines(gate.report));
     lines.push(...keptLines(kept));
@@ -68,15 +76,28 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     return { ok: true, text: lines.join('\n') };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    // The creation copy and the planner record must not stay behind. `_old` stays, so a later call can still undo.
+    // The creation copy and the planner record must not stay behind. `_old` stays only when restore itself fails.
     try {
       await restorePlan(moduleName);
     } catch (restoreError) {
-      const detail = restoreError instanceof Error ? restoreError.message : String(restoreError);
-      return { ok: false, kind: 'failed', text: `${reason}\nplan restore failed: ${detail}` };
+      const at = pathOfError(restoreError);
+      return { ok: false, kind: 'failed', text: `${reason}\nkept ${moduleName}_old: restore failed at ${at}` };
     }
-    return { ok: false, kind: 'failed', text: `${reason}\ncreation plan: undone; l1/${moduleName}_old was kept` };
+    for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
+    return { ok: false, kind: 'failed', text: `${reason}\ncreation plan: undone` };
   }
+}
+
+function lineOf(row: UnitRow): string {
+  if (!row.citeField) return `${row.kind} ${row.id}: ${row.verdict} ${row.path}`;
+  const label = row.citeField.op === 'changed' ? 'changed field' : 'removed field';
+  return `${row.kind} ${row.id}: ${row.verdict} (code cites ${label} ${row.citeField.field}) ${row.path}`;
+}
+
+function pathOfError(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  const at = /(?: at |: )(l\d\/\S+)/u.exec(detail);
+  return at?.[1] || detail;
 }
 
 /** Parsed definition without model prose (`doc` at any depth) and without the envelope `status`. Keys are sorted. */
@@ -224,6 +245,12 @@ async function effortLines(moduleName: string, rows: readonly UnitRow[]): Promis
   if (!listed.sawMaster) return [`effort check: not available (no answer from master ${MASTER_PROJECT})`];
   const byPath = new Map(rows.map(row => [row.path, row]));
   const effortPaths = new Set(listed.units.map(unit => unit.path));
+  for (const unit of listed.units) {
+    if (unit.kind !== 'request') continue;
+    for (const row of rows) {
+      if (row.kind === 'controller' && row.id === unit.id) effortPaths.add(row.path);
+    }
+  }
   const lines: string[] = [];
   for (const row of rows) {
     if (row.verdict === 'igual') continue;
@@ -312,6 +339,10 @@ async function stageCopies(
 ): Promise<Array<{ info: Ns5FileInfo; text: string }>> {
   const wanted = new Set<string>();
   for (const row of rows) {
+    if (row.citeField) {
+      wanted.add(row.rel);
+      continue;
+    }
     if (row.verdict !== 'igual') continue;
     wanted.add(row.rel);
     const source = row.rel.replace(/\.defs\.ts$/u, '.ts');
@@ -389,15 +420,114 @@ async function readKept(moduleName: string): Promise<NonNullable<PreparedRecord[
 async function restorePlan(moduleName: string): Promise<void> {
   const prepared = preparedFile(moduleName);
   if (!fileExists(prepared)) throw new Error(`missing ${displayPath(prepared)}`);
-  const record = JSON.parse(await readSourceText(prepared)) as PreparedRecord;
-  await writeSourceText(l4File(moduleName, 'pool/l2/web', 'backend'), await readSourceText(savedFile(moduleName, 'pool/l2/web', 'backend')));
-  await writeSourceText(l4File(moduleName, 'pool/l2/web', 'effort'), await readSourceText(savedFile(moduleName, 'pool/l2/web', 'effort')));
+  const record = JSON.parse(await readAt(prepared)) as PreparedRecord;
+  await writeAt(l4File(moduleName, 'pool/l2/web', 'backend'), await readAt(savedFile(moduleName, 'pool/l2/web', 'backend')));
+  await writeAt(l4File(moduleName, 'pool/l2/web', 'effort'), await readAt(savedFile(moduleName, 'pool/l2/web', 'effort')));
   const planner = l4File(moduleName, 'pool/l1', 'pipeline');
   if (record.plannerAbsent) {
     await removeIndexed(planner);
     return;
   }
-  await writeSourceText(planner, await readSourceText(savedFile(moduleName, 'pool/l1', 'pipeline')));
+  await writeAt(planner, await readAt(savedFile(moduleName, 'pool/l1', 'pipeline')));
+}
+
+async function readAt(info: Ns5FileInfo): Promise<string> {
+  try {
+    return await readSourceText(info);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reason} at ${displayPath(info)}`);
+  }
+}
+
+async function writeAt(info: Ns5FileInfo, text: string): Promise<void> {
+  try {
+    await writeSourceText(info, text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`${reason} at ${displayPath(info)}`);
+  }
+}
+
+async function markCitedFields(moduleName: string, rows: UnitRow[], oldFiles: readonly ListedFile[]): Promise<void> {
+  const hits = await fieldHits(moduleName);
+  if (hits.length === 0) return;
+  const byRel = new Map(oldFiles.map(file => [file.rel, file]));
+  for (const row of rows) {
+    if (row.verdict !== 'igual') continue;
+    const sourceRel = row.rel.replace(/\.defs\.ts$/u, '.ts');
+    const testRel = row.rel.includes('/controllers/') ? sourceRel.replace(/\.ts$/u, '.test.ts') : '';
+    const source = await textOf(byRel.get(sourceRel));
+    const test = testRel ? await textOf(byRel.get(testRel)) : '';
+    const cited = hits.find(hit => citesWholeWord(source, hit.segment) || citesWholeWord(test, hit.segment));
+    if (!cited) continue;
+    row.verdict = 'mudou';
+    row.citeField = { field: cited.segment, op: cited.op };
+  }
+}
+
+async function textOf(file: ListedFile | undefined): Promise<string> {
+  if (!file) return '';
+  return readSourceText(file.info);
+}
+
+interface FieldHit { segment: string; op: 'removed' | 'changed' }
+
+async function fieldHits(moduleName: string): Promise<FieldHit[]> {
+  const info = changeEffortOf(moduleName);
+  if (!fileExists(info)) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readSourceText(info));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read changeEffort.json for field cites: ${reason}`);
+    return [];
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+  const items = (parsed as { request?: { items?: unknown } }).request?.items;
+  if (!Array.isArray(items)) return [];
+  const hits: FieldHit[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const rec = item as { kind?: unknown; op?: unknown; before?: unknown; after?: unknown; changeId?: unknown };
+    if (rec.kind !== 'field') continue;
+    const fieldId = fieldIdOf(rec);
+    const segment = lastSegment(fieldId);
+    if (!segment) continue;
+    if (rec.op === 'removed') {
+      hits.push({ segment, op: 'removed' });
+      continue;
+    }
+    if (rec.op === 'changed' && shapeChanged(rec.before, rec.after)) hits.push({ segment, op: 'changed' });
+  }
+  return hits;
+}
+
+function fieldIdOf(rec: { before?: unknown; changeId?: unknown }): string {
+  const before = rec.before && typeof rec.before === 'object' && !Array.isArray(rec.before)
+    ? (rec.before as { fieldId?: unknown }).fieldId
+    : undefined;
+  if (typeof before === 'string' && before) return before;
+  const changeId = typeof rec.changeId === 'string' ? rec.changeId : '';
+  return changeId.startsWith('field:') ? changeId.slice('field:'.length) : changeId;
+}
+
+function lastSegment(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return dot < 0 ? path : path.slice(dot + 1);
+}
+
+function citesWholeWord(text: string, segment: string): boolean {
+  if (!segment || !text) return false;
+  const escaped = segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9_$])${escaped}([^A-Za-z0-9_$]|$)`).test(text);
+}
+
+function shapeChanged(before: unknown, after: unknown): boolean {
+  const left = before && typeof before === 'object' && !Array.isArray(before) ? before as Record<string, unknown> : {};
+  const right = after && typeof after === 'object' && !Array.isArray(after) ? after as Record<string, unknown> : {};
+  return SHAPE_KEYS.some(key => JSON.stringify(left[key]) !== JSON.stringify(right[key]));
 }
 
 function onModule(info: Ns5FileInfo, from: string, to: string): Ns5FileInfo {
