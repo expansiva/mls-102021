@@ -138,12 +138,12 @@ const ORIGINAL_EFFORT = '{"usecases":[{"usecaseId":"a","status":"done"}],"totals
 const ORIGINAL_PLANNER = '{"thread":"kept"}\n';
 const CREATION_BACKEND = '{"usecases":[{"usecaseId":"a","status":"toCreate","existing":""}]}\n';
 
-function seedPlan(add: ReturnType<typeof installStor>['add'], plannerAbsent = false): void {
+function seedPlan(add: ReturnType<typeof installStor>['add'], plannerAbsent = false, kept: Array<{ id: string; routes: string[] }> = []): void {
   add(4, 'tarefas/pool/l2/web', 'backend', '.json', CREATION_BACKEND);
   add(4, 'tarefas/pool/l2/web', 'effort', '.json', CREATION_BACKEND);
   add(1, 'tarefas_old/pipeline/agentNewReleaseL1/saved/l4/tarefas/pool/l2/web', 'backend', '.json', ORIGINAL_BACKEND);
   add(1, 'tarefas_old/pipeline/agentNewReleaseL1/saved/l4/tarefas/pool/l2/web', 'effort', '.json', ORIGINAL_EFFORT);
-  const record = { at: '2026-10-26T00:00:00.000Z', moved: [], saved: [], plannerAbsent };
+  const record = { at: '2026-10-26T00:00:00.000Z', moved: [], saved: [], plannerAbsent, kept };
   add(1, 'tarefas_old/pipeline/agentNewReleaseL1', 'prepared', '.json', `${JSON.stringify(record)}\n`);
   if (plannerAbsent) {
     add(4, 'tarefas/pool/l1', 'pipeline', '.json', '{"thread":"created"}\n');
@@ -410,6 +410,19 @@ test('the close names effort gaps, a recorded cost, and restores the workflow en
   assert.match(unread, /run cost: not recorded by the defs generator; read it from the \/run task/);
   assert.equal(broken.texts()['l1/tarefas/layer_1_external/adapters/workflow/engine.ts'], undefined);
   assert.equal(broken.texts()['l1/tarefas/layer_1_external/adapters/persistence/moduleTick.ts'], undefined);
+});
+
+test('the compare close repeats a usecase kept for creation', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add, false, [{ id: 'getParticipante', routes: ['tarefas.minhas.listar', 'tarefas.minhas.abrir'] }]);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  const result = await run();
+  assert.match(result, /kept for creation: usecase getParticipante \(toRemove, used by 2 routes: tarefas\.minhas\.listar, tarefas\.minhas\.abrir\)/);
+  assert.equal(stor.texts()['l4/tarefas/pool/l2/web/backend.json'], ORIGINAL_BACKEND);
 });
 
 test('without a prepared tree the compare refuses and writes nothing', async (t) => {

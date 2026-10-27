@@ -8,6 +8,7 @@ import {
   writeSourceText,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
+import { keptLines } from '/_102021_/l2/agentNewReleaseL1/helpers/keptUsecases.js';
 import { removeIndexed, undoPrepared, type PreparedRecord } from '/_102021_/l2/agentNewReleaseL1/helpers/undo.js';
 
 export type CompareOutcome =
@@ -56,11 +57,13 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     const copies = await stageCopies(moduleName, rows, oldFiles, allEqual, engineBack);
     for (const copy of copies) await writeSourceText(copy.info, copy.text);
     for (const drop of dropsOf(rows, freshFiles, oldFiles, engineBack)) await removeIndexed(drop);
+    const kept = await readKept(moduleName);
     await restorePlan(moduleName);
     for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
     const lines = rows.map(row => `${row.kind} ${row.id}: ${row.verdict} ${row.path}`);
     lines.push(...await effortLines(moduleName, rows));
     lines.push(...costLines(gate.report));
+    lines.push(...keptLines(kept));
     lines.push('creation plan: written and undone', 'planner run: written and undone', `@@agentMaterializeL1 {"scope":"${moduleName}"}`);
     return { ok: true, text: lines.join('\n') };
   } catch (error) {
@@ -374,6 +377,13 @@ function isSharedMaterialize(rel: string): boolean {
 
 function isSharedRestore(rel: string): boolean {
   return isSharedMaterialize(rel) || rel.startsWith('materialization/') || rel.includes('/seedRows/');
+}
+
+async function readKept(moduleName: string): Promise<NonNullable<PreparedRecord['kept']>> {
+  const prepared = preparedFile(moduleName);
+  if (!fileExists(prepared)) return [];
+  const record = JSON.parse(await readSourceText(prepared)) as PreparedRecord;
+  return Array.isArray(record.kept) ? record.kept : [];
 }
 
 async function restorePlan(moduleName: string): Promise<void> {

@@ -8,6 +8,8 @@ import {
   writeSourceText,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
+import { keptLines, plansAreReadable, usedRemovedUsecases, type KeptUsecase } from '/_102021_/l2/agentNewReleaseL1/helpers/keptUsecases.js';
+import { readD1InputArtifacts } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { removeIndexed, type PreparedRecord } from '/_102021_/l2/agentNewReleaseL1/helpers/undo.js';
 
 const CREATION_BUCKETS = ['usecases', 'endpoints', 'ports', 'tables', 'testSupport', 'screens'] as const;
@@ -33,6 +35,8 @@ export async function prepareModule(moduleName: string): Promise<PrepareOutcome>
   if (sources.length === 0) {
     return { ok: false, kind: 'refused', text: `l1/${moduleName} has no files` };
   }
+  const kept = await keptForCreation(project, moduleName);
+  if (!kept.ok) return kept.outcome;
 
   const moved: Array<{ info: Ns5FileInfo; path: string; text: string }> = [];
   for (const file of sources) {
@@ -95,12 +99,14 @@ export async function prepareModule(moduleName: string): Promise<PrepareOutcome>
       moved: moved.map(file => file.path),
       saved: savedWrites.map(displayPath),
       plannerAbsent,
+      kept: kept.kept,
     };
     const preparedInfo = preparedFile(moduleName);
     await writeSourceText(preparedInfo, `${JSON.stringify(record, null, 2)}\n`);
+    const notice = keptLines(kept.kept);
     return {
       ok: true,
-      text: `prepared\n@@agentDefsL1 ${moduleName} /run\n@@agentNewReleaseL1 ${moduleName} /compare`,
+      text: ['prepared', ...notice, `@@agentDefsL1 ${moduleName} /run`, `@@agentNewReleaseL1 ${moduleName} /compare`].join('\n'),
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -119,8 +125,31 @@ export async function prepareModule(moduleName: string): Promise<PrepareOutcome>
   }
 }
 
+async function keptForCreation(
+  project: number,
+  moduleName: string,
+): Promise<{ ok: true; kept: KeptUsecase[] } | { ok: false; outcome: PrepareOutcome }> {
+  try {
+    const artifacts = await readD1InputArtifacts(project, moduleName);
+    if (!plansAreReadable(artifacts)) {
+      return { ok: false, outcome: { ok: false, kind: 'refused', text: 'creation artifacts are unreadable' } };
+    }
+    return { ok: true, kept: usedRemovedUsecases({ project, moduleName }, artifacts) };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read the creation plan: ${reason}`);
+    return { ok: false, outcome: { ok: false, kind: 'refused', text: `creation artifacts are unreadable: ${reason}` } };
+  }
+}
+
 function creationText(source: string, withTotals: boolean): string {
   const doc = JSON.parse(source) as Record<string, unknown>;
+  if (Array.isArray(doc.removed)) {
+    doc.removed = doc.removed.filter(row => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+      return (row as Record<string, unknown>).kind === 'endpoint';
+    });
+  }
   for (const bucket of CREATION_BUCKETS) {
     const rows = doc[bucket];
     if (!Array.isArray(rows)) continue;

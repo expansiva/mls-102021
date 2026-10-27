@@ -14,6 +14,8 @@ export interface PreparedRecord {
   moved: string[];
   saved: string[];
   plannerAbsent: boolean;
+  /** Usecases left out of `removed` because a contract route still calls them. */
+  kept?: Array<{ id: string; routes: string[] }>;
 }
 
 export type UndoOutcome = { ok: true } | { ok: false; text: string };
