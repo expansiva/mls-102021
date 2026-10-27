@@ -25,7 +25,10 @@ function keyOf(file: { project?: number; level?: number; folder?: string; shortN
   return `${file.project}|${file.level}|${file.folder}|${file.shortName}|${file.extension}`;
 }
 
-function installStor(): { texts: () => Record<string, string>; add: (level: number, folder: string, shortName: string, extension: string, content: string) => void; restore: () => void } {
+function installStor(hooks?: {
+  onSetContent?: (file: MemFile) => void;
+  onDelete?: (file: MemFile) => void;
+}): { texts: () => Record<string, string>; add: (level: number, folder: string, shortName: string, extension: string, content: string) => void; restore: () => void } {
   const host = (globalThis as { mls: { actualProject: number; events?: { fireFileAction?: (...args: unknown[]) => void }; stor: { files: Record<string, MemFile>; getKeyToFile: typeof keyOf; addOrUpdateFile: (params: MemFile) => Promise<MemFile>; localStor: { setContent: (file: MemFile, info: { content: string }) => Promise<void>; deleteFile: (file: MemFile) => Promise<void> } } } }).mls;
   const hadEvents = !!host.events;
   const previousAction = host.events?.fireFileAction;
@@ -54,10 +57,14 @@ function installStor(): { texts: () => Record<string, string>; add: (level: numb
   };
   host.stor.localStor = {
     setContent: async (file: MemFile, info: { content: string }) => {
+      hooks?.onSetContent?.(file);
       file.content = info.content;
       if (file.status === 'new') file.status = 'changed';
     },
-    deleteFile: async (file: MemFile) => { file.status = 'deleted'; },
+    deleteFile: async (file: MemFile) => {
+      hooks?.onDelete?.(file);
+      file.status = 'deleted';
+    },
   };
   const add = (level: number, folder: string, shortName: string, extension: string, content: string) => {
     const file: MemFile = {
@@ -477,6 +484,108 @@ test('etiquetasX in old source does not count as a cite of etiquetas', async (t)
   const result = await run();
   assert.match(result, /usecase createTarefa: igual /);
   assert.equal(stor.texts()['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], 'const tags = row.etiquetasX + metiquetas;\n');
+});
+
+/** Files under `l1/<mod>/` as they were before prepare: `_old`, without the release bookkeeping. */
+function moduleBeforePrepare(texts: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [path, text] of Object.entries(texts)) {
+    if (!path.startsWith('l1/tarefas_old/')) continue;
+    if (path.includes('/pipeline/agentNewReleaseL1/')) continue;
+    out[path.replace('l1/tarefas_old/', 'l1/tarefas/')] = text;
+  }
+  return out;
+}
+
+function seedEqualPair(add: ReturnType<typeof installStor>['add']): { body: string; source: string } {
+  const body = defText(createTarefa);
+  const source = 'OLD_TS\n';
+  add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.ts', source);
+  add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.ts', 'NEW_TS\n');
+  return { body, source };
+}
+
+test('a failure halfway through the copies restores the module and then drops _old', async (t) => {
+  let moduleWrites = 0;
+  const stor = installStor({
+    onSetContent(file) {
+      if (file.level !== 1 || file.folder.startsWith('tarefas_old') || !file.folder.startsWith('tarefas')) return;
+      moduleWrites += 1;
+      if (moduleWrites === 2) throw new Error('copy broke');
+    },
+  });
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  seedEqualPair(stor.add);
+  const expected = moduleBeforePrepare(stor.texts());
+  const result = await run();
+  assert.ok(moduleWrites > 2);
+  assert.equal(result, 'failed: restored after copy broke; creation plan: undone');
+  const texts = stor.texts();
+  const moduleNow = Object.fromEntries(Object.entries(texts).filter(([path]) => path.startsWith('l1/tarefas/')));
+  assert.deepEqual(moduleNow, expected);
+  assert.equal(texts['l4/tarefas/pool/l2/web/backend.json'], ORIGINAL_BACKEND);
+  assert.equal(texts['l4/tarefas/pool/l2/web/effort.json'], ORIGINAL_EFFORT);
+  assert.equal(texts['l4/tarefas/pool/l1/pipeline.json'], ORIGINAL_PLANNER);
+  assert.equal(Object.keys(texts).some(path => path.includes('_old')), false);
+});
+
+test('a copy failure whose restore also fails keeps _old', async (t) => {
+  let copyFailed = false;
+  let moduleWrites = 0;
+  const stor = installStor({
+    onSetContent(file) {
+      if (file.level !== 1 || file.folder.startsWith('tarefas_old') || !file.folder.startsWith('tarefas')) return;
+      if (!copyFailed) {
+        moduleWrites += 1;
+        if (moduleWrites === 2) {
+          copyFailed = true;
+          throw new Error('copy broke');
+        }
+        return;
+      }
+      if (file.extension === '.ts') {
+        throw new Error('write failed at l1/tarefas/layer_2_application/usecases/createTarefa.ts');
+      }
+    },
+  });
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  seedEqualPair(stor.add);
+  const result = await run();
+  assert.match(result, /copy broke/);
+  assert.match(result, /kept tarefas_old: restore failed at l1\/tarefas\/layer_2_application\/usecases\/createTarefa\.ts/);
+  assert.equal(Object.keys(stor.texts()).some(path => path.includes('tarefas_old')), true);
+});
+
+test('a failure while deleting _old leaves the final module and keeps _old', async (t) => {
+  const stor = installStor({
+    onDelete(file) {
+      if (file.folder.includes('_old')) {
+        throw new Error('unlink at l1/tarefas_old/layer_2_application/usecases/createTarefa.defs.ts');
+      }
+    },
+  });
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const changed = structuredClone(createTarefa);
+  changed.data.rulesApplied = ['other'];
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', defText(createTarefa));
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', defText(changed));
+  stor.add(1, 'tarefas/note', 'junk', '.md', 'STAYS\n');
+  const result = await run();
+  assert.match(result, /kept tarefas_old: delete failed at l1\/tarefas_old\/layer_2_application\/usecases\/createTarefa\.defs\.ts/);
+  const texts = stor.texts();
+  assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts'], defText(changed));
+  assert.equal(texts['l1/tarefas/note/junk.md'], 'STAYS\n');
+  assert.equal(texts['l1/tarefas_old/layer_2_application/usecases/createTarefa.defs.ts'], defText(createTarefa));
+  assert.equal(texts['l4/tarefas/pool/l2/web/backend.json'], ORIGINAL_BACKEND);
+  assert.equal(texts['l4/tarefas/pool/l1/pipeline.json'], ORIGINAL_PLANNER);
 });
 
 test('a failed restore keeps _old and names the path', async (t) => {

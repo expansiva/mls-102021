@@ -51,6 +51,7 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     return { ok: false, kind: 'failed', text: gate.reason };
   }
 
+  let lines: string[];
   try {
     const freshFiles = listUnder(project, moduleName).map(file => listedOf(file, moduleName)).filter((file): file is ListedFile => !!file);
     const oldFiles = listUnder(project, oldRoot).map(file => listedOf(file, oldRoot)).filter((file): file is ListedFile => !!file);
@@ -67,25 +68,28 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     for (const drop of dropsOf(rows, freshFiles, oldFiles, engineBack)) await removeIndexed(drop);
     const kept = await readKept(moduleName);
     await restorePlan(moduleName);
-    for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
-    const lines = rows.map(row => lineOf(row));
+    lines = rows.map(row => lineOf(row));
     lines.push(...await effortLines(moduleName, rows));
     lines.push(...costLines(gate.report));
     lines.push(...keptLines(kept));
     lines.push('creation plan: written and undone', 'planner run: written and undone', `@@agentMaterializeL1 {"scope":"${moduleName}"}`);
-    return { ok: true, text: lines.join('\n') };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    // The creation copy and the planner record must not stay behind. `_old` stays only when restore itself fails.
-    try {
-      await restorePlan(moduleName);
-    } catch (restoreError) {
-      const at = pathOfError(restoreError);
-      return { ok: false, kind: 'failed', text: `${reason}\nkept ${moduleName}_old: restore failed at ${at}` };
+    // `_old` is the only good copy until the module is whole again. Put `l1/<mod>` and the plan back first, and drop `_old` only after that.
+    const undone = await undoPrepared(moduleName);
+    if (!undone.ok) {
+      return { ok: false, kind: 'failed', text: `${reason}\nkept ${moduleName}_old: restore failed at ${pathOfError(undone.text)}` };
     }
-    for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
-    return { ok: false, kind: 'failed', text: `${reason}\ncreation plan: undone` };
+    return { ok: false, kind: 'failed', text: `restored after ${reason}; creation plan: undone` };
   }
+
+  // The module is final here. A failure while dropping `_old` leaves it, and the closure says so.
+  try {
+    for (const file of listUnder(project, oldRoot)) await removeIndexed(asInfo(file));
+  } catch (error) {
+    return { ok: false, kind: 'failed', text: `kept ${moduleName}_old: delete failed at ${pathOfError(error)}` };
+  }
+  return { ok: true, text: lines.join('\n') };
 }
 
 function lineOf(row: UnitRow): string {
