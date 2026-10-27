@@ -1,0 +1,871 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
+  "moduleName": "tarefas",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 0,
+      "toUpdate": 2,
+      "toRemove": 0,
+      "done": 4
+    },
+    "endpoints": {
+      "toCreate": 37,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 5
+    },
+    "usecases": {
+      "toCreate": 0,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 18
+    },
+    "tables": {
+      "toCreate": 0,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 3
+    }
+  },
+  "screens": [
+    {
+      "pageId": "inicio",
+      "label": "Início",
+      "actors": [
+        "membroEquipe"
+      ],
+      "status": "done",
+      "endpoints": [
+        "tarefas.inicio.cmdAceitar",
+        "tarefas.inicio.cmdDevolver",
+        "tarefas.inicio.cmdEnviarParaRevisao",
+        "tarefas.inicio.cmdIniciar",
+        "tarefas.inicio.cmdRetomar",
+        "tarefas.inicio.cmdUpdateItemChecklist",
+        "tarefas.inicio.qryListItemChecklist",
+        "tarefas.inicio.qryListListaTarefas",
+        "tarefas.inicio.qryListParticipante",
+        "tarefas.inicio.qryListTarefa"
+      ]
+    },
+    {
+      "pageId": "minhas_tarefas",
+      "label": "Minhas tarefas",
+      "actors": [
+        "membroEquipe"
+      ],
+      "status": "toUpdate",
+      "endpoints": [
+        "tarefas.minhas_tarefas.cmdAceitar",
+        "tarefas.minhas_tarefas.cmdCreateItemChecklist",
+        "tarefas.minhas_tarefas.cmdCreateTarefa",
+        "tarefas.minhas_tarefas.cmdDevolver",
+        "tarefas.minhas_tarefas.cmdEnviarParaRevisao",
+        "tarefas.minhas_tarefas.cmdIniciar",
+        "tarefas.minhas_tarefas.cmdRetomar",
+        "tarefas.minhas_tarefas.cmdUpdateItemChecklist",
+        "tarefas.minhas_tarefas.cmdUpdateTarefa",
+        "tarefas.minhas_tarefas.qryListItemChecklist",
+        "tarefas.minhas_tarefas.qryListListaTarefas",
+        "tarefas.minhas_tarefas.qryListParticipante",
+        "tarefas.minhas_tarefas.qryListTarefa"
+      ]
+    },
+    {
+      "pageId": "painel_tarefas",
+      "label": "Painel de tarefas",
+      "actors": [
+        "gestor"
+      ],
+      "status": "done",
+      "endpoints": [
+        "tarefas.painel_tarefas.qryListItemChecklist",
+        "tarefas.painel_tarefas.qryListListaTarefas",
+        "tarefas.painel_tarefas.qryListParticipante",
+        "tarefas.painel_tarefas.qryListTarefa"
+      ]
+    },
+    {
+      "pageId": "tarefas_equipe",
+      "label": "Todas as tarefas",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toUpdate",
+      "endpoints": [
+        "tarefas.tarefas_equipe.cmdCancelar",
+        "tarefas.tarefas_equipe.cmdUpdateTarefa",
+        "tarefas.tarefas_equipe.qryListItemChecklist",
+        "tarefas.tarefas_equipe.qryListListaTarefas",
+        "tarefas.tarefas_equipe.qryListParticipante",
+        "tarefas.tarefas_equipe.qryListTarefa"
+      ]
+    },
+    {
+      "pageId": "participantes",
+      "label": "Participantes",
+      "actors": [
+        "gestor"
+      ],
+      "status": "done",
+      "endpoints": [
+        "tarefas.participantes.cmdCreateParticipante",
+        "tarefas.participantes.cmdUpdateParticipante",
+        "tarefas.participantes.qryListParticipante",
+        "tarefas.participantes.qryListTarefa"
+      ]
+    },
+    {
+      "pageId": "listas_tarefas",
+      "label": "Listas de tarefas",
+      "actors": [
+        "gestor"
+      ],
+      "status": "done",
+      "endpoints": [
+        "tarefas.listas_tarefas.cmdCreateListaTarefas",
+        "tarefas.listas_tarefas.cmdUpdateListaTarefas",
+        "tarefas.listas_tarefas.qryListListaTarefas",
+        "tarefas.listas_tarefas.qryListParticipante",
+        "tarefas.listas_tarefas.qryListTarefa"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "tarefas.inicio.cmdAceitar",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "aceitar",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.cmdDevolver",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "devolver",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.cmdEnviarParaRevisao",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "enviarParaRevisao",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.cmdIniciar",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "iniciar",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.cmdRetomar",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "retomar",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.cmdUpdateItemChecklist",
+      "page": "inicio",
+      "kind": "cmd",
+      "usecaseRef": "updateItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.qryListItemChecklist",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.qryListListaTarefas",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.qryListParticipante",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.inicio.qryListTarefa",
+      "page": "inicio",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.listas_tarefas.cmdCreateListaTarefas",
+      "page": "listas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "createListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.listas_tarefas.cmdUpdateListaTarefas",
+      "page": "listas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "updateListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.listas_tarefas.qryListListaTarefas",
+      "page": "listas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.listas_tarefas.qryListParticipante",
+      "page": "listas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.listas_tarefas.qryListTarefa",
+      "page": "listas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdAceitar",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "aceitar",
+      "status": "done"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdCreateItemChecklist",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "createItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdCreateTarefa",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "createTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdDevolver",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "devolver",
+      "status": "done"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdEnviarParaRevisao",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "enviarParaRevisao",
+      "status": "done"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdIniciar",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "iniciar",
+      "status": "done"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdRetomar",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "retomar",
+      "status": "done"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdUpdateItemChecklist",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "updateItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.cmdUpdateTarefa",
+      "page": "minhas_tarefas",
+      "kind": "cmd",
+      "usecaseRef": "updateTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.qryListItemChecklist",
+      "page": "minhas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.qryListListaTarefas",
+      "page": "minhas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.qryListParticipante",
+      "page": "minhas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.minhas_tarefas.qryListTarefa",
+      "page": "minhas_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.painel_tarefas.qryListItemChecklist",
+      "page": "painel_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.painel_tarefas.qryListListaTarefas",
+      "page": "painel_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.painel_tarefas.qryListParticipante",
+      "page": "painel_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.painel_tarefas.qryListTarefa",
+      "page": "painel_tarefas",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.participantes.cmdCreateParticipante",
+      "page": "participantes",
+      "kind": "cmd",
+      "usecaseRef": "createParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.participantes.cmdUpdateParticipante",
+      "page": "participantes",
+      "kind": "cmd",
+      "usecaseRef": "updateParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.participantes.qryListParticipante",
+      "page": "participantes",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.participantes.qryListTarefa",
+      "page": "participantes",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.cmdCancelar",
+      "page": "tarefas_equipe",
+      "kind": "cmd",
+      "usecaseRef": "cancelar",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.cmdUpdateTarefa",
+      "page": "tarefas_equipe",
+      "kind": "cmd",
+      "usecaseRef": "updateTarefa",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.qryListItemChecklist",
+      "page": "tarefas_equipe",
+      "kind": "qry",
+      "usecaseRef": "listItemChecklist",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.qryListListaTarefas",
+      "page": "tarefas_equipe",
+      "kind": "qry",
+      "usecaseRef": "listListaTarefas",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.qryListParticipante",
+      "page": "tarefas_equipe",
+      "kind": "qry",
+      "usecaseRef": "listParticipante",
+      "status": "toCreate"
+    },
+    {
+      "route": "tarefas.tarefas_equipe.qryListTarefa",
+      "page": "tarefas_equipe",
+      "kind": "qry",
+      "usecaseRef": "listTarefa",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "aceitar",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/aceitar.defs.ts"
+    },
+    {
+      "usecaseId": "cancelar",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/cancelar.defs.ts"
+    },
+    {
+      "usecaseId": "createItemChecklist",
+      "entity": "ItemChecklist",
+      "operation": "create",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/createItemChecklist.defs.ts"
+    },
+    {
+      "usecaseId": "createListaTarefas",
+      "entity": "ListaTarefas",
+      "operation": "create",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/createListaTarefas.defs.ts"
+    },
+    {
+      "usecaseId": "createParticipante",
+      "entity": "Participante",
+      "operation": "create",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/createParticipante.defs.ts"
+    },
+    {
+      "usecaseId": "createTarefa",
+      "entity": "Tarefa",
+      "operation": "create",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts"
+    },
+    {
+      "usecaseId": "devolver",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/devolver.defs.ts"
+    },
+    {
+      "usecaseId": "enviarParaRevisao",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/enviarParaRevisao.defs.ts"
+    },
+    {
+      "usecaseId": "iniciar",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/iniciar.defs.ts"
+    },
+    {
+      "usecaseId": "listItemChecklist",
+      "entity": "ItemChecklist",
+      "operation": "list",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/listItemChecklist.defs.ts"
+    },
+    {
+      "usecaseId": "listListaTarefas",
+      "entity": "ListaTarefas",
+      "operation": "list",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/listListaTarefas.defs.ts"
+    },
+    {
+      "usecaseId": "listParticipante",
+      "entity": "Participante",
+      "operation": "list",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/listParticipante.defs.ts"
+    },
+    {
+      "usecaseId": "listTarefa",
+      "entity": "Tarefa",
+      "operation": "list",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/listTarefa.defs.ts"
+    },
+    {
+      "usecaseId": "retomar",
+      "entity": "Tarefa",
+      "operation": "transition",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/retomar.defs.ts"
+    },
+    {
+      "usecaseId": "updateItemChecklist",
+      "entity": "ItemChecklist",
+      "operation": "update",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/updateItemChecklist.defs.ts"
+    },
+    {
+      "usecaseId": "updateListaTarefas",
+      "entity": "ListaTarefas",
+      "operation": "update",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/updateListaTarefas.defs.ts"
+    },
+    {
+      "usecaseId": "updateParticipante",
+      "entity": "Participante",
+      "operation": "update",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/updateParticipante.defs.ts"
+    },
+    {
+      "usecaseId": "updateTarefa",
+      "entity": "Tarefa",
+      "operation": "update",
+      "status": "done",
+      "existing": "l1/tarefas/layer_2_application/usecases/updateTarefa.defs.ts"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "itemChecklist",
+      "entity": "ItemChecklist",
+      "status": "done"
+    },
+    {
+      "tableId": "listaTarefas",
+      "entity": "ListaTarefas",
+      "status": "done"
+    },
+    {
+      "tableId": "tarefa",
+      "entity": "Tarefa",
+      "status": "done"
+    }
+  ],
+  "removed": [
+    {
+      "kind": "usecase",
+      "id": "getParticipante",
+      "status": "toRemove"
+    }
+  ],
+  "testSupport": [
+    {
+      "id": "data:ItemChecklist",
+      "actorRefs": [
+        "gestor",
+        "membroEquipe"
+      ],
+      "entityRefs": [
+        "ItemChecklist",
+        "Tarefa"
+      ],
+      "sourceRefs": [
+        "grant:gestorTodasTarefas",
+        "grant:membroChecklistPropria",
+        "journey:acompanharTarefas/abrirTarefaGestor",
+        "journey:acompanharTarefas/filtrarTarefas",
+        "journey:acompanharTarefas/verQuadro",
+        "journey:cancelarTarefa/cancelar",
+        "journey:cancelarTarefa/localizarTarefaCancelar",
+        "journey:criarTarefa/adicionarChecklist",
+        "journey:criarTarefa/preencherTarefa",
+        "journey:editarTarefa/ajustarChecklist",
+        "journey:editarTarefa/alterarCampos",
+        "journey:editarTarefa/localizarTarefaEdicao",
+        "journey:executarTarefa/abrirTarefa",
+        "journey:executarTarefa/enviarRevisao",
+        "journey:executarTarefa/iniciarTarefa",
+        "journey:executarTarefa/marcarItem",
+        "journey:executarTarefa/verTarefa",
+        "journey:minhasTarefas/listarMinhas",
+        "journey:minhasTarefas/verDetalhe",
+        "journey:reatribuirTarefa/localizarTarefaReatribuir",
+        "journey:reatribuirTarefa/trocarResponsavel",
+        "journey:reatribuirTarefa/verResponsavelAtual",
+        "journey:reatribuirTarefaCriada/localizarCriada",
+        "journey:reatribuirTarefaCriada/trocarResponsavelCriada",
+        "journey:reatribuirTarefaCriada/verResponsavelCriada",
+        "journey:resumoDiario/lerResumo",
+        "journey:resumoDiario/verVencendo",
+        "journey:retomarTarefa/lerMotivo",
+        "journey:retomarTarefa/reenviarRevisao",
+        "journey:retomarTarefa/retomar",
+        "journey:revisarTarefa/abrirRevisao",
+        "journey:revisarTarefa/aceitarTarefa",
+        "journey:revisarTarefa/conferirTarefa",
+        "journey:revisarTarefa/devolverTarefa",
+        "relationship:ItemChecklist/itemChecklistTarefa",
+        "relationship:Tarefa/itemChecklistTarefa"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes itemChecklist rows by execution id"
+    },
+    {
+      "id": "data:ListaTarefas",
+      "actorRefs": [
+        "gestor",
+        "membroEquipe"
+      ],
+      "entityRefs": [
+        "ListaTarefas"
+      ],
+      "sourceRefs": [
+        "grant:gestorListas",
+        "grant:membroConsultarListas",
+        "journey:acompanharTarefas/abrirTarefaGestor",
+        "journey:acompanharTarefas/filtrarTarefas",
+        "journey:acompanharTarefas/verQuadro",
+        "journey:cancelarTarefa/cancelar",
+        "journey:cancelarTarefa/localizarTarefaCancelar",
+        "journey:criarTarefa/adicionarChecklist",
+        "journey:criarTarefa/preencherTarefa",
+        "journey:editarTarefa/ajustarChecklist",
+        "journey:editarTarefa/alterarCampos",
+        "journey:editarTarefa/localizarTarefaEdicao",
+        "journey:executarTarefa/abrirTarefa",
+        "journey:executarTarefa/enviarRevisao",
+        "journey:executarTarefa/iniciarTarefa",
+        "journey:executarTarefa/marcarItem",
+        "journey:executarTarefa/verTarefa",
+        "journey:manterListas/criarLista",
+        "journey:manterListas/editarLista",
+        "journey:manterListas/localizarLista",
+        "journey:minhasTarefas/listarMinhas",
+        "journey:minhasTarefas/verDetalhe",
+        "journey:reatribuirTarefa/localizarTarefaReatribuir",
+        "journey:reatribuirTarefa/trocarResponsavel",
+        "journey:reatribuirTarefa/verResponsavelAtual",
+        "journey:reatribuirTarefaCriada/localizarCriada",
+        "journey:reatribuirTarefaCriada/trocarResponsavelCriada",
+        "journey:reatribuirTarefaCriada/verResponsavelCriada",
+        "journey:resumoDiario/lerResumo",
+        "journey:resumoDiario/verVencendo",
+        "journey:retomarTarefa/lerMotivo",
+        "journey:retomarTarefa/reenviarRevisao",
+        "journey:retomarTarefa/retomar",
+        "journey:revisarTarefa/abrirRevisao",
+        "journey:revisarTarefa/aceitarTarefa",
+        "journey:revisarTarefa/conferirTarefa",
+        "journey:revisarTarefa/devolverTarefa",
+        "relationship:ListaTarefas/tarefaLista",
+        "relationship:Tarefa/tarefaLista"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes listaTarefas rows by execution id"
+    },
+    {
+      "id": "data:Tarefa",
+      "actorRefs": [
+        "gestor",
+        "membroEquipe"
+      ],
+      "entityRefs": [
+        "ListaTarefas",
+        "Participante",
+        "Tarefa"
+      ],
+      "sourceRefs": [
+        "grant:gestorTodasTarefas",
+        "grant:membroTarefasProprias",
+        "journey:acompanharTarefas/abrirTarefaGestor",
+        "journey:acompanharTarefas/filtrarTarefas",
+        "journey:acompanharTarefas/verQuadro",
+        "journey:cancelarTarefa/cancelar",
+        "journey:cancelarTarefa/localizarTarefaCancelar",
+        "journey:configurarParticipantes/incluirParticipante",
+        "journey:configurarParticipantes/localizarUsuario",
+        "journey:configurarParticipantes/marcarPermissoes",
+        "journey:criarTarefa/adicionarChecklist",
+        "journey:criarTarefa/preencherTarefa",
+        "journey:editarTarefa/ajustarChecklist",
+        "journey:editarTarefa/alterarCampos",
+        "journey:editarTarefa/localizarTarefaEdicao",
+        "journey:executarTarefa/abrirTarefa",
+        "journey:executarTarefa/enviarRevisao",
+        "journey:executarTarefa/iniciarTarefa",
+        "journey:executarTarefa/marcarItem",
+        "journey:executarTarefa/verTarefa",
+        "journey:manterListas/criarLista",
+        "journey:manterListas/editarLista",
+        "journey:manterListas/localizarLista",
+        "journey:minhasTarefas/listarMinhas",
+        "journey:minhasTarefas/verDetalhe",
+        "journey:reatribuirTarefa/localizarTarefaReatribuir",
+        "journey:reatribuirTarefa/trocarResponsavel",
+        "journey:reatribuirTarefa/verResponsavelAtual",
+        "journey:reatribuirTarefaCriada/localizarCriada",
+        "journey:reatribuirTarefaCriada/trocarResponsavelCriada",
+        "journey:reatribuirTarefaCriada/verResponsavelCriada",
+        "journey:resumoDiario/lerResumo",
+        "journey:resumoDiario/verVencendo",
+        "journey:retomarTarefa/lerMotivo",
+        "journey:retomarTarefa/reenviarRevisao",
+        "journey:retomarTarefa/retomar",
+        "journey:revisarTarefa/abrirRevisao",
+        "journey:revisarTarefa/aceitarTarefa",
+        "journey:revisarTarefa/conferirTarefa",
+        "journey:revisarTarefa/devolverTarefa",
+        "ontology:Tarefa/lifecycleStates/aFazer",
+        "ontology:Tarefa/lifecycleStates/emAndamento",
+        "ontology:Tarefa/lifecycleStates/emRevisao",
+        "relationship:ItemChecklist/itemChecklistTarefa",
+        "relationship:ListaTarefas/tarefaLista",
+        "relationship:Participante/tarefaCriador",
+        "relationship:Participante/tarefaResponsavel",
+        "relationship:Tarefa/itemChecklistTarefa",
+        "relationship:Tarefa/tarefaCriador",
+        "relationship:Tarefa/tarefaLista",
+        "relationship:Tarefa/tarefaResponsavel"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes tarefa rows by execution id"
+    },
+    {
+      "id": "identity:gestor",
+      "actorRefs": [
+        "gestor"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/gestor",
+        "grant:gestorListas",
+        "grant:gestorParticipantes",
+        "grant:gestorTodasTarefas",
+        "journey:acompanharTarefas/abrirTarefaGestor",
+        "journey:acompanharTarefas/filtrarTarefas",
+        "journey:acompanharTarefas/verQuadro",
+        "journey:cancelarTarefa/cancelar",
+        "journey:cancelarTarefa/localizarTarefaCancelar",
+        "journey:configurarParticipantes/incluirParticipante",
+        "journey:configurarParticipantes/localizarUsuario",
+        "journey:configurarParticipantes/marcarPermissoes",
+        "journey:manterListas/criarLista",
+        "journey:manterListas/editarLista",
+        "journey:manterListas/localizarLista",
+        "journey:reatribuirTarefa/localizarTarefaReatribuir",
+        "journey:reatribuirTarefa/trocarResponsavel",
+        "journey:reatribuirTarefa/verResponsavelAtual",
+        "relationship:ItemChecklist/itemChecklistTarefa",
+        "relationship:ListaTarefas/tarefaLista",
+        "relationship:Participante/tarefaCriador",
+        "relationship:Participante/tarefaResponsavel",
+        "relationship:Tarefa/itemChecklistTarefa",
+        "relationship:Tarefa/tarefaLista",
+        "relationship:Tarefa/tarefaResponsavel"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor gestor declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:membroEquipe",
+      "actorRefs": [
+        "membroEquipe"
+      ],
+      "entityRefs": [
+        "Participante"
+      ],
+      "sourceRefs": [
+        "access:actors/membroEquipe",
+        "grant:membroChecklistPropria",
+        "grant:membroConsultarListas",
+        "grant:membroEscolherResponsavel",
+        "grant:membroTarefasProprias",
+        "journey:criarTarefa/adicionarChecklist",
+        "journey:criarTarefa/preencherTarefa",
+        "journey:editarTarefa/ajustarChecklist",
+        "journey:editarTarefa/alterarCampos",
+        "journey:editarTarefa/localizarTarefaEdicao",
+        "journey:executarTarefa/abrirTarefa",
+        "journey:executarTarefa/enviarRevisao",
+        "journey:executarTarefa/iniciarTarefa",
+        "journey:executarTarefa/marcarItem",
+        "journey:executarTarefa/verTarefa",
+        "journey:minhasTarefas/listarMinhas",
+        "journey:minhasTarefas/verDetalhe",
+        "journey:reatribuirTarefaCriada/localizarCriada",
+        "journey:reatribuirTarefaCriada/trocarResponsavelCriada",
+        "journey:reatribuirTarefaCriada/verResponsavelCriada",
+        "journey:resumoDiario/lerResumo",
+        "journey:resumoDiario/verVencendo",
+        "journey:retomarTarefa/lerMotivo",
+        "journey:retomarTarefa/reenviarRevisao",
+        "journey:retomarTarefa/retomar",
+        "journey:revisarTarefa/abrirRevisao",
+        "journey:revisarTarefa/aceitarTarefa",
+        "journey:revisarTarefa/conferirTarefa",
+        "journey:revisarTarefa/devolverTarefa",
+        "relationship:ItemChecklist/itemChecklistTarefa",
+        "relationship:ListaTarefas/tarefaLista",
+        "relationship:Participante/tarefaCriador",
+        "relationship:Participante/tarefaResponsavel",
+        "relationship:Tarefa/itemChecklistTarefa",
+        "relationship:Tarefa/tarefaCriador",
+        "relationship:Tarefa/tarefaLista",
+        "relationship:Tarefa/tarefaResponsavel"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for membroEquipe bound to Participante"
+    }
+  ],
+  "unattributed": [
+    {
+      "changeId": "grant:membroTarefasProprias",
+      "kind": "grant",
+      "op": "changed",
+      "reason": "front-end effort names no page"
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "sourceVersion": "2026-09-21-p1-backend-v1.2",
+    "generatedAt": "2026-10-26T13:21:03.188Z"
+  }
+}
