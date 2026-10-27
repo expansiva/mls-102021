@@ -175,7 +175,8 @@ test('prepare moves every l1 file, writes a creation plan, and rewrites the plan
   seed(stor, true);
   const before = stor.texts();
   const result = await run('@@agentNewReleaseL1 tarefas');
-  assert.equal(result, 'done: prepared\n@@agentDefsL1 tarefas /run\n@@agentNewReleaseL1 tarefas /compare');
+  assert.equal(result, 'done: postprocess: no correction\npostprocess record: l4/tarefas/pool/l1/web/postprocess.json\nprepared\n@@agentDefsL1 tarefas /run\n@@agentNewReleaseL1 tarefas /compare');
+  assert.equal(JSON.parse(stor.texts()['l4/tarefas/pool/l1/web/postprocess.json']).corrections.length, 0);
   const after = stor.texts();
   assert.equal(after['l1/tarefas_old/note.md'], before['l1/tarefas/note.md']);
   assert.equal(after['l1/tarefas_old/pipeline/agentDefsL1/input20.json'], before['l1/tarefas/pipeline/agentDefsL1/input20.json']);
@@ -253,7 +254,7 @@ test('prepare refuses when _old exists, effort is missing, or l1 is empty', asyn
     getValueInfo() { return Promise.resolve({ content: this.content }); },
   };
   empty.files[keyOf(effortOnly)] = effortOnly;
-  assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: l1/tarefas has no files');
+  assert.match(await run('@@agentNewReleaseL1 tarefas'), /^refused: postprocess: plan missing: l4\/tarefas\/pool\/l2\/web\/backend\.json/);
 });
 
 test('a failure while moving rolls the copies back', async (t) => {
@@ -263,7 +264,11 @@ test('a failure while moving rolls the copies back', async (t) => {
   const before = stor.texts();
   const result = await run('@@agentNewReleaseL1 tarefas');
   assert.equal(result, 'failed: disk full');
-  assert.deepEqual(stor.texts(), before);
+  const after = stor.texts();
+  const record = after['l4/tarefas/pool/l1/web/postprocess.json'];
+  delete after['l4/tarefas/pool/l1/web/postprocess.json'];
+  assert.equal(JSON.parse(record).corrections.length, 0);
+  assert.deepEqual(after, before);
 });
 
 test('a removed usecase a route uses is dropped from removed and named in the close', async (t) => {
@@ -318,16 +323,80 @@ test('a removed usecase a route uses is dropped from removed and named in the cl
   };
   stor.files[keyOf(change)] = change;
   const before = stor.texts();
-  const kept = usedRemovedUsecases(identity, { ...artifacts, backend, effort });
   const result = await run(`@@agentNewReleaseL1 ${moduleName}`);
-  assert.match(result, new RegExp(keptLines(kept)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  const written = JSON.parse(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`]) as { removed: Array<{ kind: string; id: string }> };
+  assert.match(result, new RegExp(`postprocess: usecase ${usedId} from toRemove to done`));
+  assert.match(result, new RegExp(`postprocess record: l4/${moduleName}/pool/l1/web/postprocess.json`));
+  assert.doesNotMatch(result, /postprocess missed/);
+  const record = JSON.parse(stor.texts()[`l4/${moduleName}/pool/l1/web/postprocess.json`]) as { corrections: Array<{ usecase: string }> };
+  assert.equal(record.corrections.some(item => item.usecase === usedId), true);
+  const written = JSON.parse(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`]) as { usecases: Array<{ usecaseId: string; status: string }>; removed: Array<{ kind: string; id: string }> };
+  assert.equal(written.usecases.find(row => row.usecaseId === usedId)?.status, 'toCreate');
   assert.deepEqual(written.removed, [{ kind: 'endpoint', id: 'keep', status: 'toRemove' }]);
-  assert.equal(written.removed.some(row => row.id === 'orphanUsecase' || row.id === usedId), false);
   const undone = await undoPrepared(moduleName);
   assert.equal(undone.ok, true);
-  assert.equal(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`], before[`l4/${moduleName}/pool/l2/web/backend.json`]);
-  assert.equal(stor.texts()[`l4/${moduleName}/pool/l2/web/effort.json`], before[`l4/${moduleName}/pool/l2/web/effort.json`]);
+  const restored = JSON.parse(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`]) as { usecases: Array<{ usecaseId: string; status: string }>; removed: Array<{ id: string }> };
+  assert.equal(restored.usecases.find(row => row.usecaseId === usedId)?.status, 'done');
+  assert.equal(restored.removed.some(row => row.id === usedId), false);
+  assert.notEqual(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`], before[`l4/${moduleName}/pool/l2/web/backend.json`]);
+});
+
+test('a used toRemove the postprocess does not cover is a defect and still leaves removed', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  const moduleName = 'comandaRestaurante';
+  const files = loadD1Fixture('comandaRestaurante-c0f25ee');
+  for (const [path, content] of Object.entries(files)) {
+    const platform = /^_(\d+)_\/(.+)$/.exec(path);
+    const info = platform ? fileInfoFromDisplay(Number(platform[1]), platform[2]) : fileInfoFromDisplay(PROJECT, path);
+    if (!info) continue;
+    const file: MemFile = {
+      project: info.project, level: info.level, folder: info.folder, shortName: info.shortName, extension: info.extension,
+      status: 'published', content,
+      getContent() { return Promise.resolve(this.content); },
+      getValueInfo() { return Promise.resolve({ content: this.content }); },
+    };
+    stor.files[keyOf(file)] = file;
+  }
+  const artifacts = loadD1Artifacts('comandaRestaurante-c0f25ee', moduleName);
+  const backend = JSON.parse(JSON.stringify(artifacts.backend)) as { usecases: Array<{ usecaseId: string }>; removed: unknown[] };
+  const effort = JSON.parse(JSON.stringify(artifacts.effort)) as { usecases: Array<{ usecaseId: string }>; removed: unknown[] };
+  const identity = { project: PROJECT, moduleName };
+  let usedId = '';
+  for (const row of backend.usecases) {
+    const trialBackend = JSON.parse(JSON.stringify(backend)) as typeof backend;
+    const trialEffort = JSON.parse(JSON.stringify(effort)) as typeof effort;
+    trialBackend.usecases = trialBackend.usecases.filter(item => item.usecaseId !== row.usecaseId);
+    trialEffort.usecases = trialEffort.usecases.filter(item => item.usecaseId !== row.usecaseId);
+    trialBackend.removed = [{ kind: 'usecase', id: row.usecaseId, status: 'parked' }];
+    trialEffort.removed = trialBackend.removed;
+    const kept = usedRemovedUsecases(identity, { ...artifacts, backend: trialBackend, effort: trialEffort });
+    if (!kept.some(item => item.id === row.usecaseId)) continue;
+    usedId = row.usecaseId;
+    backend.usecases = trialBackend.usecases;
+    effort.usecases = trialEffort.usecases;
+    backend.removed = trialBackend.removed;
+    effort.removed = trialEffort.removed;
+    break;
+  }
+  assert.ok(usedId);
+  const writePlan = (shortName: string, body: unknown) => {
+    const file = stor.files[keyOf({ project: PROJECT, level: 4, folder: `${moduleName}/pool/l2/web`, shortName, extension: '.json' })];
+    file.content = `${JSON.stringify(body, null, 2)}\n`;
+  };
+  writePlan('backend', backend);
+  writePlan('effort', effort);
+  const change: MemFile = {
+    project: PROJECT, level: 4, folder: `${moduleName}/pool/l4`, shortName: 'changeEffort', extension: '.json', status: 'published', content: '{}\n',
+    getContent() { return Promise.resolve(this.content); },
+    getValueInfo() { return Promise.resolve({ content: this.content }); },
+  };
+  stor.files[keyOf(change)] = change;
+  const kept = usedRemovedUsecases(identity, { ...artifacts, backend, effort });
+  const result = await run(`@@agentNewReleaseL1 ${moduleName}`);
+  assert.match(result, /postprocess: no correction/);
+  assert.match(result, new RegExp(keptLines(kept)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  const written = JSON.parse(stor.texts()[`l4/${moduleName}/pool/l2/web/backend.json`]) as { removed: Array<{ id: string }> };
+  assert.equal(written.removed.some(row => row.id === usedId), false);
 });
 
 test('an unreadable plan refuses and writes nothing', async (t) => {
@@ -337,8 +406,11 @@ test('an unreadable plan refuses and writes nothing', async (t) => {
   const backend = stor.files[keyOf({ project: PROJECT, level: 4, folder: 'tarefas/pool/l2/web', shortName: 'backend', extension: '.json' })];
   backend.content = '{';
   const before = stor.texts();
-  assert.equal(await run('@@agentNewReleaseL1 tarefas'), 'refused: creation artifacts are unreadable');
-  assert.deepEqual(stor.texts(), before);
+  const result = await run('@@agentNewReleaseL1 tarefas');
+  assert.match(result, /^refused: postprocess: plan unreadable: l4\/tarefas\/pool\/l2\/web\/backend\.json/);
+  assert.equal(stor.texts()['l4/tarefas/pool/l1/web/postprocess.json'], undefined);
+  assert.equal(stor.texts()['l1/tarefas/note.md'], before['l1/tarefas/note.md']);
+  assert.equal(stor.texts()['l4/tarefas/pool/l2/web/backend.json'], before['l4/tarefas/pool/l2/web/backend.json']);
 });
 
 test('undo removes a planner record that did not exist', async (t) => {
@@ -346,7 +418,7 @@ test('undo removes a planner record that did not exist', async (t) => {
   t.after(() => stor.restore());
   seed(stor, false);
   const before = stor.texts();
-  assert.match(await run('@@agentNewReleaseL1 tarefas'), /^done: prepared\n/);
+  assert.match(await run('@@agentNewReleaseL1 tarefas'), /^done: postprocess: no correction\n/);
   const written = JSON.parse(stor.texts()['l4/tarefas/pool/l1/pipeline.json']);
   assert.deepEqual(written.steps.plan20.artifactPaths, ['l4/tarefas/pool/l2/web/backend.json']);
   assert.equal(written.thread, 'thread-9');

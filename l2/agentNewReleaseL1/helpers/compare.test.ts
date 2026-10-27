@@ -428,7 +428,8 @@ test('the compare close repeats a usecase kept for creation', async (t) => {
   stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
   stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
   const result = await run();
-  assert.match(result, /kept for creation: usecase getParticipante \(toRemove, used by 2 routes: tarefas\.minhas\.listar, tarefas\.minhas\.abrir\)/);
+  assert.match(result, /postprocess missed: usecase getParticipante \(toRemove, used by 2 routes: tarefas\.minhas\.listar…\)/);
+  assert.equal(stor.texts()['l4/tarefas/pool/l1/web/postprocess.json'], undefined);
   assert.equal(stor.texts()['l4/tarefas/pool/l2/web/backend.json'], ORIGINAL_BACKEND);
 });
 

@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { compareModule } from '/_102021_/l2/agentNewReleaseL1/helpers/compare.js';
 import { prepareModule } from '/_102021_/l2/agentNewReleaseL1/helpers/prepare.js';
+import { postprocessPlan } from '/_102021_/l2/helpers/planPostprocess/postprocess.js';
 import {
   parseNewReleaseInvocation,
   releaseStatusText,
@@ -35,9 +36,12 @@ async function beforePromptImplicit(
     if (!compared.ok) return finish(agent, context, compared.kind, compared.text);
     return finish(agent, context, 'done', compared.text);
   }
+  const processed = await postprocessPlan(invocation.module);
+  if (!processed.ok) return finish(agent, context, 'refused', `postprocess: ${processed.reason}`);
   const prepared = await prepareModule(invocation.module);
   if (!prepared.ok) return finish(agent, context, prepared.kind, prepared.text);
-  return finish(agent, context, 'done', prepared.text);
+  const record = `postprocess record: l4/${invocation.module}/pool/l1/web/postprocess.json`;
+  return finish(agent, context, 'done', `${processed.text}\n${record}\n${prepared.text}`);
 }
 
 function finish(

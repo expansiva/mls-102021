@@ -6,7 +6,11 @@ One path. The caller sends each command. This agent does not call `agentDefsL1` 
 
 `@@agentNewReleaseL1 <module>`
 
-Refuses, and writes nothing, when `l1/<module>_old/` already has a file, when `l4/<module>/pool/l4/changeEffort.json` is missing, or when `l1/<module>/` has no file.
+The first call runs the plan postprocess before anything is moved. A `toRemove` usecase that a contract route still calls goes back to `done` in `l4/<module>/pool/l2/web/backend.json` and `effort.json`. The run always writes `l4/<module>/pool/l1/web/postprocess.json`, including when `corrections` is empty. An unreadable or missing plan refuses with `postprocess: …` and moves nothing. `/compare` does not run the postprocess and does not write that file.
+
+The close starts with one line per correction (`postprocess: usecase <id> from toRemove to done …`), or `postprocess: no correction`, then `postprocess record: l4/<module>/pool/l1/web/postprocess.json`. If a used `toRemove` usecase is still in the plan after that, the close adds `postprocess missed: usecase <id> …`. That line is a defect notice. The creation copy still drops that usecase from `removed` so `/run` can continue. `/compare` repeats the same line from `prepared.json`.
+
+Refuses, and writes nothing else, when `l1/<module>_old/` already has a file, when `l4/<module>/pool/l4/changeEffort.json` is missing, or when `l1/<module>/` has no file.
 
 Otherwise it copies every file under `l1/<module>/` to the same path under `l1/<module>_old/` (same text, same extension) and deletes the originals only after every copy is written. A failure in the middle undoes the copies and ends `failed`.
 
