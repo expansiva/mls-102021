@@ -6,6 +6,7 @@ import { dirname, join, relative } from 'node:path';
 import test, { mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import {
   describeEffort,
@@ -715,7 +716,9 @@ void test('describeEffort só importa helpers e solution, e não escreve nem bus
   const specs = [...source.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)].map(match => match[1]);
   assert.ok(specs.length > 0);
   const allowed = (spec: string) =>
-    spec.startsWith('/_102021_/l2/helpers/') || spec.startsWith('/_102035_/l2/solution/');
+    spec.startsWith('/_102021_/l2/helpers/')
+    || spec.startsWith('/_102020_/l2/helpers/')
+    || spec.startsWith('/_102035_/l2/solution/');
   for (const spec of specs) assert.equal(allowed(spec), true, spec);
   for (const banned of ['writeFile', 'writeJson', 'writeText', 'saveFile', 'fetch']) {
     assert.equal(source.includes(banned), false, banned);
@@ -1151,4 +1154,89 @@ void test('journey actorRef change cites the journey; rule field grant and text 
     'scope:accessScope',
     'seeds:seeds',
   ]);
+});
+
+const EMPTY_META = { output: {}, lists: {}, params: {} };
+
+function pageContract(pageId: string, rules: string[]): string {
+  return renderD2ContractV2(
+    { project: 102047, module: 'tarefas', pageId },
+    {
+      module: 'tarefas',
+      pageId,
+      projections: [],
+      routes: [{
+        route: 'duplicar',
+        kind: 'cmd',
+        input: '{}',
+        output: '{}',
+        meta: EMPTY_META,
+        rules,
+        access: { actors: ['gestor'], grants: [], scope: 'organization' },
+      }],
+    },
+  );
+}
+
+const RULE_DUPLICA = 'gestorDuplicaTarefa';
+const ADDED_DUPLICA = addedRule(RULE_DUPLICA, 'O gestor duplica uma tarefa da equipe.');
+
+void test('rule added cited by an L2 contract page skips the model and points at that page', () => {
+  const contracts = { tarefas_equipe: pageContract('tarefas_equipe', [RULE_DUPLICA]) };
+  assert.equal(effortPromptFrom(ADDED_DUPLICA, TAREFAS, contracts), null);
+  const answer = describeEffortFrom(ADDED_DUPLICA, TAREFAS, undefined, contracts);
+  assert.equal(answer.status, 'computed');
+  assert.equal(answer.contract, 'keep');
+  assert.deepEqual(answer.create, []);
+  assert.deepEqual(answer.remove, []);
+  const cited = ['controller:tarefas_equipe', 'request:tarefas_equipe'];
+  assert.deepEqual(keysOf(answer.regenerateDefs), cited);
+  assert.deepEqual(keysOf(answer.materialize), cited);
+  assert.equal(keysOf(answer.materialize).includes('usecase:createTarefa'), false);
+  assert.equal(keysOf(answer.materialize).includes('request:minhas_tarefas'), false);
+  const finished = finishEffortFrom(ADDED_DUPLICA, TAREFAS, { existing: [{ usecase: 'createTarefa' }], reason: 'x' }, contracts);
+  assert.deepEqual(keysOf(finished.materialize), cited);
+  assert.deepEqual(
+    answer.materialize.map(unit => unit.path),
+    [
+      'l1/tarefas/layer_1_external/adapters/http/controllers/tarefas_equipe.defs.ts',
+      'l1/tarefas/layer_2_application/requests/tarefas_equipe.defs.ts',
+    ],
+  );
+});
+
+void test('rule added without a citing contract keeps the model prompt', () => {
+  const contracts = { tarefas_equipe: pageContract('tarefas_equipe', ['outraRegra']) };
+  const prompt = effortPromptFrom(ADDED_DUPLICA, TAREFAS, contracts);
+  assert.ok(prompt);
+  assert.equal(prompt.prompt.includes(RULE_DUPLICA), true);
+  const none = effortPromptFrom(ADDED_DUPLICA, TAREFAS);
+  assert.ok(none);
+});
+
+void test('rule added cited by several L2 contracts lists each page', () => {
+  const contracts = {
+    tarefas_equipe: pageContract('tarefas_equipe', [RULE_DUPLICA]),
+    painel_tarefas: pageContract('painel_tarefas', [RULE_DUPLICA]),
+  };
+  const answer = describeEffortFrom(ADDED_DUPLICA, TAREFAS, undefined, contracts);
+  assert.deepEqual(keysOf(answer.materialize), [
+    'controller:painel_tarefas',
+    'controller:tarefas_equipe',
+    'request:painel_tarefas',
+    'request:tarefas_equipe',
+  ]);
+});
+
+void test('unreadable L2 contract is logged and the model path continues', () => {
+  const error = mock.method(console, 'error', () => {});
+  try {
+    const contracts = { tarefas_equipe: 'not a contract' };
+    const prompt = effortPromptFrom(ADDED_DUPLICA, TAREFAS, contracts);
+    assert.ok(prompt);
+    assert.equal(error.mock.calls.length, 1);
+    assert.equal(String(error.mock.calls[0]?.arguments[0]).includes('tarefas_equipe'), true);
+  } finally {
+    error.mock.restore();
+  }
 });

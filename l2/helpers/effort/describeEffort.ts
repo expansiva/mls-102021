@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/helpers/effort/describeEffort.ts" enhancement="_blank"/>
 
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { parseDefinitionSource } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { EffortAnswer, EffortInput, EffortPromptRequest, EffortUnitRef } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -1019,11 +1020,59 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
   return computed(item.changeId, units, units);
 }
 
-/** Pure. `defs` maps each product def path to its `.defs.ts` source. `sources` maps the same path to the sibling `.ts` text; omitted keeps the previous answer. */
+function pagesCitingRule(contracts: Record<string, string> | undefined, ruleId: string): string[] {
+  if (!contracts || !ruleId) return [];
+  const pages: string[] = [];
+  for (const [pageId, source] of Object.entries(contracts)) {
+    try {
+      const parsed = parseD2ContractV2(source);
+      if (parsed.routes.some(route => route.rules.includes(ruleId))) {
+        pages.push(parsed.pageId || pageId);
+      }
+    } catch (error) {
+      console.error(`describeEffort: unreadable L2 contract ${pageId}`, error);
+    }
+  }
+  return [...new Set(pages)].sort();
+}
+
+function pageUnitsForRule(moduleName: string, defs: Record<string, string>, pages: string[]): EffortUnitRef[] {
+  const listed = grantDefs(defs);
+  const units: EffortUnitRef[] = [];
+  for (const pageId of pages) {
+    units.push(requestForPage(listed, pageId) ?? {
+      kind: 'request',
+      id: pageId,
+      path: `l1/${moduleName}/layer_2_application/requests/${pageId}.defs.ts`,
+    });
+    const controller = listed.map(controllerUnit).find(unit => unit?.id === pageId) ?? null;
+    units.push(controller ?? {
+      kind: 'controller',
+      id: pageId,
+      path: `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
+    });
+  }
+  return sortUnits(units);
+}
+
+function ruleAddedFromContracts(
+  input: EffortInput,
+  defs: Record<string, string>,
+  contracts?: Record<string, string>,
+): EffortAnswer | null {
+  if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
+  const pages = pagesCitingRule(contracts, ruleIdOf(input.item));
+  if (pages.length === 0) return null;
+  const units = pageUnitsForRule(input.module, defs, pages);
+  return computed(input.item.changeId, units, units, [], []);
+}
+
+/** Pure. `defs` maps each product def path to its `.defs.ts` source. `sources` maps the same path to the sibling `.ts` text; omitted keeps the previous answer. `contracts` maps pageId to L2 contract source. */
 export function describeEffortFrom(
   input: EffortInput,
   defs: Record<string, string>,
   sources?: Record<string, string>,
+  contracts?: Record<string, string>,
 ): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
@@ -1035,6 +1084,8 @@ export function describeEffortFrom(
   const entity = entityEffort(input, defs);
   if (entity) return entity;
   const { kind, op } = input.item;
+  const fromContracts = ruleAddedFromContracts(input, defs, contracts);
+  if (fromContracts) return fromContracts;
   if (kind === 'rule' && op === 'changed') {
     const units = citingUnits(defs, ruleIdOf(input.item));
     if (units.length === 0) return abend(item, NONE_APPLY);
@@ -1069,6 +1120,14 @@ export function describeEffortFrom(
   const integration = integrationEffort(input, defs);
   if (integration) return integration;
   return abend(item, `kind/op fora da v1: ${kind} ${op}`);
+}
+
+function contractPageId(file: StorFile, moduleName: string): string | null {
+  const appProject = typeof mls.actualProject === 'number' ? mls.actualProject : Number.NaN;
+  if (Number(file.project) !== appProject || Number(file.level) !== 2) return null;
+  if (file.status === 'deleted' || file.extension !== '.defs.ts' || !file.shortName) return null;
+  if (String(file.folder || '') !== `${moduleName}/web/contracts`) return null;
+  return file.shortName;
 }
 
 function productPath(file: StorFile, moduleName: string, extension: '.defs.ts' | '.ts' = '.defs.ts'): string | null {
@@ -1195,9 +1254,14 @@ const LADDER = [
   'Nothing on the backend only for a rule about display alone; then say why in reason.',
 ].join('\n');
 
-/** Pure. A prompt only for `rule added`; every other item is null and `describeEffort` answers it. */
-export function effortPromptFrom(input: EffortInput, defs: Record<string, string>): EffortPromptRequest | null {
+/** Pure. A prompt only for `rule added`; every other item is null and `describeEffort` answers it. Null when an L2 contract route already cites the rule. */
+export function effortPromptFrom(
+  input: EffortInput,
+  defs: Record<string, string>,
+  contracts?: Record<string, string>,
+): EffortPromptRequest | null {
   if (input.item.kind !== 'rule' || input.item.op !== 'added') return null;
+  if (pagesCitingRule(contracts, ruleIdOf(input.item)).length > 0) return null;
   const units = catalogOf(defs);
   const rule = rulePhrase(input.item);
   const body = units.flatMap(unit => unit.lines);
@@ -1250,11 +1314,18 @@ function requestsUsing(defs: Record<string, string>, usecaseId: string): EffortU
 }
 
 /** Pure. Checks the model output and builds the effort answer. A bad shape abends; it is never "nothing to do". */
-export function finishEffortFrom(input: EffortInput, defs: Record<string, string>, modelOutput: unknown): EffortAnswer {
+export function finishEffortFrom(
+  input: EffortInput,
+  defs: Record<string, string>,
+  modelOutput: unknown,
+  contracts?: Record<string, string>,
+): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind !== 'rule' || input.item.op !== 'added') {
     return abend(item, `kind/op fora da v1: ${input.item.kind} ${input.item.op}`);
   }
+  const fromContracts = ruleAddedFromContracts(input, defs, contracts);
+  if (fromContracts) return fromContracts;
   const units = catalogOf(defs);
   const invalid = schemaFailure(modelOutput, units);
   if (invalid) return abend(item, invalid);
@@ -1296,6 +1367,20 @@ async function loadModuleDefs(moduleName: string): Promise<Record<string, string
   return loadModuleFiles(moduleName, '.defs.ts');
 }
 
+/** L2 page contracts under `l2/<module>/web/contracts/`, keyed by pageId. */
+async function loadModuleContracts(moduleName: string): Promise<Record<string, string>> {
+  const files = (mls.stor?.files ?? {}) as Record<string, StorFile | undefined>;
+  const texts: Record<string, string> = {};
+  for (const file of Object.values(files)) {
+    if (!file) continue;
+    const pageId = contractPageId(file, moduleName);
+    if (!pageId) continue;
+    const source = await readStorText(file, `l2/${moduleName}/web/contracts/${pageId}.defs.ts`);
+    if (source) texts[pageId] = source;
+  }
+  return texts;
+}
+
 /** Sibling `.ts` of each def, keyed by the `.defs.ts` path. A missing sibling is an empty string. */
 async function loadModuleSources(moduleName: string, defs: Record<string, string>): Promise<Record<string, string>> {
   const texts = await loadModuleFiles(moduleName, '.ts');
@@ -1309,15 +1394,22 @@ async function loadModuleSources(moduleName: string, defs: Record<string, string
 /** Reads product `.defs.ts` under `l1/<module>/` from `mls.stor.files` and classifies the item. */
 export async function describeEffort(input: EffortInput): Promise<EffortAnswer> {
   const defs = await loadModuleDefs(input.module);
-  return describeEffortFrom(input, defs, await loadModuleSources(input.module, defs));
+  return describeEffortFrom(
+    input,
+    defs,
+    await loadModuleSources(input.module, defs),
+    await loadModuleContracts(input.module),
+  );
 }
 
 /** Same read as `describeEffort`. Null unless the item is `rule added`. */
 export async function effortPrompt(input: EffortInput): Promise<EffortPromptRequest | null> {
-  return effortPromptFrom(input, await loadModuleDefs(input.module));
+  const defs = await loadModuleDefs(input.module);
+  return effortPromptFrom(input, defs, await loadModuleContracts(input.module));
 }
 
 /** Same read as `describeEffort`, then `finishEffortFrom`. */
 export async function finishEffort(input: EffortInput, modelOutput: unknown): Promise<EffortAnswer> {
-  return finishEffortFrom(input, await loadModuleDefs(input.module), modelOutput);
+  const defs = await loadModuleDefs(input.module);
+  return finishEffortFrom(input, defs, modelOutput, await loadModuleContracts(input.module));
 }
