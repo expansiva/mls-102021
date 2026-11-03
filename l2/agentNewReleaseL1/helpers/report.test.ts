@@ -64,6 +64,19 @@ test('an unknown flag refuses with the usage line and writes nothing', async () 
   const help = await agent.beforePromptImplicit!(meta, context, '@@agentNewReleaseL1 tarefas /run');
   const helpStep = help.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   assert.equal(helpStep?.step.result, 'refused: Usage: @@agentNewReleaseL1 <module> [/compare]');
+  const close = help[help.length - 1];
+  assert.equal(help[help.length - 2]?.type, 'add-step');
+  assert.equal(close?.type, 'update-status');
+  if (close?.type === 'update-status') {
+    assert.equal(close.hookSequential, 0);
+    assert.equal(close.messageId, '');
+    assert.equal(close.threadId, 'thread-1');
+    assert.equal(close.taskId, '');
+    assert.equal(close.parentStepId, 1);
+    assert.equal(close.stepId, 1);
+    assert.equal(close.status, 'completed');
+    assert.equal(close.traceMsg, helpStep?.step.result);
+  }
   assert.equal(writes, 0);
   assert.equal(deletes, 0);
 });

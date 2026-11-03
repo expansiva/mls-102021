@@ -85,5 +85,16 @@ function finish(
     parentStepId: 1,
     step: result,
   };
-  return [addMessage, step];
+  const close: mls.msg.AgentIntentUpdateStatus = {
+    type: 'update-status',
+    hookSequential: 0,
+    messageId: '',
+    threadId: context.message.threadId,
+    taskId: '',
+    parentStepId: 1,
+    stepId: 1,
+    status: 'completed',
+    traceMsg: text,
+  };
+  return [addMessage, step, close];
 }

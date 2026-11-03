@@ -161,8 +161,25 @@ const context = {
   task: { PK: 'task-1', iaCompressed: { nextSteps: [], longMemory: {} } },
 } as mls.msg.ExecutionContext;
 
+function assertRootClosed(intents: mls.msg.AgentIntent[]): void {
+  const step = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  const close = intents[intents.length - 1];
+  assert.equal(intents[intents.length - 2]?.type, 'add-step');
+  assert.equal(close?.type, 'update-status');
+  if (close?.type !== 'update-status') return;
+  assert.equal(close.hookSequential, 0);
+  assert.equal(close.messageId, '');
+  assert.equal(close.threadId, 'thread-1');
+  assert.equal(close.taskId, '');
+  assert.equal(close.parentStepId, 1);
+  assert.equal(close.stepId, 1);
+  assert.equal(close.status, 'completed');
+  assert.equal(close.traceMsg, step?.step.result);
+}
+
 async function run(prompt: string): Promise<string> {
   const intents = await createAgent().beforePromptImplicit!(meta, context, prompt);
+  assertRootClosed(intents);
   const step = intents.find((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
   return String(step?.step.result || '');
 }
