@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { providerEdgeCases } from '/_102035_/l2/solution/testing/providerEdgeCases.js';
-import { buildP1ResolutionSchema, parseP1Resolution } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
+import { buildP1ResolutionSchema, checkP1Resolution, parseP1Resolution } from '/_102021_/l2/agentPlannerL1/steps/plan20/contracts.js';
 
 // Strict mode does not enforce `minLength` or `minItems`: the resolution can come with an empty id, reason or list.
 const example = {
@@ -25,12 +25,16 @@ void test('plan20 resolution: empty ids, reasons and lists never reach the plan 
   }
 });
 
-void test('plan20 resolution: an item the parser drops is not reported to anyone', { todo: 'parseP1Resolution drops an alias without ids and a merge without usecaseId, entity or replaces, silently (no error, no trace): a wrong answer looks like "nothing to resolve"' }, () => {
-  const silent: string[] = [];
-  for (const item of providerEdgeCases(buildP1ResolutionSchema(), example)) {
+void test('plan20 resolution: an item the parser drops is refused with the field name', () => {
+  const dropped = providerEdgeCases(buildP1ResolutionSchema(), example).filter(item => {
     const parsed = parseP1Resolution(item.value);
-    const kept = parsed.aliases.length === example.aliases.length && parsed.merges.length === example.merges.length;
-    if (!kept) silent.push(`${item.path} ${item.rule} ${item.variant}`);
+    return parsed.aliases.length !== example.aliases.length || parsed.merges.length !== example.merges.length;
+  });
+  assert.equal(dropped.length, 11);
+  for (const item of dropped) {
+    const field = item.path.split('.').pop()?.replace(/\[\d+\]/g, '') ?? '';
+    const lines = checkP1Resolution(item.value);
+    assert.ok(lines.some(line => line.includes(field)), `${item.path} ${item.variant}: ${lines.join(' | ')}`);
   }
-  assert.deepEqual(silent, [], 'answers dropped without a word');
+  assert.deepEqual(checkP1Resolution(example), []);
 });

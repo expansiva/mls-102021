@@ -362,6 +362,25 @@ export function parseP1Resolution(value: unknown): P1BackendResolution {
   };
 }
 
+/** Incomplete alias or merge items. `parseP1Resolution` still drops them; callers that must not drop in silence use this. */
+export function checkP1Resolution(value: unknown): string[] {
+  const raw = record(value);
+  const issues: string[] = [];
+  list(raw.aliases).forEach((item, index) => {
+    const row = record(item);
+    if (!text(row.candidateUsecaseId)) issues.push(`alias ${index}: candidateUsecaseId is empty`);
+    if (!text(row.existingUsecaseId)) issues.push(`alias ${index}: existingUsecaseId is empty`);
+  });
+  list(raw.merges).forEach((item, index) => {
+    const row = record(item);
+    if (!text(row.usecaseId)) issues.push(`merge ${index}: usecaseId is empty`);
+    if (!text(row.entity)) issues.push(`merge ${index}: entity is empty`);
+    const replaces = unique(list(row.replaces).map(entry => text(entry)).filter(Boolean));
+    if (!replaces.length) issues.push(`merge ${index}: replaces is empty`);
+  });
+  return issues;
+}
+
 export function planP1Backend(input: P1PlanBackendInput): P1PlanBackendResult {
   const ontology = new Map(input.ontology.map(entity => [entity.entityId, entity]));
   const matched = matchCandidates(collectCandidates(input.needs, ontology), input.inventory, ontology);

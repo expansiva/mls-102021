@@ -483,3 +483,30 @@ void test('afterPromptStep schedules repair when the resolution fails the gate',
   assert.ok(repair, JSON.stringify(intents.map(item => item.type)));
   assert.equal(repair?.step.planning?.planId, 'plan20-repair-1');
 });
+
+void test('afterPromptStep refuses an alias without ids and retries, then fails on the last attempt', async () => {
+  const host = installHost();
+  await seedPipeline(host);
+  const incomplete = {
+    aliases: [{ candidateUsecaseId: '', existingUsecaseId: '', reason: 'same operation' }],
+    merges: [],
+  };
+  const first = planStep();
+  first.interaction = { payload: [{ type: 'flexible', result: incomplete }] } as unknown as mls.msg.AIInteraction;
+  const scheduled = await afterP1PlanPromptStep(agentMeta(), contextWith([first]), first, first, 1);
+  const repair = scheduled.find(intent => intent.type === 'add-step') as mls.msg.AgentIntentAddStep | undefined;
+  assert.equal(repair?.step.planning?.planId, 'plan20-repair-1');
+  const prompt = JSON.parse(String(repair?.step.prompt)) as { gateFeedback?: string };
+  assert.match(prompt.gateFeedback ?? '', /candidateUsecaseId is empty/);
+
+  const last = planStep();
+  last.prompt = JSON.stringify({ planId: 'plan20', moduleName: MODULE, repairAttempt: 2 });
+  last.interaction = { payload: [{ type: 'flexible', result: incomplete }] } as unknown as mls.msg.AIInteraction;
+  const failed = await afterP1PlanPromptStep(agentMeta(), contextWith([last]), last, last, 1);
+  const status = failed.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
+  assert.equal(status?.status, 'failed');
+  assert.match(status?.traceMsg ?? '', /candidateUsecaseId is empty/);
+  const pipeline = JSON.parse(host.files[keyOf(p1PipelineFile(MODULE))].content) as { steps: { plan20: { status: string; error?: string } } };
+  assert.equal(pipeline.steps.plan20.status, 'failed');
+  assert.match(pipeline.steps.plan20.error ?? '', /candidateUsecaseId is empty/);
+});

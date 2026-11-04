@@ -43,6 +43,7 @@ import {
   buildP1BackendMessage,
   buildP1BackendTool,
   buildP1ResolutionSchema,
+  checkP1Resolution,
   normalizeP1Backend,
   parseP1Actors,
   parseP1Entity,
@@ -293,6 +294,23 @@ export async function afterP1PlanPromptStep(
 
     const sources = await loadP1PlanSources(moduleName);
     const now = new Date();
+    const resolutionIssues = checkP1Resolution(payload);
+    if (resolutionIssues.length) {
+      const feedback = resolutionIssues.join('\n');
+      if (parsed.repairAttempt < MAX_REPAIRS) {
+        return [
+          addStep(context, mutationParent, createP1RetryStep('plan20', moduleName, 'repair', parsed.repairAttempt + 1, { gateFeedback: feedback })),
+          updateStatus(context, mutationParent, step, hookSequential, 'completed', feedback),
+        ];
+      }
+      const refused = await requirePipeline(moduleName);
+      await writeStepState(refused, {
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        error: feedback,
+      });
+      throw new Error(feedback);
+    }
     const resolution = parseP1Resolution(payload);
     const planned = planP1Backend({
       needs: sources.needs,
