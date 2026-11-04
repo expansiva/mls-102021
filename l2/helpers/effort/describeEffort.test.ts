@@ -749,6 +749,36 @@ function journeyItem(
   return input(item, 'tarefas');
 }
 
+function artifactItem(op: L4DiffItem['op'], changeId: string): EffortInput {
+  const item: L4DiffItem = { changeId, kind: 'artifact', op, entity: '', source: 'l4' };
+  return input(item, 'tarefas');
+}
+
+void test('journey index artifact is an empty computed answer for any op', () => {
+  const info = mock.method(console, 'info', () => {});
+  try {
+    for (const op of ['changed', 'added', 'removed'] as const) {
+      info.mock.resetCalls();
+      const answer = describeEffortFrom(artifactItem(op, 'artifact:journeys/index.defs.ts'), {});
+      assert.equal(answer.status, 'computed');
+      assert.equal(answer.contract, 'keep');
+      assert.deepEqual(answer.create, []);
+      assert.deepEqual(answer.regenerateDefs, []);
+      assert.deepEqual(answer.materialize, []);
+      assert.deepEqual(answer.remove, []);
+      assert.deepEqual(info.mock.calls[0]?.arguments, [
+        'artifact:journeys/index.defs.ts',
+        'journeys index follows its journey items',
+      ]);
+    }
+    const other = describeEffortFrom(artifactItem('changed', 'artifact:rules.defs.ts'), TAREFAS);
+    assert.equal(other.status, 'abend');
+    assert.equal(other.abend?.reason, 'kind/op fora da v1: artifact changed');
+  } finally {
+    info.mock.restore();
+  }
+});
+
 void test('J1 journey prose only is an empty computed answer', () => {
   const after = {
     ...JOURNEY_BASE,

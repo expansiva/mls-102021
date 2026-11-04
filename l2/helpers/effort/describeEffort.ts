@@ -164,6 +164,7 @@ const CITE_VALUE_KEYS = new Set(['name', 'field', 'path', 'column']);
 const NO_FIELD_UNIT = 'no backend unit cites this field';
 const NO_GRANT_UNIT = 'no backend unit cites this grant';
 const NO_WORKFLOW_UNIT = 'no backend workflow def for this process';
+const JOURNEY_INDEX_REASON = 'journeys index follows its journey items';
 const NO_TRANSITION_UNIT = 'no backend unit cites this transition';
 const NO_PUBLISHED_OPERATION = 'no usecase matches the published operation';
 const INBOUND_UNHANDLED = 'inbound integration change is not handled yet';
@@ -1078,6 +1079,10 @@ export function describeEffortFrom(
   if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
   if (proseOnlyChange(input.item)) {
     console.info(item);
+    return computed(item, []);
+  }
+  if (input.item.kind === 'artifact' && input.item.changeId === 'artifact:journeys/index.defs.ts') {
+    console.info(item, JOURNEY_INDEX_REASON);
     return computed(item, []);
   }
   if (Object.keys(defs).length === 0) return abend(item, NO_DEFS);
