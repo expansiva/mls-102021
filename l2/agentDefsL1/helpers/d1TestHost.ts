@@ -90,9 +90,15 @@ export function seed(host: TestHost, info: D1FileInfo, content: string, updatedA
   return stored;
 }
 
+function testProjectsBase(): string {
+  const raw = process.env.CBE_PROJECTS_DIR;
+  const trimmed = raw?.trim();
+  return trimmed || '/data/mls-base';
+}
+
 /** Host stor whose diskPath closes over a private field. Detaching the method throws. */
 export class HostStor {
-  readonly #base = '/data/mls-base';
+  readonly #base = testProjectsBase();
   readonly files: Record<string, StoredFile> = {};
   readonly writes: string[] = [];
 
