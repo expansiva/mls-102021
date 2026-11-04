@@ -6,6 +6,7 @@ import { describe, test } from 'node:test';
 import { loadD1Artifacts, loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { createAgent } from '/_102021_/l2/agentNewReleaseL1/agentNewReleaseL1.js';
+import { setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import { keptLines, usedRemovedUsecases } from '/_102021_/l2/agentNewReleaseL1/helpers/keptUsecases.js';
 import { undoPrepared } from '/_102021_/l2/agentNewReleaseL1/helpers/undo.js';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
@@ -428,6 +429,44 @@ test('an unreadable plan refuses and writes nothing', async (t) => {
   assert.equal(stor.texts()['l4/tarefas/pool/l1/web/postprocess.json'], undefined);
   assert.equal(stor.texts()['l1/tarefas/note.md'], before['l1/tarefas/note.md']);
   assert.equal(stor.texts()['l4/tarefas/pool/l2/web/backend.json'], before['l4/tarefas/pool/l2/web/backend.json']);
+});
+
+const REVISION_ROOT = 'tarefas/pipeline/changes/c1/revisions/r1/l4';
+
+test('a hanging revision root reads the module plan and writes nothing in the revision', async (t) => {
+  const stor = installStor();
+  t.after(() => {
+    setModuleRoot('tarefas', null);
+    stor.restore();
+  });
+  seed(stor, true);
+  setModuleRoot('tarefas', REVISION_ROOT);
+  const result = await run('@@agentNewReleaseL1 tarefas');
+  assert.match(result, /^done: postprocess: no correction\n/);
+  assert.equal(JSON.parse(stor.texts()['l4/tarefas/pool/l1/web/postprocess.json']).corrections.length, 0);
+  assert.equal(Object.keys(stor.texts()).some(path => path.includes('revisions/r1')), false);
+
+  setModuleRoot('tarefas', REVISION_ROOT);
+  const compared = await run('@@agentNewReleaseL1 tarefas /compare');
+  assert.equal(compared, 'failed: no generator report');
+  assert.equal(Object.keys(stor.texts()).some(path => path.includes('revisions/r1')), false);
+});
+
+test('a hanging revision root still refuses a missing module plan by the module path', async (t) => {
+  const stor = installStor();
+  t.after(() => {
+    setModuleRoot('tarefas', null);
+    stor.restore();
+  });
+  const effortOnly: MemFile = {
+    project: PROJECT, level: 4, folder: 'tarefas/pool/l4', shortName: 'changeEffort', extension: '.json', status: 'published', content: '{}\n',
+    getContent() { return Promise.resolve(this.content); },
+    getValueInfo() { return Promise.resolve({ content: this.content }); },
+  };
+  stor.files[keyOf(effortOnly)] = effortOnly;
+  setModuleRoot('tarefas', REVISION_ROOT);
+  assert.match(await run('@@agentNewReleaseL1 tarefas'), /^refused: postprocess: plan missing: l4\/tarefas\/pool\/l2\/web\/backend\.json/);
+  assert.equal(Object.keys(stor.texts()).some(path => path.includes('revisions/r1')), false);
 });
 
 test('undo removes a planner record that did not exist', async (t) => {
