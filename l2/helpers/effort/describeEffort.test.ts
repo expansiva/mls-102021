@@ -14,7 +14,7 @@ import {
   effortPromptFrom,
   finishEffortFrom,
 } from '/_102021_/l2/helpers/effort/describeEffort.js';
-import type { EffortInput, EffortPromptRequest, L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
+import { L4_DIFF_KINDS, L4_DIFF_OPS, type EffortInput, type EffortPromptRequest, type L4DiffItem } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(HERE, 'fixtures/agendaClinica');
@@ -103,10 +103,18 @@ void test('consultaSemConflito aplica a entidade e o request que citam a regra',
   );
 });
 
-void test('regra inexistente abend', () => {
-  const answer = describeEffortFrom(input(rule('naoExiste')), AGENDA);
-  assert.equal(answer.status, 'abend');
-  assert.equal(answer.abend?.reason, 'nenhum def aplica o id');
+void test('regra inexistente fica vazia com motivo', () => {
+  const item = input(rule('naoExiste'));
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = describeEffortFrom(item, AGENDA);
+    assert.equal(answer.status, 'computed');
+    assert.equal(answer.abend, undefined);
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, [item.item.changeId, 'no def cites the rule']);
+  } finally {
+    info.mock.restore();
+  }
 });
 
 function fieldChange(before: Record<string, unknown>, after: Record<string, unknown>): L4DiffItem {
@@ -132,20 +140,26 @@ void test('field só com title diferente é computed vazio, mesmo sem defs', () 
   }
 });
 
-void test('field changed sem before e after continua abend', () => {
+void test('field changed sem before e after fica vazio com motivo', () => {
   const item = fieldChange({ title: 'Nota', type: 'string' }, { title: 'Nota', type: 'text' });
   delete item.before;
   delete item.after;
-  const answer = describeEffortFrom(input(item), AGENDA);
-  assert.equal(answer.status, 'abend');
-  assert.equal(answer.abend?.reason, 'kind/op fora da v1: field changed');
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = describeEffortFrom(input(item), AGENDA);
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, [item.changeId, 'not forecast: the comparison decides']);
+  } finally {
+    info.mock.restore();
+  }
 });
 
-void test('field changed sem forma abend; task added sem processo fica vazio; grant changed entra na v1', () => {
+void test('field changed sem forma fica vazio; task added sem processo fica vazio; grant changed entra na v1', () => {
   const field = describeEffortFrom(input({
     changeId: 'field:attendanceNote', kind: 'field', op: 'changed', entity: 'Consulta', source: 'l4',
   }), AGENDA);
-  assert.equal(field.status, 'abend');
+  assert.equal(field.status, 'computed');
   assert.deepEqual(field.materialize, []);
   const task = describeEffortFrom(input({
     changeId: 'task:abrirAgenda', kind: 'task', op: 'added', entity: '', source: 'l4',
@@ -771,9 +785,15 @@ void test('journey index artifact is an empty computed answer for any op', () =>
         'journeys index follows its journey items',
       ]);
     }
+    info.mock.resetCalls();
     const other = describeEffortFrom(artifactItem('changed', 'artifact:rules.defs.ts'), TAREFAS);
-    assert.equal(other.status, 'abend');
-    assert.equal(other.abend?.reason, 'kind/op fora da v1: artifact changed');
+    assert.equal(other.status, 'computed');
+    assert.deepEqual(other.materialize, []);
+    assert.deepEqual(other.remove, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, [
+      'artifact:rules.defs.ts',
+      'not forecast: the comparison decides',
+    ]);
   } finally {
     info.mock.restore();
   }
@@ -954,10 +974,22 @@ void test('W4 transition retomar cites entity usecase workflow and the requests 
   ]);
 });
 
-void test('process added stays outside v1', () => {
-  const answer = describeEffortFrom(workflowChange('process', 'added', 'process:resumoDiarioTarefas'), TAREFAS);
-  assert.equal(answer.status, 'abend');
-  assert.match(answer.abend?.reason ?? '', /process added/);
+void test('process added forecasts a new workflow and regenerates one that already exists', () => {
+  const added = describeEffortFrom(workflowChange('process', 'added', 'process:avisoAtrasoTarefa'), TAREFAS);
+  assert.equal(added.status, 'computed');
+  assert.deepEqual(added.materialize, []);
+  assert.deepEqual(added.regenerateDefs, []);
+  assert.deepEqual(added.remove, []);
+  assert.deepEqual(added.create, [{
+    kind: 'workflow',
+    id: 'avisoAtrasoTarefa',
+    path: 'l1/tarefas/layer_2_application/workflows/avisoAtrasoTarefa.defs.ts',
+  }]);
+  const existing = describeEffortFrom(workflowChange('process', 'added', 'process:processoTarefa'), TAREFAS);
+  assert.equal(existing.status, 'computed');
+  assert.deepEqual(existing.create, []);
+  assert.deepEqual(keysOf(existing.regenerateDefs), ['workflow:processoTarefa']);
+  assert.deepEqual(keysOf(existing.materialize), ['workflow:processoTarefa']);
 });
 
 const OUTBOUND_BASE = {
@@ -1051,12 +1083,25 @@ void test('outbound changed with a new on regenerates the event def, citers and 
   assert.deepEqual(keysOf(answer.materialize), keys);
 });
 
-void test('inbound abends because it is not handled yet', () => {
-  const item: L4DiffItem = { changeId: 'inbound:receber', kind: 'inbound', op: 'added', entity: '', source: 'l4' };
-  const answer = describeEffortFrom(input(item, 'tarefas'), TAREFAS);
-  assert.equal(answer.status, 'abend');
-  assert.equal(answer.abend?.reason, 'inbound integration change is not handled yet');
-  assert.equal(answer.contract, 'keep');
+void test('inbound is an empty forecast for every op', () => {
+  const info = mock.method(console, 'info', () => {});
+  try {
+    for (const op of ['added', 'changed', 'removed'] as const) {
+      info.mock.resetCalls();
+      const item: L4DiffItem = { changeId: 'inbound:receber', kind: 'inbound', op, entity: '', source: 'l4' };
+      const answer = describeEffortFrom(input(item, 'tarefas'), TAREFAS);
+      assert.equal(answer.status, 'computed');
+      assert.equal(answer.contract, 'keep');
+      assert.deepEqual(answer.materialize, []);
+      assert.deepEqual(answer.create, []);
+      assert.deepEqual(info.mock.calls[0]?.arguments, [
+        'inbound:receber',
+        'not forecast: the comparison decides',
+      ]);
+    }
+  } finally {
+    info.mock.restore();
+  }
 });
 
 function entityItem(before: Record<string, unknown>, after: Record<string, unknown>): EffortInput {
@@ -1108,8 +1153,9 @@ void test('a capability that stays with a new sentence is prose; a non-text valu
     ...ENTITY_BASE,
     capabilities: { 'tarefas.resumoDiario': { enabled: false } },
   }), TAREFAS);
-  assert.equal(object.status, 'abend');
-  assert.equal(object.abend?.reason, 'entity Tarefa changed in capabilities; not handled yet');
+  assert.equal(object.status, 'computed');
+  assert.deepEqual(object.materialize, []);
+  assert.deepEqual(object.regenerateDefs, []);
 });
 
 void test('entity changed answers by attribute', () => {
@@ -1136,8 +1182,8 @@ void test('entity changed answers by attribute', () => {
   assert.deepEqual(prose.regenerateDefs, []);
 
   const storage = describeEffortFrom(entityItem(ENTITY_BASE, { ...ENTITY_BASE, storage: { table: 'outra' } }), TAREFAS);
-  assert.equal(storage.status, 'abend');
-  assert.equal(storage.abend?.reason, 'entity Tarefa changed in storage; not handled yet');
+  assert.equal(storage.status, 'computed');
+  assert.deepEqual(storage.materialize, []);
   assert.equal(storage.contract, 'keep');
 
   const process = describeEffortFrom(
@@ -1242,6 +1288,84 @@ void test('rule added without a citing contract keeps the model prompt', () => {
   assert.equal(prompt.prompt.includes(RULE_DUPLICA), true);
   const none = effortPromptFrom(ADDED_DUPLICA, TAREFAS);
   assert.ok(none);
+});
+
+const NOT_FORECAST = 'not forecast: the comparison decides';
+
+void test('entity added forecasts entity table and repository; removed drops the units the defs already have', () => {
+  const added = describeEffortFrom(input({
+    changeId: 'entity:Aviso',
+    kind: 'entity',
+    op: 'added',
+    entity: '',
+    source: 'l4',
+  }, 'tarefas'), TAREFAS);
+  assert.equal(added.status, 'computed');
+  assert.deepEqual(added.materialize, []);
+  assert.deepEqual(added.remove, []);
+  assert.deepEqual(keysOf(added.create), ['entity:aviso', 'repository:avisoRepository', 'table:aviso']);
+  assert.deepEqual(added.create.map(unit => unit.path), [
+    'l1/tarefas/layer_3_domain/entities/aviso.defs.ts',
+    'l1/tarefas/layer_1_external/adapters/persistence/avisoRepositoryAdapter.defs.ts',
+    'l1/tarefas/layer_1_external/adapters/persistence/aviso.defs.ts',
+  ]);
+
+  const removed = describeEffortFrom(input({
+    changeId: 'entity:Tarefa',
+    kind: 'entity',
+    op: 'removed',
+    entity: 'Tarefa',
+    source: 'l4',
+  }, 'tarefas'), TAREFAS);
+  assert.equal(removed.status, 'computed');
+  assert.deepEqual(removed.create, []);
+  assert.deepEqual(keysOf(removed.remove), [
+    'entity:tarefa',
+    'repository:tarefaRepository',
+    'table:tarefa',
+    'usecase:aceitar',
+    'usecase:cancelar',
+    'usecase:createTarefa',
+    'usecase:devolver',
+    'usecase:enviarParaRevisao',
+    'usecase:iniciar',
+    'usecase:listTarefa',
+    'usecase:retomar',
+    'usecase:updateTarefa',
+  ]);
+});
+
+void test('describeEffortFrom does not abend a minimal item when defs exist', () => {
+  for (const kind of L4_DIFF_KINDS) {
+    for (const op of L4_DIFF_OPS) {
+      const answer = describeEffortFrom(input({
+        changeId: `${kind}:item`,
+        kind,
+        op,
+        entity: '',
+        source: 'l4',
+      }, 'tarefas'), TAREFAS);
+      assert.equal(answer.status, 'computed', `${kind} ${op}`);
+    }
+  }
+});
+
+void test('finishEffortFrom leaves a non-rule item empty instead of abending on kind', () => {
+  const info = mock.method(console, 'info', () => {});
+  try {
+    const answer = finishEffortFrom(input({
+      changeId: 'process:avisoAtrasoTarefa',
+      kind: 'process',
+      op: 'added',
+      entity: '',
+      source: 'l4',
+    }, 'tarefas'), TAREFAS, { existing: [], reason: 'x' });
+    assert.equal(answer.status, 'computed');
+    assert.deepEqual(answer.materialize, []);
+    assert.deepEqual(info.mock.calls[0]?.arguments, ['process:avisoAtrasoTarefa', NOT_FORECAST]);
+  } finally {
+    info.mock.restore();
+  }
 });
 
 void test('rule added cited by several L2 contracts lists each page', () => {

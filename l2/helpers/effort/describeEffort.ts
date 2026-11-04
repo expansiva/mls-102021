@@ -7,7 +7,8 @@ import type { EffortAnswer, EffortInput, EffortPromptRequest, EffortUnitRef } fr
 const MASTER = { project: '102021', kind: 'l1', device: 'web' } as const;
 
 const NO_DEFS = 'módulo sem defs gerados';
-const NONE_APPLY = 'nenhum def aplica o id';
+const NOT_FORECAST = 'not forecast: the comparison decides';
+const NO_DEF_CITES = 'no def cites the rule';
 
 type StorFile = {
   project?: number | string;
@@ -167,7 +168,6 @@ const NO_WORKFLOW_UNIT = 'no backend workflow def for this process';
 const JOURNEY_INDEX_REASON = 'journeys index follows its journey items';
 const NO_TRANSITION_UNIT = 'no backend unit cites this transition';
 const NO_PUBLISHED_OPERATION = 'no usecase matches the published operation';
-const INBOUND_UNHANDLED = 'inbound integration change is not handled yet';
 
 function sameName(left: string, right: string): boolean {
   return left.localeCompare(right, 'en', { sensitivity: 'accent' }) === 0;
@@ -643,9 +643,14 @@ function usecaseForPublishedOn(defs: Record<string, string>, on: unknown): Effor
   return found;
 }
 
+function notForecast(item: string, reason = NOT_FORECAST): EffortAnswer {
+  console.info(item, reason);
+  return computed(item, []);
+}
+
 function integrationEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
   const item = input.item;
-  if (item.kind === 'inbound') return abend(item.changeId, INBOUND_UNHANDLED);
+  if (item.kind === 'inbound') return notForecast(item.changeId);
   if (item.kind !== 'outbound') return null;
   if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
   const eventId = idAfter(item.changeId, 'outbound:');
@@ -966,15 +971,60 @@ function unitsCitingText(defs: Record<string, string>, id: string): EffortUnitRe
   return units;
 }
 
-function entityUnhandled(changeId: string, key: string): EffortAnswer {
-  return abend(changeId, `entity ${idAfter(changeId, 'entity:')} changed in ${key}; not handled yet`);
+function entityUnhandled(changeId: string): EffortAnswer {
+  return notForecast(changeId);
+}
+
+function entityOwnedUnits(defs: Record<string, string>, entityId: string): EffortUnitRef[] {
+  if (!entityId) return [];
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    const owner = typeof data.entityId === 'string' ? data.entityId : '';
+    if (!owner || !sameName(owner, entityId)) return;
+    if (artifactType === 'domainEntity') {
+      const id = lowerFirst(owner);
+      if (id) units.push({ kind: 'entity', id, path: defPath });
+      return;
+    }
+    if (artifactType === 'table') {
+      const id = typeof data.tableId === 'string' ? data.tableId : '';
+      if (id) units.push({ kind: 'table', id, path: defPath });
+      return;
+    }
+    if (artifactType === 'repositoryAdapter') {
+      const portId = typeof data.portId === 'string' ? data.portId : '';
+      const id = lowerFirst(portId);
+      if (id) units.push({ kind: 'repository', id, path: defPath });
+      return;
+    }
+    if (artifactType === 'usecase') {
+      const id = typeof data.usecaseId === 'string' ? data.usecaseId : '';
+      if (id) units.push({ kind: 'usecase', id, path: defPath });
+    }
+  });
+  return sortUnits(units);
+}
+
+function forecastEntityUnits(moduleName: string, entityId: string): EffortUnitRef[] {
+  const id = lowerFirst(entityId);
+  if (!id) return [];
+  const root = `l1/${moduleName}`;
+  return [
+    { kind: 'entity', id, path: `${root}/layer_3_domain/entities/${id}.defs.ts` },
+    { kind: 'table', id, path: `${root}/layer_1_external/adapters/persistence/${id}.defs.ts` },
+    {
+      kind: 'repository',
+      id: `${id}Repository`,
+      path: `${root}/layer_1_external/adapters/persistence/${id}RepositoryAdapter.defs.ts`,
+    },
+  ];
 }
 
 /** `entity` `changed`, one answer per attribute. `added` and `removed` stay on the kind path. */
 function entityEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
   const item = input.item;
   if (item.kind !== 'entity' || item.op !== 'changed') return null;
-  if (!isRecord(item.before) || !isRecord(item.after)) return entityUnhandled(item.changeId, 'shape');
+  if (!isRecord(item.before) || !isRecord(item.after)) return entityUnhandled(item.changeId);
   const keys = changedAttributeKeys(item) ?? [];
   const picked: EffortUnitRef[] = [];
   const seen = new Set<string>();
@@ -983,7 +1033,7 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
     if (key === 'rules') {
       const beforeIds = stringIds(item.before.rules ?? []);
       const afterIds = stringIds(item.after.rules ?? []);
-      if (!beforeIds || !afterIds) return entityUnhandled(item.changeId, key);
+      if (!beforeIds || !afterIds) return entityUnhandled(item.changeId);
       const staying = new Set(afterIds);
       for (const ruleId of beforeIds) {
         if (staying.has(ruleId)) continue;
@@ -994,7 +1044,7 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
     if (key === 'capabilities') {
       const beforeCaps = item.before.capabilities === undefined ? {} : item.before.capabilities;
       const afterCaps = item.after.capabilities === undefined ? {} : item.after.capabilities;
-      if (!isRecord(beforeCaps) || !isRecord(afterCaps)) return entityUnhandled(item.changeId, key);
+      if (!isRecord(beforeCaps) || !isRecord(afterCaps)) return entityUnhandled(item.changeId);
       const capKeys = new Set([...Object.keys(beforeCaps), ...Object.keys(afterCaps)]);
       for (const capId of capKeys) {
         const beforeHas = Object.prototype.hasOwnProperty.call(beforeCaps, capId);
@@ -1005,13 +1055,13 @@ function entityEffort(input: EffortInput, defs: Record<string, string>): EffortA
           if (sameJson(was, now)) continue;
           // A capability value is its sentence. A new sentence for an id that stays is prose.
           if (typeof was === 'string' && typeof now === 'string') continue;
-          return entityUnhandled(item.changeId, key);
+          return entityUnhandled(item.changeId);
         }
         for (const unit of unitsCitingText(defs, capId)) remember(picked, seen, unit);
       }
       continue;
     }
-    return entityUnhandled(item.changeId, key);
+    return entityUnhandled(item.changeId);
   }
   const units = sortUnits(picked);
   if (units.length === 0) {
@@ -1076,7 +1126,7 @@ export function describeEffortFrom(
   contracts?: Record<string, string>,
 ): EffortAnswer {
   const item = input.item.changeId;
-  if (input.item.kind === 'inbound') return abend(item, INBOUND_UNHANDLED);
+  if (input.item.kind === 'inbound') return notForecast(item);
   if (proseOnlyChange(input.item)) {
     console.info(item);
     return computed(item, []);
@@ -1093,12 +1143,31 @@ export function describeEffortFrom(
   if (fromContracts) return fromContracts;
   if (kind === 'rule' && op === 'changed') {
     const units = citingUnits(defs, ruleIdOf(input.item));
-    if (units.length === 0) return abend(item, NONE_APPLY);
+    if (units.length === 0) return notForecast(item, NO_DEF_CITES);
     return computed(item, units);
   }
   if (kind === 'rule' && op === 'removed') {
     const units = citingUnits(defs, ruleIdOf(input.item));
     return computed(item, units, units);
+  }
+  if (kind === 'entity' && op === 'added') {
+    const entityId = idAfter(item, 'entity:');
+    const known = entityOwnedUnits(defs, entityId).filter(unit => unit.kind === 'usecase');
+    return computed(item, [], [], [], sortUnits([...forecastEntityUnits(input.module, entityId), ...known]));
+  }
+  if (kind === 'entity' && op === 'removed') {
+    return computed(item, [], [], entityOwnedUnits(defs, idAfter(item, 'entity:')));
+  }
+  if (kind === 'process' && op === 'added') {
+    const processId = idAfter(item, 'process:');
+    const units = workflowUnits(defs, processId);
+    if (units.length > 0) return computed(item, units, units);
+    if (!processId) return notForecast(item);
+    return computed(item, [], [], [], [{
+      kind: 'workflow',
+      id: processId,
+      path: `l1/${input.module}/layer_2_application/workflows/${processId}.defs.ts`,
+    }]);
   }
   if (kind === 'process' && op === 'removed') {
     const units = workflowUnits(defs, idAfter(item, 'process:'));
@@ -1124,7 +1193,7 @@ export function describeEffortFrom(
   if (journey) return journey;
   const integration = integrationEffort(input, defs);
   if (integration) return integration;
-  return abend(item, `kind/op fora da v1: ${kind} ${op}`);
+  return notForecast(item);
 }
 
 function contractPageId(file: StorFile, moduleName: string): string | null {
@@ -1327,7 +1396,7 @@ export function finishEffortFrom(
 ): EffortAnswer {
   const item = input.item.changeId;
   if (input.item.kind !== 'rule' || input.item.op !== 'added') {
-    return abend(item, `kind/op fora da v1: ${input.item.kind} ${input.item.op}`);
+    return notForecast(item);
   }
   const fromContracts = ruleAddedFromContracts(input, defs, contracts);
   if (fromContracts) return fromContracts;
