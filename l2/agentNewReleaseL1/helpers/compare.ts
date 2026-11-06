@@ -30,6 +30,8 @@ interface UnitRow {
   rel: string;
   /** Restore the old def and drop sibling sources. Set when old code cites a removed or reshaped field. */
   citeField?: { field: string; op: 'removed' | 'changed' };
+  /** Restore the old def and drop sibling sources. Set when master 102021 lists the unit under `materialize`. */
+  effortMaterialize?: boolean;
 }
 
 const SHAPE_KEYS = ['type', 'values', 'required', 'collection', 'to'] as const;
@@ -61,6 +63,7 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
     for (const file of [...freshDefs.values(), ...oldDefs.values()]) texts.set(storeKey(file.info), await readSourceText(file.info));
     const rows = rowsOf(moduleName, freshDefs, oldDefs, texts);
     await markCitedFields(moduleName, rows, oldFiles);
+    await markEffortMaterialize(moduleName, rows);
     const allEqual = rows.every(row => row.verdict === 'igual');
     const engineBack = workflowEngineBack(rows);
     const copies = await stageCopies(moduleName, rows, oldFiles, allEqual, engineBack);
@@ -93,9 +96,12 @@ export async function compareModule(moduleName: string): Promise<CompareOutcome>
 }
 
 function lineOf(row: UnitRow): string {
-  if (!row.citeField) return `${row.kind} ${row.id}: ${row.verdict} ${row.path}`;
-  const label = row.citeField.op === 'changed' ? 'changed field' : 'removed field';
-  return `${row.kind} ${row.id}: ${row.verdict} (code cites ${label} ${row.citeField.field}) ${row.path}`;
+  if (row.citeField) {
+    const label = row.citeField.op === 'changed' ? 'changed field' : 'removed field';
+    return `${row.kind} ${row.id}: ${row.verdict} (code cites ${label} ${row.citeField.field}) ${row.path}`;
+  }
+  if (row.effortMaterialize) return `${row.kind} ${row.id}: mudou (effort materialize) ${row.path}`;
+  return `${row.kind} ${row.id}: ${row.verdict} ${row.path}`;
 }
 
 function pathOfError(error: unknown): string {
@@ -279,8 +285,19 @@ function perItemOf(value: unknown): unknown[] | null {
   return Array.isArray(perItem) ? perItem : null;
 }
 
-function masterUnits(perItem: readonly unknown[]): { sawMaster: boolean; units: Array<{ kind: string; id: string; path: string }> } {
-  const units: Array<{ kind: string; id: string; path: string }> = [];
+const EFFORT_BUCKETS = ['create', 'regenerateDefs', 'remove', 'materialize'] as const;
+
+type EffortBucket = typeof EFFORT_BUCKETS[number];
+
+interface MasterUnit {
+  kind: string;
+  id: string;
+  path: string;
+  bucket: EffortBucket;
+}
+
+function masterUnits(perItem: readonly unknown[]): { sawMaster: boolean; units: MasterUnit[] } {
+  const units: MasterUnit[] = [];
   let sawMaster = false;
   for (const row of perItem) {
     if (!row || typeof row !== 'object') continue;
@@ -291,7 +308,7 @@ function masterUnits(perItem: readonly unknown[]): { sawMaster: boolean; units: 
       const master = (answer as { master?: { project?: unknown } }).master;
       if (!master || String(master.project) !== MASTER_PROJECT) continue;
       sawMaster = true;
-      for (const bucket of ['create', 'regenerateDefs', 'remove'] as const) {
+      for (const bucket of EFFORT_BUCKETS) {
         const list = (answer as Record<string, unknown>)[bucket];
         if (!Array.isArray(list)) continue;
         for (const unit of list) {
@@ -302,6 +319,7 @@ function masterUnits(perItem: readonly unknown[]): { sawMaster: boolean; units: 
             kind: typeof record.kind === 'string' ? record.kind : 'def',
             id: typeof record.id === 'string' ? record.id : 'unknown',
             path: record.path,
+            bucket,
           });
         }
       }
@@ -343,7 +361,7 @@ async function stageCopies(
 ): Promise<Array<{ info: Ns5FileInfo; text: string }>> {
   const wanted = new Set<string>();
   for (const row of rows) {
-    if (row.citeField) {
+    if (row.citeField || row.effortMaterialize) {
       wanted.add(row.rel);
       continue;
     }
@@ -450,6 +468,37 @@ async function writeAt(info: Ns5FileInfo, text: string): Promise<void> {
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`${reason} at ${displayPath(info)}`);
+  }
+}
+
+async function markEffortMaterialize(moduleName: string, rows: UnitRow[]): Promise<void> {
+  const info = changeEffortOf(moduleName);
+  if (!fileExists(info)) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readSourceText(info));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`agentNewReleaseL1 could not read changeEffort.json for materialize: ${reason}`);
+    return;
+  }
+  const perItem = perItemOf(parsed);
+  if (!perItem) return;
+  const listed = masterUnits(perItem);
+  const paths = new Set<string>();
+  for (const unit of listed.units) {
+    if (unit.bucket !== 'materialize') continue;
+    paths.add(unit.path);
+    if (unit.kind !== 'request') continue;
+    for (const row of rows) {
+      if (row.kind === 'controller' && row.id === unit.id) paths.add(row.path);
+    }
+  }
+  for (const row of rows) {
+    if (row.verdict !== 'igual') continue;
+    if (!paths.has(row.path)) continue;
+    row.verdict = 'mudou';
+    row.effortMaterialize = true;
   }
 }
 

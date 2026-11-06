@@ -349,14 +349,18 @@ test('a missing report uses the pipeline and still undoes', async (t) => {
   assert.equal(Object.keys(stor.texts()).some(path => path.includes('_old')), false);
 });
 
-function effortFile(units: { create?: unknown[]; regenerateDefs?: unknown[]; remove?: unknown[] }): string {
+function effortFile(
+  units: { create?: unknown[]; regenerateDefs?: unknown[]; remove?: unknown[]; materialize?: unknown[] },
+  project = '102021',
+): string {
   return `${JSON.stringify({
     perItem: [{
       answers: [{
-        master: { project: '102021', kind: 'l1' },
+        master: { project, kind: 'l1' },
         create: units.create || [],
         regenerateDefs: units.regenerateDefs || [],
         remove: units.remove || [],
+        materialize: units.materialize || [],
       }],
     }],
   })}\n`;
@@ -486,6 +490,82 @@ test('a removed field cited in old source marks the equal def as mudou and resto
   assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], undefined);
   assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/usecases/createTarefa.json'], undefined);
   assert.equal(Object.keys(texts).some(path => path.includes('_old')), false);
+});
+
+test('an equal def listed in master 102021 materialize is mudou and restores only the def', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  const defPath = 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts';
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.ts', 'OLD_TS\n');
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.ts', 'NEW_TS\n');
+  stor.add(1, 'tarefas_old/pipeline/agentMaterializeL1/usecases', 'createTarefa', '.json', '{"receipt":"old"}\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    materialize: [{ kind: 'usecase', id: 'createTarefa', path: defPath }],
+  }));
+  const result = await run();
+  assert.match(result, new RegExp(`usecase createTarefa: mudou \\(effort materialize\\) ${defPath}`));
+  assert.match(result, /effort check: matches/);
+  const texts = stor.texts();
+  assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts'], body);
+  assert.equal(texts['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], undefined);
+  assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/usecases/createTarefa.json'], undefined);
+});
+
+test('the same unit in another master materialize bucket stays igual and the ts comes back', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const body = defText(createTarefa);
+  const defPath = 'l1/tarefas/layer_2_application/usecases/createTarefa.defs.ts';
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas_old/layer_2_application/usecases', 'createTarefa', '.ts', 'OLD_TS\n');
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.defs.ts', body);
+  stor.add(1, 'tarefas/layer_2_application/usecases', 'createTarefa', '.ts', 'NEW_TS\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    materialize: [{ kind: 'usecase', id: 'createTarefa', path: defPath }],
+  }, '102020'));
+  const result = await run();
+  assert.match(result, /usecase createTarefa: igual /);
+  assert.equal(result.includes('effort materialize'), false);
+  assert.equal(stor.texts()['l1/tarefas/layer_2_application/usecases/createTarefa.ts'], 'OLD_TS\n');
+});
+
+test('a request in materialize also drops the page controller sources', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const request = defText(inicio);
+  const page = defText({ ...inicio, artifactType: 'controller', artifactId: 'inicio' });
+  stor.add(1, 'tarefas_old/layer_2_application/requests', 'inicio', '.defs.ts', request);
+  stor.add(1, 'tarefas_old/layer_2_application/requests', 'inicio', '.ts', 'OLD_REQ\n');
+  stor.add(1, 'tarefas/layer_2_application/requests', 'inicio', '.defs.ts', request);
+  stor.add(1, 'tarefas/layer_2_application/requests', 'inicio', '.ts', 'NEW_REQ\n');
+  stor.add(1, 'tarefas_old/layer_1_interface/controllers', 'inicio', '.defs.ts', page);
+  stor.add(1, 'tarefas_old/layer_1_interface/controllers', 'inicio', '.ts', 'OLD_CTRL\n');
+  stor.add(1, 'tarefas_old/layer_1_interface/controllers', 'inicio', '.test.ts', 'OLD_TEST\n');
+  stor.add(1, 'tarefas/layer_1_interface/controllers', 'inicio', '.defs.ts', page);
+  stor.add(1, 'tarefas/layer_1_interface/controllers', 'inicio', '.ts', 'NEW_CTRL\n');
+  stor.add(1, 'tarefas/layer_1_interface/controllers', 'inicio', '.test.ts', 'NEW_TEST\n');
+  stor.add(4, 'tarefas/pool/l4', 'changeEffort', '.json', effortFile({
+    materialize: [{ kind: 'request', id: 'inicio', path: 'l1/tarefas/layer_2_application/requests/inicio.defs.ts' }],
+  }));
+  const result = await run();
+  assert.match(result, /requestService inicio: mudou \(effort materialize\) l1\/tarefas\/layer_2_application\/requests\/inicio\.defs\.ts/);
+  assert.match(result, /controller inicio: mudou \(effort materialize\) l1\/tarefas\/layer_1_interface\/controllers\/inicio\.defs\.ts/);
+  assert.match(result, /effort check: matches/);
+  const texts = stor.texts();
+  assert.equal(texts['l1/tarefas/layer_2_application/requests/inicio.defs.ts'], request);
+  assert.equal(texts['l1/tarefas/layer_2_application/requests/inicio.ts'], undefined);
+  assert.equal(texts['l1/tarefas/layer_1_interface/controllers/inicio.defs.ts'], page);
+  assert.equal(texts['l1/tarefas/layer_1_interface/controllers/inicio.ts'], undefined);
+  assert.equal(texts['l1/tarefas/layer_1_interface/controllers/inicio.test.ts'], undefined);
 });
 
 test('etiquetasX in old source does not count as a cite of etiquetas', async (t) => {
