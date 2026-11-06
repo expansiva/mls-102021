@@ -209,11 +209,44 @@ async function studioCompile(info: M12FileInfo): Promise<{ errors: string[] } | 
   return { errors: (model.compilerResults?.errors ?? []).map(formatCompilerDiagnostic) };
 }
 
-/** Loads (and compiles once, for its declaration) every transitive import before `root` is compiled. */
+/**
+ * How long the first check after the imports are loaded may take. With the platform server and MDM files of a
+ * workflow module in the editor, the worker answered its first request after 222s and every later one at once
+ * (tarefas, 19/10/2026); with the 60s deadline each request queued behind that first one timed out in turn.
+ */
+export const M12_WARMUP_TIMEOUT_MS = 360_000;
+
+/**
+ * One diagnostics request on `root` with the long deadline, after its imports are in the editor and before any
+ * other request: whatever the worker builds the first time is paid here once. A host without the worker pair has
+ * nothing to warm. A timeout throws M12_COMPILER_TIMEOUT, which turns the breaker on for the run.
+ */
+async function warmWorker(root: M12FileInfo): Promise<void> {
+  const typescript = studioTypescript() as StudioTypescript & {
+    getTypeScriptWorker?: (model: unknown) => Promise<unknown>;
+    getDiagnostics?: (fileName: string, worker: unknown) => Promise<unknown[]>;
+  };
+  const getTypeScriptWorker = typescript.getTypeScriptWorker;
+  const getDiagnostics = typescript.getDiagnostics;
+  if (typeof getTypeScriptWorker !== 'function' || typeof getDiagnostics !== 'function') return;
+  const model = await studioModel(root);
+  const fileName = (model?.model as { uri?: { toString(): string } } | undefined)?.uri?.toString() ?? '';
+  if (!model?.model || !fileName) return;
+  const ref = fileRef(root);
+  const worker = await withCompileTimeout(`${ref} (warm-up)`, getTypeScriptWorker(model.model), M12_WARMUP_TIMEOUT_MS);
+  await withCompileTimeout(`${ref} (warm-up: first check with its imports loaded)`, getDiagnostics(fileName, worker), M12_WARMUP_TIMEOUT_MS);
+}
+
+/**
+ * Loads every transitive import of `root` into the editor, warms the worker once with them, then compiles each l2
+ * import that has no declaration yet. Loading first and warming before any compile keeps the slow first request
+ * on the long deadline instead of on the compile of whichever import came first (_102029_/l2/webCrypto.ts).
+ */
 async function studioPreload(root: M12FileInfo): Promise<string[]> {
   const missing: string[] = [];
   const seen = new Set<string>([fileRef(root)]);
   const queue: M12FileInfo[] = [root];
+  const toCompile: Array<{ id: string; model: M12Model }> = [];
   const typescript = studioTypescript();
   while (queue.length) {
     const current = queue.shift()!;
@@ -229,15 +262,23 @@ async function studioPreload(root: M12FileInfo): Promise<string[]> {
         if (!depModel?.model) { missing.push(id); continue; }
         // An l1 dependency only needs its model in the editor: the worker type-checks against the models it has.
         // Compiling it here would send it through the full compile that broke the worker on l1.
-        if (dep.level !== 1 && !depModel.compilerResults?.prodDTS) {
-          if (depModel.compilerResults) depModel.compilerResults.modelNeedCompile = true;
-          await withCompileTimeout(id, typescript.compile(depModel));
-        }
+        if (dep.level !== 1 && !depModel.compilerResults?.prodDTS) toCompile.push({ id, model: depModel });
       } catch (error) {
         missing.push(`${id} (${error instanceof Error ? error.message : String(error)})`);
         continue;
       }
       queue.push(dep);
+    }
+  }
+  if (missing.length) return missing;
+  // A file with no imports has nothing loaded to warm: its own check is the first and only request.
+  if (seen.size > 1) await warmWorker(root);
+  for (const { id, model } of toCompile) {
+    try {
+      if (model.compilerResults) model.compilerResults.modelNeedCompile = true;
+      await withCompileTimeout(id, typescript.compile(model));
+    } catch (error) {
+      missing.push(`${id} (${error instanceof Error ? error.message : String(error)})`);
     }
   }
   return missing;
@@ -258,6 +299,14 @@ const STUDIO: M12Compiler = {
  * The unit keeps its file and ends `done COMPILE_UNAVAILABLE_L1` with the cause; it is never a clean compile.
  */
 export const L1_UNAVAILABLE = 'M12_COMPILE_UNAVAILABLE_L1';
+
+/**
+ * Switch of the Studio compile. With false every generated file is written and marked unproven
+ * (COMPILE_UNAVAILABLE_L1, listed in the report's notCompiled). It was off on 19/10 while the controllers phase
+ * looked stuck: the worker was not stuck, it took 222s on its first request once the platform files were loaded
+ * (see M12_WARMUP_TIMEOUT_MS), and each 60s request behind it timed out in turn.
+ */
+export const M12_STUDIO_COMPILE_ENABLED = true;
 
 export function isUnavailable(error: string): boolean {
   return error.startsWith(L1_UNAVAILABLE);
@@ -287,6 +336,7 @@ export async function compileM12Files(
   compiler: M12Compiler = STUDIO,
 ): Promise<M12CompileResult[]> {
   const fail = (message: string) => files.map(file => ({ path: fileRef(file.info), errors: [message] }));
+  if (compiler === STUDIO && !M12_STUDIO_COMPILE_ENABLED) return fail(`${L1_UNAVAILABLE}: the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED = false)`);
   if (compiler === STUDIO && workerDown()) return fail(`${L1_UNAVAILABLE}: ${workerDown()}`);
   if (typeof mls === 'undefined' && compiler === STUDIO) return fail(`${L1_UNAVAILABLE}: no Studio`);
   let entered = false;
@@ -302,6 +352,23 @@ export async function compileM12Files(
         if (!before?.model || before.model.getValue() !== file.expected) throw new Error('Studio model is unavailable or differs from the generated source');
         const missing = await compiler.preload(file.info);
         if (!Array.isArray(missing)) throw new Error('import preload returned no result');
+        // An import the compiler did not load in time (a dependency of another project, compiled on the way: the
+        // platform workflow engine pulls _102029_/l2 files through the MDM) is the compiler, not the code: the unit is
+        // not proven, and the model is not asked to repair what it cannot fix (cicloTarefa, tarefas 19/10). An import
+        // that does not exist is still an error of the code.
+        if (missing.length && missing.every(item => item.includes('(M12_COMPILER_TIMEOUT'))) {
+          if (compiler === STUDIO) markWorkerDown(`imports the compiler did not load in time: ${missing.join(', ')}`);
+          results.push({ path, errors: [`${L1_UNAVAILABLE}: imports the compiler did not load in time: ${missing.join(', ')}`] });
+          continue;
+        }
+        // An import the Studio failed to fetch is the environment too: the platform workflow engine imports
+        // _102036_/l2/shared/interfaces.ts since d1_89, and a Studio that has not loaded 102036 answers "fecthQl:
+        // Please connect to github!" (cicloTarefa and avisoDiario refused, tarefas 21/10). The preload lists such an
+        // import with the error it threw, in brackets; an import that does not exist is listed bare and stays the code.
+        if (missing.length && missing.every(item => / \(.+\)$/u.test(item) && !item.endsWith('(source unreadable)'))) {
+          results.push({ path, errors: [`${L1_UNAVAILABLE}: imports the Studio could not load: ${missing.join(', ')}`] });
+          continue;
+        }
         if (missing.length) throw new Error(`imports unavailable: ${missing.join(', ')}`);
         const compiled = await compiler.compile(file.info);
         if (!compiled || !Array.isArray(compiled.errors)) throw new Error('compiler returned no diagnostics');

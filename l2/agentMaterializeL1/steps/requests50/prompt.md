@@ -71,6 +71,9 @@ leaves. You do not decide business: you do not invent a route, a field, a rule o
   another type (`Number(input.version)` when the usecase takes a number); never pass an `unknown` where a type is
   expected.
 - `resolveRepository` returns what you cast it to: `resolveRepository<ComandaRepository>(ctx, 'ComandaRepository')`.
+- A `readonly` member of the contract output is set when the object is built, never assigned afterwards: an optional
+  one goes in the literal as `...(value != null ? { finalizadoEm: value } : {})`. Do not write a `Mutable<…>` helper
+  to strip `readonly`: it misses nested members and the assignment fails to compile (TS2540, meus_avisos 19/10).
 - A function returns exactly its declared type: build the output object field by field. No `as unknown as` and no
   `as any`: they hide a wrong shape from the compiler (a list declared `{ items, hasMore }` that returned a bare
   array reached a page as `{}`).

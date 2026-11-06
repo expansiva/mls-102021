@@ -13,7 +13,7 @@ import { defOfRef, fileRef, infoOfRef, type M12FileInfo } from '/_102021_/l2/age
 import { type M12Unit, loadModuleUnits, orderWithinLayer, registersModule, requestModules, selectUnits, selectedLayers, storEntries } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { validateSource, emitDomain, recordFieldFromGrant, recordFieldsFromGrant, scopeJoins, membersOfType, namedMemberType, ontologyCollections, unopenedNamedMembers } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { derivedReadProblems, inputMembers, listFilterProblems, parentRuleProblems, repositoryProblems, transitionTargetProblems, undeclaredInputProblems, usesNodeBuiltin, testsGate, usecaseGate, usecaseParameterCount, versionProblems } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
-import { createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitted, rulesToEnforce, unitInputHash, unitNeedsLlm, writeAndProve } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
+import { processUnitsOf, createContext, layerUnits, materializeUnit, recipeDraft, rulesNotEmitted, rulesToEnforce, unitInputHash, unitNeedsLlm, writeAndProve } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, readNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { transitionPayload, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { moduleTickSource, transitionDestinations, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
@@ -42,7 +42,7 @@ import { createAgent as seedRowsAgent, emitSeedsWhenReady } from '/_102021_/l2/a
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readOptional, readUnitStatus, removeStorFile, writeDraft, writeText, type M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
-import { compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { M12_STUDIO_COMPILE_ENABLED, compileM12Files, diagnosticLocation, isUnavailable, markWorkerDown, releaseCompileModels, withCompileTimeout, type M12Compiler } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { borrowedModelScopeSize } from '/_102035_/l2/solution/studioCompile.js';
 import { contractRoutes } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { exportSignatures, ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
@@ -271,7 +271,7 @@ void test('a worker call that never answers fails by name instead of hanging the
   assert.equal(await withCompileTimeout('x', Promise.resolve(7), 20), 7);
 });
 
-void test('a write persists without an editor model; once the worker is down the l1 compile is reported unavailable', async () => {
+void test('a write persists without an editor model; once the worker is down the l1 compile is reported unavailable', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
   const files = installStor();
   const calls: string[] = [];
   const stor = (mls as unknown as { stor: { localStor: Record<string, unknown> } }).stor;
@@ -372,7 +372,7 @@ void test('every prompt declares a model type the Collab LLM proxy knows (no def
   }
 });
 
-void test('an l1 file is proven by worker diagnostics only: never compile, emit, decorators or JSON doc', async () => {
+void test('an l1 file is proven by worker diagnostics only: never compile, emit, decorators or JSON doc', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
   const files = installStor();
   const calls: string[] = [];
   const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'unit', extension: '.ts' };
@@ -395,7 +395,33 @@ void test('an l1 file is proven by worker diagnostics only: never compile, emit,
   assert.deepEqual(results[0].errors, ["TS2322 - Type 'string' is not assignable to type 'number'."], 'a type error is a compile failure, not unavailable');
 });
 
-void test('an l1 file with compile and no worker is proven by compilerResults.errors', async () => {
+void test('the imports are loaded first, the worker is warmed once before any compile, then the l2 import compiles and the file is checked', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
+  installStor();
+  const calls: string[] = [];
+  const root = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'unit', extension: '.ts' };
+  const dep = { project: PROJECT, level: 2, folder: 'x', shortName: 'dep', extension: '.ts' };
+  const rootText = `import { b } from '/_${PROJECT}_/l2/x/dep.js';\nexport const a: number = b;\n`;
+  const depText = 'export const b = 1;\n';
+  await writeText(root, rootText);
+  await writeText(dep, depText);
+  const modelOf = (info: typeof root, text: string, uri: string) => ({ model: { getValue: () => text, setValue: () => undefined, uri: { toString: () => uri } }, storFile: { ...info }, compilerResults: {} });
+  const models: Record<string, unknown> = {
+    unit: { ts: modelOf(root, rootText, 'file://server/unit.ts') },
+    dep: { ts: modelOf(dep, depText, 'file://server/dep.ts') },
+  };
+  (mls as unknown as Record<string, unknown>).editor = { getKeyModel: (_project: number, shortName: string) => shortName, models };
+  (mls as unknown as Record<string, unknown>).l2 = { typescript: {
+    compile: async () => { calls.push('compile dep'); return true; },
+    getTypeScriptWorker: async () => ({}),
+    getDiagnostics: async (fileName: string) => { calls.push(`getDiagnostics ${fileName}`); return []; },
+  } };
+  markWorkerDown('');
+  const results = await compileM12Files([{ info: root, expected: rootText }]);
+  assert.deepEqual(calls, ['getDiagnostics file://server/unit.ts', 'compile dep', 'getDiagnostics file://server/unit.ts']);
+  assert.deepEqual(results[0].errors, []);
+});
+
+void test('an l1 file with compile and no worker is proven by compilerResults.errors', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
   const files = installStor();
   const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'host', extension: '.ts' };
   const text = 'export const a: number = "x";\n';
@@ -417,7 +443,7 @@ void test('an l1 file with compile and no worker is proven by compilerResults.er
   assert.deepEqual(results[0].errors, ["TS2345 - Argument of type 'string' is not assignable to parameter of type 'MdmEntityGetInput'."]);
 });
 
-void test('a host compile error with start names the line and column', async () => {
+void test('a host compile error with start names the line and column', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
   const files = installStor();
   const info = { project: PROJECT, level: 1, folder: `${MODULE}/x`, shortName: 'located', extension: '.ts' };
   const text = 'export function f(id: string) { return ctx.mdm.entity.get(id); }\n';
@@ -1357,7 +1383,7 @@ export interface PedidosContracts {
   assert.deepEqual(((withProcessMethods(port, defs, childWriteMethods(writes)) as { data: { methods: Array<{ name: string }> } }).data.methods).map(item => item.name), ['list', 'create', 'update', 'delete']);
 });
 
-test('a file with no editor model is created on the canonical Studio path and the borrow is released', async () => {
+test('a file with no editor model is created on the canonical Studio path and the borrow is released', { skip: !M12_STUDIO_COMPILE_ENABLED && 'the Studio compile is switched off for the tests (M12_STUDIO_COMPILE_ENABLED)' }, async () => {
   const helper = readFileSync(path.join(HERE, 'helpers/m12Compile.ts'), 'utf8');
   assert.equal(helper.includes('lib' + 'Model'), false);
   const previous = (globalThis as { mls?: unknown }).mls;
@@ -1853,4 +1879,44 @@ test('production appEnv refuses the reference seed and a pending draft does not 
   if (seedRun.kind !== 'run') return;
   assert.equal(await emitSeedsWhenReady((await loadRun(seedRun)).ctx), false);
   assert.equal(seedWrites, 0);
+});
+
+test('a request service waits for the workflow of the processes its routes reach (it spent three model calls on a file that did not exist)', () => {
+  const unit = (artifactType: string, unitId: string, data: Record<string, unknown>): M12Unit => ({ unitId, definition: { artifactType, artifactId: unitId, data, dependencies: [] } } as unknown as M12Unit);
+  const units = [
+    unit('usecase', 'aceitar', { entityId: 'Tarefa', operation: 'transition', transitionRef: 'aceitar' }),
+    unit('usecase', 'listTarefa', { entityId: 'Tarefa', operation: 'list' }),
+    unit('workflowProcess', 'cicloTarefa', { processId: 'cicloTarefa', operations: [{ operation: 'Tarefa.aceitar' }] }),
+    unit('workflowProcess', 'avisoDiario', { processId: 'avisoDiario', operations: [{ operation: 'AvisoVencimento.create' }] }),
+  ];
+  const page = unit('requestService', 'minhas_tarefas', { pageId: 'minhas_tarefas', requests: [{ route: 'r1', uses: ['aceitar'] }, { route: 'r2', uses: ['listTarefa'] }] });
+  assert.deepEqual(processUnitsOf(units, page).map(item => item.unitId), ['cicloTarefa']);
+  assert.deepEqual(processUnitsOf(units, unit('requestService', 'listas', { requests: [{ route: 'r3', uses: ['listTarefa'] }] })), [], 'a page outside every process waits for none');
+  assert.deepEqual(processUnitsOf(units, units[0]), [], 'only a request service waits for a process');
+});
+
+test('an import the compiler did not load in time is the compiler, not the code: unproven, no repair (cicloTarefa, 19/10)', async () => {
+  const text = 'export const a = 1;\n';
+  const info = { project: 102047, level: 1, folder: 'tarefas/layer_2_application/workflows', shortName: 'cicloTarefa', extension: '.ts' };
+  const fake = (missing: string[]): M12Compiler => ({
+    available: () => true, enter: () => undefined, leave: () => undefined,
+    read: async () => text, model: async () => ({ model: { getValue: () => text } }),
+    preload: async () => missing, compile: async () => ({ errors: [] }),
+  }) as unknown as M12Compiler;
+  const timeout = '_102029_/l2/webCrypto.ts (M12_COMPILER_TIMEOUT: the Studio TypeScript worker did not answer for _102029_/l2/webCrypto.ts in 60s)';
+  const [slow] = await compileM12Files([{ info, expected: text }], fake([timeout, timeout.replace('webCrypto', 'runtimeConfigTypes')]));
+  assert.equal(slow.errors.length, 1);
+  assert.ok(isUnavailable(slow.errors[0]) && slow.errors[0].includes('webCrypto'), slow.errors[0]);
+  const [absent] = await compileM12Files([{ info, expected: text }], fake([timeout, '_102047_/l1/tarefas/x.ts']));
+  assert.ok(!isUnavailable(absent.errors[0]) && absent.errors[0].startsWith('imports unavailable:'), 'an import that does not exist is still the code');
+  // A fetch the Studio could not make (project 102036 not loaded, no GitHub session: tarefas 21/10) is the environment.
+  const fetchFailed = '_102036_/l2/shared/interfaces.ts (fecthQl: Please connect to github!)';
+  const [offline] = await compileM12Files([{ info, expected: text }], fake([fetchFailed]));
+  assert.ok(isUnavailable(offline.errors[0]) && offline.errors[0].includes('_102036_/l2/shared/interfaces.ts'), offline.errors[0]);
+  const [offlineAndAbsent] = await compileM12Files([{ info, expected: text }], fake([fetchFailed, '_102047_/l1/tarefas/x.ts']));
+  assert.ok(!isUnavailable(offlineAndAbsent.errors[0]), 'one import that does not exist keeps it the code');
+  const [unreadable] = await compileM12Files([{ info, expected: text }], fake(['_102047_/l1/tarefas/y.ts (source unreadable)']));
+  assert.ok(!isUnavailable(unreadable.errors[0]), 'a source that cannot be read is not a fetch failure');
+  const [ok] = await compileM12Files([{ info, expected: text }], fake([]));
+  assert.deepEqual(ok.errors, []);
 });

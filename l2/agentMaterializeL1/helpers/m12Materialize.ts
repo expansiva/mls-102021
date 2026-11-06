@@ -138,10 +138,29 @@ export function dependencyUnits(ctx: M12Context, unit: M12Unit): M12Unit[] {
  * same or an earlier layer is imported when the unit is emitted; a later one (the usecase an outbound event
  * names) is a reference, not an import, and does not block. `.defs.ts` is not the output.
  */
+/**
+ * The workflow units a request service waits for: the processes whose operations its routes reach through the
+ * usecases they use (§11: the handler of such a route calls the process). Without the workflow file the request
+ * cannot import it; it waited for nothing and spent three model calls on a gate it could not pass (tarefas 19/10).
+ */
+export function processUnitsOf(units: readonly M12Unit[], unit: M12Unit): M12Unit[] {
+  if (unit.definition.artifactType !== 'requestService') return [];
+  const requests = Array.isArray(unit.definition.data.requests) ? unit.definition.data.requests.filter(isRecord) : [];
+  const used = new Set(requests.flatMap(row => Array.isArray(row.uses) ? row.uses.map(String) : []));
+  const operations = new Set<string>();
+  for (const item of units.filter(candidate => candidate.definition.artifactType === 'usecase' && used.has(candidate.unitId))) {
+    const entityId = String(item.definition.data.entityId ?? '');
+    for (const op of [item.definition.data.operation, item.definition.data.transitionRef]) if (typeof op === 'string' && op) operations.add(`${entityId}.${op}`);
+  }
+  return units.filter(candidate => candidate.definition.artifactType === 'workflowProcess'
+    && Array.isArray(candidate.definition.data.operations)
+    && candidate.definition.data.operations.some(row => isRecord(row) && operations.has(String(row.operation ?? ''))));
+}
+
 export async function blockingDependencies(ctx: M12Context, unit: M12Unit): Promise<string[]> {
   const out: string[] = [];
   const own = M12_LAYERS.indexOf(unit.layer);
-  for (const dep of dependencyUnits(ctx, unit)) {
+  for (const dep of [...dependencyUnits(ctx, unit), ...processUnitsOf(ctx.units, unit)]) {
     if (M12_LAYERS.indexOf(dep.layer) > own) continue;
     if (storExists(dep.output)) continue;
     const status = await readUnitStatus(ctx.run.project, ctx.run.module, dep.layer, dep.unitId);
