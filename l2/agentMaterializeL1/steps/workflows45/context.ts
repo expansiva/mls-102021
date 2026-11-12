@@ -8,12 +8,12 @@
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { rulesFile, workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -111,6 +111,56 @@ export function engineUseRules(moduleName: string, processId: string): string {
     '`onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.',
     'Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`, `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so the person can try again; the routine leaves the notice `pending` for the next execution and does not change the business record. Definitive for the command (`WORKFLOW_CM_REJECTED`, `WORKFLOW_IDENTITY_UNLINKED`, `WORKFLOW_IDENTITY_REMOVED`): the screen receives the error; the routine applies the failure transition with the code as `motivoFalha`.',
   ].join('\n');
+}
+
+/** Steps of one l4 process object (the JSON `l4Process` returns). */
+export function workflowProcessSteps(processJson: string): WorkflowStepEmit[] {
+  if (!processJson) return [];
+  let row: unknown;
+  try { row = JSON.parse(processJson); } catch { return []; }
+  if (!row || typeof row !== 'object') return [];
+  const wrapped = `export const workflows = ${JSON.stringify({ processes: [row] })} as const;`;
+  return workflowTablesFromL4(wrapped)[0]?.steps ?? [];
+}
+
+/**
+ * Names the process file exports when it has an `llm` step: one wake handler per `llm` step and per periodic
+ * `wait`, plus the tick recovery of the process. Empty when the process has no `llm` step.
+ */
+export function workflowLlmExportNames(processId: string, steps: readonly WorkflowStepEmit[]): string[] {
+  if (!steps.some(step => step.kind === 'llm')) return [];
+  const names = steps
+    .filter(step => step.kind === 'llm' || (step.kind === 'wait' && step.wakeMode === 'periodic'))
+    .map(step => workflowWakeHandlerName(step.stepId));
+  names.push(workflowRecoverName(processId));
+  return names;
+}
+
+const LLM_SIGNATURES = ['requestLlmStep', 'TaskWorkflowLlmStep', 'TaskOccurrenceLlmResult', 'ModuleWakeEvent', 'workflowWakeCommandId', 'registerWorkflowWakeHandler'];
+
+/** Export blocks of a platform file whose text names one of the LLM-step symbols. */
+function llmSignatureBlocks(source: string | null): string {
+  if (!source) return '';
+  const blocks = exportSignatures(source).split(/\n(?=export\s)/u);
+  return blocks.filter(block => LLM_SIGNATURES.some(name => block.includes(name))).join('\n');
+}
+
+/**
+ * What the model needs to write an `llm` step. Empty when the process has none.
+ * Signatures come from the platform files the index re-exports; the import the file writes is the index.
+ */
+export function llmStepSection(processId: string, steps: readonly WorkflowStepEmit[], sources: readonly (string | null)[]): string {
+  const names = workflowLlmExportNames(processId, steps);
+  if (!names.length) return '';
+  const handlers = names.filter(name => name !== workflowRecoverName(processId));
+  const lines = [
+    'This process has an `llm` step. Follow the `llm` bullet of the prompt. Ignore it for a process that has none.',
+    `Export ${handlers.map(name => `\`${name}\``).join(', ')} (wake handlers) and \`${workflowRecoverName(processId)}\` (tick recovery). The module tick and the registration import these names.`,
+    'Import `TaskOccurrenceLlmResult`, `ModuleWakeEvent`, `workflowWakeCommandId` and `registerWorkflowWakeHandler` from `/_102034_/l1/workflow/index.js`. Do not import `/_102036_/`. `requestLlmStep` is `workflowEngine.requestLlmStep(ctx, input: TaskWorkflowLlmStep)`.',
+    '`ModuleWakeEvent` fields used here: `eventId`, `taskId`, `stepKey`, `pass`, `kind` (`wake` | `llm-step-finished`), `commandId`, `state`.',
+  ];
+  const signatures = sources.map(llmSignatureBlocks).filter(Boolean).join('\n');
+  return signatures ? `${lines.join('\n')}\n\n${fence('ts', signatures)}` : lines.join('\n');
 }
 
 /** The facts of a workflowProcess def the context and the gate read. */
@@ -301,7 +351,10 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
   ].join('\n')));
   parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId)));
+  const processSteps = workflowProcessSteps(process);
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
+  const llm = llmStepSection(facts.processId, processSteps, await Promise.all(platform.slice(0, 3).map(ref => ctx.read(ref))));
+  if (llm) parts.push(section('An llm step', llm));
   for (const ref of platform) {
     const source = await ctx.read(ref);
     if (source) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(source))].join('\n\n')));
@@ -391,10 +444,13 @@ export function workflowTransitionProblems(code: string, targets: ReadonlyMap<st
 }
 
 /** Problems of a model-written workflow service. Empty = the gate passes. */
-export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; targets?: ReadonlyMap<string, string> }): string[] {
+export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
   const problems: string[] = [];
   if (input.targets) problems.push(...workflowTransitionProblems(code, input.targets));
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
+  for (const name of input.llmExports ?? []) {
+    if (!new RegExp(`export\\s+async\\s+function\\s+${name}\\s*\\(`, 'u').test(code)) problems.push(`The process file must export \`${name}\` (\`export async function ${name}\`).`);
+  }
   for (const name of input.facts.functions) {
     if (!new RegExp(`export\\s+async\\s+function\\s+${name}\\s*\\(`, 'u').test(code)) problems.push(`The process function \`${name}\` must be exported as \`export async function ${name}(input, ctx: RequestContext)\`.`);
   }
@@ -423,8 +479,11 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   const facts = workflowFacts(unit);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
   const ports = ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => String(item.definition.data.interfaceName ?? item.definition.artifactId));
+  const { project, module: moduleName } = ctx.run;
+  const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
+  const llmExports = workflowLlmExportNames(facts.processId, workflowProcessSteps(l4Process(await ctx.read(l4Ref), facts.processId)));
   return [
-    ...workflowGate(code, { header, facts, project: ctx.run.project, moduleName: ctx.run.module, ports, targets: transitionTargets(ctx.units) }),
+    ...workflowGate(code, { header, facts, project, moduleName, ports, targets: transitionTargets(ctx.units), llmExports }),
     ...await missingImports(ctx, code),
   ];
 }

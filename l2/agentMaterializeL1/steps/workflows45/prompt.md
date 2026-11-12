@@ -66,7 +66,34 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
 - A `wait` step requests a wake only when the L4 gives it a time (a deadline, a reminder or a period in the
   step description or in a rule) and names the function that handles it; `everyMinutes`/`until` come from
   that text and `routine` is that function. Otherwise the step has no wake: the wait ends by the action of
-  the next step's owner. Never invent an interval.
+  the next step's owner. Never invent an interval. The wake `commandId` stays `<taskId>:<step>:<wake.seq>`
+  on the advance the owner of the next step does not make; a periodic wake handler advances with
+  `workflowWakeCommandId(event.eventId)`. That rule does not change when the process also has an `llm` step.
+- An `llm` step (only when this process has one; otherwise ignore this bullet) follows the shape proved by
+  the manual module `wfteste` — the shape, never its business names:
+  - **Request.** `workflowEngine.requestLlmStep` with `commandId` `<recordId>:<stepId>:<pass>` (the same value
+    on every retry of that pass), `maxPasses: 2`, `system` and `user` built from the step prose and from
+    `functions[]`, `webSearch: true` only when that prose asks for a web search, and a strict `outputSchema`.
+    Do not call the LLM twice for the same `commandId`: a repeat returns the step the runtime already has.
+  - **Order of the writes** (the one `wfteste` proved, three writes that the app may be cut between): save the
+    business row in the destination state, then advance the Task to the `llm` step, then request the LLM and
+    store the `commandId` on the row. Each write has a recovery in the tick (below); never reorder them.
+  - **Output.** Dates are calendar `AAAA-MM-DD` and money is an ISO 4217 code of 3 letters, said in `system`
+    and in the field `description`. No `pattern` and no `format` on the schema.
+  - **Validation.** A parse function refuses anything outside the schema. An invalid output or a `failed`
+    result returns the occurrence to the previous human step, with the reason on the record.
+  - **Notice handler.** Export the name the task gives for that step. It accepts only
+    `kind: 'llm-step-finished'` for the current pass, rereads with the same `commandId`, and advances with
+    `workflowWakeCommandId` of `` `<taskId>:<stepId>:llm:<commandId>` ``.
+  - **Tick recovery.** Export the name the task gives for this process. It covers three gaps: the record is
+    already saved and the Task is still on the previous step; the Task is on the `llm` step and no request
+    was stored; the request is done and the result is ready. Redoing the advance from the previous step uses
+    a `commandId` derived from the revision (`<recordId>:<function>:r<revision>`), `expectedRevision`, and
+    waits the minimum age (one tick, 60s on `ctx.clock`). The same advance identity as the notice
+    (`<taskId>:<stepId>:llm:<commandId>`, wrapped by `workflowWakeCommandId`). No second LLM call.
+  - Import `TaskOccurrenceLlmResult`, `ModuleWakeEvent`, `workflowWakeCommandId` and
+    `registerWorkflowWakeHandler` from `/_102034_/l1/workflow/index.js`. `ModuleWakeEvent` comes from that
+    index, never from `/_102036_/`. `requestLlmStep` is the method of the module engine.
 - `onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.
 - Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`,
   `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so
