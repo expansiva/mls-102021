@@ -3,6 +3,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { OccurrenceKey, WorkflowTable } from '/_102034_/l1/workflow/contracts.js';
+import { createWorkflowEngine, type WorkflowEngineContext } from '/_102034_/l1/workflow/engine.js';
+import { createMemoryOccurrencePort } from '/_102034_/l1/workflow/memoryOccurrence.js';
 import { parseRegistrationRows, renderRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { bindHumanPages, moduleTickSource, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -78,6 +82,49 @@ test('a process without an llm step keeps today\'s engine and tick', () => {
     { portId: 'PedidoRepository', factory: 'createPedidoRepository', specifier: '/_102047_/l1/pedido/layer_1_external/adapters/persistence/pedidoRepositoryAdapter.js' },
   ]);
   assert.equal(plain.includes('registerWorkflowWakeHandler'), false);
+});
+
+const COMPRAS = [
+  { taskId: 'abrirSolicitacao', kind: 'human', title: 'Abra a solicitação.', actorRef: 'solicitante', journeyRef: 'compras', next: ['conferirCompletude'] },
+  { taskId: 'conferirCompletude', kind: 'mechanical', title: 'Confira se a solicitação está completa.', next: ['pesquisarOpcoes'] },
+  { taskId: 'pesquisarOpcoes', kind: 'llm', title: 'Pesquise opções de compra.', next: ['autorizarSolicitacao'] },
+  { taskId: 'autorizarSolicitacao', kind: 'human', title: 'Autorize a solicitação.', actorRef: 'aprovador', journeyRef: 'compras', next: ['gerarPedido'] },
+  { taskId: 'gerarPedido', kind: 'mechanical', title: 'Gere o pedido.', next: ['aguardarEntrega'] },
+  { taskId: 'aguardarEntrega', kind: 'wait', title: 'Aguarde a entrega.', next: [], wake: { mode: 'calendar' } },
+];
+
+test('an llm process adds the previous human step to each mechanical and llm step', async () => {
+  const table = workflowTablesFromL4(l4('solicitacaoCompra', COMPRAS))[0];
+  assert.ok(table);
+  const nextOf = (stepId: string) => table.steps.find(step => step.stepId === stepId)?.next;
+  assert.deepEqual(nextOf('conferirCompletude'), ['pesquisarOpcoes', 'abrirSolicitacao']);
+  assert.deepEqual(nextOf('pesquisarOpcoes'), ['autorizarSolicitacao', 'abrirSolicitacao']);
+  assert.deepEqual(nextOf('gerarPedido'), ['aguardarEntrega', 'autorizarSolicitacao']);
+  assert.deepEqual(nextOf('abrirSolicitacao'), ['conferirCompletude']);
+  assert.deepEqual(nextOf('autorizarSolicitacao'), ['gerarPedido']);
+  assert.deepEqual(nextOf('aguardarEntrega'), []);
+
+  const plan: WorkflowTable = {
+    processId: table.processId,
+    steps: table.steps.map(step => ({ stepId: step.stepId, kind: step.kind as WorkflowTable['steps'][number]['kind'], next: step.next })),
+  };
+  const caller: WorkflowEngineContext = { clock: { nowIso: () => '2026-11-12T12:00:00.000Z' }, log: { info() {}, error() {} } };
+  const key: OccurrenceKey = { project: '10', module: 'compras', processId: 'solicitacaoCompra', entity: 'Solicitacao', recordId: 's1' };
+  const engine = createWorkflowEngine(createMemoryOccurrencePort());
+  await engine.open(caller, plan, key, 'pesquisarOpcoes', null);
+  const moved = await engine.advance(caller, plan, key, { from: 'pesquisarOpcoes', to: 'abrirSolicitacao', actorNow: null });
+  assert.equal(moved.outcome, 'advanced');
+  assert.equal(moved.occurrence.step, 'abrirSolicitacao');
+
+  const llm = plan.steps.find(step => step.stepId === 'pesquisarOpcoes');
+  assert.ok(llm);
+  const saved = [...llm.next];
+  llm.next = llm.next.filter(stepId => stepId !== 'abrirSolicitacao');
+  await assert.rejects(
+    () => engine.advance(caller, plan, key, { from: 'pesquisarOpcoes', to: 'abrirSolicitacao', actorNow: null }),
+    (error: unknown) => error instanceof AppError && error.code === 'UNREACHABLE_STEP',
+  );
+  llm.next = saved;
 });
 
 test('a human step with no page is named PAGE_UNRESOLVED and leaves params off', () => {

@@ -64,6 +64,56 @@ function textList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
 }
 
+/**
+ * The engine refuses a target that `next` cannot reach. A failing or invalid `llm` step returns to the
+ * previous human step, which L4 cannot declare (a cycle needs `wait`). Only a process that has an `llm`
+ * step gains that edge, on each `mechanical` and `llm` step. The nearest humans win; ties all enter.
+ * The L4 order stays first and a step is never repeated. A process without `llm` is left untouched.
+ */
+function addReturnToPreviousHuman(steps: WorkflowStepEmit[]): void {
+  if (!steps.some(step => step.kind === 'llm')) return;
+  const byId = new Map(steps.map(step => [step.stepId, step]));
+  const incoming = new Map<string, string[]>();
+  for (const step of steps) {
+    for (const next of step.next) {
+      const list = incoming.get(next) ?? [];
+      list.push(step.stepId);
+      incoming.set(next, list);
+    }
+  }
+  for (const step of steps) {
+    if (step.kind !== 'mechanical' && step.kind !== 'llm') continue;
+    const have = new Set(step.next);
+    for (const human of nearestHumans(step.stepId, incoming, byId)) {
+      if (have.has(human)) continue;
+      step.next.push(human);
+      have.add(human);
+    }
+  }
+}
+
+function nearestHumans(
+  start: string,
+  incoming: ReadonlyMap<string, readonly string[]>,
+  byId: ReadonlyMap<string, WorkflowStepEmit>,
+): string[] {
+  let frontier = [...(incoming.get(start) ?? [])];
+  const seen = new Set<string>([start]);
+  while (frontier.length > 0) {
+    const humans: string[] = [];
+    const nextFrontier: string[] = [];
+    for (const id of frontier) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (byId.get(id)?.kind === 'human') humans.push(id);
+      else nextFrontier.push(...(incoming.get(id) ?? []));
+    }
+    if (humans.length > 0) return humans;
+    frontier = nextFrontier;
+  }
+  return [];
+}
+
 /** Step tables copied from `processes[].tasks[]` of an l4 workflows source. `taskId` becomes `stepId`. */
 export function workflowTablesFromL4(source: string | null): WorkflowTableEmit[] {
   const root = jsonObject(source);
@@ -94,6 +144,7 @@ export function workflowTablesFromL4(source: string | null): WorkflowTableEmit[]
       if (wake && typeof wake === 'object' && typeof (wake as { mode?: unknown }).mode === 'string') step.wakeMode = (wake as { mode: string }).mode;
       steps.push(step);
     }
+    addReturnToPreviousHuman(steps);
     tables.push({ processId, title, moduleTitle: moduleTitle || processId, steps });
   }
   return tables;
