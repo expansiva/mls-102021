@@ -13,7 +13,7 @@ import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { rulesFile, workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { missingImports, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -136,7 +136,7 @@ export function workflowLlmExportNames(processId: string, steps: readonly Workfl
   return names;
 }
 
-const LLM_SIGNATURES = ['requestLlmStep', 'TaskWorkflowLlmStep', 'TaskOccurrenceLlmResult', 'ModuleWakeEvent', 'workflowWakeCommandId', 'registerWorkflowWakeHandler'];
+const LLM_SIGNATURES = ['requestLlmStep', 'TaskWorkflowLlmStep', 'TaskOccurrenceLlmResult', 'ModuleWakeEvent', 'WorkflowWakeHandler', 'workflowWakeCommandId', 'registerWorkflowWakeHandler'];
 
 /** Export blocks of a platform file whose text names one of the LLM-step symbols. */
 function llmSignatureBlocks(source: string | null): string {
@@ -145,21 +145,60 @@ function llmSignatureBlocks(source: string | null): string {
   return blocks.filter(block => LLM_SIGNATURES.some(name => block.includes(name))).join('\n');
 }
 
+/** `export type Name = …;` through the semicolon that closes it. '' when the file does not declare the alias. */
+export function typeAlias(source: string, name: string): string {
+  const match = new RegExp(`export type ${name}\\s*=`, 'u').exec(source);
+  if (!match) return '';
+  let depth = 0;
+  let quote = '';
+  for (let index = match.index; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === '\\') { index += 1; continue; }
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '\'' || char === '"' || char === '`') { quote = char; continue; }
+    if (char === '(' || char === '{' || char === '[') depth += 1;
+    if (char === ')' || char === '}' || char === ']') depth -= 1;
+    if (char === ';' && depth === 0) return source.slice(match.index, index + 1);
+  }
+  return '';
+}
+
+/** Stor ref of the file the workflow index re-exports `name` from. '' when the index declares it itself. */
+export function reexportRef(indexSource: string, name: string): string {
+  for (const match of indexSource.matchAll(/export type \{([^}]+)\} from '([^']+)'/gu)) {
+    const names = match[1].split(',').map(item => item.trim()).filter(Boolean);
+    if (!names.includes(name)) continue;
+    const specifier = match[2];
+    if (!specifier.startsWith('/') || !specifier.endsWith('.js')) return '';
+    return specifier.slice(1).replace(/\.js$/u, '.ts');
+  }
+  return '';
+}
+
 /**
  * What the model needs to write an `llm` step. Empty when the process has none.
  * Signatures come from the platform files the index re-exports; the import the file writes is the index.
+ * `wakeSignature` is the `WorkflowWakeHandler` alias read from the index (or from the file it re-exports).
  */
-export function llmStepSection(processId: string, steps: readonly WorkflowStepEmit[], sources: readonly (string | null)[]): string {
+export function llmStepSection(processId: string, steps: readonly WorkflowStepEmit[], sources: readonly (string | null)[], wakeSignature = ''): string {
   const names = workflowLlmExportNames(processId, steps);
   if (!names.length) return '';
   const handlers = names.filter(name => name !== workflowRecoverName(processId));
+  const handlerSteps = steps.filter(step => step.kind === 'llm' || (step.kind === 'wait' && step.wakeMode === 'periodic'));
   const lines = [
     'This process has an `llm` step. Follow the `llm` bullet of the prompt. Ignore it for a process that has none.',
     `Export ${handlers.map(name => `\`${name}\``).join(', ')} (wake handlers) and \`${workflowRecoverName(processId)}\` (tick recovery). The module tick and the registration import these names.`,
+    `Each wake handler is ${handlerSteps.map(step => `\`${workflowWakeHandlerForm(step.stepId)}\``).join(', ')}: the context first, then the event, and assignable to \`WorkflowWakeHandler\` (type below, from \`/_102034_/l1/workflow/index.js\`), which the registration passes it to.`,
+    `The recovery is \`${workflowRecoverForm(processId)}\`. The clock is \`ctx.clock\`.`,
     'Import `TaskOccurrenceLlmResult`, `ModuleWakeEvent`, `workflowWakeCommandId` and `registerWorkflowWakeHandler` from `/_102034_/l1/workflow/index.js`. Do not import `/_102036_/`. `requestLlmStep` is `workflowEngine.requestLlmStep(ctx, input: TaskWorkflowLlmStep)`.',
     '`ModuleWakeEvent` fields used here: `eventId`, `taskId`, `stepKey`, `pass`, `kind` (`wake` | `llm-step-finished`), `commandId`, `state`.',
   ];
-  const signatures = sources.map(llmSignatureBlocks).filter(Boolean).join('\n');
+  const fromSources = sources.map(llmSignatureBlocks).filter(Boolean).join('\n');
+  const signature = wakeSignature && !fromSources.includes(wakeSignature) ? wakeSignature : '';
+  const signatures = [fromSources, signature].filter(Boolean).join('\n');
   return signatures ? `${lines.join('\n')}\n\n${fence('ts', signatures)}` : lines.join('\n');
 }
 
@@ -376,7 +415,14 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId)));
   const processSteps = workflowProcessSteps(process);
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
-  const llm = llmStepSection(facts.processId, processSteps, await Promise.all(platform.slice(0, 3).map(ref => ctx.read(ref))));
+  const platformSources = await Promise.all(platform.slice(0, 3).map(ref => ctx.read(ref)));
+  const indexSource = platformSources[0] ?? '';
+  let wakeSignature = typeAlias(indexSource, 'WorkflowWakeHandler');
+  if (!wakeSignature) {
+    const ref = reexportRef(indexSource, 'WorkflowWakeHandler');
+    wakeSignature = ref ? typeAlias(await ctx.read(ref) ?? '', 'WorkflowWakeHandler') : '';
+  }
+  const llm = llmStepSection(facts.processId, processSteps, platformSources, wakeSignature);
   if (llm) parts.push(section('An llm step', llm));
   for (const ref of platform) {
     const source = await ctx.read(ref);

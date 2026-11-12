@@ -6,8 +6,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { citedOntology, llmStepSection, loadWorkflowContext, workflowAnswerProblems, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { citedOntology, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 const prompt = readFileSync(fileURLToPath(new URL('./prompt.md', import.meta.url)), 'utf8');
 
@@ -136,4 +136,31 @@ test('an entity the process only names keeps its states and transitions, not its
   const slim = JSON.parse(citedOntology(ontology)) as Record<string, unknown>;
   assert.deepEqual(Object.keys(slim).sort(), ['entityId', 'lifecycleStates', 'title', 'transitions']);
   assert.equal(citedOntology('not an ontology'), 'not an ontology');
+});
+
+test('the worker context carries the wake handler type and the fixed forms, read from the 102034 index', async () => {
+  const steps = workflowProcessSteps(processJson('cicloItem', TASKS));
+  const index = "export type { ModuleWakeEvent, TaskOccurrenceLlmResult } from '/_102034_/l1/workflow/contracts.js';\nexport type { WorkflowWakeHandler } from '/_102034_/l1/workflow/wakeContracts.js';\nexport { workflowWakeCommandId } from '/_102034_/l1/workflow/wakeContracts.js';\nexport { registerWorkflowWakeHandler } from '/_102034_/l1/workflow/wakeRegistry.js';\n";
+  const wake = "export type WorkflowWakeHandler = (\n  ctx: RequestContext,\n  event: ModuleWakeEvent,\n  occurrence: TaskOccurrenceSnapshot,\n) => Promise<void>;\n";
+  assert.equal(reexportRef(index, 'WorkflowWakeHandler'), '_102034_/l1/workflow/wakeContracts.ts');
+  assert.equal(reexportRef(index, 'Missing'), '');
+  assert.match(typeAlias(wake, 'WorkflowWakeHandler'), /occurrence: TaskOccurrenceSnapshot,\n\) => Promise<void>;$/u);
+  assert.equal(typeAlias('export const x = 1;', 'WorkflowWakeHandler'), '');
+
+  const l4 = `export const workflows = ${JSON.stringify({ processes: [JSON.parse(processJson('cicloItem', TASKS))] })} as const;`;
+  const read = async (ref: string) => {
+    if (ref.endsWith('/workflows.defs.ts')) return l4;
+    if (ref.endsWith('/workflow/index.ts')) return index;
+    if (ref.endsWith('/workflow/wakeContracts.ts')) return wake;
+    return null;
+  };
+  const built = await loadWorkflowContext({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, unit('cicloItem', TASKS));
+  assert.ok(built.human.includes('export type WorkflowWakeHandler'), 'the real alias is in the context');
+  assert.ok(built.human.includes(workflowWakeHandlerForm('pesquisar')));
+  assert.ok(built.human.includes(workflowWakeHandlerForm('aguardar')));
+  assert.ok(built.human.includes(workflowRecoverForm('cicloItem')));
+  assert.equal(workflowRecoverForm('cicloItem'), 'export async function recuperarCicloItem(ctx: RequestContext): Promise<void>');
+  assert.equal(workflowWakeHandlerForm('pesquisar'), 'export async function entregarPesquisar(ctx: RequestContext, event: ModuleWakeEvent): Promise<void>');
+  const withoutAlias = llmStepSection('cicloItem', steps, [index]);
+  assert.equal(withoutAlias.includes('export type WorkflowWakeHandler'), false);
 });

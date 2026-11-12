@@ -114,7 +114,20 @@ export function workflowWakeHandlerName(stepId: string): string {
   return `entregar${pascal(stepId)}`;
 }
 
+/**
+ * Fixed export of one wake handler: `ctx` first, then the event. It must stay assignable to `WorkflowWakeHandler`
+ * (`/_102034_/l1/workflow/index.js`), which the registration passes it to. An `export async function`, as the gate asks.
+ */
+export function workflowWakeHandlerForm(stepId: string): string {
+  return `export async function ${workflowWakeHandlerName(stepId)}(ctx: RequestContext, event: ModuleWakeEvent): Promise<void>`;
+}
+
 /** Tick recovery of one process that has an `llm` step. The process file exports this name. */
 export function workflowRecoverName(processId: string): string {
   return `recuperar${pascal(processId)}`;
+}
+
+/** Fixed export of the tick recovery. The clock is `ctx.clock`; there is no `now` argument. */
+export function workflowRecoverForm(processId: string): string {
+  return `export async function ${workflowRecoverName(processId)}(ctx: RequestContext): Promise<void>`;
 }
