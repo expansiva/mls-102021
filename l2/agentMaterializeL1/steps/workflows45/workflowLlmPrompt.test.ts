@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { llmStepSection, loadWorkflowContext, workflowAnswerProblems, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { citedOntology, llmStepSection, loadWorkflowContext, workflowAnswerProblems, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 const prompt = readFileSync(fileURLToPath(new URL('./prompt.md', import.meta.url)), 'utf8');
 
@@ -121,4 +121,19 @@ test('the gate requires the llm export names only when the process has an llm st
   const read = async (ref: string) => ref.endsWith('/workflows.defs.ts') ? l4 : null;
   const problems = await workflowAnswerProblems({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, unit('cicloItem', TASKS), body, []);
   assert.ok(problems.some(problem => problem.includes('entregarPesquisar')), problems.join('\n'));
+});
+
+test('an entity the process only names keeps its states and transitions, not its fields', () => {
+  const ontology = `export const x = ${JSON.stringify({
+    entityId: 'Fornecedor',
+    title: 'Fornecedor',
+    description: 'long',
+    capabilities: { a: 'b' },
+    record: { fields: { id: { type: 'uuid' } } },
+    lifecycleStates: [{ state: 'ativo', reachedBy: 'actor' }],
+    transitions: [{ transitionId: 'inativar', from: ['ativo'], to: 'inativo' }],
+  }, null, 2)} as const;`;
+  const slim = JSON.parse(citedOntology(ontology)) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(slim).sort(), ['entityId', 'lifecycleStates', 'title', 'transitions']);
+  assert.equal(citedOntology('not an ontology'), 'not an ontology');
 });

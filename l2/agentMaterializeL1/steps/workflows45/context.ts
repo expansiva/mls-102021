@@ -163,6 +163,25 @@ export function llmStepSection(processId: string, steps: readonly WorkflowStepEm
   return signatures ? `${lines.join('\n')}\n\n${fence('ts', signatures)}` : lines.join('\n');
 }
 
+/**
+ * An entity the process only names (not its occurrence, not an operation target) needs its states and transitions
+ * (the model guessed them without), not its fields: the generated entity file above already carries those.
+ * Anything that does not parse as the ontology object stays whole.
+ */
+export function citedOntology(source: string): string {
+  const start = source.indexOf('= {');
+  const end = source.lastIndexOf('} as const');
+  if (start < 0 || end < start) return source.slice(0, 20000);
+  try {
+    const root = JSON.parse(source.slice(start + 2, end + 1)) as Record<string, unknown>;
+    const kept: Record<string, unknown> = {};
+    for (const key of ['entityId', 'title', 'lifecycleStates', 'transitions']) if (key in root) kept[key] = root[key];
+    return JSON.stringify(kept, null, 2).slice(0, 20000);
+  } catch {
+    return source.slice(0, 20000);
+  }
+}
+
 /** The facts of a workflowProcess def the context and the gate read. */
 export interface M12WorkflowFacts {
   processId: string;
@@ -324,7 +343,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   // record are read and written through them. And every entity the prose of the process names: the daily notice
   // reads the open tasks, and without the Tarefa entity the model guessed its states (todo, inProgress).
   const titles = (await entityNames(ctx)).flatMap(names => [{ entityId: names.entityId, title: names.title }, { entityId: names.entityId, title: names.entityId }]);
-  const entities = new Set([facts.occurrence, ...facts.operations.map(row => row.operation.split('.')[0]), ...citedEntities(process, titles)].filter(Boolean));
+  const core = new Set([facts.occurrence, ...facts.operations.map(row => row.operation.split('.')[0])].filter(Boolean));
+  const entities = new Set([...core, ...citedEntities(process, titles)]);
   for (const item of ctx.units) {
     const kind = item.definition.artifactType;
     if ((kind !== 'domainEntity' && kind !== 'repositoryPort') || !entities.has(String(item.definition.data.entityId ?? ''))) continue;
@@ -335,7 +355,10 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     ].join('\n\n')));
     if (kind === 'domainEntity') {
       const ontology = await ctx.read(ontologyRef(item.definition, item.outputRef));
-      if (ontology) parts.push(section(`l4 ontology of ${item.definition.artifactId} (source: states, transitions, derived fields)`, fence('ts', ontology.slice(0, 20000))));
+      if (ontology) {
+        const cited = !core.has(String(item.definition.data.entityId ?? ''));
+        parts.push(section(`l4 ontology of ${item.definition.artifactId} (source: states, transitions, derived fields)`, fence('ts', cited ? citedOntology(ontology) : ontology.slice(0, 20000))));
+      }
     }
   }
   const rulesSource = await readOptional(rulesFile(project, moduleName));
