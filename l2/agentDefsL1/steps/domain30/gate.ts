@@ -67,6 +67,8 @@ interface RecordRef {
   path: string;
   to: string[] | null;
   shape: boolean;
+  /** L4 `required === true`. Absent is not required, same as persistence. */
+  required: boolean;
 }
 
 interface Bag {
@@ -140,7 +142,8 @@ export function buildD1Domain(request: D1DomainRequest): D1DomainBuild {
   const extracted = new Map<string, string>();
   resolveRefs(refs, nested, known, resolutions, extracted, problems, blocked);
 
-  const cycles = structuralCycles(refs, resolutions, extracted, nested);
+  const order = orderOf(refs, resolutions, extracted, nested);
+  const cycles = order.cycles;
   for (const cycle of cycles) {
     error(problems, 'STRUCTURAL_CYCLE', cycle.join(' -> '), `Structural cycle ${cycle.join(' -> ')}.`);
     for (const node of cycle) {
@@ -190,7 +193,7 @@ export function buildD1Domain(request: D1DomainRequest): D1DomainBuild {
   const preserved = plans.filter(plan => plan.action === 'preserve').map(plan => plan.defPath).sort();
   const removed = plans.filter(plan => plan.action === 'remove').map(plan => plan.defPath).sort();
   const ok = !problems.some(problem => problem.severity === 'error');
-  const emit = ok ? emitParts(request, plans, valuePlans) : [];
+  const emit = ok ? emitParts(request, plans, valuePlans, order.skip) : [];
   if (ok && extracted.size === 0 && nested.length > 0) {
     normalizations.push({
       code: 'NESTED_KEPT',
@@ -354,7 +357,7 @@ function planValues(
   return plans;
 }
 
-function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values: D1DomainValuePlan[]): D1DomainEmit[] {
+function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values: D1DomainValuePlan[], orderSkip: Set<string>): D1DomainEmit[] {
   const emittedValues = values.filter(plan => plan.definition);
   const valueById = new Map(emittedValues.map(plan => [plan.valueObjectId, plan]));
   const entityById = new Map(plans.filter(plan => plan.definition && plan.action !== 'preserve' && plan.action !== 'remove').map(plan => [plan.entityId, plan]));
@@ -373,6 +376,7 @@ function emitParts(request: D1DomainRequest, plans: D1DomainEntityPlan[], values
     for (const field of fields) {
       if (!isRecord(field) || field.type !== 'record' || typeof field.ref !== 'string') continue;
       if (field.ref === plan.entityId) continue;
+      if (orderSkip.has(`${plan.entityId}:${typeof field.name === 'string' ? field.name : ''}`)) continue;
       if (entityById.has(field.ref)) depends.push(pipelineId(request.project, request.moduleName, 'domainEntity', field.ref));
       else if (valueById.has(field.ref)) depends.push(pipelineId(request.project, request.moduleName, 'valueObject', field.ref));
     }
@@ -471,12 +475,45 @@ function resolveRefs(
   }
 }
 
-function structuralCycles(
+/**
+ * Order graph. A self-reference is never an edge. A record that is not required
+ * (`required !== true`) and that closes a cycle leaves the graph; the field stays
+ * a record. Any cycle that remains is only required edges.
+ */
+function orderOf(
   refs: RecordRef[],
   resolutions: Map<string, Resolved>,
   extracted: Map<string, string>,
   nested: NestedNode[],
-): string[][] {
+): { cycles: string[][]; skip: Set<string> } {
+  const full = linkGraph(refs, resolutions, extracted, nested, new Set());
+  const found = findCycles(full);
+  const skip = new Set<string>();
+  if (found.length === 0) return { cycles: found, skip };
+  for (const ref of refs) {
+    if (ref.required) continue;
+    const to = orderTarget(ref, resolutions);
+    if (!to) continue;
+    if (reaches(full, to, ref.entityId)) skip.add(refKey(ref));
+  }
+  if (skip.size === 0) return { cycles: found, skip };
+  return { cycles: findCycles(linkGraph(refs, resolutions, extracted, nested, skip)), skip };
+}
+
+function orderTarget(ref: RecordRef, resolutions: Map<string, Resolved>): string {
+  const resolved = resolutions.get(refKey(ref));
+  if (!resolved) return '';
+  if (resolved.kind === 'entity' && resolved.id === ref.entityId) return '';
+  return resolved.kind === 'entity' ? resolved.id : `value:${resolved.id}`;
+}
+
+function linkGraph(
+  refs: RecordRef[],
+  resolutions: Map<string, Resolved>,
+  extracted: Map<string, string>,
+  nested: NestedNode[],
+  skip: Set<string>,
+): Map<string, string[]> {
   const graph = new Map<string, string[]>();
   const link = (from: string, to: string) => {
     const list = graph.get(from) || [];
@@ -485,10 +522,10 @@ function structuralCycles(
     if (!graph.has(to)) graph.set(to, []);
   };
   for (const ref of refs) {
-    const resolved = resolutions.get(refKey(ref));
-    if (!resolved) continue;
-    if (resolved.kind === 'entity' && resolved.id === ref.entityId) continue;
-    link(ref.entityId, resolved.kind === 'entity' ? resolved.id : `value:${resolved.id}`);
+    if (skip.has(refKey(ref))) continue;
+    const to = orderTarget(ref, resolutions);
+    if (!to) continue;
+    link(ref.entityId, to);
   }
   for (const [key, voId] of extracted) {
     const node = nested.find(item => `${item.entityId}:${item.path}` === key);
@@ -501,7 +538,20 @@ function structuralCycles(
       if (extractedHas(extracted, target)) link(`value:${voId}`, `value:${target}`);
     }
   }
-  return findCycles(graph);
+  return graph;
+}
+
+function reaches(graph: Map<string, string[]>, from: string, to: string): boolean {
+  const seen = new Set<string>();
+  const stack = [from];
+  while (stack.length > 0) {
+    const node = stack.pop() as string;
+    if (node === to) return true;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    for (const next of graph.get(node) || []) stack.push(next);
+  }
+  return false;
 }
 
 function findCycles(graph: Map<string, string[]>): string[][] {
@@ -1012,7 +1062,7 @@ function collectRefs(fields: Record<string, unknown>, entityId: string, prefix: 
     const path = prefix ? `${prefix}.${key}` : key;
     if (text(raw.type) === 'record') {
       const parsed = readTo(raw.to);
-      into.push({ entityId, path, to: parsed.ok ? parsed.ids : null, shape: !parsed.ok });
+      into.push({ entityId, path, to: parsed.ok ? parsed.ids : null, shape: !parsed.ok, required: raw.required === true });
     }
     if (text(raw.type) === 'object' && isRecord(raw.fields) && !Array.isArray(raw.fields)) {
       collectRefs(raw.fields, entityId, path, into);

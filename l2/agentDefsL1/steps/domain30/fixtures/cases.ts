@@ -28,13 +28,29 @@ export const cycleEntities = {
     entityId: 'Alpha',
     kind: 'entity',
     storage: { target: 'moduleDatabase' },
-    record: { fields: { other: { type: 'record', to: ['Beta'] } } },
+    record: { fields: { other: { type: 'record', required: true, to: ['Beta'] } } },
   },
   Beta: {
     entityId: 'Beta',
     kind: 'entity',
     storage: { target: 'moduleDatabase' },
-    record: { fields: { back: { type: 'record', to: ['Alpha'] } } },
+    record: { fields: { back: { type: 'record', required: true, to: ['Alpha'] } } },
+  },
+};
+
+/** Parent is required. The chosen child points back and is not required. */
+export const optionalCycleEntities = {
+  OpcaoCotacao: {
+    entityId: 'OpcaoCotacao',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { solicitacaoId: { type: 'record', required: true, to: ['SolicitacaoCompra'] } } },
+  },
+  SolicitacaoCompra: {
+    entityId: 'SolicitacaoCompra',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { opcaoEscolhidaId: { type: 'record', to: ['OpcaoCotacao'] } } },
   },
 };
 

@@ -25,6 +25,7 @@ import {
   moduleRulesWithCamelTwin,
   nestedEnumEntity,
   ns4Entity,
+  optionalCycleEntities,
   platformRole,
   selfReferenceEntity,
   sharedCatalog,
@@ -261,6 +262,22 @@ void test('a missing reference, an ambiguous target, a structural cycle and a na
 
   const fields = buildD1Domain(requestFrom(fieldCollisionEntity));
   assert.equal(codes(fields, 'error').includes('NAME_COLLISION'), true);
+});
+
+void test('an optional record that closes a cycle is not an order edge', () => {
+  const built = buildD1Domain(requestFrom(optionalCycleEntities));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  assert.equal(codes(built, 'error').includes('STRUCTURAL_CYCLE'), false);
+  const option = built.emit.find(item => item.pipeline.some(row => row.id.endsWith('/domainEntity/OpcaoCotacao')));
+  const request = built.emit.find(item => item.pipeline.some(row => row.id.endsWith('/domainEntity/SolicitacaoCompra')));
+  assert.ok(option);
+  assert.ok(request);
+  const chosen = (request.definition.data as unknown as EntityData).fields.find(field => field.name === 'opcaoEscolhidaId');
+  assert.deepEqual(chosen, { name: 'opcaoEscolhidaId', type: 'record', ref: 'OpcaoCotacao' });
+  assert.deepEqual(option.pipeline[0]?.dependsOn, ['102047/sampleModule/domainEntity/SolicitacaoCompra']);
+  assert.equal(option.definition.dependencies.some(file => file.endsWith('/solicitacaoCompra.defs.ts')), true);
+  assert.deepEqual(request.pipeline[0]?.dependsOn, []);
+  assert.equal(request.definition.dependencies.some(file => file.endsWith('/opcaoCotacao.defs.ts')), false);
 });
 
 void test('a record that names its own entity is not a structural cycle', () => {
