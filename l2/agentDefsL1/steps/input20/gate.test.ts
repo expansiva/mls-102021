@@ -463,3 +463,32 @@ void test('an inventoried hash still recomposes without a writer receipt', () =>
   assert.equal(file?.contentHash, HASH);
   assert.equal(resume.problems.some(item => item.code === 'EXISTS_WITHOUT_RECEIPT'), false);
 });
+
+void test('a port and a table of an entity outside the closure leave the plan with a review', () => {
+  const clean = build(loadHead());
+  const orphan = 'OrphanPanel';
+  const artifacts = clone(loadHead());
+  const backend = artifacts.backend as { ports: Array<Record<string, unknown>>; tables: Array<Record<string, unknown>> };
+  const effort = artifacts.effort as { tables: Array<Record<string, unknown>>; totals: { tables: { toCreate: number } } };
+  const keptEntity = clean.selection.usecases[0]?.entity;
+  assert.ok(keptEntity);
+  backend.ports.push(
+    { portId: 'OrphanPanelRepository', entity: orphan, status: 'toCreate' },
+    { portId: 'KeptEntityRepository', entity: keptEntity, status: 'toCreate' },
+  );
+  backend.tables.push({ tableId: 'orphanPanel', entity: orphan, status: 'toCreate' });
+  effort.tables.push({ tableId: 'orphanPanel', entity: orphan, status: 'toCreate' });
+  effort.totals.tables.toCreate += 1;
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.selection.ports.some(port => port.entity === orphan), false);
+  assert.equal(snapshot.selection.tables.some(table => table.entity === orphan), false);
+  assert.equal(snapshot.selection.entities.includes(orphan), false);
+  assert.equal(snapshot.selection.ports.some(port => port.portId === 'KeptEntityRepository'), true);
+  const portNotice = snapshot.problems.find(problem => problem.code === 'PORT_WITHOUT_USECASE');
+  const tableNotice = snapshot.problems.find(problem => problem.code === 'TABLE_WITHOUT_USECASE');
+  assert.equal(portNotice?.severity, 'review');
+  assert.match(portNotice?.message || '', /OrphanPanelRepository \(OrphanPanel\)/);
+  assert.equal(tableNotice?.severity, 'review');
+  assert.match(tableNotice?.message || '', /orphanPanel \(OrphanPanel\)/);
+  assert.equal(snapshot.consumersReleased, true);
+});

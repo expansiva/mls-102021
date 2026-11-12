@@ -278,6 +278,18 @@ export function buildD1InputSnapshot(
     : selectedUsecases;
   notePrunedRemovals(removed, previous, selectedUsecases, generatedUsecases, contractV2.size > 0);
   const entityClosure = closeEntities(generatedUsecases, relationships, new Set(entityIds));
+  const closedIds = new Set(entityClosure.ids);
+  // An active port or table whose entity has no generated usecase and no relationship into the closure is not planned.
+  const plannedPorts = selectedPorts.filter(port => {
+    if (closedIds.has(port.entity)) return true;
+    review(problems, 'PORT_WITHOUT_USECASE', paths.backend, `Port ${port.portId} (${port.entity}) is outside the entity closure.`, port.portId);
+    return false;
+  });
+  const plannedTables = selectedTables.filter(table => {
+    if (closedIds.has(table.entity)) return true;
+    review(problems, 'TABLE_WITHOUT_USECASE', paths.backend, `Table ${table.tableId} (${table.entity}) is outside the entity closure.`, table.tableId);
+    return false;
+  });
 
   const present = new Map(artifacts.presentDefs.map(item => [item.path, item.sha256]));
   const receipts = indexWriterReceipts(artifacts.writerReceipts);
@@ -285,8 +297,8 @@ export function buildD1InputSnapshot(
     moduleName,
     requests,
     usecases: generatedUsecases,
-    ports: selectedPorts,
-    tables: selectedTables,
+    ports: plannedPorts,
+    tables: plannedTables,
     entities: entityClosure,
     outbound,
     hasEffects,
@@ -313,8 +325,8 @@ export function buildD1InputSnapshot(
       pages,
       requests,
       usecases: generatedUsecases,
-      ports: selectedPorts,
-      tables: selectedTables,
+      ports: plannedPorts,
+      tables: plannedTables,
       entities: [...entityClosure.ids],
       outbound: outbound.map(item => item.id),
     },
