@@ -8,7 +8,7 @@
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -195,12 +195,41 @@ export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {
     if (source) ontologySources.push(source);
   }
   const operations = operationTransitionIds(ctx.units);
-  const source = workflowEngineSource(project, moduleName, workflowTablesFromL4(workflows), transitionDestinations(ontologySources, operations.size ? operations : undefined));
+  let tables = workflowTablesFromL4(workflows);
+  const unresolved: string[] = [];
+  // Shared page defs and the route in l5/config.json are written by the L2 finalize before this step.
+  if (tables.some(table => table.steps.some(step => step.kind === 'llm'))) {
+    const pages: HumanPageSource[] = [];
+    for (const ref of sharedPageRefs(project, moduleName)) {
+      const source = await ctx.read(ref);
+      const pageId = ref.split('/').pop()?.replace(/\.defs\.ts$/u, '') ?? '';
+      if (source && pageId) pages.push({ pageId, source });
+    }
+    const bound = bindHumanPages(tables, pages, await ctx.read(`_${project}_/l5/config.json`), moduleName);
+    tables = bound.tables;
+    unresolved.push(...bound.unresolved);
+  }
+  const source = workflowEngineSource(project, moduleName, tables, transitionDestinations(ontologySources, operations.size ? operations : undefined));
   const stored = await writeSource(info, source);
   const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
   const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
   const errors = unavailable ? [] : compileDiagnostics(results);
-  return [errors.length ? `workflowEngine: COMPILE_FAILED ${clip(errors.join(' | '), 400)}` : 'workflowEngine: written'];
+  const written = errors.length ? `workflowEngine: COMPILE_FAILED ${clip(errors.join(' | '), 400)}` : 'workflowEngine: written';
+  return [written, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
+}
+
+/** `l2/<module>/web/shared/<pageId>.defs.ts` present in the stor. */
+function sharedPageRefs(project: number, moduleName: string): string[] {
+  const files = (globalThis as { mls?: { stor?: { files?: Record<string, { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string }> } } }).mls?.stor?.files;
+  if (!files) return [];
+  const folder = `${moduleName}/web/shared`;
+  const refs: string[] = [];
+  for (const info of Object.values(files)) {
+    if (!info || info.status === 'deleted') continue;
+    if (info.project !== project || info.level !== 2 || info.folder !== folder || info.extension !== '.defs.ts' || !info.shortName) continue;
+    refs.push(`_${project}_/l2/${folder}/${info.shortName}.defs.ts`);
+  }
+  return refs.sort();
 }
 
 export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<{ header: string; facts: M12WorkflowFacts; human: string }> {

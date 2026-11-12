@@ -9,8 +9,8 @@ import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Mate
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12RunArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { moduleTickFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
-import { writeModuleTick } from '/_102021_/l2/agentMaterializeL1/steps/register70/agentM12Register.js';
+import { moduleTickFile, workflowFile } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { writeModuleTick, writeWakeRegistration } from '/_102021_/l2/agentMaterializeL1/steps/register70/agentM12Register.js';
 
 const PROJECT = 1;
 const MODULE = 'mod';
@@ -111,6 +111,35 @@ void test('a missing moduleTick.ts is written', async () => {
   assert.match(line, /^tick: aviso in /u);
   assert.match(await readOptional(tick) ?? '', /aviso/u);
   assert.equal(built.compiles(), 1);
+});
+
+void test('an llm process adds its recovery to the tick and its handlers to the registration', async () => {
+  const process = workflowFile(PROJECT, MODULE, 'processoPedido');
+  const registration = { project: PROJECT, level: 1, folder: `${MODULE}/layer_1_external/adapters/persistence`, shortName: 'registerRepositories', extension: '.ts' };
+  const current = [
+    'import { registerRepository } from \'/x\';',
+    'import { createPedidoRepository } from \'/a.js\';',
+    '',
+    'export function registerRepositories(): void {',
+    '  registerRepository("PedidoRepository", ctx => createPedidoRepository(ctx));',
+    '}',
+    '',
+  ].join('\n');
+  install([
+    { info: process, content: 'export {}\n' },
+    { info: registration, content: current },
+  ]);
+  const l4 = `export const workflows = ${JSON.stringify({ processes: [{ processId: 'processoPedido', tasks: [{ taskId: 'pesquisar', kind: 'llm', title: 'Pesquisa', next: [] }, { taskId: 'aguardar', kind: 'wait', title: 'Espera', next: [], wake: { mode: 'periodic' } }] }] })} as const;`;
+  const built = harness(false, []);
+  built.ctx.read = async ref => ref.endsWith('/workflows.defs.ts') ? l4 : null;
+  const line = await writeModuleTick(built.ctx, built.run);
+  assert.match(line, /tick: recuperarProcessoPedido in /u);
+  assert.match(await readOptional(tick) ?? '', /await recuperarProcessoPedido\(ctx\);/u);
+  const wake = await writeWakeRegistration(built.ctx, built.run);
+  assert.equal(wake, 'wake: entregarPesquisar, entregarAguardar');
+  const written = await readOptional(registration) ?? '';
+  assert.match(written, /routine: "pesquisar"/u);
+  assert.match(written, /routine: "aguardar"/u);
 });
 
 void test('force rewrites an existing moduleTick.ts', async () => {

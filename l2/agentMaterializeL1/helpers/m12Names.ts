@@ -104,3 +104,17 @@ export function contractFile(project: number, moduleName: string, pageId: string
 export function pageTestsFile(project: number, moduleName: string, pageId: string): M12FileInfo {
   return { project, level: 1, folder: `${moduleName}/layer_1_external/adapters/http/controllers`, shortName: pageId, extension: '.test.ts' };
 }
+
+function pascal(id: string): string {
+  return id ? `${id.charAt(0).toUpperCase()}${id.slice(1)}` : id;
+}
+
+/** Wake handler of one `llm` step or one periodic `wait` step. The process file exports this name. */
+export function workflowWakeHandlerName(stepId: string): string {
+  return `entregar${pascal(stepId)}`;
+}
+
+/** Tick recovery of one process that has an `llm` step. The process file exports this name. */
+export function workflowRecoverName(processId: string): string {
+  return `recuperar${pascal(processId)}`;
+}

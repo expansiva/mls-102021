@@ -25,6 +25,7 @@ const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
 const APP_CONTRACTS = '/_102034_/l1/server/layer_2_controllers/contracts.js';
 const REPOSITORY_REGISTRY = '/_102034_/l1/server/layer_2_application/repositoryRegistry.js';
+const WORKFLOW_ENGINE = '/_102034_/l1/workflow/index.js';
 const JSON_COLUMN = 'details';
 const JSON_PREFIX = 'json:';
 const LOCAL_STORAGE = 'moduleDatabase';
@@ -790,16 +791,55 @@ function helperSource(): string {
   ].join('\n');
 }
 
-function renderRegistration(output: string, rows: readonly { portId: string; factory: string; specifier: string }[]): string {
+export interface WakeRegistration {
+  projectId: string;
+  moduleId: string;
+  processId: string;
+  routine: string;
+  handler: string;
+  specifier: string;
+}
+
+/** Adapter rows of a registration this agent already wrote. Null when the file is not that shape. */
+export function parseRegistrationRows(source: string): Array<{ portId: string; factory: string; specifier: string }> | null {
+  const imports = [...source.matchAll(/import \{ (create[A-Za-z0-9_]+) \} from '([^']+)';/g)];
+  const calls = [...source.matchAll(/registerRepository\("([^"]+)", ctx => (create[A-Za-z0-9_]+)\(ctx\)\);/g)];
+  if (!imports.length || imports.length !== calls.length) return null;
+  const rows: Array<{ portId: string; factory: string; specifier: string }> = [];
+  for (const call of calls) {
+    const found = imports.find(item => item[1] === call[2]);
+    if (!found) return null;
+    rows.push({ portId: call[1], factory: call[2], specifier: found[2] });
+  }
+  return rows;
+}
+
+export function renderRegistration(output: string, rows: readonly { portId: string; factory: string; specifier: string }[], wakes: readonly WakeRegistration[] = []): string {
   const imports = rows.map(row => `import { ${row.factory} } from '${row.specifier}';`);
   const calls = rows.map(row => `  registerRepository(${JSON.stringify(row.portId)}, ctx => ${row.factory}(ctx));`);
+  const bySpec = new Map<string, string[]>();
+  for (const wake of wakes) {
+    const names = bySpec.get(wake.specifier) ?? [];
+    if (!names.includes(wake.handler)) names.push(wake.handler);
+    bySpec.set(wake.specifier, names);
+  }
+  const wakeImports = [...bySpec].map(([specifier, names]) => `import { ${names.join(', ')} } from '${specifier}';`);
+  const wakeCalls = wakes.map(wake => [
+    '  registerWorkflowWakeHandler(',
+    `    { projectId: ${JSON.stringify(wake.projectId)}, moduleId: ${JSON.stringify(wake.moduleId)}, processId: ${JSON.stringify(wake.processId)}, routine: ${JSON.stringify(wake.routine)} },`,
+    `    ${wake.handler},`,
+    '  );',
+  ].join('\n'));
   return [
     header(output),
     `import { registerRepository } from '${REPOSITORY_REGISTRY}';`,
+    ...(wakes.length ? [`import { registerWorkflowWakeHandler } from '${WORKFLOW_ENGINE}';`] : []),
     ...imports,
+    ...wakeImports,
     '',
     'export function registerRepositories(): void {',
     ...calls,
+    ...wakeCalls,
     '}',
     '',
     'registerRepositories();',

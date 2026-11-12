@@ -6,8 +6,9 @@ import { updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Inte
 import { readOptional, readUnitStatus, removeStorFile, stateReady, storExists, unproven, writeJson, writeSource, writeText } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { moduleTickFile, moduleTickSource } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
-import { fileRef, infoOfRef, pageTestsFile, projectJsonFile, registrationFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { moduleSpecifier, moduleTickFile, moduleTickSource, tickRecoveries, workflowFile, workflowTablesFromL4 } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
+import { parseRegistrationRows, renderRegistration, type WakeRegistration } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
+import { fileRef, infoOfRef, pageTestsFile, projectJsonFile, registrationFile, workflowWakeHandlerName, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { loadRegistrationFiles, projectLockRef, reconcileL5Backend, runtimeProjectJsonRef, type L5ReconcileResult } from '/_102021_/l2/agentMaterializeL1/emitters/reconcileL5.js';
 
@@ -52,19 +53,71 @@ export async function writeModuleTick(ctx: M12Context, run: M12RunArgs): Promise
     if (!trigger || typeof trigger !== 'object' || (trigger as { kind?: unknown }).kind !== 'scheduled') continue;
     if (storExists(unit.output)) scheduled.push(String(unit.definition.data.processId ?? unit.unitId));
   }
-  if (!scheduled.length) return '';
+  const tables = workflowTablesFromL4(await ctx.read(`_${run.project}_/l4/${run.module}/workflows.defs.ts`));
+  const recoveries = tickRecoveries(tables).filter(item => storExists(workflowFile(run.project, run.module, item.processId)));
+  const missing = tickRecoveries(tables).filter(item => !storExists(workflowFile(run.project, run.module, item.processId)));
+  if (!scheduled.length && !recoveries.length) {
+    return missing.length ? `tick: RECOVERY_UNWRITTEN: ${missing.map(item => item.processId).join(', ')}` : '';
+  }
   const info = moduleTickFile(run.project, run.module);
   if (!run.force && storExists(info)) return 'tick: kept: exists';
-  const source = moduleTickSource(run.project, run.module, scheduled.sort());
+  const source = moduleTickSource(run.project, run.module, scheduled.sort(), recoveries);
   const stored = await writeSource(info, source);
   const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
   const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
   const errors = unavailable ? [] : compileDiagnostics(results);
   // The platform loads onTick from the persistenceEntrypoint only (102034 registry.ts loadModuleTickHandlers); the
   // config composer (nodejsSaveConfigJson) writes it when moduleTick.ts is on disk. Named, never silent.
+  const names = [...scheduled.sort(), ...recoveries.map(item => item.fn)];
+  const absent = missing.length ? ` RECOVERY_UNWRITTEN: ${missing.map(item => item.processId).join(', ')}` : '';
   return errors.length
     ? `tick: COMPILE_FAILED ${clip(errors.join(' | '), 400)}`
-    : `tick: ${scheduled.join(', ')} in ${fileRef(info)} (loaded by the runtime tick from the persistenceEntrypoint the composer writes: loadModuleTickHandlers)`;
+    : `tick: ${names.join(', ')} in ${fileRef(info)} (loaded by the runtime tick from the persistenceEntrypoint the composer writes: loadModuleTickHandlers)${absent}`;
+}
+
+function registrationInfo(project: number, moduleName: string): M12FileInfo {
+  return { project, level: 1, folder: `${moduleName}/layer_1_external/adapters/persistence`, shortName: 'registerRepositories', extension: '.ts' };
+}
+
+/** Wake handlers on the registration the persistence step already wrote. A file that already lists them stays, unless force. */
+export async function writeWakeRegistration(ctx: M12Context, run: M12RunArgs): Promise<string> {
+  const tables = workflowTablesFromL4(await ctx.read(`_${run.project}_/l4/${run.module}/workflows.defs.ts`));
+  const wakes: WakeRegistration[] = [];
+  for (const table of tables) {
+    const file = workflowFile(run.project, run.module, table.processId);
+    if (!storExists(file)) continue;
+    for (const step of table.steps) {
+      const wanted = step.kind === 'llm' || (step.kind === 'wait' && step.wakeMode === 'periodic');
+      if (!wanted) continue;
+      if (!/^[A-Za-z_$][\w$]*$/u.test(step.stepId)) return `wake: WAKE_NAME_INVALID: ${table.processId}/${step.stepId}`;
+      wakes.push({
+        projectId: String(run.project),
+        moduleId: run.module,
+        processId: table.processId,
+        routine: step.stepId,
+        handler: workflowWakeHandlerName(step.stepId),
+        specifier: moduleSpecifier(file),
+      });
+    }
+  }
+  if (!wakes.length) return '';
+  const info = registrationInfo(run.project, run.module);
+  const current = await readOptional(info);
+  if (current === null) return 'wake: REGISTRATION_ABSENT';
+  const present = wakes.every(wake => current.includes(`routine: ${JSON.stringify(wake.routine)}`) && current.includes(wake.handler));
+  if (!run.force && present) return 'wake: kept';
+  const rows = parseRegistrationRows(current);
+  if (!rows) return 'wake: REGISTRATION_UNPARSED';
+  const source = renderRegistration(fileRef(info), rows, wakes);
+  const stored = await writeSource(info, source);
+  const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
+  const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
+  const errors = unavailable ? [] : compileDiagnostics(results);
+  if (errors.length) {
+    await writeSource(info, current);
+    return `wake: COMPILE_FAILED ${clip(errors.join(' | '), 400)}`;
+  }
+  return `wake: ${wakes.map(wake => wake.handler).join(', ')}`;
 }
 
 async function register(run: M12RunArgs): Promise<string> {
@@ -86,6 +139,7 @@ async function register(run: M12RunArgs): Promise<string> {
   }
   if (missingControllers.length) return `pending: controller(s) not generated: ${missingControllers.join(', ')}; the module was not registered.`;
   const tick = await writeModuleTick(ctx, run);
+  const wake = await writeWakeRegistration(ctx, run);
   const files = await loadRegistrationFiles(project, moduleName, ready, ctx.read);
   const lock = infoOfRef(projectLockRef(project), project)!;
   if (await readOptional(lock) !== null) return `pending: ${projectLockRef(project)} is held (${clip((await readOptional(lock)) ?? '', 200)}). If no run is active, remove it and run again.`;
@@ -127,7 +181,7 @@ async function register(run: M12RunArgs): Promise<string> {
     const expected = result.effectiveSource === 'l5/runtime.project.json' ? runtimeProjectJson : projectJson;
     if (current !== expected) return 'pending: l5 changed during the registration. The concurrent bytes were kept.';
     if (next !== current) await writeText(target, next);
-    return `${next === current ? 'unchanged' : 'patch'}: ${result.detail}${tick ? `\n${tick}` : ''}${pendings.length ? `\n${pendings.join('\n')}` : ''}`;
+    return `${next === current ? 'unchanged' : 'patch'}: ${result.detail}${tick ? `\n${tick}` : ''}${wake ? `\n${wake}` : ''}${pendings.length ? `\n${pendings.join('\n')}` : ''}`;
   } finally {
     await removeStorFile(lock);
   }
