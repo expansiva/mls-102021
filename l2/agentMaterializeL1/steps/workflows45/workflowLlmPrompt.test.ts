@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { citedOntology, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { citedOntology, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowEngineShown, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 const prompt = readFileSync(fileURLToPath(new URL('./prompt.md', import.meta.url)), 'utf8');
 
@@ -121,6 +121,34 @@ test('the gate requires the llm export names only when the process has an llm st
   const read = async (ref: string) => ref.endsWith('/workflows.defs.ts') ? l4 : null;
   const problems = await workflowAnswerProblems({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, unit('cicloItem', TASKS), body, []);
   assert.ok(problems.some(problem => problem.includes('entregarPesquisar')), problems.join('\n'));
+});
+
+test('the worker context shows the transitionTo keys', () => {
+  const source = [
+    'export const workflowPlans = {',
+    '  ciclo: { processId: "ciclo" },',
+    '};',
+    'export const transitionTo = {',
+    '  enviar: "enviada",',
+    '  autorizar: "autorizada",',
+    '} as const satisfies Readonly<Record<string, string>>;',
+    'export type TransitionKey = keyof typeof transitionTo;',
+    'export function destinationOf(operation: TransitionKey): string {',
+    '  return transitionTo[operation];',
+    '}',
+    'export function noticeState(): string {',
+    '  return "pending";',
+    '}',
+  ].join('\n');
+  const shown = workflowEngineShown(source);
+  assert.match(shown, /enviar: "enviada"/u);
+  assert.match(shown, /autorizar: "autorizada"/u);
+  assert.match(shown, /as const satisfies Readonly<Record<string, string>>/u);
+  assert.equal(/^export const transitionTo = \{ … \}/mu.test(shown), false);
+  assert.match(shown, /export const workflowPlans = \{ … \}/u);
+  assert.match(shown, /export function noticeState\(\): string \{ … \}/u);
+  assert.ok(shown.includes('export type TransitionKey = keyof typeof transitionTo;'));
+  assert.ok(shown.includes('export function destinationOf(operation: TransitionKey): string { … }'));
 });
 
 test('an entity the process only names keeps its states and transitions, not its fields', () => {

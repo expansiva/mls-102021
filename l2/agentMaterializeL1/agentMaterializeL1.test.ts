@@ -21,7 +21,7 @@ import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/con
 import { createRequestContext } from '/_102034_/l1/server/layer_2_controllers/execBff.js';
 import { prepareWorkflowPlan, type TaskOccurrenceAdvanceCommand, type TaskOccurrenceOpenCommand, type TaskOccurrencePort, type TaskOccurrenceSnapshot, type TaskWorkflowEngine, type WorkflowPlanInput } from '/_102034_/l1/workflow/index.js';
 import { childWriteMethods, processPortMethods, routeChildWrites, withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
-import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { REGISTRATION_REF, engineUseRules, l4Process, loadWorkflowContext, onboardingModuleId, operationUsecase, registrationAccessSection, workflowEngineShown, workflowFacts, workflowGate, workflowTransitionProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { collapseCollections, emitPersistence, type ReferenceSeedDataset } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { referenceSeedUnit, seedRowProblems, seedRowsHuman } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
@@ -1136,6 +1136,19 @@ test('the onboarding module sees the platform access-request signature; another 
 
 const TAREFAS_L4 = path.join(ROOT, `mls-${PROJECT}`, 'l4', 'tarefas');
 
+function probeErrors(source: string): readonly ts.Diagnostic[] {
+  const fileName = path.join(tmpdir(), 'd1-171-transitionTo.ts');
+  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
+  const host = ts.createCompilerHost(options);
+  const read = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion, onError, shouldCreate) => (
+    name === fileName ? ts.createSourceFile(name, source, languageVersion, true) : read(name, languageVersion, onError, shouldCreate)
+  );
+  const exists = host.fileExists.bind(host);
+  host.fileExists = name => name === fileName || exists(name);
+  return ts.getPreEmitDiagnostics(ts.createProgram([fileName], options, host)).filter(item => item.file?.fileName === fileName);
+}
+
 test('the module engine copies the l4 step tables and the ontology destination of each operation (§13)', { skip: !existsSync(path.join(TAREFAS_L4, 'workflows.defs.ts')) }, () => {
   const l4 = readFileSync(path.join(TAREFAS_L4, 'workflows.defs.ts'), 'utf8');
   const ontology = readFileSync(path.join(TAREFAS_L4, 'ontology', 'Tarefa.defs.ts'), 'utf8');
@@ -1175,6 +1188,33 @@ test('the module engine copies the l4 step tables and the ontology destination o
   const tick = moduleTickSource(102047, 'tarefas', ['avisoDiario']);
   assert.ok(tick.includes("import { onTick as avisoDiarioTick } from '/_102047_/l1/tarefas/layer_2_application/workflows/avisoDiario.js';"));
   assert.ok(tick.includes('export async function onTick(ctx: RequestContext, now: Date)') && tick.includes('TICK_FAILED'), 'one failing process does not stop the others');
+});
+
+test('transitionTo is a literal map: a known key typechecks and an unknown key does not', () => {
+  const source = workflowEngineSource(102047, 'compras', [], { enviar: 'enviada', autorizar: 'autorizada' });
+  assert.match(source, /enviar: "enviada"/u);
+  assert.match(source, /\} as const satisfies Readonly<Record<string, string>>;/u);
+  const literal = workflowEngineShown(source).match(/export const transitionTo = \{[\s\S]*?satisfies Readonly<Record<string, string>>;/u)?.[0] ?? '';
+  assert.match(literal, /autorizar: "autorizada"/u);
+  assert.equal(probeErrors(`${literal}\nconst ok: string = transitionTo.enviar;\n`).length, 0);
+  assert.ok(probeErrors(`${literal}\nconst bad: string = transitionTo['X.enviar'];\n`).length > 0);
+  const keyType = source.match(/export type TransitionKey = keyof typeof transitionTo;/u)?.[0] ?? '';
+  const lookup = source.match(/export function destinationOf\(operation: TransitionKey\): string \{[\s\S]*?\n\}/u)?.[0] ?? '';
+  assert.ok(keyType && lookup, 'the engine exports TransitionKey and destinationOf');
+  const typed = `${literal}\n${keyType}\n${lookup}\n`;
+  assert.equal(probeErrors(`${typed}const ok: string = destinationOf('enviar');\n`).length, 0);
+  assert.ok(probeErrors(`${typed}const bad: string = destinationOf('X.enviar');\n`).length > 0);
+  const byString = probeErrors(`${typed}function helper(operation: string): string { return transitionTo[operation]; }\n`);
+  assert.ok(byString.some(item => item.code === 7053), 'an index by string is TS7053');
+  const byTemplate = probeErrors(`${typed}function helper(name: string): string { return transitionTo[\`X.\${name}\`]; }\n`);
+  assert.ok(byTemplate.some(item => item.code === 7053), 'an index by template is TS7053');
+  const bare = workflowEngineSource(102047, 'semProcesso', [], {});
+  assert.match(bare, /export const transitionTo = \{\n\} as const satisfies Readonly<Record<string, string>>;/u);
+  const previous = bare.replace(
+    'export const transitionTo = {\n} as const satisfies Readonly<Record<string, string>>;',
+    'export const transitionTo: Readonly<Record<string, string>> = {\n};',
+  );
+  assert.equal(previous.replace(/export const transitionTo:[\s\S]*?\};/u, ''), bare.replace(/export const transitionTo =[\s\S]*?;/u, ''));
 });
 
 test('the generated module engine opens with the process plan, does the owner action on entry, and keeps an absent notice pending', { skip: !existsSync(path.join(TAREFAS_L4, 'workflows.defs.ts')) }, async () => {

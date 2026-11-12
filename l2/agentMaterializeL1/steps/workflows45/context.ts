@@ -40,6 +40,23 @@ function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
 
+/** Worker view of the module engine: export signatures, with the whole `transitionTo` (its keys) in place of the collapsed line. */
+export function workflowEngineShown(source: string): string {
+  const shown = exportSignatures(source).split('\n').filter(line => !/^export const transitionTo\b/u.test(line));
+  const literal = transitionToLiteral(source);
+  return [...shown, literal].filter(part => part.length > 0).join('\n');
+}
+
+function transitionToLiteral(source: string): string {
+  const start = source.search(/^export const transitionTo\b/mu);
+  if (start < 0) return '';
+  const marker = 'satisfies Readonly<Record<string, string>>;';
+  const satisfies = source.indexOf(marker, start);
+  if (satisfies >= 0) return source.slice(start, satisfies + marker.length);
+  const end = source.indexOf('};', start);
+  return end < 0 ? '' : source.slice(start, end + 2);
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
@@ -406,7 +423,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
 
   const adapter = workflowEngineFile(project, moduleName);
   const adapterSource = await readOptional(adapter);
-  if (adapterSource) parts.push(section('The module engine (one engine per process, the step tables, the destination status of each operation)', [`Import from \`${moduleSpecifier(adapter)}\`. Open and advance through it. \`transitionTo\` is the destination status of each operation.`, fence('ts', exportSignatures(adapterSource))].join('\n\n')));
+  if (adapterSource) parts.push(section('The module engine (one engine per process, the step tables, the destination status of each operation)', [`Import from \`${moduleSpecifier(adapter)}\`. Open and advance through it. \`transitionTo\` is the destination status of each operation.`, fence('ts', workflowEngineShown(adapterSource))].join('\n\n')));
   parts.push(section('Occurrence record id', [
     `On creation, \`recordId = occurrenceRecordId(ctx, '${facts.processId}')\` and the create usecase is called with \`createOccurrenceContext(ctx, recordId)\`.`,
     'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
