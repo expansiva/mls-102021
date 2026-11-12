@@ -33,6 +33,8 @@ export interface WorkflowTableEmit {
   processId: string;
   title: string;
   moduleTitle: string;
+  /** Entity of the occurrence record: the first `entityRef` reached from the start step. */
+  recordEntity?: string;
   steps: WorkflowStepEmit[];
 }
 
@@ -128,6 +130,7 @@ export function workflowTablesFromL4(source: string | null): WorkflowTableEmit[]
     if (!processId || !Array.isArray(row.tasks)) continue;
     const title = typeof row.title === 'string' && row.title ? row.title : processId;
     const steps: WorkflowStepEmit[] = [];
+    const entityOf = new Map<string, string>();
     for (const task of row.tasks) {
       if (!task || typeof task !== 'object') continue;
       const item = task as Record<string, unknown>;
@@ -143,9 +146,11 @@ export function workflowTablesFromL4(source: string | null): WorkflowTableEmit[]
       const wake = item.wake;
       if (wake && typeof wake === 'object' && typeof (wake as { mode?: unknown }).mode === 'string') step.wakeMode = (wake as { mode: string }).mode;
       steps.push(step);
+      if (typeof item.entityRef === 'string' && item.entityRef) entityOf.set(stepId, item.entityRef);
     }
+    const recordEntity = firstRecordEntity(steps, entityOf);
     addReturnToPreviousHuman(steps);
-    tables.push({ processId, title, moduleTitle: moduleTitle || processId, steps });
+    tables.push({ processId, title, moduleTitle: moduleTitle || processId, ...(recordEntity ? { recordEntity } : {}), steps });
   }
   return tables;
 }
@@ -356,46 +361,76 @@ export interface HumanPageSource {
 }
 
 /**
- * Page address of each human step. The first shared page whose journey starts with `<journeyRef>/` and
- * that opens the record from a URL param. No page, or no route: the step stays without `params`.
+ * Page address of each human step. The record is the first `entityRef` reached from the start step.
+ * The page is the first, by `pageId`, whose journey starts with `<journeyRef>/` and whose URL param
+ * is `<lowerCamel(entity)>Id`. No entity, no page, or no route: the step stays without `params`.
  */
 export function bindHumanPages(tables: readonly WorkflowTableEmit[], pages: readonly HumanPageSource[], configText: string | null, moduleName: string): { tables: WorkflowTableEmit[]; unresolved: string[] } {
-  const catalog = pages.map(page => ({ pageId: page.pageId, root: jsonObject(page.source), recordParam: urlRecordParam(jsonObject(page.source)) }));
+  const catalog = pages.map(page => ({ pageId: page.pageId, root: jsonObject(page.source) }));
   const unresolved: string[] = [];
-  const next = tables.map(table => ({
-    ...table,
-    steps: table.steps.map(step => {
-      if (step.kind !== 'human') return step;
-      const bound = step.journeyRef ? resolveHumanPage(catalog, step.journeyRef, configText, moduleName) : undefined;
-      if (!bound) {
-        unresolved.push(`${table.processId}/${step.stepId}`);
-        return step;
-      }
-      return { ...step, params: bound };
-    }),
-  }));
+  const next = tables.map(table => {
+    if (!table.recordEntity) {
+      if (table.steps.some(step => step.kind === 'human')) unresolved.push(`RECORD_ENTITY_MISSING: ${table.processId}`);
+      return table;
+    }
+    const recordParam = `${lowerFirst(table.recordEntity)}Id`;
+    return {
+      ...table,
+      steps: table.steps.map(step => {
+        if (step.kind !== 'human') return step;
+        const bound = step.journeyRef ? resolveHumanPage(catalog, step.journeyRef, recordParam, configText, moduleName) : undefined;
+        if (!bound) {
+          unresolved.push(`${table.processId}/${step.stepId}`);
+          return step;
+        }
+        return { ...step, params: bound };
+      }),
+    };
+  });
   return { tables: next, unresolved };
 }
 
-function urlRecordParam(root: Record<string, unknown> | undefined): string | undefined {
-  const entry = root?.entry;
-  if (!entry || typeof entry !== 'object') return undefined;
-  const params = (entry as { params?: unknown }).params;
-  if (!params || typeof params !== 'object' || Array.isArray(params)) return undefined;
-  for (const [name, spec] of Object.entries(params as Record<string, unknown>)) {
-    if (!spec || typeof spec !== 'object') continue;
-    const sources = (spec as { sources?: unknown }).sources;
-    if (Array.isArray(sources) && sources.includes('url')) return name;
+function lowerFirst(value: string): string {
+  return value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+}
+
+/** First `entityRef` on the walk that starts at the step nobody points to and follows `next`. */
+function firstRecordEntity(steps: readonly WorkflowStepEmit[], entityOf: ReadonlyMap<string, string>): string | undefined {
+  const pointed = new Set(steps.flatMap(step => step.next));
+  const start = steps.find(step => !pointed.has(step.stepId)) ?? steps[0];
+  if (!start) return undefined;
+  const byId = new Map(steps.map(step => [step.stepId, step]));
+  const queue = [start.stepId];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const named = entityOf.get(id);
+    if (named) return named;
+    const step = byId.get(id);
+    if (step) queue.push(...step.next);
   }
   return undefined;
 }
 
-function resolveHumanPage(catalog: readonly { pageId: string; root: Record<string, unknown> | undefined; recordParam: string | undefined }[], journeyRef: string, configText: string | null, moduleName: string): { page: string; recordParam: string } | undefined {
+function urlRecordParam(root: Record<string, unknown> | undefined, recordParam: string): boolean {
+  const entry = root?.entry;
+  if (!entry || typeof entry !== 'object') return false;
+  const params = (entry as { params?: unknown }).params;
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return false;
+  const spec = (params as Record<string, unknown>)[recordParam];
+  if (!spec || typeof spec !== 'object') return false;
+  const sources = (spec as { sources?: unknown }).sources;
+  return Array.isArray(sources) && sources.includes('url');
+}
+
+function resolveHumanPage(catalog: readonly { pageId: string; root: Record<string, unknown> | undefined }[], journeyRef: string, recordParam: string, configText: string | null, moduleName: string): { page: string; recordParam: string } | undefined {
   const ordered = [...catalog].sort((a, b) => a.pageId < b.pageId ? -1 : a.pageId > b.pageId ? 1 : 0);
   for (const page of ordered) {
-    if (!page.recordParam || !journeyStarts(page.root, journeyRef)) continue;
+    if (!urlRecordParam(page.root, recordParam) || !journeyStarts(page.root, journeyRef)) continue;
     const address = pageAddress(configText, moduleName, page.pageId);
-    if (address) return { page: address, recordParam: page.recordParam };
+    if (address) return { page: address, recordParam };
   }
   return undefined;
 }
@@ -419,8 +454,8 @@ function pageAddress(configText: string | null, moduleName: string, pageId: stri
     return undefined;
   }
   if (!config || typeof config !== 'object') return undefined;
-  const modules = (config as { modules?: unknown }).modules;
-  if (!Array.isArray(modules)) return undefined;
+  const modules = configModules(config as Record<string, unknown>);
+  if (!modules) return undefined;
   const mod = modules.find(item => {
     if (!item || typeof item !== 'object') return false;
     const row = item as { moduleId?: unknown; moduleName?: unknown };
@@ -442,4 +477,18 @@ function pageAddress(configText: string | null, moduleName: string, pageId: stri
     if (row.id === pageId && typeof row.href === 'string' && row.href) return row.href;
   }
   return undefined;
+}
+
+/** Top-level `modules[]` when that array exists; otherwise every `projects[*].modules[]`. */
+function configModules(config: Record<string, unknown>): unknown[] | undefined {
+  if (Array.isArray(config.modules)) return config.modules;
+  const projects = config.projects;
+  if (!projects || typeof projects !== 'object') return undefined;
+  const modules: unknown[] = [];
+  for (const project of Object.values(projects)) {
+    if (!project || typeof project !== 'object') continue;
+    const rows = (project as { modules?: unknown }).modules;
+    if (Array.isArray(rows)) modules.push(...rows);
+  }
+  return modules.length > 0 ? modules : undefined;
 }

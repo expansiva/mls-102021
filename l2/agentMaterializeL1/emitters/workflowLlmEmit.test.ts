@@ -16,7 +16,7 @@ function l4(processId: string, tasks: unknown[]): string {
 }
 
 const TASKS = [
-  { taskId: 'preencher', kind: 'human', title: 'Preencha o pedido e envie para pesquisa.', actorRef: 'solicitante', journeyRef: 'pedidos', next: ['pesquisar'] },
+  { taskId: 'preencher', kind: 'human', title: 'Preencha o pedido e envie para pesquisa.', actorRef: 'solicitante', journeyRef: 'pedidos', entityRef: 'Pedido', next: ['pesquisar'] },
   { taskId: 'pesquisar', kind: 'llm', title: 'Pesquisar o item pedido.', next: ['aprovar', 'preencher'] },
   { taskId: 'aprovar', kind: 'human', title: 'Aprove o pedido ou devolva com o motivo.', actorRef: 'aprovador', journeyRef: 'pedidos', next: ['aguardar', 'preencher'] },
   { taskId: 'aguardar', kind: 'wait', title: 'Aguardar o prazo depois da aprovação.', next: ['end'], wake: { mode: 'periodic' } },
@@ -129,7 +129,7 @@ test('an llm process adds the previous human step to each mechanical and llm ste
 
 test('a human step with no page is named PAGE_UNRESOLVED and leaves params off', () => {
   const tables = workflowTablesFromL4(l4('processoPedido', [
-    { taskId: 'preencher', kind: 'human', title: 'Preencha', actorRef: 'solicitante', journeyRef: 'ausente', next: ['pesquisar'] },
+    { taskId: 'preencher', kind: 'human', title: 'Preencha', actorRef: 'solicitante', journeyRef: 'ausente', entityRef: 'Pedido', next: ['pesquisar'] },
     { taskId: 'pesquisar', kind: 'llm', title: 'Pesquisa', next: [] },
   ]));
   const bound = bindHumanPages(tables, [{ pageId: 'pedidos', source: SHARED }], CONFIG, 'pedido');
@@ -140,4 +140,75 @@ test('a human step with no page is named PAGE_UNRESOLVED and leaves params off',
   }), 'pedido');
   assert.deepEqual(viaHref.unresolved, []);
   assert.deepEqual(viaHref.tables[0]?.steps[0]?.params, { page: '/pedido/nav', recordParam: 'pedidoId' });
+});
+
+function pageDef(entryParams: Record<string, unknown>, steps: string[]): string {
+  return `export const definition = ${JSON.stringify({
+    entry: { params: entryParams },
+    journeys: steps.map(step => ({ step })),
+  })} as const;`;
+}
+
+const URL = (extra: Record<string, unknown> = {}) => ({ type: 'string', sources: ['url'], ...extra });
+
+test('wfteste human steps open /wfteste/pedidos by pedidoId from projects[].modules[]', () => {
+  const tables = workflowTablesFromL4(l4('processoPedido', TASKS));
+  const config = JSON.stringify({
+    projects: { '102047': { modules: [{ moduleId: 'pedido', frontend: { pages: [{ pageId: 'pedidos', route: '/wfteste/pedidos' }] } }] } },
+  });
+  const bound = bindHumanPages(tables, [{ pageId: 'pedidos', source: SHARED }], config, 'pedido');
+  assert.deepEqual(bound.unresolved, []);
+  const params = bound.tables[0]?.steps.filter(step => step.kind === 'human').map(step => step.params);
+  assert.deepEqual(params, [
+    { page: '/wfteste/pedidos', recordParam: 'pedidoId' },
+    { page: '/wfteste/pedidos', recordParam: 'pedidoId' },
+  ]);
+});
+
+test('compras binds the occurrence record, not the first URL param', () => {
+  const tasks = [
+    { taskId: 'abrirSolicitacao', kind: 'human', actorRef: 'comprador', journeyRef: 'abrirSolicitacao', next: ['conferirCompletude'], description: 'Abra' },
+    { taskId: 'conferirCompletude', kind: 'mechanical', entityRef: 'SolicitacaoCompra', next: ['pesquisarOpcoes'], description: 'Confira' },
+    { taskId: 'pesquisarOpcoes', kind: 'llm', entityRef: 'OpcaoCotacao', next: ['autorizarSolicitacao'], description: 'Pesquise' },
+    { taskId: 'autorizarSolicitacao', kind: 'human', actorRef: 'gerenteCompras', journeyRef: 'autorizarSolicitacao', next: ['registrarRecebimento'], description: 'Autorize' },
+    { taskId: 'registrarRecebimento', kind: 'human', actorRef: 'almoxarife', journeyRef: 'registrarRecebimento', next: [], description: 'Receba' },
+  ];
+  const tables = workflowTablesFromL4(`export const workflows = ${JSON.stringify({ moduleName: 'compras', processes: [{ processId: 'cicloSolicitacaoCompra', title: 'Ciclo', tasks }] })} as const;`);
+  const pages = [
+    { pageId: 'painel_compras', source: pageDef({ opcaoEscolhidaId: URL() }, ['autorizarSolicitacao/localizarPendentes']) },
+    { pageId: 'solicitacoes', source: pageDef({
+      produtoId: URL({ sources: ['url', 'localStorage'] }),
+      solicitacaoCompraId: URL(),
+    }, ['abrirSolicitacao/criarSolicitacao', 'autorizarSolicitacao/analisarSolicitacao']) },
+    { pageId: 'entregas_a_receber', source: pageDef({ pedidoCompraId: URL() }, ['registrarRecebimento/abrirLembrete']) },
+    { pageId: 'pedidos', source: pageDef({ pedidoCompraId: URL() }, ['registrarRecebimento/conferirPedido']) },
+  ];
+  const config = JSON.stringify({
+    projects: {
+      '102047': {
+        modules: [{
+          moduleId: 'compras',
+          frontend: { pages: [
+            { pageId: 'solicitacoes', route: '/compras/solicitacoes' },
+            { pageId: 'painel_compras', route: '/compras/painel_compras' },
+            { pageId: 'entregas_a_receber', route: '/compras/entregas_a_receber' },
+            { pageId: 'pedidos', route: '/compras/pedidos' },
+          ] },
+        }],
+      },
+    },
+  });
+  const bound = bindHumanPages(tables, pages, config, 'compras');
+  const paramsOf = (stepId: string) => bound.tables[0]?.steps.find(step => step.stepId === stepId)?.params;
+  assert.deepEqual(paramsOf('abrirSolicitacao'), { page: '/compras/solicitacoes', recordParam: 'solicitacaoCompraId' });
+  assert.deepEqual(paramsOf('autorizarSolicitacao'), { page: '/compras/solicitacoes', recordParam: 'solicitacaoCompraId' });
+  assert.equal(paramsOf('registrarRecebimento'), undefined);
+  assert.deepEqual(bound.unresolved, ['cicloSolicitacaoCompra/registrarRecebimento']);
+});
+
+test('a process with no entityRef leaves every human step without params', () => {
+  const tables = workflowTablesFromL4(l4('processoPedido', TASKS.map(task => ({ ...task, entityRef: undefined }))));
+  const bound = bindHumanPages(tables, [{ pageId: 'pedidos', source: SHARED }], CONFIG, 'pedido');
+  assert.deepEqual(bound.unresolved, ['RECORD_ENTITY_MISSING: processoPedido']);
+  assert.equal(bound.tables[0]?.steps.some(step => step.params), false);
 });
