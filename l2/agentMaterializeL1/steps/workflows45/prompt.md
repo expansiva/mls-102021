@@ -44,6 +44,11 @@ whether it opens the occurrence or advances its step, who acts now, what it tell
   nothing of the progress goes on the table, unless the l4 declares the field. This service does not keep
   a transition table of its own. The engine does the owner action when a step is entered; this function
   does not send "who acts now" on its own.
+- The function whose L4 prose returns the person of a human step (who is responsible, who resolves it, or
+  the person who must act) calls `resolveStepPerson(ctx, { actorRef, step, history })` from this module's
+  engine. `actorRef` and `step` are that step's row in the engine table; `history` is the `history` of the
+  `find` of the same call. Return that result. Never return `null` or `''`, never query the MDM on your own
+  and never invent who holds the actor. The helper's error is thrown as it is.
 - Open with `engine.open(ctx, { key, plan, title, firstStep, actorNow, owner, origin, executor, room, message? })`.
   Advance with `engine.advance(ctx, key, { commandId, expectedRevision, from, to, actorNow, executor, note?, wake?, message? })`.
   No step table on `advance`. `to` is a step id of this process, or `'end'`. Do not advance a step the

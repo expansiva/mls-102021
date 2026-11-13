@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { citedOntology, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowEngineShown, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { citedOntology, engineUseRules, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowEngineShown, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 const prompt = readFileSync(fileURLToPath(new URL('./prompt.md', import.meta.url)), 'utf8');
 
@@ -121,6 +121,38 @@ test('the gate requires the llm export names only when the process has an llm st
   const read = async (ref: string) => ref.endsWith('/workflows.defs.ts') ? l4 : null;
   const problems = await workflowAnswerProblems({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, unit('cicloItem', TASKS), body, []);
   assert.ok(problems.some(problem => problem.includes('entregarPesquisar')), problems.join('\n'));
+});
+
+test('the prompt and the engine rules name resolveStepPerson for a human step', () => {
+  assert.match(prompt, /resolveStepPerson\(ctx, \{ actorRef, step, history \}\)/);
+  assert.match(prompt, /Never return `null` or `''`/);
+  assert.match(prompt, /never query the MDM/i);
+  assert.match(prompt, /helper's error is thrown as it is/);
+  const rules = engineUseRules('pedido', 'cicloItem');
+  assert.match(rules, /resolveStepPerson\(ctx, \{ actorRef, step, history \}\)/);
+  assert.match(rules, /Never return `null`/);
+  assert.match(rules, /never query the MDM/i);
+});
+
+test('the shown engine lists resolveStepPerson only when the source exports it', () => {
+  const withHuman = [
+    'export interface StepPersonHistory { step: string; actorNow: string | null; executor: { kind: string; mdmId?: string } }',
+    'export interface StepPersonInput { actorRef: string; step: string; history?: readonly StepPersonHistory[] }',
+    'export async function resolveStepPerson(ctx: RequestContext, input: StepPersonInput): Promise<string> {',
+    '  return input.step;',
+    '}',
+    'export function noticeState(): string {',
+    '  return "pending";',
+    '}',
+  ].join('\n');
+  const shown = workflowEngineShown(withHuman);
+  assert.match(shown, /export interface StepPersonHistory \{ step: string; actorNow: string \| null; executor: \{ kind: string; mdmId\?: string \} \}/);
+  assert.match(shown, /export interface StepPersonInput \{ actorRef: string; step: string; history\?: readonly StepPersonHistory\[\] \}/);
+  assert.match(shown, /export async function resolveStepPerson\(ctx: RequestContext, input: StepPersonInput\): Promise<string> \{ … \}/);
+  const withoutHuman = workflowEngineShown('export function noticeState(): string {\n  return "pending";\n}\n');
+  assert.equal(withoutHuman.includes('resolveStepPerson'), false);
+  assert.equal(withoutHuman.includes('StepPersonHistory'), false);
+  assert.equal(withoutHuman.includes('StepPersonInput'), false);
 });
 
 test('the worker context shows the transitionTo keys', () => {

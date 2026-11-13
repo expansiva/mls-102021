@@ -1,9 +1,13 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/emitters/workflowLlmEmit.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
-import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import { isAlphaAllAuthorities, resetAlphaAuthoritiesCache } from '/_102034_/l1/server/layer_1_external/config/alphaAuthorities.js';
+import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 import type { OccurrenceKey, WorkflowTable } from '/_102034_/l1/workflow/contracts.js';
 import { createWorkflowEngine, type WorkflowEngineContext } from '/_102034_/l1/workflow/engine.js';
 import { createMemoryOccurrencePort } from '/_102034_/l1/workflow/memoryOccurrence.js';
@@ -204,6 +208,87 @@ test('compras binds the occurrence record, not the first URL param', () => {
   assert.deepEqual(paramsOf('autorizarSolicitacao'), { page: '/compras/solicitacoes', recordParam: 'solicitacaoCompraId' });
   assert.equal(paramsOf('registrarRecebimento'), undefined);
   assert.deepEqual(bound.unresolved, ['cicloSolicitacaoCompra/registrarRecebimento']);
+});
+
+test('resolveStepPerson follows the caller, then who already acted as that actor, then alpha', async () => {
+  const tables = workflowTablesFromL4(l4('processoPedido', TASKS));
+  const source = workflowEngineSource(102047, 'pedido', tables, {});
+  assert.match(source, /import \{ isAlphaAllAuthorities \} from '\/_102034_\/l1\/server\/layer_1_external\/config\/alphaAuthorities\.js';/u);
+  assert.match(source, /export async function resolveStepPerson\(ctx: RequestContext, input: StepPersonInput\): Promise<string>/u);
+  const file = join(mkdtempSync(join(tmpdir(), 'd1-178-')), 'engine.ts');
+  writeFileSync(file, source);
+  const generated = await import(file) as {
+    resolveStepPerson: (ctx: RequestContext, input: {
+      actorRef: string;
+      step: string;
+      history?: ReadonlyArray<{ step: string; actorNow: string | null; executor: { kind: string; mdmId?: string } }>;
+    }) => Promise<string>;
+  };
+  const listed: Array<{ pageSize?: number }> = [];
+  const people = { items: [{ mdmId: 'mdm-b' }, { mdmId: 'mdm-a' }] };
+  const ctx = (scope: string[], mdmId?: string): RequestContext => ({
+    sessionContext: { actorScope: scope, ...(mdmId ? { person: { mdmId, email: 'a@b.c', name: 'A' } } : {}) },
+    mdm: { identity: { async listUsers(input: { pageSize?: number }) { listed.push(input); return people; } } },
+  }) as RequestContext;
+  const otherActor = { step: 'aprovar', actorNow: 'pessoa-outro-ator', executor: { kind: 'person', mdmId: 'pessoa-outro-ator' } };
+
+  const caller = await generated.resolveStepPerson(ctx(['pedido:solicitante', 'pedido:aprovador'], 'quem-chama'), {
+    actorRef: 'solicitante',
+    step: 'preencher',
+    history: [otherActor, { step: 'preencher', actorNow: 'quem-agiu', executor: { kind: 'person', mdmId: 'quem-agiu' } }],
+  });
+  assert.equal(caller, 'quem-chama');
+  assert.deepEqual(listed, []);
+
+  const acted = await generated.resolveStepPerson(ctx(['pedido:aprovador'], 'quem-chama'), {
+    actorRef: 'solicitante',
+    step: 'preencher',
+    history: [
+      otherActor,
+      { step: 'preencher', actorNow: 'antigo', executor: { kind: 'person', mdmId: 'quem-agiu' } },
+      { step: 'preencher', actorNow: null, executor: { kind: 'routine', name: 'tick' } },
+    ],
+  });
+  assert.equal(acted, 'quem-agiu');
+
+  const fromActorNow = await generated.resolveStepPerson(ctx([]), {
+    actorRef: 'solicitante',
+    step: 'preencher',
+    history: [otherActor, { step: 'preencher', actorNow: 'pelo-actor-now', executor: { kind: 'routine', name: 'tick' } }],
+  });
+  assert.equal(fromActorNow, 'pelo-actor-now');
+
+  resetAlphaAuthoritiesCache();
+  isAlphaAllAuthorities(undefined, () => ({ alphaAllAuthorities: true }));
+  try {
+    const first = await generated.resolveStepPerson(ctx([]), { actorRef: 'solicitante', step: 'preencher', history: [otherActor] });
+    assert.equal(first, 'mdm-b');
+    assert.deepEqual(listed, [{ pageSize: 1 }]);
+  } finally {
+    resetAlphaAuthoritiesCache();
+  }
+
+  resetAlphaAuthoritiesCache();
+  isAlphaAllAuthorities(undefined, () => ({ alphaAllAuthorities: false }));
+  try {
+    await assert.rejects(
+      () => generated.resolveStepPerson(ctx(['outro:solicitante']), { actorRef: 'solicitante', step: 'preencher' }),
+      (error: unknown) => error instanceof AppError
+        && error.code === 'WORKFLOW_ACTOR_PERSON_UNKNOWN'
+        && error.statusCode === 409
+        && error.message.includes('solicitante')
+        && error.message.includes('preencher'),
+    );
+  } finally {
+    resetAlphaAuthoritiesCache();
+  }
+
+  const mechanical = workflowEngineSource(102047, 'pedido', workflowTablesFromL4(l4('aviso', [
+    { taskId: 'gerar', kind: 'mechanical', title: 'Gera', next: [] },
+  ])), {});
+  assert.equal(mechanical.includes('resolveStepPerson'), false);
+  assert.equal(mechanical.includes('isAlphaAllAuthorities'), false);
+  assert.equal(mechanical.includes('StepPersonHistory'), false);
 });
 
 test('a process with no entityRef leaves every human step without params', () => {
