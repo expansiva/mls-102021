@@ -13,10 +13,11 @@ import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { missingImports, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
+import { M12_CODE_SCHEMA, missingImports, type M12Repair, type M12SequenceSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { calledFunctions, findFunction, functionSignature, mergeImports, notImplementedFunctions, notImplementedStub, replaceFunction, workflowPhaseOrder, WORKFLOW_NOT_IMPLEMENTED, addHelpers } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/sequence.js';
 import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, allRuleIds, citedEntities, entityNames, exportSignatures, mdmContextSection, ruleTexts, usesMdm } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 export const M12_WORKFLOW_TOOL = 'writeWorkflowService' as const;
@@ -357,12 +358,43 @@ function sharedPageRefs(project: number, moduleName: string): string[] {
   return refs.sort();
 }
 
-export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<{ header: string; facts: M12WorkflowFacts; human: string }> {
+/** One step of the l4 process, with `functionRef` when the task names the function it runs. `WorkflowStepEmit` does not keep that field. */
+export function workflowStepFunctionRefs(processJson: string): Array<{ stepId: string; functionRef?: string }> {
+  const emitted = workflowProcessSteps(processJson);
+  if (!processJson) return emitted.map(step => ({ stepId: step.stepId }));
+  let row: unknown;
+  try { row = JSON.parse(processJson); } catch { return emitted.map(step => ({ stepId: step.stepId })); }
+  const tasks = isRecord(row) && Array.isArray(row.tasks) ? row.tasks : [];
+  const byId = new Map<string, string>();
+  for (const task of tasks) {
+    if (!isRecord(task) || typeof task.taskId !== 'string' || typeof task.functionRef !== 'string' || !task.functionRef) continue;
+    byId.set(task.taskId, task.functionRef);
+  }
+  return emitted.map(step => {
+    const functionRef = byId.get(step.stepId);
+    return functionRef ? { stepId: step.stepId, functionRef } : { stepId: step.stepId };
+  });
+}
+
+/** The l4 process with only `focus` left whole in `functions`; every other function keeps `functionId`. */
+function focusFunctions(process: string, focus: string): string {
+  let row: unknown;
+  try { row = JSON.parse(process); } catch { return process; }
+  if (!isRecord(row) || !Array.isArray(row.functions)) return process;
+  row.functions = row.functions.map(item => {
+    if (!isRecord(item) || item.functionId === focus) return item;
+    return { functionId: item.functionId };
+  });
+  return JSON.stringify(row, null, 2);
+}
+
+export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair, focus?: string): Promise<{ header: string; facts: M12WorkflowFacts; human: string }> {
   const { project, module: moduleName } = ctx.run;
   const facts = workflowFacts(unit);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
   const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
-  const process = l4Process(await ctx.read(l4Ref), facts.processId);
+  const readProcess = l4Process(await ctx.read(l4Ref), facts.processId);
+  const process = focus ? focusFunctions(readProcess, focus) : readProcess;
   if (!process) throw new Error(`PROCESS_UNREAD: ${l4Ref} has no process ${facts.processId}.`);
 
   const parts: string[] = [];
@@ -573,3 +605,198 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
     ...await missingImports(ctx, code),
   ];
 }
+
+const WORKFLOW_FUNCTION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['code', 'notApplicable'],
+  properties: {
+    code: { type: 'string', description: 'One function, from its comment through the closing brace of `export async function`.' },
+    imports: { type: 'array', items: { type: 'string' }, description: 'New import lines this function needs. Omit a line the file already has.' },
+    helpers: { type: 'string', description: 'New helper declarations inserted before the first exported function. Empty when none.' },
+    notApplicable: {
+      type: 'array',
+      description: 'Rules listed for this unit that do not apply to it (empty when every rule applies), each with why.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ruleId', 'reason'],
+        properties: { ruleId: { type: 'string' }, reason: { type: 'string' } },
+      },
+    },
+  },
+};
+
+const ON_TICK_FORM = 'export async function onTick(ctx: RequestContext, now: Date): Promise<void>';
+
+async function readProcess(ctx: M12Context, unit: M12Unit): Promise<string> {
+  const { project, module: moduleName } = ctx.run;
+  const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
+  return l4Process(await ctx.read(l4Ref), workflowFacts(unit).processId);
+}
+
+function functionProse(processJson: string, name: string): string {
+  let row: unknown;
+  try { row = JSON.parse(processJson); } catch { return ''; }
+  if (!isRecord(row) || !Array.isArray(row.functions)) return '';
+  const found = row.functions.find(item => isRecord(item) && item.functionId === name);
+  return isRecord(found) && typeof found.description === 'string' ? found.description : '';
+}
+
+function fixedForms(processId: string, steps: readonly WorkflowStepEmit[], scheduled: boolean): Array<{ name: string; form: string }> {
+  const forms: Array<{ name: string; form: string }> = [];
+  for (const name of workflowLlmExportNames(processId, steps)) {
+    const form = name === workflowRecoverName(processId)
+      ? workflowRecoverForm(processId)
+      : steps.map(step => workflowWakeHandlerForm(step.stepId)).find(item => item.includes(`function ${name}(`)) ?? '';
+    if (form) forms.push({ name, form });
+  }
+  if (scheduled) forms.push({ name: 'onTick', form: ON_TICK_FORM });
+  return forms;
+}
+
+function phaseNames(facts: M12WorkflowFacts, processJson: string): string[] {
+  const steps = workflowProcessSteps(processJson);
+  const fixed = fixedForms(facts.processId, steps, facts.trigger.kind === 'scheduled').map(item => item.name);
+  return workflowPhaseOrder(facts, workflowStepFunctionRefs(processJson), fixed);
+}
+
+function exportHeader(source: string, name: string): string | null {
+  try {
+    const signature = functionSignature(source, name);
+    const at = signature.lastIndexOf('export async function');
+    if (at < 0) return null;
+    return signature.slice(at).replace(/\s+/gu, ' ').trim();
+  } catch {
+    return null;
+  }
+}
+
+function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>): string[] {
+  const problems: string[] = [];
+  problems.push(...workflowTransitionProblems(code, targets));
+  if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
+  const ownL1 = `/_${project}_/l1/${moduleName}/`;
+  for (const specifier of importSpecifiers(code)) {
+    if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+  }
+  if (usesNodeBuiltin(code)) problems.push('No node: import.');
+  if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
+  if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
+  if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
+  return problems;
+}
+
+/** The file so far: every function as a signature, and the full text of `full`. */
+function shownAssembled(source: string, names: readonly string[], full: ReadonlySet<string>): string {
+  const present = names.filter(name => findFunction(source, name));
+  const first = present.length ? findFunction(source, present[0]) : null;
+  const prefix = first ? source.slice(0, first.start).trimEnd() : source.trimEnd();
+  const blocks = present.map(name => {
+    const span = findFunction(source, name);
+    if (!span) return '';
+    return full.has(name) ? source.slice(span.start, span.end) : functionSignature(source, name);
+  }).filter(Boolean);
+  return blocks.length ? `${prefix}\n\n${blocks.join('\n\n')}\n` : `${prefix}\n`;
+}
+
+export const workflowSequence: M12SequenceSpec = {
+  async phases(ctx, unit) {
+    const facts = workflowFacts(unit);
+    return ['skeleton', ...phaseNames(facts, await readProcess(ctx, unit)).map(name => `fn:${name}`)];
+  },
+  async promptAddendum(ctx, phase) {
+    const shortName = phase === 'skeleton' ? 'promptSkeleton' : phase.startsWith('fn:') ? 'promptFunction' : '';
+    if (!shortName) return '';
+    const info = { project: 102021, level: 2, folder: 'agentMaterializeL1/steps/workflows45', shortName, extension: '.md' };
+    return (await ctx.read(fileRef(info))) ?? '';
+  },
+  parameters(phase) {
+    return phase === 'skeleton' || phase === 'final' ? M12_CODE_SCHEMA : WORKFLOW_FUNCTION_SCHEMA;
+  },
+  async context(ctx, unit, phase, assembled, repair) {
+    if (phase === 'final') return (await loadWorkflowContext(ctx, unit, repair)).human;
+    if (phase === 'skeleton') {
+      const loaded = await loadWorkflowContext(ctx, unit, repair);
+      const processJson = await readProcess(ctx, unit);
+      const forms = fixedForms(loaded.facts.processId, workflowProcessSteps(processJson), loaded.facts.trigger.kind === 'scheduled');
+      const lines = [
+        'This call writes the skeleton only. Declare every function below with that exact header and a body that is only the not-implemented stub. Do not write a real body yet.',
+        ...phaseNames(loaded.facts, processJson).map(name => {
+          const form = forms.find(item => item.name === name);
+          return form ? `- \`${name}\`: \`${form.form}\`` : `- \`${name}(input, ctx: RequestContext)\`, stub \`${notImplementedStub(name)}\``;
+        }),
+      ];
+      return `${loaded.human}\n${section('Functions of this skeleton', lines.join('\n'))}`;
+    }
+    const name = phase.startsWith('fn:') ? phase.slice(3) : '';
+    const loaded = await loadWorkflowContext(ctx, unit, repair, name);
+    const processJson = await readProcess(ctx, unit);
+    const names = phaseNames(loaded.facts, processJson);
+    const written = new Set(names.filter(item => findFunction(assembled, item) && !notImplementedFunctions(assembled).includes(item)));
+    const called = new Set(calledFunctions(functionProse(processJson, name), names, written));
+    return [
+      loaded.human,
+      section('The file so far', [
+        `Write only \`${name}\`. The functions below are signatures, except the ones \`${name}\` calls, which are the whole function. Keep the signature of \`${name}\` exactly as it is here.`,
+        fence('ts', shownAssembled(assembled, names, called)),
+      ].join('\n\n')),
+    ].join('\n');
+  },
+  async apply(ctx, unit, phase, assembled, payload) {
+    const code = typeof payload.code === 'string' ? payload.code : '';
+    if (phase === 'final') {
+      if (!code.trim()) return { source: assembled, problems: ['The answer has no code.'] };
+      return { source: code.endsWith('\n') ? code : `${code}\n`, problems: [] };
+    }
+    const facts = workflowFacts(unit);
+    const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+    const { project, module: moduleName } = ctx.run;
+    const processJson = await readProcess(ctx, unit);
+    const steps = workflowProcessSteps(processJson);
+    if (phase === 'skeleton') {
+      const problems = workflowGate(code, {
+        header, facts, project, moduleName,
+        ports: [],
+        llmExports: workflowLlmExportNames(facts.processId, steps),
+      });
+      for (const item of fixedForms(facts.processId, steps, facts.trigger.kind === 'scheduled')) {
+        const got = exportHeader(code, item.name);
+        const expected = `${item.form} { … }`.replace(/\s+/gu, ' ');
+        if (got !== expected) problems.push(`\`${item.name}\` must be exactly \`${item.form}\`.`);
+      }
+      problems.push(...await missingImports(ctx, code));
+      return { source: code.endsWith('\n') ? code : `${code}\n`, problems };
+    }
+    const name = phase.startsWith('fn:') ? phase.slice(3) : '';
+    const problems: string[] = [];
+    if (!name || !code.trim()) problems.push('The answer has no function.');
+    const expected = exportHeader(assembled, name);
+    const got = code.trim() ? exportHeader(code, name) : null;
+    if (expected && got !== expected) problems.push(`\`${name}\` must keep the skeleton signature \`${expected}\`.`);
+    if (!expected) problems.push(`\`${name}\` is not in the skeleton.`);
+    if (code.includes(`'${WORKFLOW_NOT_IMPLEMENTED}'`) || code.includes(`"${WORKFLOW_NOT_IMPLEMENTED}"`)) problems.push(`\`${name}\` still throws ${WORKFLOW_NOT_IMPLEMENTED}.`);
+    const importLines = Array.isArray(payload.imports) ? payload.imports.filter((item): item is string => typeof item === 'string') : [];
+    const helpers = typeof payload.helpers === 'string' ? payload.helpers : '';
+    const snippet = [header, ...importLines, code].join('\n');
+    if (name === 'onTick') {
+      if (!/export\s+async\s+function\s+onTick\s*\(/u.test(code)) problems.push('A scheduled process exports `onTick(ctx: RequestContext, now: Date): Promise<void>`.');
+      if (!/\bevaluateSchedule\s*\(/u.test(code)) problems.push('`onTick` asks `evaluateSchedule(schedule, now, lastRun)` whether an occurrence is due: never a hard-coded hour.');
+    }
+    problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units)));
+    if (problems.length) return { source: assembled, problems };
+    try {
+      const merged = replaceFunction(addHelpers(mergeImports(assembled, importLines), helpers), name, code.endsWith('\n') ? code : `${code}\n`);
+      const imports = await missingImports(ctx, merged);
+      if (imports.length) return { source: assembled, problems: imports };
+      return { source: merged, problems: [] };
+    } catch (error) {
+      return { source: assembled, problems: [error instanceof Error ? error.message : String(error)] };
+    }
+  },
+  async finalProblems(ctx, unit, source) {
+    const empty = notImplementedFunctions(source).map(name => `Function \`${name}\` is still ${WORKFLOW_NOT_IMPLEMENTED}.`);
+    return [...await workflowAnswerProblems(ctx, unit, source, []), ...empty];
+  },
+};

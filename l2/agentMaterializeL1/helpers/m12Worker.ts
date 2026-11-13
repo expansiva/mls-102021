@@ -14,6 +14,8 @@ export interface M12WorkerArgs {
   unitId: string;
   attempt: number;
   force: boolean;
+  /** Set only by a sequenced worker: `skeleton`, `final`, or `fn:<name>`. Absent on every other layer. */
+  phase?: string;
 }
 
 export function parseM12WorkerArgs(raw: string, currentProject: number): M12WorkerArgs {
@@ -22,7 +24,10 @@ export function parseM12WorkerArgs(raw: string, currentProject: number): M12Work
   const args = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Partial<M12WorkerArgs>;
   if (args.project !== currentProject || !tokenOk(String(args.module ?? '')) || !unitIdOk(String(args.unitId ?? ''))) throw new Error('M12_WORKER_ARGS_IDENTITY');
   if (!Number.isSafeInteger(args.attempt) || (args.attempt as number) < 1 || (args.attempt as number) > 1 + M12_REPAIR_BUDGET) throw new Error('M12_WORKER_ARGS_ATTEMPT');
-  return { project: args.project as number, module: String(args.module), unitId: String(args.unitId), attempt: args.attempt as number, force: args.force === true };
+  const parsed = { project: args.project as number, module: String(args.module), unitId: String(args.unitId), attempt: args.attempt as number, force: args.force === true };
+  if (!Object.prototype.hasOwnProperty.call(args, 'phase')) return parsed;
+  if (typeof args.phase !== 'string' || !/^(skeleton|final|fn:[A-Za-z_$][\w$]*)$/u.test(args.phase)) throw new Error('M12_WORKER_ARGS_PHASE');
+  return { ...parsed, phase: args.phase };
 }
 
 /** A worker that refuses its own args still leaves a trace in the unit status when the unit can be told. */
@@ -39,12 +44,14 @@ export async function recordM12ArgsRefusal(raw: string, layer: M12Layer, diagnos
 
 export function workerPlanId(layer: M12Layer, args: M12WorkerArgs): string {
   const phase = layer === 'usecases' ? 'usecases40' : layer === 'workflows' ? 'workflows45' : layer === 'requests' ? 'requests50' : 'tests60';
-  return `${phase}-${args.module}-${args.unitId}-${args.attempt}`;
+  const step = args.phase ? `-${args.phase}` : '';
+  return `${phase}-${args.module}-${args.unitId}${step}-${args.attempt}`;
 }
 
 export function workerTitle(layer: M12Layer, args: M12WorkerArgs): string {
   const what = layer === 'usecases' ? `Usecase ${args.unitId}` : layer === 'workflows' ? `Workflow ${args.unitId}` : layer === 'requests' ? `Request service ${args.unitId}` : `Monitor tests ${args.unitId}`;
-  return args.attempt > 1 ? `${what} (repair ${args.attempt - 1})` : what;
+  const step = args.phase ? ` [${args.phase}]` : '';
+  return args.attempt > 1 ? `${what}${step} (repair ${args.attempt - 1})` : `${what}${step}`;
 }
 
 export function workerStep(agentName: string, layer: M12Layer, args: M12WorkerArgs): mls.msg.AIAgentStep {

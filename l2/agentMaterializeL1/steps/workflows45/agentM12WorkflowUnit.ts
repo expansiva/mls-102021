@@ -3,7 +3,7 @@
 import type { IAgentAsync } from '/_102027_/l2/aiAgentBase.js';
 import { M12_WORKFLOW_UNIT_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
-import { M12_WORKFLOW_TOOL, M12_WORKFLOW_TOOL_DESCRIPTION, loadWorkflowContext, prepareWorkflows, workflowAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { M12_WORKFLOW_TOOL, M12_WORKFLOW_TOOL_DESCRIPTION, loadWorkflowContext, prepareWorkflows, workflowAnswerProblems, workflowSequence } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 export const WORKFLOW_SPEC: M12ModelLayerSpec = {
   layer: 'workflows',
@@ -14,6 +14,7 @@ export const WORKFLOW_SPEC: M12ModelLayerSpec = {
   prepare: ctx => prepareWorkflows(ctx),
   context: async (ctx, unit, repair) => (await loadWorkflowContext(ctx, unit, repair)).human,
   gate: workflowAnswerProblems,
+  sequence: workflowSequence,
 };
 
 export function createAgent(): IAgentAsync {

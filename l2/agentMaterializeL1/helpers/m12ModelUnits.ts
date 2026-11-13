@@ -6,8 +6,8 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_BUILD, M12_PROMPT_LIMIT, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12PromptReady, m12ToolPayload, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
-import { readDraft, readOptional, readUnitStatus, reuseDecision, writeDraft, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
-import { releaseCompileModels } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { readDraft, readOptional, readUnitStatus, removeStorFile, reuseDecision, writeDraft, writeSource, writeText, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { compileDiagnostics, compileM12Files, isUnavailable, releaseCompileModels } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { importSpecifiers } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { fileRef, infoOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { blockingDependencies, layerUnits, unitInputHash, writeAndProve, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -40,9 +40,24 @@ export interface M12Repair {
   previous: string | null;
 }
 
+export interface M12SequenceSpec {
+  /** Ordered function phases of the unit: ['skeleton', 'fn:a', 'fn:b'] ('final' is never listed: it only repairs). */
+  phases(ctx: M12Context, unit: M12Unit): Promise<string[]>;
+  /** Extra system text appended to prompt.md for the phase (file read through ctx.read). */
+  promptAddendum(ctx: M12Context, phase: string): Promise<string>;
+  parameters(phase: string): Record<string, unknown>;
+  context(ctx: M12Context, unit: M12Unit, phase: string, assembled: string, repair?: M12Repair): Promise<string>;
+  /** Merge the answer into the assembled file. Problems here are repaired in the same phase. */
+  apply(ctx: M12Context, unit: M12Unit, phase: string, assembled: string, payload: Record<string, unknown>): Promise<{ source: string; problems: string[] }>;
+  /** Gate of the whole assembled file, after the last function. */
+  finalProblems(ctx: M12Context, unit: M12Unit, source: string): Promise<string[]>;
+}
+
 export interface M12ModelLayerSpec {
   /** A mechanical fix of the answer before the gate (type annotations and type imports only, never logic). */
   normalize?(ctx: M12Context, unit: M12Unit, code: string): Promise<string>;
+  /** When set, the worker grows one file across phases. Layers without it keep a single call. */
+  sequence?: M12SequenceSpec;
   layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests'>;
   /** Module-wide files the layer's units import, written before any worker is dispatched; the trace lines. */
   prepare?(ctx: M12Context, units: readonly M12Unit[]): Promise<string[]>;
@@ -122,7 +137,9 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
           lines.push(`${unit.unitId}: reused`);
           continue;
         }
-        workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force })));
+        const workerArgs: M12WorkerArgs = { project: run.project, module: run.module, unitId: unit.unitId, attempt: 1, force: run.force };
+        if (spec.sequence) workerArgs.phase = 'skeleton';
+        workers.push(addM12Step(context, step.stepId, workerStep(spec.workerAgentName, spec.layer, workerArgs)));
         lines.push(`${unit.unitId}: dispatched to the model`);
       }
       const trace = clip([`build ${M12_BUILD}`, `${workers.length} unit(s) dispatched to the model`, ...lines].join('\n') || `No ${spec.layer} unit selected.`, 3000);
@@ -134,6 +151,46 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
     }
   }
   return { agentName, agentProject: 102021, agentFolder: `agentMaterializeL1/${spec.folder}`, agentDescription: description, visibility: 'private', beforePromptStep };
+}
+
+/**
+ * Compiles the growing file without keeping it: the real output is restored (or removed) even when the
+ * compiler throws. An unavailable compiler is not a code error, same as writeAndProve.
+ */
+async function compileAssembled(ctx: M12Context, unit: M12Unit, source: string): Promise<string[]> {
+  const previous = await readOptional(unit.output);
+  let errors: string[] = [];
+  try {
+    const stored = await writeSource(unit.output, source);
+    const results = await compileM12Files([{ info: unit.output, expected: stored.text }], ctx.compiler);
+    const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
+    errors = unavailable ? [] : compileDiagnostics(results);
+  } catch (error) {
+    errors = [errorText(error)];
+  } finally {
+    releaseCompileModels();
+    if (previous !== null) await writeText(unit.output, previous);
+    else await removeStorFile(unit.output);
+  }
+  return errors;
+}
+
+function schedulePhase(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  spec: M12ModelLayerSpec,
+  args: M12WorkerArgs,
+  phase: string,
+  attempt: number,
+  trace: string,
+): mls.msg.AgentIntent[] {
+  const next = workerStep(spec.workerAgentName, spec.layer, { ...args, phase, attempt });
+  return [
+    addM12Step(context, parentStep.stepId, next),
+    updateM12Status(context, parentStep, step, hookSequential, 'completed', clip(trace), 'input'),
+  ];
 }
 
 /** The worker of a model layer: prompt, gate, write, prove, repair (never fails the task). */
@@ -164,11 +221,27 @@ export function modelWorkerAgent(description: string, spec: M12ModelLayerSpec): 
     try {
       const { ctx, unit } = await unitOf(args);
       // Through the reader: it loads the stor index of project 102021 when the open project is another one.
-      const system = await ctx.read(fileRef(promptFile));
-      if (!system) throw new Error(`M12_PROMPT_MISSING: _102021_/l2/agentMaterializeL1/${spec.folder}/prompt.md`);
+      const systemFile = await ctx.read(fileRef(promptFile));
+      if (!systemFile) throw new Error(`M12_PROMPT_MISSING: _102021_/l2/agentMaterializeL1/${spec.folder}/prompt.md`);
+      if (spec.sequence) {
+        if (!args.phase) throw new Error('M12_WORKER_ARGS_PHASE');
+        const addendum = await spec.sequence.promptAddendum(ctx, args.phase);
+        const system = addendum.trim() ? `${systemFile}\n${addendum}` : systemFile;
+        if (args.phase === 'skeleton' && args.attempt === 1) await writeDraft(args.project, args.module, spec.layer, args.unitId, 'assembled', '');
+        const stored = (await readDraft(args.project, args.module, spec.layer, args.unitId, 'assembled')) ?? '';
+        const status = args.attempt >= 2 || args.phase === 'final' ? await readUnitStatus(args.project, args.module, spec.layer, args.unitId) : null;
+        const repair = args.attempt >= 2
+          ? { problems: (status?.diagnostic || 'The previous attempt failed.').split('\n').filter(Boolean), previous: await readDraft(args.project, args.module, spec.layer, args.unitId, 'answer') }
+          : args.phase === 'final'
+            ? { problems: (status?.diagnostic || 'The final gate refused the file.').split('\n').filter(Boolean), previous: stored }
+            : undefined;
+        const human = await spec.sequence.context(ctx, unit, args.phase, stored, repair);
+        if (system.length + human.length > M12_PROMPT_LIMIT) throw new Error(`M12_PROMPT_LIMIT: ${system.length + human.length}`);
+        return [m12PromptReady(context, parentStep, step, hookSequential, { system, human, toolName: spec.toolName, toolDescription: spec.toolDescription, parameters: spec.sequence.parameters(args.phase) })];
+      }
       const human = await spec.context(ctx, unit, await repairInput(args));
-      if (system.length + human.length > M12_PROMPT_LIMIT) throw new Error(`M12_PROMPT_LIMIT: ${system.length + human.length}`);
-      return [m12PromptReady(context, parentStep, step, hookSequential, { system, human, toolName: spec.toolName, toolDescription: spec.toolDescription, parameters: M12_CODE_SCHEMA })];
+      if (systemFile.length + human.length > M12_PROMPT_LIMIT) throw new Error(`M12_PROMPT_LIMIT: ${systemFile.length + human.length}`);
+      return [m12PromptReady(context, parentStep, step, hookSequential, { system: systemFile, human, toolName: spec.toolName, toolDescription: spec.toolDescription, parameters: M12_CODE_SCHEMA })];
     } catch (error) {
       const diagnostic = clip(errorText(error));
       await writeUnitStatus(args.project, args.module, { layer: spec.layer, unitId: args.unitId, defRef: '', status: 'failed', code: 'PROMPT_FAILED', attempt: args.attempt, diagnostic, inputHash: '', outputs: {} });
@@ -195,6 +268,36 @@ export function modelWorkerAgent(description: string, spec: M12ModelLayerSpec): 
       const code = typeof payload.code === 'string' ? payload.code : '';
       // Always overwrite: the repair must never read the draft of an older run.
       await writeDraft(args.project, args.module, spec.layer, args.unitId, DRAFT, code);
+      if (spec.sequence) {
+        if (!args.phase) return fail(['M12_WORKER_ARGS_PHASE']);
+        const sequence = spec.sequence;
+        const phase = args.phase;
+        await writeDraft(args.project, args.module, spec.layer, args.unitId, 'answer', JSON.stringify(payload));
+        const assembled = (await readDraft(args.project, args.module, spec.layer, args.unitId, 'assembled')) ?? '';
+        const applied = await sequence.apply(ctx, unit, phase, assembled, payload as Record<string, unknown>);
+        if (applied.problems.length) return fail(applied.problems);
+        const compileErrors = await compileAssembled(ctx, unit, applied.source);
+        if (compileErrors.length) return fail(compileErrors.map(error => `Compile: ${error}`));
+        await writeDraft(args.project, args.module, spec.layer, args.unitId, 'assembled', applied.source);
+        if (phase !== 'final') {
+          const phases = await sequence.phases(ctx, unit);
+          const index = phases.indexOf(phase);
+          if (index < 0) return fail([`M12_SEQUENCE_PHASE: ${phase} is not a phase of ${args.unitId}.`]);
+          if (index + 1 < phases.length) return schedulePhase(context, parentStep, step, hookSequential, spec, args, phases[index + 1], 1, `${spec.layer} ${args.unitId}: ${phase} accepted`);
+        }
+        const finals = await sequence.finalProblems(ctx, unit, applied.source);
+        if (finals.length) {
+          // The final phase itself refused: repair it. Otherwise open it, once, with the gate's problems.
+          if (phase === 'final') return fail(finals);
+          await writeUnitStatus(args.project, args.module, { layer: spec.layer, unitId: args.unitId, defRef, status: 'failed', code: 'MODEL_REPAIR', attempt: args.attempt, diagnostic: finals.map(problem => clip(problem, 600)).slice(0, 20).join('\n'), inputHash, outputs: {} });
+          return schedulePhase(context, parentStep, step, hookSequential, spec, args, 'final', 1, `Final gate: ${finals.join(' | ')}`);
+        }
+        const proved = await writeAndProve(ctx, unit, applied.source, inputHash, args.attempt);
+        releaseCompileModels();
+        if (proved.status === 'failed') return fail(proved.errors.map(error => `Compile: ${error}`));
+        if (proved.status !== 'done') return fail([proved.line]);
+        return [updateM12Status(context, parentStep, step, hookSequential, 'completed', `${spec.layer} ${args.unitId}: ${proved.line}`, true)];
+      }
       if (!code.trim()) return fail(['The answer has no code.']);
       const raw = code.endsWith('\n') ? code : `${code}\n`;
       const source = spec.normalize ? await spec.normalize(ctx, unit, raw) : raw;
