@@ -628,3 +628,121 @@ void test('optional contract param stays in params; a required param is unchange
   assert.equal(termo?.optional, undefined);
   assert.equal(termo?.name, 'termo');
 });
+
+const DDM_FIELDS = {
+  periodo: { type: 'timestamp', derived: true },
+  fornecedorId: { type: 'string', derived: true },
+  details: { type: 'object', derived: true, fields: { total: { type: 'integer', derived: true } } },
+};
+
+function ontologyBody(entityId: string, fields: Record<string, unknown>, capabilities?: Record<string, string>): Record<string, unknown> {
+  return {
+    schemaVersion: '2026-09-17-ns5-ontology-v3.1',
+    moduleName: 'ledgerDesk',
+    entityId,
+    kind: 'entity',
+    class: 'supporting',
+    ...(capabilities ? { capabilities } : {}),
+    record: { fields },
+  };
+}
+
+function registerEntity(artifacts: D1InputArtifacts, body: Record<string, unknown>): void {
+  const entityId = String(body.entityId);
+  artifacts.entities[entityId] = body;
+  (artifacts.ontologyIndex as { entities: Array<Record<string, unknown>> }).entities.push({ entityId, kind: 'entity', class: 'supporting' });
+  artifacts.sources.push({
+    path: `l4/ledgerDesk/ontology/${entityId}.defs.ts`,
+    sha256: 'fixture',
+    bytes: 1,
+    schemaVersion: '2026-09-17-ns5-ontology-v3.1',
+    state: 'present',
+  });
+}
+
+function planPortTable(artifacts: D1InputArtifacts, entity: string, portId: string, tableId: string): void {
+  const backend = artifacts.backend as { ports: Array<Record<string, unknown>>; tables: Array<Record<string, unknown>> };
+  const effort = artifacts.effort as { tables: Array<Record<string, unknown>>; totals: { tables: { toCreate: number } } };
+  backend.ports.push({ portId, entity, status: 'toCreate', tableRefs: [tableId], noTable: 'ok' });
+  backend.tables.push({ tableId, entity, status: 'toCreate', tableRefs: [tableId], noTable: 'ok' });
+  effort.tables.push({ tableId, entity, status: 'toCreate', tableRefs: [tableId], noTable: 'ok' });
+  effort.totals.tables.toCreate += 1;
+}
+
+function panelContract(routes: string[]): string {
+  return `/// <mls fileReference="_102047_/l2/ledgerDesk/web/contracts/board.defs.ts" enhancement="_blank"/>
+
+export interface BoardContracts {
+${routes.join('\n')}
+}
+
+export interface ResumoMes {
+  readonly periodo: string;
+  readonly fornecedorId: string;
+  readonly details: { readonly total: number };
+  bloco: BlocoSolto;
+}
+
+export interface BlocoSolto {
+  readonly marca: string;
+}
+
+export interface Solto {
+  readonly fantasma: string;
+  bloco: BlocoSolto;
+}
+
+export interface TdmResumo {
+  readonly rotulo: string;
+  bloco: BlocoSolto;
+}
+`;
+}
+
+function panelRoute(route: string, key: string, typeName: string): string {
+  return `  '${route}': {
+    kind: 'qry';
+    input: {};
+    output: { ${key}: ${typeName} };
+    meta: { output: {}; lists: {}; params: {} };
+    rules: [];
+    access: { actors: ['clerk']; grants: ['manageDesk']; scope: 'organization' };
+  };`;
+}
+
+/** d1_176: a ddm window is one list output. A tdm and an ownerless group stay gaps. */
+void test('a ddm panel reads through its planned list; a tdm and an ownerless aggregate stay unresolved', () => {
+  const listPainel: PoolRow = { usecaseId: 'listPainelMes', entity: 'PainelMes', operation: 'list', status: 'toCreate', existing: '' };
+  const artifacts = deskOf([listPainel], null);
+  artifacts.contractTexts = { board: panelContract([
+    panelRoute('ledgerDesk.board.painel', 'resumo', 'ResumoMes'),
+    panelRoute('ledgerDesk.board.solto', 'solto', 'Solto'),
+    panelRoute('ledgerDesk.board.tdm', 'totais', 'TdmResumo'),
+  ]) };
+  registerEntity(artifacts, ontologyBody('PainelMes', DDM_FIELDS, { 'aggregate.byWindow': 'Resume by month over the named sources.' }));
+  registerEntity(artifacts, ontologyBody('TotaisMes', { rotulo: { type: 'string', derived: true } }));
+  planPortTable(artifacts, 'PainelMes', 'PainelMesRepository', 'painelMes');
+  planPortTable(artifacts, 'TotaisMes', 'TotaisMesRepository', 'totaisMes');
+  const snapshot = deskBuild(artifacts);
+
+  const painel = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.painel');
+  assert.deepEqual(painel?.uses, ['listPainelMes']);
+  assert.deepEqual(painel?.outputs.find(item => item.key === 'resumo'), { key: 'resumo', entity: 'PainelMes', many: true });
+  assert.equal(painel?.unresolved?.some(item => item.kind === 'computedRule' && item.path.startsWith('output.resumo.') && item.path !== 'output.resumo.bloco'), false);
+  assert.equal(snapshot.selection.entities.includes('PainelMes'), true);
+  assert.equal(snapshot.selection.ports.some(port => port.portId === 'PainelMesRepository'), true);
+  assert.equal(snapshot.selection.tables.some(table => table.tableId === 'painelMes'), true);
+  assert.equal(snapshot.problems.some(item => item.ownerRef === 'PainelMesRepository' && item.code === 'PORT_WITHOUT_USECASE'), false);
+  assert.equal(snapshot.problems.some(item => item.ownerRef === 'painelMes' && item.code === 'TABLE_WITHOUT_USECASE'), false);
+  assert.equal(snapshot.problems.some(item => item.ownerRef === 'listPainelMes' && item.code === 'USECASE_WITHOUT_REQUEST'), false);
+
+  assert.equal(snapshot.selection.entities.includes('TotaisMes'), false);
+  assert.equal(snapshot.selection.ports.some(port => port.entity === 'TotaisMes'), false);
+  assert.equal(snapshot.selection.tables.some(table => table.entity === 'TotaisMes'), false);
+  assert.equal(snapshot.problems.find(item => item.code === 'PORT_WITHOUT_USECASE' && item.ownerRef === 'TotaisMesRepository')?.severity, 'review');
+  assert.equal(snapshot.problems.find(item => item.code === 'TABLE_WITHOUT_USECASE' && item.ownerRef === 'totaisMes')?.severity, 'review');
+
+  const solto = snapshot.selection.requests.find(item => item.route === 'ledgerDesk.board.solto');
+  assert.equal(solto?.outputs.some(item => item.key === 'solto'), false);
+  assert.equal(solto?.unresolved?.some(item => item.kind === 'computedRule' && item.path === 'output.solto.fantasma'), true);
+});

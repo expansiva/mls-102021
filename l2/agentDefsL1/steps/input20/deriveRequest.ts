@@ -69,6 +69,8 @@ interface Context {
   /** Ontology paths whose type is text: the candidates of a filter that names no field (d1_62 r2b). */
   texts: Map<string, string[]>;
   links: Map<string, EntityLink[]>;
+  /** Entity ids whose ontology declares `aggregate.byWindow` (a `ddm`). */
+  ddm: Set<string>;
   rules: readonly string[];
   answers: ReadonlyMap<string, string>;
   outputs: D1RequestOutput[];
@@ -98,6 +100,7 @@ export function applyResolutions(source: D1DeriveSource, answers: readonly D1Req
     fields: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, new Set(ontologyFieldPaths(entity))])),
     texts: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, textFieldPaths(entity)])),
     links: new Map(Object.entries(entities).map(([entityId, entity]) => [entityId, entityLinks(entity)])),
+    ddm: ddmIds(entities),
     rules: route.rules || [],
     answers: new Map(answers.map(item => [item.path, item.choice])),
     outputs: [],
@@ -157,7 +160,11 @@ function classify(ctx: Context, key: string, body: string, many: boolean, parent
   if (!leaves.length) {
     if (!parent && nested.length) {
       // A group of outputs, not an entity: each member is read on its own. A readonly value of the group has no owner.
+      // A ddm (aggregate.byWindow) is the owner of its own readonly window: one list output, no computedRule (d1_176).
+      const ddm = computed.length ? sameDdm(ctx, computed) : null;
+      if (ddm) ctx.outputs.push({ key, entity: ddm, many: true });
       for (const path of computed) {
+        if (ddm) continue;
         const rule = ask(ctx, `output.${key}.${path}`, 'computedRule', `Interface ${typeName} groups outputs; it is not a list page (items plus paging keys), so no entity owns its readonly ${path}.`, ctx.rules);
         if (rule) ctx.computedBy.push({ path: `${key}.${path}`, rule });
       }
@@ -414,6 +421,31 @@ function matchEntity(ctx: Context, leaves: readonly string[]): EntityMatch {
 
 function ownedByAny(ctx: Context, path: string): boolean {
   return [...ctx.fields.values()].some(fields => fields.has(path));
+}
+
+/** Capability text on the ontology body, the same shape `capabilityNames` reads. */
+function hasCapability(entity: unknown, name: string): boolean {
+  if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return false;
+  const caps = (entity as { capabilities?: unknown }).capabilities;
+  if (!caps || typeof caps !== 'object' || Array.isArray(caps)) return false;
+  return typeof (caps as Record<string, unknown>)[name] === 'string';
+}
+
+function ddmIds(entities: Readonly<Record<string, unknown>>): Set<string> {
+  const ids = new Set<string>();
+  for (const [entityId, entity] of Object.entries(entities)) {
+    if (hasCapability(entity, 'aggregate.byWindow')) ids.add(entityId);
+  }
+  return ids;
+}
+
+/** The one `ddm` that owns every path, or null when the paths are not all of a single `ddm`. */
+function sameDdm(ctx: Context, paths: readonly string[]): string | null {
+  const owners = [...ctx.ddm].filter(entityId => {
+    const fields = ctx.fields.get(entityId);
+    return Boolean(fields && paths.every(path => fields.has(path)));
+  });
+  return owners.length === 1 ? owners[0] : null;
 }
 
 /** Ontology paths, of any entity of the module, whose last segment is the field name. */
