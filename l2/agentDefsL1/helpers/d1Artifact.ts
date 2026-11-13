@@ -2,6 +2,7 @@
 
 import {
   dataAllowList,
+  derivedReadIssues,
   definitionIssues as envelopeIssues,
   M1_ARTIFACT_TYPES,
   M1_DEFINITION_SCHEMA,
@@ -730,6 +731,7 @@ export function usecaseIssues(data: unknown): string[] {
     issues.push('data.transitionRef is only valid on a transition.');
   }
   if (data.mdm !== undefined) mdmBindingIssues(data.mdm, issues);
+  if (data.derivedRead !== undefined) derivedReadIssues(data.derivedRead, issues);
   issues.push(...projectionIssues(data));
   issues.push(...usecaseV1Issues(data));
   return issues;

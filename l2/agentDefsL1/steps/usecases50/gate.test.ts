@@ -17,7 +17,10 @@ setFacadePlatformKeysForTest(readFileSync(
   'utf8',
 ));
 import { D1_MDM_CALLS, D1_WORKER_KINDS } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
-import type { D1UsecaseContext, D1UsecaseRequest, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import type { D1UsecaseContext, D1UsecaseEntity, D1UsecaseRequest, D1UsecaseSelection, D1WorkerStep } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
+import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
+import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { derivedReadOf } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
 
 void test('the frozen core is 13 usecases for 22 routes, and listConsulta and listProfissional are unique', () => {
   assert.equal(frozenRouteCount(), 22);
@@ -720,6 +723,112 @@ void test('a top-level derived input on a list is a filter, and the same field o
   assert.equal(created.problems.some(item => item.code === 'DERIVED_EDITABLE'), false);
 });
 
+
+const PAINEL_IDS = ['SolicitacaoCompra', 'PedidoCompra', 'PainelCompras'] as const;
+const PAINEL_MEASURES = [
+  'details.solicitacoesAguardandoAutorizacao',
+  'details.pedidosEmAberto',
+  'details.pedidosAtrasados',
+  'details.totalComprado',
+  'details.quantidadePedidos',
+];
+
+void test('listPainelCompras stores the derived read and depends on the source lists', () => {
+  const build = buildD1Usecases(painelRequest(['listPainelCompras', 'listSolicitacaoCompra', 'listPedidoCompra']));
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const panel = build.emit.find(item => item.definition.artifactId === 'listPainelCompras');
+  assert.ok(panel);
+  assert.deepEqual(panel.definition.data.derivedRead, {
+    mode: 'onRead',
+    sources: ['SolicitacaoCompra', 'PedidoCompra'],
+    windowField: 'periodo',
+    groupBy: ['fornecedorId'],
+    measures: PAINEL_MEASURES,
+  });
+  const deps = panel.definition.dependencies.join('\n');
+  assert.match(deps, /listSolicitacaoCompra\.defs\.ts/);
+  assert.match(deps, /listPedidoCompra\.defs\.ts/);
+  const order = build.emit.find(item => item.definition.artifactId === 'listPedidoCompra');
+  assert.ok(order);
+  assert.equal(order.definition.data.derivedRead, undefined);
+  assert.deepEqual(Object.keys(order.definition.data).sort(), ['effects', 'entityId', 'operation', 'rulesApplied', 'usecaseId']);
+});
+
+void test('a write of a ddm does not carry derivedRead', () => {
+  const build = buildD1Usecases(painelRequest(['createPainelCompras']));
+  assert.equal(build.ok, true, build.problems.map(item => item.message).join('; '));
+  const created = build.emit.find(item => item.definition.artifactId === 'createPainelCompras');
+  assert.ok(created);
+  assert.equal(created.definition.data.derivedRead, undefined);
+});
+
+void test('a panel whose sources are not selected is not emitted', () => {
+  const build = buildD1Usecases(painelRequest(['listPainelCompras']));
+  assert.equal(build.ok, false);
+  assert.equal(build.emit.length, 0);
+  assert.equal(build.problems.some(item => item.code === 'DDM_SOURCE_WITHOUT_LIST'), true);
+  assert.equal(build.usecases.find(item => item.usecaseId === 'listPainelCompras')?.definition, null);
+});
+
+void test('a panel with no readable source is not emitted', () => {
+  const request = painelRequest(['listPainelCompras', 'listSolicitacaoCompra', 'listPedidoCompra']);
+  const panel = request.entities.find(item => item.entityId === 'PainelCompras');
+  assert.ok(panel?.derivedRead);
+  panel.derivedRead = { ...panel.derivedRead, sources: [] };
+  panel.derivedReadProblems = ['DDM_SOURCE_UNREADABLE: description names no other entity id of this module as a whole word.'];
+  const build = buildD1Usecases(request);
+  assert.equal(build.ok, false);
+  assert.equal(build.emit.length, 0);
+  assert.equal(build.problems.some(item => item.code === 'DDM_SOURCE_UNREADABLE'), true);
+});
+
+function painelOntology(name: string): Record<string, unknown> {
+  const text = loadD1Fixture('compras-painel')[`l4/compras/ontology/${name}.defs.ts`];
+  const body = parseD1Source(text, 'defs');
+  assert.ok(body && typeof body === 'object' && !Array.isArray(body));
+  return body as Record<string, unknown>;
+}
+
+function painelRequest(ids: string[]): D1UsecaseRequest {
+  const entities = PAINEL_IDS.map(entityId => painelEntity(entityId));
+  const usecases: D1UsecaseSelection[] = ids.map(usecaseId => ({
+    usecaseId,
+    entity: usecaseId.replace(/^(list|create|get)/, ''),
+    operation: usecaseId.startsWith('create') ? 'create' : 'list',
+    routes: [],
+    defPath: `l1/compras/layer_2_application/usecases/${usecaseId}.defs.ts`,
+  }));
+  return {
+    project: 102047,
+    moduleName: 'compras',
+    usecases,
+    ports: [],
+    entities,
+    moduleRules: [],
+    outbound: [],
+    contracts: [],
+    files: [],
+    plans: [],
+    llmCalls: 0,
+  };
+}
+
+function painelEntity(entityId: string): D1UsecaseEntity {
+  const read = derivedReadOf(painelOntology(entityId), PAINEL_IDS, entityId);
+  return {
+    entityId,
+    storageTarget: 'moduleDatabase',
+    defPath: `l1/compras/layer_1_domain/entities/${entityId}.defs.ts`,
+    namespace: '',
+    fields: [],
+    transitions: [],
+    rules: [],
+    uniqueKeys: [],
+    enumerations: [],
+    capabilities: read ? ['aggregate.byWindow'] : [],
+    ...(read ? { derivedRead: read.derivedRead, derivedReadProblems: read.problems } : {}),
+  };
+}
 
 function realContractSources(): D1UsecaseRequest['contracts'] {
   const names = readdirSync(REAL_CONTRACTS).filter(name => name.endsWith('.defs.txt')).sort();

@@ -19,6 +19,7 @@ import { declaredFieldsFor, domainSignature, mdmInputFields, preconditionsFor } 
 import { enforcedRuleIds, rulePlanForUsecase } from '/_102021_/l2/agentDefsL1/steps/usecases50/rulePlan.js';
 import { readUsecaseFidelity } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { capabilityApplies, mdmForOperation, isForeignMdmPatchKey } from '/_102021_/l2/agentDefsL1/steps/usecases50/mdmBinding.js';
+import type { D1DerivedRead } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
 import {
   D1_USECASE_VERSION,
   ENUMERATION_REASON,
@@ -109,6 +110,8 @@ function planUsecase(
   if (problems.some(problem => problem.severity === 'error' && problem.path === path)) {
     return { ...blank, mdm };
   }
+  const derivedRead = readDerived(request, entity, usecase, path, problems);
+  if (derivedRead === 'refused') return { ...blank, mdm };
 
   const integrationPath = `l4/${request.moduleName}/integration.defs.ts`;
   const transitionRef = transitionRefOf(usecase);
@@ -120,6 +123,7 @@ function planUsecase(
     effects: effects.map(eventId => ({ eventId, path: integrationPath, symbol: eventId })),
     ...(transitionRef ? { transitionRef } : {}),
     ...(mdm ? { mdm: storedMdm(mdm) } : {}),
+    ...(derivedRead ? { derivedRead } : {}),
   };
   const definition = pendingDefinition('usecase', usecase.usecaseId, request.moduleName, data);
   const issues = definitionIssues(definition);
@@ -341,7 +345,41 @@ function dependencyPaths(request: D1UsecaseRequest, item: D1UsecaseItem): string
       if (isRecord(effect) && typeof effect.path === 'string' && effect.path) paths.add(effect.path);
     }
   }
+  const derived = isRecord(data.derivedRead) ? data.derivedRead : null;
+  if (derived && Array.isArray(derived.sources)) {
+    for (const source of derived.sources) {
+      if (typeof source !== 'string' || !source) continue;
+      const listed = request.usecases.find(item => item.entity === source && item.operation === 'list');
+      if (listed?.defPath) paths.add(listed.defPath);
+    }
+  }
   return [...paths].sort();
+}
+
+const READ_OPERATIONS = new Set(['list', 'get']);
+
+/** `null` when this operation does not carry a derived read. `'refused'` when the usecase must not be emitted. */
+function readDerived(
+  request: D1UsecaseRequest,
+  entity: D1UsecaseEntity,
+  usecase: D1UsecaseSelection,
+  path: string,
+  problems: D1UsecaseProblem[],
+): D1DerivedRead | null | 'refused' {
+  if (!READ_OPERATIONS.has(usecase.operation) || !entity.derivedRead) return null;
+  for (const problem of entity.derivedReadProblems || []) {
+    const code = problem.split(':')[0] || 'DERIVED_READ';
+    error(problems, code, path, problem);
+  }
+  if ((entity.derivedReadProblems || []).length) return 'refused';
+  for (const source of entity.derivedRead.sources) {
+    const listed = request.usecases.find(item => item.entity === source && item.operation === 'list');
+    if (!listed) {
+      error(problems, 'DDM_SOURCE_WITHOUT_LIST', path, `Derived read of ${entity.entityId} needs a selected list of ${source}.`);
+    }
+  }
+  if (problems.some(problem => problem.severity === 'error' && problem.path === path)) return 'refused';
+  return entity.derivedRead;
 }
 
 function unconsumedEnumerations(request: D1UsecaseRequest): D1UsecaseEnumeration[] {

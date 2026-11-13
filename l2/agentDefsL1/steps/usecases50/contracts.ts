@@ -2,6 +2,7 @@
 
 import type { D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import type { D1DerivedRead } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
 
 export const D1_USECASE_VERSION = '2026-10-01-d1-usecases-v2' as const;
 
@@ -97,6 +98,10 @@ export interface D1UsecaseEntity {
   capabilities?: string[];
   /** Non-derived platform field paths. The MDM binding maps each one to a facade patch key. */
   platformFields?: string[];
+  /** Set only when the ontology declares `aggregate.byWindow`. */
+  derivedRead?: D1DerivedRead;
+  /** Gaps from that read. Empty when `derivedRead` is complete. */
+  derivedReadProblems?: string[];
 }
 
 export interface D1PortSignature {

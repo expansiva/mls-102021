@@ -168,6 +168,47 @@ function section(title: string, body: string): string {
   return `## ${title}\n\n${body.trim()}\n`;
 }
 
+/** `data.derivedRead` when it is the on-read summary. Absent or another shape: null, and the context stays as it is. */
+export function derivedReadValue(data: unknown): { sources: string[]; windowField: string; groupBy: string[]; measures: string[] } | null {
+  if (!data || typeof data !== 'object') return null;
+  const value = (data as { derivedRead?: unknown }).derivedRead;
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { mode?: unknown; sources?: unknown; windowField?: unknown; groupBy?: unknown; measures?: unknown };
+  const strings = (item: unknown): string[] | null => Array.isArray(item) && item.every(part => typeof part === 'string') ? item as string[] : null;
+  const sources = strings(row.sources);
+  const groupBy = strings(row.groupBy);
+  const measures = strings(row.measures);
+  if (row.mode !== 'onRead' || !sources || typeof row.windowField !== 'string' || !row.windowField || !groupBy || !measures) return null;
+  return { sources, windowField: row.windowField, groupBy, measures };
+}
+
+/**
+ * The model calculates the summary on read from the list usecases of `sources`.
+ * The table and the port of the summary itself are not used.
+ */
+export function derivedReadSection(
+  derived: { sources: readonly string[]; windowField: string; groupBy: readonly string[]; measures: readonly string[] },
+  sourceLists: ReadonlyArray<{ entityId: string; importPath: string; signatures: string }>,
+): string {
+  const lists = derived.sources.map(source => {
+    const list = sourceLists.find(item => item.entityId === source);
+    const importLine = list?.importPath
+      ? [`Import from \`${list.importPath}\`.`, list.signatures].filter(Boolean).join('\n\n')
+      : `The list usecase of \`${source}\` is not among the dependencies.`;
+    return [`### ${source}`, importLine].join('\n\n');
+  });
+  const groups = derived.groupBy.map(name => `\`${name}\``).join(', ') || '(none)';
+  const measures = derived.measures.map(name => `\`${name}\``).join(', ') || '(none)';
+  return section('Derived read', [
+    'The summary is calculated on read. Nobody writes this table in alpha.',
+    `Window field: \`${derived.windowField}\`. Group by: ${groups}.`,
+    `Measures: ${measures}.`,
+    'Do not read or write the table of this summary. Do not call `resolveRepository` for this entity.',
+    'Calculate it from the list usecases of the sources, by that window and those groups:',
+    ...lists,
+  ].join('\n\n'));
+}
+
 /** `onboarding.companyType` of a project's `l5/config.json` (`<module>.<Entity>`), or empty. */
 export function companyTypeOf(configText: string | null): string {
   if (!configText) return '';
@@ -242,6 +283,26 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
       `Import from \`/${dep.outputRef.replace(/\.ts$/u, '.js')}\`.`,
       generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(dep.definition.data, null, 2)),
     ].join('\n\n')));
+  }
+  const derived = derivedReadValue(unit.definition.data);
+  if (derived) {
+    const lists: Array<{ entityId: string; importPath: string; signatures: string }> = [];
+    for (const source of derived.sources) {
+      const dep = dependencies.find(item => item.definition.artifactType === 'usecase'
+        && String(item.definition.data.entityId ?? '') === source
+        && String(item.definition.data.operation ?? '') === 'list');
+      if (!dep) {
+        lists.push({ entityId: source, importPath: '', signatures: '' });
+        continue;
+      }
+      const generated = await readOptional(dep.output);
+      lists.push({
+        entityId: source,
+        importPath: `/${dep.outputRef.replace(/\.ts$/u, '.js')}`,
+        signatures: generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(dep.definition.data, null, 2)),
+      });
+    }
+    parts.push(derivedReadSection(derived, lists));
   }
   // Another entity a rule of this usecase names: its entity and port files, so a field is read by its name and not
   // guessed (createItemComanda read the menu price as `details.preco`; it is `details.precoVigente`). The rules are

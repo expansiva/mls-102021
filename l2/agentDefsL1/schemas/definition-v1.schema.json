@@ -179,7 +179,20 @@
         "transitionRef": { "type": "string", "minLength": 1 },
         "rulesApplied": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "effects": { "type": "array", "items": { "$ref": "#/$defs/effectRef" } },
-        "mdm": { "$ref": "#/$defs/mdmBinding" }
+        "mdm": { "$ref": "#/$defs/mdmBinding" },
+        "derivedRead": { "$ref": "#/$defs/derivedRead" }
+      }
+    },
+    "derivedRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "sources", "windowField", "groupBy", "measures"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["onRead"] },
+        "sources": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "windowField": { "type": "string", "minLength": 1 },
+        "groupBy": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "measures": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
     "mdmBinding": {

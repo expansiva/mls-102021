@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { derivedReadSection, derivedReadValue, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const PROJECT = 102099;
 const MODULE = 'fila';
@@ -98,6 +98,89 @@ test('an MDM entity a rule cites is read from the platform, and its derived fiel
     ].join('\n');
     const refused = await usecaseAnswerProblems(ctx as never, usecase, storedRead, []);
     assert.ok(refused.some(problem => problem.includes('details.atrasada')), refused.join('\n'));
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+const PAINEL_MEASURES = [
+  'details.solicitacoesAguardandoAutorizacao',
+  'details.pedidosEmAberto',
+  'details.pedidosAtrasados',
+  'details.totalComprado',
+  'details.quantidadePedidos',
+];
+
+const DERIVED_READ = {
+  mode: 'onRead',
+  sources: ['SolicitacaoCompra', 'PedidoCompra'],
+  windowField: 'periodo',
+  groupBy: ['fornecedorId'],
+  measures: PAINEL_MEASURES,
+};
+
+test('Derived read names the sources, the window, the groups and the measures, and forbids the summary table', () => {
+  const text = derivedReadSection(derivedReadValue({ derivedRead: DERIVED_READ })!, [
+    { entityId: 'SolicitacaoCompra', importPath: '/_102099_/l1/compras/layer_2_application/usecases/listSolicitacaoCompra.js', signatures: 'export async function listSolicitacaoCompra' },
+    { entityId: 'PedidoCompra', importPath: '/_102099_/l1/compras/layer_2_application/usecases/listPedidoCompra.js', signatures: 'export async function listPedidoCompra' },
+  ]);
+  assert.match(text, /^## Derived read\n/u);
+  assert.match(text, /SolicitacaoCompra/u);
+  assert.match(text, /PedidoCompra/u);
+  assert.match(text, /listSolicitacaoCompra\.js/u);
+  assert.match(text, /listPedidoCompra\.js/u);
+  assert.match(text, /export async function listSolicitacaoCompra/u);
+  assert.match(text, /`periodo`/u);
+  assert.match(text, /`fornecedorId`/u);
+  for (const measure of PAINEL_MEASURES) assert.match(text, new RegExp(measure.replace(/\./gu, '\\.'), 'u'));
+  assert.match(text, /calculated on read/u);
+  assert.match(text, /Do not read or write the table/u);
+  assert.match(text, /resolveRepository/u);
+  assert.equal(derivedReadValue({ usecaseId: 'listPedidoCompra' }), null);
+});
+
+test('a usecase without derivedRead keeps the context it had, and listPainelCompras gains only that section', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const base = {
+    usecaseId: 'listPainelCompras',
+    entityId: 'PainelCompras',
+    operation: 'list',
+    rulesApplied: [],
+    effects: [],
+    functions: [{ functionName: 'listPainelCompras', input: [{ name: 'page', type: 'number' }], output: [{ name: 'items', type: 'unknown[]' }] }],
+  };
+  const list = (entityId: string, artifactId: string) => unit('usecase', artifactId, {
+    usecaseId: artifactId,
+    entityId,
+    operation: 'list',
+    functions: [{ functionName: artifactId, input: [], output: [{ name: 'items', type: 'unknown[]' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/${artifactId}.ts`);
+  const solicitacao = list('SolicitacaoCompra', 'listSolicitacaoCompra');
+  const pedido = list('PedidoCompra', 'listPedidoCompra');
+  const without = unit('usecase', 'listPainelCompras', base, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listPainelCompras.ts`, [solicitacao.defRef, pedido.defRef]);
+  const withField = unit('usecase', 'listPainelCompras', { ...base, derivedRead: DERIVED_READ }, without.outputRef, [solicitacao.defRef, pedido.defRef]);
+  const read = async () => null;
+  const ctxOf = (usecase: M12Unit) => ({ run: { project: PROJECT, module: MODULE }, units: [usecase, solicitacao, pedido], read });
+  try {
+    const plain = await loadUsecaseContext(ctxOf(without) as never, without);
+    const derived = await loadUsecaseContext(ctxOf(withField) as never, withField);
+    assert.equal(plain.human.includes('## Derived read'), false);
+    const start = derived.human.indexOf('## Derived read');
+    assert.ok(start > 0);
+    const section = derived.human.slice(start);
+    assert.match(section, /SolicitacaoCompra/u);
+    assert.match(section, /PedidoCompra/u);
+    assert.match(section, /listSolicitacaoCompra\.js/u);
+    assert.match(section, /listPedidoCompra\.js/u);
+    assert.match(section, /`periodo`/u);
+    assert.match(section, /`fornecedorId`/u);
+    for (const measure of PAINEL_MEASURES) assert.match(section, new RegExp(measure.replace(/\./gu, '\\.'), 'u'));
+    assert.match(section, /Do not read or write the table/u);
+    assert.match(section, /resolveRepository/u);
+    const withoutSection = derived.human.replace(/\n## Derived read\n[\s\S]*$/u, '');
+    const withoutField = withoutSection.replace(/,?\n    "derivedRead": \{[\s\S]*?\n    \}/u, '');
+    assert.equal(withoutField, plain.human);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }

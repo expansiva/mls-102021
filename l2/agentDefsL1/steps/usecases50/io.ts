@@ -9,6 +9,7 @@ import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/
 import type { D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { buildUsecaseContexts, capabilityNames, loadVerifiedSources, namespaceOf, ontologyTransitions, platformFieldPaths } from '/_102021_/l2/agentDefsL1/steps/usecases50/context.js';
+import { derivedReadOf } from '/_102021_/l2/agentDefsL1/steps/usecases50/derivedRead.js';
 import { D1_PERSISTENCE_VERSION, type D1PersistenceBuild } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import type { D1AttemptTrace } from '/_102021_/l2/agentDefsL1/steps/usecases50/dispatch.js';
 import { buildD1Usecases } from '/_102021_/l2/agentDefsL1/steps/usecases50/gate.js';
@@ -297,7 +298,7 @@ async function usecaseRequest(
     ...snapshot.selection.entities,
   ])];
   const bundle = await loadVerifiedSources(project, moduleName, snapshot, entityIds);
-  const entities: D1UsecaseEntity[] = domain.entities.map(plan => entityView(plan, bundle.bodies[plan.entityId] ?? null));
+  const entities: D1UsecaseEntity[] = domain.entities.map(plan => entityView(plan, bundle.bodies[plan.entityId] ?? null, entityIds));
   const usecases = snapshot.selection.usecases.map(usecase => ({
     usecaseId: usecase.usecaseId,
     entity: usecase.entity,
@@ -337,7 +338,7 @@ async function usecaseRequest(
   };
 }
 
-function entityView(plan: D1DomainBuild['entities'][number], body: unknown | null): D1UsecaseEntity {
+function entityView(plan: D1DomainBuild['entities'][number], body: unknown | null, moduleEntityIds: readonly string[]): D1UsecaseEntity {
   const data = plan.definition && isRecord(plan.definition.data) ? plan.definition.data : {};
   const fields = Array.isArray(data.fields) ? data.fields.flatMap(field => {
     if (!isRecord(field) || typeof field.name !== 'string' || typeof field.type !== 'string') return [];
@@ -370,7 +371,18 @@ function entityView(plan: D1DomainBuild['entities'][number], body: unknown | nul
     enumerations: (plan.enumerations || []).map(item => ({ path: item.path, values: [...item.values] })),
     capabilities: capabilityNames(body),
     platformFields: platformFieldPaths(body),
+    ...derivedReadFields(body, moduleEntityIds, plan.entityId),
   };
+}
+
+function derivedReadFields(
+  body: unknown | null,
+  moduleEntityIds: readonly string[],
+  entityId: string,
+): { derivedRead: D1UsecaseEntity['derivedRead']; derivedReadProblems: string[] } | Record<string, never> {
+  const read = derivedReadOf(body, moduleEntityIds, entityId);
+  if (!read) return {};
+  return { derivedRead: read.derivedRead, derivedReadProblems: read.problems };
 }
 
 async function readDraft(

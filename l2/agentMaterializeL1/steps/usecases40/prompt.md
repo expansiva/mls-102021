@@ -26,6 +26,7 @@ Each section of the prompt answers one question. When two sections disagree, the
 | l4 ontology → `relationships` | source | how this entity reaches another one (`itens` of a Comanda are the ItemComanda with that `comandaId`) |
 | Rules (l4 text) | source | what to check, and the error when it is broken |
 | Entity cited by a rule / Dependency | source | the exact field names and the port of another entity |
+| Derived read (only when that section is present) | source | the summary is calculated on read from the list usecases of the named sources, by the named window and groups; the table and the port of this summary are not used |
 | The platform MDM (only for an entity kept in the MDM) | source | how the engine stores and returns that entity TODAY (flat `details`, list rows without `version`); it wins over the grouped shape of the entity ontology for what you read from and write to `ctx.mdm` |
 | Definition (`operation`, `transitionRef`, `rulesApplied`, `effects`) | intent | which usecase this is and the rules it must apply; it says nothing about how |
 | Scaffold | contract | the exported names and the input and output interfaces |
@@ -99,6 +100,7 @@ declared filter that is never applied returns the records of every parent (the i
   is refused with `CONCURRENCY_CONFLICT` ("Version does not match the stored row"). Compare the input version with
   the read one when the operation takes it (a stale version is a 409), never add 1 to it. A create sets `version: 1`.
 
+- When the context has a section "Derived read", follow it: the summary is calculated on read from the list usecases of the named sources (import them as that section says), by the named window field and groups, and the named measures are the result. Do not read or write this entity's table, and do not call `resolveRepository` for it.
 - A field the l4 ontology marks `derived` (for example a table's availability, a subtotal, a total, a line value) is
   never read from storage: it is calculated from its description and rule every time it is returned or checked.
   Never read it as a property of a record (`mesa.details.disponivel`): it is not stored, so the read is `undefined`.

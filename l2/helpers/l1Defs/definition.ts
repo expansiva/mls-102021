@@ -78,7 +78,7 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
   repositoryAdapter: { required: ['entityId', 'portId', 'tableId', 'columns'], optional: [], nonempty: ['columns'] },
   usecase: {
     required: ['usecaseId', 'entityId', 'operation', 'rulesApplied', 'effects'],
-    optional: ['transitionRef', 'mdm'],
+    optional: ['transitionRef', 'mdm', 'derivedRead'],
     nonempty: [],
   },
   httpController: { required: ['pageId', 'handlers'], optional: [], nonempty: ['handlers'] },
@@ -514,6 +514,36 @@ function dependencyListIssues(value: unknown): string[] {
   return issues;
 }
 
+/** Alpha read of a `ddm`: calculated on read, from the named sources, window and groups. */
+export function derivedReadIssues(value: unknown, issues: string[]): void {
+  const path = 'data.derivedRead';
+  if (!isRecord(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  const allowed = ['mode', 'sources', 'windowField', 'groupBy', 'measures'];
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) issues.push(`Unknown field ${path}.${key}.`);
+  }
+  const mode = value.mode;
+  if (typeof mode !== 'string' || !mode.trim()) issues.push(`Missing field ${path}.mode.`);
+  else if (mode !== 'onRead') issues.push(`${path}.mode is invalid.`);
+  nonemptyStrings(value.sources, `${path}.sources`, issues);
+  if (typeof value.windowField !== 'string' || !value.windowField.trim()) issues.push(`Missing field ${path}.windowField.`);
+  nonemptyStrings(value.groupBy, `${path}.groupBy`, issues);
+  nonemptyStrings(value.measures, `${path}.measures`, issues);
+}
+
+function nonemptyStrings(value: unknown, path: string, issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  value.forEach((item, index) => {
+    if (typeof item !== 'string' || !item.trim()) issues.push(`Missing field ${path}.${index}.`);
+  });
+}
+
 /** Top-level `data` keys. d1_31 uses this list; agentDefsL1 does not keep a second copy. */
 export function dataAllowList(type: M1ArtifactType): readonly string[] {
   const spec = DATA_KEYS[type];
@@ -530,6 +560,7 @@ function dataIssues(type: M1ArtifactType, data: Record<string, unknown>): string
   if (type === 'usecase' && data.routeProjections !== undefined) {
     issues.push('data.routeProjections is the removed v1 shape (DEF_V1_UNSUPPORTED); regenerate the usecase as v2.');
   }
+  if (type === 'usecase' && data.derivedRead !== undefined) derivedReadIssues(data.derivedRead, issues);
   for (const key of spec.required) {
     if (data[key] === undefined) issues.push(`Missing field data.${key}.`);
   }

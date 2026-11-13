@@ -59,6 +59,7 @@ function asIntention(definition: M1Definition): M1Definition {
   };
   if (data.transitionRef !== undefined) next.transitionRef = data.transitionRef;
   if (data.mdm !== undefined) next.mdm = data.mdm;
+  if (data.derivedRead !== undefined) next.derivedRead = data.derivedRead;
   return { ...definition, data: next };
 }
 
@@ -397,4 +398,27 @@ void test('usecase keeps the intention and refuses the script', () => {
   assert.match(d1DefinitionIssues(script).join('\n'), /Unknown field data\.sequence\./);
   const transition: M1Definition = { ...listBuoy, data: { ...listBuoy.data, operation: 'transition' } };
   assert.match(d1DefinitionIssues(transition).join('\n'), /Missing field data\.transitionRef\./);
+});
+
+void test('usecase accepts derivedRead and refuses a wrong shape', () => {
+  const derivedRead = {
+    mode: 'onRead',
+    sources: ['SolicitacaoCompra', 'PedidoCompra'],
+    windowField: 'periodo',
+    groupBy: ['fornecedorId'],
+    measures: ['details.total'],
+  };
+  const withRead: M1Definition = { ...listBuoy, data: { ...listBuoy.data, derivedRead } };
+  assert.deepEqual(definitionIssues(withRead), []);
+  assert.deepEqual(d1DefinitionIssues(withRead), []);
+  assert.deepEqual(definitionIssues(listBuoy), []);
+  const extra: M1Definition = { ...withRead, data: { ...withRead.data, derivedRead: { ...derivedRead, extra: true } } };
+  assert.match(definitionIssues(extra).join('\n'), /Unknown field data\.derivedRead\.extra/);
+  assert.match(d1DefinitionIssues(extra).join('\n'), /Unknown field data\.derivedRead\.extra/);
+  const mode: M1Definition = { ...withRead, data: { ...withRead.data, derivedRead: { ...derivedRead, mode: 'stored' } } };
+  assert.match(definitionIssues(mode).join('\n'), /data\.derivedRead\.mode/);
+  assert.match(d1DefinitionIssues(mode).join('\n'), /data\.derivedRead\.mode/);
+  const blank: M1Definition = { ...withRead, data: { ...withRead.data, derivedRead: { ...derivedRead, sources: [''] } } };
+  assert.match(definitionIssues(blank).join('\n'), /data\.derivedRead\.sources/);
+  assert.match(d1DefinitionIssues(blank).join('\n'), /data\.derivedRead\.sources/);
 });
