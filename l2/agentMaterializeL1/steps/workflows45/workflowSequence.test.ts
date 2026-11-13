@@ -11,7 +11,10 @@ import { writeDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { modelDispatcherAgent, modelWorkerAgent } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
+import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { WORKFLOW_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
+import { loadWorkflowContext, workflowSequence } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { notImplementedStub } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/sequence.js';
 
 const savedMls = (globalThis as { mls?: unknown }).mls;
@@ -341,4 +344,138 @@ test('a usecase layer still makes one call', async () => {
   const step = workers[0].step as { prompt?: string; planning?: { planId?: string } };
   assert.equal(JSON.parse(step.prompt ?? '{}').phase, undefined);
   assert.equal(step.planning?.planId, 'usecases40-modx-openItem-1');
+});
+
+const OCCURRENCE = 'Nota';
+const CITED = 'Item';
+const BY_STEP = 'Parcela';
+
+function ontologySource(entityId: string, title: string, marker: string): string {
+  return `export const ontology = ${JSON.stringify({ entityId, title, lifecycleStates: ['open'], transitions: [], marker })} as const;\n`;
+}
+
+function entityUnit(entityId: string): M12Unit {
+  const data = { entityId };
+  return {
+    unitId: entityId,
+    defRef: '',
+    outputRef: `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/${entityId}.ts`,
+    output: '',
+    definition: { artifactType: 'domainEntity', artifactId: entityId, moduleName: MODULE, dependencies: [], data },
+    declared: { data },
+  } as unknown as M12Unit;
+}
+
+function focusedUnit(tasks: unknown[], functions: unknown[], operations: Array<{ operation: string; steps: string[] }>, mdm = false): { unit: M12Unit; units: M12Unit[] } {
+  const data = {
+    processId: PROCESS,
+    trigger: { kind: 'event', event: 'pedido' },
+    occurrence: { entityId: OCCURRENCE },
+    functions: ['resolverGerente', 'registrarPedido', 'aprovarPedido', workflowWakeHandlerName('cotar'), workflowRecoverName(PROCESS)],
+    operations,
+  };
+  const unit = {
+    unitId: PROCESS,
+    definition: { artifactType: 'workflowProcess', artifactId: PROCESS, moduleName: MODULE, dependencies: [], data },
+    declared: { data },
+    outputRef: fileRef(workflowTs),
+  } as unknown as M12Unit;
+  const usecaseData = { entityId: OCCURRENCE, operation: 'criar', ...(mdm ? { mdm: { kept: true } } : {}) };
+  const usecase = {
+    unitId: 'criarNota',
+    definition: { artifactType: 'usecase', artifactId: 'criarNota', moduleName: MODULE, dependencies: [], data: usecaseData },
+    declared: { data: usecaseData },
+    outputRef: '',
+  } as unknown as M12Unit;
+  const process = { processId: PROCESS, tasks, functions };
+  const l4 = `export const workflows = ${JSON.stringify({ processes: [process] })} as const;\n`;
+  const files: Record<string, string> = {
+    [`_${PROJECT}_/l4/${MODULE}/workflows.defs.ts`]: l4,
+    [`_${PROJECT}_/l4/${MODULE}/ontology/${OCCURRENCE}.defs.ts`]: ontologySource(OCCURRENCE, 'nota', 'OCC_FULL'),
+    [`_${PROJECT}_/l4/${MODULE}/ontology/${CITED}.defs.ts`]: ontologySource(CITED, 'item', 'ITEM_FULL'),
+    [`_${PROJECT}_/l4/${MODULE}/ontology/${BY_STEP}.defs.ts`]: ontologySource(BY_STEP, 'parcela', 'PARCELA_FULL'),
+  };
+  const units = [entityUnit(OCCURRENCE), entityUnit(CITED), entityUnit(BY_STEP), usecase];
+  const ctx = {
+    run: { project: PROJECT, module: MODULE },
+    units,
+    appEnv: 'test',
+    read: async (ref: string) => files[ref] ?? null,
+  };
+  return { unit, ctx };
+}
+
+test('a focused function keeps the llm section and the ontologies it touches', async () => {
+  const tasks = [
+    { taskId: 'cotar', kind: 'llm', title: 'Cotar', next: ['aprovar'], functionRef: 'registrarPedido' },
+    { taskId: 'aprovar', kind: 'human', title: 'Aprovar', next: ['end'], functionRef: 'aprovarPedido' },
+  ];
+  const functions = [
+    { functionId: 'resolverGerente', description: 'Decide o gerente sem gravar.' },
+    { functionId: 'registrarPedido', description: 'Grava o item e segue.' },
+    { functionId: 'aprovarPedido', description: 'Aprova o que já foi gravado.' },
+  ];
+  const operations = [{ operation: `${BY_STEP}.abrir`, steps: ['aprovar'] }];
+  const { unit, ctx } = focusedUnit(tasks, functions, operations);
+  const linked = await loadWorkflowContext(ctx, unit, undefined, 'registrarPedido');
+  const other = await loadWorkflowContext(ctx, unit, undefined, 'resolverGerente');
+  const stepOwner = await loadWorkflowContext(ctx, unit, undefined, 'aprovarPedido');
+  const wake = await loadWorkflowContext(ctx, unit, undefined, workflowWakeHandlerName('cotar'));
+  const recover = await loadWorkflowContext(ctx, unit, undefined, workflowRecoverName(PROCESS));
+  assert.match(linked.human, /## An llm step/);
+  assert.equal(other.human.includes('## An llm step'), false);
+  assert.match(wake.human, /## An llm step/);
+  assert.match(recover.human, /## An llm step/);
+  assert.match(linked.human, new RegExp(`## l4 ontology of ${CITED}`));
+  assert.equal(other.human.includes(`## l4 ontology of ${CITED}`), false);
+  assert.match(other.human, new RegExp(`## domainEntity ${CITED}`));
+  assert.match(linked.human, /OCC_FULL/);
+  assert.match(other.human, /OCC_FULL/);
+  assert.match(stepOwner.human, new RegExp(`## l4 ontology of ${BY_STEP}`));
+  assert.equal(other.human.includes(`## l4 ontology of ${BY_STEP}`), false);
+  assert.equal(linked.human.includes('ITEM_FULL'), false);
+  assert.equal(linked.human.includes('PARCELA_FULL'), false);
+
+  const looseTasks = [{ taskId: 'cotar', kind: 'llm', title: 'Cotar', next: ['end'] }];
+  const looseFunctions = [
+    { functionId: 'resolverGerente', description: 'Decide o gerente sem gravar.' },
+    { functionId: 'registrarPedido', description: 'Grava e segue.' },
+  ];
+  const loose = focusedUnit(looseTasks, looseFunctions, []);
+  const one = await loadWorkflowContext(loose.ctx, loose.unit, undefined, 'resolverGerente');
+  const two = await loadWorkflowContext(loose.ctx, loose.unit, undefined, 'registrarPedido');
+  assert.match(one.human, /## An llm step/);
+  assert.match(two.human, /## An llm step/);
+
+  const byProse = focusedUnit(
+    [{ taskId: 'cotar', kind: 'llm', title: 'Cotar', next: ['end'] }],
+    [
+      { functionId: 'resolverGerente', description: 'Decide o gerente sem gravar.' },
+      { functionId: 'registrarPedido', description: 'O passo cotar devolve o texto.' },
+    ],
+    [],
+  );
+  const proseHit = await loadWorkflowContext(byProse.ctx, byProse.unit, undefined, 'registrarPedido');
+  const proseMiss = await loadWorkflowContext(byProse.ctx, byProse.unit, undefined, 'resolverGerente');
+  assert.match(proseHit.human, /## An llm step/);
+  assert.equal(proseMiss.human.includes('## An llm step'), false);
+
+  const repaired = await loadWorkflowContext(ctx, unit, { problems: ['missing entity'], previous: null }, 'resolverGerente');
+  assert.match(repaired.human, new RegExp(`## l4 ontology of ${CITED}`));
+  assert.match(repaired.human, /## An llm step/);
+
+  const whole = await loadWorkflowContext(ctx, unit);
+  const finalText = await workflowSequence.context(ctx, unit, 'final', '', undefined);
+  const single = await WORKFLOW_SPEC.context(ctx, unit);
+  const skeletonText = await workflowSequence.context(ctx, unit, 'skeleton', '', undefined);
+  assert.equal(finalText, whole.human);
+  assert.equal(single, whole.human);
+  assert.ok(skeletonText.startsWith(whole.human));
+  assert.match(whole.human, new RegExp(`## l4 ontology of ${CITED}`));
+  assert.match(skeletonText, new RegExp(`## l4 ontology of ${CITED}`));
+
+  const withMdm = focusedUnit(tasks, functions, [...operations, { operation: `${OCCURRENCE}.criar`, steps: ['cotar'] }], true);
+  const mdmCall = await loadWorkflowContext(withMdm.ctx, withMdm.unit, undefined, 'resolverGerente');
+  assert.match(mdmCall.human, /## The platform MDM/);
+  assert.equal(other.human.includes('## The platform MDM'), false);
 });

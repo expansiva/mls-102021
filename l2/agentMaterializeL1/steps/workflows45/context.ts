@@ -377,6 +377,65 @@ export function workflowStepFunctionRefs(processJson: string): Array<{ stepId: s
   });
 }
 
+/** `word` as a whole identifier in `text` (letters, digits and `_` stay attached). */
+function citesWord(text: string, word: string): boolean {
+  if (!word) return false;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=[^\\p{L}\\p{N}_]|$)`, 'u').test(text);
+}
+
+function functionIdsOf(processJson: string): string[] {
+  let row: unknown;
+  try { row = JSON.parse(processJson); } catch { return []; }
+  if (!isRecord(row) || !Array.isArray(row.functions)) return [];
+  return row.functions.flatMap(item => isRecord(item) && typeof item.functionId === 'string' && item.functionId ? [item.functionId] : []);
+}
+
+/**
+ * Functions tied to an `llm` step without guessing from the name: a step `functionRef`, or prose that cites the
+ * step id as a whole word. Empty when nothing ties — the caller then keeps the section for every function.
+ */
+function llmLinkedFunctions(processJson: string, steps: readonly WorkflowStepEmit[]): Set<string> {
+  const llmIds = new Set(steps.filter(step => step.kind === 'llm').map(step => step.stepId));
+  const linked = new Set<string>();
+  for (const ref of workflowStepFunctionRefs(processJson)) {
+    if (ref.functionRef && llmIds.has(ref.stepId)) linked.add(ref.functionRef);
+  }
+  for (const name of functionIdsOf(processJson)) {
+    const prose = functionProse(processJson, name);
+    for (const stepId of llmIds) {
+      if (citesWord(prose, stepId)) linked.add(name);
+    }
+  }
+  return linked;
+}
+
+/** The llm section stays for this call. With no `llm` step it is already empty. A repair, or no focus, keeps it. */
+function includeLlmSection(focus: string | undefined, repair: M12Repair | undefined, processId: string, processJson: string, steps: readonly WorkflowStepEmit[]): boolean {
+  if (!steps.some(step => step.kind === 'llm')) return false;
+  if (!focus || repair) return true;
+  if (workflowLlmExportNames(processId, steps).includes(focus)) return true;
+  const linked = llmLinkedFunctions(processJson, steps);
+  return linked.size === 0 || linked.has(focus);
+}
+
+/**
+ * Entities this function touches: the occurrence, entities named in its own prose, and entities of operations whose
+ * steps the l4 ties to it by `functionRef`. Without `functionRef`, only the occurrence and the prose count.
+ */
+function touchedEntities(focus: string, processJson: string, facts: M12WorkflowFacts, titles: ReadonlyArray<{ entityId: string; title: string }>): Set<string> {
+  const touched = new Set<string>();
+  if (facts.occurrence) touched.add(facts.occurrence);
+  for (const entityId of citedEntities(functionProse(processJson, focus), titles)) touched.add(entityId);
+  const ownSteps = new Set(workflowStepFunctionRefs(processJson).filter(row => row.functionRef === focus).map(row => row.stepId));
+  for (const operation of facts.operations) {
+    if (!operation.steps.some(step => ownSteps.has(step))) continue;
+    const entityId = operation.operation.split('.')[0];
+    if (entityId) touched.add(entityId);
+  }
+  return touched;
+}
+
 /** The l4 process with only `focus` left whole in `functions`; every other function keeps `functionId`. */
 function focusFunctions(process: string, focus: string): string {
   let row: unknown;
@@ -431,9 +490,13 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   // The entity of the occurrence and of every operation, with its port: a system transition and the occurrence
   // record are read and written through them. And every entity the prose of the process names: the daily notice
   // reads the open tasks, and without the Tarefa entity the model guessed its states (todo, inProgress).
+  // Citations are read on the whole process, so a focused call still sends the signature of an entity another
+  // function names. The ontology of an entity this function does not touch is omitted, except on a repair.
   const titles = (await entityNames(ctx)).flatMap(names => [{ entityId: names.entityId, title: names.title }, { entityId: names.entityId, title: names.entityId }]);
   const core = new Set([facts.occurrence, ...facts.operations.map(row => row.operation.split('.')[0])].filter(Boolean));
-  const entities = new Set([...core, ...citedEntities(process, titles)]);
+  const entities = new Set([...core, ...citedEntities(readProcess, titles)]);
+  const narrow = Boolean(focus) && !repair;
+  const touched = narrow && focus ? touchedEntities(focus, readProcess, facts, titles) : null;
   for (const item of ctx.units) {
     const kind = item.definition.artifactType;
     if ((kind !== 'domainEntity' && kind !== 'repositoryPort') || !entities.has(String(item.definition.data.entityId ?? ''))) continue;
@@ -443,9 +506,11 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
       generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(item.definition.data)),
     ].join('\n\n')));
     if (kind === 'domainEntity') {
+      const entityId = String(item.definition.data.entityId ?? '');
+      if (touched && !touched.has(entityId)) continue;
       const ontology = await ctx.read(ontologyRef(item.definition, item.outputRef));
       if (ontology) {
-        const cited = !core.has(String(item.definition.data.entityId ?? ''));
+        const cited = !core.has(entityId);
         parts.push(section(`l4 ontology of ${item.definition.artifactId} (source: states, transitions, derived fields)`, fence('ts', cited ? citedOntology(ontology) : ontology.slice(0, 20000))));
       }
     }
@@ -463,7 +528,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
   ].join('\n')));
   parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId)));
-  const processSteps = workflowProcessSteps(process);
+  const processSteps = workflowProcessSteps(readProcess);
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
   const platformSources = await Promise.all(platform.slice(0, 3).map(ref => ctx.read(ref)));
   const indexSource = platformSources[0] ?? '';
@@ -472,7 +537,9 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     const ref = reexportRef(indexSource, 'WorkflowWakeHandler');
     wakeSignature = ref ? typeAlias(await ctx.read(ref) ?? '', 'WorkflowWakeHandler') : '';
   }
-  const llm = llmStepSection(facts.processId, processSteps, platformSources, wakeSignature);
+  const llm = includeLlmSection(focus, repair, facts.processId, readProcess, processSteps)
+    ? llmStepSection(facts.processId, processSteps, platformSources, wakeSignature)
+    : '';
   if (llm) parts.push(section('An llm step', llm));
   for (const ref of platform) {
     const source = await ctx.read(ref);
