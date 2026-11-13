@@ -178,7 +178,7 @@ void test('refs read in every form the emitters pass', () => {
 
 void test('the plan chains the phases and registers only a whole-module run', () => {
   const steps = buildM12PlannedSteps(PROJECT, { scope: MODULE, target: '', force: false }, [{ module: MODULE, layers: ['domain', 'usecases', 'controllers', 'tests'], register: true }]);
-  assert.deepEqual(steps.map(step => step.planning?.planId), ['domain10-m', 'usecases40-m', 'controllers30-m', 'tests60-m', 'register70-m', 'finalize80-m'].map(id => id.replace('-m', `-${MODULE}`)));
+  assert.deepEqual(steps.map(step => step.planning?.planId), ['domain10-m', 'usecases40-m', 'controllers30-m', 'tests60-m', 'register70-m', 'catalog75-m', 'finalize80-m'].map(id => id.replace('-m', `-${MODULE}`)));
   assert.deepEqual(steps[2].planning?.dependsOn, [`usecases40-${MODULE}`], 'a controller compiles after what it imports');
   assert.equal(registersModule({ scope: MODULE, target: '', force: false }, MODULE), true);
   assert.equal(registersModule({ scope: `${MODULE}/layer_2_application`, target: '', force: false }, MODULE), false);

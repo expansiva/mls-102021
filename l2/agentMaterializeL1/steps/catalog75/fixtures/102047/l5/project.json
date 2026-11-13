@@ -1,0 +1,313 @@
+{
+  "orgName": "expansiva",
+  "designSystems": [
+    {
+      "dsIndex": "0",
+      "dsName": "localDesignSystem",
+      "widgetIOName": "_100554_configDsDefault"
+    }
+  ],
+  "languages": [
+    {
+      "language": "en",
+      "name": "English",
+      "path": "/"
+    }
+  ],
+  "plugins": {},
+  "reasons": {},
+  "services": [],
+  "links": [],
+  "servicesConfigEnabled": false,
+  "appEnv": "presentation",
+  "projectType": "client",
+  "modules": [
+    {
+      "moduleName": "agendaClinica",
+      "backend": {
+        "backendControllers": "./_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "agendaClinica.agenda_diaria.carregarAgendaDiaria",
+          "agendaClinica.agenda_diaria.carregarConsultaSelecionada",
+          "agendaClinica.agenda_diaria.carregarMaisConsultasDoDia",
+          "agendaClinica.agenda_diaria.registrarAtendimento",
+          "agendaClinica.consultas.agendarConsulta",
+          "agendaClinica.consultas.carregarAgenda",
+          "agendaClinica.consultas.carregarMaisAgenda",
+          "agendaClinica.consultas.carregarMaisPacientesParaAgendamento",
+          "agendaClinica.consultas.carregarMaisProfissionaisParaAgendamento",
+          "agendaClinica.consultas.confirmarConsulta",
+          "agendaClinica.consultas.consultarConsultaSelecionada",
+          "agendaClinica.consultas.filtrarAgenda",
+          "agendaClinica.consultas.localizarPacientesParaAgendamento",
+          "agendaClinica.consultas.localizarProfissionaisParaAgendamento",
+          "agendaClinica.consultas.registrarFalta",
+          "agendaClinica.pacientes.loadPatientDetail",
+          "agendaClinica.pacientes.loadPatients",
+          "agendaClinica.pacientes.savePatient",
+          "agendaClinica.pacientes.searchPatients",
+          "agendaClinica.profissionais.createProfessional",
+          "agendaClinica.profissionais.getProfessional",
+          "agendaClinica.profissionais.loadAvailableProfessionals",
+          "agendaClinica.profissionais.loadMoreAvailableProfessionals",
+          "agendaClinica.profissionais.loadMoreProfessionalSearch",
+          "agendaClinica.profissionais.searchAvailableProfessionals",
+          "agendaClinica.profissionais.updateProfessional"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/agendaClinica/layer_1_external/adapters/persistence"
+        }
+      }
+    },
+    {
+      "moduleName": "reembolsoDespesas",
+      "backend": {
+        "backendControllers": "./_102047_/l1/reembolsoDespesas/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "reembolsoDespesas.despesas_aprovadas.load",
+          "reembolsoDespesas.despesas_aprovadas.loadDespesasAprovadas",
+          "reembolsoDespesas.despesas_aprovadas.registerPayment",
+          "reembolsoDespesas.despesas_da_equipe.approveExpense",
+          "reembolsoDespesas.despesas_da_equipe.load",
+          "reembolsoDespesas.despesas_da_equipe.loadDespesasDaEquipe",
+          "reembolsoDespesas.despesas_da_equipe.rejectExpense",
+          "reembolsoDespesas.minhas_despesas.corrigirDespesa",
+          "reembolsoDespesas.minhas_despesas.enviarParaAprovacao",
+          "reembolsoDespesas.minhas_despesas.load",
+          "reembolsoDespesas.minhas_despesas.loadMinhasDespesas",
+          "reembolsoDespesas.minhas_despesas.reenviarParaAprovacao",
+          "reembolsoDespesas.minhas_despesas.registrarDespesa"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/reembolsoDespesas/layer_1_external/adapters/persistence"
+        }
+      }
+    },
+    {
+      "moduleName": "comandaRestaurante",
+      "backend": {
+        "backendControllers": "./_102047_/l1/comandaRestaurante/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "comandaRestaurante.atendimento.abrirComanda",
+          "comandaRestaurante.atendimento.atualizarLocalizacaoAtendimento",
+          "comandaRestaurante.atendimento.cancelarItem",
+          "comandaRestaurante.atendimento.carregarAtendimento",
+          "comandaRestaurante.atendimento.lancarItem",
+          "comandaRestaurante.atendimento.obterComandaAtendimento",
+          "comandaRestaurante.cardapio.atualizarItemCardapio",
+          "comandaRestaurante.cardapio.cadastrarItemCardapio",
+          "comandaRestaurante.cardapio.carregarItensCardapio",
+          "comandaRestaurante.cardapio.carregarMaisItensCardapio",
+          "comandaRestaurante.cardapio.obterItemCardapio",
+          "comandaRestaurante.fechamento.buscarComandasAbertas",
+          "comandaRestaurante.fechamento.carregarFechamento",
+          "comandaRestaurante.fechamento.carregarMaisComandasAbertas",
+          "comandaRestaurante.fechamento.fecharComandaPaga",
+          "comandaRestaurante.fechamento.obterComandaParaFechamento",
+          "comandaRestaurante.inicio.carregarResumoOperacional",
+          "comandaRestaurante.mesas.atualizarMesa",
+          "comandaRestaurante.mesas.carregarMesas",
+          "comandaRestaurante.mesas.criarMesa"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/comandaRestaurante/layer_1_external/adapters/persistence"
+        }
+      }
+    },
+    {
+      "moduleName": "controleEstoque"
+    },
+    {
+      "moduleName": "ordenServicio"
+    },
+    {
+      "moduleName": "compras",
+      "backend": {
+        "backendControllers": "./_102047_/l1/compras/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "compras.entregas_a_receber.buscarFilaEntregas",
+          "compras.entregas_a_receber.getEntregasDoDia",
+          "compras.entregas_a_receber.getPedidoParaRecebimento",
+          "compras.entregas_a_receber.registrarRecebimento",
+          "compras.fornecedores.adicionarProdutoFornecido",
+          "compras.fornecedores.buscarFornecedores",
+          "compras.fornecedores.buscarProdutos",
+          "compras.fornecedores.obterFichaFornecedor",
+          "compras.fornecedores.salvarFornecedor",
+          "compras.inicio_comprador.carregarInicioComprador",
+          "compras.inicio_comprador.enviarSolicitacao",
+          "compras.meu_cadastro.qryMeuCadastro",
+          "compras.painel_compras.autorizarSolicitacao",
+          "compras.painel_compras.carregarPainel",
+          "compras.painel_compras.listarPedidosAtrasados",
+          "compras.painel_compras.rejeitarSolicitacao",
+          "compras.pedidos.abrirPedido",
+          "compras.pedidos.pesquisarPedidos",
+          "compras.pedidos.registrarRecebimento",
+          "compras.produtos.cadastrarProduto",
+          "compras.produtos.listarProdutos",
+          "compras.produtos.obterProduto",
+          "compras.produtos.pesquisarProdutos",
+          "compras.produtos.salvarAlteracaoProduto",
+          "compras.solicitacoes.autorizarSolicitacao",
+          "compras.solicitacoes.buscarProdutos",
+          "compras.solicitacoes.criarSolicitacao",
+          "compras.solicitacoes.enviarSolicitacao",
+          "compras.solicitacoes.listarSolicitacoes",
+          "compras.solicitacoes.obterSolicitacao",
+          "compras.solicitacoes.rejeitarSolicitacao"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/compras/layer_1_external/adapters/persistence"
+        },
+        "pageTests": [
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/entregas_a_receber.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/fornecedores.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/inicio_comprador.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/meu_cadastro.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/painel_compras.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/pedidos.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/produtos.test.ts",
+          "_102047_/l1/compras/layer_1_external/adapters/http/controllers/solicitacoes.test.ts"
+        ]
+      }
+    },
+    {
+      "moduleName": "financeiro"
+    },
+    {
+      "moduleName": "hiringPipeline"
+    },
+    {
+      "moduleName": "inscricaoEvento"
+    },
+    {
+      "moduleName": "locacaoEquipamentos"
+    },
+    {
+      "moduleName": "manutencaoFrota"
+    },
+    {
+      "moduleName": "mensalidadesAcademia"
+    },
+    {
+      "moduleName": "tarefas",
+      "backend": {
+        "backendControllers": "./_102047_/l1/tarefas/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "tarefas.inicio.aceitarTarefa",
+          "tarefas.inicio.carregarInicio",
+          "tarefas.inicio.devolverTarefa",
+          "tarefas.inicio.enviarRevisao",
+          "tarefas.inicio.iniciarTarefa",
+          "tarefas.inicio.retomarTarefa",
+          "tarefas.listas_tarefas.cmdCriarLista",
+          "tarefas.listas_tarefas.cmdSalvarLista",
+          "tarefas.listas_tarefas.qryListasTarefas",
+          "tarefas.minhas_tarefas.cmdAceitar",
+          "tarefas.minhas_tarefas.cmdAdicionarItensChecklist",
+          "tarefas.minhas_tarefas.cmdAjustarChecklist",
+          "tarefas.minhas_tarefas.cmdCancelar",
+          "tarefas.minhas_tarefas.cmdCriarTarefa",
+          "tarefas.minhas_tarefas.cmdDevolver",
+          "tarefas.minhas_tarefas.cmdEnviarParaRevisao",
+          "tarefas.minhas_tarefas.cmdIniciar",
+          "tarefas.minhas_tarefas.cmdRetomar",
+          "tarefas.minhas_tarefas.cmdSalvarAlteracoes",
+          "tarefas.minhas_tarefas.qryListas",
+          "tarefas.minhas_tarefas.qryMinhasTarefas",
+          "tarefas.minhas_tarefas.qryResponsaveis",
+          "tarefas.minhas_tarefas.qryTarefa",
+          "tarefas.minhas_tarefas.qryTarefasDoGrupo",
+          "tarefas.painel_tarefas.carregarPainelTarefas",
+          "tarefas.participantes.buscarUsuarios",
+          "tarefas.participantes.incluirParticipante",
+          "tarefas.participantes.listarParticipantes",
+          "tarefas.participantes.salvarMarcas",
+          "tarefas.tarefas_equipe.buscarResponsaveisDisponiveis",
+          "tarefas.tarefas_equipe.cancelarTarefaEquipe",
+          "tarefas.tarefas_equipe.carregarFiltrosEquipe",
+          "tarefas.tarefas_equipe.listarTarefasEquipe",
+          "tarefas.tarefas_equipe.obterTarefaEquipe",
+          "tarefas.tarefas_equipe.trocarResponsavelTarefa"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/tarefas/layer_1_external/adapters/persistence"
+        },
+        "pageTests": [
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/inicio.test.ts",
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/listas_tarefas.test.ts",
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/minhas_tarefas.test.ts",
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/painel_tarefas.test.ts",
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/participantes.test.ts",
+          "_102047_/l1/tarefas/layer_1_external/adapters/http/controllers/tarefas_equipe.test.ts"
+        ]
+      }
+    },
+    {
+      "moduleName": "wfteste",
+      "backend": {
+        "backendControllers": "./_102047_/l1/wfteste/layer_1_external/adapters/http/controllers",
+        "routeKeys": [
+          "wfteste.pedidos.qryPedidos",
+          "wfteste.pedidos.qryPedido",
+          "wfteste.pedidos.qryAprovadores",
+          "wfteste.pedidos.cmdCriarPedido",
+          "wfteste.pedidos.cmdEnviarParaPesquisa",
+          "wfteste.pedidos.cmdAprovar",
+          "wfteste.pedidos.cmdDevolver"
+        ],
+        "materialization": {
+          "phase": "structure",
+          "behaviorVerified": false
+        },
+        "persistence": {
+          "tableDefsDir": "./_102047_/l1/wfteste/layer_1_external/adapters/persistence"
+        }
+      }
+    }
+  ],
+  "masters": {
+    "backend": {
+      "masterProject": 102021,
+      "agentFolder": "agentMaterializeL1",
+      "runtimeProject": 102034
+    },
+    "frontend": {
+      "masterProject": 102020,
+      "agentFolder": "agentMaterializeL2",
+      "runtimeProject": 102033
+    }
+  },
+  "layouts": {
+    "1": {
+      "name": "Default"
+    },
+    "2": {
+      "name": "Ux 2"
+    },
+    "3": {
+      "name": "Ux 3"
+    }
+  }
+}

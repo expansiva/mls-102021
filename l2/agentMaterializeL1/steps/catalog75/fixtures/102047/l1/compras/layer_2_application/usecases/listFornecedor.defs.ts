@@ -1,0 +1,145 @@
+/// <mls fileReference="_102047_/l1/compras/layer_2_application/usecases/listFornecedor.defs.ts" enhancement="_blank"/>
+
+export const definition = {
+  "schemaVersion": "2026-09-24-d1-definition-v2",
+  "artifactType": "usecase",
+  "artifactId": "listFornecedor",
+  "moduleName": "compras",
+  "status": "pending",
+  "dependencies": [
+    "_102047_/l1/compras/layer_3_domain/entities/fornecedor.defs.ts"
+  ],
+  "data": {
+    "usecaseId": "listFornecedor",
+    "entityId": "Fornecedor",
+    "operation": "list",
+    "rulesApplied": [],
+    "effects": [],
+    "mdm": {
+      "namespace": "compras",
+      "role": "compras.Fornecedor",
+      "atomic": false,
+      "calls": [
+        {
+          "id": "get",
+          "method": "get",
+          "target": "entity",
+          "shape": "point",
+          "capabilities": [
+            "read.byId"
+          ],
+          "alternative": false,
+          "when": [],
+          "arguments": [
+            {
+              "name": "mdmId",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "id"
+              },
+              "path": "id"
+            }
+          ],
+          "result": [
+            "mdmId",
+            "version",
+            "details"
+          ]
+        },
+        {
+          "id": "findByDocument",
+          "method": "findByDocument",
+          "target": "entity",
+          "shape": "point",
+          "capabilities": [
+            "locate.byDocument"
+          ],
+          "alternative": false,
+          "when": [
+            {
+              "kind": "contract",
+              "path": "details.identification.docType",
+              "present": true
+            },
+            {
+              "kind": "contract",
+              "path": "details.identification.docId",
+              "present": true
+            }
+          ],
+          "arguments": [
+            {
+              "name": "docType",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.docType"
+              },
+              "path": "details.identification.docType"
+            },
+            {
+              "name": "docId",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.docId"
+              },
+              "path": "details.identification.docId"
+            }
+          ],
+          "result": [
+            "mdmId",
+            "version",
+            "details"
+          ]
+        },
+        {
+          "id": "listByName",
+          "method": "listByType",
+          "target": "collection",
+          "shape": "collection",
+          "capabilities": [
+            "locate.byName"
+          ],
+          "alternative": false,
+          "when": [
+            {
+              "kind": "contract",
+              "path": "details.identification.name",
+              "present": true
+            }
+          ],
+          "arguments": [
+            {
+              "name": "type",
+              "role": "parameter",
+              "origin": {
+                "kind": "literal",
+                "evidence": "role"
+              },
+              "value": "compras.Fornecedor"
+            },
+            {
+              "name": "name",
+              "role": "selector",
+              "origin": {
+                "kind": "contract",
+                "path": "details.identification.name"
+              },
+              "path": "details.identification.name"
+            }
+          ],
+          "result": [
+            "items",
+            "page",
+            "pageSize",
+            "total"
+          ]
+        }
+      ]
+    }
+  }
+} as const;
+
+export default definition;

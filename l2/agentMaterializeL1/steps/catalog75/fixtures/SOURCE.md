@@ -1,0 +1,1 @@
+Cópia (só leitura da origem, 13/11/2026) dos arquivos do `mls-102047` que o emissor do catálogo de ações lê, para os módulos `tarefas` e `compras`: l1 requests, usecases e workflows defs; l4 journeys, ontology, integration e workflows; l2 contracts e shared; l5 config.json e project.json. Não editar à mão: é a fixture do d1_181.

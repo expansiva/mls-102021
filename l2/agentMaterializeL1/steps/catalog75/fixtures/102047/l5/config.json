@@ -1,0 +1,999 @@
+{
+  "alphaAllAuthorities": true,
+  "organization": {
+    "source": "development-project"
+  },
+  "projectSettings": {
+    "driver": "vm",
+    "url": "local/local/local/mls-102047"
+  },
+  "workspaceDependencies": [
+    "102020",
+    "102033",
+    "102034",
+    "102035",
+    "102021",
+    "102027",
+    "102029",
+    "102036",
+    "102025",
+    "102040",
+    "100554",
+    "100555",
+    "102041"
+  ],
+  "projects": {
+    "100554": {
+      "root": "../mls-100554",
+      "type": "lib"
+    },
+    "100555": {
+      "root": "../mls-100555",
+      "type": "lib"
+    },
+    "102020": {
+      "root": "../mls-102020",
+      "type": "lib"
+    },
+    "102021": {
+      "root": "../mls-102021",
+      "type": "lib"
+    },
+    "102025": {
+      "root": "../mls-102025",
+      "type": "lib"
+    },
+    "102027": {
+      "root": "../mls-102027",
+      "type": "lib"
+    },
+    "102029": {
+      "root": "../mls-102029",
+      "type": "lib"
+    },
+    "102033": {
+      "root": "../mls-102033",
+      "type": "master frontend"
+    },
+    "102034": {
+      "root": "../mls-102034",
+      "type": "master backend",
+      "modules": [
+        {
+          "moduleId": "mdm",
+          "basePath": "/mdm",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/mdm/layer_2_controllers/router.js"
+        },
+        {
+          "moduleId": "monitor",
+          "basePath": "/monitor",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/monitor/layer_2_controllers/router.js"
+        },
+        {
+          "moduleId": "audit",
+          "basePath": "/audit",
+          "shellMode": "spa",
+          "backendRouter": "./_102034_/l1/audit/layer_2_controllers/router.js"
+        }
+      ],
+      "persistenceModules": [
+        {
+          "moduleId": "platform",
+          "persistenceEntrypoint": "./_102034_/l1/server/persistence.js"
+        },
+        {
+          "moduleId": "mdm",
+          "persistenceEntrypoint": "./_102034_/l1/mdm/persistence.js"
+        },
+        {
+          "moduleId": "monitor",
+          "persistenceEntrypoint": "./_102034_/l1/monitor/persistence.js"
+        }
+      ]
+    },
+    "102035": {
+      "root": "../mls-102035",
+      "type": "lib"
+    },
+    "102036": {
+      "root": "../mls-102036",
+      "type": "lib"
+    },
+    "102040": {
+      "root": "../mls-102040",
+      "type": "lib"
+    },
+    "102047": {
+      "root": "../mls-102047",
+      "type": "client",
+      "runtime": {
+        "projectId": "102047"
+      },
+      "modules": [
+        {
+          "moduleId": "comandaRestaurante",
+          "shellMode": "spa",
+          "basePath": "/comandaRestaurante",
+          "userLanguage": "pt-BR",
+          "backendControllers": "./_102047_/l1/comandaRestaurante/layer_1_external/adapters/http/controllers",
+          "navigation": [
+            {
+              "id": "inicio",
+              "label": "Início",
+              "href": "/comandaRestaurante/inicio",
+              "description": "Ver as mesas disponíveis e os totais das comandas em aberto.",
+              "actors": [
+                "garcom",
+                "caixa"
+              ],
+              "landing": true
+            },
+            {
+              "id": "atendimento",
+              "label": "Atendimento",
+              "href": "/comandaRestaurante/atendimento",
+              "description": "Abrir comandas, lançar itens e cancelar itens lançados por engano.",
+              "actors": [
+                "garcom"
+              ]
+            },
+            {
+              "id": "fechamento",
+              "label": "Fechamento",
+              "href": "/comandaRestaurante/fechamento",
+              "description": "Conferir os totais, registrar desconto e pagamento e fechar a comanda.",
+              "actors": [
+                "caixa"
+              ]
+            },
+            {
+              "id": "mesas",
+              "label": "Mesas",
+              "href": "/comandaRestaurante/mesas",
+              "description": "Consultar a disponibilidade e cadastrar ou atualizar as mesas da casa.",
+              "actors": [
+                "caixa"
+              ]
+            },
+            {
+              "id": "cardapio",
+              "label": "Cardápio",
+              "href": "/comandaRestaurante/cardapio",
+              "description": "Consultar e manter os itens do cardápio e seus preços.",
+              "actors": [
+                "caixa"
+              ]
+            }
+          ],
+          "landings": [
+            {
+              "actorId": "garcom",
+              "pageId": "inicio",
+              "route": "/comandaRestaurante/inicio"
+            },
+            {
+              "actorId": "caixa",
+              "pageId": "inicio",
+              "route": "/comandaRestaurante/inicio"
+            }
+          ],
+          "headerLinks": [],
+          "frontend": {
+            "layer": "l2",
+            "pageTests": [],
+            "pages": [
+              {
+                "pageId": "inicio",
+                "route": "/comandaRestaurante/inicio",
+                "source": "l2/comandaRestaurante/web/desktop/page11/inicio.ts",
+                "definition": "l2/comandaRestaurante/web/desktop/page11/inicio.defs.ts",
+                "componentTag": "comanda-restaurante--web--desktop--page11--inicio-102047",
+                "title": "Início",
+                "actors": [
+                  "garcom",
+                  "caixa"
+                ]
+              },
+              {
+                "pageId": "atendimento",
+                "route": "/comandaRestaurante/atendimento",
+                "source": "l2/comandaRestaurante/web/desktop/page11/atendimento.ts",
+                "definition": "l2/comandaRestaurante/web/desktop/page11/atendimento.defs.ts",
+                "componentTag": "comanda-restaurante--web--desktop--page11--atendimento-102047",
+                "title": "Atendimento",
+                "actors": [
+                  "garcom"
+                ]
+              },
+              {
+                "pageId": "fechamento",
+                "route": "/comandaRestaurante/fechamento",
+                "source": "l2/comandaRestaurante/web/desktop/page11/fechamento.ts",
+                "definition": "l2/comandaRestaurante/web/desktop/page11/fechamento.defs.ts",
+                "componentTag": "comanda-restaurante--web--desktop--page11--fechamento-102047",
+                "title": "Fechamento",
+                "actors": [
+                  "caixa"
+                ]
+              },
+              {
+                "pageId": "mesas",
+                "route": "/comandaRestaurante/mesas",
+                "source": "l2/comandaRestaurante/web/desktop/page11/mesas.ts",
+                "definition": "l2/comandaRestaurante/web/desktop/page11/mesas.defs.ts",
+                "componentTag": "comanda-restaurante--web--desktop--page11--mesas-102047",
+                "title": "Mesas",
+                "actors": [
+                  "caixa"
+                ]
+              },
+              {
+                "pageId": "cardapio",
+                "route": "/comandaRestaurante/cardapio",
+                "source": "l2/comandaRestaurante/web/desktop/page11/cardapio.ts",
+                "definition": "l2/comandaRestaurante/web/desktop/page11/cardapio.defs.ts",
+                "componentTag": "comanda-restaurante--web--desktop--page11--cardapio-102047",
+                "title": "Cardápio",
+                "actors": [
+                  "caixa"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "moduleId": "reembolsoDespesas",
+          "shellMode": "spa",
+          "basePath": "/reembolsoDespesas",
+          "userLanguage": "pt-BR",
+          "backendControllers": "./_102047_/l1/reembolsoDespesas/layer_1_external/adapters/http/controllers",
+          "navigation": [
+            {
+              "id": "inicio",
+              "label": "Início",
+              "href": "/reembolsoDespesas/inicio",
+              "description": "Ver as despesas da equipe que aguardam análise e seguir para decidir.",
+              "actors": [
+                "gestorEquipe"
+              ],
+              "landing": true
+            },
+            {
+              "id": "minhas_despesas",
+              "label": "Minhas despesas",
+              "href": "/reembolsoDespesas/minhas_despesas",
+              "description": "Registrar despesas, enviar para aprovação e corrigir as recusadas.",
+              "actors": [
+                "colaborador"
+              ],
+              "landing": true
+            },
+            {
+              "id": "despesas_da_equipe",
+              "label": "Despesas da equipe",
+              "href": "/reembolsoDespesas/despesas_da_equipe",
+              "description": "Conferir as despesas pendentes e aprovar ou rejeitar com o motivo.",
+              "actors": [
+                "gestorEquipe"
+              ]
+            },
+            {
+              "id": "despesas_aprovadas",
+              "label": "Despesas aprovadas",
+              "href": "/reembolsoDespesas/despesas_aprovadas",
+              "description": "Conferir as despesas aprovadas e registrar a data do pagamento.",
+              "actors": [
+                "financeiro"
+              ],
+              "landing": true
+            }
+          ],
+          "landings": [
+            {
+              "actorId": "colaborador",
+              "pageId": "minhas_despesas",
+              "route": "/reembolsoDespesas/minhas_despesas"
+            },
+            {
+              "actorId": "gestorEquipe",
+              "pageId": "inicio",
+              "route": "/reembolsoDespesas/inicio"
+            },
+            {
+              "actorId": "financeiro",
+              "pageId": "despesas_aprovadas",
+              "route": "/reembolsoDespesas/despesas_aprovadas"
+            }
+          ],
+          "headerLinks": [],
+          "frontend": {
+            "layer": "l2",
+            "pageTests": [],
+            "pages": [
+              {
+                "pageId": "inicio",
+                "route": "/reembolsoDespesas/inicio",
+                "source": "l2/reembolsoDespesas/web/desktop/page11/inicio.ts",
+                "definition": "l2/reembolsoDespesas/web/desktop/page11/inicio.defs.ts",
+                "componentTag": "reembolso-despesas--web--desktop--page11--inicio-102047",
+                "title": "Início",
+                "actors": [
+                  "gestorEquipe"
+                ]
+              },
+              {
+                "pageId": "minhas_despesas",
+                "route": "/reembolsoDespesas/minhas_despesas",
+                "source": "l2/reembolsoDespesas/web/desktop/page11/minhas_despesas.ts",
+                "definition": "l2/reembolsoDespesas/web/desktop/page11/minhas_despesas.defs.ts",
+                "componentTag": "reembolso-despesas--web--desktop--page11--minhas_despesas-102047",
+                "title": "Minhas despesas",
+                "actors": [
+                  "colaborador"
+                ]
+              },
+              {
+                "pageId": "despesas_da_equipe",
+                "route": "/reembolsoDespesas/despesas_da_equipe",
+                "source": "l2/reembolsoDespesas/web/desktop/page11/despesas_da_equipe.ts",
+                "definition": "l2/reembolsoDespesas/web/desktop/page11/despesas_da_equipe.defs.ts",
+                "componentTag": "reembolso-despesas--web--desktop--page11--despesas_da_equipe-102047",
+                "title": "Despesas da equipe",
+                "actors": [
+                  "gestorEquipe"
+                ]
+              },
+              {
+                "pageId": "despesas_aprovadas",
+                "route": "/reembolsoDespesas/despesas_aprovadas",
+                "source": "l2/reembolsoDespesas/web/desktop/page11/despesas_aprovadas.ts",
+                "definition": "l2/reembolsoDespesas/web/desktop/page11/despesas_aprovadas.defs.ts",
+                "componentTag": "reembolso-despesas--web--desktop--page11--despesas_aprovadas-102047",
+                "title": "Despesas aprovadas",
+                "actors": [
+                  "financeiro"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "moduleId": "agendaClinica",
+          "shellMode": "spa",
+          "basePath": "/agendaClinica",
+          "userLanguage": "pt-BR",
+          "backendControllers": "./_102047_/l1/agendaClinica/layer_1_external/adapters/http/controllers",
+          "navigation": [
+            {
+              "id": "consultas",
+              "label": "Consultas",
+              "href": "/agendaClinica/consultas",
+              "description": "Ver a agenda da clínica, marcar, confirmar consultas e registrar faltas.",
+              "actors": [
+                "recepcionista"
+              ],
+              "landing": true
+            },
+            {
+              "id": "pacientes",
+              "label": "Pacientes",
+              "href": "/agendaClinica/pacientes",
+              "description": "Localizar e cadastrar pacientes para agendar consultas.",
+              "actors": [
+                "recepcionista"
+              ]
+            },
+            {
+              "id": "profissionais",
+              "label": "Profissionais",
+              "href": "/agendaClinica/profissionais",
+              "description": "Ver os profissionais disponíveis e manter seus cadastros.",
+              "actors": [
+                "recepcionista"
+              ]
+            },
+            {
+              "id": "agenda_diaria",
+              "label": "Agenda do dia",
+              "href": "/agendaClinica/agenda_diaria",
+              "description": "Ver as consultas do dia e registrar o atendimento.",
+              "actors": [
+                "profissional"
+              ],
+              "landing": true
+            }
+          ],
+          "landings": [
+            {
+              "actorId": "recepcionista",
+              "pageId": "consultas",
+              "route": "/agendaClinica/consultas"
+            },
+            {
+              "actorId": "profissional",
+              "pageId": "agenda_diaria",
+              "route": "/agendaClinica/agenda_diaria"
+            }
+          ],
+          "headerLinks": [],
+          "frontend": {
+            "layer": "l2",
+            "pageTests": [],
+            "pages": [
+              {
+                "pageId": "consultas",
+                "route": "/agendaClinica/consultas",
+                "source": "l2/agendaClinica/web/desktop/page11/consultas.ts",
+                "definition": "l2/agendaClinica/web/desktop/page11/consultas.defs.ts",
+                "componentTag": "agenda-clinica--web--desktop--page11--consultas-102047",
+                "title": "Consultas",
+                "actors": [
+                  "recepcionista"
+                ]
+              },
+              {
+                "pageId": "pacientes",
+                "route": "/agendaClinica/pacientes",
+                "source": "l2/agendaClinica/web/desktop/page11/pacientes.ts",
+                "definition": "l2/agendaClinica/web/desktop/page11/pacientes.defs.ts",
+                "componentTag": "agenda-clinica--web--desktop--page11--pacientes-102047",
+                "title": "Pacientes",
+                "actors": [
+                  "recepcionista"
+                ]
+              },
+              {
+                "pageId": "profissionais",
+                "route": "/agendaClinica/profissionais",
+                "source": "l2/agendaClinica/web/desktop/page11/profissionais.ts",
+                "definition": "l2/agendaClinica/web/desktop/page11/profissionais.defs.ts",
+                "componentTag": "agenda-clinica--web--desktop--page11--profissionais-102047",
+                "title": "Profissionais",
+                "actors": [
+                  "recepcionista"
+                ]
+              },
+              {
+                "pageId": "agenda_diaria",
+                "route": "/agendaClinica/agenda_diaria",
+                "source": "l2/agendaClinica/web/desktop/page11/agenda_diaria.ts",
+                "definition": "l2/agendaClinica/web/desktop/page11/agenda_diaria.defs.ts",
+                "componentTag": "agenda-clinica--web--desktop--page11--agenda_diaria-102047",
+                "title": "Agenda do dia",
+                "actors": [
+                  "profissional"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "moduleId": "controleEstoque",
+          "basePath": "/controleEstoque",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "ordenServicio",
+          "basePath": "/ordenServicio",
+          "userLanguage": "es",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "compras",
+          "basePath": "/compras",
+          "userLanguage": "pt-BR",
+          "navigation": [
+            {
+              "id": "inicio_comprador",
+              "label": "Início",
+              "href": "/compras/inicio_comprador",
+              "description": "Mostrar ao comprador, logo ao entrar, o que exige atenção agora: solicitações com necessidade vencida e quantas opções já foram pesquisadas, pedidos atrasados com dias de atraso e saldo a receber, e as solicitações que ele ainda precisa completar e enviar para pesquisa e autorização.",
+              "actors": [
+                "comprador"
+              ],
+              "icon": "house",
+              "landing": true
+            },
+            {
+              "id": "meu_cadastro",
+              "label": "Meus dados",
+              "href": "/compras/meu_cadastro",
+              "description": "Mostrar ao comprador o próprio cadastro, com nome, situação e o e-mail usado para entrar no sistema, para conferir se está tudo certo com o acesso.",
+              "actors": [
+                "comprador"
+              ],
+              "icon": "user"
+            },
+            {
+              "id": "painel_compras",
+              "label": "Painel de compras",
+              "href": "/compras/painel_compras",
+              "description": "Dar ao gerente de compras, em uma só tela, a situação das compras do mês e as decisões pendentes: quantas solicitações aguardam sua autorização, quantos pedidos estão em aberto ou atrasados e quanto foi comprado de cada fornecedor, permitindo autorizar ou rejeitar solicitações e abrir os pedidos atrasados.",
+              "actors": [
+                "gerenteCompras"
+              ],
+              "icon": "layout-dashboard",
+              "landing": true
+            },
+            {
+              "id": "solicitacoes",
+              "label": "Solicitações de compra",
+              "href": "/compras/solicitacoes",
+              "description": "Reunir em um só lugar as solicitações de compra: encontrá-las por produto, fornecedor, situação e período, abrir uma nova necessidade, analisar as opções pesquisadas e decidir, acompanhando o que o sistema fez em cada etapa.",
+              "actors": [
+                "comprador",
+                "gerenteCompras"
+              ],
+              "icon": "file-text"
+            },
+            {
+              "id": "pedidos",
+              "label": "Pedidos de compra",
+              "href": "/compras/pedidos",
+              "description": "Permitir que comprador, gerente de compras e almoxarife encontrem pedidos de compra, vejam o que foi pedido, quanto já chegou e quanto falta receber, e acompanhem o que aconteceu com cada pedido, com o registro do recebimento disponível no próprio pedido.",
+              "actors": [
+                "comprador",
+                "gerenteCompras",
+                "almoxarife"
+              ],
+              "icon": "shopping-cart"
+            },
+            {
+              "id": "entregas_a_receber",
+              "label": "Entregas a receber",
+              "href": "/compras/entregas_a_receber",
+              "description": "Mostrar ao almoxarife quais pedidos chegam hoje e quais estão atrasados, permitir conferir cada pedido da fila e registrar o recebimento total ou parcial, dando entrada no estoque e vendo o saldo que fica pendente.",
+              "actors": [
+                "almoxarife"
+              ],
+              "icon": "truck",
+              "landing": true
+            },
+            {
+              "id": "fornecedores",
+              "label": "Fornecedores",
+              "href": "/compras/fornecedores",
+              "description": "Permitir ao comprador localizar fornecedores pelo CNPJ ou pela razão social antes de cadastrar, evitando duplicidade, registrar novos fornecedores com os produtos que fornecem e o preço combinado, e permitir ao comprador e ao gerente de compras consultar a ficha completa de cada fornecedor.",
+              "actors": [
+                "comprador",
+                "gerenteCompras"
+              ],
+              "icon": "building-2"
+            },
+            {
+              "id": "produtos",
+              "label": "Produtos",
+              "href": "/compras/produtos",
+              "description": "Manter o catálogo de produtos usado nas compras: localizar um produto pelo nome, código ou categoria, conferir a unidade de medida e se controla estoque, e cadastrar um produto novo ou corrigir um existente.",
+              "actors": [
+                "comprador",
+                "gerenteCompras"
+              ],
+              "icon": "package"
+            }
+          ],
+          "headerLinks": [],
+          "shellMode": "spa",
+          "languages": [
+            "pt-BR"
+          ],
+          "landings": [
+            {
+              "actorId": "comprador",
+              "pageId": "inicio_comprador",
+              "route": "/compras/inicio_comprador"
+            },
+            {
+              "actorId": "gerenteCompras",
+              "pageId": "painel_compras",
+              "route": "/compras/painel_compras"
+            },
+            {
+              "actorId": "almoxarife",
+              "pageId": "entregas_a_receber",
+              "route": "/compras/entregas_a_receber"
+            }
+          ],
+          "frontend": {
+            "layer": "l2",
+            "pages": [
+              {
+                "pageId": "inicio_comprador",
+                "route": "/compras/inicio_comprador",
+                "source": "l2/compras/web/desktop/page11/inicio_comprador.ts",
+                "definition": "l2/compras/web/desktop/page11/inicio_comprador.defs.ts",
+                "componentTag": "compras--web--desktop--page11--inicio_comprador-102047",
+                "title": "Início",
+                "actors": [
+                  "comprador"
+                ]
+              },
+              {
+                "pageId": "meu_cadastro",
+                "route": "/compras/meu_cadastro",
+                "source": "l2/compras/web/desktop/page11/meu_cadastro.ts",
+                "definition": "l2/compras/web/desktop/page11/meu_cadastro.defs.ts",
+                "componentTag": "compras--web--desktop--page11--meu_cadastro-102047",
+                "title": "Meus dados",
+                "actors": [
+                  "comprador"
+                ]
+              },
+              {
+                "pageId": "painel_compras",
+                "route": "/compras/painel_compras",
+                "source": "l2/compras/web/desktop/page11/painel_compras.ts",
+                "definition": "l2/compras/web/desktop/page11/painel_compras.defs.ts",
+                "componentTag": "compras--web--desktop--page11--painel_compras-102047",
+                "title": "Painel de compras",
+                "actors": [
+                  "gerenteCompras"
+                ]
+              },
+              {
+                "pageId": "solicitacoes",
+                "route": "/compras/solicitacoes",
+                "source": "l2/compras/web/desktop/page11/solicitacoes.ts",
+                "definition": "l2/compras/web/desktop/page11/solicitacoes.defs.ts",
+                "componentTag": "compras--web--desktop--page11--solicitacoes-102047",
+                "title": "Solicitações de compra",
+                "actors": [
+                  "comprador",
+                  "gerenteCompras"
+                ]
+              },
+              {
+                "pageId": "pedidos",
+                "route": "/compras/pedidos",
+                "source": "l2/compras/web/desktop/page11/pedidos.ts",
+                "definition": "l2/compras/web/desktop/page11/pedidos.defs.ts",
+                "componentTag": "compras--web--desktop--page11--pedidos-102047",
+                "title": "Pedidos de compra",
+                "actors": [
+                  "comprador",
+                  "gerenteCompras",
+                  "almoxarife"
+                ]
+              },
+              {
+                "pageId": "entregas_a_receber",
+                "route": "/compras/entregas_a_receber",
+                "source": "l2/compras/web/desktop/page11/entregas_a_receber.ts",
+                "definition": "l2/compras/web/desktop/page11/entregas_a_receber.defs.ts",
+                "componentTag": "compras--web--desktop--page11--entregas_a_receber-102047",
+                "title": "Entregas a receber",
+                "actors": [
+                  "almoxarife"
+                ]
+              },
+              {
+                "pageId": "fornecedores",
+                "route": "/compras/fornecedores",
+                "source": "l2/compras/web/desktop/page11/fornecedores.ts",
+                "definition": "l2/compras/web/desktop/page11/fornecedores.defs.ts",
+                "componentTag": "compras--web--desktop--page11--fornecedores-102047",
+                "title": "Fornecedores",
+                "actors": [
+                  "comprador",
+                  "gerenteCompras"
+                ]
+              },
+              {
+                "pageId": "produtos",
+                "route": "/compras/produtos",
+                "source": "l2/compras/web/desktop/page11/produtos.ts",
+                "definition": "l2/compras/web/desktop/page11/produtos.defs.ts",
+                "componentTag": "compras--web--desktop--page11--produtos-102047",
+                "title": "Produtos",
+                "actors": [
+                  "comprador",
+                  "gerenteCompras"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "moduleId": "financeiro",
+          "basePath": "/financeiro",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "hiringPipeline",
+          "basePath": "/hiringPipeline",
+          "userLanguage": "en",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "inscricaoEvento",
+          "basePath": "/inscricaoEvento",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "locacaoEquipamentos",
+          "basePath": "/locacaoEquipamentos",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "manutencaoFrota",
+          "basePath": "/manutencaoFrota",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "mensalidadesAcademia",
+          "basePath": "/mensalidadesAcademia",
+          "userLanguage": "pt-BR",
+          "navigation": [],
+          "headerLinks": []
+        },
+        {
+          "moduleId": "tarefas",
+          "basePath": "/tarefas",
+          "userLanguage": "pt-BR",
+          "navigation": [
+            {
+              "id": "inicio",
+              "label": "Início",
+              "href": "/tarefas/inicio",
+              "description": "Mostrar ao membro da equipe, logo ao entrar, tudo o que depende dele agora — tarefas para iniciar ou executar, tarefas que criou aguardando revisão e tarefas devolvidas para retomar — junto com os prazos que vencem hoje ou estão atrasados, para que aja sem procurar.",
+              "actors": [
+                "membroEquipe"
+              ],
+              "landing": true
+            },
+            {
+              "id": "minhas_tarefas",
+              "label": "Minhas tarefas",
+              "href": "/tarefas/minhas_tarefas",
+              "description": "Dar ao membro uma visão única das tarefas de que é responsável e das que criou, destacando o que vence hoje, o que está atrasado e quem age agora, para abrir uma tarefa, entender o que falta e avançar o trabalho: executar, revisar, retomar, reatribuir, cancelar ou criar uma nova tarefa.",
+              "actors": [
+                "membroEquipe"
+              ]
+            },
+            {
+              "id": "painel_tarefas",
+              "label": "Painel de tarefas",
+              "href": "/tarefas/painel_tarefas",
+              "description": "Dar ao gestor, logo ao abrir, uma visão de toda a organização: quantas tarefas estão abertas, quantas vencem hoje, quantas estão atrasadas e quantas foram devolvidas e ainda não foram retomadas.",
+              "actors": [
+                "gestor"
+              ],
+              "landing": true
+            },
+            {
+              "id": "tarefas_equipe",
+              "label": "Todas as tarefas",
+              "href": "/tarefas/tarefas_equipe",
+              "description": "O gestor acompanha todas as tarefas da equipe, filtra por lista, responsável, prioridade, prazo e situação, alterna entre lista e quadro por situação, abre uma tarefa para conferir responsável, prazo e checklist e, quando preciso, troca o responsável ou cancela a tarefa, vendo o histórico do que aconteceu.",
+              "actors": [
+                "gestor"
+              ]
+            },
+            {
+              "id": "participantes",
+              "label": "Participantes",
+              "href": "/tarefas/participantes",
+              "description": "Permitir que o gestor veja quem participa do módulo de tarefas, inclua usuários da organização como participantes e marque, para cada um, se aceita tarefas e se pode criar tarefas, sem cadastrar ninguém nem pedir dado pessoal.",
+              "actors": [
+                "gestor"
+              ]
+            },
+            {
+              "id": "listas_tarefas",
+              "label": "Listas de tarefas",
+              "href": "/tarefas/listas_tarefas",
+              "description": "O gestor vê todas as listas que agrupam tarefas por projeto ou área, com a quantidade de tarefas abertas em cada uma, e cria uma lista nova ou ajusta nome e descrição de uma existente, para que as listas fiquem disponíveis ao criar tarefas.",
+              "actors": [
+                "gestor"
+              ]
+            }
+          ],
+          "headerLinks": [],
+          "shellMode": "spa",
+          "languages": [
+            "pt-BR"
+          ],
+          "landings": [
+            {
+              "actorId": "membroEquipe",
+              "pageId": "inicio",
+              "route": "/tarefas/inicio"
+            },
+            {
+              "actorId": "gestor",
+              "pageId": "painel_tarefas",
+              "route": "/tarefas/painel_tarefas"
+            }
+          ],
+          "frontend": {
+            "layer": "l2",
+            "pages": [
+              {
+                "pageId": "inicio",
+                "route": "/tarefas/inicio",
+                "source": "l2/tarefas/web/desktop/page11/inicio.ts",
+                "definition": "l2/tarefas/web/desktop/page11/inicio.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--inicio-102047",
+                "title": "Início",
+                "actors": [
+                  "membroEquipe"
+                ]
+              },
+              {
+                "pageId": "minhas_tarefas",
+                "route": "/tarefas/minhas_tarefas",
+                "source": "l2/tarefas/web/desktop/page11/minhas_tarefas.ts",
+                "definition": "l2/tarefas/web/desktop/page11/minhas_tarefas.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--minhas_tarefas-102047",
+                "title": "Minhas tarefas",
+                "actors": [
+                  "membroEquipe"
+                ]
+              },
+              {
+                "pageId": "painel_tarefas",
+                "route": "/tarefas/painel_tarefas",
+                "source": "l2/tarefas/web/desktop/page11/painel_tarefas.ts",
+                "definition": "l2/tarefas/web/desktop/page11/painel_tarefas.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--painel_tarefas-102047",
+                "title": "Painel de tarefas",
+                "actors": [
+                  "gestor"
+                ]
+              },
+              {
+                "pageId": "tarefas_equipe",
+                "route": "/tarefas/tarefas_equipe",
+                "source": "l2/tarefas/web/desktop/page11/tarefas_equipe.ts",
+                "definition": "l2/tarefas/web/desktop/page11/tarefas_equipe.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--tarefas_equipe-102047",
+                "title": "Todas as tarefas",
+                "actors": [
+                  "gestor"
+                ]
+              },
+              {
+                "pageId": "participantes",
+                "route": "/tarefas/participantes",
+                "source": "l2/tarefas/web/desktop/page11/participantes.ts",
+                "definition": "l2/tarefas/web/desktop/page11/participantes.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--participantes-102047",
+                "title": "Participantes",
+                "actors": [
+                  "gestor"
+                ]
+              },
+              {
+                "pageId": "listas_tarefas",
+                "route": "/tarefas/listas_tarefas",
+                "source": "l2/tarefas/web/desktop/page11/listas_tarefas.ts",
+                "definition": "l2/tarefas/web/desktop/page11/listas_tarefas.defs.ts",
+                "componentTag": "tarefas--web--desktop--page11--listas_tarefas-102047",
+                "title": "Listas de tarefas",
+                "actors": [
+                  "gestor"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "moduleId": "wfteste",
+          "basePath": "/wfteste",
+          "userLanguage": "pt-BR",
+          "navigation": [
+            {
+              "id": "pedidos",
+              "label": "Pedidos",
+              "href": "/wfteste/pedidos",
+              "description": "O solicitante abre um pedido e o aprovador confere o resultado da pesquisa.",
+              "actors": [
+                "solicitante",
+                "aprovador"
+              ]
+            }
+          ],
+          "actors": [
+            "solicitante",
+            "aprovador"
+          ],
+          "headerLinks": [],
+          "shellMode": "spa",
+          "languages": [
+            "pt-BR"
+          ],
+          "frontend": {
+            "layer": "l2",
+            "pages": [
+              {
+                "pageId": "pedidos",
+                "route": "/wfteste/pedidos",
+                "source": "l2/wfteste/web/desktop/page11/pedidos.ts",
+                "definition": "l2/wfteste/web/desktop/page11/pedidos.defs.ts",
+                "componentTag": "wfteste--web--desktop--page11--pedidos-102047",
+                "title": "Pedidos",
+                "actors": [
+                  "solicitante",
+                  "aprovador"
+                ]
+              }
+            ],
+            "pageTests": []
+          }
+        }
+      ],
+      "persistenceModules": [
+        {
+          "moduleId": "comandaRestaurante",
+          "tableDefsDir": "./_102047_/l1/comandaRestaurante/layer_1_external/adapters/persistence"
+        },
+        {
+          "moduleId": "agendaClinica",
+          "tableDefsDir": "./_102047_/l1/agendaClinica/layer_1_external/adapters/persistence"
+        },
+        {
+          "moduleId": "reembolsoDespesas",
+          "tableDefsDir": "./_102047_/l1/reembolsoDespesas/layer_1_external/adapters/persistence"
+        },
+        {
+          "moduleId": "tarefas",
+          "tableDefsDir": "./_102047_/l1/tarefas/layer_1_external/adapters/persistence",
+          "persistenceEntrypoint": "./_102047_/l1/tarefas/layer_1_external/adapters/persistence/moduleTick.js"
+        },
+        {
+          "moduleId": "wfteste",
+          "tableDefsDir": "./_102047_/l1/wfteste/layer_1_external/adapters/persistence",
+          "persistenceEntrypoint": "./_102047_/l1/wfteste/layer_1_external/adapters/persistence/moduleTick.js"
+        }
+      ]
+    }
+  },
+  "defaultProjectId": "102047",
+  "shellTemplates": {
+    "spa": "./_102033_/l2/shared/spa/index.html",
+    "pwa": "./_102033_/l2/shared/pwa/index.html"
+  },
+  "clientShell": {
+    "mode": "spa",
+    "activeProfile": "header",
+    "regions": {
+      "header": {
+        "activeProfile": "header",
+        "profiles": {
+          "header": {
+            "renderer": {
+              "entrypoint": "/_102047_/l2/layout/appHeaderHeader.js",
+              "source": "l2/layout/appHeaderHeader.ts",
+              "tag": "layout--app-header-header-102047"
+            },
+            "heightPx": 66,
+            "props": {
+              "actions": [
+                "language",
+                "user"
+              ]
+            },
+            "brand": {
+              "title": "App",
+              "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\"><rect x=\"5\" y=\"5\" width=\"9.5\" height=\"9.5\" rx=\"2.5\" fill=\"currentColor\"/><rect x=\"17.5\" y=\"5\" width=\"9.5\" height=\"9.5\" rx=\"2.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\"/><rect x=\"5\" y=\"17.5\" width=\"9.5\" height=\"9.5\" rx=\"2.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\"/><rect x=\"17.5\" y=\"17.5\" width=\"9.5\" height=\"9.5\" rx=\"2.5\" fill=\"currentColor\"/></svg>"
+            }
+          }
+        }
+      }
+    }
+  }
+}

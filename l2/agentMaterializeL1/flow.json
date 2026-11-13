@@ -137,6 +137,13 @@
       "goal": "The copied reconcileL5 on the units in place, under the l5 project lock; backend.pageTests lists the ready test files."
     },
     {
+      "planId": "catalog75-<module>",
+      "agentName": "agentM12Catalog",
+      "llm": false,
+      "when": "the request selects the whole module (no target, scope = module or empty), same gate as register70",
+      "goal": "Write l1/<module>/layer_2_application/assistant/assistantCatalog.ts from the defs already on disk. No other file changes. Alone: @@agentM12Catalog {\"project\":<current>,\"module\":\"<module>\",\"scope\":\"\",\"target\":\"\",\"force\":false}."
+    },
+    {
       "planId": "finalize80-<module>",
       "agentName": "agentM12Finalize",
       "llm": false,
