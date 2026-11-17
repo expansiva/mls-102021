@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentPlannerL1/steps/plan20/contracts.ts" enhancement="_blank"/>
 
+import { classifyEntityKind } from '/_102021_/l2/agentPlannerL1/helpers/defsSource.js';
 import type { L1Inventory, L1InventoryUsecase } from '/_102021_/l2/agentPlannerL1/helpers/l1Inventory.js';
 import { P1_DEVICE, P1_NEEDS_SCHEMA, type P1Device } from '/_102021_/l2/agentPlannerL1/helpers/p1Core.js';
 import { L1_OPERATIONS, L1_OPERATION_TRAITS, collidingTransitionIds, isL1Operation, transitionUsecaseId, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
@@ -31,6 +32,8 @@ export const P1_PLAN_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'done'] as 
 export type P1PlanStatus = typeof P1_PLAN_STATUSES[number];
 export const P1_NEEDS_FAMILIES = ['mdm', 'ddm', 'tdm'] as const;
 export type P1NeedsFamily = typeof P1_NEEDS_FAMILIES[number];
+/** Entity family. `external` is outside the needs.json vocabulary: no table, no port. */
+export type P1EntityFamily = P1NeedsFamily | 'external';
 export const P1_WRITE_OPERATIONS = L1_OPERATIONS.filter(operation => L1_OPERATION_TRAITS[operation].write);
 export type P1WriteOperation = typeof P1_WRITE_OPERATIONS[number];
 export const P1_REMOVED_KINDS = ['usecase', 'port', 'table'] as const;
@@ -62,7 +65,7 @@ export type P1NeedsView = Pick<PoolNeedsFile, 'schemaVersion' | 'moduleName' | '
 
 export interface P1EntityView {
   entityId: string;
-  family: P1NeedsFamily;
+  family: P1EntityFamily;
   storageKind: string;
   storageTarget: string;
   transitions: string[];
@@ -915,7 +918,9 @@ function readOperations(from: readonly string[]): Array<'list' | 'get'> {
 
 function familyFor(entityId: string, ontology: Map<string, P1EntityView>, needFamily?: string): P1NeedsFamily {
   if (needFamily && isP1NeedsFamily(needFamily)) return needFamily;
-  return ontology.get(entityId)?.family || 'tdm';
+  const family = ontology.get(entityId)?.family;
+  if (family && isP1NeedsFamily(family)) return family;
+  return 'tdm';
 }
 
 function familyOf(input: {
@@ -924,7 +929,9 @@ function familyOf(input: {
   storageKind: string;
   familyField: string;
   capabilities: string[];
-}): P1NeedsFamily {
+}): P1EntityFamily {
+  // NS5 v3 `external` has `kind` and no `storage`. A family field must not put it back in tdm.
+  if (classifyEntityKind({ kind: input.kind, storage: { target: input.storageTarget } }) === 'external') return 'external';
   if (input.familyField && isP1NeedsFamily(input.familyField)) return input.familyField;
   if (input.kind === 'role' || input.storageTarget === 'mdm') return 'mdm';
   if (input.storageKind === 'timeSeries' || input.capabilities.includes('aggregate.byWindow')) return 'ddm';
@@ -937,7 +944,7 @@ function isMdmEntity(entity: P1EntityView | undefined): boolean {
 }
 
 function wantsTable(entity: P1EntityView | undefined): boolean {
-  if (!entity || isMdmEntity(entity) || entity.storageTarget === 'derived') return false;
+  if (!entity || isMdmEntity(entity) || entity.family === 'external' || entity.storageTarget === 'derived') return false;
   if (entity.family === 'ddm') return RELATIONAL_KIND.test(entity.storageKind);
   return true;
 }

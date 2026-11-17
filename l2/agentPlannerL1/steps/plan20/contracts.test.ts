@@ -281,6 +281,45 @@ void test('alias resolution reuses an l1 usecase of another name', async () => {
   assert.ok(after.file.endpoints.some(item => item.usecaseRef === 'closeChamado' && item.kind === 'cmd'));
 });
 
+void test('external kind is its own family and gets no port or table', () => {
+  const view = parseP1Entity({ entityId: 'RemoteRecord', kind: 'external', source: { connectionId: 'link' } });
+  assert.equal(view?.family, 'external');
+  assert.equal(view?.storageTarget, '');
+  const needs = parseP1Needs({
+    schemaVersion: '2026-09-21-p2-needs-v1',
+    moduleName: 'sampleModule',
+    device: 'web',
+    pages: [{
+      pageId: 'remotePage',
+      actors: ['operator'],
+      reads: [
+        { entity: 'RemoteRecord', family: 'external', scope: 'organization', derived: [], from: ['organism:list'] },
+        { entity: 'Mensalidade', family: 'tdm', scope: 'organization', derived: [], from: ['organism:list'] },
+        { entity: 'Atendente', family: 'mdm', scope: 'organization', derived: [], from: ['organism:list'] },
+      ],
+      writes: [],
+    }],
+  });
+  const planned = planP1Backend({
+    needs,
+    inventory: EMPTY_INVENTORY,
+    ontology: [
+      view!,
+      ...ACADEMIA_ONTOLOGY,
+      { entityId: 'Atendente', family: 'mdm', storageKind: '', storageTarget: 'mdm', transitions: [], rules: [] },
+    ],
+    now: AT,
+  });
+  const remote = planned.file.usecases.find(item => item.usecaseId === 'listRemoteRecord');
+  assert.ok(remote && remote.ports.length === 0);
+  assert.deepEqual(remote?.tableRefs, []);
+  assert.equal(planned.file.ports.some(item => item.entity === 'RemoteRecord'), false);
+  assert.equal(planned.file.tables.some(item => item.entity === 'RemoteRecord'), false);
+  assert.deepEqual(planned.file.usecases.find(item => item.usecaseId === 'listMensalidade')?.tableRefs, ['mensalidade']);
+  assert.equal(planned.file.usecases.find(item => item.usecaseId === 'listAtendente')?.noTable, 'mdm');
+  assert.equal(planned.file.tables.some(item => item.entity === 'Mensalidade'), true);
+});
+
 void test('MDM entities get a usecase and never a port or table', () => {
   const needs = parseP1Needs({
     schemaVersion: '2026-09-21-p2-needs-v1',
