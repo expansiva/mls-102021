@@ -65,7 +65,7 @@ export const M1_IMPLEMENT_HANDLERS: Record<M1ArtifactType, MaterializeHandler | 
   authorityMap: handler('implement.authorityMap', 'authorityMap', 'implement', ['requestContext']),
   repositoryRegistration: null,
   persistenceSeeds: null,
-  integrationOutbound: null,
+  integrationOutbound: handler('implement.integrationOutbound', 'integrationOutbound', 'implement', ['requestContext']),
   workflowProcess: null,
 };
 

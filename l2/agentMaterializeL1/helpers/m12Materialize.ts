@@ -43,7 +43,7 @@ const RECIPE_OF_TYPE: Readonly<Record<string, string>> = {
   repositoryAdapter: 'persistence.repositoryAdapter',
   repositoryRegistration: 'persistence.repositoryRegistration',
   persistenceSeeds: 'persistence.persistenceSeeds',
-  integrationOutbound: 'persistence.integrationOutbound',
+  integrationOutbound: 'implement.integrationOutbound',
   usecase: 'implement.usecase',
   requestService: 'implement.requestService',
   httpController: 'structure.httpController',
@@ -102,6 +102,9 @@ interface Emitted {
   imports: string[];
   seeds: boolean;
   runsStub: boolean;
+  /** Event gap kept beside a written gateway file. The emitter returns one result, so the receipt carries it. */
+  gapCode?: string;
+  gapDetail?: string;
 }
 
 export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted | EmitFailure> {
@@ -110,19 +113,23 @@ export async function emitUnit(ctx: M12Context, unit: M12Unit): Promise<Emitted 
   const output = unit.outputRef;
   if (!recipe) return { code: 'NO_NAMED_HANDLER', detail: `${unit.definition.artifactType} has no recipe.` };
   let produced: EmitResult | PersistenceEmit | EmitFailure;
-  if (recipe.startsWith('persistence.')) {
+  if (recipe.startsWith('persistence.') || recipe === 'implement.integrationOutbound') {
     const referenceSeeds = recipe === 'persistence.persistenceSeeds' ? (ctx.referenceSeeds ?? []) : [];
-    produced = await emitPersistence(recipe, unit.definition, output, ctx.read, ctx.units.map(item => item.definition), referenceSeeds);
+    const persistenceId = recipe === 'implement.integrationOutbound' ? 'persistence.integrationOutbound' : recipe;
+    produced = await emitPersistence(persistenceId, unit.definition, output, ctx.read, ctx.units.map(item => item.definition), referenceSeeds);
   }
   else if (recipe === 'structure.valueObject') produced = emitValueObject(unit.definition, output);
   else if (recipe === 'structure.httpController') produced = await emitController(unit.definition, output, ctx.read);
   else produced = await emitBehavior(recipe, unit.definition, output, ctx.read, definitions);
   if ('code' in produced) return produced;
+  const gap = 'evidences' in produced ? produced.evidences.find(item => !item.passed && item.detail.startsWith('MECHANISM_')) : undefined;
+  const gapCode = gap?.detail.startsWith('MECHANISM_UNBOUND') ? 'MECHANISM_UNBOUND' : gap?.detail.startsWith('MECHANISM_INCOMPATIBLE') ? 'MECHANISM_INCOMPATIBLE' : '';
   return {
     source: produced.source.endsWith('\n') ? produced.source : `${produced.source}\n`,
     imports: produced.imports,
     seeds: 'seeds' in produced ? produced.seeds : false,
     runsStub: produced.runsStub,
+    ...(gapCode && gap ? { gapCode, gapDetail: gap.detail } : {}),
   };
 }
 
@@ -324,6 +331,11 @@ export async function materializeUnit(ctx: M12Context, unit: M12Unit): Promise<M
       return { status: 'blocked', code: 'PROFILE_REFUSED', line: `${unit.unitId}: blocked, ${diagnostic}` };
     }
     const proved = await writeAndProve(ctx, unit, emitted.source, inputHash);
+    if (proved.status === 'done' && proved.code === '' && emitted.gapCode) {
+      const written = await readUnitStatus(project, moduleName, unit.layer, unit.unitId);
+      await writeUnitStatus(project, moduleName, { ...base(unit), status: 'gap', code: emitted.gapCode, diagnostic: emitted.gapDetail ?? emitted.gapCode, inputHash, outputs: written?.outputs ?? {} });
+      return { status: 'gap', code: emitted.gapCode, line: `${unit.unitId}: gap, ${emitted.gapCode} ${clip(emitted.gapDetail ?? '', 300)}` };
+    }
     return { status: proved.status, code: proved.code, line: proved.line };
   } catch (error) {
     const diagnostic = clip(errorText(error), 2000);

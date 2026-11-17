@@ -188,7 +188,7 @@ export async function emitPersistence(
   if (id === 'persistence.repositoryAdapter') return emitAdapter(definition, output, read, moduleDefinitions);
   if (id === 'persistence.repositoryRegistration') return emitRegistration(definition, output, read);
   if (id === 'persistence.persistenceSeeds') return emitSeeds(definition, output, referenceSeeds, read);
-  if (id === 'persistence.integrationOutbound') return emitOutbound(definition);
+  if (id === 'persistence.integrationOutbound') return emitOutbound(definition, output, read);
   return { code: 'NO_NAMED_HANDLER', detail: `${id} is not a persistence body.` };
 }
 
@@ -361,16 +361,187 @@ async function actorDatasets(moduleName: string, output: string, read: Structure
   });
 }
 
-function emitOutbound(definition: M1Definition): EmitFailure {
+const CALL_CONNECTION = '/_102034_/l1/server/layer_1_external/connections/callConnection.js';
+const CONNECTION_STATUS: Record<string, number> = {
+  not_found: 404,
+  disabled: 409,
+  unavailable: 503,
+  conflict: 409,
+  refused: 422,
+  forbidden: 403,
+  invalid: 400,
+};
+
+interface ConnectionRow {
+  connectionId: string;
+  operationId: string;
+}
+
+interface CatalogOperation {
+  operationId: string;
+  inputType: string;
+  outputType: string;
+}
+
+/**
+ * Events with no mechanism stay a gap. A def that also lists `connections` still writes the gateways:
+ * the receipt carries the same gap beside the file (one return cannot be both a failure and a source).
+ */
+async function emitOutbound(definition: M1Definition, output: string, read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
   const events = Array.isArray(definition.data.events) ? definition.data.events.filter(isRecord) : [];
   const pending = events.map(event => text(event.pending)).find(Boolean) || pendingOf(definition.data);
   if (pending) return { code: pending, detail: `${definition.artifactId} is pending ${pending}. No publisher was written.` };
+  const connections = connectionRows(definition.data.connections);
   const unbound = events.filter(event => !text(event.mechanism)).map(event => text(event.eventId) || '(unnamed)');
-  if (unbound.length > 0) {
-    return { code: 'MECHANISM_UNBOUND', detail: `${unbound.join(', ')} have no mechanism. No publisher was written.` };
-  }
   const named = events.map(event => `${text(event.eventId) || '(unnamed)'}:${text(event.mechanism)}`);
-  return { code: 'MECHANISM_INCOMPATIBLE', detail: `${named.join(', ')} is not a binding. No publisher was written.` };
+  if (connections.length === 0) {
+    if (unbound.length > 0) return { code: 'MECHANISM_UNBOUND', detail: `${unbound.join(', ')} have no mechanism. No publisher was written.` };
+    return { code: 'MECHANISM_INCOMPATIBLE', detail: `${named.join(', ')} is not a binding. No publisher was written.` };
+  }
+  const rendered = await renderConnectionGateways(output, connections, read);
+  if ('code' in rendered) return rendered;
+  const evidences: M1Verification[] = [];
+  if (unbound.length > 0) {
+    evidences.push({
+      id: 'outboundEvents',
+      kind: 'schema',
+      passed: false,
+      detail: `MECHANISM_UNBOUND: ${unbound.join(', ')} have no mechanism. Connection gateways were written.`,
+    });
+  } else if (events.length > 0) {
+    evidences.push({
+      id: 'outboundEvents',
+      kind: 'schema',
+      passed: false,
+      detail: `MECHANISM_INCOMPATIBLE: ${named.join(', ')} is not a binding. Connection gateways were written.`,
+    });
+  }
+  return { ...rendered, evidences };
+}
+
+function connectionRows(value: unknown): ConnectionRow[] {
+  const rows = Array.isArray(value) ? value.filter(isRecord) : [];
+  const seen = new Set<string>();
+  const out: ConnectionRow[] = [];
+  for (const row of rows) {
+    const connectionId = text(row.connectionId);
+    const operationId = text(row.operationId);
+    if (!ident(connectionId) || !ident(operationId)) continue;
+    const key = `${connectionId}\0${operationId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ connectionId, operationId });
+  }
+  out.sort((a, b) => a.connectionId.localeCompare(b.connectionId) || a.operationId.localeCompare(b.operationId));
+  return out;
+}
+
+/**
+ * The object of `export const <id>: ConnectionCatalog = { ... }` (JSON keys), read without evaluating the file.
+ * A copy of the defs reader of agentDefsL1 on purpose: the recipes of this agent are copies, not imports of another agent.
+ */
+function parseCatalogObject(source: string): unknown {
+  const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*(?:\s*:\s*[A-Za-z_$][\w$.<>, ]*)?\s*=/);
+  const start = assignment < 0 ? -1 : source.indexOf('{', source.indexOf('=', assignment));
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(source.slice(start, index + 1)) as unknown;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Operations of one catalog file. The type annotation is dropped so the defs reader finds the object. */
+function catalogOperations(source: string): CatalogOperation[] | null {
+  const parsed = parseCatalogObject(source);
+  if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
+  const operations: CatalogOperation[] = [];
+  for (const row of parsed.operations) {
+    if (!isRecord(row) || !ident(text(row.operationId)) || !ident(text(row.inputType)) || !ident(text(row.outputType))) continue;
+    operations.push({ operationId: text(row.operationId), inputType: text(row.inputType), outputType: text(row.outputType) });
+  }
+  return operations;
+}
+
+async function renderConnectionGateways(output: string, rows: readonly ConnectionRow[], read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
+  const byConnection = new Map<string, ConnectionRow[]>();
+  for (const row of rows) {
+    const list = byConnection.get(row.connectionId) ?? [];
+    list.push(row);
+    byConnection.set(row.connectionId, list);
+  }
+  const blocks: string[] = [];
+  const imports = [APP_CONTRACTS, CALL_CONNECTION];
+  for (const connectionId of [...byConnection.keys()].sort()) {
+    const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+    const source = await read(catalogRef);
+    const operations = source ? catalogOperations(source) : null;
+    if (!operations) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} was not read. No gateway was written.` };
+    const used: CatalogOperation[] = [];
+    for (const row of byConnection.get(connectionId) ?? []) {
+      const operation = operations.find(item => item.operationId === row.operationId);
+      if (!operation) return { code: 'OPERATION_NOT_IN_CATALOG', detail: `${connectionId}.${row.operationId} is not in the catalog. No gateway was written.` };
+      used.push(operation);
+    }
+    const specifier = catalogRef.replace(/\.ts$/, '.js');
+    imports.push(specifier);
+    const typeNames = [...new Set(used.flatMap(item => [item.inputType, item.outputType]))].sort();
+    const gateway = `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;
+    const methods = used.map(item => `  ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}>;`).join('\n');
+    const bodies = used.map(item => [
+      `    async ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}> {`,
+      `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, opts);`,
+      '      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);',
+      `      return result.output as ${item.outputType};`,
+      '    },',
+    ].join('\n')).join('\n');
+    blocks.push([
+      `import type { ${typeNames.join(', ')} } from '${specifier}';`,
+      '',
+      `export interface ${gateway} {`,
+      methods,
+      '}',
+      '',
+      `export function create${gateway}(ctx: RequestContext): ${gateway} {`,
+      '  return {',
+      bodies,
+      '  };',
+      '}',
+    ].join('\n'));
+  }
+  const source = [
+    header(output),
+    `import { AppError, type RequestContext } from '${APP_CONTRACTS}';`,
+    `import { callConnection, type CallConnectionOptions } from '${CALL_CONNECTION}';`,
+    '',
+    `const STATUS: Record<string, number> = ${JSON.stringify(CONNECTION_STATUS)};`,
+    '',
+    blocks.join('\n\n'),
+    '',
+  ].join('\n');
+  const bad = auditImports(source, imports);
+  if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
+  return { source, imports, runsStub: false, seeds: false, evidences: [] };
 }
 
 export function buildLocalTable(definition: M1Definition, entity: M1Definition): BuiltTable | EmitFailure {
