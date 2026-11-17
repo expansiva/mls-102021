@@ -384,6 +384,18 @@ function needBoolean(value: Record<string, unknown>, key: string, path: string, 
   if (typeof value[key] !== 'boolean') issues.push(`Missing field ${path}.${key}.`);
 }
 
+const SERVES_MARK = /^[a-z][A-Za-z0-9]*\.[a-z][A-Za-z0-9]*$/;
+
+/** A present `serves` mark must be `<connectionId>.<operationId>`. Absent is allowed. */
+function servesMark(value: unknown, path: string, issues: string[]): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== 'string' || !SERVES_MARK.test(value)) {
+    issues.push(`Invalid field ${path}.serves.`);
+    return false;
+  }
+  return true;
+}
+
 function oneOf(value: string, allowed: readonly string[], path: string, issues: string[]): void {
   if (value && !allowed.includes(value)) issues.push(`${path} is invalid.`);
 }
@@ -923,16 +935,18 @@ function requestRowIssues(row: unknown, path: string, issues: string[]): void {
     issues.push(`Missing field ${path}.`);
     return;
   }
-  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'output', 'params', 'rules', 'doc'], path, issues);
+  unknownKeys(row, ['route', 'kind', 'uses', 'transaction', 'output', 'params', 'rules', 'doc', 'serves'], path, issues);
   needString(row, 'route', path, issues);
   const kind = needString(row, 'kind', path, issues);
   oneOf(kind, ['qry', 'cmd'], `${path}.kind`, issues);
   stringList(row.uses, `${path}.uses`, issues);
   const transaction = needString(row, 'transaction', path, issues);
   oneOf(transaction, ['single', 'none'], `${path}.transaction`, issues);
+  const serves = servesMark(row.serves, path, issues);
   // d1_61: the classified output tree. It replaces the flat `outputs`, which this schema no longer accepts.
-  if (!Array.isArray(row.output) || row.output.length === 0) issues.push(`Missing field ${path}.output.`);
-  else if (readOutputTree(row.output) === null) issues.push(`Invalid field ${path}.output: each node is a classified contract path (entity, list, related, computed or unresolved).`);
+  // A row that serves a catalog operation may carry an empty tree; the type comes from the catalog.
+  if (!Array.isArray(row.output) || (row.output.length === 0 && !serves)) issues.push(`Missing field ${path}.output.`);
+  else if (row.output.length > 0 && readOutputTree(row.output) === null) issues.push(`Invalid field ${path}.output: each node is a classified contract path (entity, list, related, computed or unresolved).`);
   stringList(row.rules, `${path}.rules`, issues);
   if (readRequestDoc(row.doc) === null) issues.push(`Invalid field ${path}.doc: raw text and the recognized sections.`);
   if (!Array.isArray(row.params)) issues.push(`Missing field ${path}.params.`);
@@ -981,8 +995,12 @@ export function httpControllerIssues(data: unknown): string[] {
     oneOf(kind, ['query', 'command'], `${path}.kind`, issues);
     if (adapter) {
       needString(handler, 'serviceFunction', path, issues);
-      needString(handler, 'contractPath', path, issues);
-      const contractInterface = needString(handler, 'contractInterface', path, issues);
+      const contractPath = typeof handler.contractPath === 'string' ? handler.contractPath.trim() : '';
+      const contractInterface = typeof handler.contractInterface === 'string' ? handler.contractInterface.trim() : '';
+      if (contractPath || contractInterface) {
+        if (!contractPath) issues.push(`Missing field ${path}.contractPath.`);
+        if (!contractInterface) issues.push(`Missing field ${path}.contractInterface.`);
+      }
       if (contractInterface && (contractInterface.endsWith('Input') || contractInterface.endsWith('Output'))) {
         issues.push(`${path}.contractInterface is a derived symbol.`);
       }
@@ -1036,7 +1054,8 @@ export function accessScopeIssues(data: unknown): string[] {
     needString(grant, 'actorRef', path, issues);
     if (grant.anchorEntity !== undefined) needString(grant, 'anchorEntity', path, issues);
     const refs = stringList(grant.entityRefs, `${path}.entityRefs`, issues);
-    if (Array.isArray(grant.entityRefs) && refs.length === 0) issues.push(`Missing field ${path}.entityRefs.`);
+    const technicalCaller = typeof grant.actorRef === 'string' && grant.actorRef.startsWith('connection:');
+    if (Array.isArray(grant.entityRefs) && refs.length === 0 && !technicalCaller) issues.push(`Missing field ${path}.entityRefs.`);
     const disclosure = needString(grant, 'disclosure', path, issues);
     oneOf(disclosure, ['fieldsOnly', 'fullRecord'], `${path}.disclosure`, issues);
     if (disclosure === 'fieldsOnly') {

@@ -19,9 +19,11 @@ import {
   authorityGrantIssues,
   definitionIssues,
   domainImportIssues,
+  httpControllerIssues,
   integrationMechanismIssues,
   pendingDefinition,
   recordFieldIssues,
+  requestServiceIssues,
   seedScenarioIssues,
   typeDataSchema,
   usecaseIssues,
@@ -298,6 +300,65 @@ void test('a usecase with the removed v1 fields is refused by name, even when th
   const issues = usecaseIssues(v1);
   assert.equal(issues.some(issue => issue.startsWith('data.routeProjections is the removed v1 shape (DEF_V1_UNSUPPORTED)')), true, issues.join('\n'));
   assert.equal(issues.some(issue => issue.startsWith('data.functions.0.contractRefs is the removed v1 shape (DEF_V1_UNSUPPORTED)')), true, issues.join('\n'));
+});
+
+const servedRow = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  route: 'mod.page.read',
+  kind: 'qry',
+  uses: [],
+  transaction: 'none',
+  output: [{ kind: 'entity', path: 'Item.id' }],
+  params: [],
+  rules: [],
+  doc: { raw: 'Reads one record.' },
+  ...extra,
+});
+
+void test('a request row may serve a catalog operation with an empty output', () => {
+  const marked = servedRow({ serves: 'link.readItem', output: [] });
+  assert.deepEqual(requestServiceIssues({ pageId: 'page', requests: [marked] }), []);
+  const malformed = requestServiceIssues({ pageId: 'page', requests: [servedRow({ serves: 'ReadItem', output: [] })] });
+  assert.equal(malformed.some(issue => issue.includes('serves')), true, malformed.join('\n'));
+  assert.equal(malformed.some(issue => issue.includes('output')), true, malformed.join('\n'));
+  const bare = requestServiceIssues({ pageId: 'page', requests: [servedRow({ output: [] })] });
+  assert.equal(bare.some(issue => issue === 'Missing field data.requests.0.output.'), true, bare.join('\n'));
+  assert.equal(bare.some(issue => issue.includes('serves')), false);
+});
+
+void test('an adapter handler may omit both contract fields and not just one', () => {
+  const handler = (extra: Record<string, unknown>): Record<string, unknown> => ({
+    route: 'mod.page.read',
+    kind: 'query',
+    grantIds: ['read'],
+    serviceFunction: 'readItem',
+    ...extra,
+  });
+  assert.deepEqual(httpControllerIssues({ pageId: 'page', handlers: [handler({})] }), []);
+  const pathOnly = httpControllerIssues({ pageId: 'page', handlers: [handler({ contractPath: 'l2/mod/web/contracts/page.defs.ts' })] });
+  assert.equal(pathOnly.some(issue => issue === 'Missing field data.handlers.0.contractInterface.'), true, pathOnly.join('\n'));
+  const interfaceOnly = httpControllerIssues({ pageId: 'page', handlers: [handler({ contractInterface: 'PageContracts' })] });
+  assert.equal(interfaceOnly.some(issue => issue === 'Missing field data.handlers.0.contractPath.'), true, interfaceOnly.join('\n'));
+  const both = httpControllerIssues({
+    pageId: 'page',
+    handlers: [handler({ contractPath: 'l2/mod/web/contracts/page.defs.ts', contractInterface: 'PageContracts' })],
+  });
+  assert.deepEqual(both, []);
+});
+
+void test('a technical connection grant may name no entity; a person grant may not', () => {
+  const grant = (actorRef: string): Record<string, unknown> => ({
+    grantId: 'scope',
+    actorRef,
+    entityRefs: [],
+    disclosure: 'fullRecord',
+    scopeMode: 'organization',
+    session: 'verified',
+    path: [],
+    pending: '',
+  });
+  assert.deepEqual(accessScopeIssues({ scopeId: 'accessScope', grants: [grant('connection:cm')] }), []);
+  const person = accessScopeIssues({ scopeId: 'accessScope', grants: [grant('clerk')] });
+  assert.equal(person.some(issue => issue === 'Missing field data.grants.0.entityRefs.'), true, person.join('\n'));
 });
 
 void test('an anchor outside entity refs is kept as a finding', () => {
