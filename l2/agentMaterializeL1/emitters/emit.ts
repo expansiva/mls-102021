@@ -6,6 +6,7 @@
  * is a named failure, not an import of a file that does not exist.
  */
 
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
   isRecord,
@@ -339,6 +340,9 @@ interface AdapterRoute {
   grantIds: string[];
   serviceFunction: string;
   contractInterface: string;
+  /** Set for a connection serve route: the catalog type names, in place of the page contract index. */
+  inputTypeName: string;
+  outputTypeName: string;
   requiredFields: string[];
   allowedInputPaths: string[];
   nullableInputPaths: string[];
@@ -359,7 +363,9 @@ async function emitAdapter(
   const pageId = typeof definition.data.pageId === 'string' ? definition.data.pageId : '';
   const serviceDep = definition.dependencies.find(path => pageId && path.endsWith(`/requests/${pageId}.defs.ts`));
   if (!serviceDep) return { code: 'USECASE_UNBOUND', detail: `${definition.artifactId} has no request service.` };
-  if (await read(serviceDep) === null) return { code: 'USECASE_UNBOUND', detail: `${serviceDep} could not be read.` };
+  const serviceText = await read(serviceDep);
+  if (serviceText === null) return { code: 'USECASE_UNBOUND', detail: `${serviceDep} could not be read.` };
+  const serveRoutes = handlers.every(handler => servesOf(serviceText, typeof handler.route === 'string' ? handler.route : '') !== null);
   const authorityDep = definition.dependencies.find(path => path.endsWith('/authorityMap.defs.ts'));
   const needsAuthority = handlers.some(handler => stringList(handler.grantIds).length > 0);
   if (needsAuthority && !authorityDep) {
@@ -370,33 +376,43 @@ async function emitAdapter(
   }
   const routes: AdapterRoute[] = [];
   const contracts = new Map<string, { specifier: string; iface: string }>();
-  for (const handler of [...handlers, ...await unlistedContractRoutes(definition, handlers, read)]) {
-    const resolved = await resolveAdapterRoute(definition, handler, read);
+  const catalogTypes = new Map<string, Set<string>>();
+  // A connection controller has no page contract, so unlisted page routes are not invented for it.
+  const listed = serveRoutes ? handlers : [...handlers, ...await unlistedContractRoutes(definition, handlers, read)];
+  for (const handler of listed) {
+    const resolved = await resolveAdapterRoute(definition, handler, read, serviceText);
     if ('code' in resolved) return resolved;
     routes.push(resolved.route);
-    contracts.set(resolved.specifier, { specifier: resolved.specifier, iface: resolved.route.contractInterface });
+    if (resolved.route.inputTypeName) {
+      const names = catalogTypes.get(resolved.specifier) ?? new Set<string>();
+      names.add(resolved.route.inputTypeName);
+      names.add(resolved.route.outputTypeName);
+      catalogTypes.set(resolved.specifier, names);
+    } else {
+      contracts.set(resolved.specifier, { specifier: resolved.specifier, iface: resolved.route.contractInterface });
+    }
   }
   const authorityImport = authorityDep
     ? [`import { actorRefFor } from '${importSpecifier(authorityDep, 'output')}';`]
     : [];
   const contractImports = [...contracts.values()].map(item => `import type { ${item.iface} } from '${item.specifier}';`);
+  const catalogImports = [...catalogTypes].map(([specifier, names]) => `import type { ${[...names].sort().join(', ')} } from '${specifier}';`);
   const imports = [
     PLATFORM_CONTRACTS,
     importSpecifier(scopeDep, 'output'),
     ...(authorityDep ? [importSpecifier(authorityDep, 'output')] : []),
     importSpecifier(serviceDep, 'output'),
     ...[...contracts.keys()],
+    ...[...catalogTypes.keys()],
   ];
-  return {
-    runsStub: false,
-    imports,
-    source: [
+  const source = [
       header(output),
       `import { AppError, type BffRequest, type BffResponse, type ControllerRoute, type IRequestEnvelope } from '${PLATFORM_CONTRACTS}';`,
       `import { resolveGrant } from '${importSpecifier(scopeDep, 'output')}';`,
       ...authorityImport,
       `import { requests } from '${importSpecifier(serviceDep, 'output')}';`,
       ...contractImports,
+      ...catalogImports,
       '',
       `export const ${emittedValueExports(definition)[0]}: ControllerRoute[] = [`,
       ...routes.map(route => `  { key: '${route.route}', handler: ${route.fn} },`),
@@ -407,8 +423,10 @@ async function emitAdapter(
       authorizeSource(!!authorityDep),
       validateSource(),
       '',
-    ].join('\n'),
-  };
+  ].join('\n');
+  const undeclared = auditImports(source, imports);
+  if (undeclared) return { code: 'IMPORT_UNDECLARED', detail: undeclared };
+  return { runsStub: false, imports, source };
 }
 
 /**
@@ -450,7 +468,7 @@ export async function adapterRouteFacts(
   handler: Record<string, unknown>,
   read: StructureRead,
 ): Promise<{ grantIds: string[]; requiredFields: string[] } | EmitFailure> {
-  const resolved = await resolveAdapterRoute(definition, handler, read);
+  const resolved = await resolveAdapterRoute(definition, handler, read, null);
   if ('code' in resolved) return resolved;
   return { grantIds: resolved.route.grantIds, requiredFields: resolved.route.requiredFields };
 }
@@ -459,6 +477,7 @@ async function resolveAdapterRoute(
   definition: M1Definition,
   handler: Record<string, unknown>,
   read: StructureRead,
+  serviceText: string | null,
 ): Promise<{ route: AdapterRoute; specifier: string } | EmitFailure> {
   const route = typeof handler.route === 'string' ? handler.route : '';
   const serviceFunction = typeof handler.serviceFunction === 'string' ? handler.serviceFunction : '';
@@ -466,6 +485,8 @@ async function resolveAdapterRoute(
   const contractInterface = typeof handler.contractInterface === 'string' ? handler.contractInterface : '';
   const grantIds = stringList(handler.grantIds);
   if (!route || !serviceFunction) return { code: 'ROUTE_MISSING', detail: `${definition.artifactId} has a route without a service function.` };
+  const serves = serviceText ? servesOf(serviceText, route) : null;
+  if (serves !== null) return resolveServeRoute(definition, route, serviceFunction, grantIds, serves, read);
   if (!contractPath || !IDENT.test(contractInterface) || /(?:Input|Output)$/.test(contractInterface)) {
     return { code: 'CONTRACT_SYMBOL', detail: `${route} has no contract interface.` };
   }
@@ -492,6 +513,8 @@ async function resolveAdapterRoute(
       grantIds,
       serviceFunction,
       contractInterface,
+      inputTypeName: '',
+      outputTypeName: '',
       requiredFields: members.requiredFields,
       allowedInputPaths: members.allowedPaths,
       nullableInputPaths: members.nullablePaths,
@@ -506,8 +529,8 @@ function renderAdapter(route: AdapterRoute): string {
   const allowed = route.allowedInputPaths.map(item => `'${item}'`).join(', ');
   const nullable = route.nullableInputPaths.map(item => `'${item}'`).join(', ');
   const unions = route.unions.map(item => `'${item.path}': [${item.values.map(value => `'${value.replaceAll('\\', '\\\\').replaceAll('\'', '\\\'')}'`).join(', ')}]`).join(', ');
-  const inputType = `${route.contractInterface}['${route.route}']['input']`;
-  const outputType = `${route.contractInterface}['${route.route}']['output']`;
+  const inputType = route.inputTypeName || `${route.contractInterface}['${route.route}']['input']`;
+  const outputType = route.outputTypeName || `${route.contractInterface}['${route.route}']['output']`;
   return [
     `async function ${route.fn}(input: IRequestEnvelope): Promise<BffResponse<${outputType}>> {`,
     `  const held = authorize(input.request, [${grants}]);`,
@@ -516,13 +539,69 @@ function renderAdapter(route: AdapterRoute): string {
     `  const scoped = scopeParams(input.request.params, input.ctx, held, [${allowed}]);`,
     `  const invalid = validateInput(scoped, [${required}], [${allowed}], [${nullable}], { ${unions} });`,
     '  if (invalid) throw invalid;',
-    `  const params = scoped as ${inputType};`,
+    // A catalog type does not overlap `Record<string, unknown>`; the page contract cast stays as it was.
+    `  const params = scoped as ${route.inputTypeName ? `unknown as ${inputType}` : inputType};`,
     // The request takes the contract input type: no cast, so a wrong input path is a compile error there.
     `  const data = await requests[${JSON.stringify(route.serviceFunction)}](params, input.ctx);`,
     `  return { ok: true, data: data as ${outputType}, error: null };`,
     '}',
     '',
   ].join('\n');
+}
+
+const SERVE_MARK = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/;
+
+/** `serves` on the request-service row of this route. Null when the row does not carry the mark. */
+function servesOf(serviceText: string, route: string): string | null {
+  const parsed = parseDefinitionExport(serviceText);
+  const requests = parsed && Array.isArray(parsed.data.requests) ? parsed.data.requests : [];
+  for (const row of requests) {
+    if (!isRecord(row) || row.route !== route || typeof row.serves !== 'string') continue;
+    return row.serves;
+  }
+  return null;
+}
+
+async function resolveServeRoute(
+  definition: M1Definition,
+  route: string,
+  serviceFunction: string,
+  grantIds: string[],
+  serves: string,
+  read: StructureRead,
+): Promise<{ route: AdapterRoute; specifier: string } | EmitFailure> {
+  const mark = SERVE_MARK.exec(serves);
+  if (!mark) return { code: 'SERVES_MARK', detail: `${route} serves mark is not <connectionId>.<operationId>.` };
+  const connectionId = mark[1];
+  const operationId = mark[2];
+  const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+  const catalog = await read(catalogRef);
+  if (catalog === null) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} could not be read.` };
+  const operations = catalogOperations(catalog);
+  if (!operations) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} has no operation list.` };
+  const operation = operations.find(item => item.operationId === operationId);
+  if (!operation) return { code: 'CONNECTION_OPERATION_UNLISTED', detail: `${connectionId}.${operationId} is not in the catalog.` };
+  if (operation.direction !== 'serve') return { code: 'CONNECTION_NOT_SERVE', detail: `${connectionId}.${operationId} is not a serve operation.` };
+  const members = membersOfType(catalog, operation.inputType);
+  if (!members) return { code: 'CATALOG_INPUT_UNREAD', detail: `${operation.inputType} could not be read from ${catalogRef}.` };
+  const closed = unopenedNamedMembers(catalog, operation.inputType, members.allowedPaths);
+  if (closed.length) return { code: 'CONTRACT_INPUT_UNOPENED', detail: `${route} input has members typed by a contract interface that were not opened: ${closed.join(', ')}.` };
+  return {
+    specifier: catalogRef.replace(/\.ts$/, '.js'),
+    route: {
+      route,
+      fn: functionName(route),
+      grantIds,
+      serviceFunction,
+      contractInterface: '',
+      inputTypeName: operation.inputType,
+      outputTypeName: operation.outputType,
+      requiredFields: members.requiredFields,
+      allowedInputPaths: members.allowedPaths,
+      nullableInputPaths: members.nullablePaths,
+      unions: members.unions,
+    },
+  };
 }
 
 export function membersOfType(source: string, typeText: string): { requiredFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
@@ -1277,6 +1356,67 @@ function closedUnionLiterals(declared: string): string[] | null {
   return values;
 }
 
+/** Inner text of the first `{…}` that closes in `declared`. Null when there is no brace or it stays open (the next lines own it). */
+function braceBody(declared: string): string | null {
+  const start = declared.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  for (let index = start; index < declared.length; index += 1) {
+    const char = declared[index];
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return declared.slice(start + 1, index);
+    }
+  }
+  return null;
+}
+
+interface InlineMember { name: string; optional: boolean; declared: string }
+
+/** Members written on one line inside `{ … }` or `Array<{ … }>`. A page contract that breaks the object across lines is unchanged. */
+function scanInline(body: string): InlineMember[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let buf = '';
+  for (const char of body) {
+    if (char === '{') depth += 1;
+    else if (char === '}') depth -= 1;
+    if (char === ';' && depth === 0) {
+      parts.push(buf);
+      buf = '';
+    } else buf += char;
+  }
+  if (buf.trim()) parts.push(buf);
+  const members: InlineMember[] = [];
+  for (const part of parts) {
+    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*([\s\S]+)$/.exec(part);
+    if (match) members.push({ name: match[1], optional: match[2] === '?', declared: match[3].trim() });
+  }
+  return members;
+}
+
+function addInlineMembers(
+  body: string,
+  parent: string,
+  requiredFields: string[],
+  allowedPaths: string[],
+  nullablePaths: string[],
+  unions: ClosedUnion[],
+): void {
+  for (const member of scanInline(body)) {
+    const path = `${parent}.${member.name}`;
+    allowedPaths.push(path);
+    if (!member.optional) requiredFields.push(path);
+    const head = member.declared.includes('{') ? member.declared.slice(0, member.declared.indexOf('{')) : member.declared;
+    if (/\bnull\b/.test(head)) nullablePaths.push(path);
+    const literals = closedUnionLiterals(head);
+    if (literals) unions.push({ path, values: literals });
+    const nested = braceBody(member.declared);
+    if (nested !== null) addInlineMembers(nested, path, requiredFields, allowedPaths, nullablePaths, unions);
+  }
+}
+
 function readMembers(source: string, name: string, seen: ReadonlySet<string> = new Set()): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
   const tokenText = `export interface ${name} `;
   const at = source.indexOf(tokenText);
@@ -1320,8 +1460,10 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
       if (/\bnull\b/.test(opens > closes ? declared.slice(0, declared.indexOf('{')) : declared)) nullablePaths.push(path);
       const literals = closedUnionLiterals(opens > closes ? declared.slice(0, declared.indexOf('{')) : declared);
       if (literals) unions.push({ path, values: literals });
+      const inline = braceBody(declared);
+      if (inline !== null) addInlineMembers(inline, path, requiredFields, allowedPaths, nullablePaths, unions);
       if (opens > closes) parents.push(match[1]);
-      else {
+      else if (inline === null) {
         // agentMaterializeL1: a member typed with a named interface of the same contract (also `T[]`, `T | null`)
         // is opened, recursively; its paths sit under this member. A cycle stops at the interface already open.
         const named = namedMemberType(declared);

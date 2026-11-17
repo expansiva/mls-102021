@@ -7,6 +7,7 @@
  * destructive step is a block, never a DROP. The plan is not an applied migration.
  */
 
+import { catalogOperations, type CatalogOperation } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import {
   isRecord,
@@ -377,12 +378,6 @@ interface ConnectionRow {
   operationId: string;
 }
 
-interface CatalogOperation {
-  operationId: string;
-  inputType: string;
-  outputType: string;
-}
-
 /**
  * Events with no mechanism stay a gap. A def that also lists `connections` still writes the gateways:
  * the receipt carries the same gap beside the file (one return cannot be both a failure and a source).
@@ -434,53 +429,6 @@ function connectionRows(value: unknown): ConnectionRow[] {
   }
   out.sort((a, b) => a.connectionId.localeCompare(b.connectionId) || a.operationId.localeCompare(b.operationId));
   return out;
-}
-
-/**
- * The object of `export const <id>: ConnectionCatalog = { ... }` (JSON keys), read without evaluating the file.
- * A copy of the defs reader of agentDefsL1 on purpose: the recipes of this agent are copies, not imports of another agent.
- */
-function parseCatalogObject(source: string): unknown {
-  const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*(?:\s*:\s*[A-Za-z_$][\w$.<>, ]*)?\s*=/);
-  const start = assignment < 0 ? -1 : source.indexOf('{', source.indexOf('=', assignment));
-  if (start < 0) return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') inString = true;
-    else if (char === '{') depth += 1;
-    else if (char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        try {
-          return JSON.parse(source.slice(start, index + 1)) as unknown;
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-/** Operations of one catalog file. The type annotation is dropped so the defs reader finds the object. */
-export function catalogOperations(source: string): CatalogOperation[] | null {
-  const parsed = parseCatalogObject(source);
-  if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
-  const operations: CatalogOperation[] = [];
-  for (const row of parsed.operations) {
-    if (!isRecord(row) || !ident(text(row.operationId)) || !ident(text(row.inputType)) || !ident(text(row.outputType))) continue;
-    operations.push({ operationId: text(row.operationId), inputType: text(row.inputType), outputType: text(row.outputType) });
-  }
-  return operations;
 }
 
 async function renderConnectionGateways(output: string, rows: readonly ConnectionRow[], read: StructureRead): Promise<PersistenceEmit | EmitFailure> {
