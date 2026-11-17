@@ -16,7 +16,7 @@ import { D1_INPUT_VERSION } from '/_102021_/l2/agentDefsL1/steps/input20/contrac
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
-import { cycleIssues, pipelineId } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
+import { cycleIssues, pipelineId, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { buildD1Controllers } from '/_102021_/l2/agentDefsL1/steps/controllers60/gate.js';
 import { coreControllerRequest } from '/_102021_/l2/agentDefsL1/steps/controllers60/fixtures/cases.js';
 import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
@@ -808,6 +808,74 @@ void test('a call outside the catalog, a missing catalog and an unresolved consu
   assert.equal(problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), true);
   assert.equal(problems.some(item => item.code === 'OPERATION_NOT_CALL'), true);
   assert.equal(problems.some(item => item.code === 'CONNECTION_CONSUMER_UNRESOLVED' && item.severity === 'review'), true);
+});
+
+const OTHER_CALL = [{ operationId: 'ping', direction: 'call' }];
+
+function repoAdapter(moduleName: string): D1SupportRequest['adapters'][number] {
+  return {
+    portId: 'ItemRepository',
+    entityId: 'Item',
+    tableId: 'item',
+    artifactId: 'ItemRepository',
+    action: 'create',
+    defPath: `l1/${moduleName}/layer_1_external/adapters/persistence/itemRepositoryAdapter.defs.ts`,
+  };
+}
+
+void test('one connection adds one gateway row and the registry depends on outbound', async () => {
+  const catalog = await catalogOperationsOf(readFileSync(path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+  ), 'utf8'));
+  assert.ok(catalog);
+  const request = connectionRequest([
+    connectionOp({ connectionId: 'cm', operationId: 'readAgent', consumer: 'registrarAtendimento', catalogOps: catalog }),
+    connectionOp({ connectionId: 'cm', operationId: 'listAgents', consumer: 'registrarAtendimento', catalogOps: catalog }),
+  ]);
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const registration = build.emit.find(item => item.definition.artifactType === 'repositoryRegistration');
+  const adapters = (registration?.definition.data as { adapters: Array<{ portId: string; adapterArtifactId: string }> }).adapters;
+  assert.deepEqual(adapters, [{ portId: 'CmGateway', adapterArtifactId: 'outbound' }]);
+  const outboundId = pipelineId(request.project, request.moduleName, 'integrationOutbound', 'outbound');
+  const outboundFile = qualifyDefPath(request.project, `l1/${request.moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`);
+  assert.deepEqual(registration?.pipeline[0]?.dependsOn, [outboundId]);
+  assert.deepEqual(registration?.pipeline[0]?.dependsFiles, [outboundFile]);
+  assert.equal(registration?.definition.dependencies.includes(outboundFile), true);
+  const outbound = build.emit.find(item => item.definition.artifactType === 'integrationOutbound');
+  assert.equal((outbound?.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/repositoryRegistration/')), false);
+});
+
+void test('two connections add two gateway rows', () => {
+  const request = connectionRequest([
+    connectionOp({ connectionId: 'cm', operationId: 'readAgent', consumer: 'registrarAtendimento', catalogOps: [{ operationId: 'readAgent', direction: 'call' }] }),
+    connectionOp({ connectionId: 'beta', operationId: 'ping', consumer: 'registrarAtendimento', catalogOps: OTHER_CALL }),
+  ]);
+  const problems: D1SupportProblem[] = [];
+  const registry = emitRegistry(request, problems, []);
+  const adapters = (registry.emit[0]?.definition.data as { adapters: Array<{ portId: string; adapterArtifactId: string }> }).adapters;
+  assert.deepEqual(adapters, [
+    { portId: 'BetaGateway', adapterArtifactId: 'outbound' },
+    { portId: 'CmGateway', adapterArtifactId: 'outbound' },
+  ]);
+  assert.equal(registry.emit[0]?.pipeline[0]?.dependsOn.length, 1);
+});
+
+void test('without an accepted connection the registry matches the repository-only registration', () => {
+  const plain = connectionRequest([]);
+  plain.adapters = [repoAdapter(plain.moduleName)];
+  const refused = connectionRequest([
+    connectionOp({ connectionId: 'cm', operationId: 'missing', consumer: 'registrarAtendimento', catalogOps: [{ operationId: 'readAgent', direction: 'call' }] }),
+    connectionOp({ connectionId: 'cm', operationId: 'describe', consumer: 'registrarAtendimento', catalogOps: [{ operationId: 'describe', direction: 'serve' }] }),
+  ]);
+  refused.adapters = [repoAdapter(refused.moduleName)];
+  const left = emitRegistry(plain, [], []);
+  const right = emitRegistry(refused, [], []);
+  assert.deepEqual(left, right);
+  const adapters = (left.emit[0]?.definition.data as { adapters: Array<{ portId: string; adapterArtifactId: string }> }).adapters;
+  assert.deepEqual(adapters, [{ portId: 'ItemRepository', adapterArtifactId: 'ItemRepository' }]);
+  assert.equal((left.emit[0]?.pipeline[0]?.dependsOn || []).some(dep => dep.includes('/integrationOutbound/')), false);
 });
 
 function usecase(usecaseId: string, entity: string, operation: string, transitionRef = ''): D1SelectedUsecase {

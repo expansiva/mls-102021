@@ -38,7 +38,7 @@ export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> 
   requestService: ['usecase'],
   accessScope: [],
   authorityMap: ['accessScope'],
-  repositoryRegistration: ['repositoryAdapter'],
+  repositoryRegistration: ['repositoryAdapter', 'integrationOutbound'],
   persistenceSeeds: ['table'],
   integrationOutbound: ['usecase'],
   workflowProcess: ['usecase'],
