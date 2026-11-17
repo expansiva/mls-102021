@@ -78,6 +78,8 @@ export interface D1InputArtifacts {
   contracts: Record<string, D1ContractAst | null>;
   /** Page id → contract source. Present when the file was read. */
   contractTexts?: Record<string, string>;
+  /** Connection id → catalog source (`/_102034_/l4/ontology/connections/<id>.defs.ts`). Snapshot input, not a def field. */
+  catalogTexts?: Record<string, string>;
   presentDefs: D1PresentDef[];
   /**
    * Done write rows from the progress file of the step that wrote the def.
@@ -174,6 +176,8 @@ export interface D1SelectedRequest {
   outputs: D1RequestOutput[];
   params: D1RequestParam[];
   uses: string[];
+  /** `<connectionId>.<operationId>` when the request comes from a serve line. Absent on a contract request. */
+  serves?: string;
   /** Readonly values tied to a route rule by a resolve25 answer (d1_62). Present only when there is one. */
   computedBy?: D1RequestComputedBy[];
   /** Present only when something was left unresolved (d1_60). */

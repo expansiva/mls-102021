@@ -33,6 +33,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
+import { takeUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -48,7 +49,7 @@ import type {
   PoolNeedsPage,
   PoolRaw,
 } from '/_102035_/l2/solution/poolPlan.js';
-import { L1_OPERATIONS, collidingTransitionIds, transitionUsecaseId, type L1Operation, type L1TransitionWrite } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { L1_OPERATIONS, collidingTransitionIds, type L1Operation, type L1TransitionWrite } from '/_102021_/l2/helpers/l1Defs/operations.js';
 
 const BACKEND_PATH_TAIL = 'pool/l2/web/backend.json';
 
@@ -995,32 +996,18 @@ function oneRequest(
   }
   const uses: string[] = [];
   const take = (entity: string, operation: string, transitionKey = ''): void => {
-    const match = transitionKey
-      ? usecases.find(item => item.entity === entity && item.operation === 'transition' && item.transitionRef === transitionKey)
-      : usecases.find(item => item.entity === entity && item.operation === operation);
-    if (match) {
-      if (!uses.includes(match.usecaseId)) uses.push(match.usecaseId);
-      return;
-    }
-    const usecaseId = transitionKey ? transitionUsecaseId(entity, transitionKey, colliding) : `${operation}${entity.charAt(0).toUpperCase()}${entity.slice(1)}`;
-    const refusal = contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, transitionKey);
-    if (refusal) {
-      error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. ${refusal}`, route.route);
-      return;
-    }
-    // Same shape as a planned usecase. Rules and access still come from L4.
-    usecases.push({
-      usecaseId,
+    takeUsecase({
+      problems,
+      path,
+      routeName: route.route,
       entity,
       operation,
-      ...(operation === 'transition' ? { transitionRef: transitionKey } : {}),
-      status: 'toCreate',
-      existing: '',
-      identity: usecaseId,
-      routes: [],
+      transitionKey,
+      usecases,
+      uses,
+      colliding,
+      refusalOf: usecaseId => contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, transitionKey),
     });
-    review(problems, 'USECASE_FROM_CONTRACT', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Usecase ${usecaseId} was created from the contract.`, usecaseId);
-    uses.push(usecaseId);
   };
   // Unique output: planned get, else planned list (locate picks the row). Neither: get, as before. many stays list.
   const readOf = (entity: string, many: boolean): string => {
