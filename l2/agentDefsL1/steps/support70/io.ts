@@ -12,7 +12,7 @@ import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
-import { serveGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
+import { serveControllerGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import {
@@ -339,18 +339,10 @@ export function accessGrantsOf(
     });
   }
   const seen = new Set(grants.map(grant => grant.grantId));
-  for (const grant of serveGrants(requests)) {
+  for (const grant of serveControllerGrants(requests)) {
     if (seen.has(grant.grantId)) continue;
     seen.add(grant.grantId);
-    grants.push({
-      grantId: grant.grantId,
-      actorRef: grant.actorRef,
-      entityRefs: [],
-      disclosure: grant.disclosure,
-      allowedFields: [],
-      anchorEntity: '',
-      scopeMode: grant.scopeMode,
-    });
+    grants.push(grant);
   }
   return { grants, problems };
 }

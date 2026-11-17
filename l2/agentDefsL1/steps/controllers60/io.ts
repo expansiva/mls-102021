@@ -21,7 +21,7 @@ import {
   type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
-import { serveGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
+import { serveControllerGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
@@ -234,7 +234,7 @@ export function accessGrantsOf(
   ontology: Record<string, unknown>,
   requests: readonly { serves?: string }[] = [],
 ): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
-  const synthetic = serveGrantRows(requests);
+  const synthetic = serveControllerGrants(requests);
   if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: synthetic, problems: [] };
   const grants: D1ControllerGrant[] = [];
   const problems: D1ControllerProblem[] = [];
@@ -275,18 +275,6 @@ export function accessGrantsOf(
   }
   grants.push(...synthetic);
   return { grants, problems };
-}
-
-function serveGrantRows(requests: readonly { serves?: string }[]): D1ControllerGrant[] {
-  return serveGrants(requests).map(grant => ({
-    grantId: grant.grantId,
-    actorRef: grant.actorRef,
-    entityRefs: [],
-    disclosure: grant.disclosure,
-    allowedFields: [],
-    anchorEntity: '',
-    scopeMode: grant.scopeMode,
-  }));
 }
 
 function withDisclosureProblems(build: D1ControllerBuild, problems: readonly D1ControllerProblem[]): D1ControllerBuild {
