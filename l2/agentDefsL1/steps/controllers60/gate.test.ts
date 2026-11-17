@@ -374,3 +374,101 @@ void test('d1_63: a calculated value leaves only under fullRecord; otherwise COM
   const open = buildD1Controllers(withComputed('fullRecord'));
   assert.equal(open.problems.some(item => item.path === query && (item.code === 'COMPUTED_NOT_DISCLOSED' || item.code === 'DISCLOSURE')), false, errors(open));
 });
+
+const CONNECTION = 'cm';
+
+function connectionRequest(withGrant: boolean): D1ControllerRequest {
+  const moduleName = 'agents';
+  return {
+    project: 102099,
+    moduleName,
+    pages: [{
+      pageId: CONNECTION,
+      actors: [`connection:${CONNECTION}`],
+      defPath: `l1/${moduleName}/layer_1_external/adapters/http/controllers/${CONNECTION}.defs.ts`,
+    }],
+    usecases: [{
+      usecaseId: 'AgentExecution_create',
+      entity: 'AgentExecution',
+      operation: 'create',
+      status: 'toCreate',
+      functionName: 'AgentExecution_create',
+      defPath: `l1/${moduleName}/layer_2_application/usecases/AgentExecution_create.defs.ts`,
+    }],
+    grants: withGrant ? [{
+      grantId: 'connection_cm',
+      actorRef: `connection:${CONNECTION}`,
+      entityRefs: [],
+      disclosure: 'fullRecord',
+      allowedFields: [],
+      anchorEntity: '',
+      scopeMode: 'organization',
+    }] : [],
+    relationships: [],
+    contracts: [],
+    existing: [],
+    enumerations: [],
+    accessRead: true,
+    actorsRead: true,
+    serviceRequests: [
+      {
+        route: 'agents.cm.record',
+        pageId: CONNECTION,
+        kind: 'cmd',
+        uses: ['AgentExecution_create'],
+        outputs: [],
+        params: [],
+        serves: 'cm.record',
+      },
+      {
+        route: 'agents.cm.describe',
+        pageId: CONNECTION,
+        kind: 'qry',
+        uses: [],
+        outputs: [],
+        params: [],
+        serves: 'cm.describe',
+      },
+    ],
+  };
+}
+
+void test('a connection page emits a controller and a request service without an L2 contract', () => {
+  const build = buildD1Controllers(connectionRequest(true));
+  assert.equal(build.ok, true, errors(build));
+  const service = build.services.find(item => item.pageId === CONNECTION);
+  assert.ok(service?.definition);
+  assert.deepEqual(service.requests.map(row => row.route), ['agents.cm.describe', 'agents.cm.record']);
+  assert.equal(service.requests.every(row => Boolean(row.serves) && row.output.length === 0), true);
+  const controller = build.controllers.find(item => item.pageId === CONNECTION);
+  const handlers = (controller?.definition?.data as { handlers?: Array<Record<string, unknown>> }).handlers || [];
+  assert.equal(handlers.length, 2);
+  for (const handler of handlers) {
+    assert.deepEqual(Object.keys(handler).sort(), ['grantIds', 'kind', 'route', 'serviceFunction']);
+    assert.deepEqual(handler.grantIds, ['connection_cm']);
+    assert.equal(handler.serviceFunction, handler.route);
+  }
+  const deps = controller?.definition?.dependencies || [];
+  assert.equal(deps.some(path => path.includes('/scope/accessScope.defs.ts')), true);
+  assert.equal(deps.some(path => path.includes('/auth/authorityMap.defs.ts')), true);
+  const plain = seed();
+  const plainBuild = buildD1Controllers(plain);
+  assert.equal(plainBuild.ok, true, errors(plainBuild));
+  assert.equal(plainBuild.services.some(item => item.requests.some(row => row.serves)), false);
+  assert.deepEqual(plainBuild.controllers.map(item => item.pageId), plain.pages.map(item => item.pageId).sort());
+});
+
+void test('a page handler without a contract stays INVALID_REF, and a connection without a grant stays AUTHORITY_REQUIRED', () => {
+  const page = seed();
+  const contract = page.contracts[0];
+  assert.ok(contract);
+  contract.source = contract.source.replace(
+    /enhancement="_blank"\/>\n\n/,
+    'enhancement="_blank"/>\n\nexport interface ExtraContracts {\n  ready: boolean;\n}\n\n',
+  );
+  const broken = buildD1Controllers(page);
+  assert.equal(broken.problems.some(item => item.code === 'INVALID_REF' && item.path && contract.source !== ''), true, errors(broken));
+  const open = buildD1Controllers(connectionRequest(false));
+  assert.equal(open.problems.some(item => item.code === 'AUTHORITY_REQUIRED'), true, errors(open));
+  assert.equal(open.controllers.find(item => item.pageId === CONNECTION)?.handlers.length || 0, 0);
+});

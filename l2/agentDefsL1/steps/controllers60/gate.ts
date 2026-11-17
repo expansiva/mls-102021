@@ -22,6 +22,7 @@ import {
   readContractV2,
   requestServiceProblems,
   serviceRowsFor,
+  serveRowsFor,
   usecaseIdsWithDef,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
 import { nodeDisclosure } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
@@ -157,10 +158,21 @@ function sealRoute(
   }
   const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
   const routeGrants = ownerless.length ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
-  const matched: string[] = entities.length === 0 ? [...routeGrants] : [];
-  for (const entity of entities) {
-    for (const grant of matchingGrants(page.actors, entity, request.grants)) {
-      if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
+  // A serve route has no L2 contract. Its grant is the connection actor on the pseudo-page.
+  const serves = Boolean(row.serves);
+  const matched: string[] = [];
+  if (serves) {
+    for (const grant of request.grants) {
+      if (page.actors.includes(grant.actorRef) && !matched.includes(grant.grantId)) matched.push(grant.grantId);
+    }
+  } else if (entities.length === 0) {
+    matched.push(...routeGrants);
+  }
+  if (!serves) {
+    for (const entity of entities) {
+      for (const grant of matchingGrants(page.actors, entity, request.grants)) {
+        if (!matched.includes(grant.grantId)) matched.push(grant.grantId);
+      }
     }
   }
   const kept = finishGrants(
@@ -171,11 +183,15 @@ function sealRoute(
     existing => existing.serviceFunction === row.route,
     problems,
   );
-  if (ownerless.length && !kept.grantIds.some(grantId => routeGrants.includes(grantId))) {
+  if (!serves && ownerless.length && !kept.grantIds.some(grantId => routeGrants.includes(grantId))) {
     review(problems, 'NO_AUTHORITY', path, `NO_AUTHORITY: ${path} ${ownerless.join(', ')} has no entity, and no route grant valid in the L4 access artifact covers it. No permissive fallback was applied.`);
   }
-  const ownerlessOnly = ownerless.length > 0 && entities.length === 0;
-  if (ownerlessOnly) {
+  const ownerlessOnly = !serves && ownerless.length > 0 && entities.length === 0;
+  if (serves) {
+    if (!kept.preserved && kept.grantIds.length === 0) {
+      review(problems, 'AUTHORITY_REQUIRED', path, `Operation ${path} has no authority. No permissive fallback was applied.`);
+    }
+  } else if (ownerlessOnly) {
     // No entity to cover: the authority is the route grants checked above.
   } else if (!kept.preserved) {
     const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
@@ -272,8 +288,10 @@ function bindAdapter(
   const contractPath = contract?.path || `l2/${request.moduleName}/web/contracts/${route.page}.defs.ts`;
   const contractInterface = contract ? contractInterfaceName(contract.source) : '';
   const serviceFunction = row.route;
+  const serves = Boolean(row.serves);
   if (!kind) error(problems, 'KIND', path, `Route ${path} kind ${route.kind} is not query or command.`);
-  if (!contractInterface) {
+  // A handler omits the L2 contract only when its request-service row serves a catalog operation.
+  if (!serves && !contractInterface) {
     error(problems, 'INVALID_REF', path, `Route ${path} has no contract interface.`);
   }
   const kept = sealedRoute.get(row) || sealRoute(request, route, row, problems);
@@ -286,8 +304,8 @@ function bindAdapter(
     usecaseId: '',
     functionName: '',
     serviceFunction,
-    contractPath,
-    contractInterface,
+    contractPath: serves ? '' : contractPath,
+    contractInterface: serves ? '' : contractInterface,
     inputSymbol: '',
     outputSymbol: '',
     status: route.status,
@@ -553,6 +571,44 @@ function requestServices(request: D1ControllerRequest, problems: D1ControllerPro
     if (!blocked) fillService(request, item, problems);
     services.push(item);
   }
+  const servedPages = [...new Set(selected.filter(item => item.serves).map(item => item.pageId))]
+    .filter(pageId => !request.contracts.some(contract => contract.pageId === pageId))
+    .sort();
+  for (const pageId of servedPages) {
+    const rows = serveRowsFor(pageId, selected);
+    const selectedCounts = new Map<string, number>();
+    for (const item of selected) {
+      if (item.pageId === pageId) selectedCounts.set(item.route, (selectedCounts.get(item.route) || 0) + 1);
+    }
+    const fieldProblems = requestServiceProblems({
+      pageId,
+      contractRoutes: rows.map(row => row.route),
+      requests: rows,
+      usecaseIds,
+      fieldsByEntity: knownFields,
+      selectedCounts,
+      part: 'fields',
+    });
+    problems.push(...fieldProblems);
+    for (const row of rows) {
+      const route: D1ControllerRoute = {
+        route: row.route,
+        page: pageId,
+        kind: row.kind,
+        usecaseRef: '',
+        status: routeStatus(request, row.uses),
+      };
+      sealRoute(request, route, row, problems);
+    }
+    const defPath = requestServiceDefPath(request.moduleName, pageId);
+    const item: D1RequestServiceItem = { pageId, defPath, requests: rows, definition: null };
+    if (!isSafeToken(pageId)) {
+      error(problems, 'PAGE_ID', pageId, `Page ${pageId} is not a safe token. No request service file was named.`);
+    }
+    const blocked = fieldProblems.some(problem => problem.severity === 'error') || !isSafeToken(pageId);
+    if (!blocked) fillService(request, item, problems);
+    services.push(item);
+  }
   return services;
 }
 
@@ -627,8 +683,9 @@ function fillDefinition(request: D1ControllerRequest, item: D1ControllerItem, pr
       kind: handler.kind,
       grantIds: handler.grantIds,
       serviceFunction: handler.serviceFunction,
-      contractPath: handler.contractPath,
-      contractInterface: handler.contractInterface,
+      ...(handler.contractPath || handler.contractInterface
+        ? { contractPath: handler.contractPath, contractInterface: handler.contractInterface }
+        : {}),
     })),
   };
   const definition = pendingDefinition('httpController', item.pageId, request.moduleName, data);

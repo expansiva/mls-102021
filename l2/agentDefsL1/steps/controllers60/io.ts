@@ -21,6 +21,7 @@ import {
   type D1RemovedRoute,
 } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serviceSourceOf } from '/_102021_/l2/agentDefsL1/steps/controllers60/requestService.js';
+import { serveGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_USECASE_VERSION } from '/_102021_/l2/agentDefsL1/steps/usecases50/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 
@@ -121,13 +122,18 @@ async function controllerRequest(
   const actors = actorsOf(needs);
   const controllerPath = new Map(snapshot.files.filter(file => file.artifactType === 'httpController').map(file => [file.identity, file.defPath]));
   const usecasePath = new Map(snapshot.files.filter(file => file.artifactType === 'usecase').map(file => [file.identity, file.defPath]));
+  const selectedRequests = snapshot.selection.requests || [];
   const pageIds = [...new Set([
     ...snapshot.selection.pages.map(page => page.pageId),
-    ...(snapshot.selection.requests || []).map(request => request.pageId),
+    ...selectedRequests.map(request => request.pageId),
   ])].filter(Boolean).sort();
+  // A connection page is not in needs.pages. Its types come from the catalog, not an L2 contract.
+  const connectionPages = new Set(
+    selectedRequests.filter(request => request.serves && !actors.has(request.pageId)).map(request => request.pageId),
+  );
   const contracts = [];
   for (const pageId of pageIds) {
-    if (!isSafeToken(pageId)) continue;
+    if (!isSafeToken(pageId) || connectionPages.has(pageId)) continue;
     const path = contractPath(moduleName, pageId);
     const source = await readLogical(project, path);
     contracts.push({ pageId, path, source: source || '' });
@@ -140,7 +146,7 @@ async function controllerRequest(
     if (parsed) existing.push(parsed);
   }
   const ontology = await ontologyOf(project, moduleName, index);
-  const accessGrants = accessGrantsOf(access, ontology);
+  const accessGrants = accessGrantsOf(access, ontology, selectedRequests);
   return {
     disclosureProblems: accessGrants.problems,
     request: {
@@ -148,7 +154,7 @@ async function controllerRequest(
       moduleName,
       pages: pageIds.map(pageId => ({
         pageId,
-        actors: actors.get(pageId) || [],
+        actors: connectionPages.has(pageId) ? [`connection:${pageId}`] : (actors.get(pageId) || []),
         defPath: controllerPath.get(pageId) || `l1/${moduleName}/layer_1_external/adapters/http/controllers/${pageId}.defs.ts`,
       })),
       usecases: snapshot.selection.usecases.map(usecase => ({
@@ -167,7 +173,7 @@ async function controllerRequest(
       accessRead: isRecord(access),
       actorsRead: isRecord(needs),
       removedRoutes: removedRoutesOf(snapshot.removed),
-      serviceRequests: (snapshot.selection.requests || []).map(serviceSourceOf),
+      serviceRequests: selectedRequests.map(serviceSourceOf),
       ontology,
     },
   };
@@ -226,8 +232,10 @@ function actorsOf(needs: unknown): Map<string, string[]> {
 export function accessGrantsOf(
   access: unknown,
   ontology: Record<string, unknown>,
+  requests: readonly { serves?: string }[] = [],
 ): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
-  if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: [], problems: [] };
+  const synthetic = serveGrantRows(requests);
+  if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: synthetic, problems: [] };
   const grants: D1ControllerGrant[] = [];
   const problems: D1ControllerProblem[] = [];
   for (const grant of access.grants) {
@@ -265,7 +273,20 @@ export function accessGrantsOf(
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
     });
   }
+  grants.push(...synthetic);
   return { grants, problems };
+}
+
+function serveGrantRows(requests: readonly { serves?: string }[]): D1ControllerGrant[] {
+  return serveGrants(requests).map(grant => ({
+    grantId: grant.grantId,
+    actorRef: grant.actorRef,
+    entityRefs: [],
+    disclosure: grant.disclosure,
+    allowedFields: [],
+    anchorEntity: '',
+    scopeMode: grant.scopeMode,
+  }));
 }
 
 function withDisclosureProblems(build: D1ControllerBuild, problems: readonly D1ControllerProblem[]): D1ControllerBuild {

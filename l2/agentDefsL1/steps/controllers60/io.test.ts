@@ -38,3 +38,16 @@ void test('a disclosure mode outside fullRecord, fieldsOnly and summaryOnly is a
   assert.equal(read.problems[0].path, 'pessoaVeEmpresa');
   assert.match(read.problems[0].message, /pessoaVeEmpresa/);
 });
+
+void test('serve requests add one connection grant beside the L4 grants', () => {
+  const read = accessGrantsOf(summary, {}, [
+    { serves: 'cm.record' },
+    { serves: 'cm.describe' },
+  ]);
+  assert.deepEqual(read.problems, []);
+  assert.deepEqual(read.grants.map(grant => grant.grantId), ['pessoaVeEmpresa', 'connection_cm']);
+  assert.equal(read.grants[1]?.actorRef, 'connection:cm');
+  assert.deepEqual(read.grants[1]?.entityRefs, []);
+  const alone = accessGrantsOf(null, {}, [{ serves: 'cm.record' }]);
+  assert.deepEqual(alone.grants.map(grant => grant.grantId), ['connection_cm']);
+});
