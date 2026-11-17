@@ -12,6 +12,15 @@ import { ruleTexts } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/cont
 
 export const M12_TESTS_TOOL = 'proposeMonitorCases' as const;
 
+/** A connection serve route has no L2 page, so the monitor does not propose cases for it. */
+export const SERVE_ROUTE_NO_PAGE_TEST = 'SERVE_ROUTE_NO_PAGE_TEST' as const;
+
+/** True when a request-service def has a row that serves a connection operation. */
+export function requestServiceServes(data: Record<string, unknown> | undefined): boolean {
+  const requests = Array.isArray(data?.requests) ? data.requests : [];
+  return requests.some(row => isRecord(row) && typeof row.serves === 'string' && row.serves !== '');
+}
+
 export const M12_TESTS_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -155,13 +164,16 @@ export function thrownErrorCodes(source: string): Array<{ ruleId: string; code: 
 export async function loadTestsContext(ctx: M12Context, controller: M12Unit, repair?: { problems: string[]; previous: string | null }): Promise<M12TestsContext> {
   const { project, module: moduleName } = ctx.run;
   const pageId = String(controller.definition.data.pageId ?? controller.unitId);
+  const service = ctx.units.find(unit => unit.layer === 'requests' && String(unit.definition.data.pageId ?? unit.unitId) === pageId);
+  if (service && requestServiceServes(service.definition.data)) {
+    throw new Error(`${SERVE_ROUTE_NO_PAGE_TEST}: page ${pageId} serves a connection and has no page test.`);
+  }
   const contract = contractFile(project, moduleName, pageId);
   const contractText = await readOptional(contract);
   if (!contractText) throw new Error(`CONTRACT_UNREAD: ${fileRef(contract)}`);
   const routes = contractRoutes(contractText, moduleName, pageId);
   if (!routes.length) throw new Error(`CONTRACT_NO_ROUTES: ${fileRef(contract)} has no route of ${moduleName}.${pageId}.`);
   const actor = routes.flatMap(route => route.actors)[0] ?? '';
-  const service = ctx.units.find(unit => unit.layer === 'requests' && String(unit.definition.data.pageId ?? unit.unitId) === pageId);
   const entities = ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity');
   const seeds = ctx.units.find(unit => unit.definition.artifactType === 'persistenceSeeds');
   const rulesSource = await readOptional(rulesFile(project, moduleName));

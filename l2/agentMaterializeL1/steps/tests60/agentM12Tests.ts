@@ -8,7 +8,7 @@ import { M12_RECIPE_VERSION, layerUnits } from '/_102021_/l2/agentMaterializeL1/
 import { pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { workerStep } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
-import { loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
+import { SERVE_ROUTE_NO_PAGE_TEST, loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 
 export function createAgent(): IAgentAsync {
   return { agentName: M12_TESTS_AGENT_NAME, agentProject: 102021, agentFolder: 'agentMaterializeL1/steps/tests60', agentDescription: 'Dispatch one monitor-cases worker per page whose controller is ready', visibility: 'private', beforePromptStep };
@@ -62,8 +62,16 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
         lines.push(`${pageId}: dispatched`);
       } catch (error) {
         const diagnostic = clip(errorText(error));
-        await writeUnitStatus(run.project, run.module, { ...base, status: 'failed', code: 'CONTEXT_FAILED', diagnostic, inputHash: '', outputs: {} });
-        lines.push(`${pageId}: failed, ${diagnostic}`);
+        const serveSkip = diagnostic.startsWith(SERVE_ROUTE_NO_PAGE_TEST);
+        await writeUnitStatus(run.project, run.module, {
+          ...base,
+          status: serveSkip ? 'skipped' : 'failed',
+          code: serveSkip ? SERVE_ROUTE_NO_PAGE_TEST : 'CONTEXT_FAILED',
+          diagnostic,
+          inputHash: '',
+          outputs: {},
+        });
+        lines.push(`${pageId}: ${serveSkip ? 'skipped' : 'failed'}, ${diagnostic}`);
       }
     }
     const trace = clip(lines.join('\n') || 'No controller selected.', 3000);

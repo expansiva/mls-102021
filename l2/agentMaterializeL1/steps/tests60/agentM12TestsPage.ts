@@ -8,7 +8,7 @@ import { testsGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { fileRef, pageTestsFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { loadRun } from '/_102021_/l2/agentMaterializeL1/helpers/m12Phase.js';
 import { parseM12WorkerArgs, recordM12ArgsRefusal, repairOrGiveUp, type M12WorkerArgs } from '/_102021_/l2/agentMaterializeL1/helpers/m12Worker.js';
-import { M12_TESTS_SCHEMA, M12_TESTS_TOOL, loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
+import { M12_TESTS_SCHEMA, M12_TESTS_TOOL, SERVE_ROUTE_NO_PAGE_TEST, loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { normalizeTestCases, renderPageTests } from '/_102021_/l2/agentMaterializeL1/steps/tests60/render.js';
 import { testsInputHash } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
 
@@ -39,10 +39,10 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
   catch (error) { await recordM12ArgsRefusal(step.prompt || '', 'tests', errorText(error)); return [updateM12Status(context, parentStep, step, hookSequential, 'completed', `M12_FAILED: ${errorText(error)}`)]; }
   try {
     const { ctx, controller } = await pageOf(args);
+    const data = await loadTestsContext(ctx, controller, await repairInput(args));
     // Through the reader: it loads the stor index of project 102021 when the open project is another one.
     const system = await ctx.read(fileRef(PROMPT_FILE));
     if (!system) throw new Error('M12_PROMPT_MISSING: _102021_/l2/agentMaterializeL1/steps/tests60/prompt.md');
-    const data = await loadTestsContext(ctx, controller, await repairInput(args));
     if (system.length + data.human.length > M12_PROMPT_LIMIT) throw new Error(`M12_PROMPT_LIMIT: ${system.length + data.human.length}`);
     return [m12PromptReady(context, parentStep, step, hookSequential, {
       system, human: data.human, toolName: M12_TESTS_TOOL,
@@ -50,6 +50,10 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     })];
   } catch (error) {
     const diagnostic = clip(errorText(error));
+    if (diagnostic.startsWith(SERVE_ROUTE_NO_PAGE_TEST)) {
+      await writeUnitStatus(args.project, args.module, { layer: 'tests', unitId: args.unitId, defRef: '', status: 'skipped', code: SERVE_ROUTE_NO_PAGE_TEST, attempt: args.attempt, diagnostic, inputHash: '', outputs: {} });
+      return [updateM12Status(context, parentStep, step, hookSequential, 'completed', diagnostic)];
+    }
     await writeUnitStatus(args.project, args.module, { layer: 'tests', unitId: args.unitId, defRef: '', status: 'failed', code: 'PROMPT_FAILED', attempt: args.attempt, diagnostic, inputHash: '', outputs: {} });
     return [updateM12Status(context, parentStep, step, hookSequential, 'completed', `M12_FAILED: ${diagnostic}`)];
   }
@@ -67,7 +71,17 @@ async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCon
   };
   try {
     const { ctx, controller } = await pageOf(args);
-    const data = await loadTestsContext(ctx, controller);
+    let data;
+    try {
+      data = await loadTestsContext(ctx, controller);
+    } catch (error) {
+      const diagnostic = errorText(error);
+      if (diagnostic.startsWith(SERVE_ROUTE_NO_PAGE_TEST)) {
+        await writeUnitStatus(args.project, args.module, { layer: 'tests', unitId: args.unitId, defRef: '', status: 'skipped', code: SERVE_ROUTE_NO_PAGE_TEST, attempt: args.attempt, diagnostic, inputHash, outputs: {} });
+        return [updateM12Status(context, parentStep, step, hookSequential, 'completed', diagnostic, true)];
+      }
+      throw error;
+    }
     const controllerStatus = await readUnitStatus(args.project, args.module, 'controllers', controller.unitId);
     inputHash = await testsInputHash(data.inputs, controllerStatus?.outputs ?? {});
     const payload = (m12ToolPayload(step, M12_TESTS_TOOL) ?? {}) as { cases?: unknown };

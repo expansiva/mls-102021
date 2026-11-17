@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.ts" enhancement="_blank"/>
 
+import { SERVE_ROUTE_NO_PAGE_TEST } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { M12_FINALIZE_AGENT_NAME, M12_LAYERS, clip, errorText, parseM12StepInvocation, type M12Layer } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMaterializeL1/helpers/m12Intents.js';
@@ -33,6 +34,10 @@ export interface M12Report {
   createdAt: string;
 }
 
+function isServeSkip(item: { status: string; code: string }): boolean {
+  return item.status === 'skipped' && item.code === SERVE_ROUTE_NO_PAGE_TEST;
+}
+
 export function buildM12Report(project: number, moduleName: string, units: readonly M12UnitStatus[], missing: readonly string[], defProblems: M12Report['defProblems'], registration: M12Report['registration']): M12Report {
   const counts: Record<M12UnitState, number> = { done: 0, reused: 0, blocked: 0, gap: 0, failed: 0, skipped: 0 };
   const byLayer: M12Report['byLayer'] = {};
@@ -45,7 +50,8 @@ export function buildM12Report(project: number, moduleName: string, units: reado
   const open = units
     .filter(unit => unit.status !== 'done' && unit.status !== 'reused')
     .map(unit => ({ layer: unit.layer, unitId: unit.unitId, status: unit.status, code: unit.code, diagnostic: clip(unit.diagnostic, 600) }));
-  const clean = open.every(item => item.status === 'gap') && missing.length === 0 && defProblems.length === 0;
+  // A connection serve route has no page test: that declared skip is not an open item, same as a platform gap.
+  const clean = open.every(item => item.status === 'gap' || isServeSkip(item)) && missing.length === 0 && defProblems.length === 0;
   const notCompiled = units.filter(unit => (unit.status === 'done' || unit.status === 'reused') && unit.code === 'COMPILE_UNAVAILABLE_L1').map(unit => `${unit.layer}/${unit.unitId}`);
   return { schemaVersion: M12_REPORT_VERSION, project, moduleName, status: clean ? 'complete' : 'partial', counts, byLayer, open, notCompiled, missing: [...missing], defProblems, registration, createdAt: new Date().toISOString() };
 }
@@ -59,9 +65,10 @@ export function summarizeM12Report(report: M12Report): string {
     const row = report.byLayer[layer];
     if (row) lines.push(`- ${layer}: ${Object.entries(row).map(([state, count]) => `${state} ${count}`).join(', ')}`);
   }
-  if (report.open.length) {
+  const notGenerated = report.open.filter(item => !isServeSkip(item));
+  if (notGenerated.length) {
     lines.push('', 'Not generated:');
-    for (const item of report.open) lines.push(`- ${item.layer}/${item.unitId}: ${item.status} ${item.code} — ${clip(item.diagnostic, 240)}`);
+    for (const item of notGenerated) lines.push(`- ${item.layer}/${item.unitId}: ${item.status} ${item.code} — ${clip(item.diagnostic, 240)}`);
   }
   if (report.notCompiled.length) lines.push('', `Generated, not proven by a compiler (COMPILE_UNAVAILABLE_L1): ${report.notCompiled.length} unit(s).`);
   if (report.missing.length) lines.push('', `No status for: ${report.missing.join(', ')}`);

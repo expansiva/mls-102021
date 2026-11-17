@@ -161,6 +161,8 @@ function routeObligationsV2(
   const requests = serviceEntry && Array.isArray(serviceEntry[1].data.requests) ? serviceEntry[1].data.requests.filter(isRecord) : [];
   const found = requests.find(row => row.route === ref.route);
   if (!serviceEntry || !found) return { gap: `REQUEST_UNREAD: no requestService request of page ${String(ref.controller.data.pageId ?? '')} has route ${ref.route}` };
+  // A connection serve route is proved by the connector, not by a page contract.
+  if (typeof found.serves === 'string' && found.serves !== '') return { obligations: [], gaps: [] };
   const request = requestRow(ref.route, found);
   if (!request) return { gap: `REQUEST_UNREAD: the request of ${ref.route} has no kind, uses or outputs` };
   // d1_61: the same reader as the request service emitter; a shape it refuses is no case.
