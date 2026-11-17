@@ -59,6 +59,66 @@ void test('a summaryOnly grant is fieldsOnly with its allowed fields on the acce
   assert.deepEqual(grant?.allowedFields, ['Empresa.nome', 'Empresa.documento']);
 });
 
+void test('a serve request without an L4 grant adds one connection grant to accessScope and authorityMap', () => {
+  const read = accessGrantsOf({ grants: [] }, {}, [
+    { serves: 'cm.describe' },
+    { serves: 'cm.record' },
+  ]);
+  assert.deepEqual(read.problems, []);
+  assert.equal(read.grants.length, 1);
+  assert.equal(read.grants[0]?.grantId, 'connection_cm');
+  assert.equal(read.grants[0]?.actorRef, 'connection:cm');
+  const request: D1SupportRequest = {
+    project: 102021,
+    moduleName: 'inicio',
+    grants: read.grants,
+    relationships: [],
+    scopePlans: [],
+    citedGrantIds: [],
+    adapters: [],
+    files: [],
+    existingHelpers: [],
+    applicationEdges: [],
+    formFields: [],
+    enumerations: [],
+    tables: [],
+    models: [],
+    journeys: [],
+    missingJourneys: [],
+    roleTags: [],
+    seedRefs: [],
+    existingDatasets: [],
+    maintenance: null,
+    outbound: [],
+    selectedEventIds: [],
+    usecaseIds: [],
+    transitionUsecases: [],
+    operations: [],
+    processes: [],
+  };
+  const build = buildD1Support(request);
+  assert.equal(build.ok, true, build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; '));
+  const scope = build.emit.find(item => item.definition.artifactType === 'accessScope');
+  const auth = build.emit.find(item => item.definition.artifactType === 'authorityMap');
+  const scopeGrant = (scope?.definition.data as { grants: Array<{ grantId: string; actorRef: string }> }).grants[0];
+  const entry = (auth?.definition.data as { entries: Array<{ grantId: string; actorRef: string }> }).entries[0];
+  assert.equal(scopeGrant?.grantId, 'connection_cm');
+  assert.equal(scopeGrant?.actorRef, 'connection:cm');
+  assert.equal(entry?.grantId, 'connection_cm');
+  assert.equal(entry?.actorRef, 'connection:cm');
+  const plain = accessGrantsOf({
+    grants: [{
+      grantId: 'pessoaVeEmpresa',
+      actorRef: 'pessoa',
+      entityRefs: ['Empresa'],
+      disclosure: { mode: 'fullRecord' },
+      dataScope: { mode: 'organization' },
+    }],
+  }, {});
+  assert.equal(plain.grants.length, 1);
+  assert.equal(plain.grants[0]?.grantId, 'pessoaVeEmpresa');
+});
+
 void test('a disclosure mode outside fullRecord, fieldsOnly and summaryOnly is an error on the grant', () => {
   const read = accessGrantsOf({
     grants: [{

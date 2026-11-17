@@ -12,6 +12,7 @@ import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
+import { serveGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { D1_PERSISTENCE_VERSION } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import {
@@ -70,7 +71,7 @@ export async function assembleD1Support(
   const previous = previousText ? parseObject(previousText) : null;
   const files = await receiptFiles(project, snapshot.files);
   const entities = await entitiesOf(project, moduleName, index);
-  const accessGrants = accessGrantsOf(access, entities);
+  const accessGrants = accessGrantsOf(access, entities, snapshot.selection.requests || []);
   const grants = accessGrants.grants;
   const models = modelsOf(domain, index);
   const selected = snapshot.selection.usecases;
@@ -294,15 +295,15 @@ function parseObject(text: string): Record<string, unknown> | null {
   }
 }
 
-/** `summaryOnly` is the L4 name of `fieldsOnly`. Any other mode is an error on the grant. */
+/** `summaryOnly` is the L4 name of `fieldsOnly`. Any other mode is an error on the grant. Serve requests add one technical grant per connection. */
 export function accessGrantsOf(
   access: unknown,
   entities: Record<string, unknown>,
+  requests: readonly { serves?: string }[] = [],
 ): { grants: D1ControllerGrant[]; problems: D1ControllerProblem[] } {
-  if (!isRecord(access) || !Array.isArray(access.grants)) return { grants: [], problems: [] };
   const grants: D1ControllerGrant[] = [];
   const problems: D1ControllerProblem[] = [];
-  for (const grant of access.grants) {
+  if (isRecord(access) && Array.isArray(access.grants)) for (const grant of access.grants) {
     if (!isRecord(grant) || typeof grant.grantId !== 'string' || typeof grant.actorRef !== 'string') continue;
     const disclosure = isRecord(grant.disclosure) ? grant.disclosure : {};
     const scope = isRecord(grant.dataScope) ? grant.dataScope : {};
@@ -335,6 +336,20 @@ export function accessGrantsOf(
         : allowedFields,
       anchorEntity: typeof scope.anchorEntity === 'string' ? scope.anchorEntity : '',
       scopeMode: typeof scope.mode === 'string' ? scope.mode : '',
+    });
+  }
+  const seen = new Set(grants.map(grant => grant.grantId));
+  for (const grant of serveGrants(requests)) {
+    if (seen.has(grant.grantId)) continue;
+    seen.add(grant.grantId);
+    grants.push({
+      grantId: grant.grantId,
+      actorRef: grant.actorRef,
+      entityRefs: [],
+      disclosure: grant.disclosure,
+      allowedFields: [],
+      anchorEntity: '',
+      scopeMode: grant.scopeMode,
     });
   }
   return { grants, problems };

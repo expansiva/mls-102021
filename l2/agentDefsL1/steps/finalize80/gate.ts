@@ -25,7 +25,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { declaredDependencyPaths, readDefinitionExport } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { accountCalls } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 import { readUsecaseFidelity, type FidelityFile } from '/_102021_/l2/agentDefsL1/steps/usecases50/fidelity.js';
 import { projectEnumerations } from '/_102021_/l2/agentDefsL1/steps/support70/enumerations.js';
@@ -588,7 +588,20 @@ function checkCoverage(
   }
 }
 
+/** A connection pseudo-page is a `pageId` that is not a selected page and is named only by a serve request. */
+export function connectionPageIds(snapshot: D1InputSnapshot | null | undefined): Set<string> {
+  const ids = new Set<string>();
+  if (!snapshot) return ids;
+  const pages = new Set((snapshot.selection.pages || []).map(page => page.pageId).filter(Boolean));
+  for (const row of snapshot.selection.requests || []) {
+    if (!row.pageId || !row.serves || pages.has(row.pageId)) continue;
+    ids.add(row.pageId);
+  }
+  return ids;
+}
+
 function checkContract(request: D1FinalizeRequest, parsed: ParsedDef[], findings: D1FinalizeFinding[]): void {
+  const exempt = connectionPageIds(request.snapshot);
   const handlersByPage = new Map<string, string[]>();
   for (const item of parsed) {
     if (item.definition.artifactType !== 'httpController') continue;
@@ -602,7 +615,7 @@ function checkContract(request: D1FinalizeRequest, parsed: ParsedDef[], findings
   }
   const pageIds = new Set([...handlersByPage.keys(), ...Object.keys(request.contracts)]);
   for (const pageId of [...pageIds].sort()) {
-    if (!pageId) continue;
+    if (!pageId || exempt.has(pageId)) continue;
     const path = contractPath(request.moduleName, pageId);
     const contract = request.contracts[pageId];
     const digest = request.snapshot?.sources.find(source => source.path === path);

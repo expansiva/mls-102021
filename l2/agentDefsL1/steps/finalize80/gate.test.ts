@@ -729,6 +729,53 @@ void test('a receipt mismatch and a divergent L2 contract do not complete', () =
   assert.ok(codes(divergentReport, 'CONTRACT_DIVERGENT') >= 1);
 });
 
+void test('a connection pseudo-page does not need an L2 contract', () => {
+  const input = request();
+  const route = 'agendaClinica.cm.qryDescribe';
+  const logical = `l1/${MODULE}/layer_1_external/adapters/http/controllers/cm.defs.ts`;
+  const definitionValue = definition('httpController', 'cm', {
+    pageId: 'cm',
+    handlers: [{ route, kind: 'query', usecaseId: 'registrarAtendimento', grantIds: ['desk'] }],
+  });
+  const item = pipe('httpController', 'cm', logical, [id('accessScope', 'accessScope')]);
+  item.routes = [route];
+  input.observed.push({
+    defPath: logical,
+    text: sourceOf(definitionValue, item),
+    currentHash: 'sha256:same',
+    receiptHash: 'sha256:same',
+    action: 'create',
+    ownerRefs: [],
+    unitDone: false,
+  });
+  input.snapshot?.files.push({
+    id: logical,
+    artifactType: 'httpController',
+    defPath: logical,
+    action: 'create',
+    identity: 'cm',
+    ownerRefs: [`path:${logical}`],
+    dependsOn: [],
+  });
+  input.snapshot?.selection.requests.push({
+    route,
+    pageId: 'cm',
+    kind: 'qry',
+    writes: '',
+    outputs: [],
+    params: [],
+    uses: [],
+    serves: 'cm.describe',
+  });
+  const report = buildD1Finalize(input);
+  assert.equal(codes(report, 'CONTRACT_ABSENT'), 0);
+  assert.equal(report.outcome, 'complete', report.findings.map(item => `${item.code}:${item.message}`).join('; '));
+
+  const absent = request();
+  absent.contracts.consultas = { path: CONTRACT, text: null, hash: '' };
+  assert.equal(codes(buildD1Finalize(absent), 'CONTRACT_ABSENT'), 1);
+});
+
 void test('an absent L2 contract is a real pending and a missing future output is not', () => {
   const absent = request();
   absent.contracts.consultas = { path: CONTRACT, text: null, hash: '' };

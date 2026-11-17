@@ -14,6 +14,7 @@ import { readText, writeText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { artifactFile, declaredDependencyPaths, parseRendered } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { contractPath } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { connectionPageIds } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { fileInfoFromDisplay, parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { readCallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
@@ -49,7 +50,9 @@ export async function assembleD1Finalize(project: number, moduleName: string): P
   const contracts: D1FinalizeRequest['contracts'] = {};
   const pages = new Set((snapshot?.selection.pages || []).map(page => page.pageId).filter(Boolean));
   for (const request of snapshot?.selection.requests || []) if (request.pageId) pages.add(request.pageId);
+  const exempt = connectionPageIds(snapshot);
   for (const pageId of pages) {
+    if (exempt.has(pageId)) continue;
     const path = contractPath(moduleName, pageId);
     const text = await readLogical(project, path);
     contracts[pageId] = { path, text, hash: text == null ? '' : await sha256Text(text) };
