@@ -19,6 +19,8 @@ export interface M12CodeGateInput {
   transition?: { transitionId: string; to: string };
   /** The repository ports of the module (`DespesaRepository`); a name outside them is refused. */
   ports?: readonly string[];
+  /** Connection gateways of the module (`<Connection>Gateway`), from `integrationOutbound` `connections`. */
+  gateways?: readonly string[];
 }
 
 /**
@@ -164,17 +166,84 @@ export function usecaseParameterCount(code: string, functionName: string): numbe
   return -1;
 }
 
-/** Names a file imports from a repository port of the module (`…/layer_2_application/ports/….js`). */
-export function portImports(code: string): Set<string> {
+const OUTBOUND_GATEWAY = '/layer_1_external/adapters/integration/outbound.js';
+
+/** `<connectionId>` with the first letter upper, plus `Gateway`. */
+export function gatewayNameOf(connectionId: string): string {
+  return `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;
+}
+
+/** Rows of `integrationOutbound.data.connections` that name a connection and an operation. */
+export function connectionRowsOf(data: unknown): Array<{ connectionId: string; operationId: string; consumer: string }> {
+  if (!data || typeof data !== 'object') return [];
+  const rows = (data as { connections?: unknown }).connections;
+  if (!Array.isArray(rows)) return [];
+  const out: Array<{ connectionId: string; operationId: string; consumer: string }> = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const record = row as { connectionId?: unknown; operationId?: unknown; consumer?: unknown };
+    const connectionId = typeof record.connectionId === 'string' ? record.connectionId : '';
+    const operationId = typeof record.operationId === 'string' ? record.operationId : '';
+    const consumer = typeof record.consumer === 'string' ? record.consumer : '';
+    if (!/^[A-Za-z_$][\w$]*$/u.test(connectionId) || !/^[A-Za-z_$][\w$]*$/u.test(operationId)) continue;
+    out.push({ connectionId, operationId, consumer });
+  }
+  return out;
+}
+
+/** Gateway names of the module, one per `connectionId` on its `integrationOutbound` defs. */
+export function moduleGatewayNames(units: readonly { definition: { artifactType: string; data: unknown } }[]): string[] {
+  const names: string[] = [];
+  for (const unit of units) {
+    if (unit.definition.artifactType !== 'integrationOutbound') continue;
+    for (const row of connectionRowsOf(unit.definition.data)) {
+      const name = gatewayNameOf(row.connectionId);
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
+/** Names a file imports from a repository port or from a known connection gateway. */
+export function portImports(code: string, knownGateways?: readonly string[]): Set<string> {
   const out = new Set<string>();
+  const allowed = new Set(knownGateways ?? []);
   for (const match of code.matchAll(/\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/gu)) {
-    if (!match[2].includes('/layer_2_application/ports/')) continue;
+    const fromPort = match[2].includes('/layer_2_application/ports/');
+    const fromGateway = match[2].includes(OUTBOUND_GATEWAY);
+    if (!fromPort && !fromGateway) continue;
     for (const part of match[1].split(',')) {
       const name = part.replace(/^\s*type\s+/u, '').split(/\s+as\s+/u).pop()?.trim();
-      if (name) out.add(name);
+      if (!name) continue;
+      if (fromGateway && !allowed.has(name)) continue;
+      out.add(name);
     }
   }
   return out;
+}
+
+/**
+ * A usecase, request or workflow that reaches a connection outside its gateway.
+ * The message names the gateway the file should resolve.
+ */
+export function gatewayBypassProblems(code: string): string[] {
+  const names = new Set<string>();
+  for (const match of code.matchAll(/\bimport\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/gu)) {
+    if (match[2].includes('callConnection')) names.add('callConnection');
+    for (const part of match[1].split(',')) {
+      const name = part.replace(/^\s*type\s+/u, '').split(/\s+as\s+/u).pop()?.trim();
+      if (name === 'callConnection' || name === 'fetch' || name === 'XMLHttpRequest') names.add(name);
+    }
+  }
+  for (const match of code.matchAll(/\bimport\s+(?:type\s+)?([A-Za-z_$][\w$]*)\s*from\s*['"]([^'"]+)['"]/gu)) {
+    if (match[1] === 'callConnection' || match[1] === 'fetch' || match[1] === 'XMLHttpRequest' || match[2].includes('callConnection')) names.add(match[1]);
+  }
+  if (/\bcallConnection\s*\(/u.test(code)) names.add('callConnection');
+  if (/\bfetch\s*\(/u.test(code)) names.add('fetch');
+  if (/\bXMLHttpRequest\b/u.test(code)) names.add('XMLHttpRequest');
+  if (names.size === 0) return [];
+  const listed = [...names].map(name => `\`${name}\``).join(', ');
+  return [`GATEWAY_BYPASS: ${listed} reaches a connection outside its gateway. Resolve the gateway (\`resolveRepository<<Connection>Gateway>(ctx, '<Connection>Gateway')\`, imported from \`layer_1_external/adapters/integration/outbound.js\`) and call its method. Do not write HTTP.`];
 }
 
 /**
@@ -182,7 +251,7 @@ export function portImports(code: string): Set<string> {
  * from a port. Either one hides the entity's field names from the compiler (fecharComanda read `item.quantity`
  * through its own `ItemComandaRepository`; the field is `details.quantidade`).
  */
-export function repositoryProblems(code: string, knownPorts?: readonly string[]): string[] {
+export function repositoryProblems(code: string, knownPorts?: readonly string[], knownGateways?: readonly string[]): string[] {
   const problems: string[] = [];
   // aprovarDespesa typed `resolveRepository<{ get(id: string): … }>(ctx, 'ColaboradorRepository')`: an inline type
   // escapes the port check below, and that port does not exist (Colaborador lives in the MDM), so every call threw.
@@ -198,7 +267,7 @@ export function repositoryProblems(code: string, knownPorts?: readonly string[])
   for (const match of code.matchAll(/^\s*(?:export\s+)?(?:interface|type)\s+([A-Za-z0-9_]*Repository)\b/gmu)) {
     problems.push(`Do not declare the repository type \`${match[1]}\`: import the port from \`/_<project>_/l1/<module>/layer_2_application/ports/…\` and type the records with its entity.`);
   }
-  const ports = portImports(code);
+  const ports = portImports(code, knownGateways);
   for (const match of code.matchAll(/\bresolveRepository\s*<\s*([A-Za-z0-9_]+)\s*>/gu)) {
     if (!ports.has(match[1])) problems.push(`\`resolveRepository<${match[1]}>\`: ${match[1]} must be imported from a port of this module (layer_2_application/ports).`);
   }
@@ -301,7 +370,8 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) {
     problems.push('No `as unknown as` and no `as any`: they hide from the compiler an output that differs from the declared type (a list usecase returned a bare array while declaring { items, hasMore }). Return a value built with the declared type.');
   }
-  problems.push(...repositoryProblems(code, input.ports));
+  problems.push(...repositoryProblems(code, input.ports, input.gateways));
+  problems.push(...gatewayBypassProblems(code));
   problems.push(...versionProblems(code));
   problems.push(...derivedReadProblems(code, input.derivedPaths ?? []));
   if (input.operation === 'list') problems.push(...listFilterProblems(code));

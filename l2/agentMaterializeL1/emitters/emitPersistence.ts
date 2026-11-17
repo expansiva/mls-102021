@@ -472,7 +472,7 @@ function parseCatalogObject(source: string): unknown {
 }
 
 /** Operations of one catalog file. The type annotation is dropped so the defs reader finds the object. */
-function catalogOperations(source: string): CatalogOperation[] | null {
+export function catalogOperations(source: string): CatalogOperation[] | null {
   const parsed = parseCatalogObject(source);
   if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
   const operations: CatalogOperation[] = [];

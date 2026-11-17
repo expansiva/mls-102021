@@ -5,11 +5,12 @@
 // materializadorL1.md §10), plus the recipe attempt and platform signatures.
 
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, gatewayNameOf, moduleGatewayNames, usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -235,6 +236,48 @@ export function sessionCompanyAnchor(moduleName: string, configText: string | nu
   ].join('\n'));
 }
 
+/**
+ * Gateways this usecase consumes: the interface, the import, and only its operations, with the catalog types.
+ */
+export async function connectionGatewaySection(ctx: M12Context, functionName: string, artifactId: string): Promise<string> {
+  const rows = ctx.units
+    .filter(item => item.definition.artifactType === 'integrationOutbound')
+    .flatMap(item => connectionRowsOf(item.definition.data))
+    .filter(row => row.consumer === functionName || row.consumer === artifactId);
+  if (rows.length === 0) return '';
+  const byConnection = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byConnection.get(row.connectionId) ?? [];
+    list.push(row);
+    byConnection.set(row.connectionId, list);
+  }
+  const importPath = `/_${ctx.run.project}_/l1/${ctx.run.module}/layer_1_external/adapters/integration/outbound.js`;
+  const blocks: string[] = [
+    `Import the gateway type with \`import type { … } from '${importPath}'\`.`,
+    'Resolve it with `resolveRepository<<Connection>Gateway>(ctx, \'<Connection>Gateway\')`, then call `gateway.<operation>(input, ctx)` or `gateway.<operation>(input, ctx, opts)`.',
+    'Pass `opts.idempotencyKey` and `opts.expectVersion` only when an l4 rule asks for them. The gateway does not invent a key.',
+    'Let an error from the gateway propagate. Do not catch it and replace it with a generic message.',
+    'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
+  ];
+  for (const connectionId of [...byConnection.keys()].sort()) {
+    const gateway = gatewayNameOf(connectionId);
+    const catalogSource = await ctx.read(`/_102034_/l4/ontology/connections/${connectionId}.defs.ts`);
+    const catalog = (catalogSource ? catalogOperations(catalogSource) : null) ?? [];
+    const lines = (byConnection.get(connectionId) ?? []).map(row => {
+      const operation = catalog.find(item => item.operationId === row.operationId);
+      if (!operation) return `- \`${row.operationId}\`: the catalog does not list this operation.`;
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\``;
+    });
+    blocks.push([
+      `### ${gateway}`,
+      `\`import type { ${gateway} } from '${importPath}'\`.`,
+      `\`const gateway = resolveRepository<${gateway}>(ctx, '${gateway}');\``,
+      ...lines,
+    ].join('\n'));
+  }
+  return section('Connection gateways', blocks.join('\n\n'));
+}
+
 function fence(lang: string, text: string): string {
   return `\`\`\`${lang}\n${text.trim()}\n\`\`\``;
 }
@@ -358,6 +401,8 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
     ctx.units.map(item => String(item.definition.data.entityId ?? '')),
   );
   if (companyAnchor) parts.push(companyAnchor);
+  const gateways = await connectionGatewaySection(ctx, functionName, unit.definition.artifactId);
+  if (gateways) parts.push(gateways);
   for (const ref of [PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry]) {
     const text = await ctx.read(ref);
     if (text) parts.push(section(`Platform ${ref}`, [`Import from \`/${ref.replace(/\.ts$/u, '.js')}\`.`, fence('ts', exportSignatures(text))].join('\n\n')));
@@ -743,7 +788,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId) }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units) }),
   ];
 }
 

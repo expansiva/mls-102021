@@ -1,6 +1,8 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/steps/usecases40/context.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -181,6 +183,65 @@ test('a usecase without derivedRead keeps the context it had, and listPainelComp
     const withoutSection = derived.human.replace(/\n## Derived read\n[\s\S]*$/u, '');
     const withoutField = withoutSection.replace(/,?\n    "derivedRead": \{[\s\S]*?\n    \}/u, '');
     assert.equal(withoutField, plain.human);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('Connection gateways lists the consumer gateway and only its operations', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const usecase = unit('usecase', 'readAgentRow', {
+    usecaseId: 'readAgentRow',
+    entityId: 'Tarefa',
+    operation: 'read',
+    functions: [{ functionName: 'readAgentRow', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/readAgentRow.ts`);
+  const outbound = unit('integrationOutbound', 'outbound', {
+    connections: [
+      { connectionId: 'cm', operationId: 'readAgent', consumer: 'readAgentRow' },
+      { connectionId: 'cm', operationId: 'simulateAgent', consumer: 'otherUsecase' },
+    ],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
+  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, outbound], read };
+  try {
+    const loaded = await loadUsecaseContext(ctx as never, usecase);
+    const section = loaded.human.split('## Connection gateways')[1] ?? '';
+    assert.ok(section.length > 0);
+    assert.match(section, /CmGateway/u);
+    assert.match(section, /layer_1_external\/adapters\/integration\/outbound\.js/u);
+    assert.match(section, /readAgent\(input: CmReadAgentInput/u);
+    assert.equal(section.includes('simulateAgent'), false);
+    assert.match(section, /resolveRepository<CmGateway>\(ctx, 'CmGateway'\)/u);
+    assert.match(section, /Do not import `callConnection`/u);
+
+    const header = loaded.header;
+    const ok = [
+      header,
+      `import type { CmGateway } from '/_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.js';`,
+      'export async function readAgentRow(input: { id: string }, ctx: RequestContext) {',
+      "  const gateway = resolveRepository<CmGateway>(ctx, 'CmGateway');",
+      '  return gateway.readAgent({ agentId: input.id }, ctx);',
+      '}',
+    ].join('\n');
+    assert.deepEqual(await usecaseAnswerProblems(ctx as never, usecase, ok, []), []);
+
+    const direct = [
+      header,
+      "import { callConnection } from '/_102034_/l1/server/layer_1_external/connections/callConnection.js';",
+      'export async function readAgentRow(input: { id: string }, ctx: RequestContext) {',
+      "  return callConnection('cm', 'readAgent', input, {});",
+      '}',
+    ].join('\n');
+    const refused = await usecaseAnswerProblems(ctx as never, usecase, direct, []);
+    assert.ok(refused.some(problem => problem.startsWith('GATEWAY_BYPASS')), refused.join('\n'));
+
+    const plain = { run: { project: PROJECT, module: MODULE }, units: [usecase], read };
+    const without = await loadUsecaseContext(plain as never, usecase);
+    assert.equal(without.human.includes('## Connection gateways'), false);
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }

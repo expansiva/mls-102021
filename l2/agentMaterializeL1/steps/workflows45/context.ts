@@ -11,7 +11,7 @@ import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
-import { importSpecifiers, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -630,7 +630,7 @@ export function workflowTransitionProblems(code: string, targets: ReadonlyMap<st
 }
 
 /** Problems of a model-written workflow service. Empty = the gate passes. */
-export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
+export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; gateways?: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
   const problems: string[] = [];
   if (input.targets) problems.push(...workflowTransitionProblems(code, input.targets));
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -648,7 +648,8 @@ export function workflowGate(code: string, input: { header: string; facts: M12Wo
     problems.push(`The process keeps an occurrence of ${input.facts.occurrence}: open and advance it through the module engine (${moduleSpecifier(workflowEngineFile(input.project, input.moduleName))}), never in a table of your own.`);
   }
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
-  problems.push(...repositoryProblems(code, input.ports));
+  problems.push(...repositoryProblems(code, input.ports, input.gateways));
+  problems.push(...gatewayBypassProblems(code));
   const ownL1 = `/_${input.project}_/l1/${input.moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
@@ -664,12 +665,13 @@ export function workflowGate(code: string, input: { header: string; facts: M12Wo
 export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, _notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
   const facts = workflowFacts(unit);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
-  const ports = ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => String(item.definition.data.interfaceName ?? item.definition.artifactId));
+  const ports = [...ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => String(item.definition.data.interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)];
+  const gateways = moduleGatewayNames(ctx.units);
   const { project, module: moduleName } = ctx.run;
   const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
   const llmExports = workflowLlmExportNames(facts.processId, workflowProcessSteps(l4Process(await ctx.read(l4Ref), facts.processId)));
   return [
-    ...workflowGate(code, { header, facts, project, moduleName, ports, targets: transitionTargets(ctx.units), llmExports }),
+    ...workflowGate(code, { header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
     ...await missingImports(ctx, code),
   ];
 }
@@ -751,6 +753,7 @@ function functionTextProblems(code: string, project: number, moduleName: string,
   }
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
+  problems.push(...gatewayBypassProblems(code));
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
   return problems;
@@ -826,7 +829,8 @@ export const workflowSequence: M12SequenceSpec = {
     if (phase === 'skeleton') {
       const problems = workflowGate(code, {
         header, facts, project, moduleName,
-        ports: [],
+        ports: moduleGatewayNames(ctx.units),
+        gateways: moduleGatewayNames(ctx.units),
         llmExports: workflowLlmExportNames(facts.processId, steps),
       });
       for (const item of fixedForms(facts.processId, steps, facts.trigger.kind === 'scheduled')) {
