@@ -121,6 +121,8 @@ export interface D1ServiceRequestSource {
   computedBy?: D1RequestComputedBy[];
   /** What the derivation left open (d1_60). The `output.` ones become `unresolved` nodes of the tree (d1_61). */
   unresolved?: Array<Pick<D1RequestUnresolved, 'path' | 'reason'>>;
+  /** `<connectionId>.<operationId>` when the request comes from a serve line. */
+  serves?: string;
 }
 
 export interface D1ServiceParam {
@@ -144,6 +146,8 @@ export interface D1ServiceRow {
   rules: string[];
   /** The route JSDoc the contract parser read. Absent when the route has none. */
   doc?: RequestDoc;
+  /** `<connectionId>.<operationId>` on a serve route. The runtime reads this mark. */
+  serves?: string;
 }
 
 export interface D1RequestServiceItem {

@@ -52,6 +52,7 @@ export function serviceSourceOf(request: D1SelectedRequest): D1ServiceRequestSou
     })),
     ...(request.computedBy?.length ? { computedBy: request.computedBy.map(item => ({ ...item })) } : {}),
     ...(request.unresolved?.length ? { unresolved: request.unresolved.map(item => ({ path: item.path, reason: item.reason })) } : {}),
+    ...(request.serves ? { serves: request.serves } : {}),
   };
 }
 
@@ -184,6 +185,29 @@ export function serviceRowsFor(
     });
   }
   return { routes, rows, problems };
+}
+
+/** Request-service rows of one connection page. Sorted by route. No contract and no doc. */
+export function serveRowsFor(
+  pageId: string,
+  selected: readonly D1ServiceRequestSource[],
+): D1ServiceRow[] {
+  const rows: D1ServiceRow[] = [];
+  for (const source of selected) {
+    if (source.pageId !== pageId || !source.serves) continue;
+    rows.push({
+      route: source.route,
+      kind: source.kind,
+      uses: [...source.uses],
+      transaction: source.kind === 'cmd' ? 'single' : 'none',
+      output: [],
+      params: source.params.map(copyParam),
+      rules: [],
+      serves: source.serves,
+    });
+  }
+  rows.sort((left, right) => (left.route < right.route ? -1 : left.route > right.route ? 1 : 0));
+  return rows;
 }
 
 /**
