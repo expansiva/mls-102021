@@ -10,6 +10,7 @@ import {
 import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
+import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import {
   D1_INPUT_VERSION,
   contractPath,
@@ -64,14 +65,14 @@ export async function assembleD1Input(
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
 ): Promise<D1InputSnapshot> {
   const previous = await readD1Input(project, moduleName);
-  const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
-  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
+  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs } = await loadInputSources(project, moduleName);
+  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, present, writerReceipts),
+    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, present, writerReceipts),
     previous,
     answers,
   ));
@@ -84,8 +85,8 @@ export async function assembleD1Input(
  * the snapshot `sources` to know it reads what input20 sealed (d1_62).
  */
 export async function readD1InputArtifacts(project: number, moduleName: string): Promise<D1InputArtifacts> {
-  const { known, loaded, parsed, contractMap, contractTexts } = await loadInputSources(project, moduleName);
-  return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, [], []);
+  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs } = await loadInputSources(project, moduleName);
+  return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, [], []);
 }
 
 /**
@@ -127,6 +128,8 @@ async function loadInputSources(project: number, moduleName: string): Promise<{
   parsed: Map<string, unknown>;
   contractMap: Record<string, D1ContractAst | null>;
   contractTexts: Record<string, string>;
+  catalogTexts: Record<string, string>;
+  catalogs: Loaded[];
 }> {
   const fixed = await Promise.all(fixedPaths(moduleName).map(path => loadOne(project, path)));
   const byPath = new Map(fixed.map(item => [item.path, item]));
@@ -157,7 +160,8 @@ async function loadInputSources(project: number, moduleName: string): Promise<{
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
     if (contract.loaded.text != null) contractTexts[contract.pageId] = contract.loaded.text;
   }
-  return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts };
+  const { catalogTexts, catalogs } = await loadServeCatalogs(parsed.get(paths.integration));
+  return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts, catalogTexts, catalogs };
 }
 
 export async function persistD1Input(project: number, moduleName: string, snapshot: D1InputSnapshot): Promise<{ reused: boolean }> {
@@ -218,10 +222,12 @@ function artifactsFrom(
   parsed: Map<string, unknown>,
   contractMap: Record<string, D1ContractAst | null>,
   contractTexts: Record<string, string>,
+  catalogTexts: Record<string, string>,
+  catalogs: Loaded[],
   presentDefs: D1PresentDef[],
   writerReceipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
 ): D1InputArtifacts {
-  const sources = [...known, ...contracts].map(item => item.digest).sort((left, right) => left.path.localeCompare(right.path));
+  const sources = [...known, ...contracts, ...catalogs].map(item => item.digest).sort((left, right) => left.path.localeCompare(right.path));
   const paths = inputPaths(moduleName);
   const journeys: Record<string, unknown> = {};
   const entities: Record<string, unknown> = {};
@@ -253,6 +259,7 @@ function artifactsFrom(
     planner: parsed.get(paths.planner) ?? null,
     contracts: contractMap,
     contractTexts,
+    catalogTexts,
     presentDefs,
     writerReceipts,
   };
@@ -274,6 +281,41 @@ function fixedPaths(moduleName: string): string[] {
     paths.effort,
     paths.planner,
   ];
+}
+
+/** Catalog text of each `serve` connection. A missing file stays out of `catalogTexts` and is a `missing` digest. */
+async function loadServeCatalogs(integration: unknown): Promise<{ catalogTexts: Record<string, string>; catalogs: Loaded[] }> {
+  const catalogTexts: Record<string, string> = {};
+  const catalogs: Loaded[] = [];
+  const seen = new Set<string>();
+  for (const row of rows(rec(integration).connections)) {
+    if (text(row.direction) !== 'serve') continue;
+    const connectionId = text(row.connectionId);
+    if (!isSafeToken(connectionId) || seen.has(connectionId)) continue;
+    seen.add(connectionId);
+    const path = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+    const info = catalogInfo(path);
+    const body = info ? await readText(info) : null;
+    if (body) catalogTexts[connectionId] = body;
+    const sha256 = body ? await sha256Text(body) : '';
+    catalogs.push({
+      path,
+      text: body,
+      parsed: null,
+      digest: {
+        path,
+        sha256,
+        bytes: body ? new TextEncoder().encode(body).length : 0,
+        schemaVersion: '',
+        state: body ? 'present' : 'missing',
+      },
+    });
+  }
+  return { catalogTexts, catalogs };
+}
+
+function rows(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.map(rec) : [];
 }
 
 async function loadContract(project: number, path: string): Promise<Loaded> {

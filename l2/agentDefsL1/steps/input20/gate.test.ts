@@ -1,7 +1,10 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/gate.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { NS5_INTEGRATION_SCHEMA_VERSIONS } from '/_102035_/l2/solution/types.js';
@@ -11,7 +14,7 @@ import {
   type D1InputSnapshot,
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gate.js';
-import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
+import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const MODULE = 'controleEstoque';
@@ -629,4 +632,92 @@ void test('a port and a table of an entity outside the closure leave the plan wi
   assert.equal(tableNotice?.severity, 'review');
   assert.match(tableNotice?.message || '', /orphanPanel \(OrphanPanel\)/);
   assert.equal(snapshot.consumersReleased, true);
+});
+
+const catalogText = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+const CATALOG_PATH = '/_102034_/l4/ontology/connections/cm.defs.ts';
+
+function withServe(operationId: string, effect: string | undefined, entity: string | undefined): D1InputArtifacts {
+  const artifacts = clone(loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[]; connections?: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [];
+  integration.plugins = [];
+  integration.connections = [{
+    connectionId: 'cm',
+    operationId,
+    direction: 'serve',
+    ...(entity ? { entityRefs: [entity], effect } : {}),
+  }];
+  (artifacts.access as { grants: unknown[] }).grants = [];
+  return artifacts;
+}
+
+void test('a serve that creates plans the connection controller, the request service and scope files', () => {
+  const artifacts = withServe('record', 'create', 'MovimentacaoEstoque');
+  artifacts.catalogTexts = { cm: catalogText };
+  const snapshot = build(artifacts);
+  const request = snapshot.selection.requests.find(item => item.serves === 'cm.record');
+  assert.ok(request);
+  assert.equal(request.route, `${MODULE}.cm.record`);
+  assert.equal(request.pageId, 'cm');
+  assert.equal(request.kind, 'cmd');
+  assert.deepEqual(request.uses, ['createMovimentacaoEstoque']);
+  const usecase = snapshot.selection.usecases.find(item => item.usecaseId === 'createMovimentacaoEstoque');
+  assert.ok(usecase?.routes.includes(`${MODULE}.cm.record`));
+  assert.equal(snapshot.selection.pages.some(page => page.pageId === 'cm'), true);
+  assert.equal(fileOf(snapshot, 'httpController', 'cm')?.id, 'controller:cm');
+  assert.equal(fileOf(snapshot, 'requestService', 'cm')?.id, 'requestService:cm');
+  assert.ok(fileOf(snapshot, 'accessScope', 'accessScope'));
+  assert.ok(fileOf(snapshot, 'authorityMap', 'authorityMap'));
+  assert.equal(fileOf(snapshot, 'httpController', 'cm')?.dependsOn.includes('scope:access'), true);
+  assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound'), undefined);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONTRACT_ABSENT' && problem.ownerRef === 'cm'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'CONNECTION_CATALOG_MISSING'), false);
+});
+
+void test('a connection id that matches a page is refused and is not merged into that page', () => {
+  const artifacts = withServe('describe', undefined, undefined);
+  const integration = artifacts.integration as { connections: Array<Record<string, unknown>> };
+  integration.connections[0].connectionId = 'movimentacoes';
+  artifacts.catalogTexts = { movimentacoes: catalogText };
+  const snapshot = build(artifacts);
+  const problem = snapshot.problems.find(item => item.code === 'SERVE_CONNECTION_PAGE_COLLISION');
+  assert.ok(problem);
+  assert.equal(problem.ownerRef, 'movimentacoes');
+  const page = snapshot.selection.pages.find(item => item.pageId === 'movimentacoes');
+  assert.equal(page?.routes.some(route => route.endsWith('.movimentacoes.describe')), false);
+  assert.equal(snapshot.selection.requests.some(item => item.serves), false);
+});
+
+void test('a serve line without catalog text is refused and plans no request', () => {
+  const artifacts = withServe('record', 'create', 'MovimentacaoEstoque');
+  const snapshot = build(artifacts);
+  const problem = snapshot.problems.find(item => item.code === 'CONNECTION_CATALOG_MISSING');
+  assert.ok(problem);
+  assert.equal(problem.severity, 'error');
+  assert.equal(snapshot.selection.requests.some(item => item.serves), false);
+  assert.equal(fileOf(snapshot, 'httpController', 'cm'), undefined);
+});
+
+void test('a module without a serve line keeps the snapshot it had before serve planning', () => {
+  const left = build(loadHead());
+  const right = build(loadHead());
+  assert.deepEqual(left, right);
+  assert.equal(left.selection.requests.some(item => item.serves), false);
+  assert.equal(left.selection.pages.some(page => page.pageId === 'cm'), false);
+  assert.equal(left.sources.some(source => source.path.includes('/connections/')), false);
+});
+
+void test('the snapshot carries the serve catalog digest, so a catalog change changes the source key', async () => {
+  const artifacts = withServe('describe', undefined, undefined);
+  artifacts.catalogTexts = { cm: catalogText };
+  const digest = await sha256Text(catalogText);
+  artifacts.sources = [...artifacts.sources, { path: CATALOG_PATH, sha256: digest, bytes: catalogText.length, schemaVersion: '', state: 'present' }];
+  const first = build(artifacts);
+  assert.equal(first.sources.find(source => source.path === CATALOG_PATH)?.sha256, digest);
+  const changed = clone(artifacts);
+  changed.sources = changed.sources.map(source => source.path === CATALOG_PATH ? { ...source, sha256: 'sha256:changed' } : source);
+  const second = build(changed);
+  assert.notEqual(second.sources.find(source => source.path === CATALOG_PATH)?.sha256, first.sources.find(source => source.path === CATALOG_PATH)?.sha256);
 });

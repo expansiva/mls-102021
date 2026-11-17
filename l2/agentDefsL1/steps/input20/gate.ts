@@ -33,7 +33,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
-import { takeUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -274,6 +274,25 @@ export function buildD1InputSnapshot(
     answers,
     new Set([...entityKind].filter(([, kind]) => kind === 'role').map(([entity]) => entity)),
   );
+  const pageIds = new Set(contractPageIds(artifacts));
+  const serveLines: D1ServeLine[] = [];
+  for (const line of serveLinesOf(integration)) {
+    if (pageIds.has(line.connectionId)) {
+      error(problems, 'SERVE_CONNECTION_PAGE_COLLISION', paths.integration, `Connection ${line.connectionId} uses the same id as a page.`, line.connectionId);
+      continue;
+    }
+    serveLines.push(line);
+  }
+  requests.push(...deriveServeRequests({
+    moduleName,
+    lines: serveLines,
+    catalogTexts: artifacts.catalogTexts ?? {},
+    usecases: selectedUsecases,
+    problems,
+    entities: artifacts.entities,
+    plannedIds: planned.ids,
+    removedIds: planned.removed,
+  }));
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
@@ -452,7 +471,12 @@ function planFiles(input: {
   }
 
   const scopeId = 'scope:access';
-  if (input.grants.length) {
+  const serveRoutes = input.requests.filter(request => request.serves).map(request => request.route);
+  const planScope = input.grants.length > 0 || serveRoutes.length > 0;
+  const scopeOwners = input.grants.length
+    ? input.grants.map(grant => `grant:${grant}`)
+    : serveRoutes.map(route => `endpoint:${route}`);
+  if (planScope) {
     const scopePath = `l1/${moduleName}/layer_2_application/scope/accessScope.defs.ts`;
     const authPath = `l1/${moduleName}/layer_1_external/auth/authorityMap.defs.ts`;
     const scopeStatus = input.usecases.length ? worstOfList(input.usecases.map(item => item.status)) : 'toCreate';
@@ -462,7 +486,7 @@ function planFiles(input: {
       defPath: scopePath,
       action: actionFor(scopeStatus, scopePath, input.present, input.previous, input.receipts, input.problems, scopeId),
       identity: 'accessScope',
-      ownerRefs: input.grants.map(grant => `grant:${grant}`),
+      ownerRefs: scopeOwners,
       dependsOn: [],
     });
     add({
@@ -471,7 +495,7 @@ function planFiles(input: {
       defPath: authPath,
       action: actionFor(scopeStatus, authPath, input.present, input.previous, input.receipts, input.problems, 'auth:authorityMap'),
       identity: 'authorityMap',
-      ownerRefs: input.grants.map(grant => `grant:${grant}`),
+      ownerRefs: scopeOwners,
       dependsOn: [scopeId],
     });
   }
@@ -482,7 +506,7 @@ function planFiles(input: {
     const dependsOn = [
       input.entities.ids.includes(usecase.entity) ? `entity:${usecase.entity}` : '',
       ...usecasePorts(usecase, input.ports),
-      input.grants.length ? scopeId : '',
+      planScope ? scopeId : '',
     ].filter(Boolean);
     add({
       id: `usecase:${usecase.identity}`,
@@ -533,7 +557,7 @@ function planFiles(input: {
       action: pageAction,
       identity: page.pageId,
       ownerRefs: page.routes.map(route => `endpoint:${route}`),
-      dependsOn: [serviceId, ...usecaseIds, ...(input.grants.length ? [scopeId] : [])],
+      dependsOn: [serviceId, ...usecaseIds, ...(planScope ? [scopeId] : [])],
     });
   }
 
@@ -1206,6 +1230,25 @@ function readPlannerRun(
     round: typeof planner.round === 'number' ? planner.round : 0,
     schemaVersion: text(planner.schemaVersion),
   };
+}
+
+function serveLinesOf(integration: Record<string, unknown>): D1ServeLine[] {
+  const lines: D1ServeLine[] = [];
+  for (const row of rows(integration.connections)) {
+    if (text(row.direction) !== 'serve') continue;
+    const connectionId = text(row.connectionId);
+    const operationId = text(row.operationId);
+    if (!isSafeToken(connectionId) || !isSafeToken(operationId)) continue;
+    const entityRefs = strings(row.entityRefs);
+    const effect = text(row.effect);
+    lines.push({
+      connectionId,
+      operationId,
+      ...(entityRefs.length ? { entityRefs } : {}),
+      ...(effect ? { effect } : {}),
+    });
+  }
+  return lines;
 }
 
 function qualifyingGrants(access: Record<string, unknown>, entities: string[]): string[] {
