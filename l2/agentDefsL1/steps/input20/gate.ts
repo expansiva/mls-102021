@@ -277,6 +277,7 @@ export function buildD1InputSnapshot(
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
+  noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases);
   noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
   const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
@@ -1239,6 +1240,39 @@ function outboundEvents(integration: Record<string, unknown>): Array<{ id: strin
 function hasEffectOperations(integration: Record<string, unknown>): boolean {
   const calls = rows(integration.connections).some(row => text(row.direction) === 'call');
   return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0 || calls;
+}
+
+/** Usecase operation to the connection `effect` the L4 declares on a call line. */
+const EXTERNAL_EFFECT: Partial<Record<L1Operation, string>> = {
+  list: 'list',
+  get: 'read',
+  create: 'create',
+  update: 'update',
+  delete: 'remove',
+};
+
+function noteExternalEffects(
+  problems: D1InputProblem[],
+  path: string,
+  integration: Record<string, unknown>,
+  entityKind: ReadonlyMap<string, string>,
+  usecases: readonly D1SelectedUsecase[],
+): void {
+  const calls = rows(integration.connections).filter(row => text(row.direction) === 'call');
+  for (const usecase of usecases) {
+    if (entityKind.get(usecase.entity) !== 'external') continue;
+    if (usecase.operation === 'custom') continue;
+    if (usecase.operation === 'transition') {
+      error(problems, 'EXTERNAL_OPERATION_UNSUPPORTED', path, `External entity ${usecase.entity} does not support operation transition.`, usecase.usecaseId);
+      continue;
+    }
+    const effect = EXTERNAL_EFFECT[usecase.operation as L1Operation];
+    if (!effect) continue;
+    const covered = calls.some(row => strings(row.entityRefs).includes(usecase.entity) && text(row.effect) === effect);
+    if (!covered) {
+      error(problems, 'EFFECT_NOT_COVERED', path, `External entity ${usecase.entity} operation ${usecase.operation} has no call covering effect ${effect}.`, usecase.usecaseId);
+    }
+  }
 }
 
 function workflowFiles(

@@ -109,3 +109,16 @@ void test('a call line becomes a connection operation and a serve line is ignore
   assert.equal(rows[3]?.consumer, '');
   assert.equal(rows[4]?.consumer, 'listarNotas');
 });
+
+void test('a journey effect read or remove resolves the get or delete usecase', () => {
+  const selected = [selectedUsecase('lerNota', 'Nota', 'get'), selectedUsecase('apagarNota', 'Nota', 'delete')];
+  const rows = connectionOperations([
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', effect: 'read', entityRefs: ['Nota'], usedBy: ['jornada.ler'] },
+    { connectionId: 'cm', operationId: 'retireAgent', direction: 'call', effect: 'remove', entityRefs: ['Nota'], usedBy: ['jornada.apagar'] },
+  ], selected, {}, new Map([
+    ['jornada.ler', { entity: 'Nota', effect: 'read', transitionRef: '' }],
+    ['jornada.apagar', { entity: 'Nota', effect: 'remove', transitionRef: '' }],
+  ]));
+  assert.equal(rows[0]?.consumer, 'lerNota');
+  assert.equal(rows[1]?.consumer, 'apagarNota');
+});

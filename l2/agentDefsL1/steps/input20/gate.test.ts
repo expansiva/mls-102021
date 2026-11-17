@@ -253,6 +253,94 @@ void test('a module with only a call connection plans outbound.defs.ts', () => {
   assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound')?.defPath, `l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
 });
 
+function markExternal(artifacts: D1InputArtifacts, entityId: string): void {
+  const index = artifacts.ontologyIndex as { entities: Array<{ entityId: string; kind: string }> };
+  const row = index.entities.find(entity => entity.entityId === entityId);
+  assert.ok(row);
+  row.kind = 'external';
+}
+
+function setOperation(artifacts: D1InputArtifacts, usecaseId: string, operation: string, transitionRef = ''): void {
+  for (const plan of [artifacts.backend, artifacts.effort]) {
+    const usecases = (plan as { usecases: Array<Record<string, unknown>> }).usecases;
+    const row = usecases.find(item => item.usecaseId === usecaseId);
+    assert.ok(row);
+    row.operation = operation;
+    if (operation === 'transition') row.transitionRef = transitionRef;
+  }
+}
+
+function addUsecase(artifacts: D1InputArtifacts, usecaseId: string, entity: string, operation: string): void {
+  const backend = artifacts.backend as { usecases: Array<Record<string, unknown>> };
+  const effort = artifacts.effort as { usecases: Array<Record<string, unknown>> };
+  backend.usecases.push({
+    usecaseId, entity, operation, ports: [], status: 'toCreate', existing: '', reason: '', tableRefs: [], noTable: 'ok',
+  });
+  effort.usecases.push({ usecaseId, entity, operation, status: 'toCreate', existing: '' });
+}
+
+void test('external list, read and update are covered by call lines', () => {
+  const artifacts = clone(loadHead());
+  markExternal(artifacts, 'MovimentacaoEstoque');
+  setOperation(artifacts, 'createMovimentacaoEstoque', 'update');
+  addUsecase(artifacts, 'getMovimentacaoEstoque', 'MovimentacaoEstoque', 'get');
+  const integration = artifacts.integration as { connections?: unknown[] };
+  integration.connections = [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'read', usedBy: ['getMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'simulateAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'update', usedBy: ['createMovimentacaoEstoque'] },
+  ];
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+});
+
+void test('a missing call effect is EFFECT_NOT_COVERED', () => {
+  const artifacts = clone(loadHead());
+  markExternal(artifacts, 'MovimentacaoEstoque');
+  const integration = artifacts.integration as { connections?: unknown[] };
+  integration.connections = [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
+  ];
+  const snapshot = build(artifacts);
+  const missing = snapshot.problems.find(problem => problem.code === 'EFFECT_NOT_COVERED');
+  assert.ok(missing);
+  assert.match(missing.message, /MovimentacaoEstoque/);
+  assert.match(missing.message, /create/);
+  assert.match(missing.message, /effect create/);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' && problem.ownerRef === 'listMovimentacaoEstoque'), false);
+});
+
+void test('transition on an external entity is EXTERNAL_OPERATION_UNSUPPORTED', () => {
+  const artifacts = clone(loadHead());
+  markExternal(artifacts, 'MovimentacaoEstoque');
+  setOperation(artifacts, 'createMovimentacaoEstoque', 'transition', 'fechar');
+  const integration = artifacts.integration as { connections?: unknown[] };
+  integration.connections = [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'transition', usedBy: ['createMovimentacaoEstoque'] },
+  ];
+  const snapshot = build(artifacts);
+  const problem = snapshot.problems.find(problem => problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED');
+  assert.ok(problem);
+  assert.equal(problem.ownerRef, 'createMovimentacaoEstoque');
+  assert.match(problem.message, /MovimentacaoEstoque/);
+});
+
+void test('custom on an external entity is not an effect charge', () => {
+  const artifacts = clone(loadHead());
+  markExternal(artifacts, 'MovimentacaoEstoque');
+  setOperation(artifacts, 'createMovimentacaoEstoque', 'custom');
+  setOperation(artifacts, 'listMovimentacaoEstoque', 'custom');
+  const snapshot = build(artifacts);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' || problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+});
+
+void test('a module without an external entity does not gain effect coverage problems', () => {
+  const snapshot = build(loadHead());
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' || problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+});
+
 void test('a serve connection does not plan outbound.defs.ts', () => {
   const artifacts = clone(loadHead());
   const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[]; connections?: unknown[] };

@@ -787,6 +787,13 @@ export function connectionOperations(
   return out;
 }
 
+/** Journey effects `read` and `remove` are the usecase operations `get` and `delete`. */
+function operationMatchesEffect(operation: string, effect: string): boolean {
+  return operation === effect
+    || (operation === 'get' && effect === 'read')
+    || (operation === 'delete' && effect === 'remove');
+}
+
 function connectionConsumer(
   usedBy: readonly string[],
   selected: readonly D1SelectedUsecase[],
@@ -800,8 +807,8 @@ function connectionConsumer(
     if (step) {
       const usecaseId = step.effect === 'transition'
         ? transitionUsecaseFor(transitions, step.entity, step.transitionRef)
-        : (selected.find(item => item.entity === step.entity && item.operation === step.effect)?.identity
-          || selected.find(item => item.entity === step.entity && item.operation === step.effect)?.usecaseId
+        : (selected.find(item => item.entity === step.entity && operationMatchesEffect(item.operation, step.effect))?.identity
+          || selected.find(item => item.entity === step.entity && operationMatchesEffect(item.operation, step.effect))?.usecaseId
           || '');
       if (usecaseId) return usecaseId;
       continue;
