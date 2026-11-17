@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
+import { NS5_INTEGRATION_SCHEMA_VERSIONS } from '/_102035_/l2/solution/types.js';
 import {
   D1_SOURCE_SCHEMAS,
   type D1InputArtifacts,
@@ -135,6 +136,32 @@ void test('only the current backend plan is read; another version is refused by 
   const refused = build(upgraded).problems.filter(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === BACKEND_PATH);
   assert.equal(refused.length, 1);
   assert.match(refused[0].message, /'2026-09-21-p1-backend-v9', expected 2026-09-21-p1-backend-v1\.2\. Regenerate/);
+});
+
+void test('integration v2 and v3 are accepted; an external entity plans no table or port', () => {
+  const v2 = build(loadHead());
+  const integrationPath = `l4/${MODULE}/integration.defs.ts`;
+  assert.equal(v2.problems.some(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === integrationPath), false);
+
+  const v3 = clone(loadHead());
+  (v3.integration as Record<string, unknown>).schemaVersion = NS5_INTEGRATION_SCHEMA_VERSIONS[1];
+  const v3Build = build(v3);
+  assert.equal(v3Build.problems.some(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === integrationPath), false);
+
+  const other = clone(loadHead());
+  (other.integration as Record<string, unknown>).schemaVersion = '2020-01-01-ns5-integration-v9';
+  assert.equal(build(other).problems.some(problem => problem.code === 'SCHEMA_DIVERGENT' && problem.path === integrationPath), true);
+
+  const external = clone(loadHead());
+  const index = external.ontologyIndex as { entities: Array<{ entityId: string; kind: string }> };
+  const row = index.entities.find(entity => entity.entityId === 'MovimentacaoEstoque');
+  assert.ok(row);
+  row.kind = 'external';
+  const snapshot = build(external);
+  assert.equal(snapshot.selection.tables.some(table => table.entity === 'MovimentacaoEstoque'), false);
+  assert.equal(snapshot.selection.ports.some(port => port.entity === 'MovimentacaoEstoque'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_TABLE'), true);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_PORT'), true);
 });
 
 void test('the v2 seed is cut by the contract routes, not by backend endpoints', () => {

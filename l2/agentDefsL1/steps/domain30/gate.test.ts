@@ -515,6 +515,34 @@ void test('an object of a platform type keeps of; a name that is not of the plat
   assert.equal(definitionIssues(built.entities[0].definition!).length, 0, definitionIssues(built.entities[0].definition!).join('\n'));
 });
 
+void test('an external entity has no local table and a connection catalog needs no rules', () => {
+  const source = '/_102034_/l4/ontology/connections/cm.defs.ts';
+  const body = {
+    entityId: 'RemoteAgent',
+    kind: 'external',
+    source,
+    record: { fields: { name: { type: 'string' } } },
+  };
+  const built = buildD1Domain(requestFrom({ RemoteAgent: body }, { rules: {} }, {
+    [source]: { operations: [{ operationId: 'readAgent', direction: 'call' }] },
+  }));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  assert.equal(built.entities[0].storageTarget, 'external');
+  assert.equal(codes(built, 'error').includes('KIND_UNKNOWN'), false);
+  assert.equal(codes(built, 'error').includes('CATALOG_SHAPE'), false);
+  assert.equal(built.normalizations.some(item => item.code === 'EXTERNAL_STORAGE'), true);
+
+  const mdm = buildD1Domain(requestFrom({
+    Member: {
+      entityId: 'Member',
+      kind: 'role',
+      source: '/_102034_/l4/ontology/mdm.defs.ts',
+      record: { fields: { name: { type: 'string' } } },
+    },
+  }, { rules: {} }, { '/_102034_/l4/ontology/mdm.defs.ts': { groups: {} } }));
+  assert.equal(codes(mdm, 'error').includes('CATALOG_SHAPE'), true);
+});
+
 void test('an object of a platform type keeps of with its leaves; without of the nested fields do not change', () => {
   const built = buildD1Domain(requestFrom({
     Member: {

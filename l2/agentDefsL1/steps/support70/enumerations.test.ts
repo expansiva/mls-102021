@@ -202,6 +202,35 @@ void test('a value outside the catalog, a missing catalog, an unused module enum
   assert.deepEqual(projectEnumerations({ enumerations: [] }), []);
 });
 
+void test('an external entity enum is its own origin', () => {
+  const entity = {
+    entityId: 'RemoteAgent',
+    kind: 'external',
+    moduleName: 'sampleModule',
+    title: 'Remote agent',
+    description: 'Lives on a connection.',
+    displayField: 'name',
+    source: '/_102034_/l4/ontology/connections/cm.defs.ts',
+    record: { fields: { status: { type: 'enum', values: ['on', 'off'] } } },
+    relationships: {},
+    capabilities: {},
+    rules: [],
+  };
+  const rows = projectEnumerations({
+    enumerations: [{ entityId: 'RemoteAgent', path: 'status', values: ['on', 'off'] }],
+    snapshot: {
+      sources: { 'l4/sampleModule/ontology/RemoteAgent.defs.ts': `export const remoteAgent = ${JSON.stringify(entity)};\n` },
+      definitions: [],
+      contracts: [],
+      tables: [],
+    },
+  });
+  assert.equal(rows[0]?.origin.owner, 'external');
+  assert.equal(rows[0]?.origin.writer, 'external');
+  assert.equal(rows[0]?.origin.restriction, 'own');
+  assert.notEqual(rows[0]?.origin.writer, 'unresolved');
+});
+
 void test('a module namespace keeps its own origin when the codes match the catalog', () => {
   const sources = clinicSources();
   const parsed = parseD1Source(sources['l4/agendaClinica/ontology/Recepcionista.defs.ts'], 'defs') as {

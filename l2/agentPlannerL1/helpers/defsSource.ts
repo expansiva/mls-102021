@@ -7,10 +7,9 @@
  */
 
 export type CbEntityKind = 'core' | 'supporting' | 'event' | 'metric' | 'mdm' | 'external' | 'derived';
-// The kinds a l4 ontology may DECLARE. `external` is never declared: it is derived from
-// `storage.target`, so keeping it out of this list also keeps a typo'd `kind: "external"` falling back
-// to `core` instead of silently erasing an entity's persistence.
-const ENTITY_KINDS: readonly CbEntityKind[] = ['core', 'supporting', 'event', 'metric', 'mdm'];
+// Kinds an l4 ontology may declare as `kind`. `external` is the NS5 v3 family (no local table).
+// A typo still falls back to `core`. `external` from `storage.target` or `ownership` stays a separate read.
+const ENTITY_KINDS: readonly CbEntityKind[] = ['core', 'supporting', 'event', 'metric', 'mdm', 'external'];
 
 /**
  * MDM WRITE PATH — off until the general rebuild.
@@ -241,6 +240,8 @@ export function classifyEntityKind(
 ): CbEntityKind {
   const ownership = input.ownership || '';
   const target = input.storage?.target || '';
+  // NS5 v3 declares the family on `kind`. No storage, and never a local table (`core` / `metric`).
+  if (input.kind === 'external') return 'external';
   // Independent of the MDM write path: the l4 says the record is COMPUTED (no table, no seeds).
   // Flag-off used to map `projection + derived` to `metric`, which DOES get a table — run03 emitted
   // InstitutionalHome/PendingItem persistence and died on an empty primaryKey.
@@ -316,6 +317,7 @@ export function handlerKindOf(opKind: string): 'query' | 'command' {
  * data is a local aggregate — table, port, CRUD, seeds — which is exactly `core`.
  */
 export function entityKindOf(kind: string, ownership = ''): CbEntityKind {
+  if (kind === 'external') return 'external';
   if (kind === 'projection') return 'metric';
   if (kind === 'mdm' && ownership === 'moduleOwned') return 'core';
   return ENTITY_KINDS.includes(kind as CbEntityKind) ? kind as CbEntityKind : 'core';

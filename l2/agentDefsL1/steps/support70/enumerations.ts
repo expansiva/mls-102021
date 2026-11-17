@@ -110,6 +110,7 @@ function originOf(entityId: string, path: string, effective: readonly string[], 
   const entity = bodies.entities[entityId];
   if (!isRecord(entity)) return unresolved;
   const source = typeof entity.source === 'string' ? entity.source : '';
+  if (entity.kind === 'external') return externalOrigin(entity, path, source);
   const catalog = source ? bodies.catalogs[source] : undefined;
   const resolved = catalog ? resolvedNodes(entity, bodies.index, catalog, bodies.rules) : null;
   if (resolved) {
@@ -124,6 +125,22 @@ function originOf(entityId: string, path: string, effective: readonly string[], 
   return {
     owner: 'module',
     writer: derived ? 'derived' : 'module',
+    derived,
+    restriction: 'own',
+    catalogValues: [],
+    catalogSource: source,
+    roleBinding: false,
+  };
+}
+
+/** An external entity's enum is neither the module nor the platform catalog. */
+function externalOrigin(entity: Record<string, unknown>, path: string, source: string): D1EnumOrigin {
+  const own = fieldAt(entity, path);
+  if (!own) return { ...emptyOrigin(), catalogSource: source };
+  const derived = own.derived === true;
+  return {
+    owner: 'external',
+    writer: derived ? 'derived' : 'external',
     derived,
     restriction: 'own',
     catalogValues: [],

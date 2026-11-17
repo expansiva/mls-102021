@@ -224,6 +224,10 @@ export function buildD1InputSnapshot(
       error(problems, 'MDM_TABLE', paths.backend, `Table ${tableId} is declared for role ${entity}. No local table is planned.`, tableId);
       continue;
     }
+    if (entityKind.get(entity) === 'external') {
+      error(problems, 'EXTERNAL_TABLE', paths.backend, `Table ${tableId} is declared for external entity ${entity}. No local table is planned.`, tableId);
+      continue;
+    }
     selectedTables.push({ tableId, entity, status: text(left.status) as D1ActiveStatus });
   }
 
@@ -235,6 +239,10 @@ export function buildD1InputSnapshot(
     if (!isActive(status)) continue;
     if (entityKind.get(entity) === 'role') {
       error(problems, 'MDM_PORT', paths.backend, `Port ${portId} is declared for role ${entity}. No local port is planned.`, portId);
+      continue;
+    }
+    if (entityKind.get(entity) === 'external') {
+      error(problems, 'EXTERNAL_PORT', paths.backend, `Port ${portId} is declared for external entity ${entity}. No local port is planned.`, portId);
       continue;
     }
     selectedPorts.push({ portId, entity, status: status as D1ActiveStatus });

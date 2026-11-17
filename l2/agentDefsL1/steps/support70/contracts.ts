@@ -20,9 +20,9 @@ export const ENUMERATION_CONSUMED_REASON = 'Seed scenarios cite every value of t
 /** A covered consumer names this field. The union is not runtime enforcement. */
 export const ENUMERATION_PROVED_REASON = 'A covered consumer names this entity and path. A type union is not runtime enforcement. Values stay on the domain draft.' as const;
 
-export type D1EnumOwner = 'platform' | 'module' | 'unresolved';
+export type D1EnumOwner = 'platform' | 'module' | 'external' | 'unresolved';
 
-export type D1EnumWriter = 'platform' | 'module' | 'derived' | 'unresolved';
+export type D1EnumWriter = 'platform' | 'module' | 'external' | 'derived' | 'unresolved';
 
 export type D1EnumRestriction = 'inherited' | 'subset' | 'own' | 'invalid' | 'unresolved';
 

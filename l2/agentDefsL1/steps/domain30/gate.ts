@@ -265,7 +265,10 @@ function planEntity(
     review(problems, 'CATALOG_UNREAD', source, `Catalog ${source} was not opened. Citations keep that owner and their spelling.`);
   }
   const catalogRules = catalog === undefined ? null : ruleMap(catalog);
-  if (catalogRules && catalogRules.size === 0 && isRecord(catalog) && !isRecord(catalog.rules)) {
+  const kind = body ? text(body.kind) || row?.kind || '' : row?.kind || '';
+  // A connection catalog is operations, not MDM rules. An MDM catalog still needs `rules`.
+  const connectionCatalog = kind === 'external' && isConnectionCatalog(catalog);
+  if (!connectionCatalog && catalogRules && catalogRules.size === 0 && isRecord(catalog) && !isRecord(catalog.rules)) {
     error(problems, 'CATALOG_SHAPE', source, `Catalog ${source} has no rules object.`);
     blocked.add(entityId);
   }
@@ -1019,8 +1022,17 @@ function storageOf(
     if (!declared) normalizations.push({ code: 'ROLE_STORAGE_MDM', path: entityId, detail: 'kind role has no storage target' });
     return 'mdm';
   }
+  if (kind === 'external') {
+    if (declared && declared !== 'external') {
+      error(problems, 'STORAGE_CONTRADICTION', entityId, `External entity ${entityId} declares storage ${declared}.`);
+      blocked.add(entityId);
+      return '';
+    }
+    if (!declared) normalizations.push({ code: 'EXTERNAL_STORAGE', path: entityId, detail: 'kind external has no storage target' });
+    return 'external';
+  }
   if (kind !== 'entity') {
-    error(problems, 'KIND_UNKNOWN', entityId, `Kind ${kind} is not role or entity.`);
+    error(problems, 'KIND_UNKNOWN', entityId, `Kind ${kind} is not role, entity or external.`);
     blocked.add(entityId);
     return '';
   }
@@ -1132,6 +1144,10 @@ function indexRows(value: unknown, problems: D1DomainProblem[]): Map<string, Ind
 function ruleMap(value: unknown): Set<string> {
   if (!isRecord(value) || !isRecord(value.rules)) return new Set();
   return new Set(Object.keys(value.rules));
+}
+
+function isConnectionCatalog(value: unknown): boolean {
+  return isRecord(value) && Array.isArray(value.operations);
 }
 
 function stringItems(value: unknown[]): string[] | null {

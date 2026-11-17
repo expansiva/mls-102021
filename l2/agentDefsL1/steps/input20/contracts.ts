@@ -15,7 +15,8 @@ export const D1_SOURCE_SCHEMAS = {
   rules: '2026-09-16-ns5-rules-v2',
   workflows: '2026-09-17-ns5-workflows-v3',
   access: '2026-09-12-ns5-access-v3',
-  integration: '2026-09-12-ns5-integration-v2',
+  // v2 (recorded modules) and v3 (adds `connections`). A value import of the W1 constant would leave this agent's graph.
+  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3'],
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',
