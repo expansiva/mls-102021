@@ -22,7 +22,6 @@ export const M12_CONTROLLERS_AGENT_NAME = 'agentM12Controllers' as const;
 export const M12_TESTS_AGENT_NAME = 'agentM12Tests' as const;
 export const M12_TESTS_PAGE_AGENT_NAME = 'agentM12TestsPage' as const;
 export const M12_REGISTER_AGENT_NAME = 'agentM12Register' as const;
-export const M12_CATALOG_AGENT_NAME = 'agentM12Catalog' as const;
 export const M12_FINALIZE_AGENT_NAME = 'agentM12Finalize' as const;
 
 /** The layers a def belongs to, in the order they are materialized. `tests` has no def of its own. */
@@ -36,7 +35,7 @@ export const M12_FINALIZE_AGENT_NAME = 'agentM12Finalize' as const;
 export const M12_LAYERS = ['domain', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
 export type M12Layer = typeof M12_LAYERS[number];
 
-export const M12_STEP_IDS = ['domain10', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'catalog75', 'finalize80'] as const;
+export const M12_STEP_IDS = ['domain10', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
 export type M12StepId = typeof M12_STEP_IDS[number];
 
 const LAYER_STEP: Record<M12Layer, M12StepId> = {
@@ -60,7 +59,6 @@ const STEP_AGENT: Record<M12StepId, string> = {
   controllers30: M12_CONTROLLERS_AGENT_NAME,
   tests60: M12_TESTS_AGENT_NAME,
   register70: M12_REGISTER_AGENT_NAME,
-  catalog75: M12_CATALOG_AGENT_NAME,
   finalize80: M12_FINALIZE_AGENT_NAME,
 };
 
@@ -74,7 +72,6 @@ const STEP_TITLE: Record<M12StepId, string> = {
   controllers30: 'Materialize controllers',
   tests60: 'Materialize monitor tests',
   register70: 'Register the module in l5',
-  catalog75: 'Emit the assistant catalog',
   finalize80: 'Materialization report',
 };
 
@@ -133,8 +130,7 @@ export const M12_HELP = [
   'No JSON: every l1 module of the current project. scope: an l1 folder prefix, e.g. "comandaRestaurante" (the whole backend of the module) or "comandaRestaurante/layer_2_application/usecases".',
   'target: one unit by its .defs.ts or the .ts generated from it, e.g. "_102047_/l1/comandaRestaurante/layer_2_application/usecases/createMesa.defs.ts" (regenerated regardless of reuse).',
   'Optional "force": true regenerates reusable units and overwrites outputs this agent did not write.',
-  'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> catalog75 -> finalize80. A unit whose dependency is not ready is blocked.',
-  'The catalog step alone, on a module already generated: @@agentM12Catalog {"project":<current>,"module":"<module>","scope":"","target":"","force":false}. It writes only l1/<module>/layer_2_application/assistant/assistantCatalog.ts.',
+  'Order per module: domain10 -> persistence20 (recipes) -> seedRows25 (model, only tables the l4 says the module seed loads) -> usecases40 -> requests50 (model) -> controllers30 (recipe, imports the request service) -> tests60 (model) -> register70 -> finalize80. A unit whose dependency is not ready is blocked.',
 ].join('\n');
 
 /** A module name: lowerCamel, no path, no separator. */
@@ -220,7 +216,7 @@ export function buildM12PlannedSteps(
     const args: M12RunArgs = { project, module: item.module, scope: request.scope, target: request.target, force: request.force };
     const stepIds: M12StepId[] = [
       ...M12_LAYERS.filter(layer => item.layers.includes(layer)).map(layer => LAYER_STEP[layer]),
-      ...(item.register ? ['register70' as const, 'catalog75' as const] : []),
+      ...(item.register ? ['register70' as const] : []),
       'finalize80',
     ];
     // Not a def layer: one step per module that materializes persistence, before any later phase.

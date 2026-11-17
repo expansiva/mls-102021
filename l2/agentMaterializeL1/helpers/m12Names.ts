@@ -83,11 +83,6 @@ export function reportFile(project: number, moduleName: string): M12FileInfo {
   return { project, level: 1, folder: runFolder(moduleName), shortName: 'report', extension: '.json' };
 }
 
-/** The assistant catalog of one module. catalog75 writes only this file. */
-export function assistantCatalogFile(project: number, moduleName: string): M12FileInfo {
-  return { project, level: 1, folder: `${moduleName}/layer_2_application/assistant`, shortName: 'assistantCatalog', extension: '.ts' };
-}
-
 /** How the last l5 registration of the module ended (register70 writes, finalize80 reads). */
 export function registrationFile(project: number, moduleName: string): M12FileInfo {
   return { project, level: 1, folder: runFolder(moduleName), shortName: 'registration', extension: '.json' };

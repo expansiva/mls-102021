@@ -19,7 +19,6 @@ import '/_102021_/l2/agentMaterializeL1/steps/controllers30/agentM12Controllers.
 import '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
 import '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12TestsPage.js';
 import '/_102021_/l2/agentMaterializeL1/steps/register70/agentM12Register.js';
-import '/_102021_/l2/agentMaterializeL1/steps/catalog75/agentM12Catalog.js';
 import '/_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.js';
 
 /**

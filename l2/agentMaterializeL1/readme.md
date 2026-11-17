@@ -18,8 +18,8 @@ A unit that is not selected is only read as a dependency. Spec: `flow.json`.
 
 ## Flow
 
-Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests50` (model) `→ controllers30` (recipe; it imports the request service, so it compiles after it) `→ tests60` (model) `→ register70 → catalog75 → finalize80`. The numbers are names, not the order.
-(only the selected layers; register and catalog only for a whole-module run), modules one after the other.
+Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests50` (model) `→ controllers30` (recipe; it imports the request service, so it compiles after it) `→ tests60` (model) `→ register70 → finalize80`. The numbers are names, not the order.
+(only the selected layers; register only for a whole-module run), modules one after the other.
 
 | step | LLM | writes |
 |---|---|---|
@@ -30,7 +30,6 @@ Per module: `domain10 → persistence20` (recipes) `→ usecases40 → requests5
 | controllers30 | no | controllers (read only the request-service def, the contract and the scope) |
 | tests60 | one worker per page whose controller and request service are ready | `<controllers>/<pageId>.test.ts` in the monitor format (`export pageTests`) |
 | register70 | no | `l5/project.json` backend of the module (copied reconcileL5) + `backend.pageTests` |
-| catalog75 | no | `l1/<module>/layer_2_application/assistant/assistantCatalog.ts` only |
 | finalize80 | no | `pipeline/agentMaterializeL1/report.json` and the summary |
 
 ## Guarantees
