@@ -948,6 +948,7 @@ export function emitEffects(
   const plugins: Array<Record<string, unknown>> = [];
   const gaps: Array<Record<string, unknown>> = [];
   for (const operation of [...request.operations].sort((left, right) => left.id.localeCompare(right.id))) {
+    if (operation.kind === 'connection') continue;
     const resolved = resolveMechanism(operation.mechanism, operation.id, problems);
     if (!resolved) continue;
     const outside = operation.operations.filter(item => !inPool(item, known));
@@ -969,12 +970,50 @@ export function emitEffects(
     else plugins.push({ pluginId: operation.id, ...row });
   }
 
+  const connections: Array<Record<string, unknown>> = [];
+  const connectionRows = request.operations
+    .filter(operation => operation.kind === 'connection')
+    .sort((left, right) => (left.connectionId || '').localeCompare(right.connectionId || '')
+      || (left.operationId || '').localeCompare(right.operationId || ''));
+  for (const operation of connectionRows) {
+    const connectionId = operation.connectionId || '';
+    const operationId = operation.operationId || '';
+    const label = `${connectionId}.${operationId}`;
+    if (operation.catalogOps == null) {
+      error(problems, 'CONNECTION_CATALOG_MISSING', label, `Connection catalog ${connectionId} was not read.`);
+      continue;
+    }
+    const listed = operation.catalogOps.find(item => item.operationId === operationId);
+    if (!listed) {
+      error(problems, 'OPERATION_NOT_IN_CATALOG', label, `Operation ${operationId} is not in the connection catalog.`);
+      continue;
+    }
+    if (listed.direction !== 'call') {
+      error(problems, 'OPERATION_NOT_CALL', label, `Operation ${operationId} is serve. A call line was not written.`);
+      continue;
+    }
+    if (!operation.consumer) {
+      review(
+        problems,
+        'CONNECTION_CONSUMER_UNRESOLVED',
+        label,
+        `Connection ${label} names no selected usecase. No consumer was invented.`,
+      );
+      continue;
+    }
+    const row: Record<string, unknown> = { connectionId, operationId, consumer: operation.consumer };
+    if (operation.entityRefs?.length) row.entityRefs = [...operation.entityRefs];
+    if (operation.effect) row.effect = operation.effect;
+    connections.push(row);
+  }
+
   if (problems.some(problem => problem.severity === 'error')) return empty;
-  if (!events.length && !inbound.length && !plugins.length) return empty;
+  if (!events.length && !inbound.length && !plugins.length && !connections.length) return empty;
 
   const data: Record<string, unknown> = { integrationId: 'outbound', events };
   if (inbound.length) data.inbound = inbound;
   if (plugins.length) data.plugins = plugins;
+  if (connections.length) data.connections = connections;
   if (gaps.length) data.gaps = gaps.sort((left, right) => String(left.itemId).localeCompare(String(right.itemId)));
   if (!writable(request, 'integrationOutbound', problems, true)) {
     return { emit: [], report: { phase: 'plan', executed: false, capability: capabilityOf(false) } };

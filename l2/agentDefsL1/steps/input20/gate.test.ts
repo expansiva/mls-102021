@@ -214,6 +214,29 @@ void test('a process and an outbound event plan both defs', () => {
   assert.ok(fileOf(snapshot, 'integrationOutbound', 'outbound'));
 });
 
+void test('a module with only a call connection plans outbound.defs.ts', () => {
+  const artifacts = clone(loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[]; connections?: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [];
+  integration.plugins = [];
+  integration.connections = [{ connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: ['listProduto'] }];
+  const snapshot = build(artifacts);
+  assert.ok(fileOf(snapshot, 'integrationOutbound', 'outbound'));
+  assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound')?.defPath, `l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
+});
+
+void test('a serve connection does not plan outbound.defs.ts', () => {
+  const artifacts = clone(loadHead());
+  const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[]; connections?: unknown[] };
+  integration.outbound = [];
+  integration.inbound = [];
+  integration.plugins = [];
+  integration.connections = [{ connectionId: 'cm', operationId: 'describe', direction: 'serve', usedBy: ['listProduto'] }];
+  const snapshot = build(artifacts);
+  assert.equal(fileOf(snapshot, 'integrationOutbound', 'outbound'), undefined);
+});
+
 void test('integration outbound def is absent with no outbound event, process, inbound or plugin', async () => {
   const artifacts = clone(loadHead());
   const integration = artifacts.integration as { outbound: unknown[]; inbound: unknown[]; plugins: unknown[] };

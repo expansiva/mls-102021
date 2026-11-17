@@ -1464,6 +1464,7 @@ export function integrationCoverageIssues(data: unknown): string[] {
   coverRows(data.processes, 'data.processes', 'processId', issues);
   coverRows(data.inbound, 'data.inbound', 'inboundId', issues);
   coverRows(data.plugins, 'data.plugins', 'pluginId', issues);
+  coverConnections(data.connections, issues);
   if (data.gaps !== undefined && !Array.isArray(data.gaps)) issues.push('Missing field data.gaps.');
   else if (Array.isArray(data.gaps)) {
     data.gaps.forEach((gap, index) => {
@@ -1479,6 +1480,39 @@ export function integrationCoverageIssues(data: unknown): string[] {
     });
   }
   return issues;
+}
+
+function connectionEffect(value: unknown): boolean {
+  return value === 'list' || value === 'read' || value === 'create' || value === 'update' || value === 'remove';
+}
+
+function coverConnections(value: unknown, issues: string[]): void {
+  const path = 'data.connections';
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    issues.push(`Missing field ${path}.`);
+    return;
+  }
+  value.forEach((row, index) => {
+    const rowPath = `${path}.${index}`;
+    if (!isRecord(row)) {
+      issues.push(`Missing field ${rowPath}.`);
+      return;
+    }
+    unknownKeys(row, ['connectionId', 'operationId', 'consumer', 'entityRefs', 'effect'], rowPath, issues);
+    needString(row, 'connectionId', rowPath, issues);
+    needString(row, 'operationId', rowPath, issues);
+    needString(row, 'consumer', rowPath, issues);
+    if (row.entityRefs !== undefined) {
+      if (!Array.isArray(row.entityRefs)) issues.push(`Missing field ${rowPath}.entityRefs.`);
+      else row.entityRefs.forEach((entity, entityIndex) => {
+        if (typeof entity !== 'string' || !entity.trim()) issues.push(`Missing field ${rowPath}.entityRefs.${entityIndex}.`);
+      });
+    }
+    if (row.effect !== undefined && !connectionEffect(row.effect)) {
+      issues.push(`${rowPath}.effect is invalid.`);
+    }
+  });
 }
 
 function coverRows(value: unknown, path: string, idKey: string, issues: string[]): void {

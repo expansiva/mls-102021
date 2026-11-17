@@ -19,6 +19,7 @@ import {
   transitionUsecaseFor,
   operationUsecasesOf,
   transitionUsecasesOf,
+  type D1CatalogOperation,
   type D1EffectEvent,
   type D1EffectOperation,
   type D1ProcessPlan,
@@ -720,8 +721,133 @@ async function effectsOf(
         scheduled: false,
       });
     }
+    const callRows = arrayOf(integration.connections);
+    const catalogs = await connectionCatalogs(callRows);
+    const steps = await connectionSteps(project, moduleName, callRows);
+    operations.push(...connectionOperations(callRows, selected, catalogs, steps));
   }
   return { outbound, operations };
+}
+
+function connectionEffect(value: string): D1EffectOperation['effect'] | undefined {
+  if (value === 'list' || value === 'read' || value === 'create' || value === 'update' || value === 'remove') return value;
+  return undefined;
+}
+
+/**
+ * Operations of one catalog file. `null` when the exported object is not a catalog.
+ * The catalog is `export const <id>: ConnectionCatalog = { ... }` with JSON keys; the type annotation is dropped so the
+ * agent's own reader (`parseD1Source`) finds the object, without a static import outside this agent.
+ */
+export function catalogOperationsOf(source: string): D1CatalogOperation[] | null {
+  const parsed = parseD1Source(source.replace(/(export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*[A-Za-z_$][\w$.<>, ]*=/, '$1 ='), 'defs');
+  if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
+  const operations: D1CatalogOperation[] = [];
+  for (const row of parsed.operations) {
+    if (!isRecord(row) || typeof row.operationId !== 'string' || !row.operationId) continue;
+    const direction = row.direction === 'call' || row.direction === 'serve' ? row.direction : '';
+    operations.push({ operationId: row.operationId, direction });
+  }
+  return operations;
+}
+
+/**
+ * One operation per `call` line. A `serve` line is ignored.
+ * `catalogs[connectionId]` is `null` when the catalog file was not read.
+ * `steps` keys are `journeyId.stepId`.
+ */
+export function connectionOperations(
+  rows: readonly unknown[],
+  selected: readonly D1SelectedUsecase[],
+  catalogs: Readonly<Record<string, readonly D1CatalogOperation[] | null>>,
+  steps: ReadonlyMap<string, { entity: string; effect: string; transitionRef: string }>,
+): D1EffectOperation[] {
+  const out: D1EffectOperation[] = [];
+  for (const row of rows) {
+    if (!isRecord(row) || row.direction !== 'call') continue;
+    const connectionId = typeof row.connectionId === 'string' ? row.connectionId : '';
+    const operationId = typeof row.operationId === 'string' ? row.operationId : '';
+    if (!connectionId || !operationId) continue;
+    const effect = typeof row.effect === 'string' ? connectionEffect(row.effect) : undefined;
+    const entityRefs = stringList(row.entityRefs);
+    out.push({
+      id: `${connectionId}.${operationId}`,
+      kind: 'connection',
+      operations: [],
+      mechanism: '',
+      consumer: connectionConsumer(stringList(row.usedBy), selected, steps),
+      scheduled: false,
+      connectionId,
+      operationId,
+      ...(entityRefs.length ? { entityRefs } : {}),
+      ...(effect ? { effect } : {}),
+      catalogOps: Object.hasOwn(catalogs, connectionId) ? catalogs[connectionId] : null,
+    });
+  }
+  return out;
+}
+
+function connectionConsumer(
+  usedBy: readonly string[],
+  selected: readonly D1SelectedUsecase[],
+  steps: ReadonlyMap<string, { entity: string; effect: string; transitionRef: string }>,
+): string {
+  const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
+  const transitions = transitionUsecasesOf(selected);
+  for (const ref of usedBy) {
+    if (known.has(ref)) return ref;
+    const step = steps.get(ref);
+    if (step) {
+      const usecaseId = step.effect === 'transition'
+        ? transitionUsecaseFor(transitions, step.entity, step.transitionRef)
+        : (selected.find(item => item.entity === step.entity && item.operation === step.effect)?.identity
+          || selected.find(item => item.entity === step.entity && item.operation === step.effect)?.usecaseId
+          || '');
+      if (usecaseId) return usecaseId;
+      continue;
+    }
+    const head = ref.split('.')[0] || '';
+    if (head && known.has(head)) return head;
+  }
+  return '';
+}
+
+async function connectionCatalogs(rows: readonly unknown[]): Promise<Record<string, readonly D1CatalogOperation[] | null>> {
+  const catalogs: Record<string, readonly D1CatalogOperation[] | null> = {};
+  for (const row of rows) {
+    if (!isRecord(row) || row.direction !== 'call' || typeof row.connectionId !== 'string' || !row.connectionId) continue;
+    if (Object.hasOwn(catalogs, row.connectionId)) continue;
+    const info = catalogInfo(`/_102034_/l4/ontology/connections/${row.connectionId}.defs.ts`);
+    if (!info) {
+      catalogs[row.connectionId] = null;
+      continue;
+    }
+    const text = await readText(info);
+    catalogs[row.connectionId] = text ? await catalogOperationsOf(text) : null;
+  }
+  return catalogs;
+}
+
+async function connectionSteps(
+  project: number,
+  moduleName: string,
+  rows: readonly unknown[],
+): Promise<Map<string, { entity: string; effect: string; transitionRef: string }>> {
+  const steps = new Map<string, { entity: string; effect: string; transitionRef: string }>();
+  const journeyIds = new Set<string>();
+  for (const row of rows) {
+    if (!isRecord(row) || row.direction !== 'call') continue;
+    for (const ref of stringList(row.usedBy)) {
+      const dot = ref.indexOf('.');
+      if (dot > 0) journeyIds.add(ref.slice(0, dot));
+    }
+  }
+  for (const journeyId of journeyIds) {
+    for (const act of await journeyActs(project, moduleName, journeyId)) {
+      steps.set(`${journeyId}.${act.stepId}`, act);
+    }
+  }
+  return steps;
 }
 
 interface D1ProcessAct {

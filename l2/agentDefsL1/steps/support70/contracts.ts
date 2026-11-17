@@ -297,15 +297,27 @@ export interface D1EffectEvent {
   payloadDeclared: boolean;
 }
 
-/** An inbound item or plugin. A workflow process is a `D1ProcessPlan`, not an operation. */
+/** One operation read from a connection catalog. `direction` is empty when the catalog row names neither call nor serve. */
+export interface D1CatalogOperation {
+  operationId: string;
+  direction: string;
+}
+
+/** An inbound item, a plugin, or one call connection. A workflow process is a `D1ProcessPlan`, not an operation. */
 export interface D1EffectOperation {
   id: string;
-  kind: 'inbound' | 'plugin';
+  kind: 'inbound' | 'plugin' | 'connection';
   operations: string[];
   mechanism: string;
   consumer: string;
   /** A scheduled trigger is preserved as a review. This step does not write a scheduler. */
   scheduled: boolean;
+  connectionId?: string;
+  operationId?: string;
+  entityRefs?: string[];
+  effect?: 'list' | 'read' | 'create' | 'update' | 'remove';
+  /** `null` when the catalog file was not read. Set only for `kind: 'connection'`. */
+  catalogOps?: readonly D1CatalogOperation[] | null;
 }
 
 /** One workflow process read from the L4. `occurrence` is empty when the initial stage does not name an entity. */

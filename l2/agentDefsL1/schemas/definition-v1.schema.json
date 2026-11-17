@@ -552,6 +552,7 @@
         "events": { "type": "array", "items": { "$ref": "#/$defs/outboundEvent" } },
         "inbound": { "type": "array", "items": { "$ref": "#/$defs/effectInbound" } },
         "plugins": { "type": "array", "items": { "$ref": "#/$defs/effectPlugin" } },
+        "connections": { "type": "array", "items": { "$ref": "#/$defs/effectConnection" } },
         "gaps": { "type": "array", "items": { "$ref": "#/$defs/effectGap" } }
       }
     },
@@ -588,6 +589,18 @@
         "operations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "mechanism": { "type": "string" },
         "consumer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effectConnection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectionId", "operationId", "consumer"],
+      "properties": {
+        "connectionId": { "type": "string", "minLength": 1 },
+        "operationId": { "type": "string", "minLength": 1 },
+        "consumer": { "type": "string", "minLength": 1 },
+        "entityRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "effect": { "type": "string", "enum": ["list", "read", "create", "update", "remove"] }
       }
     },
     "effectGap": {

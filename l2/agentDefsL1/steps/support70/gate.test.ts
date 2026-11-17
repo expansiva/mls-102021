@@ -23,11 +23,11 @@ import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d
 import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
-import { assembleD1Support, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
+import { assembleD1Support, catalogOperationsOf, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { buildD1Support, emitEffects, emitRegistry, emitScope, emitSeeds } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
-import type { D1SupportEmit, D1SupportProblem, D1SupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
+import type { D1EffectOperation, D1SupportEmit, D1SupportProblem, D1SupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
 
 interface SerializedGrant {
   grantId: string;
@@ -711,6 +711,103 @@ void test('inbound create and update follow writes and effect, not a name or tra
     gaps: Array<{ itemId: string; kind: string; code: string }>;
   };
   assert.deepEqual(gaps.gaps, [{ itemId: 'alphaIn', kind: 'inbound', code: 'POOL_ABSENT' }]);
+});
+
+function connectionOp(partial: Partial<D1EffectOperation> & Pick<D1EffectOperation, 'connectionId' | 'operationId'>): D1EffectOperation {
+  return {
+    id: `${partial.connectionId}.${partial.operationId}`,
+    kind: 'connection',
+    operations: [],
+    mechanism: '',
+    consumer: partial.consumer ?? '',
+    scheduled: false,
+    catalogOps: partial.catalogOps,
+    ...partial,
+  };
+}
+
+function connectionRequest(operations: D1EffectOperation[]): D1SupportRequest {
+  return {
+    project: 102021,
+    moduleName: 'inicio',
+    grants: [],
+    relationships: [],
+    scopePlans: [],
+    citedGrantIds: [],
+    adapters: [],
+    files: [],
+    existingHelpers: [],
+    applicationEdges: [],
+    formFields: [],
+    enumerations: [],
+    tables: [],
+    models: [],
+    journeys: [],
+    missingJourneys: [],
+    roleTags: [],
+    seedRefs: [],
+    existingDatasets: [],
+    maintenance: null,
+    outbound: [],
+    selectedEventIds: [],
+    usecaseIds: ['registrarAtendimento'],
+    transitionUsecases: [],
+    operations,
+    processes: [],
+  };
+}
+
+void test('a catalog call becomes a connections row', async () => {
+  const catalog = await catalogOperationsOf(readFileSync(path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+  ), 'utf8'));
+  assert.ok(catalog);
+  const request = connectionRequest([connectionOp({
+    connectionId: 'cm',
+    operationId: 'readAgent',
+    consumer: 'registrarAtendimento',
+    entityRefs: ['Agent'],
+    effect: 'read',
+    catalogOps: catalog,
+  }), connectionOp({
+    connectionId: 'cm',
+    operationId: 'listAgents',
+    consumer: 'registrarAtendimento',
+    catalogOps: catalog,
+  })]);
+  const problems: D1SupportProblem[] = [];
+  const { emit } = emitEffects(request, problems);
+  assert.deepEqual(problems.filter(item => item.severity === 'error'), []);
+  const data = emit.find(item => item.definition.artifactType === 'integrationOutbound')?.definition.data as {
+    connections: Array<{ connectionId: string; operationId: string; consumer: string; entityRefs?: string[]; effect?: string }>;
+  };
+  assert.deepEqual(data.connections, [
+    { connectionId: 'cm', operationId: 'listAgents', consumer: 'registrarAtendimento' },
+    { connectionId: 'cm', operationId: 'readAgent', consumer: 'registrarAtendimento', entityRefs: ['Agent'], effect: 'read' },
+  ]);
+  assert.equal(problems.some(item => item.code === 'INTEGRATION_UNBOUND'), false);
+});
+
+void test('a call outside the catalog, a missing catalog and an unresolved consumer are diagnosed', async () => {
+  const catalog = await catalogOperationsOf(readFileSync(path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+  ), 'utf8'));
+  assert.ok(catalog);
+  const request = connectionRequest([
+    connectionOp({ connectionId: 'cm', operationId: 'notInCatalog', consumer: 'registrarAtendimento', catalogOps: catalog }),
+    connectionOp({ connectionId: 'absent', operationId: 'readAgent', consumer: 'registrarAtendimento', catalogOps: null }),
+    connectionOp({ connectionId: 'cm', operationId: 'simulateAgent', consumer: '', catalogOps: catalog }),
+    connectionOp({ connectionId: 'cm', operationId: 'describe', consumer: 'registrarAtendimento', catalogOps: catalog }),
+  ]);
+  const problems: D1SupportProblem[] = [];
+  const { emit } = emitEffects(request, problems);
+  assert.equal(emit.some(item => item.definition.artifactType === 'integrationOutbound'), false);
+  assert.equal(problems.some(item => item.code === 'OPERATION_NOT_IN_CATALOG'), true);
+  assert.equal(problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), true);
+  assert.equal(problems.some(item => item.code === 'OPERATION_NOT_CALL'), true);
+  assert.equal(problems.some(item => item.code === 'CONNECTION_CONSUMER_UNRESOLVED' && item.severity === 'review'), true);
 });
 
 function usecase(usecaseId: string, entity: string, operation: string, transitionRef = ''): D1SelectedUsecase {

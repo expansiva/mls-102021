@@ -1227,9 +1227,10 @@ function outboundEvents(integration: Record<string, unknown>): Array<{ id: strin
     .filter(row => row.id);
 }
 
-// Inbound or plugin still writes integration outbound. A workflow process is its own def.
+// Inbound, plugin or a call connection still writes integration outbound. A workflow process is its own def.
 function hasEffectOperations(integration: Record<string, unknown>): boolean {
-  return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0;
+  const calls = rows(integration.connections).some(row => text(row.direction) === 'call');
+  return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0 || calls;
 }
 
 function workflowFiles(
