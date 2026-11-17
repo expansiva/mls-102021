@@ -25,6 +25,10 @@ export interface CatalogOperation {
   outputType: string;
   direction: string;
   kind: string;
+  description: string;
+  reply: string;
+  noRowLimit: boolean;
+  hiddenFromAgents: boolean;
 }
 
 /**
@@ -74,6 +78,10 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
       outputType: text(row.outputType),
       direction: text(row.direction),
       kind: text(row.kind),
+      description: text(row.description),
+      reply: text(row.reply),
+      noRowLimit: row.noRowLimit === true,
+      hiddenFromAgents: row.hiddenFromAgents === true,
     });
   }
   return operations;

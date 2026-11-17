@@ -195,9 +195,22 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
   }
   for (const ref of contractRefs(unit.definition)) parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
   if (unit.definition.artifactType === 'requestService') {
-    // The page contract is the source of truth of a request service: its routes, JSDoc and types.
-    const ref = `_${ctx.run.project}_/l2/${ctx.run.module}/web/contracts/${String(unit.definition.data.pageId ?? unit.unitId)}.defs.ts`;
-    parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+    const requests = Array.isArray(unit.definition.data.requests) ? unit.definition.data.requests.filter(isRecord) : [];
+    const connectionIds = [...new Set(requests.flatMap(row => {
+      const mark = /^([a-z][A-Za-z0-9]*)\.[a-z][A-Za-z0-9]*$/u.exec(String(row.serves ?? ''));
+      return mark ? [mark[1]] : [];
+    }))].sort();
+    if (connectionIds.length) {
+      // A serve request is derived from the connection catalog. A page request still hashes only its page contract.
+      for (const connectionId of connectionIds) {
+        const ref = `_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+        parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+      }
+    } else {
+      // The page contract is the source of truth of a request service: its routes, JSDoc and types.
+      const ref = `_${ctx.run.project}_/l2/${ctx.run.module}/web/contracts/${String(unit.definition.data.pageId ?? unit.unitId)}.defs.ts`;
+      parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+    }
   }
   if (unit.definition.artifactType === 'usecase') parts.push((await readOptional(rulesFile(ctx.run.project, ctx.run.module))) ?? '');
   // A port and its adapter also carry the methods the workflow processes apply through them (§11).

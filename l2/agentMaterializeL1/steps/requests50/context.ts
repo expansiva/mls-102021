@@ -5,6 +5,8 @@
 // texts and the platform signatures.
 
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -131,10 +133,12 @@ function repairProblemText(problems: readonly string[]): string {
 
 export interface M12RequestContext {
   pageId: string;
-  /** `export interface <Page>Contracts` of the page contract: the type `requests` is checked against. */
+  /** `export interface <Page>Contracts` of the page contract: the type `requests` is checked against. A serve route puts the explicit requests type here. */
   contractsInterface: string;
-  /** The import specifier of the page contract (`/_P_/l2/<mod>/web/contracts/<page>.defs.js`). */
+  /** The import specifier of the page contract (`/_P_/l2/<mod>/web/contracts/<page>.defs.js`). A serve route puts the catalog specifier here. */
   contractSpecifier: string;
+  /** Catalog specifiers a serve request may import. Absent for a page. */
+  catalogSpecifiers?: readonly string[];
   header: string;
   routes: M12ContractRoute[];
   contractRef: string;
@@ -386,7 +390,184 @@ export function mdmInputProblems(code: string, inputs: readonly M12MdmInput[]): 
   return inputs.map(input => `Route ${input.route} receives \`${input.key}\` (${input.entityId}, kept in the platform MDM, with no usecase): write it with \`ctx.mdm.entity.update\` (see the MDM section), do not drop it.`);
 }
 
+const SERVES_MARK = /^([a-z][A-Za-z0-9]*)\.([a-z][A-Za-z0-9]*)$/u;
+
+function connectionCatalogRef(connectionId: string): string {
+  return `_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+}
+
+function serveMarks(data: Record<string, unknown>): { connectionId: string; operationId: string; row: Record<string, unknown> }[] {
+  const requests = Array.isArray(data.requests) ? data.requests.filter(isRecord) : [];
+  const out: { connectionId: string; operationId: string; row: Record<string, unknown> }[] = [];
+  for (const row of requests) {
+    const mark = SERVES_MARK.exec(String(row.serves ?? ''));
+    if (mark) out.push({ connectionId: mark[1], operationId: mark[2], row });
+  }
+  return out;
+}
+
+function typeBlocks(source: string): Map<string, string> {
+  const starts = [...source.matchAll(/^export\s+(?:interface|type)\s+([A-Za-z_$][\w$]*)\b/gmu)];
+  const blocks = new Map<string, string>();
+  for (let index = 0; index < starts.length; index += 1) {
+    const from = starts[index].index ?? 0;
+    const to = index + 1 < starts.length ? (starts[index + 1].index ?? source.length) : source.length;
+    let text = source.slice(from, to);
+    const constant = text.search(/\nexport\s+const\b/u);
+    if (constant >= 0) text = text.slice(0, constant);
+    blocks.set(starts[index][1], text.trim());
+  }
+  return blocks;
+}
+
+function citedTypes(source: string, roots: readonly string[]): string {
+  const blocks = typeBlocks(source);
+  const seen = new Set<string>();
+  const pending = [...roots];
+  const parts: string[] = [];
+  while (pending.length) {
+    const name = pending.pop();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const block = blocks.get(name);
+    if (!block) continue;
+    parts.push(block);
+    for (const match of block.matchAll(/\b[A-Z][A-Za-z0-9_]*\b/gu)) {
+      if (blocks.has(match[0]) && !seen.has(match[0])) pending.push(match[0]);
+    }
+  }
+  return parts.join('\n\n');
+}
+
+function entityOfServe(row: Record<string, unknown>): { entityId: string; effect: string } {
+  const refs = Array.isArray(row.entityRefs) ? row.entityRefs.map(String).filter(Boolean) : [];
+  const writes = String(row.writes ?? '');
+  const wrote = /^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/u.exec(writes);
+  return {
+    entityId: refs[0] || wrote?.[1] || '',
+    effect: typeof row.effect === 'string' && row.effect ? row.effect : (wrote?.[2] ?? ''),
+  };
+}
+
+function identityField(entity: M12Unit | undefined): string {
+  if (!entity) return '';
+  const system = systemIdentity(entity.definition);
+  if (system) return system;
+  const storage = isRecord(entity.definition.data.storage) ? entity.definition.data.storage : null;
+  if (typeof storage?.idField === 'string') return storage.idField;
+  return typeof entity.definition.data.idField === 'string' ? entity.definition.data.idField : '';
+}
+
+/** A repository port reads one record by id when it has `get(id)`, as the persistence recipe emits. No method list means that recipe. */
+function portReadsById(port: M12Unit): boolean {
+  const methods = port.definition.data.methods;
+  if (!Array.isArray(methods) || methods.length === 0) return true;
+  return methods.some(method => {
+    if (typeof method === 'string') return method === 'get';
+    if (!isRecord(method) || method.name !== 'get') return false;
+    const params = Array.isArray(method.params) ? method.params.map(String) : [];
+    return params.length === 0 || params.includes('id') || params.length === 1;
+  });
+}
+
+function requestsTypeOfServe(routes: readonly { route: string; inputType: string; outputType: string }[]): string {
+  const fields = routes.map(route => `'${route.route}': (input: ${route.inputType}, ctx: RequestContext) => Promise<${route.outputType}>`);
+  return `{ ${fields.join('; ')} }`;
+}
+
+async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<M12RequestContext> {
+  const { project, module: moduleName } = ctx.run;
+  const pageId = String(unit.definition.data.pageId ?? unit.unitId);
+  const marks = serveMarks(unit.definition.data);
+  const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+  const byConnection = new Map<string, string>();
+  for (const mark of marks) {
+    if (byConnection.has(mark.connectionId)) continue;
+    const text = await ctx.read(connectionCatalogRef(mark.connectionId));
+    if (!text) throw new Error(`CONNECTION_CATALOG_MISSING: ${connectionCatalogRef(mark.connectionId)}`);
+    byConnection.set(mark.connectionId, text);
+  }
+  const typed: { route: string; inputType: string; outputType: string; specifier: string }[] = [];
+  const catalogSections: string[] = [];
+  const routes: M12ContractRoute[] = [];
+  for (const mark of marks) {
+    const source = byConnection.get(mark.connectionId) ?? '';
+    const operations = catalogOperations(source);
+    const operation = operations?.find(item => item.operationId === mark.operationId);
+    if (!operation || operation.direction !== 'serve') {
+      throw new Error(`OPERATION_NOT_IN_CATALOG: ${mark.connectionId}.${mark.operationId} is not a serve operation of the connection catalog.`);
+    }
+    const route = String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`);
+    const specifier = `/${connectionCatalogRef(mark.connectionId).replace(/\.defs\.ts$/u, '.defs.js')}`;
+    typed.push({ route, inputType: operation.inputType, outputType: operation.outputType, specifier });
+    routes.push({ route, kind: operation.kind === 'command' ? 'cmd' : 'qry', inputFields: [], actors: [], rules: [] });
+    const flags = [
+      `kind: ${operation.kind || 'unknown'}`,
+      `reply: ${operation.reply || 'unknown'}`,
+      `noRowLimit: ${operation.noRowLimit ? 'true' : 'false'}`,
+      `hiddenFromAgents: ${operation.hiddenFromAgents ? 'true' : 'false'}`,
+    ];
+    const description = operation.description;
+    catalogSections.push([
+      `Operation ${mark.connectionId}.${mark.operationId} of route ${route}.`,
+      description,
+      flags.join('; '),
+      'The input and output types, and the types of this catalog file they cite:',
+      fence('ts', citedTypes(source, [operation.inputType, operation.outputType])),
+    ].filter(Boolean).join('\n'));
+  }
+  const contractsInterface = requestsTypeOfServe(typed);
+  const catalogSpecifiers = [...new Set(typed.map(item => item.specifier))];
+  const parts: string[] = [];
+  parts.push(section('Task', [
+    `Write the request service of the connection routes of module ${moduleName}, file \`${unit.outputRef}\`. There is no page contract.`,
+    `It exports \`requests\`, typed exactly \`${contractsInterface}\` with \`import type { ${[...new Set(typed.flatMap(item => [item.inputType, item.outputType]))].sort().join(', ')} } from '${catalogSpecifiers[0] ?? ''}'\`: one async function per route, keyed by the route string.`,
+    'Each function takes the whole catalog input and returns the catalog output. Do not drop a field of the input. Do not call fetch, callConnection or any HTTP client.',
+    '`ctx.requestMeta.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
+  ].join('\n')));
+  parts.push(section('Connection catalog', catalogSections.join('\n\n')));
+  for (const mark of marks) {
+    const target = entityOfServe(mark.row);
+    if (target.effect !== 'create' || !target.entityId) continue;
+    const port = ctx.units.find(item => item.definition.artifactType === 'repositoryPort' && String(item.definition.data.entityId ?? '') === target.entityId);
+    if (!port || !portReadsById(port)) {
+      throw new Error(`SERVE_READ_BY_ID_MISSING: the port of ${target.entityId} has no get by id, so a creating serve route has no repeat path.`);
+    }
+    const idField = identityField(ctx.units.find(item => item.definition.artifactType === 'domainEntity' && String(item.definition.data.entityId ?? item.definition.artifactId) === target.entityId));
+    const portName = String(port.definition.data.interfaceName ?? port.definition.artifactId);
+    const generated = await readOptional(port.output);
+    const identity = idField ? `input.${idField}` : 'the input field whose name is the entity storage.idField';
+    parts.push(section(`Repeat of ${String(mark.row.route ?? mark.operationId)} (creates ${target.entityId})`, [
+      `Read the existing record by id through the entity port before writing: \`resolveRepository<${portName}>(bound, '${portName}')\`, importing the port from \`/${port.outputRef.replace(/\.ts$/u, '.js')}\`.`,
+      `The identity comes from the input: \`${identity}\`. Call \`get\` with that id.`,
+      'When the record exists, return what is stored and do not overwrite it. When it does not, write through the port with the id set from that same input field and return the output shape this catalog output type uses for a record written now.',
+      'The response shape is only what the output type of this operation declares. Repeating the same identity is never an error.',
+      generated ? fence('ts', exportSignatures(generated)) : '',
+    ].filter(Boolean).join('\n')));
+  }
+  if (repair) {
+    parts.push(section('Repair', [
+      'The previous answer was refused. Fix exactly these problems and return the whole file again:',
+      repairProblemText(repair.problems),
+      repair.previous ? `\nPrevious answer:\n${fence('ts', repair.previous)}` : '',
+    ].join('\n')));
+  }
+  return {
+    pageId,
+    contractsInterface,
+    contractSpecifier: catalogSpecifiers[0] ?? '',
+    catalogSpecifiers,
+    header,
+    routes,
+    contractRef: connectionCatalogRef(marks[0]?.connectionId ?? pageId),
+    mdmInputs: [],
+    workflowRoutes: [],
+    human: parts.join('\n'),
+  };
+}
+
 export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?: M12Repair): Promise<M12RequestContext> {
+  if (serveMarks(unit.definition.data).length) return loadServeRequestContext(ctx, unit, repair);
   const { project, module: moduleName } = ctx.run;
   const pageId = String(unit.definition.data.pageId ?? unit.unitId);
   const contract = contractFile(project, moduleName, pageId);
@@ -548,12 +729,19 @@ export function requestGate(code: string, input: {
   moduleName: string;
   pageId: string;
   waived: ReadonlySet<string>;
+  /** Catalog modules a serve request may import. Omitted for a page, whose allow-list stays as it is. */
+  catalogSpecifiers?: readonly string[];
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
   // The declared type may contain `=>` (the type the prompt asks for): match up to the `= {` of the value.
   if (!/export\s+const\s+requests\b[\s\S]{0,400}?=\s*\{/u.test(code)) problems.push('The file must export `const requests = { … }`, one function per contract route.');
-  if (input.contractsInterface) {
+  if (input.contractsInterface?.startsWith('{')) {
+    const annotation = /export\s+const\s+requests\s*:\s*([\s\S]*?)\s*=\s*\{/u.exec(code);
+    if (annotation?.[1].replace(/\s+/gu, '') !== input.contractsInterface.replace(/\s+/gu, '')) {
+      problems.push(`\`requests\` must be typed \`${input.contractsInterface}\`: each serve route takes its catalog input and returns its catalog output.`);
+    }
+  } else if (input.contractsInterface) {
     const contracts = input.contractsInterface;
     const mapped = new RegExp(`export\\s+const\\s+requests\\s*:\\s*\\{\\s*\\[\\s*K\\s+in\\s+keyof\\s+${contracts}\\s*\\]\\s*:\\s*\\(\\s*input\\s*:\\s*${contracts}\\s*\\[\\s*K\\s*\\]\\s*\\[\\s*['"]input['"]\\s*\\][\\s\\S]{0,200}?Promise<\\s*${contracts}\\s*\\[\\s*K\\s*\\]\\s*\\[\\s*['"]output['"]\\s*\\]\\s*>`, 'u');
     if (!mapped.test(code)) problems.push(`\`requests\` must be typed \`${requestsTypeOf(contracts)}\`: the compiler then proves every route exists, reads its contract input and returns exactly its contract output.`);
@@ -580,7 +768,8 @@ export function requestGate(code: string, input: {
   const ownContracts = `/_${input.project}_/l2/${input.moduleName}/web/contracts/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts)) {
+    const catalog = input.catalogSpecifiers?.includes(specifier) === true;
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts) && !catalog) {
       problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/), this module (${ownL1}) and its contracts (${ownContracts}).`);
     }
   }
@@ -626,7 +815,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds }),
+    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, catalogSpecifiers: data.catalogSpecifiers }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
@@ -651,13 +840,23 @@ export function requestsTypeOf(contractsInterface: string): string {
  * two type imports it needs are added when missing. Nothing else in the file changes; the compiler proves the
  * result, and a function whose output differs from the contract is a compile error the repair receives.
  */
+function namedCatalogTypes(typeLiteral: string): string[] {
+  const skip = new Set(['Promise', 'RequestContext']);
+  return [...new Set([...typeLiteral.matchAll(/\b[A-Z][A-Za-z0-9_]*\b/gu)].map(match => match[0]).filter(name => !skip.has(name)))].sort();
+}
+
 export function normalizeRequestsTyping(code: string, contractsInterface: string, contractSpecifier: string): string {
-  const mapped = requestsTypeOf(contractsInterface);
+  const serve = contractsInterface.startsWith('{');
+  const mapped = serve ? contractsInterface : requestsTypeOf(contractsInterface);
   let next = code.replace(/(export\s+const\s+requests)\s*:[\s\S]{0,800}?=\s*\{/u, `$1: ${mapped} = {`);
   if (next === code) next = code.replace(/(export\s+const\s+requests)\s*=\s*\{/u, `$1: ${mapped} = {`);
   next = next.replace(/\}\s*satisfies\s+[A-Za-z_][A-Za-z0-9_]*\s*;/u, '};');
   const imports: string[] = [];
-  if (!new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${contractsInterface}\\b[^}]*\\}\\s+from`, 'u').test(next)) imports.push(`import type { ${contractsInterface} } from '${contractSpecifier}';`);
+  if (serve) {
+    const names = namedCatalogTypes(contractsInterface);
+    const present = names.every(name => new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${name}\\b[^}]*\\}\\s+from`, 'u').test(next));
+    if (names.length && !present) imports.push(`import type { ${names.join(', ')} } from '${contractSpecifier}';`);
+  } else if (!new RegExp(`import\\s+(?:type\\s+)?\\{[^}]*\\b${contractsInterface}\\b[^}]*\\}\\s+from`, 'u').test(next)) imports.push(`import type { ${contractsInterface} } from '${contractSpecifier}';`);
   if (!/import\s+(?:type\s+)?\{[^}]*\bRequestContext\b[^}]*\}\s+from/u.test(next)) imports.push("import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';");
   if (imports.length) {
     const lines = next.split('\n');
