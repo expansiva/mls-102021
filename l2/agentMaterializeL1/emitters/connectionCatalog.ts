@@ -29,6 +29,7 @@ export interface CatalogOperation {
   reply: string;
   noRowLimit: boolean;
   hiddenFromAgents: boolean;
+  expectsVersion: boolean;
 }
 
 /**
@@ -82,6 +83,7 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
       reply: text(row.reply),
       noRowLimit: row.noRowLimit === true,
       hiddenFromAgents: row.hiddenFromAgents === true,
+      expectsVersion: row.expectsVersion === true,
     });
   }
   return operations;

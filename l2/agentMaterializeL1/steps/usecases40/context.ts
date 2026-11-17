@@ -255,7 +255,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
   const blocks: string[] = [
     `Import the gateway type with \`import type { … } from '${importPath}'\`.`,
     'Resolve it with `resolveRepository<<Connection>Gateway>(ctx, \'<Connection>Gateway\')`, then call `gateway.<operation>(input, ctx)` or `gateway.<operation>(input, ctx, opts)`.',
-    'Pass `opts.idempotencyKey` and `opts.expectVersion` only when an l4 rule asks for them. The gateway does not invent a key.',
+    'Pass `opts.idempotencyKey` only when an l4 rule asks for it. The gateway does not invent a key.',
     'Let an error from the gateway propagate. Do not catch it and replace it with a generic message.',
     'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
   ];
@@ -270,7 +270,10 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const operation = catalog.find(item => item.operationId === row.operationId);
       const effect = row.effect ? ` Covers effect \`${row.effect}\`.` : '';
       if (!operation) return `- \`${row.operationId}\`: the catalog does not list this operation.${effect}`;
-      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}`;
+      const version = operation.expectsVersion
+        ? ' The usecase receives `expectVersion` in its input (what the screen sent, from the `version` it read), passes `{ expectVersion }` in `opts`, and does not put it in the catalog `input`. When it is missing the gateway answers `invalid`.'
+        : '';
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${version}`;
     });
     blocks.push([
       `### ${gateway}`,

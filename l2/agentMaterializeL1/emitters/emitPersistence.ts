@@ -456,13 +456,7 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
     const typeNames = [...new Set(used.flatMap(item => [item.inputType, item.outputType]))].sort();
     const gateway = `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;
     const methods = used.map(item => `  ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}>;`).join('\n');
-    const bodies = used.map(item => [
-      `    async ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}> {`,
-      `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, opts);`,
-      '      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);',
-      `      return result.output as ${item.outputType};`,
-      '    },',
-    ].join('\n')).join('\n');
+    const bodies = used.map(item => gatewayMethod(connectionId, item)).join('\n');
     blocks.push([
       `import type { ${typeNames.join(', ')} } from '${specifier}';`,
       '',
@@ -490,6 +484,22 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
   const bad = auditImports(source, imports);
   if (bad) return { code: 'IMPORT_UNDECLARED', detail: bad };
   return { source, imports, runsStub: false, seeds: false, evidences: [] };
+}
+
+function gatewayMethod(connectionId: string, item: CatalogOperation): string {
+  const lines = [
+    `    async ${item.operationId}(input: ${item.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${item.outputType}> {`,
+  ];
+  if (item.expectsVersion) {
+    lines.push(`      if (opts?.expectVersion === undefined) throw new AppError('invalid', ${JSON.stringify(`${item.operationId} requires expectVersion.`)}, 400);`);
+  }
+  lines.push(
+    `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, opts);`,
+    '      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);',
+    `      return result.output as ${item.outputType};`,
+    '    },',
+  );
+  return lines.join('\n');
 }
 
 export function buildLocalTable(definition: M1Definition, entity: M1Definition): BuiltTable | EmitFailure {

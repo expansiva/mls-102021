@@ -247,6 +247,39 @@ test('Connection gateways lists the consumer gateway and only its operations', a
   }
 });
 
+test('Connection gateways names expectVersion only for the marked operation', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const usecase = unit('usecase', 'changeAgent', {
+    usecaseId: 'changeAgent',
+    entityId: 'Tarefa',
+    operation: 'update',
+    functions: [{ functionName: 'changeAgent', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/changeAgent.ts`);
+  const outbound = unit('integrationOutbound', 'outbound', {
+    connections: [
+      { connectionId: 'cm', operationId: 'updateAgent', consumer: 'changeAgent' },
+      { connectionId: 'cm', operationId: 'readAgent', consumer: 'changeAgent' },
+    ],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
+  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, outbound], read };
+  try {
+    const loaded = await loadUsecaseContext(ctx as never, usecase);
+    const section = loaded.human.split('## Connection gateways')[1] ?? '';
+    const update = section.split('updateAgent')[1]?.split('\n')[0] ?? '';
+    const readLine = section.split('readAgent')[1]?.split('\n')[0] ?? '';
+    assert.match(update, /expectVersion/);
+    assert.match(update, /invalid/);
+    assert.equal(readLine.includes('expectVersion'), false);
+    assert.equal(section.split('expectVersion').length, 3);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
 test('an external entity usecase lists the gateway effect and no entity port', async () => {
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
