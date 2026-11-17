@@ -273,7 +273,10 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
       const version = operation.expectsVersion
         ? ' The usecase receives `expectVersion` in its input (what the screen sent, from the `version` it read), passes `{ expectVersion }` in `opts`, and does not put it in the catalog `input`. When it is missing the gateway answers `invalid`.'
         : '';
-      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${version}`;
+      const later = operation.reply === 'later'
+        ? ` The method returns the id of the work (\`${operation.outputType}\`). The usecase returns that id as its output and does not wait for the result. Do not create a column or a correlation table for it. Store it only when an l4 rule or entity says to store it. The result arrives later through the serve operation \`${operation.resultOperation}\`.`
+        : '';
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}${version}${later}`;
     });
     blocks.push([
       `### ${gateway}`,

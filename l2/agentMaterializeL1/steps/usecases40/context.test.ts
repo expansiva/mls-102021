@@ -280,6 +280,48 @@ test('Connection gateways names expectVersion only for the marked operation', as
   }
 });
 
+test('Connection gateways returns the later id and names the result operation', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const laterUsecase = unit('usecase', 'createAgent', {
+    usecaseId: 'createAgent',
+    entityId: 'Tarefa',
+    operation: 'create',
+    functions: [{ functionName: 'createAgent', input: [{ name: 'prompt', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/createAgent.ts`);
+  const nowUsecase = unit('usecase', 'readAgent', {
+    usecaseId: 'readAgent',
+    entityId: 'Tarefa',
+    operation: 'read',
+    functions: [{ functionName: 'readAgent', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/readAgent.ts`);
+  const outbound = unit('integrationOutbound', 'outbound', {
+    connections: [
+      { connectionId: 'cm', operationId: 'createAgent', consumer: 'createAgent' },
+      { connectionId: 'cm', operationId: 'readAgent', consumer: 'readAgent' },
+    ],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
+  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  try {
+    const later = await loadUsecaseContext({ run: { project: PROJECT, module: MODULE }, units: [laterUsecase, outbound], read } as never, laterUsecase);
+    const laterSection = later.human.split('## Connection gateways')[1] ?? '';
+    const createLine = laterSection.split('createAgent')[1] ?? '';
+    assert.match(createLine, /returns the id of the work/u);
+    assert.match(createLine, /returns that id as its output/u);
+    assert.match(createLine, /correlation table/u);
+    assert.match(createLine, /agentDraftReady/u);
+    const now = await loadUsecaseContext({ run: { project: PROJECT, module: MODULE }, units: [nowUsecase, outbound], read } as never, nowUsecase);
+    const nowSection = now.human.split('## Connection gateways')[1] ?? '';
+    assert.equal(nowSection.includes('id of the work'), false);
+    assert.equal(nowSection.includes('correlation'), false);
+    assert.equal(nowSection.includes('agentDraftReady'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
 test('an external entity usecase lists the gateway effect and no entity port', async () => {
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };

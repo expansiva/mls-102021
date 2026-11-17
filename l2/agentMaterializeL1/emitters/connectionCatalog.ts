@@ -27,6 +27,7 @@ export interface CatalogOperation {
   kind: string;
   description: string;
   reply: string;
+  resultOperation: string;
   noRowLimit: boolean;
   hiddenFromAgents: boolean;
   expectsVersion: boolean;
@@ -81,6 +82,7 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
       kind: text(row.kind),
       description: text(row.description),
       reply: text(row.reply),
+      resultOperation: text(row.resultOperation),
       noRowLimit: row.noRowLimit === true,
       hiddenFromAgents: row.hiddenFromAgents === true,
       expectsVersion: row.expectsVersion === true,
