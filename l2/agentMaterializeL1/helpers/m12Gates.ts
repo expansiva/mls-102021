@@ -21,6 +21,8 @@ export interface M12CodeGateInput {
   ports?: readonly string[];
   /** Connection gateways of the module (`<Connection>Gateway`), from `integrationOutbound` `connections`. */
   gateways?: readonly string[];
+  /** `<Entity>Repository` of an `external` entity: refused, the usecase uses the gateway. */
+  externalPort?: string;
 }
 
 /**
@@ -173,22 +175,66 @@ export function gatewayNameOf(connectionId: string): string {
   return `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;
 }
 
+export interface M12ConnectionRow {
+  connectionId: string;
+  operationId: string;
+  consumer: string;
+  effect?: string;
+  entityRefs: string[];
+}
+
 /** Rows of `integrationOutbound.data.connections` that name a connection and an operation. */
-export function connectionRowsOf(data: unknown): Array<{ connectionId: string; operationId: string; consumer: string }> {
+export function connectionRowsOf(data: unknown): M12ConnectionRow[] {
   if (!data || typeof data !== 'object') return [];
   const rows = (data as { connections?: unknown }).connections;
   if (!Array.isArray(rows)) return [];
-  const out: Array<{ connectionId: string; operationId: string; consumer: string }> = [];
+  const out: M12ConnectionRow[] = [];
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
-    const record = row as { connectionId?: unknown; operationId?: unknown; consumer?: unknown };
+    const record = row as { connectionId?: unknown; operationId?: unknown; consumer?: unknown; effect?: unknown; entityRefs?: unknown };
     const connectionId = typeof record.connectionId === 'string' ? record.connectionId : '';
     const operationId = typeof record.operationId === 'string' ? record.operationId : '';
     const consumer = typeof record.consumer === 'string' ? record.consumer : '';
     if (!/^[A-Za-z_$][\w$]*$/u.test(connectionId) || !/^[A-Za-z_$][\w$]*$/u.test(operationId)) continue;
-    out.push({ connectionId, operationId, consumer });
+    const entityRefs = Array.isArray(record.entityRefs) ? record.entityRefs.filter((item): item is string => typeof item === 'string') : [];
+    const effect = typeof record.effect === 'string' && record.effect ? record.effect : undefined;
+    out.push({ connectionId, operationId, consumer, effect, entityRefs });
   }
   return out;
+}
+
+type M12PortUnit = { definition: { artifactType: string; artifactId: string; data: unknown } };
+
+/** Entity ids whose `domainEntity` has `storageTarget: 'external'`. */
+export function externalEntityIds(units: readonly M12PortUnit[]): Set<string> {
+  const ids = new Set<string>();
+  for (const unit of units) {
+    if (unit.definition.artifactType !== 'domainEntity') continue;
+    const data = unit.definition.data as { storageTarget?: unknown; entityId?: unknown };
+    if (data.storageTarget === 'external' && typeof data.entityId === 'string' && data.entityId) ids.add(data.entityId);
+  }
+  return ids;
+}
+
+/**
+ * Repository port names of the module. A port of an `external` entity is omitted: that entity has no local port.
+ */
+export function repositoryPortNames(units: readonly M12PortUnit[], nameOf: (unit: M12PortUnit) => string): string[] {
+  const external = externalEntityIds(units);
+  const names: string[] = [];
+  for (const unit of units) {
+    if (unit.definition.artifactType !== 'repositoryPort') continue;
+    const entityId = String((unit.definition.data as { entityId?: unknown }).entityId ?? '');
+    if (external.has(entityId)) continue;
+    const name = nameOf(unit);
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/** `<Entity>Repository` when the usecase entity is `external`; otherwise undefined. */
+export function externalRepositoryPort(units: readonly M12PortUnit[], entityId: string): string | undefined {
+  return entityId && externalEntityIds(units).has(entityId) ? `${entityId}Repository` : undefined;
 }
 
 /** Gateway names of the module, one per `connectionId` on its `integrationOutbound` defs. */
@@ -251,8 +297,9 @@ export function gatewayBypassProblems(code: string): string[] {
  * from a port. Either one hides the entity's field names from the compiler (fecharComanda read `item.quantity`
  * through its own `ItemComandaRepository`; the field is `details.quantidade`).
  */
-export function repositoryProblems(code: string, knownPorts?: readonly string[], knownGateways?: readonly string[]): string[] {
+export function repositoryProblems(code: string, knownPorts?: readonly string[], knownGateways?: readonly string[], externalPort?: string): string[] {
   const problems: string[] = [];
+  const externalRefusal = (name: string): string => `\`${name}\` is not a repository of this module. The entity is kept outside the module: read and write it only through the connection gateway (\`resolveRepository<<Connection>Gateway>(ctx, '<Connection>Gateway')\`, imported from \`layer_1_external/adapters/integration/outbound.js\`). Do not use a table or \`ctx.mdm\` for it.`;
   // aprovarDespesa typed `resolveRepository<{ get(id: string): … }>(ctx, 'ColaboradorRepository')`: an inline type
   // escapes the port check below, and that port does not exist (Colaborador lives in the MDM), so every call threw.
   if (/\bresolveRepository\s*<\s*\{/u.test(code)) {
@@ -261,14 +308,26 @@ export function repositoryProblems(code: string, knownPorts?: readonly string[],
   if (knownPorts) {
     // Lazy up to the call: the type argument may itself hold `<…>` (`Promise<Colaborador>`).
     for (const match of code.matchAll(/\bresolveRepository\b[^;]*?\(\s*[A-Za-z_$][\w$]*\s*,\s*['"]([^'"]+)['"]/gu)) {
+      if (externalPort && match[1] === externalPort) {
+        problems.push(externalRefusal(match[1]));
+        continue;
+      }
       if (!knownPorts.includes(match[1])) problems.push(`\`resolveRepository(ctx, '${match[1]}')\`: ${match[1]} is not a repository port of this module (its ports: ${knownPorts.join(', ') || 'none'}). An entity kept in the platform MDM is read with \`ctx.mdm.entity.get\`.`);
     }
   }
   for (const match of code.matchAll(/^\s*(?:export\s+)?(?:interface|type)\s+([A-Za-z0-9_]*Repository)\b/gmu)) {
+    if (externalPort && match[1] === externalPort) {
+      problems.push(externalRefusal(match[1]));
+      continue;
+    }
     problems.push(`Do not declare the repository type \`${match[1]}\`: import the port from \`/_<project>_/l1/<module>/layer_2_application/ports/…\` and type the records with its entity.`);
   }
   const ports = portImports(code, knownGateways);
   for (const match of code.matchAll(/\bresolveRepository\s*<\s*([A-Za-z0-9_]+)\s*>/gu)) {
+    if (externalPort && match[1] === externalPort) {
+      problems.push(externalRefusal(match[1]));
+      continue;
+    }
     if (!ports.has(match[1])) problems.push(`\`resolveRepository<${match[1]}>\`: ${match[1]} must be imported from a port of this module (layer_2_application/ports).`);
   }
   return [...new Set(problems)];
@@ -370,7 +429,7 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) {
     problems.push('No `as unknown as` and no `as any`: they hide from the compiler an output that differs from the declared type (a list usecase returned a bare array while declaring { items, hasMore }). Return a value built with the declared type.');
   }
-  problems.push(...repositoryProblems(code, input.ports, input.gateways));
+  problems.push(...repositoryProblems(code, input.ports, input.gateways, input.externalPort));
   problems.push(...gatewayBypassProblems(code));
   problems.push(...versionProblems(code));
   problems.push(...derivedReadProblems(code, input.derivedPaths ?? []));

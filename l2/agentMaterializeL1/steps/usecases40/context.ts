@@ -10,7 +10,7 @@ import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, recipeDraft, rulesToEnforce, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { connectionRowsOf, gatewayNameOf, moduleGatewayNames, usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNameOf, moduleGatewayNames, repositoryPortNames, usecaseGate, type M12ParentRule } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
@@ -259,14 +259,18 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
     'Let an error from the gateway propagate. Do not catch it and replace it with a generic message.',
     'Do not write HTTP. Do not import `callConnection`. Do not redeclare the catalog types: they are imported by the gateway file.',
   ];
+  if (rows.some(row => row.entityRefs.length > 0)) {
+    blocks.push('The entity is kept outside this module. Read and write it only through the gateway. Do not call `resolveRepository` for the entity repository, do not use `ctx.mdm` for it, and do not use a table.');
+  }
   for (const connectionId of [...byConnection.keys()].sort()) {
     const gateway = gatewayNameOf(connectionId);
     const catalogSource = await ctx.read(`/_102034_/l4/ontology/connections/${connectionId}.defs.ts`);
     const catalog = (catalogSource ? catalogOperations(catalogSource) : null) ?? [];
     const lines = (byConnection.get(connectionId) ?? []).map(row => {
       const operation = catalog.find(item => item.operationId === row.operationId);
-      if (!operation) return `- \`${row.operationId}\`: the catalog does not list this operation.`;
-      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\``;
+      const effect = row.effect ? ` Covers effect \`${row.effect}\`.` : '';
+      if (!operation) return `- \`${row.operationId}\`: the catalog does not list this operation.${effect}`;
+      return `- \`${operation.operationId}(input: ${operation.inputType}, ctx: RequestContext, opts?: CallConnectionOptions): Promise<${operation.outputType}>\`.${effect}`;
     });
     blocks.push([
       `### ${gateway}`,
@@ -320,7 +324,9 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const others = ruleTexts(rulesSource, allRuleIds(rulesSource).filter(ruleId => !ruleIds.includes(ruleId)));
   if (others.length) parts.push(section('Other rules of the module (l4 text: a rule about this entity and operation that the def missed is enforced here too)', others.map(rule => `- ${rule.ruleId}: ${rule.text}`).join('\n')));
   const dependencies = dependencyUnits(ctx, unit);
+  const externalIds = externalEntityIds(ctx.units);
   for (const dep of dependencies) {
+    if (dep.definition.artifactType === 'repositoryPort' && externalIds.has(String(dep.definition.data.entityId ?? ''))) continue;
     const generated = await readOptional(dep.output);
     parts.push(section(`Dependency ${dep.definition.artifactType} ${dep.definition.artifactId}`, [
       `Import from \`/${dep.outputRef.replace(/\.ts$/u, '.js')}\`.`,
@@ -362,12 +368,22 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const sent = new Set(dependencies.map(dep => dep.defRef));
   for (const item of ctx.units) {
     if (item.definition.artifactType !== 'domainEntity' && item.definition.artifactType !== 'repositoryPort') continue;
-    const ruleIds = citedBy.get(String(item.definition.data.entityId ?? ''));
+    const citedEntityId = String(item.definition.data.entityId ?? '');
+    if (item.definition.artifactType === 'repositoryPort' && externalIds.has(citedEntityId)) continue;
+    const ruleIds = citedBy.get(citedEntityId);
     if (!ruleIds || sent.has(item.defRef)) continue;
     const generated = await readOptional(item.output);
     const shown = generated ? fence('ts', exportSignatures(generated)) : fence('json', JSON.stringify(item.definition.data, null, 2));
     const heading = `Entity cited by a rule: ${item.definition.artifactType} ${item.definition.artifactId} (${ruleIds.join(', ')})`;
     const importFrom = `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`;
+    if (item.definition.artifactType === 'domainEntity' && item.definition.data.storageTarget === 'external') {
+      parts.push(section(heading, [
+        'The entity is kept outside this module. Read and write it only through the connection gateway.',
+        'Do not call `resolveRepository` for its repository, do not use `ctx.mdm` for it, and do not use a table.',
+        shown,
+      ].join('\n\n')));
+      continue;
+    }
     if (item.definition.artifactType === 'domainEntity' && item.definition.data.storageTarget === 'mdm') {
       const citedOntology = await ctx.read(ontologyRef(item.definition, item.outputRef));
       parts.push(section(heading, [
@@ -448,8 +464,9 @@ export async function parentRulesOf(ctx: M12Context, unit: M12Unit, entities: re
   const entityId = String(unit.definition.data.entityId ?? '');
   const own = entities.find(entity => entity.entityId === entityId);
   if (!own || own.parents.length === 0) return [];
+  const externalIds = externalEntityIds(ctx.units);
   const portOf = new Map(ctx.units
-    .filter(item => item.definition.artifactType === 'repositoryPort')
+    .filter(item => item.definition.artifactType === 'repositoryPort' && !externalIds.has(String(item.definition.data.entityId ?? '')))
     .map(item => [String(item.definition.data.entityId ?? ''), item.definition.artifactId] as const));
   const rulesSource = await readOptional(rulesFile(ctx.run.project, ctx.run.module));
   const titles = ruleNames(entityId, entities);
@@ -788,7 +805,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units) }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')) }),
   ];
 }
 

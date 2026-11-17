@@ -246,3 +246,66 @@ test('Connection gateways lists the consumer gateway and only its operations', a
     (globalThis as { mls: unknown }).mls = previous;
   }
 });
+
+test('an external entity usecase lists the gateway effect and no entity port', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const usecase = unit('usecase', 'readAgent', {
+    usecaseId: 'readAgent',
+    entityId: 'Agent',
+    operation: 'get',
+    functions: [{ functionName: 'readAgent', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/readAgent.ts`, [`_${PROJECT}_/l1/${MODULE}/layer_2_application/ports/agentRepository.defs.ts`]);
+  const entity = unit('domainEntity', 'agent', { entityId: 'Agent', storageTarget: 'external' }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/agent.ts`);
+  const port = unit('repositoryPort', 'agentRepository', { entityId: 'Agent', interfaceName: 'AgentRepository' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/ports/agentRepository.ts`);
+  const table = unit('domainEntity', 'tarefa', { entityId: 'Tarefa', storageTarget: 'moduleDatabase' }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/tarefa.ts`);
+  const tablePort = unit('repositoryPort', 'tarefaRepository', { entityId: 'Tarefa', interfaceName: 'TarefaRepository' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/ports/tarefaRepository.ts`);
+  const outbound = unit('integrationOutbound', 'outbound', {
+    connections: [
+      { connectionId: 'cm', operationId: 'readAgent', consumer: 'readAgent', effect: 'read', entityRefs: ['Agent'] },
+    ],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
+  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, entity, port, table, tablePort, outbound], read };
+  try {
+    const loaded = await loadUsecaseContext(ctx as never, usecase);
+    const section = loaded.human.split('## Connection gateways')[1] ?? '';
+    assert.match(section, /CmGateway/u);
+    assert.match(section, /Covers effect `read`/u);
+    assert.match(section, /kept outside this module/u);
+    assert.match(section, /Do not call `resolveRepository` for the entity repository/u);
+    assert.equal(loaded.human.includes('Dependency repositoryPort agentRepository'), false);
+    assert.equal(loaded.human.includes('AgentRepository'), false);
+
+    const header = loaded.header;
+    const refused = await usecaseAnswerProblems(ctx as never, usecase, [
+      header,
+      "import type { AgentRepository } from '/_" + PROJECT + "_/l1/" + MODULE + "/layer_2_application/ports/agentRepository.js';",
+      'export async function readAgent(input: { id: string }, ctx: RequestContext) {',
+      "  return resolveRepository<AgentRepository>(ctx, 'AgentRepository');",
+      '}',
+    ].join('\n'), []);
+    assert.ok(refused.some(problem => problem.includes('connection gateway') && problem.includes('AgentRepository')), refused.join('\n'));
+
+    const moduleUsecase = unit('usecase', 'getTarefa', {
+      usecaseId: 'getTarefa',
+      entityId: 'Tarefa',
+      operation: 'get',
+      functions: [{ functionName: 'getTarefa', input: [{ name: 'id', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+    }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getTarefa.ts`);
+    const moduleCtx = { run: { project: PROJECT, module: MODULE }, units: [moduleUsecase, table, tablePort], read };
+    const moduleLoaded = await loadUsecaseContext(moduleCtx as never, moduleUsecase);
+    const kept = await usecaseAnswerProblems(moduleCtx as never, moduleUsecase, [
+      moduleLoaded.header,
+      "import type { TarefaRepository } from '/_" + PROJECT + "_/l1/" + MODULE + "/layer_2_application/ports/tarefaRepository.js';",
+      'export async function getTarefa(input: { id: string }, ctx: RequestContext) {',
+      "  return resolveRepository<TarefaRepository>(ctx, 'tarefaRepository');",
+      '}',
+    ].join('\n'), []);
+    assert.deepEqual(kept, []);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});

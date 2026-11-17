@@ -7,7 +7,7 @@
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
-import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readOptional } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { contractFile, fileRef, infoOfRef, rulesFile } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
@@ -631,7 +631,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
     // `create`/`delete` for ItemChecklist, whose port has neither: "repo.create is not a function", tarefas 16/10).
-    ...repositoryProblems(code, [...ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => String(item.definition.data.interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)], moduleGatewayNames(ctx.units)),
+    ...repositoryProblems(code, [...repositoryPortNames(ctx.units, item => String((item.definition.data as { interfaceName?: unknown }).interfaceName ?? item.definition.artifactId)), ...moduleGatewayNames(ctx.units)], moduleGatewayNames(ctx.units)),
     ...await delegatedRuleProblems(code, ruleIds.filter(ruleId => !waivedIds.has(ruleId)), readUsecase),
   ];
 }
