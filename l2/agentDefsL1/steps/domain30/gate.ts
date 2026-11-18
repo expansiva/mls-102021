@@ -864,14 +864,15 @@ function readTransition(
   }
   const transitionId = text(entry.transitionId);
   const to = text(entry.to);
-  if (!transitionId || !to || !Array.isArray(entry.from) || !Array.isArray(entry.by) || !Array.isArray(entry.ruleRefs)) {
+  if (!transitionId || !to || !Array.isArray(entry.from) || !Array.isArray(entry.by) || (entry.ruleRefs !== undefined && !Array.isArray(entry.ruleRefs))) {
     error(problems, 'TRANSITION_SHAPE', path, `Transition ${transitionId || path} does not keep from, to, by and ruleRefs.`);
     blocked.add(entityId);
     return null;
   }
   const from = stringItems(entry.from);
   const by = stringItems(entry.by);
-  const ruleRefs = stringItems(entry.ruleRefs);
+  // `ruleRefs` is optional in the L4 (Optional citations): absent is none.
+  const ruleRefs = entry.ruleRefs === undefined ? [] : stringItems(entry.ruleRefs as unknown[]);
   if (!from || !by || !ruleRefs || from.length === 0) {
     error(problems, 'TRANSITION_SHAPE', path, `Transition ${transitionId} has an empty from or a non-string rule ref.`);
     blocked.add(entityId);

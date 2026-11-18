@@ -744,11 +744,11 @@ function connectionEffect(value: string): D1EffectOperation['effect'] | undefine
 
 /**
  * Operations of one catalog file. `null` when the exported object is not a catalog.
- * The catalog is `export const <id>: ConnectionCatalog = { ... }` with JSON keys; the type annotation is dropped so the
- * agent's own reader (`parseD1Source`) finds the object, without a static import outside this agent.
+ * The catalog is `export const <id>: ConnectionCatalog = { ... }` with JSON keys; `parseD1Source` skips the annotation,
+ * without a static import outside this agent.
  */
 export function catalogOperationsOf(source: string): D1CatalogOperation[] | null {
-  const parsed = parseD1Source(source.replace(/(export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*[A-Za-z_$][\w$.<>, ]*=/, '$1 ='), 'defs');
+  const parsed = parseD1Source(source, 'defs');
   if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
   const operations: D1CatalogOperation[] = [];
   for (const row of parsed.operations) {

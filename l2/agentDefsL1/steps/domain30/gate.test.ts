@@ -492,6 +492,42 @@ void test('a system transition keeps an empty by and an empty from stays TRANSIT
   assert.equal(emptyFrom.entities[0].definition, null);
 });
 
+void test('a transition without ruleRefs is valid: the L4 cites rules only when it wants to', () => {
+  const body = {
+    entityId: 'Inscricao',
+    kind: 'entity',
+    storage: { target: 'moduleDatabase' },
+    record: { fields: { id: { type: 'uuid', derived: true } } },
+    lifecycleStates: [
+      { state: 'waitlisted', reachedBy: 'command' },
+      { state: 'confirmed', reachedBy: 'command' },
+    ],
+    transitions: [{ transitionId: 'promover', from: ['waitlisted'], to: 'confirmed', by: [] as string[] }],
+  };
+  const built = buildD1Domain(requestFrom({ Inscricao: body }, { rules: {} }));
+  assert.equal(codes(built, 'error').includes('TRANSITION_SHAPE'), false);
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  assert.deepEqual(dataOf(built.entities[0]).lifecycle.transitions[0].ruleRefs, []);
+
+  const notAList = buildD1Domain(requestFrom({
+    Inscricao: { ...body, transitions: [{ ...body.transitions[0], ruleRefs: 'ordem' }] },
+  }, { rules: {} }));
+  assert.equal(codes(notAList, 'error').includes('TRANSITION_SHAPE'), true);
+});
+
+void test('a connection catalog typed `export const cm: ConnectionCatalog = {…}` is read and needs no rules', () => {
+  const source = '/_102034_/l4/ontology/connections/cm.defs.ts';
+  const text = 'import type { ConnectionCatalog } from "/_102034_/l4/ontology/connections/types.defs.js";\n'
+    + 'export const cm: ConnectionCatalog = {\n  "operations": [{ "operationId": "readAgent", "direction": "call" }]\n};\n';
+  const catalog = parseD1Source(text, 'defs');
+  assert.ok(catalog);
+  const built = buildD1Domain(requestFrom({
+    RemoteAgent: { entityId: 'RemoteAgent', kind: 'external', source, record: { fields: { name: { type: 'string' } } } },
+  }, { rules: {} }, { [source]: catalog }));
+  assert.equal(built.ok, true, JSON.stringify(built.problems));
+  assert.equal(built.problems.some(problem => problem.code === 'CATALOG_UNREAD'), false);
+});
+
 void test('an object of a platform type keeps of; a name that is not of the platform is dropped', () => {
   const built = buildD1Domain(requestFrom({
     Member: {

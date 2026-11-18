@@ -12,7 +12,8 @@ export function parseD1Source(text: string, kind: 'json' | 'defs'): unknown | nu
 }
 
 function extractDefsObject(source: string): string {
-  const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=/);
+  // An optional type annotation (`export const cm: ConnectionCatalog = {`) is skipped; the object is the same.
+  const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*(?::\s*[A-Za-z_$][\w$.<>, ]*)?=/);
   const start = source.indexOf('{', Math.max(0, assignment));
   if (assignment < 0 || start < 0) return '';
   let depth = 0;
