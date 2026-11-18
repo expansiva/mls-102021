@@ -225,7 +225,7 @@ test('resolveStepPerson follows the caller, then who already acted as that actor
     }) => Promise<string>;
   };
   const listed: Array<{ pageSize?: number }> = [];
-  const people = { items: [{ mdmId: 'mdm-b' }, { mdmId: 'mdm-a' }] };
+  let people: { items: Array<{ mdmId: string; kind?: string }> } = { items: [{ mdmId: 'mdm-agent', kind: 'agent' }, { mdmId: 'mdm-b' }, { mdmId: 'mdm-a' }] };
   const ctx = (scope: string[], mdmId?: string): RequestContext => ({
     sessionContext: { actorScope: scope, ...(mdmId ? { person: { mdmId, email: 'a@b.c', name: 'A' } } : {}) },
     mdm: { identity: { async listUsers(input: { pageSize?: number }) { listed.push(input); return people; } } },
@@ -262,8 +262,13 @@ test('resolveStepPerson follows the caller, then who already acted as that actor
   isAlphaAllAuthorities(undefined, () => ({ alphaAllAuthorities: true }));
   try {
     const first = await generated.resolveStepPerson(ctx([]), { actorRef: 'solicitante', step: 'preencher', history: [otherActor] });
-    assert.equal(first, 'mdm-b');
-    assert.deepEqual(listed, [{ pageSize: 1 }]);
+    assert.equal(first, 'mdm-b', 'the alpha shortcut skips an agent member');
+    assert.deepEqual(listed, [{ pageSize: 200 }]);
+    people = { items: [{ mdmId: 'mdm-agent', kind: 'agent' }] };
+    await assert.rejects(
+      () => generated.resolveStepPerson(ctx([]), { actorRef: 'solicitante', step: 'preencher', history: [otherActor] }),
+      (error: unknown) => error instanceof AppError && error.code === 'WORKFLOW_ACTOR_PERSON_UNKNOWN' && error.statusCode === 409,
+    );
   } finally {
     resetAlphaAuthoritiesCache();
   }
