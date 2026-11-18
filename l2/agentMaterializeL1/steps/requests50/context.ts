@@ -6,7 +6,7 @@
 
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
-import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations, catalogTypeBlock, inputCatalogBases } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -619,7 +619,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     parts.push(section(`Usecase ${item.unitId}${uses.has(item.unitId) ? ' (named in the def)' : ''}`, [
       `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`,
       fence('ts', exportSignatures(generated)),
-    ].join('\n\n')));
+      await catalogInputSection(ctx, generated),
+    ].filter(Boolean).join('\n\n')));
   }
   const enumPairs = await externalEnumPairs(ctx, cited);
   const unpaired = unpairedProblems(enumPairs);
@@ -724,6 +725,27 @@ export function untypedInputProblems(code: string): string[] {
     problems.push('Do not cast the input (or a value taken from it) to `Record<…>`: read it through its contract type, which says where each field is (the attendance note is `input.details.details.attendanceNote`).');
   }
   return problems;
+}
+
+/** The connection id of a catalog import specifier, only when it is exactly the one `catalogImportPath` gives. */
+function catalogIdOf(specifier: string): string {
+  const id = /([A-Za-z][A-Za-z0-9]*)\.js$/u.exec(specifier)?.[1] ?? '';
+  return id && catalogImportPath(id) === specifier ? id : '';
+}
+
+/**
+ * d1_198/d1_199: the input of a usecase on a connection only extends the catalog type (`GetXInput extends CmReadInput {}`),
+ * so its fields are not in the signature. The body of each catalog type it extends, read from the catalog file the
+ * import names (and only when that path is the one of `catalogFilePath`), goes in the same section.
+ */
+async function catalogInputSection(ctx: M12Context, generated: string): Promise<string> {
+  const blocks: string[] = [];
+  for (const base of inputCatalogBases(generated, specifier => catalogIdOf(specifier) !== '')) {
+    const source = await ctx.read(catalogFilePath(catalogIdOf(base.specifier)));
+    const block = source ? catalogTypeBlock(source, base.name) : '';
+    if (block) blocks.push(block);
+  }
+  return blocks.length ? ['The input extends a type of the connection catalog; its fields:', fence('ts', blocks.join('\n'))].join('\n') : '';
 }
 
 /** Problems of a model-written request service. Empty = the gate passes. */

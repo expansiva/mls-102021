@@ -130,6 +130,61 @@ export function catalogFieldUnion(source: string, typeName: string, field: strin
   return alias ? literalUnion(alias[1]) : [];
 }
 
+/** `export interface <name> { … }` of a catalog file, whole (members and their comments). '' when the file does not declare it. */
+export function catalogTypeBlock(source: string, typeName: string): string {
+  if (!ident(typeName)) return '';
+  const at = source.indexOf(`export interface ${typeName} `);
+  const open = at < 0 ? -1 : source.indexOf('{', at);
+  if (open < 0) return '';
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(at, index + 1);
+    }
+  }
+  return '';
+}
+
+/** Top-level comma split: a comma inside `<…>` stays (`Record<string, unknown>`). */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '<') depth += 1;
+    if (text[index] === '>') depth -= 1;
+    if (text[index] === ',' && depth === 0) { parts.push(text.slice(start, index)); start = index + 1; }
+  }
+  parts.push(text.slice(start));
+  return parts.map(part => part.trim()).filter(Boolean);
+}
+
+/**
+ * Catalog types the input of the exported function of a generated usecase extends: the first parameter type is an
+ * interface whose `extends` names a type imported from a module for which `isCatalogSpecifier` holds. Each name once.
+ */
+export function inputCatalogBases(generated: string, isCatalogSpecifier: (specifier: string) => boolean): Array<{ name: string; specifier: string }> {
+  const input = /export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)/u.exec(generated)?.[1];
+  if (!input) return [];
+  const header = new RegExp(`export\\s+interface\\s+${input}(?:<[^>]*>)?\\s+extends\\s+([^{]+)\\{`, 'u').exec(generated);
+  if (!header) return [];
+  const imported = new Map<string, string>();
+  for (const match of generated.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'([^']+)'/gu)) {
+    for (const raw of match[1].split(',')) {
+      const name = raw.trim().replace(/^type\s+/u, '').split(/\s+as\s+/u).pop()?.trim() ?? '';
+      if (name) imported.set(name, match[2]);
+    }
+  }
+  const out: Array<{ name: string; specifier: string }> = [];
+  for (const base of splitTopLevel(header[1])) {
+    const specifier = imported.get(base);
+    if (specifier && isCatalogSpecifier(specifier) && !out.some(item => item.name === base)) out.push({ name: base, specifier });
+  }
+  return out;
+}
+
 export interface CatalogField {
   name: string;
   optional: boolean;

@@ -188,3 +188,61 @@ test('an ontology that is not the JSON record still goes to the prompt as its so
     (globalThis as { mls: unknown }).mls = previous;
   }
 });
+
+test('d1_199: the usecase section of a request shows the fields of a connection catalog type its input extends, in the prompt and in the repair', async () => {
+  const previous = globalThis.mls;
+  const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
+  const catalogDir = '/_102034_/l1/server/layer_1_external/connections/catalogs';
+  const get = unit('usecase', 'getAgentDraft', { usecaseId: 'getAgentDraft', entityId: 'AgentDraft' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getAgentDraft.ts`);
+  const plain = unit('usecase', 'listAbertas', { usecaseId: 'listAbertas', entityId: 'Tarefa' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listAbertas.ts`);
+  const foreign = unit('usecase', 'getOther', { usecaseId: 'getOther', entityId: 'Other' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/getOther.ts`);
+  const request = unit('requestService', PAGE, {
+    pageId: PAGE,
+    requests: [{ route: `${MODULE}.${PAGE}.abertas`, uses: ['getAgentDraft', 'listAbertas', 'getOther'], output: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
+  const generated = [
+    `import type { CmReadAgentInput, CmReadAgentOutput } from '${catalogDir}/cm.js';`,
+    'export interface GetAgentDraftInput extends CmReadAgentInput, Record<string, unknown> {}',
+    'export interface GetAgentDraftOutput extends CmReadAgentOutput, Record<string, unknown> {}',
+    'export async function getAgentDraft(input: GetAgentDraftInput): Promise<GetAgentDraftOutput> { return input as never; }',
+  ].join('\n');
+  const foreignSource = [
+    "import type { Base } from '/_102099_/l1/fila/layer_3_domain/entities/other.js';",
+    'export interface GetOtherInput extends Base {}',
+    'export async function getOther(input: GetOtherInput): Promise<Base> { return input; }',
+  ].join('\n');
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: {
+      files: {
+        [keyOf(contractInfo)]: file(contractInfo, CONTRACT),
+        [keyOf(get.output)]: file(get.output, generated),
+        [keyOf(plain.output)]: file(plain.output, 'export async function listAbertas(input: { title: string }): Promise<{ title: string }> { return input; }\n'),
+        [keyOf(foreign.output)]: file(foreign.output, foreignSource),
+      },
+      getKeyToFile: keyOf,
+    },
+  };
+  const catalog = [
+    '/** The id of an agent. */',
+    'export interface CmReadAgentInput {',
+    '  agentId: string;',
+    '  includeDraft?: boolean;',
+    '}',
+    'export interface CmReadAgentOutput { agentId: string }',
+  ].join('\n');
+  const read = async (ref: string) => (ref.replace(/^\//u, '') === catalogDir.slice(1) + '/cm.ts' ? catalog : null);
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [request, get, plain, foreign], read };
+  try {
+    for (const repair of [undefined, { problems: ["TS2345 - Property 'agentId' is missing"], previous: 'export const requests = {};\n' }]) {
+      const human = (await loadRequestContext(ctx as never, request, repair)).human;
+      const section = human.slice(human.indexOf('Usecase getAgentDraft'), human.indexOf('Usecase listAbertas'));
+      assert.match(section, /The input extends a type of the connection catalog; its fields:/u);
+      assert.match(section, /export interface CmReadAgentInput \{\n  agentId: string;\n  includeDraft\?: boolean;\n\}/u);
+      assert.equal(section.includes('CmReadAgentOutput { agentId'), false, 'only the input type');
+      assert.equal(human.split('its fields:').length - 1, 1, 'the plain usecase and the one extending a module type get no section');
+    }
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
