@@ -241,6 +241,8 @@ test('d1_205: a process started by an event or a schedule opens with owner null;
   assert.match(event, /origin: \{ kind: 'event' \}/);
   assert.match(event, /Never require `person\.mdmId`/);
   assert.match(event, /WORKFLOW_ROUTINE_OWNER_INVALID/);
+  assert.match(event, /`'exclusive'` or `'group'` \(never `'person'`\)/);
+  assert.match(event, /routineOwnerProblem/);
   const scheduled = rulesOf({ kind: 'scheduled', schedule: '0 8 * * *' });
   assert.match(scheduled, /owner: null/);
   assert.match(scheduled, /origin: \{ kind: 'schedule' \}/);

@@ -127,7 +127,7 @@ export function registrationAccessSection(moduleName: string, configText: string
  */
 export function routineOwnerRule(triggerKind: string): string {
   const origin = triggerKind === 'scheduled' ? 'schedule' : 'event';
-  return `This process starts from ${triggerKind === 'scheduled' ? 'a schedule' : 'an event'}, with no person in the session. Never require \`person.mdmId\` and never throw an owner-missing error: open the occurrence with \`owner: null\`, \`actorNow: null\`, \`executor: { kind: 'routine', name }\`, \`origin: { kind: '${origin}' }\` and a \`room\` whose \`mode\` is not \`'person'\` (\`'exclusive'\`). The engine refuses \`owner: null\` under any other combination (\`WORKFLOW_ROUTINE_OWNER_INVALID\`, rule \`routineOwnerProblem\`). Only when the session does carry a person is \`owner\` that person's \`mdmId\`.`;
+  return `This process starts from ${triggerKind === 'scheduled' ? 'a schedule' : 'an event'}, with no person in the session. Never require \`person.mdmId\` and never throw an owner-missing error: open the occurrence with \`owner: null\`, \`actorNow: null\`, \`executor: { kind: 'routine', name }\`, \`origin: { kind: '${origin}' }\` and a \`room\` whose \`mode\` is \`'exclusive'\` or \`'group'\` (never \`'person'\`). The engine refuses \`owner: null\` under any other combination (\`WORKFLOW_ROUTINE_OWNER_INVALID\`, rule \`routineOwnerProblem\`). Only when the session does carry a person is \`owner\` that person's \`mdmId\`.`;
 }
 
 /**
