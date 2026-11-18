@@ -1077,7 +1077,7 @@ test('the workflow service: its facts, its l4 process, the usecase of each opera
   const l4 = 'export const workflows = ' + JSON.stringify({ processes: [{ processId: 'avisoDiario', functions: [{ functionId: 'gerarAvisosDiarios', description: 'Gera um aviso por responsável e dia.' }] }] }) + ' as const;';
   const tarefasRead = async (ref: string) => ref.endsWith('/l4/tarefas/workflows.defs.ts') ? l4 : null;
   const tarefasCtx = await loadWorkflowContext({ run: { project: 102047, module: 'tarefas' }, units: [avisos], read: tarefasRead } as never, avisos);
-  const rules = engineUseRules('tarefas', 'avisoDiario');
+  const rules = engineUseRules('tarefas', 'avisoDiario', 'scheduled');
   assert.match(tarefasCtx.human, /How every process function uses the engine/);
   assert.ok(tarefasCtx.human.includes(rules), 'the tarefas context carries the engine-use rules');
   assert.match(tarefasCtx.human, /for that recipient only/);

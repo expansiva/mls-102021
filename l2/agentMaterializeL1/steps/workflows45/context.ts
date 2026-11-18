@@ -121,10 +121,20 @@ export function registrationAccessSection(moduleName: string, configText: string
 }
 
 /**
+ * The owner of an occurrence that no person starts (d1_205). The L4 trigger `event` / `scheduled` is the engine origin
+ * `event` / `schedule` (`WorkflowOrigin.kind`); the engine accepts `owner: null` only under `routineOwnerProblem`
+ * (`/_102034_/l1/workflow/engine.ts`), which is what this text repeats.
+ */
+export function routineOwnerRule(triggerKind: string): string {
+  const origin = triggerKind === 'scheduled' ? 'schedule' : 'event';
+  return `This process starts from ${triggerKind === 'scheduled' ? 'a schedule' : 'an event'}, with no person in the session. Never require \`person.mdmId\` and never throw an owner-missing error: open the occurrence with \`owner: null\`, \`actorNow: null\`, \`executor: { kind: 'routine', name }\`, \`origin: { kind: '${origin}' }\` and a \`room\` whose \`mode\` is not \`'person'\` (\`'exclusive'\`). The engine refuses \`owner: null\` under any other combination (\`WORKFLOW_ROUTINE_OWNER_INVALID\`, rule \`routineOwnerProblem\`). Only when the session does carry a person is \`owner\` that person's \`mdmId\`.`;
+}
+
+/**
  * Rules every process function follows when it calls the module engine. The engine does the owner action;
  * the function supplies the command and applies the L4 system transition from the returned notice state only.
  */
-export function engineUseRules(moduleName: string, processId: string): string {
+export function engineUseRules(moduleName: string, processId: string, triggerKind = ''): string {
   return [
     'Open with `engine.open(ctx, { key, plan, title, firstStep, actorNow, owner, origin, executor, room, message? })`. Advance with `engine.advance(ctx, key, { commandId, expectedRevision, from, to, actorNow, executor, note?, wake?, message? })`. No step table on `advance`. `find` is `engine.find(ctx, key)`.',
     'The function whose L4 prose returns the person of a human step calls `resolveStepPerson(ctx, { actorRef, step, history })` from this module engine and returns that result. `actorRef` and `step` are that step in the engine table; `history` is the `history` of the `find` of the same call. Never return `null` or `\'\'`, never query the MDM on your own and never invent who holds the actor. The helper\'s error is thrown as it is.',
@@ -133,6 +143,7 @@ export function engineUseRules(moduleName: string, processId: string): string {
     'The notice result decides the L4 system transition, only from the state returned (`moduleMessage`, or `noticeState` when the module engine exports it). `sent` → the success transition (in `tarefas`, `concluirAviso`) and `to: \'end\'`. A definitive port error (below) → the failure transition (`falharAviso`, `motivoFalha` with no personal data) and `to: \'end\'`. `pending` or absent → the record stays `pending` and the Task stays on the step. Never a second message and never another `commandId` to repeat the same command.',
     'A notice still `pending` from an earlier run is settled by the next run of the start function, **for that recipient only**: if its message is `sent`, apply the success transition; otherwise apply the failure transition with `motivoFalha` = `NOTICE_DELIVERY_NOT_CONFIRMED`; then that recipient\'s new notice starts. A `sent` that arrives after the failure is only logged. A pending notice of one recipient never blocks another.',
     'A `wait` step requests a wake only when the L4 gives it a time (a deadline, a reminder or a period in the step description or in a rule) and names the function that handles it; `everyMinutes`/`until` come from that text and `routine` is that function. Otherwise the step has no wake: the wait ends by the action of the next step\'s owner. Never invent an interval.',
+    ...(triggerKind === 'event' || triggerKind === 'scheduled' ? [routineOwnerRule(triggerKind)] : []),
     '`onTick(ctx, now)` stays the public entry of the schedule. `ctx.clock` agrees with `now`.',
     'Port errors do not open another occurrence. Temporary (`WORKFLOW_CM_BUSY`, `WORKFLOW_CM_TASK_INCOMPLETE`, `WORKFLOW_CM_ROOM_UNAVAILABLE`, `WORKFLOW_IDENTITY_INCOMPLETE`, HTTP 503): the screen receives the error so the person can try again; the routine leaves the notice `pending` for the next execution and does not change the business record. Definitive for the command (`WORKFLOW_CM_REJECTED`, `WORKFLOW_IDENTITY_UNLINKED`, `WORKFLOW_IDENTITY_REMOVED`): the screen receives the error; the routine applies the failure transition with the code as `motivoFalha`.',
   ].join('\n');
@@ -567,7 +578,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     'That context returns the occurrence record id on the first `newId` and delegates every later id to the parent generator. Check, on that usecase, that the record is the first `newId`.',
     'Import `occurrenceRecordId` and `createOccurrenceContext` from `/_102034_/l1/workflow/index.js`. The version of an occurrence is the one the engine stored (the release, or `null`).',
   ].join('\n')));
-  parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId)));
+  parts.push(section('How every process function uses the engine', engineUseRules(moduleName, facts.processId, facts.trigger.kind)));
   const processSteps = workflowProcessSteps(readProcess);
   const platform = [WORKFLOW_INDEX_REF, WORKFLOW_ENGINE_REF, WORKFLOW_CONTRACTS_REF, WORKFLOW_RECORD_ID_REF, PLATFORM_FILES.requestContext, PLATFORM_FILES.repositoryRegistry, ...(facts.trigger.kind === 'scheduled' ? [EVALUATE_SCHEDULE_REF] : [])];
   const platformSources = await Promise.all(platform.slice(0, 3).map(ref => ctx.read(ref)));

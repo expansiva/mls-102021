@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { citedOntology, engineUseRules, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowEngineShown, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { citedOntology, engineUseRules, llmStepSection, reexportRef, typeAlias, loadWorkflowContext, workflowAnswerProblems, workflowFacts, workflowEngineShown, workflowGate, workflowLlmExportNames, workflowProcessSteps } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 
 const prompt = readFileSync(fileURLToPath(new URL('./prompt.md', import.meta.url)), 'utf8');
 
@@ -225,4 +225,28 @@ test('the worker context carries the wake handler type and the fixed forms, read
   assert.equal(workflowWakeHandlerForm('pesquisar'), 'export async function entregarPesquisar(ctx: RequestContext, event: ModuleWakeEvent): Promise<void>');
   const withoutAlias = llmStepSection('cicloItem', steps);
   assert.equal(withoutAlias.includes('export type WorkflowWakeHandler'), false);
+});
+
+test('d1_205: a process started by an event or a schedule opens with owner null; a person process does not', () => {
+  const rulesOf = (trigger: Record<string, unknown>): string => {
+    const base = unit('refresh', TASKS);
+    const data = { ...(base.definition.data as Record<string, unknown>), trigger };
+    const facts = workflowFacts({ ...base, definition: { ...base.definition, data }, declared: { data } } as unknown as M12Unit);
+    return engineUseRules('agents', facts.processId, facts.trigger.kind);
+  };
+  const event = rulesOf({ kind: 'event', event: 'platform.releaseCatalogChanged' });
+  assert.match(event, /owner: null/);
+  assert.match(event, /actorNow: null/);
+  assert.match(event, /kind: 'routine'/);
+  assert.match(event, /origin: \{ kind: 'event' \}/);
+  assert.match(event, /Never require `person\.mdmId`/);
+  assert.match(event, /WORKFLOW_ROUTINE_OWNER_INVALID/);
+  const scheduled = rulesOf({ kind: 'scheduled', schedule: '0 8 * * *' });
+  assert.match(scheduled, /owner: null/);
+  assert.match(scheduled, /origin: \{ kind: 'schedule' \}/);
+  const person = rulesOf({ kind: 'manual', actorRef: 'companyAdmin' });
+  assert.equal(person.includes('owner: null'), false);
+  assert.equal(person.includes('routineOwnerProblem'), false);
+  assert.match(person, /engine\.open\(ctx/);
+  for (const text of [event, scheduled]) assert.equal(text.includes('platform.releaseCatalogChanged'), false);
 });
