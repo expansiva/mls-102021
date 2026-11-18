@@ -11,6 +11,7 @@ import { hashesAgree, sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/ide
 import { readWriterReceipts } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
   D1_INPUT_VERSION,
   contractPath,
@@ -293,7 +294,8 @@ async function loadServeCatalogs(integration: unknown): Promise<{ catalogTexts: 
     const connectionId = text(row.connectionId);
     if (!isSafeToken(connectionId) || seen.has(connectionId)) continue;
     seen.add(connectionId);
-    const path = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+    const path = catalogFilePath(connectionId);
+    if (!path) continue;
     const info = catalogInfo(path);
     const body = info ? await readText(info) : null;
     if (body) catalogTexts[connectionId] = body;

@@ -6,12 +6,13 @@ import { commitD1Unit, logicalDefPath, type D1UnitPart } from '/_102021_/l2/agen
 import { futureOutputPath, qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityCatalogSource, entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
 import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
+import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serveControllerGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
@@ -236,7 +237,8 @@ async function enumSnapshotOf(
   const catalogs = new Set<string>();
   for (const text of Object.values(sources)) {
     const parsed = parseD1Source(text, 'defs');
-    if (isRecord(parsed) && typeof parsed.source === 'string' && parsed.source) catalogs.add(parsed.source);
+    const source = entityCatalogSource(parsed);
+    if (source) catalogs.add(source);
   }
   for (const source of catalogs) {
     if (sources[source]) continue;
@@ -865,7 +867,7 @@ async function connectionCatalogs(rows: readonly unknown[]): Promise<Record<stri
   for (const row of rows) {
     if (!isRecord(row) || row.direction !== 'call' || typeof row.connectionId !== 'string' || !row.connectionId) continue;
     if (Object.hasOwn(catalogs, row.connectionId)) continue;
-    const info = catalogInfo(`/_102034_/l4/ontology/connections/${row.connectionId}.defs.ts`);
+    const info = catalogInfo(catalogFilePath(row.connectionId));
     if (!info) {
       catalogs[row.connectionId] = null;
       continue;

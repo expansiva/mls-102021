@@ -17,6 +17,7 @@ import { buildD1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/gat
 import { parseD1Source, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import type { D1DomainBuild, D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { buildD1Domain, type D1DomainRequest } from '/_102021_/l2/agentDefsL1/steps/domain30/gate.js';
+import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import {
   ambiguousRefEntity,
   cycleEntities,
@@ -516,16 +517,35 @@ void test('a transition without ruleRefs is valid: the L4 cites rules only when 
 });
 
 void test('a connection catalog typed `export const cm: ConnectionCatalog = {…}` is read and needs no rules', () => {
-  const source = '/_102034_/l4/ontology/connections/cm.defs.ts';
-  const text = 'import type { ConnectionCatalog } from "/_102034_/l4/ontology/connections/types.defs.js";\n'
+  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  const text = 'import type { ConnectionCatalog } from "/_102034_/l1/server/layer_1_external/connections/catalogs/types.js";\n'
     + 'export const cm: ConnectionCatalog = {\n  "operations": [{ "operationId": "readAgent", "direction": "call" }]\n};\n';
   const catalog = parseD1Source(text, 'defs');
   assert.ok(catalog);
   const built = buildD1Domain(requestFrom({
-    RemoteAgent: { entityId: 'RemoteAgent', kind: 'external', source, record: { fields: { name: { type: 'string' } } } },
+    RemoteAgent: { entityId: 'RemoteAgent', kind: 'external', connectionId: 'cm', record: { fields: { name: { type: 'string' } } } },
   }, { rules: {} }, { [source]: catalog }));
   assert.equal(built.ok, true, JSON.stringify(built.problems));
   assert.equal(built.problems.some(problem => problem.code === 'CATALOG_UNREAD'), false);
+});
+
+void test('d1_197: an external entity names its connection by connectionId only; a source with no connectionId is an error', () => {
+  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  const catalog = { operations: [{ operationId: 'readAgent', direction: 'call' }] };
+  const body = { entityId: 'RemoteAgent', kind: 'external', source, record: { fields: { name: { type: 'string' } } } };
+  const old = buildD1Domain(requestFrom({ RemoteAgent: body }, { rules: {} }, { [source]: catalog }));
+  assert.equal(old.ok, false);
+  assert.equal(codes(old, 'error').includes('EXTERNAL_ENTITY_WITHOUT_CONNECTION'), true);
+  const bad = buildD1Domain(requestFrom({ RemoteAgent: { ...body, source: undefined, connectionId: 'not a name' } }, { rules: {} }, {}));
+  assert.equal(codes(bad, 'error').includes('EXTERNAL_ENTITY_WITHOUT_CONNECTION'), true);
+});
+
+void test('d1_197: catalogInfo reads the connection catalog only at the path of the single helper', () => {
+  const real = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+  assert.deepEqual(catalogInfo(real), { project: 102034, level: 1, folder: 'server/layer_1_external/connections/catalogs', shortName: 'cm', extension: '.ts' });
+  assert.equal(catalogInfo('/_102034_/l1/server/layer_1_external/connections/catalogs/Cm.ts'), null);
+  assert.equal(catalogInfo('/_102034_/l1/other/catalogs/cm.ts'), null);
+  assert.equal(catalogInfo('/_102034_/l4/ontology/connections/cm.defs.ts')?.extension, '.defs.ts');
 });
 
 void test('an object of a platform type keeps of; a name that is not of the platform is dropped', () => {
@@ -552,11 +572,11 @@ void test('an object of a platform type keeps of; a name that is not of the plat
 });
 
 void test('an external entity has no local table and a connection catalog needs no rules', () => {
-  const source = '/_102034_/l4/ontology/connections/cm.defs.ts';
+  const source = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
   const body = {
     entityId: 'RemoteAgent',
     kind: 'external',
-    source,
+    connectionId: 'cm',
     record: { fields: { name: { type: 'string' } } },
   };
   const built = buildD1Domain(requestFrom({ RemoteAgent: body }, { rules: {} }, {

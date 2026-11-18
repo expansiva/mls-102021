@@ -11,7 +11,7 @@ import type { D1InputProblem, D1SelectedUsecase } from '/_102021_/l2/agentDefsL1
 import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const catalogPath = path.resolve(here, '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts');
+const catalogPath = path.resolve(here, '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts');
 const catalogText = readFileSync(catalogPath, 'utf8');
 
 const MODULE = 'desk';

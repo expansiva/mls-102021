@@ -792,7 +792,7 @@ function connectionRequest(operations: D1EffectOperation[]): D1SupportRequest {
 void test('a catalog call becomes a connections row', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([connectionOp({
@@ -824,7 +824,7 @@ void test('a catalog call becomes a connections row', async () => {
 void test('a call outside the catalog, a missing catalog and an unresolved consumer are diagnosed', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([
@@ -863,7 +863,7 @@ function repoAdapter(moduleName: string): D1SupportRequest['adapters'][number] {
 void test('one connection adds one gateway row and the registry depends on outbound', async () => {
   const catalog = await catalogOperationsOf(readFileSync(path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+    '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
   ), 'utf8'));
   assert.ok(catalog);
   const request = connectionRequest([

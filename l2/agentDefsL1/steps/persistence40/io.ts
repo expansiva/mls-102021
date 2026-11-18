@@ -8,7 +8,7 @@ import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { artifactFile, parseRendered, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
-import { entityPath, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityCatalogSource, entityPath, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import type { D1PersistenceBuild, D1PersistenceRequest } from '/_102021_/l2/agentDefsL1/steps/persistence40/contracts.js';
 import { buildD1Persistence } from '/_102021_/l2/agentDefsL1/steps/persistence40/gate.js';
@@ -118,7 +118,7 @@ async function persistenceRequest(
   for (const plan of domain.entities) {
     if (plan.storageTarget !== 'external') continue;
     const body = entities[plan.entityId];
-    const source = isRecord(body) && typeof body.source === 'string' ? body.source.trim() : '';
+    const source = entityCatalogSource(body);
     if (!source) continue;
     const info = catalogInfo(source);
     if (!info) continue;

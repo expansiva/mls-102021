@@ -492,11 +492,11 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
       outputRef: '',
     } as unknown as M12Unit;
   };
-  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l4/ontology/connections/cm.defs.ts', import.meta.url)), 'utf8');
+  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts', import.meta.url)), 'utf8');
   const withCall = (consumer: string) => {
     const built = focusedUnit(tasks, functions, []);
     const read = built.ctx.read;
-    built.ctx.read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalogSource : read(ref);
+    built.ctx.read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalogSource : read(ref);
     built.ctx.units.push(outbound(consumer));
     return built;
   };

@@ -60,6 +60,7 @@ function forbiddenImportReason(spec: string): string | null {
     return `static import of another agent (${spec})`;
   }
   if (spec.startsWith('/_102020_/l2/helpers/contractV2/')) return null;
+  if (spec === '/_102020_/l2/helpers/connections/catalogPath.js') return null;
   if (spec.startsWith('/_102035_/') || spec.startsWith('/_102020_/')) return `static import outside this agent (${spec})`;
   return null;
 }

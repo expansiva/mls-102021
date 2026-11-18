@@ -9,8 +9,8 @@ import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.j
 import { loadRequestContext, normalizeRequestsTyping, requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
-const CATALOG_REF = '_102034_/l4/ontology/connections/cm.defs.ts';
+const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
+const CATALOG_REF = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
 const PROJECT = 102099;
 const MODULE = 'agents';
 
@@ -51,7 +51,7 @@ test('a serve request context quotes the connection catalog and the repeat rule,
   assert.doesNotMatch(loaded.human, /## Contract /);
   assert.equal(loaded.contractsInterface.includes('CmRecordInput'), true);
   assert.equal(loaded.contractsInterface.includes('CmRecordOutput'), true);
-  assert.deepEqual(loaded.catalogSpecifiers, ['/_102034_/l4/ontology/connections/cm.defs.js']);
+  assert.equal(loaded.contractSpecifier, '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js');
 });
 
 test('the serve gate accepts a catalog-typed requests and refuses fetch and callConnection', async () => {

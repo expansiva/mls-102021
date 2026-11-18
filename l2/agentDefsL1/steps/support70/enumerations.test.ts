@@ -210,7 +210,7 @@ void test('an external entity enum is its own origin', () => {
     title: 'Remote agent',
     description: 'Lives on a connection.',
     displayField: 'name',
-    source: '/_102034_/l4/ontology/connections/cm.defs.ts',
+    connectionId: 'cm',
     record: { fields: { status: { type: 'enum', values: ['on', 'off'] } } },
     relationships: {},
     capabilities: {},

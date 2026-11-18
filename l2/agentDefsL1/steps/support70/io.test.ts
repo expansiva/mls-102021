@@ -137,7 +137,7 @@ void test('a disclosure mode outside fullRecord, fieldsOnly and summaryOnly is a
 
 const CM_CATALOG = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
+  '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts',
 );
 
 function selectedUsecase(usecaseId: string, entity = 'Nota', operation = 'read', transitionRef = ''): D1SelectedUsecase {

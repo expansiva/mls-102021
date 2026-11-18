@@ -6,10 +6,11 @@ import { commitD1Unit, type D1UnitPart } from '/_102021_/l2/agentDefsL1/helpers/
 import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { qualifyDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { entityPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityCatalogSource, entityPath, inputPaths, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source, readD1Input } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { type D1DomainBuild } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
 import { buildD1Domain, type D1DomainRequest } from '/_102021_/l2/agentDefsL1/steps/domain30/gate.js';
+import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export async function assembleD1Domain(project: number, moduleName: string): Promise<{ refusal: string } | { build: D1DomainBuild }> {
   const snapshot = await readD1Input(project, moduleName);
@@ -83,7 +84,8 @@ async function domainRequest(
   const catalogs: Record<string, unknown> = {};
   const sources = new Set<string>();
   for (const body of Object.values(entities)) {
-    if (isRecord(body) && typeof body.source === 'string' && body.source.trim()) sources.add(body.source.trim());
+    const source = entityCatalogSource(body);
+    if (source) sources.add(source);
   }
   for (const source of sources) {
     const info = catalogInfo(source);
@@ -119,13 +121,15 @@ async function readLogical(project: number, logical: string): Promise<string | n
   return readText(file);
 }
 
-/** A catalog may live in another project. `..` and a short name with a dot are refused. */
+/** A catalog may live in another project. `..` and a short name with a dot are refused. An MDM catalog is `.defs.ts`; a connection catalog is the `.ts` of `catalogFilePath`. */
 export function catalogInfo(source: string): D1FileInfo | null {
   if (!source || source.includes('..')) return null;
   const match = /^\/?_(\d+)_\/l(\d+)\/(.+)\/([^/]+)$/.exec(source);
   if (!match) return null;
   const fileName = match[4];
-  const extension = fileName.endsWith('.defs.ts') ? '.defs.ts' : '';
+  let extension = fileName.endsWith('.defs.ts') ? '.defs.ts' : '';
+  // A connection catalog is a plain `.ts` of the platform L1, and only the single path of the helper counts.
+  if (!extension && fileName.endsWith('.ts') && catalogFilePath(fileName.slice(0, -3)) === `/${source.replace(/^\//, '')}`) extension = '.ts';
   if (!extension) return null;
   const shortName = fileName.slice(0, fileName.length - extension.length);
   if (!isSafeToken(shortName) || shortName.includes('.')) return null;

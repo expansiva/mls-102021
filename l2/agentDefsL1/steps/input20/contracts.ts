@@ -2,6 +2,7 @@
 
 import type { D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
+import { catalogFilePath, externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export const D1_INPUT_VERSION = '2026-10-01-d1-input-v2' as const;
 
@@ -78,7 +79,7 @@ export interface D1InputArtifacts {
   contracts: Record<string, D1ContractAst | null>;
   /** Page id → contract source. Present when the file was read. */
   contractTexts?: Record<string, string>;
-  /** Connection id → catalog source (`/_102034_/l4/ontology/connections/<id>.defs.ts`). Snapshot input, not a def field. */
+  /** Connection id → catalog source (`catalogFilePath(<id>)`). Snapshot input, not a def field. */
   catalogTexts?: Record<string, string>;
   presentDefs: D1PresentDef[];
   /**
@@ -294,6 +295,17 @@ export function entityPath(moduleName: string, entityId: string): string {
 
 export function contractPath(moduleName: string, pageId: string): string {
   return `l2/${moduleName}/web/contracts/${pageId}.defs.ts`;
+}
+
+/**
+ * Catalog file an entity def cites. An `external` entity names its connection by `connectionId` and nothing else
+ * (no `source`, no fallback): the file is the one `catalogFilePath` gives. Any other entity cites it by `source`.
+ * Empty when there is none.
+ */
+export function entityCatalogSource(body: unknown): string {
+  const record = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+  if (record.kind === 'external') return catalogFilePath(externalConnectionId(record));
+  return typeof record.source === 'string' ? record.source.trim() : '';
 }
 
 export function isSafeToken(value: string): boolean {

@@ -21,6 +21,7 @@ import type { TableDefinition } from '/_102034_/l1/server/layer_1_external/persi
 import { readFixturePlan, type M1FixturePlan } from '/_102021_/l2/helpers/l1Defs/fixture.js';
 import { auditImports, importSpecifier, ontologyCollections, ontologyRef, type EmitFailure, type StructureRead } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { actorMdmSeedRows, l4ActorsOf, seedOntologyRef } from '/_102021_/l2/agentMaterializeL1/steps/seedRows25/context.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 const CONTRACTS = '/_102034_/l1/server/layer_1_external/persistence/contracts.js';
 const DATA_RUNTIME = '/_102034_/l1/server/layer_1_external/data/moduleDataRuntime.js';
@@ -441,7 +442,7 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
   const blocks: string[] = [];
   const imports = [APP_CONTRACTS, CALL_CONNECTION];
   for (const connectionId of [...byConnection.keys()].sort()) {
-    const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+    const catalogRef = catalogFilePath(connectionId);
     const source = await read(catalogRef);
     const operations = source ? catalogOperations(source) : null;
     if (!operations) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} was not read. No gateway was written.` };
@@ -451,7 +452,7 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
       if (!operation) return { code: 'OPERATION_NOT_IN_CATALOG', detail: `${connectionId}.${row.operationId} is not in the catalog. No gateway was written.` };
       used.push(operation);
     }
-    const specifier = catalogRef.replace(/\.ts$/, '.js');
+    const specifier = catalogImportPath(connectionId);
     imports.push(specifier);
     const typeNames = [...new Set(used.flatMap(item => [item.inputType, item.outputType]))].sort();
     const gateway = `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/enumerations.ts" enhancement="_blank"/>
 
 import { isRecord } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
+import { entityCatalogSource } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import {
   ENUMERATION_CONSUMED_REASON,
@@ -109,7 +110,7 @@ function originOf(entityId: string, path: string, effective: readonly string[], 
   const unresolved = emptyOrigin();
   const entity = bodies.entities[entityId];
   if (!isRecord(entity)) return unresolved;
-  const source = typeof entity.source === 'string' ? entity.source : '';
+  const source = entityCatalogSource(entity);
   if (entity.kind === 'external') return externalOrigin(entity, path, source);
   const catalog = source ? bodies.catalogs[source] : undefined;
   const resolved = catalog ? resolvedNodes(entity, bodies.index, catalog, bodies.rules) : null;

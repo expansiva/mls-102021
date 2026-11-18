@@ -14,6 +14,7 @@ import { connectionRowsOf, externalEntityIds, externalRepositoryPort, gatewayNam
 import { moduleMdmLinksSection } from '/_102021_/l2/agentMaterializeL1/helpers/m12MdmLinks.js';
 import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export const M12_USECASE_TOOL = 'writeUsecase' as const;
 
@@ -264,7 +265,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
   }
   for (const connectionId of [...byConnection.keys()].sort()) {
     const gateway = gatewayNameOf(connectionId);
-    const catalogSource = await ctx.read(`/_102034_/l4/ontology/connections/${connectionId}.defs.ts`);
+    const catalogSource = await ctx.read(catalogFilePath(connectionId));
     const catalog = (catalogSource ? catalogOperations(catalogSource) : null) ?? [];
     const lines = (byConnection.get(connectionId) ?? []).map(row => {
       const operation = catalog.find(item => item.operationId === row.operationId);

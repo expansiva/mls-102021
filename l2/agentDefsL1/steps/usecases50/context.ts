@@ -7,6 +7,7 @@ import { readText } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import {
   contractPath,
+  entityCatalogSource,
   entityPath,
   inputPaths,
   isSafeToken,
@@ -118,8 +119,9 @@ export async function loadVerifiedSources(
   const catalogs: VerifiedBundle['catalogs'] = [];
   const seenCatalog = new Set<string>();
   for (const body of Object.values(bodies)) {
-    if (!isRecord(body) || typeof body.source !== 'string' || !body.source.trim()) continue;
-    const source = body.source.trim();
+    if (!isRecord(body)) continue;
+    const source = entityCatalogSource(body);
+    if (!source) continue;
     if (seenCatalog.has(source)) continue;
     seenCatalog.add(source);
     const text = await readCatalogText(source);

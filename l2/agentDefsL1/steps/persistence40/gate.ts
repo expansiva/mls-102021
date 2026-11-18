@@ -16,7 +16,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { renderDefinition, stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
 import { D1_DOMAIN_VERSION, type D1DomainBuild, type D1DomainEntityPlan } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
-import { isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityCatalogSource, isSafeToken } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { L1_OPERATIONS, portReadsFor, type L1Operation } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import {
   D1_DETAILS_COLUMN,
@@ -902,7 +902,7 @@ function pushEmit(
 }
 
 function sourceOf(body: unknown): string {
-  return isRecord(body) ? text(body.source) : '';
+  return entityCatalogSource(body);
 }
 
 function finish(

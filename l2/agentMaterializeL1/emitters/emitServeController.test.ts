@@ -13,8 +13,8 @@ import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1
 import { AppError } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
-const CM_DEFS = '/_102034_/l4/ontology/connections/cm.defs.ts';
-const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+const CM_DEFS = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
 const SCOPE = '_102099_/l1/agents/layer_2_application/access/accessScope.defs.ts';
 const SERVICE = '_102099_/l1/agents/layer_2_application/requests/cm.defs.ts';
 const TSC = path.join(ROOT, 'node_modules', '.bin', 'tsc');
@@ -100,11 +100,11 @@ test('record, describe and agentDraftReady compile against cm.defs and validate 
   const emitted = await emitController(definition(SERVE_HANDLERS), 'cm.ts', readOf(service(SERVE_REQUESTS)));
   assert.equal('code' in emitted ? (emitted as { code: string }).code : '', '');
   if ('code' in emitted) return;
-  assert.match(emitted.source, /import type \{ CmAgentDraftReadyInput, CmAgentDraftReadyOutput, CmDescribeInput, CmDescribeOutput, CmRecordInput, CmRecordOutput \} from '\/_102034_\/l4\/ontology\/connections\/cm\.defs\.js'/);
+  assert.match(emitted.source, /import type \{ CmAgentDraftReadyInput, CmAgentDraftReadyOutput, CmDescribeInput, CmDescribeOutput, CmRecordInput, CmRecordOutput \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/catalogs\/cm\.js'/);
   assert.match(emitted.source, /const params = scoped as unknown as CmRecordInput;/);
   assert.match(emitted.source, /data: data as CmRecordOutput/);
   assert.doesNotMatch(emitted.source, /Contracts\['agents\.cm\.record'\]/);
-  assert.deepEqual(emitted.imports.filter(item => item.includes('/connections/')), ['/_102034_/l4/ontology/connections/cm.defs.js']);
+  assert.deepEqual(emitted.imports.filter(item => item.includes('/connections/')), ['/_102034_/l1/server/layer_1_external/connections/catalogs/cm.js']);
   const typecheck = checkTypes(emitted.source);
   assert.equal(typecheck.clean, '', typecheck.clean);
   assert.match(typecheck.injected, /error TS/);

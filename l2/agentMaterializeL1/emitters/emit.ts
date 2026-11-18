@@ -31,6 +31,7 @@ import {
   defV1Detail,
   type StructureGrant,
 } from '/_102021_/l2/agentMaterializeL1/emitters/gate.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 /** Raised when the structure handler body changes. An older receipt is a new input. */
 export const STRUCTURE_HANDLER_RECIPE = '2026-10-02-structure-handler-v13';
@@ -619,7 +620,7 @@ async function resolveServeRoute(
   if (!mark) return { code: 'SERVES_MARK', detail: `${route} serves mark is not <connectionId>.<operationId>.` };
   const connectionId = mark[1];
   const operationId = mark[2];
-  const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+  const catalogRef = catalogFilePath(connectionId);
   const catalog = await read(catalogRef);
   if (catalog === null) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} could not be read.` };
   const operations = catalogOperations(catalog);
@@ -632,7 +633,7 @@ async function resolveServeRoute(
   const closed = unopenedNamedMembers(catalog, operation.inputType, members.allowedPaths);
   if (closed.length) return { code: 'CONTRACT_INPUT_UNOPENED', detail: `${route} input has members typed by a contract interface that were not opened: ${closed.join(', ')}.` };
   return {
-    specifier: catalogRef.replace(/\.ts$/, '.js'),
+    specifier: catalogImportPath(connectionId),
     route: {
       route,
       fn: functionName(route),

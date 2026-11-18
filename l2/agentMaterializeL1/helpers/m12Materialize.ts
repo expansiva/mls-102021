@@ -25,6 +25,7 @@ import {
 } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { moduleDefinitions, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 /** Raised when a recipe or a check of this agent changes: an older status is a new input. */
 export const M12_RECIPE_VERSION = '2026-10-16-m12-recipe-v22';
@@ -203,7 +204,7 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
     if (connectionIds.length) {
       // A serve request is derived from the connection catalog. A page request still hashes only its page contract.
       for (const connectionId of connectionIds) {
-        const ref = `_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+        const ref = catalogFilePath(connectionId);
         parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
       }
     } else {

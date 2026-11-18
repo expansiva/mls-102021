@@ -18,7 +18,7 @@ import {
   type D1PipelineItem,
 } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { stampDefinition } from '/_102021_/l2/agentDefsL1/helpers/d1Write.js';
-import { isSafeToken, lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
+import { entityCatalogSource, isSafeToken, lowerFirst } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import {
   D1_DOMAIN_ACTIONS,
   D1_DOMAIN_VERSION,
@@ -259,13 +259,17 @@ function planEntity(
   const uniqueKeys = body ? readUniqueKeys(entityId, body, problems, blocked) : [];
   const enumerations: D1Enumeration[] = [];
   const fields = body && !bag.shape ? emitFields(entityId, body, resolutions, extracted, problems, normalizations, enumerations, blocked) : [];
-  const source = body ? text(body.source) : '';
+  const kind = body ? text(body.kind) || row?.kind || '' : row?.kind || '';
+  const source = body ? entityCatalogSource(kind === 'external' ? { ...body, kind } : body) : '';
+  if (body && kind === 'external' && !source) {
+    error(problems, 'EXTERNAL_ENTITY_WITHOUT_CONNECTION', entityId, `External entity ${entityId} has no valid connectionId. The catalog is named by connectionId and nothing else.`);
+    blocked.add(entityId);
+  }
   const catalog = source && Object.prototype.hasOwnProperty.call(request.catalogs, source) ? request.catalogs[source] : undefined;
   if (source && catalog === undefined) {
     review(problems, 'CATALOG_UNREAD', source, `Catalog ${source} was not opened. Citations keep that owner and their spelling.`);
   }
   const catalogRules = catalog === undefined ? null : ruleMap(catalog);
-  const kind = body ? text(body.kind) || row?.kind || '' : row?.kind || '';
   // A connection catalog is operations, not MDM rules. An MDM catalog still needs `rules`.
   const connectionCatalog = kind === 'external' && isConnectionCatalog(catalog);
   if (!connectionCatalog && catalogRules && catalogRules.size === 0 && isRecord(catalog) && !isRecord(catalog.rules)) {

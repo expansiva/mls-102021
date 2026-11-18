@@ -21,6 +21,7 @@ import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.j
 import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts, sessionCompanyAnchor } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 export const M12_REQUEST_TOOL = 'writeRequestService' as const;
 export const M12_REQUEST_TOOL_DESCRIPTION = 'Return the whole request service TypeScript file of the page, and the listed rules that do not apply to it';
@@ -137,8 +138,6 @@ export interface M12RequestContext {
   contractsInterface: string;
   /** The import specifier of the page contract (`/_P_/l2/<mod>/web/contracts/<page>.defs.js`). A serve route puts the catalog specifier here. */
   contractSpecifier: string;
-  /** Catalog specifiers a serve request may import. Absent for a page. */
-  catalogSpecifiers?: readonly string[];
   header: string;
   routes: M12ContractRoute[];
   contractRef: string;
@@ -393,7 +392,7 @@ export function mdmInputProblems(code: string, inputs: readonly M12MdmInput[]): 
 const SERVES_MARK = /^([a-z][A-Za-z0-9]*)\.([a-z][A-Za-z0-9]*)$/u;
 
 function connectionCatalogRef(connectionId: string): string {
-  return `_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+  return catalogFilePath(connectionId);
 }
 
 function serveMarks(data: Record<string, unknown>): { connectionId: string; operationId: string; row: Record<string, unknown> }[] {
@@ -498,7 +497,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       throw new Error(`OPERATION_NOT_IN_CATALOG: ${mark.connectionId}.${mark.operationId} is not a serve operation of the connection catalog.`);
     }
     const route = String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`);
-    const specifier = `/${connectionCatalogRef(mark.connectionId).replace(/\.defs\.ts$/u, '.defs.js')}`;
+    const specifier = catalogImportPath(mark.connectionId);
     typed.push({ route, inputType: operation.inputType, outputType: operation.outputType, specifier });
     routes.push({ route, kind: operation.kind === 'command' ? 'cmd' : 'qry', inputFields: [], actors: [], rules: [] });
     const flags = [
@@ -556,7 +555,6 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     pageId,
     contractsInterface,
     contractSpecifier: catalogSpecifiers[0] ?? '',
-    catalogSpecifiers,
     header,
     routes,
     contractRef: connectionCatalogRef(marks[0]?.connectionId ?? pageId),
@@ -730,7 +728,6 @@ export function requestGate(code: string, input: {
   pageId: string;
   waived: ReadonlySet<string>;
   /** Catalog modules a serve request may import. Omitted for a page, whose allow-list stays as it is. */
-  catalogSpecifiers?: readonly string[];
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -768,8 +765,7 @@ export function requestGate(code: string, input: {
   const ownContracts = `/_${input.project}_/l2/${input.moduleName}/web/contracts/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    const catalog = input.catalogSpecifiers?.includes(specifier) === true;
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts) && !catalog) {
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts)) {
       problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/), this module (${ownL1}) and its contracts (${ownContracts}).`);
     }
   }
@@ -815,7 +811,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, catalogSpecifiers: data.catalogSpecifiers }),
+    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

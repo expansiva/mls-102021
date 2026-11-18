@@ -192,7 +192,7 @@ test('Connection gateways lists the consumer gateway and only its operations', a
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
   const usecase = unit('usecase', 'readAgentRow', {
     usecaseId: 'readAgentRow',
     entityId: 'Tarefa',
@@ -205,7 +205,7 @@ test('Connection gateways lists the consumer gateway and only its operations', a
       { connectionId: 'cm', operationId: 'simulateAgent', consumer: 'otherUsecase' },
     ],
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
-  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalog : null;
   const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, outbound], read };
   try {
     const loaded = await loadUsecaseContext(ctx as never, usecase);
@@ -251,7 +251,7 @@ test('Connection gateways names expectVersion only for the marked operation', as
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
   const usecase = unit('usecase', 'changeAgent', {
     usecaseId: 'changeAgent',
     entityId: 'Tarefa',
@@ -264,7 +264,7 @@ test('Connection gateways names expectVersion only for the marked operation', as
       { connectionId: 'cm', operationId: 'readAgent', consumer: 'changeAgent' },
     ],
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
-  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalog : null;
   const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, outbound], read };
   try {
     const loaded = await loadUsecaseContext(ctx as never, usecase);
@@ -284,7 +284,7 @@ test('Connection gateways returns the later id and names the result operation', 
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
   const laterUsecase = unit('usecase', 'createAgent', {
     usecaseId: 'createAgent',
     entityId: 'Tarefa',
@@ -303,7 +303,7 @@ test('Connection gateways returns the later id and names the result operation', 
       { connectionId: 'cm', operationId: 'readAgent', consumer: 'readAgent' },
     ],
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
-  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalog : null;
   try {
     const later = await loadUsecaseContext({ run: { project: PROJECT, module: MODULE }, units: [laterUsecase, outbound], read } as never, laterUsecase);
     const laterSection = later.human.split('## Connection gateways')[1] ?? '';
@@ -326,7 +326,7 @@ test('an external entity usecase lists the gateway effect and no entity port', a
   const previous = globalThis.mls;
   (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
-  const catalog = readFileSync(path.join(root, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+  const catalog = readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
   const usecase = unit('usecase', 'readAgent', {
     usecaseId: 'readAgent',
     entityId: 'Agent',
@@ -342,7 +342,7 @@ test('an external entity usecase lists the gateway effect and no entity port', a
       { connectionId: 'cm', operationId: 'readAgent', consumer: 'readAgent', effect: 'read', entityRefs: ['Agent'] },
     ],
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`);
-  const read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalog : null;
+  const read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts' ? catalog : null;
   const ctx = { run: { project: PROJECT, module: MODULE }, units: [usecase, entity, port, table, tablePort, outbound], read };
   try {
     const loaded = await loadUsecaseContext(ctx as never, usecase);

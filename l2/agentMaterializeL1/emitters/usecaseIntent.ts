@@ -8,6 +8,7 @@
 
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { catalogOperations, catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 
 type Read = (ref: string) => Promise<string | null>;
 
@@ -81,7 +82,7 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
   }
   const connectionId = text(row.connectionId);
   const operationId = text(row.operationId);
-  const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+  const catalogRef = catalogFilePath(connectionId);
   const catalogSource = await read(catalogRef);
   const operation = (catalogSource ? catalogOperations(catalogSource) : null)?.find(item => item.operationId === operationId);
   if (!catalogSource || !operation) return { definition, detail: `${connectionId}.${operationId} is not in ${catalogRef}.` };
@@ -103,7 +104,7 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
           inputType: operation.inputType,
           outputType: operation.outputType,
           expectsVersion: operation.expectsVersion,
-          catalogSpecifier: catalogRef.replace(/\.ts$/u, '.js'),
+          catalogSpecifier: catalogImportPath(connectionId),
         },
         ports: [],
         portCalls: [],

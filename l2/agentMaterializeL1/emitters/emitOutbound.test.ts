@@ -18,8 +18,8 @@ import { CONNECTION_CODES, createFakeCallConnection } from '/_102034_/testing/co
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../..');
 const TSC = path.join(ROOT, 'node_modules', '.bin', 'tsc');
-const CM_DEFS = '/_102034_/l4/ontology/connections/cm.defs.ts';
-const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l4/ontology/connections/cm.defs.ts'), 'utf8');
+const CM_DEFS = '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts';
+const CM_SOURCE = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
 const STATUS: Record<string, number> = {
   not_found: 404, disabled: 409, unavailable: 503, conflict: 409, refused: 422, forbidden: 403, invalid: 400,
 };
@@ -60,7 +60,7 @@ test('cm.readAgent and cm.simulateAgent become one gateway whose file compiles a
   ]), '_102099_/l1/agents/layer_1_external/adapters/integration/outbound.ts', readCatalog);
   assert.equal('code' in emitted, false);
   if ('code' in emitted) return;
-  assert.match(emitted.source, /import type \{ CmReadAgentInput, CmReadAgentOutput, CmSimulateAgentInput, CmSimulateAgentOutput \} from '\/_102034_\/l4\/ontology\/connections\/cm\.defs\.js'/);
+  assert.match(emitted.source, /import type \{ CmReadAgentInput, CmReadAgentOutput, CmSimulateAgentInput, CmSimulateAgentOutput \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/catalogs\/cm\.js'/);
   assert.match(emitted.source, /export interface CmGateway \{/);
   assert.match(emitted.source, /readAgent\(input: CmReadAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions\): Promise<CmReadAgentOutput>/);
   assert.match(emitted.source, /simulateAgent\(input: CmSimulateAgentInput, ctx: RequestContext, opts\?: CallConnectionOptions\): Promise<CmSimulateAgentOutput>/);
