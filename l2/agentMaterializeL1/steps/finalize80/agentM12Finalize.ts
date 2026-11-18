@@ -27,6 +27,8 @@ export interface M12Report {
   open: Array<{ layer: M12Layer; unitId: string; status: M12UnitState; code: string; diagnostic: string }>;
   /** Units generated and through every gate that no compiler proved (COMPILE_UNAVAILABLE_L1). */
   notCompiled: string[];
+  /** Units skipped by SERVE_ROUTE_NO_PAGE_TEST (`layer/unitId`): a connection serve route has no page test and nothing tests it. Not open, and not hidden (d1_201). */
+  serveNotTested: string[];
   /** Selected units with no status file (the phase did not reach them). */
   missing: string[];
   defProblems: Array<{ defRef: string; code: string; detail: string }>;
@@ -53,12 +55,13 @@ export function buildM12Report(project: number, moduleName: string, units: reado
   // A connection serve route has no page test: that declared skip is not an open item, same as a platform gap.
   const clean = open.every(item => item.status === 'gap' || isServeSkip(item)) && missing.length === 0 && defProblems.length === 0;
   const notCompiled = units.filter(unit => (unit.status === 'done' || unit.status === 'reused') && unit.code === 'COMPILE_UNAVAILABLE_L1').map(unit => `${unit.layer}/${unit.unitId}`);
-  return { schemaVersion: M12_REPORT_VERSION, project, moduleName, status: clean ? 'complete' : 'partial', counts, byLayer, open, notCompiled, missing: [...missing], defProblems, registration, createdAt: new Date().toISOString() };
+  const serveNotTested = open.filter(isServeSkip).map(item => `${item.layer}/${item.unitId}`);
+  return { schemaVersion: M12_REPORT_VERSION, project, moduleName, status: clean ? 'complete' : 'partial', counts, byLayer, open, notCompiled, serveNotTested, missing: [...missing], defProblems, registration, createdAt: new Date().toISOString() };
 }
 
 export function summarizeM12Report(report: M12Report): string {
   const lines = [
-    `agentMaterializeL1 ${report.moduleName} (project ${report.project}): ${report.status}.`,
+    `agentMaterializeL1 ${report.moduleName} (project ${report.project}): ${report.status}${report.serveNotTested.length ? `, ${report.serveNotTested.length} serve unit(s) with no test` : ''}.`,
     `done ${report.counts.done}, reused ${report.counts.reused}, blocked ${report.counts.blocked}, gap ${report.counts.gap}, failed ${report.counts.failed}, skipped ${report.counts.skipped}.`,
   ];
   for (const layer of M12_LAYERS) {
@@ -70,6 +73,7 @@ export function summarizeM12Report(report: M12Report): string {
     lines.push('', 'Not generated:');
     for (const item of notGenerated) lines.push(`- ${item.layer}/${item.unitId}: ${item.status} ${item.code} — ${clip(item.diagnostic, 240)}`);
   }
+  if (report.serveNotTested.length) lines.push('', `Serve units with no test (SERVE_ROUTE_NO_PAGE_TEST): ${report.serveNotTested.join(', ')}. The monitor tests pages; nothing runs these routes.`);
   if (report.notCompiled.length) lines.push('', `Generated, not proven by a compiler (COMPILE_UNAVAILABLE_L1): ${report.notCompiled.length} unit(s).`);
   if (report.missing.length) lines.push('', `No status for: ${report.missing.join(', ')}`);
   if (report.defProblems.length) lines.push('', 'Defs not planned:', ...report.defProblems.map(item => `- ${item.defRef}: ${item.code} ${clip(item.detail, 200)}`));

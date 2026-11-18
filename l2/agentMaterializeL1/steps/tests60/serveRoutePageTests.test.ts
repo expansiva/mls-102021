@@ -8,7 +8,7 @@ import type { M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import type { M12UnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { readUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
-import { buildM12Report } from '/_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.js';
+import { buildM12Report, summarizeM12Report } from '/_102021_/l2/agentMaterializeL1/steps/finalize80/agentM12Finalize.js';
 import { createAgent as createPageAgent } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12TestsPage.js';
 import { createAgent } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
 import { SERVE_ROUTE_NO_PAGE_TEST } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
@@ -149,5 +149,12 @@ void test('a skipped page test does not make the materialize report partial', ()
   assert.equal(report.status, 'complete');
   assert.equal(report.counts.skipped, 1);
   assert.equal(report.counts.failed, 0);
+  // d1_201: not hidden. The report lists the unit and the summary says how many have no test.
+  assert.deepEqual(report.serveNotTested, ['tests/home']);
+  assert.match(summarizeM12Report(report), /: complete, 1 serve unit\(s\) with no test\./u);
+  assert.match(summarizeM12Report(report), /Serve units with no test \(SERVE_ROUTE_NO_PAGE_TEST\): tests\/home\./u);
+  const none = buildM12Report(PROJECT, MODULE, [status('other', 'done')], [], [], null);
+  assert.deepEqual(none.serveNotTested, []);
+  assert.equal(summarizeM12Report(none).includes('no test'), false);
   assert.equal(buildM12Report(PROJECT, MODULE, [status('home', 'failed', 'CONTEXT_FAILED')], [], [], null).status, 'partial');
 });
