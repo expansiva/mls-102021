@@ -821,7 +821,7 @@ function callConsumers(
       const usecase = selected.find(item => item.usecaseId === match.usecaseId);
       return usecase ? usecase.identity || usecase.usecaseId : '';
     });
-  const consumers = [...new Set([...own, ...processConsumersOf(usedBy, processes), connectionConsumer(usedBy, selected, matches, journeys)].filter(Boolean))].sort();
+  const consumers = [...new Set([...own, ...processConsumersOf(usedBy, processes), connectionConsumer(usedBy, selected, matches, journeys, `${connectionId}.${operationId}`)].filter(Boolean))].sort();
   return consumers.length ? consumers : [''];
 }
 
@@ -830,11 +830,13 @@ function connectionConsumer(
   selected: readonly D1SelectedUsecase[],
   matches: readonly D1ExternalCallMatch[],
   journeys: Record<string, unknown>,
+  callKey: string,
 ): string {
   const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
   for (const ref of usedBy) {
     if (known.has(ref)) return ref;
-    const served = matches.find(item => item.steps.includes(ref));
+    // A usecase that serves this call (a split names one call, d1_195): another usecase of the same step is not its consumer.
+    const served = matches.find(item => item.steps.includes(ref) && item.calls.some(call => `${call.connectionId}.${call.operationId}` === callKey));
     if (served) {
       const usecase = selected.find(item => item.usecaseId === served.usecaseId);
       if (usecase) return usecase.identity || usecase.usecaseId;

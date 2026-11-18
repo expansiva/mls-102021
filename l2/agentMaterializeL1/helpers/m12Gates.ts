@@ -23,6 +23,8 @@ export interface M12CodeGateInput {
   gateways?: readonly string[];
   /** `<Entity>Repository` of an `external` entity: refused, the usecase uses the gateway. */
   externalPort?: string;
+  /** The usecase writes an external entity: the system outside meets its rules through the call (d1_196). */
+  externalEntity?: boolean;
 }
 
 /**
@@ -94,8 +96,10 @@ export function inputMembers(code: string): string[] {
  * `mesaId` (the number is the system's) and then required `input.number`, so no comanda could be opened (07/10).
  * Reads through a name bound to the input (`const raw = input;`) count too.
  */
-export function undeclaredInputProblems(code: string): string[] {
-  const declared = new Set(inputMembers(code));
+export function undeclaredInputProblems(source: string): string[] {
+  // A comment that ends a sentence with `input.` and is followed by code read as a member access (`input.const`, d1_196).
+  const code = source.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:'"`])\/\/[^\n]*/gu, '$1');
+  const declared = new Set(inputMembers(source));
   if (declared.size === 0) return [];
   const roots = new Set(['input']);
   for (const match of code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*input\b\s*(?:as\s+[^;\n]+)?;/gu)) roots.add(match[1]);
@@ -437,7 +441,8 @@ export function usecaseGate(code: string, input: M12CodeGateInput): string[] {
   problems.push(...parentRuleProblems(code, input.parentRules ?? []));
   problems.push(...transitionTargetProblems(code, input.transition));
   problems.push(...undeclaredInputProblems(code));
-  for (const ruleId of input.ruleIds) {
+  // The rules of a write on an external entity are met by the external system: the call answers (or refuses) with them.
+  for (const ruleId of input.externalEntity ? [] : input.ruleIds) {
     if (!code.includes(`'${ruleId}'`) && !code.includes(`"${ruleId}"`)) problems.push(`Rule ${ruleId} is not enforced: no AppError carries ruleId '${ruleId}'.`);
   }
   return problems;

@@ -93,6 +93,11 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     // Only the units this run selected: a dependency from an earlier run is not reported again.
     for (const unit of selected) await read(unit.layer, unit.unitId);
     for (const unit of selected.filter(item => item.layer === 'controllers')) await read('tests', String(unit.definition.data.pageId ?? unit.unitId));
+    // The module workflow engine is proved by the workflows phase (prepareWorkflows, d1_196): its outcome is a unit of the report.
+    if (selected.some(item => item.layer === 'workflows')) {
+      const engine = await readUnitStatus(project, moduleName, 'workflows', 'engine');
+      if (engine) units.push(engine);
+    }
     const registration = registersModule(run, moduleName)
       ? await readJsonOptional<{ action: string; detail: string }>(registrationFile(project, moduleName))
       : null;

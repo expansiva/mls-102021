@@ -206,7 +206,8 @@ function resolveStepPersonSource(moduleName: string): string[] {
     `  const caller = ctx.sessionContext?.actorScope?.includes(${moduleId} + ':' + input.actorRef) ? ctx.sessionContext.person?.mdmId : undefined;`,
     '  if (caller) return caller;',
     '  const steps = new Set<string>();',
-    '  for (const plan of Object.values(workflowPlans)) {',
+    // Typed as the plan input: a plan whose steps carry no `actorRef` would otherwise make the union of literals lack it (TS2339).
+    '  for (const plan of Object.values(workflowPlans) as readonly WorkflowPlanInput[]) {',
     '    for (const item of plan.steps) {',
     '      if (item.actorRef === input.actorRef) steps.add(item.stepId);',
     '    }',

@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { gatewayBypassProblems, repositoryProblems, usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { gatewayBypassProblems, repositoryProblems, undeclaredInputProblems, usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 
 const HEADER = '/// <mls fileReference="_102099_/l1/fila/layer_2_application/usecases/readItem.ts" enhancement="_blank"/>';
 const GATE = { header: HEADER, functionName: 'readItem', project: 102099, moduleName: 'fila', ruleIds: [] as string[], ports: ['ItemRepository', 'CmGateway'], gateways: ['CmGateway'] };
@@ -46,4 +46,28 @@ test('without gateways the repository check is unchanged', () => {
   const code = "import type { ItemRepository } from '/_102099_/l1/fila/layer_2_application/ports/itemRepository.js';\nconst repo = resolveRepository<ItemRepository>(ctx, 'ItemRepository');";
   assert.deepEqual(repositoryProblems(code, ['ItemRepository']), repositoryProblems(code, ['ItemRepository'], []));
   assert.deepEqual(gatewayBypassProblems(code), []);
+});
+
+test('a write on an external entity does not need a ruleId in the code: the external system meets the rule', () => {
+  const code = file([
+    'export async function readItem(input: { id: string }, ctx: RequestContext) {',
+    '  return { id: input.id };',
+    '}',
+  ].join('\n'));
+  const gate = { ...GATE, ruleIds: ['r1'] };
+  const local = usecaseGate(code, gate);
+  assert.ok(local.some(problem => problem.includes('Rule r1 is not enforced')), local.join('\n'));
+  assert.ok(usecaseGate(code, { ...gate, externalEntity: false }).some(problem => problem.includes('Rule r1 is not enforced')));
+  const external = usecaseGate(code, { ...gate, externalEntity: true });
+  assert.equal(external.some(problem => problem.includes('is not enforced')), false, external.join('\n'));
+});
+
+test('a comment that ends with `input.` before a code line is not a read of an undeclared member', () => {
+  const head = 'export interface FooInput { a: string }';
+  const commented = `${head}\n// never in the catalog input.\nconst x = 1;\n/* also in a block input.\n*/\nconst y = input.a;`;
+  assert.deepEqual(undeclaredInputProblems(commented), []);
+  const real = `${head}\nconst x = input.zzz;`;
+  const problems = undeclaredInputProblems(real);
+  assert.equal(problems.length, 1, problems.join('\n'));
+  assert.ok(problems[0].includes('`input.zzz`'), problems[0]);
 });

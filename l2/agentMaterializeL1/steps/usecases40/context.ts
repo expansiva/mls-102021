@@ -300,6 +300,7 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   const scaffold = scaffoldResult.source;
   const header = scaffold.split('\n')[0];
   const ruleIds = rulesToEnforce(unit.definition);
+  const externalWrite = externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')) && String(unit.definition.data.operation ?? '') !== 'list' && String(unit.definition.data.operation ?? '') !== 'get';
   const rulesSource = await readOptional(rulesFile(ctx.run.project, ctx.run.module));
   const rules = ruleTexts(rulesSource, ruleIds);
 
@@ -307,7 +308,9 @@ export async function loadUsecaseContext(ctx: M12Context, unit: M12Unit, repair?
   parts.push(section('Task', [
     `Write the usecase \`${functionName}\` of module ${ctx.run.module}, file \`${unit.outputRef}\`.`,
     `Keep the exported function name and the exported type names of the scaffold. Its input members follow from the operation and the entity, and are a hint: the input accepts what the entity accepts by the l4, so a field the system sets (the initial state, a number from a sequence, a field of another operation, a value a rule copies) is not an input and is set here.`,
-    ruleIds.length
+    ruleIds.length && externalWrite
+      ? `The entity is external: the external system meets the rules listed under "Rules" through the call, so no local check duplicates them. Let the error of the gateway through with its own code, message and status (\`conflict\`, \`refused\`…); do not replace it. If you catch an AppError of the gateway only to add context, rethrow \`new AppError(error.code, error.message, error.statusCode, { ruleIds: [${ruleIds.map(ruleId => JSON.stringify(ruleId)).join(', ')}] })\`: the code and the message stay the system's, and the details carry the rule ids of this write. Return notApplicable: [].`
+      : ruleIds.length
       ? `Enforce every rule listed under "Rules". Each one throws \`new AppError(<code>, <message>, <status>, { ruleId: "<ruleId>" })\` when it is broken, with the rule id written as that exact string literal. A listed rule that does not concern this operation (its text is about another entity or operation) goes to \`notApplicable\` with the reason, instead of a check that makes no sense.`
       : 'The def has no rule to enforce beyond its operation. Return notApplicable: [].',
   ].join('\n')));
@@ -811,7 +814,7 @@ export async function usecaseAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const transition = await transitionOf(ctx, unit);
   return [
     ...waived.problems,
-    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')) }),
+    ...usecaseGate(code, { header: data.header, functionName: data.functionName, project: ctx.run.project, moduleName: ctx.run.module, ruleIds: ruleIds.filter(ruleId => !declared.has(ruleId)), externalEntity: externalEntityIds(ctx.units).has(String(unit.definition.data.entityId ?? '')), derivedPaths: derived, operation: String(unit.definition.data.operation ?? ''), parentRules, transition, ports: [...repositoryPortNames(ctx.units, item => item.definition.artifactId), ...moduleGatewayNames(ctx.units)], gateways: moduleGatewayNames(ctx.units), externalPort: externalRepositoryPort(ctx.units, String(unit.definition.data.entityId ?? '')) }),
   ];
 }
 

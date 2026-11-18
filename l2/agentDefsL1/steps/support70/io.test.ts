@@ -284,3 +284,28 @@ void test('a call cited by a process task has the process as consumer, and a jou
   // Without the processes (the default) the process task names nobody.
   assert.deepEqual(connectionOperations([{ connectionId: 'cm', operationId: 'runAgent', direction: 'call', usedBy: ['proc.taskMech'] }], selected, {}, journeys).map(item => item.consumer), ['']);
 });
+
+void test('a usecase that names its call (a split) is the consumer only of that call, not of the other calls of the same step', () => {
+  const selected: D1SelectedUsecase[] = [
+    { ...selectedUsecase('getAgent', 'Agent', 'get'), call: 'cm.readAgent' },
+    { ...selectedUsecase('listAgent', 'Agent', 'list'), call: 'cm.listAgents' },
+  ];
+  const journeys = {
+    jornada: {
+      journeyId: 'jornada',
+      business: {
+        steps: [
+          { stepId: 'find', kind: 'locate', entity: 'Agent' },
+          { stepId: 'see', kind: 'inspect', entity: 'Agent' },
+        ],
+      },
+    },
+  };
+  const rows = connectionOperations([
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: ['jornada.find'] },
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', usedBy: ['jornada.see'] },
+  ], selected, {}, journeys);
+  assert.deepEqual(rows.filter(item => item.operationId === 'listAgents').map(item => item.consumer), ['listAgent']);
+  assert.deepEqual(rows.filter(item => item.operationId === 'readAgent').map(item => item.consumer), ['getAgent']);
+  assert.equal(rows.length, 2, 'no operation has both consumers');
+});

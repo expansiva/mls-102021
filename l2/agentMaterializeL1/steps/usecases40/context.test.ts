@@ -405,3 +405,35 @@ test('an external entity contributes no derived paths to the usecase gate, as an
   assert.deepEqual(derivedOf('Catalogo'), []);
   assert.deepEqual(derivedOf('Participante'), []);
 });
+
+test('the Task section of a write on an external entity says the external system meets the rules; a module entity still enforces them', async () => {
+  const previous = globalThis.mls;
+  (globalThis as { mls: unknown }).mls = { actualProject: PROJECT, stor: { files: {}, getKeyToFile: keyOf } };
+  const read = async (): Promise<string | null> => null;
+  const build = (entityId: string, storageTarget: string): { ctx: unknown; usecase: M12Unit } => {
+    const usecase = unit('usecase', 'createThing', {
+      usecaseId: 'createThing',
+      entityId,
+      operation: 'create',
+      functions: [{ functionName: 'createThing', input: [{ name: 'name', type: 'string' }], output: [{ name: 'id', type: 'string' }] }],
+      rulePlan: [{ ruleId: 'nameRequired', enforcement: 'local', origin: 'l4/fila/rules.defs.ts#nameRequired' }],
+    }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/createThing.ts`);
+    const entity = unit('domainEntity', entityId.toLowerCase(), { entityId, storageTarget }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/${entityId.toLowerCase()}.ts`);
+    const port = unit('repositoryPort', `${entityId.toLowerCase()}Repository`, { entityId, interfaceName: `${entityId}Repository` }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/ports/${entityId.toLowerCase()}Repository.ts`);
+    return { ctx: { run: { project: PROJECT, module: MODULE }, units: [usecase, entity, port], read }, usecase };
+  };
+  const taskOf = (human: string): string => human.split('## Task')[1]?.split('\n## ')[0] ?? '';
+  try {
+    const external = build('Agent', 'external');
+    const externalTask = taskOf((await loadUsecaseContext(external.ctx as never, external.usecase)).human);
+    assert.match(externalTask, /The entity is external/u);
+    assert.match(externalTask, /ruleIds: \["nameRequired"\]/u);
+    assert.equal(externalTask.includes('Enforce every rule'), false);
+    const local = build('Tarefa', 'moduleDatabase');
+    const localTask = taskOf((await loadUsecaseContext(local.ctx as never, local.usecase)).human);
+    assert.match(localTask, /Enforce every rule/u);
+    assert.equal(localTask.includes('The entity is external'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});

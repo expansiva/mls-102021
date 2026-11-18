@@ -13,7 +13,7 @@ import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
-import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
+import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import { M12_CODE_SCHEMA, missingImports, type M12Repair, type M12SequenceSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
@@ -314,7 +314,12 @@ function operationTransitionIds(units: readonly M12Unit[]): Set<string> {
 export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {
   const { project, module: moduleName, force } = ctx.run;
   const info = workflowEngineFile(project, moduleName);
-  if (!force && storExists(info)) return ['workflowEngine: kept: exists'];
+  if (!force && storExists(info)) {
+    // A kept engine is proved again: an old file with a type error must not pass as written (d1_196).
+    const kept = await readOptional(info);
+    if (kept === null) return ['workflowEngine: kept: exists'];
+    return [`workflowEngine: kept: exists; ${(await proveEngine(ctx, info, kept)).line}`];
+  }
   const workflows = await ctx.read(`_${project}_/l4/${moduleName}/workflows.defs.ts`);
   const ontologySources: string[] = [];
   for (const item of ctx.units) {
@@ -339,12 +344,26 @@ export async function prepareWorkflows(ctx: M12Context): Promise<string[]> {
   }
   const source = workflowEngineSource(project, moduleName, tables, transitionDestinations(ontologySources, operations.size ? operations : undefined));
   const stored = await writeSource(info, source);
-  const results = await compileM12Files([{ info, expected: stored.text }], ctx.compiler);
+  const proved = await proveEngine(ctx, info, stored.text);
+  return [`workflowEngine: ${proved.line}`, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
+}
+
+/**
+ * Compiles the engine and records the outcome as a unit of the workflows layer (`engine`): a type error is `failed`
+ * COMPILE_FAILED and keeps the report `partial`; a compile that did not happen is `done` COMPILE_UNAVAILABLE_L1 and
+ * is listed in `notCompiled`. Before d1_196 the outcome went only to the phase trace, and the report said clean.
+ */
+async function proveEngine(ctx: M12Context, info: ReturnType<typeof workflowEngineFile>, text: string): Promise<{ line: string }> {
+  const results = await compileM12Files([{ info, expected: text }], ctx.compiler);
   const unavailable = results.every(result => result.errors.length === 1 && isUnavailable(result.errors[0]));
   const errors = unavailable ? [] : compileDiagnostics(results);
-  const written = errors.length ? `workflowEngine: COMPILE_FAILED ${clip(errors.join(' | '), 400)}` : 'workflowEngine: written';
-  return [written, ...unresolved.map(item => `PAGE_UNRESOLVED: ${item}`)];
+  const status = errors.length ? 'failed' as const : 'done' as const;
+  const code = errors.length ? 'COMPILE_FAILED' : unavailable ? 'COMPILE_UNAVAILABLE_L1' : '';
+  const diagnostic = errors.length ? clip(errors.join(' | '), 600) : unavailable ? clip(results[0]?.errors[0] ?? '', 300) : '';
+  await writeUnitStatus(ctx.run.project, ctx.run.module, { layer: 'workflows', unitId: 'engine', defRef: '', status, code, attempt: 0, diagnostic, inputHash: '', outputs: {} });
+  return { line: errors.length ? `COMPILE_FAILED ${clip(errors.join(' | '), 400)}` : unavailable ? 'written, not compiled (COMPILE_UNAVAILABLE_L1)' : 'written' };
 }
+
 
 /** `l2/<module>/web/shared/<pageId>.defs.ts` present in the stor. */
 function sharedPageRefs(project: number, moduleName: string): string[] {

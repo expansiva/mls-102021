@@ -1,10 +1,12 @@
 /// <mls fileReference="_102021_/l2/agentMaterializeL1/emitters/workflowLlmEmit.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { isAlphaAllAuthorities, resetAlphaAuthoritiesCache } from '/_102034_/l1/server/layer_1_external/config/alphaAuthorities.js';
 import { AppError, type RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
@@ -301,4 +303,48 @@ test('a process with no entityRef leaves every human step without params', () =>
   const bound = bindHumanPages(tables, [{ pageId: 'pedidos', source: SHARED }], CONFIG, 'pedido');
   assert.deepEqual(bound.unresolved, ['RECORD_ENTITY_MISSING: processoPedido']);
   assert.equal(bound.tables[0]?.steps.some(step => step.params), false);
+});
+
+test('the engine types the plans it iterates, so a plan without a human step still compiles in engine.ts', () => {
+  const human = [
+    { taskId: 'preencher', kind: 'human', title: 'Preencha o pedido.', actorRef: 'solicitante', journeyRef: 'pedidos', entityRef: 'Pedido', next: ['end'] },
+    { taskId: 'end', kind: 'mechanical', title: 'Fim', next: [] },
+  ];
+  const mechanical = [
+    { taskId: 'conferir', kind: 'mechanical', title: 'Confira o pedido.', next: ['end'] },
+    { taskId: 'end', kind: 'mechanical', title: 'Fim', next: [] },
+  ];
+  const source = [
+    { processId: 'processoHumano', title: 'Com pessoa', tasks: human },
+    { processId: 'processoMecanico', title: 'Sem pessoa', tasks: mechanical },
+  ];
+  const tables = workflowTablesFromL4(`export const workflows = ${JSON.stringify({ moduleName: 'pedido', processes: source })} as const;`);
+  assert.equal(tables.length, 2);
+  const engine = workflowEngineSource(102047, 'pedido', tables, {});
+  assert.ok(engine.includes('for (const plan of Object.values(workflowPlans) as readonly WorkflowPlanInput[]) {'), 'the iteration is typed as the plan input');
+  assert.match(engine, /actorRef: "solicitante"/u);
+
+  // The same source goes through tsc, in the shape of the platform paths: only errors in the engine file count.
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+  const dir = mkdtempSync(path.join(root, '.workflow-engine-proof-'));
+  try {
+    writeFileSync(path.join(dir, 'engine.ts'), engine);
+    writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({
+      extends: '../tsconfig.base.json',
+      compilerOptions: { noEmit: true, skipLibCheck: true },
+      files: ['engine.ts'],
+    }));
+    let output = '';
+    try {
+      execFileSync(path.join(root, 'node_modules', '.bin', 'tsc'), ['--pretty', 'false', '-p', path.join(dir, 'tsconfig.json')], { cwd: root, encoding: 'utf8' });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      output = `${failed.stdout ?? ''}${failed.stderr ?? ''}`;
+    }
+    const prefix = `${path.relative(root, dir)}/engine.ts(`;
+    const own = output.split('\n').filter(line => line.startsWith(prefix));
+    assert.deepEqual(own, [], own.join('\n'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
