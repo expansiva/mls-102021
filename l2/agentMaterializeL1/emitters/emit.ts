@@ -293,9 +293,9 @@ async function emitDomainUsecase(
       ...(entitySpecifier ? [`import type { ${entityName} } from '${entitySpecifier}';`] : []),
       portImport,
       '',
-      // The service asserts this to and from a record. The index is what makes that assertion legal.
-      `export interface ${inputType} extends Record<string, unknown> ${renderType(nest(fn.input, new Map(), inputOptional, aliases, collections), '')}`,
-      `export interface ${outputType} extends Record<string, unknown> ${renderType(nest(outputFields, new Map(), outputOptional, aliases, collections), '')}`,
+      // No index signature (d1_203): the compiler refuses a field the input or output does not declare. The service converts to and from a record with a cast.
+      `export interface ${inputType} ${renderType(nest(fn.input, new Map(), inputOptional, aliases, collections), '')}`,
+      `export interface ${outputType} ${renderType(nest(outputFields, new Map(), outputOptional, aliases, collections), '')}`,
       '',
       `export async function ${fnName}(input: ${inputType}, ctx: RequestContext${portArg}): Promise<${outputType}> {`,
       '  void input;',
@@ -335,11 +335,11 @@ function emitExternalUsecase(
       `import type { RequestContext } from '${PLATFORM_CONTRACTS}';`,
       `import type { ${[...new Set([inputName, outputName])].sort().join(', ')} } from '${specifier}';`,
       '',
-      // The service asserts this to and from a record. The index is what makes that assertion legal.
+      // No index signature (d1_203): a field the catalog type does not have is a compile error, in a call and in a read.
       version
-        ? `export interface ${inputType} extends ${inputName}, Record<string, unknown> {\n${version}}`
-        : `export interface ${inputType} extends ${inputName}, Record<string, unknown> {}`,
-      `export interface ${outputTypeName} extends ${outputName}, Record<string, unknown> {}`,
+        ? `export interface ${inputType} extends ${inputName} {\n${version}}`
+        : `export interface ${inputType} extends ${inputName} {}`,
+      `export interface ${outputTypeName} extends ${outputName} {}`,
       '',
       `export async function ${fnName}(input: ${inputType}, ctx: RequestContext): Promise<${outputTypeName}> {`,
       '  void input;',

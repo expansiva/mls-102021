@@ -202,8 +202,8 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
   }, `_${PROJECT}_/l1/${MODULE}/layer_1_external/requests/${PAGE}.ts`);
   const generated = [
     `import type { CmReadAgentInput, CmReadAgentOutput } from '${catalogDir}/cm.js';`,
-    'export interface GetAgentDraftInput extends CmReadAgentInput, Record<string, unknown> {}',
-    'export interface GetAgentDraftOutput extends CmReadAgentOutput, Record<string, unknown> {}',
+    'export interface GetAgentDraftInput extends CmReadAgentInput {}',
+    'export interface GetAgentDraftOutput extends CmReadAgentOutput {}',
     'export async function getAgentDraft(input: GetAgentDraftInput): Promise<GetAgentDraftOutput> { return input as never; }',
   ].join('\n');
   const foreignSource = [
@@ -231,7 +231,8 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
     '  includeDraft?: boolean;',
     '  level?: CmSimulationLevel;',
     '}',
-    'export interface CmReadAgentOutput { agentId: string }',
+    'export interface CmAgentCard { agentId: string; name: string; draftStatus?: CmSimulationLevel }',
+    'export interface CmReadAgentOutput { agents: CmAgentCard[] }',
   ].join('\n');
   const read = async (ref: string) => (ref.replace(/^\//u, '') === catalogDir.slice(1) + '/cm.ts' ? catalog : null);
   const ctx = { run: { project: PROJECT, module: MODULE }, units: [request, get, plain, foreign], read };
@@ -242,7 +243,10 @@ test('d1_199/d1_200: the usecase section of a request shows its input type resol
       assert.match(section, /Input type, resolved as the compiler sees it/u);
       assert.match(section, /GetAgentDraftInput = \{\n(?:.*\n)*?  agentId: string;\n  includeDraft\?: boolean;\n  level\?: 'canDo' \| 'understands';/u);
       assert.equal(section.includes('CmSimulationLevel'), false, 'the alias is expanded, not named');
-      assert.equal(section.includes('CmReadAgentOutput { agentId'), false, 'only the input type');
+      assert.match(section, /Output type, resolved as the compiler sees it/u);
+      assert.match(section, /GetAgentDraftOutput = \{\n  agents: \{\n    agentId: string;\n    name: string;\n    draftStatus\?: 'canDo' \| 'understands';\n  \}\[\];\n\}/u, 'the output shows `agents`, the field the catalog has, and no `items`');
+      assert.equal(section.includes('items'), false);
+      assert.equal(section.includes('CmAgentCard'), false, 'the card type is expanded, not named');
       assert.equal(human.split('Input type, resolved').length - 1, 2, 'the usecase that extends a catalog type and the one that extends a module type that cannot be read; the plain one has none');
     }
   } finally {

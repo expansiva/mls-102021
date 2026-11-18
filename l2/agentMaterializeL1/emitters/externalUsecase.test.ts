@@ -87,10 +87,32 @@ void test('a usecase on an external entity takes its signature from the call: tr
   const emitted = await emitUsecase(update.definition, '_102099_/l1/agents/layer_2_application/usecases/updateAgentDraft.ts', read(all));
   assert.ok('source' in emitted, JSON.stringify(emitted));
   assert.match(emitted.source, /import type \{ CmUpdateAgentInput, CmUpdateAgentOutput \} from '\/_102034_\/l1\/server\/layer_1_external\/connections\/catalogs\/cm\.js';/u);
-  assert.match(emitted.source, /UpdateAgentDraftInput extends CmUpdateAgentInput, Record<string, unknown> \{\n  expectVersion: number;/u);
+  assert.match(emitted.source, /UpdateAgentDraftInput extends CmUpdateAgentInput \{\n  expectVersion: number;/u);
+  // d1_203: no index signature, so a field the catalog does not declare is a compile error in a call and in a read.
+  assert.match(emitted.source, /UpdateAgentDraftOutput extends CmUpdateAgentOutput \{\}/u);
+  assert.equal(emitted.source.includes('Record<string, unknown>'), false);
   const emittedGet = await emitUsecase(read1.definition, '_102099_/l1/agents/layer_2_application/usecases/getAgentDraft.ts', read(all));
   assert.ok('source' in emittedGet);
   assert.equal(emittedGet.source.includes('expectVersion'), false);
+});
+
+void test('d1_203: a usecase of the module declares its input and output without an index signature', async () => {
+  const definition = envelope({
+    artifactType: 'usecase',
+    artifactId: 'closeThing',
+    dependencies: [],
+    data: {
+      usecaseId: 'closeThing',
+      entityId: 'Thing',
+      operation: 'transition',
+      functions: [{ functionName: 'closeThing', input: [{ name: 'thingId', type: 'string' }], output: [{ name: 'closed', type: 'boolean' }] }],
+    },
+  } as unknown as Omit<M1Definition, 'schemaVersion' | 'moduleName' | 'status'>);
+  const emitted = await emitUsecase(definition, '_102099_/l1/agents/layer_2_application/usecases/closeThing.ts', read({}));
+  assert.ok('source' in emitted, JSON.stringify(emitted));
+  assert.match(emitted.source, /export interface CloseThingInput \{\n\s*thingId: string;/u);
+  assert.match(emitted.source, /export interface CloseThingOutput \{\n\s*closed: boolean;/u);
+  assert.equal(emitted.source.includes('Record<string, unknown>'), false);
 });
 
 void test('a usecase on an external entity with no call is EXTERNAL_STEP_WITHOUT_CALL, never the entity signature', async () => {

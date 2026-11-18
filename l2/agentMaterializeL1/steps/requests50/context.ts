@@ -760,25 +760,30 @@ function catalogIdOf(specifier: string): string {
 }
 
 /**
- * d1_199/d1_200: the input of a usecase as the compiler sees it. The input type of a usecase on a connection only extends the
- * catalog type and names aliases for its unions, so the signature hides its fields and its unions. The resolved
- * type (aliases, unions, `extends` and the types of other files expanded, depth limited) goes in the same section. It is
- * shown when something was expanded or not found; a type that already has everything in place adds nothing.
+ * d1_199/d1_200/d1_203: the input and the output of a usecase as the compiler sees them. The types of a usecase on a connection
+ * only extend the catalog types and name aliases for their unions, so the signature hides the fields and the unions. Each resolved
+ * type (aliases, unions, `extends` and the types of other files expanded, depth limited) goes in the same section, by the same
+ * resolver. One is shown when something was expanded or not found; a type that already has everything in place adds nothing.
  */
 async function resolvedInputSection(ctx: M12Context, generated: string): Promise<string> {
-  const typeName = /export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)/u.exec(generated)?.[1];
-  if (!typeName) return '';
+  const inputName = /export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)/u.exec(generated)?.[1];
+  const outputName = /export\s+(?:async\s+)?function\s+\w+\s*\([^)]*\)\s*:\s*Promise<\s*([A-Za-z_$][\w$]*)\s*>/u.exec(generated)?.[1];
   const readImport = async (specifier: string): Promise<string | null> => {
     const id = catalogIdOf(specifier);
     if (id) return ctx.read(catalogFilePath(id));
     return specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null;
   };
-  const resolved = await resolveInputType({ entry: generated, typeName, readImport });
-  if (!resolved.text || (resolved.expanded === 0 && !resolved.unresolved.length)) return '';
-  return [
-    'Input type, resolved as the compiler sees it (aliases, unions and extended types expanded; `(truncated)` and `(not resolved)` mark what was not):',
-    fence('ts', `${typeName} = ${resolved.text}`),
-  ].join('\n');
+  const blocks: string[] = [];
+  for (const [label, typeName] of [['Input', inputName], ['Output', outputName]] as const) {
+    if (!typeName) continue;
+    const resolved = await resolveInputType({ entry: generated, typeName, readImport });
+    if (!resolved.text || (resolved.expanded === 0 && !resolved.unresolved.length)) continue;
+    blocks.push([
+      `${label} type, resolved as the compiler sees it (aliases, unions and extended types expanded; \`(truncated)\` and \`(not resolved)\` mark what was not):`,
+      fence('ts', `${typeName} = ${resolved.text}`),
+    ].join('\n'));
+  }
+  return blocks.join('\n\n');
 }
 
 /**
