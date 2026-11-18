@@ -194,6 +194,8 @@ export interface D1SelectedUsecase {
   existing: string;
   identity: string;
   routes: string[];
+  /** `<connectionId>.<operationId>`: the one call of an external usecase (d1_195). Absent on every other usecase. */
+  call?: string;
 }
 
 export interface D1SelectedPort {

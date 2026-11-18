@@ -34,7 +34,7 @@ import {
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
-import { externalCallsOf } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -257,6 +257,18 @@ export function buildD1InputSnapshot(
   notePayload(problems, moduleName, selectedUsecases, artifacts.entities, entityKind);
   noteAccess(problems, paths.access, access, relationships);
   noteIntegration(problems, paths.integration, outbound);
+  // One usecase per call for an external entity (d1_195): the plan names the entity and the operation, the call is the L4's.
+  const split = splitExternalUsecases({
+    journeys: artifacts.journeys,
+    connections: rows(integration.connections),
+    usecases: selectedUsecases,
+    entityKind,
+    taken: new Set([...backendUsecases.keys(), ...effortUsecases.keys()]),
+  });
+  selectedUsecases.splice(0, selectedUsecases.length, ...split.usecases);
+  for (const item of split.splits) {
+    review(problems, 'USECASE_SPLIT_BY_CALL', paths.integration, `Usecase ${item.from} is on an external entity served by more than one call: ${item.into.map(part => `${part.usecaseId} (${part.operation}) → ${part.call}`).join(', ')}.`, item.from);
+  }
   const contractV2 = readContractV2(artifacts.contractTexts);
   // Every usecase id the plan names, active or not, and every removed one. A usecase created from the contract may not reuse them.
   const planned: PlannedIds = {
@@ -275,6 +287,15 @@ export function buildD1InputSnapshot(
     answers,
     new Set([...entityKind].filter(([, kind]) => kind === 'role').map(([entity]) => entity)),
     entityKind,
+    (pageId, entity, operation, transitionKey) => routeCallsOf({
+      needs: artifacts.needs,
+      journeys: artifacts.journeys,
+      connections: rows(integration.connections),
+      pageId,
+      entity,
+      operation,
+      transitionRef: transitionKey,
+    }),
   );
   const pageIds = new Set(contractPageIds(artifacts));
   const serveLines: D1ServeLine[] = [];
@@ -967,6 +988,7 @@ function contractRequests(
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]>,
   roleEntities: ReadonlySet<string>,
   entityKind: ReadonlyMap<string, string>,
+  routeCalls: (pageId: string, entity: string, operation: string, transitionKey: string) => readonly string[] = () => [],
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   // Planner pool only. A get/list created later in this pass is not a planned read. An MDM role keeps its get (read through the facade).
@@ -979,7 +1001,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads, entityKind));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads, entityKind, routeCalls));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -1016,6 +1038,7 @@ function oneRequest(
   answers: readonly D1RequestGapAnswer[],
   poolReads: ReadonlySet<string>,
   entityKind: ReadonlyMap<string, string>,
+  routeCalls: (pageId: string, entity: string, operation: string, transitionKey: string) => readonly string[] = () => [],
 ): D1SelectedRequest {
   // d1_60/d1_62: the route is derived from its types, the ontology and the resolve25 answers. `meta` is not read.
   const derived = applyResolutions({ route, definition, entities }, answers);
@@ -1036,6 +1059,7 @@ function oneRequest(
       uses,
       colliding,
       refusalOf: usecaseId => contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, entityKind, transitionKey),
+      routeCalls: routeCalls(pageId, entity, operation, transitionKey),
     });
   };
   // Unique output: planned get, else planned list (locate picks the row). Neither: get, as before. many stays list.

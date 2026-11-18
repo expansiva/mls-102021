@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { exampleCatalog } from '/_102034_/testing/connections/connectionFixtures.js';
 import type { D1InputProblem, D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { deriveServeRequests, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const catalogPath = path.resolve(here, '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts');
@@ -97,4 +97,58 @@ void test('agentDraftReady is a command and its input members are the params', (
   assert.deepEqual(requests[0]?.uses, ['updateAgentExecution']);
   assert.deepEqual(requests[0]?.params.map(item => item.name), ['draftId', 'status', 'refusedReason', 'suggestedTools']);
   assert.equal(requests[0]?.params.find(item => item.name === 'refusedReason')?.optional, true);
+});
+
+
+function take(usecases: D1SelectedUsecase[], routeCalls?: readonly string[]): { problems: D1InputProblem[]; uses: string[] } {
+  const problems: D1InputProblem[] = [];
+  const uses: string[] = [];
+  takeUsecase({
+    problems,
+    path: 'requests',
+    routeName: 'behavior.update',
+    entity: 'AgentBehavior',
+    operation: 'update',
+    transitionKey: '',
+    usecases,
+    uses,
+    colliding: new Set(),
+    refusalOf: () => '',
+    ...(routeCalls ? { routeCalls } : {}),
+  });
+  return { problems, uses };
+}
+
+function behaviorUsecase(usecaseId: string, call?: string): D1SelectedUsecase {
+  return {
+    usecaseId, entity: 'AgentBehavior', operation: 'update', status: 'toCreate', existing: '', identity: usecaseId, routes: [], ...(call ? { call } : {}),
+  };
+}
+
+void test('takeUsecase: with one usecase per call the route takes the one whose call its page steps cite', () => {
+  const usecases = [behaviorUsecase('updateAgentBehavior', 'cm.updateAgent'), behaviorUsecase('undoAgentChange', 'cm.undoAgentChange')];
+  const { problems, uses } = take(usecases, ['cm.updateAgent']);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(uses, ['updateAgentBehavior']);
+  assert.equal(usecases.length, 2);
+  assert.deepEqual(take(usecases, ['cm.undoAgentChange', 'cm.other']).uses, ['undoAgentChange']);
+});
+
+void test('takeUsecase: when the page cites both calls or neither, the route is EXTERNAL_ROUTE_CALL_AMBIGUOUS and takes nothing', () => {
+  const usecases = [behaviorUsecase('updateAgentBehavior', 'cm.updateAgent'), behaviorUsecase('undoAgentChange', 'cm.undoAgentChange')];
+  for (const routeCalls of [['cm.updateAgent', 'cm.undoAgentChange'], [], undefined]) {
+    const { problems, uses } = take(usecases, routeCalls);
+    assert.deepEqual(uses, []);
+    assert.deepEqual(problems.map(item => [item.severity, item.code]), [['error', 'EXTERNAL_ROUTE_CALL_AMBIGUOUS']]);
+    assert.match(problems[0].message, /updateAgentBehavior → cm\.updateAgent/u);
+    assert.match(problems[0].message, /undoAgentChange → cm\.undoAgentChange/u);
+  }
+  assert.equal(usecases.length, 2);
+});
+
+void test('takeUsecase: a single usecase, with or without a call, still matches as before', () => {
+  assert.deepEqual(take([behaviorUsecase('updateAgentBehavior')]).uses, ['updateAgentBehavior']);
+  const named = take([behaviorUsecase('updateAgentBehavior', 'cm.updateAgent')], ['cm.undoAgentChange']);
+  assert.deepEqual(named.problems, []);
+  assert.deepEqual(named.uses, ['updateAgentBehavior']);
 });
