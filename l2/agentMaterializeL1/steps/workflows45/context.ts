@@ -11,6 +11,10 @@ import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
+import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import { stepCallProblems, stepCallsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -494,6 +498,22 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   // The calls this process runs (its tasks cite them in `usedBy`): the same gateway section a usecase gets.
   const gateways = await connectionGatewaySection(ctx, facts.processId, unit.definition.artifactId);
   if (gateways) parts.push(gateways);
+  const stepCalls = stepCallsOf(await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`), facts.processId);
+  if (stepCalls.length) {
+    const stepOf = new Map(workflowProcessSteps(readProcess).map(step => [step.stepId, step]));
+    const lines = await Promise.all(stepCalls.map(async call => {
+      const step = stepOf.get(call.stepId);
+      const input = await catalogInputOf(ctx, call);
+      return [
+        `- step \`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''} → \`gateway.${call.operationId}(input, ctx)\` (${call.connectionId}.${call.operationId})`,
+        input ? `  input ${input.type} =\n${fence('ts', input.text)}` : '',
+      ].filter(Boolean).join('\n');
+    }));
+    parts.push(section('Calls of the steps (the L4 `usedBy`: each step runs its call; the file must call the gateway method of every call below)', [
+      'The step that runs a call is the code of its function: it resolves the gateway and calls the method with the input below. Importing the gateway type is not calling it.',
+      ...lines,
+    ].join('\n')));
+  }
 
   const sent = new Set<string>();
   for (const dep of dependencyUnits(ctx, unit)) {
@@ -677,6 +697,15 @@ export function workflowGate(code: string, input: { header: string; facts: M12Wo
   return problems;
 }
 
+/** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
+async function catalogInputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
+  const source = await ctx.read(catalogFilePath(call.connectionId));
+  const operation = source ? catalogOperations(source)?.find(item => item.operationId === call.operationId) : undefined;
+  if (!source || !operation) return null;
+  const resolved = await resolveInputType({ entry: source, typeName: operation.inputType, readImport: async specifier => (specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null) });
+  return resolved.text ? { type: operation.inputType, text: resolved.text } : null;
+}
+
 export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, _notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
   const facts = workflowFacts(unit);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
@@ -688,6 +717,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   return [
     ...workflowGate(code, { header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
     ...await missingImports(ctx, code),
+    ...stepCallProblems(code, stepCallsOf(await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`), facts.processId)),
   ];
 }
 

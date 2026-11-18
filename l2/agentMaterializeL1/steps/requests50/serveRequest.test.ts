@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { unitInputHash } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { loadRequestContext, normalizeRequestsTyping, requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
 const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
@@ -91,4 +91,70 @@ test('a page request keeps its contract hash and a serve request hashes the cata
   const serveHash = await unitInputHash(ctx as never, record);
   files.set(CATALOG_REF, CATALOG.replace('recorded', 'stored'));
   assert.notEqual(await unitInputHash(ctx as never, record), serveHash);
+});
+
+function keyOf(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string {
+  return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
+}
+
+test('d1_201: a serve route that names usecases gets them in the prompt and the repair, resolved, and must call one of them', async () => {
+  const previous = globalThis.mls;
+  const withUses = unit('requestService', 'cm', {
+    pageId: 'cm',
+    requests: [{ route: `${MODULE}.cm.record`, serves: 'cm.record', uses: ['createExecutionSummary'], entityRefs: ['AgentExecution'], effect: 'create', writes: 'AgentExecution.create' }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/cm.ts`);
+  const usecase = unit('usecase', 'createExecutionSummary', { usecaseId: 'createExecutionSummary', entityId: 'AgentExecution' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/createExecutionSummary.ts`);
+  const other = unit('usecase', 'listOther', { usecaseId: 'listOther', entityId: 'Other' }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/usecases/listOther.ts`);
+  const generated = [
+    "export type Status = 'recorded' | 'existing';",
+    'export interface CreateExecutionSummaryInput { executionId: string; status?: Status }',
+    'export async function createExecutionSummary(input: CreateExecutionSummaryInput): Promise<{ executionId: string }> { return input; }',
+  ].join('\n');
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: {
+      files: {
+        [keyOf(usecase.output)]: { ...usecase.output, status: 'changed', getContent: async () => generated, getValueInfo: async () => ({ content: generated }) },
+        [keyOf(other.output)]: { ...other.output, status: 'changed', getContent: async () => 'export async function listOther(): Promise<void> {}\n', getValueInfo: async () => ({ content: 'export async function listOther(): Promise<void> {}\n' }) },
+      },
+      getKeyToFile: keyOf,
+    },
+  };
+  const read = async (ref: string) => (ref.replace(/^\//u, '') === CATALOG_REF.replace(/^\//u, '') ? CATALOG : null);
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [withUses, usecase, other, entity, port], read };
+  try {
+    for (const repair of [undefined, { problems: ['SERVE_ROUTE_WITHOUT_USECASE_CALL: route x'], previous: 'export const requests = {};\n' }]) {
+      const loaded = await loadRequestContext(ctx as never, withUses, repair);
+      assert.match(loaded.human, /## Usecases of the routes/u);
+      assert.match(loaded.human, new RegExp(`- ${MODULE}\\.cm\\.record → createExecutionSummary`, 'u'));
+      assert.match(loaded.human, /Usecase createExecutionSummary \(named in the def\)/u);
+      assert.match(loaded.human, /status\?: 'recorded' \| 'existing';/u);
+      assert.equal(loaded.human.includes('Usecase listOther'), false, 'only the usecases the routes name');
+      assert.deepEqual(loaded.serveUses, [{ route: `${MODULE}.cm.record`, uses: ['createExecutionSummary'] }]);
+    }
+    const plain = await loadRequestContext({ ...ctx, units: [record, entity, port] } as never, record);
+    assert.equal(plain.human.includes('Usecases of the routes'), false, 'no uses: nothing changes');
+    assert.deepEqual(plain.serveUses, []);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
+});
+
+test('d1_201: the serve gate refuses a route that returns {}, throws missingUsecase or only imports the usecase, and accepts a call', () => {
+  const route = `${MODULE}.cm.record`;
+  const other = `${MODULE}.cm.describe`;
+  const uses = [{ route, uses: ['createExecutionSummary'] }, { route: other, uses: ['listTool', 'listAgentTool'] }];
+  const call = "async (input, ctx) => { const row = await createExecutionSummary(input, ctx); return row; }";
+  const good = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": ${call},\n  "${other}": async (input, ctx) => listAgentTool(input, ctx),\n};\n`;
+  assert.deepEqual(serveUsecaseProblems(good, uses), []);
+  const empty = `import { createExecutionSummary } from 'x';\nexport const requests = {\n  "${route}": async () => ({}),\n  "${other}": async (input, ctx) => listTool(input, ctx),\n};\n`;
+  const emptyProblems = serveUsecaseProblems(empty, uses);
+  assert.equal(emptyProblems.length, 1);
+  assert.match(emptyProblems[0], new RegExp(`^SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${route.replace(/\./gu, '\\.')} must call one of its usecases \\(createExecutionSummary\\)`, 'u'));
+  const thrown = good.replace(call, "async () => { throw new AppError('missingUsecase', 'createExecutionSummary is not wired', 500); }");
+  assert.equal(serveUsecaseProblems(thrown, uses).length, 1);
+  const commented = good.replace(call, "async () => { /* createExecutionSummary(input, ctx) */ return {}; }");
+  assert.equal(serveUsecaseProblems(commented, uses).length, 1);
+  assert.equal(serveUsecaseProblems('export const requests = {};\n', uses).length, 2, 'a route absent from the file is refused too');
+  assert.deepEqual(serveUsecaseProblems('export const requests = {};\n', []), []);
 });

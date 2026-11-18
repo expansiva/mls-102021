@@ -149,6 +149,8 @@ export interface M12RequestContext {
   workflowRoutes: M12WorkflowRoute[];
   /** Enum fields of an external entity whose values differ from the catalog and need a typed map (d1_198). */
   externalEnums: ExternalEnumPair[];
+  /** Serve routes that name usecases (`uses`): the body must call one of them (d1_201). */
+  serveUses: Array<{ route: string; uses: string[] }>;
   human: string;
 }
 
@@ -529,6 +531,21 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     '`ctx.requestMeta.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
   ].join('\n')));
   parts.push(section('Connection catalog', catalogSections.join('\n\n')));
+  const serveUses = marks.map(mark => ({
+    route: String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`),
+    uses: Array.isArray(mark.row.uses) ? mark.row.uses.map(String).filter(Boolean) : [],
+  })).filter(item => item.uses.length > 0);
+  if (serveUses.length) {
+    const named = new Set(serveUses.flatMap(item => item.uses));
+    parts.push(section('Usecases of the routes (the def names them in `uses`: each route calls one of its usecases)', [
+      ...serveUses.map(item => `- ${item.route} → ${item.uses.join(', ')}`),
+      'The route is the entrance for the connection: it checks the catalog input, calls the usecase with it and returns the catalog output. A route that does not call its usecase does nothing. Throwing `missingUsecase` or returning without the call is wrong.',
+    ].join('\n')));
+    for (const item of ctx.units.filter(candidate => candidate.definition.artifactType === 'usecase' && named.has(candidate.unitId))) {
+      const shown = await usecaseSection(ctx, item, true);
+      if (shown) parts.push(shown);
+    }
+  }
   for (const mark of marks) {
     const target = entityOfServe(mark.row);
     if (target.effect !== 'create' || !target.entityId) continue;
@@ -565,6 +582,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     mdmInputs: [],
     workflowRoutes: [],
     externalEnums: [],
+    serveUses,
     human: parts.join('\n'),
   };
 }
@@ -615,13 +633,8 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
   const usecases = ctx.units.filter(item => item.definition.artifactType === 'usecase')
     .sort((left, right) => Number(uses.has(right.unitId)) - Number(uses.has(left.unitId)));
   for (const item of usecases) {
-    const generated = await readOptional(item.output);
-    if (!generated) continue;
-    parts.push(section(`Usecase ${item.unitId}${uses.has(item.unitId) ? ' (named in the def)' : ''}`, [
-      `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`,
-      fence('ts', exportSignatures(generated)),
-      await resolvedInputSection(ctx, generated),
-    ].filter(Boolean).join('\n\n')));
+    const shown = await usecaseSection(ctx, item, uses.has(item.unitId));
+    if (shown) parts.push(shown);
   }
   const enumPairs = await externalEnumPairs(ctx, cited);
   const unpaired = unpairedProblems(enumPairs);
@@ -705,7 +718,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     ].join('\n')));
   }
   const mdmInputs = mdmInputRoutes(routes, unowned);
-  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, externalEnums, human: parts.join('\n') };
+  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, externalEnums, serveUses: [], human: parts.join('\n') };
 }
 
 /**
@@ -726,6 +739,17 @@ export function untypedInputProblems(code: string): string[] {
     problems.push('Do not cast the input (or a value taken from it) to `Record<…>`: read it through its contract type, which says where each field is (the attendance note is `input.details.details.attendanceNote`).');
   }
   return problems;
+}
+
+/** The section of one usecase of the module: where to import it, its signatures and its input type resolved. '' when it is not generated. */
+async function usecaseSection(ctx: M12Context, item: M12Unit, named: boolean): Promise<string> {
+  const generated = await readOptional(item.output);
+  if (!generated) return '';
+  return section(`Usecase ${item.unitId}${named ? ' (named in the def)' : ''}`, [
+    `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`,
+    fence('ts', exportSignatures(generated)),
+    await resolvedInputSection(ctx, generated),
+  ].filter(Boolean).join('\n\n'));
 }
 
 /** The connection id of a catalog import specifier, only when it is exactly the one `catalogImportPath` gives. */
@@ -756,6 +780,27 @@ async function resolvedInputSection(ctx: M12Context, generated: string): Promise
   ].join('\n');
 }
 
+/**
+ * d1_201: a serve route that names usecases in `uses` calls one of them. The body of a route is the code from its key to the
+ * next route key. Only a call counts: a `missingUsecase` throw, a comment or an import does not.
+ */
+export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route: string; uses: readonly string[] }>): string[] {
+  const clean = code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
+  const starts = routes.map(item => {
+    const escaped = item.route.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    return { item, at: clean.search(new RegExp(`['"]${escaped}['"]\\s*:`, 'u')) };
+  });
+  const found = starts.filter(entry => entry.at >= 0).sort((left, right) => left.at - right.at);
+  const problems: string[] = [];
+  for (const { item, at } of starts) {
+    const next = found.find(entry => entry.at > at)?.at ?? clean.length;
+    const body = at < 0 ? '' : clean.slice(at, next);
+    const calls = item.uses.some(name => new RegExp(`(?<![\\w$.])${name}\\s*\\(`, 'u').test(body));
+    if (!calls) problems.push(`SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${item.route} must call one of its usecases (${item.uses.join(', ')}) with the catalog input. Throwing \`missingUsecase\`, returning without the call or only importing the usecase does not count.`);
+  }
+  return problems;
+}
+
 /** Problems of a model-written request service. Empty = the gate passes. */
 export function requestGate(code: string, input: {
   header: string;
@@ -768,6 +813,8 @@ export function requestGate(code: string, input: {
   waived: ReadonlySet<string>;
   /** Enum pairs the code must translate with a typed one to one map. */
   externalEnums?: readonly ExternalEnumPair[];
+  /** Serve routes with `uses`: the body of each must call one of them. */
+  serveUses?: ReadonlyArray<{ route: string; uses: readonly string[] }>;
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -813,6 +860,7 @@ export function requestGate(code: string, input: {
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
   problems.push(...gatewayBypassProblems(code));
   if (input.externalEnums?.length) problems.push(...enumMapProblems(code, input.externalEnums));
+  if (input.serveUses?.length) problems.push(...serveUsecaseProblems(code, input.serveUses));
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
   return problems;
@@ -852,7 +900,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums }),
+    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

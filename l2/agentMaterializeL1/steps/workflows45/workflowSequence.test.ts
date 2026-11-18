@@ -509,6 +509,21 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
   assert.match(text, /resolveRepository<CmGateway>\(ctx, 'CmGateway'\)/);
   assert.match(text, /listAgents\(input: /);
 
+  // d1_201: the L4 `usedBy` says which step runs which call; the prompt carries it with the input resolved.
+  const integration = `export const x = ${JSON.stringify({ connections: [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: [`${PROCESS}.cotar`] },
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', usedBy: ['outroProcesso.cotar'] },
+  ] })} as const;\n`;
+  const linked = withCall(PROCESS);
+  const linkedRead = linked.ctx.read;
+  linked.ctx.read = async (ref: string) => ref.endsWith('/l4/' + MODULE + '/integration.defs.ts') ? integration : linkedRead(ref);
+  const linkedText = (await loadWorkflowContext(linked.ctx, linked.unit)).human;
+  assert.match(linkedText, /## Calls of the steps/);
+  assert.match(linkedText, /- step `cotar` \(mechanical, Cotar\) → `gateway\.listAgents\(input, ctx\)` \(cm\.listAgents\)/);
+  assert.match(linkedText, /input CmListAgentsInput =/);
+  assert.equal(linkedText.includes('gateway.readAgent('), false, 'a call of another process is not here');
+  assert.equal(text.includes('## Calls of the steps'), false, 'no usedBy in the L4: no section');
+
   // A call whose consumer is another function or process is not in this prompt.
   const other = withCall('outroProcesso');
   assert.equal((await loadWorkflowContext(other.ctx, other.unit)).human.includes('## Connection gateways'), false);
