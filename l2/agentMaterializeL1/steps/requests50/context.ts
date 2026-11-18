@@ -6,6 +6,7 @@
 
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
+import { requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
@@ -781,20 +782,14 @@ async function resolvedInputSection(ctx: M12Context, generated: string): Promise
 }
 
 /**
- * d1_201: a serve route that names usecases in `uses` calls one of them. The body of a route is the code from its key to the
- * next route key. Only a call counts: a `missingUsecase` throw, a comment or an import does not.
+ * d1_201/d1_202: a serve route that names usecases in `uses` calls one of them. The body of a route is the property of that key in
+ * the object `requests` (found by structure: the type annotation repeats the keys). Only a call counts: a `missingUsecase` throw, a comment or an import does not.
  */
 export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route: string; uses: readonly string[] }>): string[] {
-  const clean = code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
-  const starts = routes.map(item => {
-    const escaped = item.route.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    return { item, at: clean.search(new RegExp(`['"]${escaped}['"]\\s*:`, 'u')) };
-  });
-  const found = starts.filter(entry => entry.at >= 0).sort((left, right) => left.at - right.at);
+  const bodies = requestsObjectBodies(code);
   const problems: string[] = [];
-  for (const { item, at } of starts) {
-    const next = found.find(entry => entry.at > at)?.at ?? clean.length;
-    const body = at < 0 ? '' : clean.slice(at, next);
+  for (const item of routes) {
+    const body = bodies.get(item.route) ?? '';
     const calls = item.uses.some(name => new RegExp(`(?<![\\w$.])${name}\\s*\\(`, 'u').test(body));
     if (!calls) problems.push(`SERVE_ROUTE_WITHOUT_USECASE_CALL: route ${item.route} must call one of its usecases (${item.uses.join(', ')}) with the catalog input. Throwing \`missingUsecase\`, returning without the call or only importing the usecase does not count.`);
   }

@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { unitInputHash } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { maskCode, requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
 import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
@@ -157,4 +158,53 @@ test('d1_201: the serve gate refuses a route that returns {}, throws missingUsec
   assert.equal(serveUsecaseProblems(commented, uses).length, 1);
   assert.equal(serveUsecaseProblems('export const requests = {};\n', uses).length, 2, 'a route absent from the file is refused too');
   assert.deepEqual(serveUsecaseProblems('export const requests = {};\n', []), []);
+});
+
+const SHAPE = (bodies: { ready: string; describe: string; record: string }): string => [
+  "import type { CmAgentDraftReadyInput } from 'x';",
+  "import { createAgentTool } from 'a';",
+  "import { listAgentTool } from 'b';",
+  "import { createExecutionSummary } from 'c';",
+  'export const requests: {',
+  "'agents.cm.agentDraftReady': (input: CmAgentDraftReadyInput, ctx: RequestContext) => Promise<Out>;",
+  "'agents.cm.describe': (input: CmDescribeInput, ctx: RequestContext) => Promise<Out>;",
+  "'agents.cm.record': (input: CmRecordInput, ctx: RequestContext) => Promise<Out>;",
+  '} = {',
+  `'agents.cm.agentDraftReady': async function (input, ctx) {\n${bodies.ready}\n},`,
+  '',
+  `'agents.cm.describe': async function (input, ctx) {\n${bodies.describe}\n},`,
+  `'agents.cm.record': async function (input, ctx) {\n${bodies.record}\n},`,
+  '};',
+  '',
+].join('\n');
+
+const CM_ROUTES = [
+  { route: 'agents.cm.agentDraftReady', uses: ['createAgentTool'] },
+  { route: 'agents.cm.describe', uses: ['listAgentTool'] },
+  { route: 'agents.cm.record', uses: ['createExecutionSummary'] },
+];
+
+void test('d1_202: the body of a route is the property of the requests object, not the first text of its key (the type annotation repeats the keys)', () => {
+  const ready = "return ctx.data.moduleData.runInTransaction(async (tx) => { await createAgentTool({ agentId: input.draftId }, { ...ctx, tx }); return {}; });";
+  const describe = "const res = await listAgentTool({ agentId: input.agentId, page: 1 }, ctx);\n// 'agents.cm.record': not here\nreturn { items: res.items };";
+  const record = "const msg = 'listAgentTool(createAgentTool(';\nawait createExecutionSummary(input, ctx);\nreturn { status: 'recorded' };";
+  assert.deepEqual(serveUsecaseProblems(SHAPE({ ready, describe, record }), CM_ROUTES), []);
+  // Only the route without a call is refused, and a name in a string or a comment of another route does not save it.
+  const bad = serveUsecaseProblems(SHAPE({ ready, describe: "return { items: [] }; // listAgentTool(input)", record: "const note = 'createExecutionSummary(x)'; return {};" }), CM_ROUTES);
+  assert.deepEqual(bad.map(item => /route (\S+) must/u.exec(item)?.[1]), ['agents.cm.describe', 'agents.cm.record']);
+  // A route that throws missingUsecase in its own body is refused even when another route calls its usecase.
+  const thrown = serveUsecaseProblems(SHAPE({ ready, describe, record: "throw new AppError('missingUsecase', 'x', 500);" }), CM_ROUTES);
+  assert.equal(thrown.length, 1);
+  assert.match(thrown[0], /route agents\.cm\.record/u);
+  // Method shorthand, unquoted key and a satisfies wrapper are read the same way.
+  const shorthand = "export const requests = {\n  'a.b': async (input, ctx) => doIt(input, ctx),\n  other(input) { return other2(input); },\n} satisfies Reqs;\n";
+  assert.deepEqual(serveUsecaseProblems(shorthand, [{ route: 'a.b', uses: ['doIt'] }, { route: 'other', uses: ['other2'] }]), []);
+  assert.equal(serveUsecaseProblems('const requests = {};', [{ route: 'a.b', uses: ['doIt'] }]).length, 1);
+});
+
+void test('d1_202: the scanner masks comments and strings and finds the requests value past an annotation with => and generics', () => {
+  const code = "// export const requests = { fake: 1 };\nexport const requests: { [K in keyof C]: (i: C[K]['input']) => Promise<Record<string, unknown>> } = {\n  'k': async () => { return `}${'{'}`; },\n};\n";
+  assert.deepEqual([...requestsObjectBodies(code).keys()], ['k']);
+  assert.equal(maskCode('a // b\n"c\\"d" /* e */ f').includes('b'), false);
+  assert.equal(maskCode('a "xyz"').length, 'a "xyz"'.length);
 });
