@@ -13,7 +13,7 @@ import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_INPUT_VERSION, contractPath, type D1InputSnapshot } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { parseFinalizeReport, type D1FinalizeObserved, type D1FinalizeRequest } from '/_102021_/l2/agentDefsL1/steps/finalize80/contracts.js';
-import { buildD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
+import { buildD1Finalize, connectionPageIds } from '/_102021_/l2/agentDefsL1/steps/finalize80/gate.js';
 import { assembleD1Finalize } from '/_102021_/l2/agentDefsL1/steps/finalize80/io.js';
 import { CALL_ABSENT, CALL_HISTORY_ABSENT, D1_CALL_LOG_VERSION, type D1CallLog } from '/_102021_/l2/agentDefsL1/steps/usecases50/callLog.js';
 
@@ -1003,3 +1003,17 @@ void test('a read source is opened from the project the path names', async () =>
   assert.equal(fileKey(catalog).startsWith('102099_'), true);
 });
 
+
+void test('a connection pseudo-page is the pageId of a request that serves its own operation, even when selected as a page', () => {
+  const pseudo = (extra: Record<string, unknown>): D1InputSnapshot => {
+    const base = snapshot([]);
+    base.selection.pages = [...base.selection.pages, { pageId: 'cm', routes: [] }];
+    base.selection.requests = [{
+      route: 'mod.cm.read', pageId: 'cm', kind: 'qry', writes: '', outputs: [], params: [], uses: [], ...extra,
+    }] as D1InputSnapshot['selection']['requests'];
+    return base;
+  };
+  assert.deepEqual([...connectionPageIds(pseudo({ serves: 'cm.record' }))], ['cm']);
+  assert.equal(connectionPageIds(pseudo({ serves: 'other.op' })).has('cm'), false);
+  assert.equal(connectionPageIds(pseudo({})).has('cm'), false);
+});

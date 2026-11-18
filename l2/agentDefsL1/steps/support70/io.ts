@@ -80,7 +80,8 @@ export async function assembleD1Support(
   const transitionUsecases = transitionUsecasesOf(selected);
   const operationUsecases = operationUsecasesOf(selected);
   const linked = await effectsOf(project, moduleName, selected);
-  const processes = await processesOf(project, moduleName, selected);
+  const serves = new Set((snapshot.selection.requests || []).flatMap(request => request.serves ? [request.serves] : []));
+  const processes = await processesOf(project, moduleName, selected, serves);
   const request: D1SupportRequest = {
     project,
     moduleName,
@@ -779,21 +780,44 @@ export function connectionOperations(
     if (!connectionId || !operationId) continue;
     const effect = typeof row.effect === 'string' ? connectionEffect(row.effect) : undefined;
     const entityRefs = stringList(row.entityRefs);
-    out.push({
-      id: `${connectionId}.${operationId}`,
-      kind: 'connection',
-      operations: [],
-      mechanism: '',
-      consumer: connectionConsumer(stringList(row.usedBy), selected, matches, journeys),
-      scheduled: false,
-      connectionId,
-      operationId,
-      ...(entityRefs.length ? { entityRefs } : {}),
-      ...(effect ? { effect } : {}),
-      catalogOps: Object.hasOwn(catalogs, connectionId) ? catalogs[connectionId] : null,
-    });
+    // One call can serve the steps of several usecases (the same `updateAgent` for three entities): one line per consumer.
+    const consumers = callConsumers(connectionId, operationId, stringList(row.usedBy), selected, matches, journeys);
+    for (const consumer of consumers) {
+      out.push({
+        id: `${connectionId}.${operationId}`,
+        kind: 'connection',
+        operations: [],
+        mechanism: '',
+        consumer,
+        scheduled: false,
+        connectionId,
+        operationId,
+        ...(entityRefs.length ? { entityRefs } : {}),
+        ...(effect ? { effect } : {}),
+        catalogOps: Object.hasOwn(catalogs, connectionId) ? catalogs[connectionId] : null,
+      });
+    }
   }
   return out;
+}
+
+/** Every usecase whose steps the call serves (`externalCallsOf`), then the one `connectionConsumer` names; `['']` when none. */
+function callConsumers(
+  connectionId: string,
+  operationId: string,
+  usedBy: readonly string[],
+  selected: readonly D1SelectedUsecase[],
+  matches: readonly D1ExternalCallMatch[],
+  journeys: Record<string, unknown>,
+): string[] {
+  const own = matches
+    .filter(match => match.calls.some(call => call.connectionId === connectionId && call.operationId === operationId))
+    .map(match => {
+      const usecase = selected.find(item => item.usecaseId === match.usecaseId);
+      return usecase ? usecase.identity || usecase.usecaseId : '';
+    });
+  const consumers = [...new Set([...own, connectionConsumer(usedBy, selected, matches, journeys)].filter(Boolean))].sort();
+  return consumers.length ? consumers : [''];
 }
 
 function connectionConsumer(
@@ -880,6 +904,7 @@ export async function processesOf(
   project: number,
   moduleName: string,
   selected: readonly D1SelectedUsecase[],
+  serves: ReadonlySet<string> = new Set(),
 ): Promise<D1ProcessPlan[]> {
   const text = await readLogical(project, inputPaths(moduleName).workflows);
   const workflows = text ? parseD1Source(text, 'defs') : null;
@@ -938,7 +963,7 @@ export async function processesOf(
     plans.push({
       processId: row.processId,
       trigger: triggerOf(isRecord(row.trigger) ? row.trigger : {}),
-      occurrence: occurrenceOf(isRecord(row.trigger) ? row.trigger : {}, tasks, acts),
+      occurrence: occurrenceOf(isRecord(row.trigger) ? row.trigger : {}, tasks, acts, serves),
       functions: [...new Set(functions)],
       operations: [...lines.values()].sort((left, right) => left.operation.localeCompare(right.operation)),
       humanJourneys: [...new Set(humanJourneys)],
@@ -958,8 +983,10 @@ function occurrenceOf(
   trigger: Record<string, unknown>,
   tasks: Record<string, unknown>[],
   acts: ReadonlyMap<string, D1ProcessAct[]>,
+  serves: ReadonlySet<string>,
 ): string {
-  if (trigger.kind === 'event' && typeof trigger.event === 'string' && trigger.event.includes('.')) {
+  // An event that a connection serves (`<connectionId>.<operationId>`) names no entity: the record is the first task's.
+  if (trigger.kind === 'event' && typeof trigger.event === 'string' && trigger.event.includes('.') && !serves.has(trigger.event)) {
     return trigger.event.split('.')[0] || '';
   }
   const task = tasks[0];

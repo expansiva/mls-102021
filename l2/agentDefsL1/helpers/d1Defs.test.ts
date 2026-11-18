@@ -325,6 +325,14 @@ void test('a request row may serve a catalog operation with an empty output', ()
   assert.equal(bare.some(issue => issue.includes('serves')), false);
 });
 
+void test('a param of a serving row may have an empty required target and any other row keeps it', () => {
+  const param = { name: 'agentId', target: '', optional: false };
+  const served = requestServiceIssues({ pageId: 'page', requests: [servedRow({ serves: 'cm.record', output: [], params: [param] })] });
+  assert.deepEqual(served, []);
+  const plain = requestServiceIssues({ pageId: 'page', requests: [servedRow({ params: [param] })] });
+  assert.equal(plain.includes('Missing field data.requests.0.params.0.target.'), true, plain.join('\n'));
+});
+
 void test('an adapter handler may omit both contract fields and not just one', () => {
   const handler = (extra: Record<string, unknown>): Record<string, unknown> => ({
     route: 'mod.page.read',

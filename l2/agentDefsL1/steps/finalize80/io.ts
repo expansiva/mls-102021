@@ -209,7 +209,8 @@ async function moduleRuleIds(project: number, moduleName: string): Promise<strin
 }
 
 async function readLogical(project: number, path: string): Promise<string | null> {
-  const info = fileInfoFromDisplay(project, path);
+  // A source of another project is a qualified path (`/_102034_/l4/ontology/connections/cm.defs.ts`), not a logical one.
+  const info = /^\/?_\d+_\//u.test(path) ? catalogInfo(path) : fileInfoFromDisplay(project, path);
   if (!info) return null;
   return readText(info);
 }

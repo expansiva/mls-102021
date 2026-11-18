@@ -60,7 +60,7 @@ async function readDef(ref: string, read: Read): Promise<M1Definition | null> {
  * The signature of a usecase on an external entity (d1_194): the input is the top-level fields of the `inputType` of the
  * operation the usecase calls (plus `expectVersion` when the catalog marks `expectsVersion`), the output is the top-level
  * fields of the `outputType`. The `call` is the connection row of the integration outbound def whose `consumer` is this
- * usecase. No row is an error: the entity signature is never the fallback. `externalCall` tells the emitter the types.
+ * usecase. No row is an error, and so is more than one (the L4 says which): the entity signature is never the fallback. `externalCall` tells the emitter the types.
  */
 async function externalPlan(definition: M1Definition, entityDep: string, read: Read): Promise<{ definition: M1Definition; detail: string }> {
   const data = definition.data;
@@ -72,6 +72,10 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
     .filter(row => text(row.consumer) === usecaseId)
     .sort((left, right) => `${text(left.connectionId)}.${text(left.operationId)}`.localeCompare(`${text(right.connectionId)}.${text(right.operationId)}`));
   const row = rows[0];
+  if (rows.length > 1) {
+    const names = rows.map(item => `${text(item.connectionId)}.${text(item.operationId)}`).join(', ');
+    return { definition, detail: `EXTERNAL_USECASE_CALL_AMBIGUOUS: usecase ${usecaseId} on external entity ${entityId} is the consumer of more than one call (${names}). The L4 decides which one it is.` };
+  }
   if (!row) {
     return { definition, detail: `EXTERNAL_STEP_WITHOUT_CALL: usecase ${usecaseId} is on external entity ${entityId} and no call of ${outboundRef} names it as consumer. The entity signature is not a fallback.` };
   }

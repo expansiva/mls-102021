@@ -229,3 +229,26 @@ void test('an inspect step and an act transition step name the usecase through u
   assert.equal(rows[1]?.consumer, 'activate');
   assert.equal(rows[2]?.consumer, '');
 });
+
+void test('a call used by the steps of two usecases becomes one operation per consumer', () => {
+  const selected = [selectedUsecase('atualizarTarefa', 'Tarefa', 'update'), selectedUsecase('atualizarNota', 'Nota', 'update')];
+  const rows = connectionOperations([
+    { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', effect: 'update', usedBy: ['jornada.nota', 'jornada.tarefa'] },
+    { connectionId: 'cm', operationId: 'orphan', direction: 'call', usedBy: ['jornada.semUsecase'] },
+  ], selected, {}, {
+    jornada: {
+      journeyId: 'jornada',
+      business: {
+        steps: [
+          { stepId: 'nota', kind: 'act', entity: 'Nota', effect: 'update' },
+          { stepId: 'tarefa', kind: 'act', entity: 'Tarefa', effect: 'update' },
+          { stepId: 'semUsecase', kind: 'act', entity: 'Outra', effect: 'update' },
+        ],
+      },
+    },
+  });
+  const updates = rows.filter(item => item.operationId === 'updateAgent');
+  assert.deepEqual(updates.map(item => item.consumer), ['atualizarNota', 'atualizarTarefa']);
+  const orphans = rows.filter(item => item.operationId === 'orphan');
+  assert.deepEqual(orphans.map(item => item.consumer), ['']);
+});

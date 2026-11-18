@@ -282,3 +282,22 @@ async function loadController(controller: string, scope: string, authority: stri
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test('one operation cited by two consumers emits one gateway method', async () => {
+  const outbound = await emitPersistence('persistence.integrationOutbound', envelope({
+    artifactType: 'integrationOutbound',
+    artifactId: 'outbound',
+    dependencies: [],
+    data: {
+      integrationId: 'outbound',
+      events: [],
+      connections: [
+        { connectionId: 'cm', operationId: 'updateAgent', consumer: 'updateNote', entityRefs: ['Agent'], effect: 'update' },
+        { connectionId: 'cm', operationId: 'updateAgent', consumer: 'updateTask', entityRefs: ['Agent'], effect: 'update' },
+      ],
+    },
+  }), OUTBOUND_DEF.replace(/\.defs\.ts$/, '.ts'), async ref => ref === CM_DEFS ? CM_SOURCE : null);
+  assert.equal('code' in outbound, false);
+  if ('code' in outbound) return;
+  assert.equal(outbound.source.split('  updateAgent(input: CmUpdateAgentInput, ctx: RequestContext').length - 1, 1);
+});

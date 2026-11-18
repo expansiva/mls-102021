@@ -950,10 +950,10 @@ function requestRowIssues(row: unknown, path: string, issues: string[]): void {
   stringList(row.rules, `${path}.rules`, issues);
   if (readRequestDoc(row.doc) === null) issues.push(`Invalid field ${path}.doc: raw text and the recognized sections.`);
   if (!Array.isArray(row.params)) issues.push(`Missing field ${path}.params.`);
-  else row.params.forEach((param, index) => paramIssues(param, `${path}.params.${index}`, issues));
+  else row.params.forEach((param, index) => paramIssues(param, `${path}.params.${index}`, issues, serves));
 }
 
-function paramIssues(param: unknown, path: string, issues: string[]): void {
+function paramIssues(param: unknown, path: string, issues: string[], serves = false): void {
   if (!isRecord(param)) {
     issues.push(`Missing field ${path}.`);
     return;
@@ -961,7 +961,9 @@ function paramIssues(param: unknown, path: string, issues: string[]): void {
   unknownKeys(param, ['name', 'target', 'field', 'pages', 'optional'], path, issues);
   needString(param, 'name', path, issues);
   // An optional contract input with no field to filter (d1_103 s2) has no target: '' is its value.
-  const unbound = param.optional === true && param.field === undefined && param.pages === undefined;
+  // A param of a row that serves a catalog operation is an input member of that operation: no output key to filter or page,
+  // so it has no target either (d1_194 s2). Only a `serves` row relaxes it; any other request keeps the target.
+  const unbound = serves || (param.optional === true && param.field === undefined && param.pages === undefined);
   if (!unbound) needString(param, 'target', path, issues);
   else if (typeof param.target !== 'string') issues.push(`Missing field ${path}.target.`);
   if (param.field !== undefined) needString(param, 'field', path, issues);
@@ -1189,7 +1191,9 @@ function readSerializedGrant(
   if (!path) return { issue: `Grant ${grantId} does not keep its relationship path.` };
   const entityRefs = Array.isArray(grant.entityRefs) ? grant.entityRefs.filter((item): item is string => typeof item === 'string' && !!item) : [];
   const disclosure = grant.disclosure === 'fieldsOnly' || grant.disclosure === 'fullRecord' ? grant.disclosure : '';
-  if (!grantId || typeof grant.actorRef !== 'string' || !grant.actorRef || !entityRefs.length || !disclosure) {
+  // A connection's technical caller has no entity of its own (A2, d1_189): its grant names none.
+  const technicalCaller = typeof grant.actorRef === 'string' && grant.actorRef.startsWith('connection:');
+  if (!grantId || typeof grant.actorRef !== 'string' || !grant.actorRef || (!entityRefs.length && !technicalCaller) || !disclosure) {
     return { issue: `Grant ${grantId || '(missing)'} is not a complete policy.` };
   }
   const allowedFields = disclosure === 'fieldsOnly' && Array.isArray(grant.allowedFields)

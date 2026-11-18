@@ -1027,7 +1027,8 @@ function acceptedConnectionRows(
   const connectionRows = request.operations
     .filter(operation => operation.kind === 'connection')
     .sort((left, right) => (left.connectionId || '').localeCompare(right.connectionId || '')
-      || (left.operationId || '').localeCompare(right.operationId || ''));
+      || (left.operationId || '').localeCompare(right.operationId || '')
+      || (left.consumer || '').localeCompare(right.consumer || ''));
   for (const operation of connectionRows) {
     const connectionId = operation.connectionId || '';
     const operationId = operation.operationId || '';

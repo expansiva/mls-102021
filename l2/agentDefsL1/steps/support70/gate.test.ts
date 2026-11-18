@@ -358,6 +358,38 @@ void test('own and organization stay distinct and a multi-hop path is not just t
   assert.equal(dropped.policies.length, 0);
 });
 
+void test('a connection caller grant with no entity is a complete policy and a normal actor still needs one', () => {
+  const grant = (actorRef: string): Record<string, unknown> => ({
+    grantId: 'cmCaller',
+    actorRef,
+    entityRefs: [],
+    disclosure: 'fullRecord',
+    allowedFields: [],
+    anchorEntity: '',
+    scopeMode: 'organization',
+    session: 'verified',
+    path: [],
+    pending: '',
+  });
+  const units = (actorRef: string): D1PolicyUnit[] => [
+    { defPath: 'l1/zzMod/scope/accessScope.defs.ts', artifactType: 'accessScope', data: { grants: [grant(actorRef)] }, dependencies: [] },
+    {
+      defPath: 'l1/zzMod/controllers/page.defs.ts',
+      artifactType: 'httpController',
+      data: { pageId: 'page', handlers: [{ route: 'zzMod.page.read', grantIds: ['cmCaller'] }] },
+      dependencies: ['l1/zzMod/scope/accessScope.defs.ts'],
+    },
+  ];
+  const technical = reconstructAccessPolicy(units('connection:cm'));
+  assert.deepEqual(technical.issues, []);
+  assert.equal(technical.policies.length, 1);
+  assert.equal(technical.policies[0].actorRef, 'connection:cm');
+  assert.deepEqual(technical.policies[0].entityRefs, []);
+  const normal = reconstructAccessPolicy(units('profissional'));
+  assert.equal(normal.policies.length, 0);
+  assert.equal(normal.issues.some(item => item.code === 'POLICY_UNBOUND' && item.message.includes('is not a complete policy')), true, JSON.stringify(normal.issues));
+});
+
 void test('a receipt mismatch and a form identity do not emit', { skip: 'agendaClinica fixtures kept by Wagner (01/10); not a v2 source' }, () => {
   const request = coreSupportRequest();
   const scopePath = `l1/${request.moduleName}/layer_2_application/scope/accessScope.defs.ts`;

@@ -99,3 +99,14 @@ void test('a usecase on an external entity with no call is EXTERNAL_STEP_WITHOUT
   assert.match(plan.detail, /^EXTERNAL_STEP_WITHOUT_CALL/u);
   assert.equal(Array.isArray(plan.definition.data.functions), false);
 });
+
+void test('a usecase on an external entity that consumes two calls is EXTERNAL_USECASE_CALL_AMBIGUOUS and lists them', async () => {
+  const all = files([
+    { connectionId: 'cm', operationId: 'readAgent', consumer: 'getAgentDraft' },
+    { connectionId: 'cm', operationId: 'listAgents', consumer: 'getAgentDraft' },
+  ]);
+  const plan = await usecasePlan(usecase('getAgentDraft', 'get'), read(all));
+  assert.match(plan.detail, /^EXTERNAL_USECASE_CALL_AMBIGUOUS/u);
+  assert.match(plan.detail, /cm\.listAgents, cm\.readAgent/u);
+  assert.equal(Array.isArray(plan.definition.data.functions), false);
+});
