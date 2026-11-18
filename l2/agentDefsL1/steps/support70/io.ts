@@ -9,6 +9,7 @@ import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers
 import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
+import { externalCallsOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -730,8 +731,8 @@ async function effectsOf(
     }
     const callRows = arrayOf(integration.connections);
     const catalogs = await connectionCatalogs(callRows);
-    const steps = await connectionSteps(project, moduleName, callRows);
-    operations.push(...connectionOperations(callRows, selected, catalogs, steps));
+    const journeys = await connectionJourneys(project, moduleName, callRows);
+    operations.push(...connectionOperations(callRows, selected, catalogs, journeys));
   }
   return { outbound, operations };
 }
@@ -761,14 +762,15 @@ export function catalogOperationsOf(source: string): D1CatalogOperation[] | null
 /**
  * One operation per `call` line. A `serve` line is ignored.
  * `catalogs[connectionId]` is `null` when the catalog file was not read.
- * `steps` keys are `journeyId.stepId`.
+ * The consumer of a step in `usedBy` comes from `externalCallsOf` (locate and inspect included).
  */
 export function connectionOperations(
   rows: readonly unknown[],
   selected: readonly D1SelectedUsecase[],
   catalogs: Readonly<Record<string, readonly D1CatalogOperation[] | null>>,
-  steps: ReadonlyMap<string, { entity: string; effect: string; transitionRef: string }>,
+  journeys: Record<string, unknown> = {},
 ): D1EffectOperation[] {
+  const matches = externalCallsOf({ journeys, connections: rows, usecases: selected, entityKind: new Map(), allEntities: true });
   const out: D1EffectOperation[] = [];
   for (const row of rows) {
     if (!isRecord(row) || row.direction !== 'call') continue;
@@ -782,7 +784,7 @@ export function connectionOperations(
       kind: 'connection',
       operations: [],
       mechanism: '',
-      consumer: connectionConsumer(stringList(row.usedBy), selected, steps),
+      consumer: connectionConsumer(stringList(row.usedBy), selected, matches, journeys),
       scheduled: false,
       connectionId,
       operationId,
@@ -794,36 +796,37 @@ export function connectionOperations(
   return out;
 }
 
-/** Journey effects `read` and `remove` are the usecase operations `get` and `delete`. */
-function operationMatchesEffect(operation: string, effect: string): boolean {
-  return operation === effect
-    || (operation === 'get' && effect === 'read')
-    || (operation === 'delete' && effect === 'remove');
-}
-
 function connectionConsumer(
   usedBy: readonly string[],
   selected: readonly D1SelectedUsecase[],
-  steps: ReadonlyMap<string, { entity: string; effect: string; transitionRef: string }>,
+  matches: readonly D1ExternalCallMatch[],
+  journeys: Record<string, unknown>,
 ): string {
   const known = new Set(selected.flatMap(item => [item.usecaseId, item.identity]).filter(Boolean));
-  const transitions = transitionUsecasesOf(selected);
   for (const ref of usedBy) {
     if (known.has(ref)) return ref;
-    const step = steps.get(ref);
-    if (step) {
-      const usecaseId = step.effect === 'transition'
-        ? transitionUsecaseFor(transitions, step.entity, step.transitionRef)
-        : (selected.find(item => item.entity === step.entity && operationMatchesEffect(item.operation, step.effect))?.identity
-          || selected.find(item => item.entity === step.entity && operationMatchesEffect(item.operation, step.effect))?.usecaseId
-          || '');
-      if (usecaseId) return usecaseId;
-      continue;
+    const served = matches.find(item => item.steps.includes(ref));
+    if (served) {
+      const usecase = selected.find(item => item.usecaseId === served.usecaseId);
+      if (usecase) return usecase.identity || usecase.usecaseId;
     }
+    if (journeyListsStep(journeys, ref)) continue;
     const head = ref.split('.')[0] || '';
     if (head && known.has(head)) return head;
   }
   return '';
+}
+
+/** The ref is `journeyId.stepId` and that step is on the journey. The first segment is not a usecase id then. */
+function journeyListsStep(journeys: Record<string, unknown>, ref: string): boolean {
+  const dot = ref.indexOf('.');
+  if (dot <= 0) return false;
+  const journey = journeys[ref.slice(0, dot)];
+  if (!isRecord(journey)) return false;
+  const stepId = ref.slice(dot + 1);
+  const business = isRecord(journey.business) ? journey.business : {};
+  const rows = arrayOf(business.steps).length ? arrayOf(business.steps) : arrayOf(journey.steps);
+  return rows.some(step => isRecord(step) && step.stepId === stepId);
 }
 
 async function connectionCatalogs(rows: readonly unknown[]): Promise<Record<string, readonly D1CatalogOperation[] | null>> {
@@ -842,12 +845,13 @@ async function connectionCatalogs(rows: readonly unknown[]): Promise<Record<stri
   return catalogs;
 }
 
-async function connectionSteps(
+/** Journeys cited by a call `usedBy`, with every step (`act`, `locate`, `inspect`). */
+async function connectionJourneys(
   project: number,
   moduleName: string,
   rows: readonly unknown[],
-): Promise<Map<string, { entity: string; effect: string; transitionRef: string }>> {
-  const steps = new Map<string, { entity: string; effect: string; transitionRef: string }>();
+): Promise<Record<string, unknown>> {
+  const journeys: Record<string, unknown> = {};
   const journeyIds = new Set<string>();
   for (const row of rows) {
     if (!isRecord(row) || row.direction !== 'call') continue;
@@ -857,11 +861,11 @@ async function connectionSteps(
     }
   }
   for (const journeyId of journeyIds) {
-    for (const act of await journeyActs(project, moduleName, journeyId)) {
-      steps.set(`${journeyId}.${act.stepId}`, act);
-    }
+    const text = await readLogical(project, journeyPath(moduleName, journeyId));
+    const parsed = text ? parseD1Source(text, 'defs') : null;
+    if (isRecord(parsed)) journeys[journeyId] = parsed;
   }
-  return steps;
+  return journeys;
 }
 
 interface D1ProcessAct {

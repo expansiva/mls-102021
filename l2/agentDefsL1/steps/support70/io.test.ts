@@ -140,8 +140,21 @@ const CM_CATALOG = path.resolve(
   '../../../../../mls-102034/l4/ontology/connections/cm.defs.ts',
 );
 
-function selectedUsecase(usecaseId: string, entity = 'Nota', operation = 'read'): D1SelectedUsecase {
-  return { usecaseId, entity, operation, status: 'toCreate', existing: '', identity: usecaseId, routes: [] };
+function selectedUsecase(usecaseId: string, entity = 'Nota', operation = 'read', transitionRef = ''): D1SelectedUsecase {
+  return {
+    usecaseId,
+    entity,
+    operation,
+    status: 'toCreate',
+    existing: '',
+    identity: usecaseId,
+    routes: [],
+    ...(transitionRef ? { transitionRef } : {}),
+  };
+}
+
+function journeyWith(journeyId: string, stepId: string, step: Record<string, string>): Record<string, unknown> {
+  return { [journeyId]: { journeyId, business: { steps: [{ stepId, ...step }] } } };
 }
 
 void test('a call line becomes a connection operation and a serve line is ignored', async () => {
@@ -159,9 +172,7 @@ void test('a call line becomes a connection operation and a serve line is ignore
     { connectionId: 'absent', operationId: 'listAgents', direction: 'call', usedBy: ['listarNotas'] },
     { connectionId: 'cm', operationId: 'readAgent', direction: 'call', usedBy: ['nenhumPasso'] },
     { connectionId: 'cm', operationId: 'simulateAgent', direction: 'call', usedBy: ['simular.rodar'] },
-  ], selected, { cm: catalog, absent: null }, new Map([
-    ['simular.rodar', { entity: 'Nota', effect: 'read', transitionRef: '' }],
-  ]));
+  ], selected, { cm: catalog, absent: null }, journeyWith('simular', 'rodar', { kind: 'act', entity: 'Nota', effect: 'read' }));
   assert.deepEqual(rows.map(item => item.operationId), ['listAgents', 'notInCatalog', 'listAgents', 'readAgent', 'simulateAgent']);
   assert.equal(rows[0]?.consumer, 'listarNotas');
   assert.equal(rows[0]?.catalogOps?.some(item => item.operationId === 'listAgents' && item.direction === 'call'), true);
@@ -175,10 +186,46 @@ void test('a journey effect read or remove resolves the get or delete usecase', 
   const rows = connectionOperations([
     { connectionId: 'cm', operationId: 'readAgent', direction: 'call', effect: 'read', entityRefs: ['Nota'], usedBy: ['jornada.ler'] },
     { connectionId: 'cm', operationId: 'retireAgent', direction: 'call', effect: 'remove', entityRefs: ['Nota'], usedBy: ['jornada.apagar'] },
-  ], selected, {}, new Map([
-    ['jornada.ler', { entity: 'Nota', effect: 'read', transitionRef: '' }],
-    ['jornada.apagar', { entity: 'Nota', effect: 'remove', transitionRef: '' }],
-  ]));
+  ], selected, {}, {
+    jornada: {
+      journeyId: 'jornada',
+      business: {
+        steps: [
+          { stepId: 'ler', kind: 'act', entity: 'Nota', effect: 'read' },
+          { stepId: 'apagar', kind: 'act', entity: 'Nota', effect: 'remove' },
+        ],
+      },
+    },
+  });
   assert.equal(rows[0]?.consumer, 'lerNota');
   assert.equal(rows[1]?.consumer, 'apagarNota');
+});
+
+void test('an inspect step and an act transition step name the usecase through usedBy', () => {
+  const selected = [
+    selectedUsecase('listAgentSimulation', 'AgentSimulation', 'list'),
+    selectedUsecase('activate', 'AgentDraft', 'transition', 'activate'),
+  ];
+  const rows = connectionOperations([
+    { connectionId: 'cm', operationId: 'simulateAgent', direction: 'call', usedBy: ['simulateDraft.seeWhatItCan'] },
+    { connectionId: 'cm', operationId: 'activateAgent', direction: 'call', usedBy: ['reviewAndActivateDraft.activateDraft'] },
+    { connectionId: 'cm', operationId: 'orphan', direction: 'call', usedBy: ['reviewAndActivateDraft.notInPool'] },
+  ], selected, {}, {
+    simulateDraft: {
+      journeyId: 'simulateDraft',
+      business: { steps: [{ stepId: 'seeWhatItCan', kind: 'inspect', entity: 'AgentSimulation' }] },
+    },
+    reviewAndActivateDraft: {
+      journeyId: 'reviewAndActivateDraft',
+      business: {
+        steps: [
+          { stepId: 'activateDraft', kind: 'act', entity: 'AgentDraft', effect: 'transition', transitionRef: 'activate' },
+          { stepId: 'notInPool', kind: 'act', entity: 'AgentDraft', effect: 'transition', transitionRef: 'missing' },
+        ],
+      },
+    },
+  });
+  assert.equal(rows[0]?.consumer, 'listAgentSimulation');
+  assert.equal(rows[1]?.consumer, 'activate');
+  assert.equal(rows[2]?.consumer, '');
 });

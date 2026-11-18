@@ -22,6 +22,8 @@ export interface D1ExternalCallsInput {
   connections: readonly unknown[];
   usecases: readonly D1SelectedUsecase[];
   entityKind: ReadonlyMap<string, string>;
+  /** Resolve usecases of every entity, not only `external` ones (a call may serve a step on a table entity). */
+  allEntities?: boolean;
 }
 
 /**
@@ -33,10 +35,10 @@ export interface D1ExternalCallsInput {
 export function externalCallsOf(args: D1ExternalCallsInput): D1ExternalCallMatch[] {
   const steps = journeySteps(args.journeys);
   const calls = args.connections.map(rec).filter(row => text(row.direction) === 'call');
-  const reads = readTargets(args.usecases, args.entityKind);
+  const reads = readTargets(args.usecases, args.entityKind, args.allEntities === true);
   const out: D1ExternalCallMatch[] = [];
   for (const usecase of args.usecases) {
-    if (args.entityKind.get(usecase.entity) !== 'external') continue;
+    if (!args.allEntities && args.entityKind.get(usecase.entity) !== 'external') continue;
     if (usecase.operation === 'custom') continue;
     const serving = steps.filter(step => stepServes(step, usecase, reads));
     const refs = serving.map(step => step.ref);
@@ -89,10 +91,10 @@ function journeySteps(journeys: Record<string, unknown>): JourneyStep[] {
 }
 
 /** Preferred read for a locate/inspect step, or '' when the entity has neither list nor get. */
-function readTargets(usecases: readonly D1SelectedUsecase[], entityKind: ReadonlyMap<string, string>): Map<string, 'list' | 'get'> {
+function readTargets(usecases: readonly D1SelectedUsecase[], entityKind: ReadonlyMap<string, string>, allEntities: boolean): Map<string, 'list' | 'get'> {
   const ops = new Map<string, Set<string>>();
   for (const usecase of usecases) {
-    if (entityKind.get(usecase.entity) !== 'external') continue;
+    if (!allEntities && entityKind.get(usecase.entity) !== 'external') continue;
     if (usecase.operation !== 'list' && usecase.operation !== 'get') continue;
     const set = ops.get(usecase.entity) || new Set<string>();
     set.add(usecase.operation);
