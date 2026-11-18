@@ -11,7 +11,7 @@ import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
-import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -472,7 +472,8 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   const lines: string[] = [];
   for (const row of facts.operations) {
     const usecase = operationUsecase(ctx.units, row.operation);
-    lines.push(`- ${row.operation} (${row.steps.join(', ')}): ${usecase ? `usecase \`${usecase.unitId}\`` : 'no usecase: the function applies it through the entity port (POOL_ABSENT)'}`);
+    const external = externalEntityIds(ctx.units).has(row.operation.split('.')[0] ?? '');
+    lines.push(`- ${row.operation} (${row.steps.join(', ')}): ${usecase ? `usecase \`${usecase.unitId}\`` : external ? 'no usecase: the function applies it through the gateway of the connection (the entity is external: it has no port)' : 'no usecase: the function applies it through the entity port (POOL_ABSENT)'}`);
   }
   if (lines.length) parts.push(section('Operations of the process', lines.join('\n')));
   const mdmUsecase = facts.operations.map(row => operationUsecase(ctx.units, row.operation)).find(usecase => usecase && usesMdm(usecase));

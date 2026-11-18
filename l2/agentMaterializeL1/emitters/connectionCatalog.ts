@@ -90,3 +90,49 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
   }
   return operations;
 }
+
+export interface CatalogField {
+  name: string;
+  optional: boolean;
+}
+
+/**
+ * Top-level members of a type declared in a catalog file: `export interface <name> { … }` (nested objects are one member),
+ * or `export type <name> = Record<string, never>` (none). `null` when the file does not declare it that way.
+ */
+export function catalogTypeFields(source: string, typeName: string): CatalogField[] | null {
+  if (!ident(typeName)) return null;
+  if (new RegExp(`export\\s+type\\s+${typeName}\\s*=\\s*Record<string,\\s*never>\\s*;`, 'u').test(source)) return [];
+  const at = source.indexOf(`export interface ${typeName} `);
+  const open = at < 0 ? -1 : source.indexOf('{', at);
+  if (open < 0) return null;
+  const fields: CatalogField[] = [];
+  let depth = 0;
+  let line = '';
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') {
+      depth += 1;
+      if (depth === 1) continue;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        pushField(fields, line);
+        return fields;
+      }
+    }
+    if (depth === 1 && char === '\n') {
+      pushField(fields, line);
+      line = '';
+      continue;
+    }
+    if (depth === 1) line += char;
+    else if (depth > 1 && line && !line.endsWith('{}')) line += char === '\n' ? ' ' : char;
+  }
+  return null;
+}
+
+function pushField(fields: CatalogField[], line: string): void {
+  const match = /^\s*"?([A-Za-z_$][\w$]*)"?(\??)\s*:/u.exec(line);
+  if (match) fields.push({ name: match[1], optional: match[2] === '?' });
+}

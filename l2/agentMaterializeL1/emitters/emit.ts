@@ -232,6 +232,8 @@ async function emitDomainUsecase(
   fn: UsecaseFunction,
   fnName: string,
 ): Promise<EmitResult | EmitFailure> {
+  const externalCall = isRecord(definition.data.externalCall) ? definition.data.externalCall : null;
+  if (externalCall) return emitExternalUsecase(definition, output, fn, fnName, externalCall);
   if (fn.input.length === 0 || fn.output.length === 0) {
     return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no domain signature.` };
   }
@@ -298,6 +300,49 @@ async function emitDomainUsecase(
       '  void input;',
       '  void ctx;',
       voidPorts.trimEnd(),
+      `  throw new AppError('${M1_STUB_ERROR}', '${fnName} is not implemented.', ${M1_STUB_STATUS});`,
+      '}',
+      '',
+    ].filter(line => line !== '').join('\n'),
+  };
+}
+
+/** A usecase on an external entity: its types are the catalog types of the call, not redeclared (d1_194). */
+function emitExternalUsecase(
+  definition: M1Definition,
+  output: string,
+  fn: UsecaseFunction,
+  fnName: string,
+  call: Record<string, unknown>,
+): EmitResult | EmitFailure {
+  const inputName = typeof call.inputType === 'string' ? call.inputType : '';
+  const outputName = typeof call.outputType === 'string' ? call.outputType : '';
+  const specifier = typeof call.catalogSpecifier === 'string' ? call.catalogSpecifier : '';
+  if (!IDENT.test(inputName) || !IDENT.test(outputName) || !specifier) {
+    return { code: 'FUNCTION_MISSING', detail: `${definition.artifactId} has no catalog types for its call.` };
+  }
+  const inputType = `${pascal(fnName)}Input`;
+  const outputTypeName = `${pascal(fnName)}Output`;
+  const version = call.expectsVersion === true ? '  expectVersion: number;\n' : '';
+  void fn;
+  return {
+    runsStub: true,
+    imports: [PLATFORM_CONTRACTS, specifier],
+    source: [
+      header(output),
+      `import { AppError } from '${PLATFORM_CONTRACTS}';`,
+      `import type { RequestContext } from '${PLATFORM_CONTRACTS}';`,
+      `import type { ${[...new Set([inputName, outputName])].sort().join(', ')} } from '${specifier}';`,
+      '',
+      // The service asserts this to and from a record. The index is what makes that assertion legal.
+      version
+        ? `export interface ${inputType} extends ${inputName}, Record<string, unknown> {\n${version}}`
+        : `export interface ${inputType} extends ${inputName}, Record<string, unknown> {}`,
+      `export interface ${outputTypeName} extends ${outputName}, Record<string, unknown> {}`,
+      '',
+      `export async function ${fnName}(input: ${inputType}, ctx: RequestContext): Promise<${outputTypeName}> {`,
+      '  void input;',
+      '  void ctx;',
       `  throw new AppError('${M1_STUB_ERROR}', '${fnName} is not implemented.', ${M1_STUB_STATUS});`,
       '}',
       '',

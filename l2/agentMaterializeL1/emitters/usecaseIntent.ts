@@ -7,6 +7,7 @@
 // place that derives it; the declared def stays as it came (prompt and input hash).
 
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
+import { catalogOperations, catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 
 type Read = (ref: string) => Promise<string | null>;
 
@@ -55,6 +56,65 @@ async function readDef(ref: string, read: Read): Promise<M1Definition | null> {
   return source === null ? null : parseDefinitionExport(source);
 }
 
+/**
+ * The signature of a usecase on an external entity (d1_194): the input is the top-level fields of the `inputType` of the
+ * operation the usecase calls (plus `expectVersion` when the catalog marks `expectsVersion`), the output is the top-level
+ * fields of the `outputType`. The `call` is the connection row of the integration outbound def whose `consumer` is this
+ * usecase. No row is an error: the entity signature is never the fallback. `externalCall` tells the emitter the types.
+ */
+async function externalPlan(definition: M1Definition, entityDep: string, read: Read): Promise<{ definition: M1Definition; detail: string }> {
+  const data = definition.data;
+  const usecaseId = text(data.usecaseId) || definition.artifactId;
+  const entityId = text(data.entityId);
+  const outboundRef = `${projectOf(entityDep)}/l1/${definition.moduleName}/layer_1_external/adapters/integration/outbound.defs.ts`;
+  const outbound = await readDef(outboundRef, read);
+  const rows = (outbound && Array.isArray(outbound.data.connections) ? outbound.data.connections.filter(isRecord) : [])
+    .filter(row => text(row.consumer) === usecaseId)
+    .sort((left, right) => `${text(left.connectionId)}.${text(left.operationId)}`.localeCompare(`${text(right.connectionId)}.${text(right.operationId)}`));
+  const row = rows[0];
+  if (!row) {
+    return { definition, detail: `EXTERNAL_STEP_WITHOUT_CALL: usecase ${usecaseId} is on external entity ${entityId} and no call of ${outboundRef} names it as consumer. The entity signature is not a fallback.` };
+  }
+  const connectionId = text(row.connectionId);
+  const operationId = text(row.operationId);
+  const catalogRef = `/_102034_/l4/ontology/connections/${connectionId}.defs.ts`;
+  const catalogSource = await read(catalogRef);
+  const operation = (catalogSource ? catalogOperations(catalogSource) : null)?.find(item => item.operationId === operationId);
+  if (!catalogSource || !operation) return { definition, detail: `${connectionId}.${operationId} is not in ${catalogRef}.` };
+  const inputFields = catalogTypeFields(catalogSource, operation.inputType);
+  const outputFields = catalogTypeFields(catalogSource, operation.outputType);
+  if (!inputFields || !outputFields) return { definition, detail: `${operation.inputType} or ${operation.outputType} is not declared in ${catalogRef}.` };
+  const input: SignatureRow[] = inputFields.map(field => ({ name: field.name, type: 'string' }));
+  if (operation.expectsVersion && !input.some(item => item.name === 'expectVersion')) input.push({ name: 'expectVersion', type: 'number' });
+  const output: SignatureRow[] = outputFields.map(field => ({ name: field.name, type: 'string' }));
+  return {
+    definition: {
+      ...definition,
+      data: {
+        ...data,
+        functions: [{ functionName: usecaseId, input, output }],
+        externalCall: {
+          connectionId,
+          operationId,
+          inputType: operation.inputType,
+          outputType: operation.outputType,
+          expectsVersion: operation.expectsVersion,
+          catalogSpecifier: catalogRef.replace(/\.ts$/u, '.js'),
+        },
+        ports: [],
+        portCalls: [],
+        uses: [],
+        rulePlan: stringList(data.rulesApplied).map(ruleId => ({
+          ruleId, origin: `l4/${definition.moduleName}/rules.defs.ts#${ruleId}`, consumer: `usecase:${usecaseId}`, enforcement: 'local', gap: '',
+        })),
+        transactional: false,
+        transaction: { boundary: 'none' },
+      },
+    },
+    detail: '',
+  };
+}
+
 /** The transition `transitionId` of an l4 ontology: its payload paths; null when the ontology has no such transition. */
 export function transitionPayload(ontologySource: string | null, transitionId: string): string[] | null {
   if (!ontologySource) return null;
@@ -93,6 +153,8 @@ export async function usecasePlan(definition: M1Definition, read: Read): Promise
   if (!entityDep) return { definition, detail: `${usecaseId} has no entity dependency.` };
   const entity = await readDef(entityDep, read);
   if (!entity) return { definition, detail: `${entityDep} could not be read.` };
+  // An external entity has no id, version, lifecycle or port: the signature is the `call` that names this usecase.
+  if (entity.data.storageTarget === 'external') return externalPlan(definition, entityDep, read);
   const fields = Array.isArray(entity.data.fields) ? entity.data.fields.filter(isRecord) : [];
   const row = (field: Record<string, unknown>): SignatureRow => ({ name: text(field.name), type: text(field.type) || 'string', fieldRef: `${entityId}.${text(field.name)}` });
   const all = fields.map(row);
