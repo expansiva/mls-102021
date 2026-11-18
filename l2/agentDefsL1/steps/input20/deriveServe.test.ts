@@ -134,12 +134,20 @@ void test('takeUsecase: with one usecase per call the route takes the one whose 
   assert.deepEqual(take(usecases, ['cm.undoAgentChange', 'cm.other']).uses, ['undoAgentChange']);
 });
 
-void test('takeUsecase: when the page cites both calls or neither, the route is EXTERNAL_ROUTE_CALL_AMBIGUOUS and takes nothing', () => {
+void test('takeUsecase: when the page cites both calls the route lists both usecases in uses (the request body chooses by its input)', () => {
   const usecases = [behaviorUsecase('updateAgentBehavior', 'cm.updateAgent'), behaviorUsecase('undoAgentChange', 'cm.undoAgentChange')];
-  for (const routeCalls of [['cm.updateAgent', 'cm.undoAgentChange'], [], undefined]) {
+  const { problems, uses } = take(usecases, ['cm.updateAgent', 'cm.undoAgentChange']);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(uses, ['updateAgentBehavior', 'undoAgentChange']);
+  assert.equal(usecases.length, 2);
+});
+
+void test('takeUsecase: when the page cites none of the calls the route is EXTERNAL_ROUTE_CALL_UNRESOLVED and takes nothing', () => {
+  const usecases = [behaviorUsecase('updateAgentBehavior', 'cm.updateAgent'), behaviorUsecase('undoAgentChange', 'cm.undoAgentChange')];
+  for (const routeCalls of [[], undefined, ['cm.other']]) {
     const { problems, uses } = take(usecases, routeCalls);
     assert.deepEqual(uses, []);
-    assert.deepEqual(problems.map(item => [item.severity, item.code]), [['error', 'EXTERNAL_ROUTE_CALL_AMBIGUOUS']]);
+    assert.deepEqual(problems.map(item => [item.severity, item.code]), [['error', 'EXTERNAL_ROUTE_CALL_UNRESOLVED']]);
     assert.match(problems[0].message, /updateAgentBehavior → cm\.updateAgent/u);
     assert.match(problems[0].message, /undoAgentChange → cm\.undoAgentChange/u);
   }

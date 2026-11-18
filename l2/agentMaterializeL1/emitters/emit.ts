@@ -1065,9 +1065,11 @@ async function loadUses(
       return { code: 'FUNCTION_MISSING', detail: `${usecaseId} has no function.` };
     }
     if (names.has(fn.name)) return { code: 'FUNCTION_MISSING', detail: `${fn.name} is exported by more than one usecase.` };
-    if (entities.has(entityId)) return { code: 'USECASE_ENTITY', detail: `${route} uses more than one usecase of ${entityId}.` };
+    // Usecases of an external entity, one per call, may share the entity: the body chooses by the route input (d1_195).
+    const external = isRecord(parsed.data.externalCall);
+    if (!external && entities.has(entityId)) return { code: 'USECASE_ENTITY', detail: `${route} uses more than one usecase of ${entityId}.` };
     names.add(fn.name);
-    entities.add(entityId);
+    if (!external) entities.add(entityId);
     const ports: ServicePort[] = [];
     for (const interfaceName of stringList(parsed.data.ports)) {
       if (!IDENT.test(interfaceName)) return { code: 'PORT_UNBOUND', detail: `${usecaseId} names a port that is not an identifier.` };

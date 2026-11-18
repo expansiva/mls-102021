@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
-import { emitUsecase } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
+import { emitRequestService, emitUsecase } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
@@ -109,4 +109,35 @@ void test('a usecase on an external entity that consumes two calls is EXTERNAL_U
   assert.match(plan.detail, /^EXTERNAL_USECASE_CALL_AMBIGUOUS/u);
   assert.match(plan.detail, /cm\.listAgents, cm\.readAgent/u);
   assert.equal(Array.isArray(plan.definition.data.functions), false);
+});
+
+void test('a route that lists two usecases of one external entity (one per call) emits its request service', async () => {
+  const all = files([
+    { connectionId: 'cm', operationId: 'updateAgent', consumer: 'updateAgentAgentBehavior' },
+    { connectionId: 'cm', operationId: 'undoAgentChange', consumer: 'undoAgentChange' },
+  ]);
+  const usecasesDir = '_102099_/l1/agents/layer_2_application/usecases';
+  all[`${usecasesDir}/updateAgentAgentBehavior.defs.ts`] = source(usecase('updateAgentAgentBehavior', 'update'));
+  all[`${usecasesDir}/undoAgentChange.defs.ts`] = source(usecase('undoAgentChange', 'update'));
+  const service = envelope({
+    artifactType: 'requestService',
+    artifactId: 'agent_behavior',
+    dependencies: [`${usecasesDir}/updateAgentAgentBehavior.defs.ts`, `${usecasesDir}/undoAgentChange.defs.ts`],
+    data: {
+      pageId: 'agent_behavior',
+      requests: [{
+        route: 'agents.agent_behavior.sendBehaviorChange',
+        kind: 'cmd',
+        uses: ['updateAgentAgentBehavior', 'undoAgentChange'],
+        transaction: 'single',
+        output: [{ kind: 'entity', path: 'behavior', entity: 'AgentDraft', fields: [{ field: 'name', path: 'name' }] }],
+        params: [],
+        rules: [],
+      }],
+    },
+  } as unknown as Omit<M1Definition, 'schemaVersion' | 'moduleName' | 'status'>);
+  const emitted = await emitRequestService(service, '_102099_/l1/agents/layer_2_application/requests/agent_behavior.ts', read(all), [], 'structure');
+  assert.ok('source' in emitted, JSON.stringify(emitted));
+  assert.match(emitted.source, /updateAgentAgentBehavior/u);
+  assert.match(emitted.source, /undoAgentChange/u);
 });

@@ -86,22 +86,23 @@ export function takeUsecase(args: {
   const candidates = args.transitionKey
     ? args.usecases.filter(item => item.entity === args.entity && item.operation === 'transition' && item.transitionRef === args.transitionKey)
     : args.usecases.filter(item => item.entity === args.entity && item.operation === args.operation);
-  // Several external usecases (one per call) answer the same entity and operation: the page's steps name the call.
+  // Several external usecases (one per call) answer the same entity and operation: the route runs every one whose call the
+  // steps of its page cite (the request service body chooses by the route input). None cited is an error, never the first.
   const named = candidates.filter(item => item.call);
   if (candidates.length > 1 && named.length === candidates.length) {
     const chosen = named.filter(item => (args.routeCalls || []).includes(item.call || ''));
-    if (chosen.length !== 1) {
+    if (chosen.length === 0) {
       problem(
         args.problems,
         'error',
-        'EXTERNAL_ROUTE_CALL_AMBIGUOUS',
+        'EXTERNAL_ROUTE_CALL_UNRESOLVED',
         args.path,
-        `Route ${args.routeName} needs ${args.entity}.${args.operation}, which has one usecase per call (${named.map(item => `${item.usecaseId} → ${item.call}`).join(', ')}). The steps of its page cite ${chosen.length ? chosen.map(item => item.call).join(' and ') : 'none of them'}: the L4 or the contract must say which one the route runs.`,
+        `Route ${args.routeName} needs ${args.entity}.${args.operation}, which has one usecase per call (${named.map(item => `${item.usecaseId} → ${item.call}`).join(', ')}). The steps of its page cite none of them: the L4 must say which call the route runs.`,
         args.routeName,
       );
       return;
     }
-    if (!args.uses.includes(chosen[0].usecaseId)) args.uses.push(chosen[0].usecaseId);
+    for (const item of chosen) if (!args.uses.includes(item.usecaseId)) args.uses.push(item.usecaseId);
     return;
   }
   const match = candidates[0];
