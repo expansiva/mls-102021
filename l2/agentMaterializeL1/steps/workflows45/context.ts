@@ -14,10 +14,10 @@ import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
-import { stepCallProblems, stepCallsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
+import { stepCallProblems, stepCallsOf, withUsecases, type StepCall } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/stepCalls.js';
 import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
-import { externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { connectionRowsOf, externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { fileRef, rulesFile, workflowRecoverForm, workflowRecoverName, workflowWakeHandlerForm, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { dependencyUnits, type M12Context, type M12RuleNotApplicable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -498,19 +498,24 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
   // The calls this process runs (its tasks cite them in `usedBy`): the same gateway section a usecase gets.
   const gateways = await connectionGatewaySection(ctx, facts.processId, unit.definition.artifactId);
   if (gateways) parts.push(gateways);
-  const stepCalls = stepCallsOf(await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`), facts.processId);
+  const stepCalls = await stepCallsFor(ctx, facts.processId);
   if (stepCalls.length) {
     const stepOf = new Map(workflowProcessSteps(readProcess).map(step => [step.stepId, step]));
     const lines = await Promise.all(stepCalls.map(async call => {
       const step = stepOf.get(call.stepId);
       const input = await catalogInputOf(ctx, call);
+      const usecaseUnit = call.usecase ? ctx.units.find(item => item.definition.artifactType === 'usecase' && usecaseNames(item).includes(call.usecase ?? '')) : undefined;
+      const where = `\`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''}`;
+      const run = call.usecase
+        ? `call the usecase \`${call.usecase}(input, ctx)\`, which consumes ${call.connectionId}.${call.operationId}${usecaseUnit ? ` (import from \`/${usecaseUnit.outputRef.replace(/\.ts$/u, '.js')}\`)` : ''}; the gateway is not needed`
+        : `\`gateway.${call.operationId}(input, ctx)\` (${call.connectionId}.${call.operationId})`;
       return [
-        `- step \`${call.stepId}\`${step ? ` (${step.kind}${step.title ? `, ${step.title}` : ''})` : ''} → \`gateway.${call.operationId}(input, ctx)\` (${call.connectionId}.${call.operationId})`,
+        `- step ${where} → ${run}`,
         input ? `  input ${input.type} =\n${fence('ts', input.text)}` : '',
       ].filter(Boolean).join('\n');
     }));
-    parts.push(section('Calls of the steps (the L4 `usedBy`: each step runs its call; the file must call the gateway method of every call below)', [
-      'The step that runs a call is the code of its function: it resolves the gateway and calls the method with the input below. Importing the gateway type is not calling it.',
+    parts.push(section('Calls of the steps (the L4 `usedBy`: each step runs its call; the file must make every call below)', [
+      'The step that runs a call is the code of its function. When a usecase of the module consumes the call, call that usecase: it runs the call, and the file needs no gateway for it. Only a call that no usecase consumes goes through the gateway: resolve it and call the method with the input below. Importing a usecase or the gateway type is not calling it.',
       ...lines,
     ].join('\n')));
   }
@@ -706,6 +711,22 @@ async function catalogInputOf(ctx: M12Context, call: { connectionId: string; ope
   return resolved.text ? { type: operation.inputType, text: resolved.text } : null;
 }
 
+function usecaseNames(unit: M12Unit): string[] {
+  const first = Array.isArray(unit.definition.data.functions) ? unit.definition.data.functions[0] : null;
+  const fnName = isRecord(first) ? text(first.functionName) : '';
+  return [unit.definition.artifactId, ...(fnName ? [fnName] : [])];
+}
+
+/** The calls the steps of a process run (the L4 `usedBy`), each with the usecase of the module that consumes it (d1_204). */
+async function stepCallsFor(ctx: M12Context, processId: string): Promise<StepCall[]> {
+  const { project, module: moduleName } = ctx.run;
+  const calls = stepCallsOf(await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`), processId);
+  if (calls.length === 0) return calls;
+  const rows = ctx.units.filter(item => item.definition.artifactType === 'integrationOutbound').flatMap(item => connectionRowsOf(item.definition.data));
+  const usecases = new Set(ctx.units.filter(item => item.definition.artifactType === 'usecase').flatMap(usecaseNames));
+  return withUsecases(calls, rows, usecases);
+}
+
 export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, code: string, _notApplicable: readonly M12RuleNotApplicable[]): Promise<string[]> {
   const facts = workflowFacts(unit);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
@@ -717,7 +738,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   return [
     ...workflowGate(code, { header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
     ...await missingImports(ctx, code),
-    ...stepCallProblems(code, stepCallsOf(await ctx.read(`_${project}_/l4/${moduleName}/integration.defs.ts`), facts.processId)),
+    ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
   ];
 }
 

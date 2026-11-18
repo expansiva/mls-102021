@@ -15,7 +15,7 @@ import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.j
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { readDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { WORKFLOW_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
-import { loadWorkflowContext, workflowSequence } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
+import { loadWorkflowContext, workflowAnswerProblems, workflowSequence } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { notImplementedStub } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/sequence.js';
 
 const savedMls = (globalThis as { mls?: unknown }).mls;
@@ -527,6 +527,52 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
   // A call whose consumer is another function or process is not in this prompt.
   const other = withCall('outroProcesso');
   assert.equal((await loadWorkflowContext(other.ctx, other.unit)).human.includes('## Connection gateways'), false);
+});
+
+test('d1_204: a call that a usecase consumes is run by calling the usecase; the prompt and the gate say so', async () => {
+  const tasks = [{ taskId: 'cotar', kind: 'mechanical', title: 'Cotar', next: ['end'], functionRef: 'registrarPedido' }];
+  const functions = [{ functionId: 'registrarPedido', description: 'Chama a conexao e segue.' }];
+  const row = (consumer: string, operationId = 'listAgents') => ({ connectionId: 'cm', operationId, consumer });
+  const unitOf = (artifactType: string, artifactId: string, data: Record<string, unknown>, outputRef = ''): M12Unit => ({
+    unitId: artifactId,
+    definition: { artifactType, artifactId, moduleName: MODULE, dependencies: [], data },
+    declared: { data },
+    outputRef,
+  }) as unknown as M12Unit;
+  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts', import.meta.url)), 'utf8');
+  const integration = `export const x = ${JSON.stringify({ connections: [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', usedBy: [`${PROCESS}.cotar`] },
+    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', usedBy: [`${PROCESS}.cotar`] },
+  ] })} as const;\n`;
+  const build = () => {
+    const built = focusedUnit(tasks, functions, []);
+    const read = built.ctx.read;
+    built.ctx.read = async (ref: string) => ref === '/_102034_/l1/server/layer_1_external/connections/catalogs/cm.ts'
+      ? catalogSource
+      : ref.endsWith('/l4/' + MODULE + '/integration.defs.ts') ? integration : read(ref);
+    // `listAgents` is consumed by the usecase `listThing`; `readAgent` by no usecase (the process is the consumer).
+    built.ctx.units.push(
+      unitOf('integrationOutbound', 'outbound', { connections: [row('listThing'), row(PROCESS, 'readAgent')] }),
+      unitOf('usecase', 'listThing', { entityId: OCCURRENCE, operation: 'list', functions: [{ functionName: 'listThing' }] }, '_7_/l1/pedido/layer_2_application/usecases/listThing.ts'),
+    );
+    return built;
+  };
+  const built = build();
+  const text = (await loadWorkflowContext(built.ctx, built.unit)).human;
+  assert.match(text, /- step `cotar` \(mechanical, Cotar\) → call the usecase `listThing\(input, ctx\)`, which consumes cm\.listAgents \(import from `\/_7_\/l1\/pedido\/layer_2_application\/usecases\/listThing\.js`\); the gateway is not needed/);
+  assert.match(text, /- step `cotar` .* → `gateway\.readAgent\(input, ctx\)` \(cm\.readAgent\)/, 'a call no usecase consumes keeps the gateway');
+  assert.equal(text.includes('gateway.listAgents('), false);
+  assert.equal(text.includes('always call the gateway'), false);
+
+  const problemsOf = async (code: string) => (await workflowAnswerProblems(built.ctx, built.unit, code, [])).filter(item => item.startsWith('WORKFLOW_STEP_WITHOUT_CALL'));
+  assert.deepEqual(await problemsOf('await listThing(input, ctx);\nawait gateway.readAgent(input, ctx);\n'), []);
+  assert.deepEqual(await problemsOf('await gateway.listAgents(input, ctx);\nawait gateway.readAgent(input, ctx);\n'), [], 'the gateway method still counts');
+  const refused = await problemsOf('import { listThing } from "x";\nawait gateway.readAgent(input, ctx);\n');
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /call the usecase `listThing\(input, ctx\)`, which consumes that call, or `gateway\.listAgents\(input, ctx\)`/);
+  const noUsecase = await problemsOf('await listThing(input, ctx);\n');
+  assert.equal(noUsecase.length, 1);
+  assert.match(noUsecase[0], /step cotar runs the call cm\.readAgent .* the file must call `gateway\.readAgent\(input, ctx\)` for it/u);
 });
 
 test('d1_198: a name of the engine the answer uses and does not import is imported from the index, in the skeleton and in a function', async () => {

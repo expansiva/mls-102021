@@ -8,6 +8,8 @@ export interface StepCall {
   stepId: string;
   connectionId: string;
   operationId: string;
+  /** The usecase that consumes the call (the `consumer` of its outbound row). Running the usecase runs the call. */
+  usecase?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,10 +34,32 @@ export function stepCallsOf(integrationSource: string | null, processId: string)
   return out;
 }
 
-/** `WORKFLOW_STEP_WITHOUT_CALL` for each call of a step that the code never calls as a method (`.operation(`). A comment or an import does not count. */
+/**
+ * d1_204: names the usecase that consumes each call. The outbound def gives a call to a usecase (`consumer`); the L4 gives the call to
+ * a step (`usedBy`). A step that runs that usecase runs the call. A consumer that is not a usecase of the module (the process itself)
+ * leaves the call to the gateway.
+ */
+export function withUsecases(
+  calls: readonly StepCall[],
+  rows: ReadonlyArray<{ connectionId: string; operationId: string; consumer: string }>,
+  usecases: ReadonlySet<string>,
+): StepCall[] {
+  return calls.map(call => {
+    const usecase = rows.find(row => row.connectionId === call.connectionId && row.operationId === call.operationId && usecases.has(row.consumer))?.consumer;
+    return usecase ? { ...call, usecase } : call;
+  });
+}
+
+/**
+ * `WORKFLOW_STEP_WITHOUT_CALL` for each call of a step that the code never makes: as a method (`.operation(`) or, when a usecase
+ * consumes the call, by calling that usecase. A comment or an import does not count.
+ */
 export function stepCallProblems(code: string, calls: readonly StepCall[]): string[] {
   const clean = code.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\n]*/gu, '$1 ');
   return calls
-    .filter(call => !new RegExp(`\\.${call.operationId}\\s*\\(`, 'u').test(clean))
-    .map(call => `WORKFLOW_STEP_WITHOUT_CALL: step ${call.stepId} runs the call ${call.connectionId}.${call.operationId} (the L4 \`usedBy\`): the file must call \`gateway.${call.operationId}(input, ctx)\` for it. Importing the gateway type does not count.`);
+    .filter(call => !new RegExp(`\\.${call.operationId}\\s*\\(`, 'u').test(clean)
+      && !(call.usecase && new RegExp(`(?<![\\w$.])${call.usecase}\\s*\\(`, 'u').test(clean)))
+    .map(call => call.usecase
+      ? `WORKFLOW_STEP_WITHOUT_CALL: step ${call.stepId} runs the call ${call.connectionId}.${call.operationId} (the L4 \`usedBy\`): the file must call the usecase \`${call.usecase}(input, ctx)\`, which consumes that call, or \`gateway.${call.operationId}(input, ctx)\`. Importing either does not count.`
+      : `WORKFLOW_STEP_WITHOUT_CALL: step ${call.stepId} runs the call ${call.connectionId}.${call.operationId} (the L4 \`usedBy\`): the file must call \`gateway.${call.operationId}(input, ctx)\` for it. Importing the gateway type does not count.`);
 }
