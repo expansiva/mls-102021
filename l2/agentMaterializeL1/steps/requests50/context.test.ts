@@ -189,7 +189,7 @@ test('an ontology that is not the JSON record still goes to the prompt as its so
   }
 });
 
-test('d1_199: the usecase section of a request shows the fields of a connection catalog type its input extends, in the prompt and in the repair', async () => {
+test('d1_199/d1_200: the usecase section of a request shows its input type resolved (extended catalog type, alias unions), in the prompt and in the repair', async () => {
   const previous = globalThis.mls;
   const contractInfo: M12FileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' };
   const catalogDir = '/_102034_/l1/server/layer_1_external/connections/catalogs';
@@ -224,10 +224,12 @@ test('d1_199: the usecase section of a request shows the fields of a connection 
     },
   };
   const catalog = [
+    "export type CmSimulationLevel = 'canDo' | 'understands';",
     '/** The id of an agent. */',
     'export interface CmReadAgentInput {',
     '  agentId: string;',
     '  includeDraft?: boolean;',
+    '  level?: CmSimulationLevel;',
     '}',
     'export interface CmReadAgentOutput { agentId: string }',
   ].join('\n');
@@ -237,10 +239,11 @@ test('d1_199: the usecase section of a request shows the fields of a connection 
     for (const repair of [undefined, { problems: ["TS2345 - Property 'agentId' is missing"], previous: 'export const requests = {};\n' }]) {
       const human = (await loadRequestContext(ctx as never, request, repair)).human;
       const section = human.slice(human.indexOf('Usecase getAgentDraft'), human.indexOf('Usecase listAbertas'));
-      assert.match(section, /The input extends a type of the connection catalog; its fields:/u);
-      assert.match(section, /export interface CmReadAgentInput \{\n  agentId: string;\n  includeDraft\?: boolean;\n\}/u);
+      assert.match(section, /Input type, resolved as the compiler sees it/u);
+      assert.match(section, /GetAgentDraftInput = \{\n(?:.*\n)*?  agentId: string;\n  includeDraft\?: boolean;\n  level\?: 'canDo' \| 'understands';/u);
+      assert.equal(section.includes('CmSimulationLevel'), false, 'the alias is expanded, not named');
       assert.equal(section.includes('CmReadAgentOutput { agentId'), false, 'only the input type');
-      assert.equal(human.split('its fields:').length - 1, 1, 'the plain usecase and the one extending a module type get no section');
+      assert.equal(human.split('Input type, resolved').length - 1, 2, 'the usecase that extends a catalog type and the one that extends a module type that cannot be read; the plain one has none');
     }
   } finally {
     (globalThis as { mls: unknown }).mls = previous;

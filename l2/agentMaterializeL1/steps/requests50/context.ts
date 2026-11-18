@@ -6,7 +6,8 @@
 
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
-import { catalogOperations, catalogTypeBlock, inputCatalogBases } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { resolveInputType } from '/_102021_/l2/agentMaterializeL1/emitters/typeResolve.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { recordFieldFromGrant, recordFieldsFromGrant, scopeJoins } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
@@ -619,7 +620,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     parts.push(section(`Usecase ${item.unitId}${uses.has(item.unitId) ? ' (named in the def)' : ''}`, [
       `Import from \`/${item.outputRef.replace(/\.ts$/u, '.js')}\`.`,
       fence('ts', exportSignatures(generated)),
-      await catalogInputSection(ctx, generated),
+      await resolvedInputSection(ctx, generated),
     ].filter(Boolean).join('\n\n')));
   }
   const enumPairs = await externalEnumPairs(ctx, cited);
@@ -734,18 +735,25 @@ function catalogIdOf(specifier: string): string {
 }
 
 /**
- * d1_198/d1_199: the input of a usecase on a connection only extends the catalog type (`GetXInput extends CmReadInput {}`),
- * so its fields are not in the signature. The body of each catalog type it extends, read from the catalog file the
- * import names (and only when that path is the one of `catalogFilePath`), goes in the same section.
+ * d1_199/d1_200: the input of a usecase as the compiler sees it. The input type of a usecase on a connection only extends the
+ * catalog type and names aliases for its unions, so the signature hides its fields and its unions. The resolved
+ * type (aliases, unions, `extends` and the types of other files expanded, depth limited) goes in the same section. It is
+ * shown when something was expanded or not found; a type that already has everything in place adds nothing.
  */
-async function catalogInputSection(ctx: M12Context, generated: string): Promise<string> {
-  const blocks: string[] = [];
-  for (const base of inputCatalogBases(generated, specifier => catalogIdOf(specifier) !== '')) {
-    const source = await ctx.read(catalogFilePath(catalogIdOf(base.specifier)));
-    const block = source ? catalogTypeBlock(source, base.name) : '';
-    if (block) blocks.push(block);
-  }
-  return blocks.length ? ['The input extends a type of the connection catalog; its fields:', fence('ts', blocks.join('\n'))].join('\n') : '';
+async function resolvedInputSection(ctx: M12Context, generated: string): Promise<string> {
+  const typeName = /export\s+(?:async\s+)?function\s+\w+\s*\(\s*\w+\s*:\s*([A-Za-z_$][\w$]*)/u.exec(generated)?.[1];
+  if (!typeName) return '';
+  const readImport = async (specifier: string): Promise<string | null> => {
+    const id = catalogIdOf(specifier);
+    if (id) return ctx.read(catalogFilePath(id));
+    return specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null;
+  };
+  const resolved = await resolveInputType({ entry: generated, typeName, readImport });
+  if (!resolved.text || (resolved.expanded === 0 && !resolved.unresolved.length)) return '';
+  return [
+    'Input type, resolved as the compiler sees it (aliases, unions and extended types expanded; `(truncated)` and `(not resolved)` mark what was not):',
+    fence('ts', `${typeName} = ${resolved.text}`),
+  ].join('\n');
 }
 
 /** Problems of a model-written request service. Empty = the gate passes. */
