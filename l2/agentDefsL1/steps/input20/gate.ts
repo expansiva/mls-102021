@@ -34,6 +34,7 @@ import {
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
 import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { externalCallsOf } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
   PoolBackendEndpoint,
   PoolBackendFile,
@@ -253,7 +254,7 @@ export function buildD1InputSnapshot(
   const hasEffects = outbound.length > 0 || hasEffectOperations(integration);
   noteStale(problems, moduleName, sources, previous);
   noteChanges(problems, paths, backend, effort);
-  notePayload(problems, moduleName, selectedUsecases, artifacts.entities);
+  notePayload(problems, moduleName, selectedUsecases, artifacts.entities, entityKind);
   noteAccess(problems, paths.access, access, relationships);
   noteIntegration(problems, paths.integration, outbound);
   const contractV2 = readContractV2(artifacts.contractTexts);
@@ -273,6 +274,7 @@ export function buildD1InputSnapshot(
     planned,
     answers,
     new Set([...entityKind].filter(([, kind]) => kind === 'role').map(([entity]) => entity)),
+    entityKind,
   );
   const pageIds = new Set(contractPageIds(artifacts));
   const serveLines: D1ServeLine[] = [];
@@ -297,7 +299,7 @@ export function buildD1InputSnapshot(
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
   }
   selectedUsecases.sort((left, right) => left.usecaseId.localeCompare(right.usecaseId));
-  noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases);
+  noteExternalEffects(problems, paths.integration, integration, entityKind, selectedUsecases, artifacts.journeys);
   noteUnrequested(problems, paths.backend, selectedUsecases, requests, contractV2.size > 0, previous);
   noteContracts(problems, moduleName, artifacts.contracts, artifacts.contractTexts, contractV2);
   const removed = collectRemoved(problems, paths, backend, effort, requests, selectedUsecases);
@@ -848,8 +850,9 @@ function notePayload(
   moduleName: string,
   usecases: D1SelectedUsecase[],
   entities: Record<string, unknown>,
+  entityKind: ReadonlyMap<string, string>,
 ): void {
-  const transitions = usecases.filter(usecase => usecase.operation === 'transition');
+  const transitions = usecases.filter(usecase => usecase.operation === 'transition' && entityKind.get(usecase.entity) !== 'external');
   const cited = new Map<string, number>();
   const perUsecase: Array<{ usecase: D1SelectedUsecase; rules: string[]; path: string }> = [];
   for (const usecase of transitions) {
@@ -963,6 +966,7 @@ function contractRequests(
   planned: PlannedIds,
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]>,
   roleEntities: ReadonlySet<string>,
+  entityKind: ReadonlyMap<string, string>,
 ): D1SelectedRequest[] {
   const requests: D1SelectedRequest[] = [];
   // Planner pool only. A get/list created later in this pass is not a planned read. An MDM role keeps its get (read through the facade).
@@ -975,7 +979,7 @@ function contractRequests(
     const path = contractPath(moduleName, pageId);
     for (const route of definition.routes) {
       noteContractAccess(problems, path, route, access);
-      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads));
+      requests.push(oneRequest(problems, path, pageId, route, definition, usecases, entities, planned, colliding, answers.get(route.route) || [], poolReads, entityKind));
     }
   }
   requests.sort((left, right) => left.route.localeCompare(right.route));
@@ -1011,6 +1015,7 @@ function oneRequest(
   colliding: ReadonlySet<string>,
   answers: readonly D1RequestGapAnswer[],
   poolReads: ReadonlySet<string>,
+  entityKind: ReadonlyMap<string, string>,
 ): D1SelectedRequest {
   // d1_60/d1_62: the route is derived from its types, the ontology and the resolve25 answers. `meta` is not read.
   const derived = applyResolutions({ route, definition, entities }, answers);
@@ -1030,7 +1035,7 @@ function oneRequest(
       usecases,
       uses,
       colliding,
-      refusalOf: usecaseId => contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, transitionKey),
+      refusalOf: usecaseId => contractUsecaseRefusal(entity, operation, usecaseId, entities, planned, entityKind, transitionKey),
     });
   };
   // Unique output: planned get, else planned list (locate picks the row). Neither: get, as before. many stays list.
@@ -1046,7 +1051,7 @@ function oneRequest(
     const written = split < 0 ? '' : route.writes.slice(split + 1);
     const namedTransition = !P1_OPERATION_SET.has(written);
     const operation = namedTransition ? 'transition' : written;
-    if (namedTransition && !lifecycleHas(entities, entity, written)) {
+    if (namedTransition && entityKind.get(entity) !== 'external' && !lifecycleHas(entities, entity, written)) {
       error(problems, 'REQUEST_USECASE_UNPLANNED', path, `Route ${route.route} needs ${entity}.${operation}, which is not in the planned pool. Transition '${written}' is not in the L4 lifecycle of ${entity}.`, route.route);
     } else {
       take(entity, operation, namedTransition ? written : '');
@@ -1072,11 +1077,13 @@ function contractUsecaseRefusal(
   usecaseId: string,
   entities: Record<string, unknown>,
   planned: PlannedIds,
+  entityKind: ReadonlyMap<string, string>,
   transitionRef = '',
 ): string {
   if (!CONTRACT_CREATED_OPERATIONS.has(operation)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
   // The bare operation `transition` still comes from the plan. A named lifecycle ref is created here.
-  if (operation === 'transition' && !lifecycleHasId(entities, entity, transitionRef)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
+  // An external transition lives on the call, so the entity has no lifecycle row to require.
+  if (operation === 'transition' && entityKind.get(entity) !== 'external' && !lifecycleHasId(entities, entity, transitionRef)) return `Operation ${operation} is not created from the contract. It comes from the plan.`;
   if (!Object.prototype.hasOwnProperty.call(entities, entity)) return `Entity ${entity} is not in the module ontology.`;
   if (!isSafeToken(usecaseId)) return `Usecase id '${usecaseId}' is not an id.`;
   const prior = planned.ids.get(usecaseId);
@@ -1272,36 +1279,27 @@ function hasEffectOperations(integration: Record<string, unknown>): boolean {
   return rows(integration.inbound).length > 0 || rows(integration.plugins).length > 0 || calls;
 }
 
-/** Usecase operation to the connection `effect` the L4 declares on a call line. */
-const EXTERNAL_EFFECT: Partial<Record<L1Operation, string>> = {
-  list: 'list',
-  get: 'read',
-  create: 'create',
-  update: 'update',
-  delete: 'remove',
-};
-
 function noteExternalEffects(
   problems: D1InputProblem[],
   path: string,
   integration: Record<string, unknown>,
   entityKind: ReadonlyMap<string, string>,
   usecases: readonly D1SelectedUsecase[],
+  journeys: Record<string, unknown>,
 ): void {
-  const calls = rows(integration.connections).filter(row => text(row.direction) === 'call');
-  for (const usecase of usecases) {
-    if (entityKind.get(usecase.entity) !== 'external') continue;
-    if (usecase.operation === 'custom') continue;
-    if (usecase.operation === 'transition') {
-      error(problems, 'EXTERNAL_OPERATION_UNSUPPORTED', path, `External entity ${usecase.entity} does not support operation transition.`, usecase.usecaseId);
+  const matches = externalCallsOf({
+    journeys,
+    connections: rows(integration.connections),
+    usecases,
+    entityKind,
+  });
+  for (const match of matches) {
+    if (!match.steps.length) {
+      error(problems, 'EXTERNAL_STEP_WITHOUT_CALL', path, `External usecase ${match.usecaseId}: no step serves it.`, match.usecaseId);
       continue;
     }
-    const effect = EXTERNAL_EFFECT[usecase.operation as L1Operation];
-    if (!effect) continue;
-    const covered = calls.some(row => strings(row.entityRefs).includes(usecase.entity) && text(row.effect) === effect);
-    if (!covered) {
-      error(problems, 'EFFECT_NOT_COVERED', path, `External entity ${usecase.entity} operation ${usecase.operation} has no call covering effect ${effect}.`, usecase.usecaseId);
-    }
+    if (match.calls.length) continue;
+    error(problems, 'EXTERNAL_STEP_WITHOUT_CALL', path, `External usecase ${match.usecaseId} has no call for ${match.steps.join(', ')}.`, match.usecaseId);
   }
 }
 

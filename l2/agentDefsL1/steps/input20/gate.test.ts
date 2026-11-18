@@ -282,52 +282,67 @@ function addUsecase(artifacts: D1InputArtifacts, usecaseId: string, entity: stri
   effort.usecases.push({ usecaseId, entity, operation, status: 'toCreate', existing: '' });
 }
 
-void test('external list, read and update are covered by call lines', () => {
+function stepsOf(artifacts: D1InputArtifacts, journeyId: string): Array<Record<string, unknown>> {
+  const journey = (artifacts.journeys as Record<string, { business: { steps: Array<Record<string, unknown>> } }>)[journeyId];
+  return journey.business.steps;
+}
+
+void test('external list, get and update are covered by the call that cites the step', () => {
   const artifacts = clone(loadHead());
   markExternal(artifacts, 'MovimentacaoEstoque');
   setOperation(artifacts, 'createMovimentacaoEstoque', 'update');
   addUsecase(artifacts, 'getMovimentacaoEstoque', 'MovimentacaoEstoque', 'get');
+  const steps = stepsOf(artifacts, 'registrarMovimentacaoEstoque');
+  steps.push(
+    { stepId: 'verMovimentacao', kind: 'inspect', entity: 'MovimentacaoEstoque' },
+    { stepId: 'listarMovimentacao', kind: 'locate', entity: 'MovimentacaoEstoque' },
+    { stepId: 'atualizarMovimentacao', kind: 'act', entity: 'MovimentacaoEstoque', effect: 'update' },
+  );
   const integration = artifacts.integration as { connections?: unknown[] };
   integration.connections = [
-    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
-    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'read', usedBy: ['getMovimentacaoEstoque'] },
-    { connectionId: 'cm', operationId: 'simulateAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'update', usedBy: ['createMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'listStock', direction: 'call', usedBy: ['registrarMovimentacaoEstoque.listarMovimentacao'] },
+    { connectionId: 'cm', operationId: 'readStock', direction: 'call', usedBy: ['registrarMovimentacaoEstoque.verMovimentacao'] },
+    { connectionId: 'cm', operationId: 'saveStock', direction: 'call', entityRefs: ['Produto'], effect: 'create', usedBy: ['registrarMovimentacaoEstoque.atualizarMovimentacao'] },
   ];
   const snapshot = build(artifacts);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED'), false);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_STEP_WITHOUT_CALL'), false);
 });
 
-void test('a missing call effect is EFFECT_NOT_COVERED', () => {
+void test('a serving step with no citing call is EXTERNAL_STEP_WITHOUT_CALL', () => {
   const artifacts = clone(loadHead());
   markExternal(artifacts, 'MovimentacaoEstoque');
+  stepsOf(artifacts, 'registrarMovimentacaoEstoque').push(
+    { stepId: 'listarMovimentacao', kind: 'locate', entity: 'MovimentacaoEstoque' },
+  );
   const integration = artifacts.integration as { connections?: unknown[] };
   integration.connections = [
-    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'listStock', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['registrarMovimentacaoEstoque.listarMovimentacao'] },
   ];
   const snapshot = build(artifacts);
-  const missing = snapshot.problems.find(problem => problem.code === 'EFFECT_NOT_COVERED');
+  const missing = snapshot.problems.find(problem => problem.code === 'EXTERNAL_STEP_WITHOUT_CALL' && problem.ownerRef === 'createMovimentacaoEstoque');
   assert.ok(missing);
-  assert.match(missing.message, /MovimentacaoEstoque/);
-  assert.match(missing.message, /create/);
-  assert.match(missing.message, /effect create/);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' && problem.ownerRef === 'listMovimentacaoEstoque'), false);
+  assert.match(missing.message, /registrarMovimentacaoEstoque\.registrarMovimentacao/);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_STEP_WITHOUT_CALL' && problem.ownerRef === 'listMovimentacaoEstoque'), false);
 });
 
-void test('transition on an external entity is EXTERNAL_OPERATION_UNSUPPORTED', () => {
+void test('transition on an external entity is the call that cites the step', () => {
   const artifacts = clone(loadHead());
   markExternal(artifacts, 'MovimentacaoEstoque');
   setOperation(artifacts, 'createMovimentacaoEstoque', 'transition', 'fechar');
+  stepsOf(artifacts, 'registrarMovimentacaoEstoque').push(
+    { stepId: 'fecharMovimentacao', kind: 'act', entity: 'MovimentacaoEstoque', effect: 'transition', transitionRef: 'fechar' },
+    { stepId: 'listarMovimentacao', kind: 'locate', entity: 'MovimentacaoEstoque' },
+  );
   const integration = artifacts.integration as { connections?: unknown[] };
   integration.connections = [
-    { connectionId: 'cm', operationId: 'listAgents', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'list', usedBy: ['listMovimentacaoEstoque'] },
-    { connectionId: 'cm', operationId: 'readAgent', direction: 'call', entityRefs: ['MovimentacaoEstoque'], effect: 'transition', usedBy: ['createMovimentacaoEstoque'] },
+    { connectionId: 'cm', operationId: 'listStock', direction: 'call', usedBy: ['registrarMovimentacaoEstoque.listarMovimentacao'] },
+    { connectionId: 'cm', operationId: 'closeStock', direction: 'call', usedBy: ['registrarMovimentacaoEstoque.fecharMovimentacao'] },
   ];
   const snapshot = build(artifacts);
-  const problem = snapshot.problems.find(problem => problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED');
-  assert.ok(problem);
-  assert.equal(problem.ownerRef, 'createMovimentacaoEstoque');
-  assert.match(problem.message, /MovimentacaoEstoque/);
+  const owned = (code: string) => snapshot.problems.some(problem => problem.code === code && problem.ownerRef === 'createMovimentacaoEstoque');
+  assert.equal(owned('EXTERNAL_STEP_WITHOUT_CALL'), false);
+  assert.equal(owned('DIVERGENT_SOURCE'), false);
+  assert.equal(owned('REQUEST_USECASE_UNPLANNED'), false);
 });
 
 void test('custom on an external entity is not an effect charge', () => {
@@ -336,12 +351,12 @@ void test('custom on an external entity is not an effect charge', () => {
   setOperation(artifacts, 'createMovimentacaoEstoque', 'custom');
   setOperation(artifacts, 'listMovimentacaoEstoque', 'custom');
   const snapshot = build(artifacts);
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' || problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_STEP_WITHOUT_CALL'), false);
 });
 
 void test('a module without an external entity does not gain effect coverage problems', () => {
   const snapshot = build(loadHead());
-  assert.equal(snapshot.problems.some(problem => problem.code === 'EFFECT_NOT_COVERED' || problem.code === 'EXTERNAL_OPERATION_UNSUPPORTED'), false);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'EXTERNAL_STEP_WITHOUT_CALL'), false);
 });
 
 void test('a serve connection does not plan outbound.defs.ts', () => {

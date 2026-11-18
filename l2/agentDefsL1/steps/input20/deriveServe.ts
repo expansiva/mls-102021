@@ -20,7 +20,7 @@ export interface D1ServeLine {
   effect?: string;
 }
 
-/** Connection effect to the usecase operation. The inverse of `EXTERNAL_EFFECT` in the input gate. */
+/** Connection effect to the usecase operation. Serve lines have no step; the call side is `externalCallsOf`. */
 const OPERATION_OF_EFFECT: Record<string, L1Operation> = {
   list: 'list',
   read: 'get',
