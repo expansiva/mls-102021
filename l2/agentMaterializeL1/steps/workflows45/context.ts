@@ -11,6 +11,7 @@ import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { bindHumanPages, moduleSpecifier, transitionDestinations, workflowEngineFile, workflowEngineSource, workflowTablesFromL4, type HumanPageSource, type WorkflowStepEmit } from '/_102021_/l2/agentMaterializeL1/emitters/workflowEmit.js';
 import { clip } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { compileDiagnostics, compileM12Files, isUnavailable } from '/_102021_/l2/agentMaterializeL1/helpers/m12Compile.js';
+import { completeEngineImports, engineExportsOf } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/engineImports.js';
 import { connectionGatewaySection } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { externalEntityIds, gatewayBypassProblems, importSpecifiers, moduleGatewayNames, repositoryPortNames, repositoryProblems, usesNodeBuiltin } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import { readOptional, storExists, writeSource, writeUnitStatus } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
@@ -156,15 +157,6 @@ export function workflowLlmExportNames(processId: string, steps: readonly Workfl
   return names;
 }
 
-const LLM_SIGNATURES = ['requestLlmStep', 'TaskWorkflowLlmStep', 'TaskOccurrenceLlmResult', 'ModuleWakeEvent', 'WorkflowWakeHandler', 'workflowWakeCommandId', 'registerWorkflowWakeHandler'];
-
-/** Export blocks of a platform file whose text names one of the LLM-step symbols. */
-function llmSignatureBlocks(source: string | null): string {
-  if (!source) return '';
-  const blocks = exportSignatures(source).split(/\n(?=export\s)/u);
-  return blocks.filter(block => LLM_SIGNATURES.some(name => block.includes(name))).join('\n');
-}
-
 /** `export type Name = …;` through the semicolon that closes it. '' when the file does not declare the alias. */
 export function typeAlias(source: string, name: string): string {
   const match = new RegExp(`export type ${name}\\s*=`, 'u').exec(source);
@@ -200,10 +192,11 @@ export function reexportRef(indexSource: string, name: string): string {
 
 /**
  * What the model needs to write an `llm` step. Empty when the process has none.
- * Signatures come from the platform files the index re-exports; the import the file writes is the index.
+ * The engine signatures are in the Platform sections of the prompt; the import the file writes is the index, and a missing
+ * name is completed in code (`completeEngineImports`).
  * `wakeSignature` is the `WorkflowWakeHandler` alias read from the index (or from the file it re-exports).
  */
-export function llmStepSection(processId: string, steps: readonly WorkflowStepEmit[], sources: readonly (string | null)[], wakeSignature = ''): string {
+export function llmStepSection(processId: string, steps: readonly WorkflowStepEmit[], wakeSignature = ''): string {
   const names = workflowLlmExportNames(processId, steps);
   if (!names.length) return '';
   const handlers = names.filter(name => name !== workflowRecoverName(processId));
@@ -213,13 +206,10 @@ export function llmStepSection(processId: string, steps: readonly WorkflowStepEm
     `Export ${handlers.map(name => `\`${name}\``).join(', ')} (wake handlers) and \`${workflowRecoverName(processId)}\` (tick recovery). The module tick and the registration import these names.`,
     `Each wake handler is ${handlerSteps.map(step => `\`${workflowWakeHandlerForm(step.stepId)}\``).join(', ')}: the context first, then the event, and assignable to \`WorkflowWakeHandler\` (type below, from \`/_102034_/l1/workflow/index.js\`), which the registration passes it to.`,
     `The recovery is \`${workflowRecoverForm(processId)}\`. The clock is \`ctx.clock\`.`,
-    'Import `TaskOccurrenceLlmResult`, `ModuleWakeEvent`, `workflowWakeCommandId` and `registerWorkflowWakeHandler` from `/_102034_/l1/workflow/index.js`. Do not import `/_102036_/`. `requestLlmStep` is `workflowEngine.requestLlmStep(ctx, input: TaskWorkflowLlmStep)`.',
+    'Import every engine name you use from `/_102034_/l1/workflow/index.js`: its exports are listed in the Platform sections below, and a name you use and forget is added to that import for you. Do not import `/_102036_/`. `requestLlmStep` is `workflowEngine.requestLlmStep(ctx, input: TaskWorkflowLlmStep)`.',
     '`ModuleWakeEvent` fields used here: `eventId`, `taskId`, `stepKey`, `pass`, `kind` (`wake` | `llm-step-finished`), `commandId`, `state`.',
   ];
-  const fromSources = sources.map(llmSignatureBlocks).filter(Boolean).join('\n');
-  const signature = wakeSignature && !fromSources.includes(wakeSignature) ? wakeSignature : '';
-  const signatures = [fromSources, signature].filter(Boolean).join('\n');
-  return signatures ? `${lines.join('\n')}\n\n${fence('ts', signatures)}` : lines.join('\n');
+  return wakeSignature ? `${lines.join('\n')}\n\n${fence('ts', wakeSignature)}` : lines.join('\n');
 }
 
 /**
@@ -563,7 +553,7 @@ export async function loadWorkflowContext(ctx: M12Context, unit: M12Unit, repair
     wakeSignature = ref ? typeAlias(await ctx.read(ref) ?? '', 'WorkflowWakeHandler') : '';
   }
   const llm = includeLlmSection(focus, repair, facts.processId, readProcess, processSteps)
-    ? llmStepSection(facts.processId, processSteps, platformSources, wakeSignature)
+    ? llmStepSection(facts.processId, processSteps, wakeSignature)
     : '';
   if (llm) parts.push(section('An llm step', llm));
   for (const ref of platform) {
@@ -842,9 +832,10 @@ export const workflowSequence: M12SequenceSpec = {
   },
   async apply(ctx, unit, phase, assembled, payload) {
     const code = typeof payload.code === 'string' ? payload.code : '';
+    const engine = engineExportsOf(await ctx.read(WORKFLOW_INDEX_REF) ?? '');
     if (phase === 'final') {
       if (!code.trim()) return { source: assembled, problems: ['The answer has no code.'] };
-      return { source: code.endsWith('\n') ? code : `${code}\n`, problems: [] };
+      return { source: completeEngineImports(code.endsWith('\n') ? code : `${code}\n`, engine), problems: [] };
     }
     const facts = workflowFacts(unit);
     const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
@@ -852,7 +843,7 @@ export const workflowSequence: M12SequenceSpec = {
     const processJson = await readProcess(ctx, unit);
     const steps = workflowProcessSteps(processJson);
     if (phase === 'skeleton') {
-      const problems = workflowGate(code, {
+      const problems = workflowGate(completeEngineImports(code, engine), {
         header, facts, project, moduleName,
         ports: moduleGatewayNames(ctx.units),
         gateways: moduleGatewayNames(ctx.units),
@@ -864,7 +855,7 @@ export const workflowSequence: M12SequenceSpec = {
         if (got !== expected) problems.push(`\`${item.name}\` must be exactly \`${item.form}\`.`);
       }
       problems.push(...await missingImports(ctx, code));
-      return { source: code.endsWith('\n') ? code : `${code}\n`, problems };
+      return { source: completeEngineImports(code.endsWith('\n') ? code : `${code}\n`, engine), problems };
     }
     const name = phase.startsWith('fn:') ? phase.slice(3) : '';
     const problems: string[] = [];
@@ -884,7 +875,7 @@ export const workflowSequence: M12SequenceSpec = {
     problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units)));
     if (problems.length) return { source: assembled, problems };
     try {
-      const merged = replaceFunction(addHelpers(mergeImports(assembled, importLines), helpers), name, code.endsWith('\n') ? code : `${code}\n`);
+      const merged = completeEngineImports(replaceFunction(addHelpers(mergeImports(assembled, importLines), helpers), name, code.endsWith('\n') ? code : `${code}\n`), engine);
       const imports = await missingImports(ctx, merged);
       if (imports.length) return { source: assembled, problems: imports };
       return { source: merged, problems: [] };

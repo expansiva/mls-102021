@@ -13,6 +13,7 @@ import { fileRef, type M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpe
 import { USECASE_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/agentM12UsecaseUnit.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { workflowRecoverName, workflowWakeHandlerName } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
+import { readDraft } from '/_102021_/l2/agentMaterializeL1/helpers/m12Io.js';
 import { WORKFLOW_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/agentM12WorkflowUnit.js';
 import { loadWorkflowContext, workflowSequence } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { notImplementedStub } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/sequence.js';
@@ -138,8 +139,9 @@ function processData(trigger: { kind: string; event?: string; schedule?: string 
   return { processId: PROCESS, trigger, functions: ['resolverGerente', 'registrarPedido', 'aprovarPedido'], operations: [] };
 }
 
-function seed(trigger: { kind: string; event?: string; schedule?: string }, previous?: string): Record<string, FakeFile> {
+function seed(trigger: { kind: string; event?: string; schedule?: string }, previous?: string, extra: Array<{ info: M12FileInfo; content: string }> = []): Record<string, FakeFile> {
   return install([
+    ...extra,
     {
       info: workflowDef,
       content: defSource({
@@ -510,4 +512,21 @@ test('d1_195: the prompt of a process carries the gateway section of the calls w
   // A call whose consumer is another function or process is not in this prompt.
   const other = withCall('outroProcesso');
   assert.equal((await loadWorkflowContext(other.ctx, other.unit)).human.includes('## Connection gateways'), false);
+});
+
+test('d1_198: a name of the engine the answer uses and does not import is imported from the index, in the skeleton and in a function', async () => {
+  const index = 'export interface TaskOccurrenceSnapshot { id: string }\nexport interface ModuleWakeEvent { eventId: string }\nexport function occurrenceRecordId(ctx: unknown, processId: string): string { return processId; }\n';
+  seed({ kind: 'event', event: 'pedido' }, 'export const previous = 1;\n', [{ info: { project: 102034, level: 1, folder: 'workflow', shortName: 'index', extension: '.ts' } as M12FileInfo, content: index }]);
+  const withSnapshot = skeleton('type View = TaskOccurrenceSnapshot;\n');
+  const afterSkeleton = await answer(withSnapshot, 'skeleton', 1);
+  assert.equal(nextWorker(afterSkeleton).phase, 'fn:resolverGerente');
+  const assembled = (await readDraft(PROJECT, MODULE, 'workflows', PROCESS, 'assembled')) ?? '';
+  assert.ok(assembled.includes("import type { TaskOccurrenceSnapshot } from '/_102034_/l1/workflow/index.js';"), assembled);
+  assert.equal(assembled.includes('ModuleWakeEvent'), false);
+
+  const body = "return { gerenteId: occurrenceRecordId(ctx, 'compra') };";
+  await answer(decl('resolverGerente', 'ResolverGerente', body), 'fn:resolverGerente', 1);
+  const after = (await readDraft(PROJECT, MODULE, 'workflows', PROCESS, 'assembled')) ?? '';
+  assert.ok(after.includes("import { occurrenceRecordId } from '/_102034_/l1/workflow/index.js';"), after);
+  assert.equal((after.match(/TaskOccurrenceSnapshot \}/gu) ?? []).length, 1);
 });

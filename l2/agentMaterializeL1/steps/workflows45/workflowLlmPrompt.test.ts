@@ -65,18 +65,18 @@ test('the context names the exports and the index signatures only for a process 
   const index = "export type { ModuleWakeEvent, TaskOccurrenceLlmResult } from '/_102034_/l1/workflow/contracts.js';\nexport { workflowWakeCommandId } from '/_102034_/l1/workflow/wakeContracts.js';\nexport { registerWorkflowWakeHandler } from '/_102034_/l1/workflow/wakeRegistry.js';\n";
   const engine = 'export interface TaskWorkflowLlmStep {\n  commandId: string;\n  maxPasses: number;\n}\nexport interface TaskWorkflowLlmEngine {\n  requestLlmStep(ctx: RequestContext, input: TaskWorkflowLlmStep): Promise<TaskOccurrenceLlmResult>;\n}\n';
   const contracts = 'export interface TaskOccurrenceLlmResult {\n  state: string;\n  result?: string;\n}\n';
-  const section = llmStepSection('cicloItem', steps, [index, engine, contracts]);
+  const section = llmStepSection('cicloItem', steps);
   assert.match(section, /entregarPesquisar/);
   assert.match(section, /entregarAguardar/);
   assert.match(section, /recuperarCicloItem/);
   assert.match(section, /\/_102034_\/l1\/workflow\/index\.js/);
   assert.match(section, /ModuleWakeEvent/);
   assert.match(section, /requestLlmStep/);
-  assert.match(section, /TaskOccurrenceLlmResult/);
-  assert.match(section, /workflowWakeCommandId/);
-  assert.match(section, /registerWorkflowWakeHandler/);
+  // d1_198: no list of engine names is written by hand; the section tells to import what is used from the index.
+  assert.match(section, /Import every engine name you use from `\/_102034_\/l1\/workflow\/index\.js`/);
+  assert.equal(section.includes('registerWorkflowWakeHandler'), false);
   assert.equal(/from\s+'\/_102036_\//u.test(section), false);
-  assert.equal(llmStepSection('aviso', [{ stepId: 'avisar', kind: 'wait', title: 'A', next: [], wakeMode: 'periodic' }], [index]), '');
+  assert.equal(llmStepSection('aviso', [{ stepId: 'avisar', kind: 'alert', title: 'A', next: [] }]), '');
 
   const l4 = `export const workflows = ${JSON.stringify({ processes: [JSON.parse(processJson('cicloItem', TASKS)), JSON.parse(processJson('aviso', [{ taskId: 'avisar', kind: 'alert', title: 'Avisar', next: [] }]))] })} as const;`;
   const read = async (ref: string) => {
@@ -89,6 +89,8 @@ test('the context names the exports and the index signatures only for a process 
   const withLlm = await loadWorkflowContext({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, unit('cicloItem', TASKS));
   assert.match(withLlm.human, /## An llm step/);
   assert.match(withLlm.human, /recuperarCicloItem/);
+  // The engine signatures reach the model through the Platform sections, read from the files on every round.
+  for (const name of ['TaskOccurrenceLlmResult', 'workflowWakeCommandId', 'registerWorkflowWakeHandler', 'requestLlmStep']) assert.ok(withLlm.human.includes(name), name);
   const plain = unit('aviso', [{ taskId: 'avisar', kind: 'alert', title: 'Avisar', next: [] }]);
   const noLlm = await loadWorkflowContext({ run: { project: 102047, module: 'pedido' }, units: [], read } as never, plain);
   assert.equal(noLlm.human.includes('## An llm step'), false);
@@ -221,6 +223,6 @@ test('the worker context carries the wake handler type and the fixed forms, read
   assert.ok(built.human.includes(workflowRecoverForm('cicloItem')));
   assert.equal(workflowRecoverForm('cicloItem'), 'export async function recuperarCicloItem(ctx: RequestContext): Promise<void>');
   assert.equal(workflowWakeHandlerForm('pesquisar'), 'export async function entregarPesquisar(ctx: RequestContext, event: ModuleWakeEvent): Promise<void>');
-  const withoutAlias = llmStepSection('cicloItem', steps, [index]);
+  const withoutAlias = llmStepSection('cicloItem', steps);
   assert.equal(withoutAlias.includes('export type WorkflowWakeHandler'), false);
 });

@@ -91,6 +91,45 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
   return operations;
 }
 
+/** Values of a string-literal union: `'a' | 'b'`. Empty when the text is anything else. */
+function literalUnion(typeText: string): string[] {
+  const parts = typeText.split('|').map(part => part.trim()).filter(Boolean);
+  const values: string[] = [];
+  for (const part of parts) {
+    const match = /^'([^']*)'$|^"([^"]*)"$/u.exec(part);
+    if (!match) return [];
+    values.push(match[1] ?? match[2]);
+  }
+  return values;
+}
+
+/**
+ * The values of the member `field` of the type `typeName` of a catalog file when that member is a union of string literals,
+ * written inline or as an alias declared in the same file (`export type <Alias> = 'a' | 'b';`). Empty for any other member.
+ */
+export function catalogFieldUnion(source: string, typeName: string, field: string): string[] {
+  if (!ident(typeName) || !ident(field)) return [];
+  const at = source.indexOf(`export interface ${typeName} `);
+  const open = at < 0 ? -1 : source.indexOf('{', at);
+  if (open < 0) return [];
+  let depth = 0;
+  let body = '';
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') depth += 1;
+    if (char === '}') { depth -= 1; if (depth === 0) break; }
+    body += char;
+  }
+  const member = new RegExp(`(?:^|\\n)\\s*"?${field}"?\\??\\s*:\\s*([^;\\n]+);`, 'u').exec(body);
+  if (!member) return [];
+  const typeText = member[1].trim();
+  const inline = literalUnion(typeText);
+  if (inline.length) return inline;
+  if (!ident(typeText)) return [];
+  const alias = new RegExp(`export\\s+type\\s+${typeText}\\s*=\\s*([^;]+);`, 'u').exec(source);
+  return alias ? literalUnion(alias[1]) : [];
+}
+
 export interface CatalogField {
   name: string;
   optional: boolean;

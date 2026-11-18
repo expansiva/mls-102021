@@ -22,6 +22,7 @@ import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdm
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import { enumMapProblems, enumMapSection, externalEnumPairs, unpairedProblems, type ExternalEnumPair } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
 
 export const M12_REQUEST_TOOL = 'writeRequestService' as const;
 export const M12_REQUEST_TOOL_DESCRIPTION = 'Return the whole request service TypeScript file of the page, and the listed rules that do not apply to it';
@@ -145,6 +146,8 @@ export interface M12RequestContext {
   mdmInputs: M12MdmInput[];
   /** Routes that reach an operation of a workflow process: they call its service (§11). */
   workflowRoutes: M12WorkflowRoute[];
+  /** Enum fields of an external entity whose values differ from the catalog and need a typed map (d1_198). */
+  externalEnums: ExternalEnumPair[];
   human: string;
 }
 
@@ -560,6 +563,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     contractRef: connectionCatalogRef(marks[0]?.connectionId ?? pageId),
     mdmInputs: [],
     workflowRoutes: [],
+    externalEnums: [],
     human: parts.join('\n'),
   };
 }
@@ -617,6 +621,11 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
       fence('ts', exportSignatures(generated)),
     ].join('\n\n')));
   }
+  const enumPairs = await externalEnumPairs(ctx, cited);
+  const unpaired = unpairedProblems(enumPairs);
+  if (unpaired.length) throw new Error(unpaired.join(' | '));
+  const externalEnums = enumPairs;
+  if (externalEnums.length) parts.push(section('Enum values of an external entity (source: the L4 of the entity and the catalog)', enumMapSection(externalEnums)));
   const touched = routeEntities(unit.definition.data, cited);
   for (const entity of ctx.units.filter(item => item.definition.artifactType === 'domainEntity' && touched.has(String(item.definition.data.entityId ?? item.definition.artifactId).toLowerCase()))) {
     const ref = `_${project}_/l4/${moduleName}/ontology/${String(entity.definition.data.entityId ?? entity.definition.artifactId)}.defs.ts`;
@@ -694,7 +703,7 @@ export async function loadRequestContext(ctx: M12Context, unit: M12Unit, repair?
     ].join('\n')));
   }
   const mdmInputs = mdmInputRoutes(routes, unowned);
-  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, human: parts.join('\n') };
+  return { pageId, contractsInterface, contractSpecifier, header, routes, contractRef, mdmInputs, workflowRoutes: flows, externalEnums, human: parts.join('\n') };
 }
 
 /**
@@ -727,7 +736,8 @@ export function requestGate(code: string, input: {
   moduleName: string;
   pageId: string;
   waived: ReadonlySet<string>;
-  /** Catalog modules a serve request may import. Omitted for a page, whose allow-list stays as it is. */
+  /** Enum pairs the code must translate with a typed one to one map. */
+  externalEnums?: readonly ExternalEnumPair[];
 }): string[] {
   const problems: string[] = [];
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -772,6 +782,7 @@ export function requestGate(code: string, input: {
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
   problems.push(...gatewayBypassProblems(code));
+  if (input.externalEnums?.length) problems.push(...enumMapProblems(code, input.externalEnums));
   if (/\blocalStorage\b|\bsessionStorage\b/u.test(code)) problems.push('No browser storage.');
   if (/catch\s*(\([^)]*\))?\s*\{\s*\}/u.test(code)) problems.push('No empty catch: an error names its cause.');
   return problems;
@@ -811,7 +822,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds }),
+    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared
