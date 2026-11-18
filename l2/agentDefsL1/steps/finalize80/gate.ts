@@ -522,6 +522,10 @@ function checkMdmTables(parsed: ParsedDef[], findings: D1FinalizeFinding[]): voi
     if (item.definition.artifactType !== 'table' || !isRecord(item.definition.data)) continue;
     const entityId = typeof item.definition.data.entityId === 'string' ? item.definition.data.entityId : item.definition.artifactId;
     const tableId = typeof item.definition.data.tableId === 'string' ? item.definition.data.tableId : item.definition.artifactId;
+    if (storage.get(entityId) === 'external') {
+      error(findings, 'TABLE_EXTERNAL', tableId, `Table ${tableId} belongs to ${entityId}, which is external: it has no table.`, entityId);
+      continue;
+    }
     if (storage.get(entityId) !== 'mdm') continue;
     error(findings, 'TABLE_MDM', tableId, `Table ${tableId} belongs to ${entityId}, which is mdm.`, entityId);
   }

@@ -159,7 +159,7 @@ export function referenceSeedUnit(input: {
   constraints?: readonly string[];
 }): SeedTableUnit | null {
   const ontology = ontologyOf(input.ontologySource);
-  if (!ontology || ontology.kind === 'role') return null;
+  if (!ontology || ontology.kind === 'role' || ontology.kind === 'external') return null;
   if (input.requireInitial !== false && !ontology.initialData) return null;
   return {
     scenarioId: input.scenarioId,

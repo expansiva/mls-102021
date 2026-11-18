@@ -86,3 +86,11 @@ test('a scenario for a table with an initial row does not add a test row; <seedR
   });
   assert.equal(pool['PrivacyText.versionCode'], '1.0');
 });
+
+test('an external entity has no seed rows: no unit, with or without initialData', () => {
+  const source = (kind: string): string => `export const catalogo = { "entityId": "Catalogo", "kind": "${kind}", "description": "Data outside the module.", "initialData": "rows to help fill the DB", "record": { "fields": { "code": { "type": "string", "required": true } } } } as const;\n`;
+  const base = { scenarioId: 'initial', tableId: 'catalogo', states: [], stateField: '' };
+  assert.equal(referenceSeedUnit({ ...base, ontologySource: source('external') }), null);
+  assert.equal(referenceSeedUnit({ ...base, ontologySource: source('external'), requireInitial: false }), null);
+  assert.equal(referenceSeedUnit({ ...base, ontologySource: source('entity') })?.entityId, 'Catalogo');
+});

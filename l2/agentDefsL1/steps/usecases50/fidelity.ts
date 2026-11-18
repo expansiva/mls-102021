@@ -126,7 +126,9 @@ export function readUsecaseFidelity(
   const transition = ontology
     ? ontologyTransitions(ontology).find(entry => entry.transitionId === transitionRef) || null
     : null;
-  if (operation === 'transition' && ontology && !transition) {
+  // An external entity has no lifecycle: its transition is the `call` that cites the journey step (input20 checks it).
+  const external = isRecord(ontology) && ontology.kind === 'external';
+  if (operation === 'transition' && ontology && !external && !transition) {
     fail(problems, 'TRANSITION_UNKNOWN', usecaseId, `Transition '${transitionRef || '(missing)'}' of ${usecaseId} is not in the ${entityId} lifecycle of ${ontologyPath}.`);
   }
 

@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { derivedReadSection, derivedReadValue, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
+import { derivedReadSection, derivedReadValue, entityNames, loadUsecaseContext, usecaseAnswerProblems } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 
 const PROJECT = 102099;
 const MODULE = 'fila';
@@ -383,4 +383,25 @@ test('an external entity usecase lists the gateway effect and no entity port', a
   } finally {
     (globalThis as { mls: unknown }).mls = previous;
   }
+});
+
+test('an external entity contributes no derived paths to the usecase gate, as an MDM entity; a module entity keeps them', async () => {
+  const derivedOntology = (title: string): string => ontology({ title, record: { fields: { total: { type: 'number', derived: true } } } });
+  const refOf = (name: string): string => `_${PROJECT}_/l4/${MODULE}/ontology/${name}.defs.ts`;
+  const files = new Map<string, string>([
+    [refOf('Tarefa'), derivedOntology('Tarefa')],
+    [refOf('Catalogo'), derivedOntology('Catalogo')],
+    [refOf('Participante'), derivedOntology('Participante')],
+  ]);
+  const entity = (id: string, storageTarget: string): M12Unit => unit('domainEntity', id.toLowerCase(), { entityId: id, storageTarget }, `_${PROJECT}_/l1/${MODULE}/layer_3_domain/entities/${id.toLowerCase()}.ts`, [refOf(id)]);
+  const ctx = {
+    run: { project: PROJECT, module: MODULE },
+    units: [entity('Tarefa', 'moduleDatabase'), entity('Catalogo', 'external'), entity('Participante', 'mdm')],
+    read: async (ref: string) => files.get(ref) ?? null,
+  };
+  const names = await entityNames(ctx as never);
+  const derivedOf = (id: string): string[] | undefined => names.find(item => item.entityId === id)?.derived;
+  assert.deepEqual(derivedOf('Tarefa'), ['total']);
+  assert.deepEqual(derivedOf('Catalogo'), []);
+  assert.deepEqual(derivedOf('Participante'), []);
 });

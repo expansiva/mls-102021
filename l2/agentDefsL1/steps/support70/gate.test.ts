@@ -1310,6 +1310,36 @@ void test('a local table outside every journey owns its dataset by a token scena
   for (const owner of data.datasets[0]?.owners || []) assert.match(owner, /^[A-Za-z][A-Za-z0-9_]*$/);
 });
 
+void test('a column that points at an external entity is not a seed ref and not a role tag', () => {
+  const seedsFor = (target: 'external' | 'local') => {
+    const request = effectsRequest();
+    request.tables = [{ tableId: 'qxRow', entityId: 'Qx', action: 'create', defPath: 'l1/zzMod/layer_3_infra/tables/qxRow.defs.ts', uniqueKeys: [] }];
+    request.models = [
+      {
+        entityId: 'Qx', storageTarget: 'local', kind: 'entity', namespace: '', fields: [{ name: 'id', type: 'string' }, { name: 'zyId', type: 'string' }],
+        states: [], initialState: '', uniqueKeys: [], transitions: [], noteField: '',
+      },
+      {
+        entityId: 'Zy', storageTarget: target, kind: 'entity', namespace: '', fields: [{ name: 'id', type: 'string' }],
+        states: [], initialState: '', uniqueKeys: [], transitions: [], noteField: '',
+      },
+    ];
+    request.relationships = [{ relationshipId: 'qxZy', from: 'Qx', to: 'Zy', field: 'Qx.zyId', required: true }];
+    const problems: D1SupportProblem[] = [];
+    const seeds = emitSeeds(request, problems, []);
+    return { problems, text: JSON.stringify(seeds.emit.map(item => item.definition.data)) };
+  };
+  const external = seedsFor('external');
+  assert.equal(external.problems.some(item => item.code === 'SEED_ROLE_TAG'), false, JSON.stringify(external.problems));
+  assert.equal(external.problems.some(item => item.severity === 'error'), false, JSON.stringify(external.problems));
+  assert.notEqual(external.text, '[]');
+  assert.equal(external.text.includes('zyId'), false);
+  assert.equal(external.text.includes('qxZy'), false);
+
+  const local = seedsFor('local');
+  assert.equal(local.text.includes('qxZy'), true);
+});
+
 void test('an inbound transition binds the usecase of its entity transitionRef (t1_09 r3)', () => {
   const pool = [
     usecase('approveQx', 'Qx', 'transition', 'approve'),

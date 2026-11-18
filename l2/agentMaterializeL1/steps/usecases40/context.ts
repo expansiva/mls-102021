@@ -150,7 +150,7 @@ export async function entityNames(ctx: M12Context): Promise<M12EntityNames[]> {
     if (!names) continue;
     // `derived` on an MDM entity means the platform keeps the field. A read through `ctx.mdm` is legitimate,
     // so those paths stay out of the usecase gate. A module entity with a port still contributes its paths.
-    if (item.definition.data.storageTarget === 'mdm') names.derived = [];
+    if (item.definition.data.storageTarget === 'mdm' || item.definition.data.storageTarget === 'external') names.derived = [];
     out.push(names);
   }
   return out;

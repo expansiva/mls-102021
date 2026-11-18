@@ -334,6 +334,8 @@ function columnRefs(request: D1SupportRequest, model: D1SeedModel, problems: D1S
       error(problems, 'SEED_REF_UNRELATED', field, `Ref on ${field} has no column relationship. It was not seeded.`);
       continue;
     }
+    // An external entity is never seeded: a column that points at it holds the id the connection returns, not a seed ref.
+    if (request.models.some(item => item.entityId === rel.to && item.storageTarget === 'external')) continue;
     if (!entityIdOf(request, rel.to)) {
       error(problems, 'SEED_ROLE_TAG', rel.to || field, `Ref target ${rel.to || '(missing)'} is a role tag, not an MDM entity id. No seed namespace was created.`);
       continue;

@@ -87,3 +87,40 @@ void test('v1.1 grouping: unknown tableRef and noTable mismatch fail; repair res
   const gate = validateP1Backend(repaired, NEEDS, ONTOLOGY);
   assert.equal(gate.ok, true, gate.issues.map(item => item.message).join('\n'));
 });
+
+const EXTERNAL_ONTOLOGY: P1EntityView[] = [
+  ...ONTOLOGY,
+  { entityId: 'Catalogo', family: 'external', storageKind: '', storageTarget: 'external', transitions: [], rules: [] },
+];
+
+void test('external entity: no port and no table; its usecase with noTable none and no ports stays valid', () => {
+  const clean = planned();
+  clean.usecases.push({ ...clean.usecases[0], usecaseId: 'getCatalogo', entity: 'Catalogo', operation: 'get', transitionRef: '', ports: [], tableRefs: [], noTable: 'none' });
+  const ok = validateP1Backend(clean, NEEDS, EXTERNAL_ONTOLOGY);
+  assert.equal(ok.ok, true, ok.issues.map(item => item.message).join('\n'));
+
+  const withUsecasePort = planned();
+  withUsecasePort.usecases[0].ports = [...withUsecasePort.usecases[0].ports, 'Catalogo'];
+  assert.ok(validateP1Backend(withUsecasePort, NEEDS, EXTERNAL_ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_EXTERNAL_PORT'));
+
+  const withPortRow = planned();
+  withPortRow.ports.push({ portId: 'CatalogoRepository', entity: 'Catalogo', status: 'toCreate', tableRefs: [], noTable: 'none' });
+  assert.ok(validateP1Backend(withPortRow, NEEDS, EXTERNAL_ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_EXTERNAL_PORT'));
+
+  const withTableRow = planned();
+  withTableRow.tables.push({ tableId: 'catalogo', entity: 'Catalogo', status: 'toCreate', tableRefs: ['catalogo'], noTable: 'ok' });
+  assert.ok(validateP1Backend(withTableRow, NEEDS, EXTERNAL_ONTOLOGY).issues.some(item => item.code === 'P1_BACKEND_EXTERNAL_TABLE'));
+});
+
+void test('repair strips the ports and tables of an external entity', () => {
+  const file = planned();
+  file.usecases[0].ports = [...file.usecases[0].ports, 'Catalogo'];
+  file.ports.push({ portId: 'CatalogoRepository', entity: 'Catalogo', status: 'toCreate', tableRefs: [], noTable: 'none' });
+  file.tables.push({ tableId: 'catalogo', entity: 'Catalogo', status: 'toCreate', tableRefs: ['catalogo'], noTable: 'ok' });
+  const repaired = repairP1Backend(file, NEEDS, EXTERNAL_ONTOLOGY);
+  assert.equal(repaired.usecases.some(item => item.ports.includes('Catalogo')), false);
+  assert.equal(repaired.ports.some(item => item.entity === 'Catalogo'), false);
+  assert.equal(repaired.tables.some(item => item.entity === 'Catalogo'), false);
+  const gate = validateP1Backend(repaired, NEEDS, EXTERNAL_ONTOLOGY);
+  assert.equal(gate.ok, true, gate.issues.map(item => item.message).join('\n'));
+});

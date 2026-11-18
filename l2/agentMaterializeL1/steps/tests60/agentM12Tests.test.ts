@@ -6,6 +6,7 @@ import test from 'node:test';
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 import { createAgent } from '/_102021_/l2/agentMaterializeL1/steps/tests60/agentM12Tests.js';
+import { loadTestsContext } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
 
 const PROJECT = 7;
 const MODULE = 'modx';
@@ -94,4 +95,25 @@ void test('page tests run when the controller and request .ts exist and there is
   const workers = intents.filter(item => item.type === 'add-step');
   assert.equal(workers.length, 1, JSON.stringify(intents.find(item => item.type === 'update-status')?.traceMsg));
   assert.equal((workers[0].step as { agentName?: string }).agentName, 'agentM12TestsPage');
+});
+
+void test('the tests context offers module entities and leaves out an external entity', async () => {
+  install([{
+    info: { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: PAGE, extension: '.defs.ts' },
+    content: `export const routes = { '${MODULE}.${PAGE}.load': { kind: 'qry', input: { id: string; }, output: { ok: boolean; }, rules: [], access: { actors: ['user'] } } };\n`,
+  }]);
+  const entity = (id: string, storageTarget: string) => ({
+    unitId: id.toLowerCase(),
+    layer: 'entities',
+    text: `text of ${id}`,
+    definition: { artifactType: 'domainEntity', artifactId: id.toLowerCase(), data: { entityId: id, storageTarget, fields: [{ name: 'code' }] } },
+  });
+  const controller = { unitId: PAGE, layer: 'controllers', definition: { artifactType: 'httpController', artifactId: PAGE, data: { pageId: PAGE } } };
+  const ctx = { run: { project: PROJECT, module: MODULE }, units: [controller, entity('Tarefa', 'moduleDatabase'), entity('Catalogo', 'external')] };
+  const loaded = await loadTestsContext(ctx as never, controller as never);
+  assert.deepEqual(loaded.entities, ['Tarefa']);
+  assert.equal(loaded.human.includes('- Catalogo:'), false);
+  assert.match(loaded.human, /- Tarefa: code/u);
+  assert.equal(loaded.inputs.includes('text of Catalogo'), false);
+  assert.ok(loaded.inputs.includes('text of Tarefa'));
 });

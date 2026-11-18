@@ -656,6 +656,19 @@ void test('an MDM table does not complete', () => {
   assert.equal(codes(report, 'TABLE_MDM'), 1);
 });
 
+void test('a table of an external entity does not complete', () => {
+  const rows = parts();
+  const consulta = rows.find(row => row.logical === PATHS.consulta);
+  assert.ok(consulta);
+  consulta.definition = definition('domainEntity', 'Consulta', { ...consultaData(), storageTarget: 'external' });
+  const input = request();
+  input.observed = observedOf(rows);
+  const report = buildD1Finalize(input);
+  assert.equal(report.outcome, 'held');
+  assert.equal(codes(report, 'TABLE_EXTERNAL'), 1);
+  assert.equal(codes(report, 'TABLE_MDM'), 0);
+});
+
 void test('a persisted outbound that names the MDM queue is not a binding', () => {
   const rows = parts();
   const integration = rows.find(row => row.logical === PATHS.integration);

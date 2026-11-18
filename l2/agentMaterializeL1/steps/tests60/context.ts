@@ -174,7 +174,8 @@ export async function loadTestsContext(ctx: M12Context, controller: M12Unit, rep
   const routes = contractRoutes(contractText, moduleName, pageId);
   if (!routes.length) throw new Error(`CONTRACT_NO_ROUTES: ${fileRef(contract)} has no route of ${moduleName}.${pageId}.`);
   const actor = routes.flatMap(route => route.actors)[0] ?? '';
-  const entities = ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity');
+  // An external entity has no seed row: it is not a <seedRef> or paramFieldRefs target.
+  const entities = ctx.units.filter(unit => unit.definition.artifactType === 'domainEntity' && unit.definition.data.storageTarget !== 'external');
   const seeds = ctx.units.find(unit => unit.definition.artifactType === 'persistenceSeeds');
   const rulesSource = await readOptional(rulesFile(project, moduleName));
   const rules = ruleTexts(rulesSource, [...new Set(routes.flatMap(route => route.rules))].sort());

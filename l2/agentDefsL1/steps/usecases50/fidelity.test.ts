@@ -381,3 +381,16 @@ void test('a transitionRef outside the entity lifecycle is refused by name (t1_0
   assert.equal(read.problems.some(item => item.code === 'TRANSITION_UNKNOWN' && item.message.includes('zzNotALifecycleStep')), true);
   assert.equal(readUsecaseFidelity(registrar, files).problems.some(item => item.code === 'TRANSITION_UNKNOWN'), false);
 });
+
+void test('a transition usecase on an external entity has no lifecycle to miss, an entity without transitions does', () => {
+  const { request, files } = focused();
+  const registrar = renderedOf(request, 'registrarAtendimento');
+  const ontologyPath = 'l4/agendaClinica/ontology/Consulta.defs.ts';
+  const withoutTransitions = (kind: string): FidelityFile[] => files.map(file => file.path === ontologyPath
+    ? { path: file.path, text: defs('consulta', JSON.stringify({ entityId: 'Consulta', kind, record: { fields: { id: { type: 'uuid', derived: true } } } })) }
+    : file);
+  const unknown = (kind: string) => readUsecaseFidelity(registrar, withoutTransitions(kind)).problems
+    .some(item => item.code === 'TRANSITION_UNKNOWN');
+  assert.equal(unknown('entity'), true);
+  assert.equal(unknown('external'), false);
+});

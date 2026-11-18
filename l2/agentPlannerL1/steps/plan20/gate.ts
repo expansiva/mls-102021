@@ -48,6 +48,8 @@ export function validateP1Backend(
 
   const entityIds = new Set(ontology.map(entity => entity.entityId).filter(Boolean));
   const mdm = new Set(ontology.filter(entity => entity.family === 'mdm' || entity.storageTarget === 'mdm').map(entity => entity.entityId));
+  // An external entity keeps its data outside the module: no port and no table (its usecases keep noTable none).
+  const external = new Set(ontology.filter(entity => entity.family === 'external').map(entity => entity.entityId));
   const usecaseIds = new Set<string>();
   const routes = new Set<string>();
   const tableIds = new Set(file.tables.map(table => table.tableId).filter(Boolean));
@@ -86,6 +88,7 @@ export function validateP1Backend(
     }
     for (const port of usecase.ports) {
       if (mdm.has(port)) error(issues, 'P1_BACKEND_MDM_PORT', `MDM entity ${port} must not appear in ports.`, `${at}.ports`);
+      if (external.has(port)) error(issues, 'P1_BACKEND_EXTERNAL_PORT', `External entity ${port} must not appear in ports.`, `${at}.ports`);
     }
     checkTableGrouping(issues, usecase, at, tableIds);
     if (mdm.has(usecase.entity) && usecase.noTable !== 'mdm') {
@@ -125,6 +128,9 @@ export function validateP1Backend(
     if (mdm.has(port.entity)) {
       error(issues, 'P1_BACKEND_MDM_PORT', `MDM entity ${port.entity} must not appear in ports[].`, at);
     }
+    if (external.has(port.entity)) {
+      error(issues, 'P1_BACKEND_EXTERNAL_PORT', `External entity ${port.entity} must not appear in ports[].`, at);
+    }
     if (port.portId !== p1PortId(port.entity) && !file.inventoryPresent) {
       error(issues, 'P1_BACKEND_PORT_ID', `portId must be ${p1PortId(port.entity)}.`, `${at}.portId`);
     }
@@ -138,6 +144,9 @@ export function validateP1Backend(
     const at = `$.tables[${index}]`;
     if (mdm.has(table.entity)) {
       error(issues, 'P1_BACKEND_MDM_TABLE', `MDM entity ${table.entity} must not appear in tables[].`, at);
+    }
+    if (external.has(table.entity)) {
+      error(issues, 'P1_BACKEND_EXTERNAL_TABLE', `External entity ${table.entity} must not appear in tables[].`, at);
     }
     if (entityIds.size && table.entity && !entityIds.has(table.entity)) {
       error(issues, 'P1_BACKEND_ENTITY_UNKNOWN', `Unknown entity ${table.entity}.`, `${at}.entity`);
@@ -240,9 +249,10 @@ export function repairP1Backend(
   actors: readonly P1ActorView[] = [],
 ): PoolBackendFile {
   const mdm = new Set(ontology.filter(entity => entity.family === 'mdm' || entity.storageTarget === 'mdm').map(entity => entity.entityId));
+  const external = new Set(ontology.filter(entity => entity.family === 'external').map(entity => entity.entityId));
   const usecases = file.usecases.map(usecase => ({
     ...usecase,
-    ports: usecase.ports.filter(entity => !mdm.has(entity)),
+    ports: usecase.ports.filter(entity => !mdm.has(entity) && !external.has(entity)),
     existing: usecase.status === 'toCreate' ? '' : usecase.existing,
     reason: usecase.reason || `no l1 usecase for ${usecase.entity}.${usecase.operation}`,
     status: usecase.status === 'toRemove' ? 'toCreate' as const : usecase.status,
@@ -264,8 +274,8 @@ export function repairP1Backend(
     schemaVersion: P1_BACKEND_SCHEMA_VERSION,
     usecases,
     endpoints,
-    ports: file.ports.filter(port => !mdm.has(port.entity)),
-    tables: file.tables.filter(table => !mdm.has(table.entity)),
+    ports: file.ports.filter(port => !mdm.has(port.entity) && !external.has(port.entity)),
+    tables: file.tables.filter(table => !mdm.has(table.entity) && !external.has(table.entity)),
     changes: Array.isArray(file.changes) ? file.changes : [],
     meta: { ...file.meta, pages },
   }, {
