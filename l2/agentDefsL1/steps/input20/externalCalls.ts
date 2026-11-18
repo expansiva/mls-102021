@@ -142,3 +142,31 @@ function rec(value: unknown): Record<string, unknown> {
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
+
+/**
+ * The process tasks a call serves (d1_195). A `usedBy` of the form `<processId>.<taskId>` that names a `mechanical` or
+ * `llm` task of an L4 process makes that process the consumer of the call: its code, not a usecase of the entity,
+ * runs the call. `processes` is `workflows.processes` of the L4; the result is the process ids, sorted.
+ */
+export function processConsumersOf(usedBy: readonly string[], processes: readonly unknown[]): string[] {
+  const tasks = new Map<string, Set<string>>();
+  for (const row of processes) {
+    const process = rec(row);
+    const processId = text(process.processId);
+    if (!processId) continue;
+    const set = new Set<string>();
+    for (const task of rows(process.tasks)) {
+      const kind = text(task.kind);
+      if ((kind === 'mechanical' || kind === 'llm') && text(task.taskId)) set.add(text(task.taskId));
+    }
+    tasks.set(processId, set);
+  }
+  const out = new Set<string>();
+  for (const ref of usedBy) {
+    const dot = ref.indexOf('.');
+    if (dot <= 0) continue;
+    const processId = ref.slice(0, dot);
+    if (tasks.get(processId)?.has(ref.slice(dot + 1))) out.add(processId);
+  }
+  return [...out].sort();
+}

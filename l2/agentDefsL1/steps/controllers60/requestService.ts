@@ -230,8 +230,9 @@ function outputTree(
     const parent = derived.parent ? elements.get(derived.parent) : undefined;
     if (derived.parent && !parent) continue;
     const relative = parent ? derived.key.slice((derived.parent || '').length + 1) : derived.key;
-    const path = parent ? `${parent.path}.${relative}` : derived.key;
-    const body = memberBody(parent ? parent.body : route.output, relative, definition);
+    const located = locateMember(parent ? parent.body : route.output, relative, definition);
+    const path = parent ? `${parent.path}.${located?.path ?? relative}` : (located?.path ?? derived.key);
+    const body = located ? located.body : null;
     const page = body !== null && isPage(derived) ? pageItems(body, definition) : null;
     const element = page ? { path: `${path}.${page.name}`, body: page.body } : body === null ? null : { path, body };
     const leaves = element ? interfaceFieldPaths(element.body) : null;
@@ -304,26 +305,48 @@ function docOf(route: D2ContractV2Route): RequestDoc | null {
  * object whose members stay in the same text. Null when a segment is neither.
  */
 function memberBody(body: string, path: string, definition: D2ContractV2Definition): string | null {
+  return locateMember(body, path, definition)?.body ?? null;
+}
+
+/**
+ * Like `memberBody`, and the path as the contract spells it. A member that sits in the items of a page wrapper is keyed
+ * by the derivation without the wrapper (`agents.agent` for `agents: { items: AgentListItem[]… }`, `AgentListItem`
+ * having `agent?: AgentCard`): when a segment is not a member of the body but the body is a page, the walk goes into its
+ * items and the path says so (`agents.items.agent`).
+ */
+function locateMember(body: string, path: string, definition: D2ContractV2Definition): { body: string; path: string } | null {
   let current = body;
+  const spelled: string[] = [];
   for (const segment of path.split('.')) {
     if (!segment) return null;
-    // An optional member (`selectedComanda?: ComandaForClosing`) is read as a required one.
-    const named = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u').exec(current);
-    const typeName = named?.[1] || '';
-    if (typeName) {
-      const projection = definition.projections.find(item => item.name === typeName);
-      if (!projection) return null;
-      current = projection.body;
-      continue;
+    let step = memberStep(current, segment, definition);
+    if (step === null) {
+      const page = pageItems(current, definition);
+      if (page) {
+        step = memberStep(page.body, segment, definition);
+        if (step !== null) spelled.push(page.name);
+      }
     }
-    const inline = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*\\{`, 'u').exec(current);
-    if (!inline) return null;
-    const open = inline.index + inline[0].length - 1;
-    const inner = braceInner(current, open);
-    if (inner === null) return null;
-    current = inner;
+    if (step === null) return null;
+    current = step;
+    spelled.push(segment);
   }
-  return current;
+  return { body: current, path: spelled.join('.') };
+}
+
+/** The body of the member `segment` of `current`: a named interface or an inline object; null when it is neither. */
+function memberStep(current: string, segment: string, definition: D2ContractV2Definition): string | null {
+  // An optional member (`selectedComanda?: ComandaForClosing`) is read as a required one.
+  const named = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*([A-Z][A-Za-z0-9]*)`, 'u').exec(current);
+  const typeName = named?.[1] || '';
+  if (typeName) {
+    const projection = definition.projections.find(item => item.name === typeName);
+    return projection ? projection.body : null;
+  }
+  const inline = new RegExp(`\\b${segment}\\s*\\??\\s*:\\s*\\{`, 'u').exec(current);
+  if (!inline) return null;
+  const open = inline.index + inline[0].length - 1;
+  return braceInner(current, open);
 }
 
 /** Text inside the `{` at `open`, or null when the brace does not close. */

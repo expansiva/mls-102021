@@ -393,3 +393,75 @@ void test('final contract 3f69977: the 19 routes derive uses; nested lists and r
   assert.equal(items?.relationship, 'itemComandaComanda');
   assert.equal(items?.page, undefined);
 });
+
+/** d1_195: the items of a page are a record of entity members; the paging inputs find the list by the page container. */
+function itemsRecordContract(containers: ReadonlyArray<{ name: string; item: string }>): string {
+  const members = containers.map(({ name, item }) => `${name}: { items: ${item}[]; page: number; pageSize: number; hasMore: boolean }`).join('; ');
+  return `/// <mls fileReference="_102099_/l2/hub/web/contracts/studio.defs.ts" enhancement="_blank"/>
+
+export interface AgentCard {
+  id: string;
+  name: string;
+}
+
+export interface DraftCard {
+  id: string;
+  title: string;
+}
+
+export interface RequestCard {
+  id: string;
+  subject: string;
+}
+
+export interface AgentListItem {
+  agent?: AgentCard;
+  draft?: DraftCard;
+}
+
+export interface RequestListItem {
+  request?: RequestCard;
+}
+
+export interface StudioContracts {
+  'hub.studio.load': {
+    kind: 'qry';
+    input: { page?: number; pageSize?: number };
+    output: { ${members} };
+    rules: [];
+    access: { actors: ['dev']; grants: ['devGrant']; scope: 'organization' };
+  };
+}
+`;
+}
+
+const ITEMS_RECORD_ENTITIES: Record<string, unknown> = {
+  Agent: { entityId: 'Agent', record: { fields: { id: { type: 'uuid', derived: true }, name: { type: 'string' } } } },
+  Draft: { entityId: 'Draft', record: { fields: { id: { type: 'uuid', derived: true }, title: { type: 'string' } } } },
+  Request: { entityId: 'Request', record: { fields: { id: { type: 'uuid', derived: true }, subject: { type: 'string' } } } },
+};
+
+void test('items of a page that are a record of entity members: one paged container takes page and pageSize', () => {
+  const definition = parseD2ContractV2(itemsRecordContract([{ name: 'agents', item: 'AgentListItem' }]));
+  const route = definition.routes[0];
+  const first = deriveRequest(route, definition, ITEMS_RECORD_ENTITIES);
+  assert.deepEqual(first.unresolved, []);
+  assert.deepEqual(first.outputs.map(output => [output.key, output.entity]), [['agents.agent', 'Agent'], ['agents.draft', 'Draft']]);
+  assert.deepEqual(first.params, [
+    { name: 'page', target: 'agents.agent', pages: 'agents', optional: true },
+    { name: 'pageSize', target: 'agents.agent', pages: 'agents', optional: true },
+  ]);
+  const resolved = applyResolutions({ route, definition, entities: ITEMS_RECORD_ENTITIES }, []);
+  assert.deepEqual(resolved.params, first.params);
+});
+
+void test('items of a page that are a record of entity members: two paged containers sharing page and pageSize leave a pageParam gap', () => {
+  const definition = parseD2ContractV2(itemsRecordContract([{ name: 'agents', item: 'AgentListItem' }, { name: 'requests', item: 'RequestListItem' }]));
+  const route = definition.routes[0];
+  const first = deriveRequest(route, definition, ITEMS_RECORD_ENTITIES);
+  assert.deepEqual(first.outputs.map(output => output.key), ['agents.agent', 'agents.draft', 'requests.request']);
+  const gaps = first.unresolved.filter(gap => gap.kind === 'pageParam');
+  assert.deepEqual(gaps.map(gap => gap.path).sort(), ['input.page', 'input.pageSize']);
+  for (const gap of gaps) assert.deepEqual(gap.candidates, ['agents', 'requests', D1_GAP_NONE], gap.path);
+  assert.equal(first.params.some(param => param.pages), false, JSON.stringify(first.params));
+});

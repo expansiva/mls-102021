@@ -252,3 +252,35 @@ void test('a call used by the steps of two usecases becomes one operation per co
   const orphans = rows.filter(item => item.operationId === 'orphan');
   assert.deepEqual(orphans.map(item => item.consumer), ['']);
 });
+
+void test('a call cited by a process task has the process as consumer, and a journey step still gives one row per usecase', () => {
+  const selected = [selectedUsecase('atualizarTarefa', 'Tarefa', 'update'), selectedUsecase('atualizarNota', 'Nota', 'update')];
+  const journeys = {
+    jornada: {
+      journeyId: 'jornada',
+      business: {
+        steps: [
+          { stepId: 'nota', kind: 'act', entity: 'Nota', effect: 'update' },
+          { stepId: 'tarefa', kind: 'act', entity: 'Tarefa', effect: 'update' },
+        ],
+      },
+    },
+  };
+  const processes = [{
+    processId: 'proc',
+    tasks: [{ taskId: 'taskMech', kind: 'mechanical' }, { taskId: 'taskLlm', kind: 'llm' }, { taskId: 'taskHuman', kind: 'human' }],
+  }];
+  const rows = connectionOperations([
+    { connectionId: 'cm', operationId: 'runAgent', direction: 'call', usedBy: ['proc.taskMech'] },
+    { connectionId: 'cm', operationId: 'updateAgent', direction: 'call', effect: 'update', usedBy: ['jornada.nota', 'jornada.tarefa'] },
+    { connectionId: 'cm', operationId: 'humanOnly', direction: 'call', usedBy: ['proc.taskHuman'] },
+    { connectionId: 'cm', operationId: 'mixed', direction: 'call', usedBy: ['proc.taskLlm', 'jornada.nota'] },
+  ], selected, {}, journeys, processes);
+  assert.deepEqual(rows.filter(item => item.operationId === 'runAgent').map(item => item.consumer), ['proc']);
+  assert.deepEqual(rows.filter(item => item.operationId === 'updateAgent').map(item => item.consumer), ['atualizarNota', 'atualizarTarefa']);
+  // A human task is not a consumer: the call stays without one.
+  assert.deepEqual(rows.filter(item => item.operationId === 'humanOnly').map(item => item.consumer), ['']);
+  assert.deepEqual(rows.filter(item => item.operationId === 'mixed').map(item => item.consumer), ['atualizarNota', 'proc']);
+  // Without the processes (the default) the process task names nobody.
+  assert.deepEqual(connectionOperations([{ connectionId: 'cm', operationId: 'runAgent', direction: 'call', usedBy: ['proc.taskMech'] }], selected, {}, journeys).map(item => item.consumer), ['']);
+});

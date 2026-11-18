@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { externalCallsOf } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { externalCallsOf, processConsumersOf } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 
 function usecase(usecaseId: string, entity: string, operation: string, transitionRef = ''): D1SelectedUsecase {
   return {
@@ -125,4 +125,22 @@ void test('an entity that is not external is left out', () => {
     entityKind: kind,
   });
   assert.deepEqual(matches.map(match => match.usecaseId), ['activate']);
+});
+
+void test('a call cited by a mechanical or llm task of a process is consumed by that process; a human task, a journey step and an unknown ref are not', () => {
+  const processes = [{
+    processId: 'proc',
+    tasks: [
+      { taskId: 'taskMech', kind: 'mechanical' },
+      { taskId: 'taskLlm', kind: 'llm' },
+      { taskId: 'taskHuman', kind: 'human' },
+    ],
+  }];
+  assert.deepEqual(processConsumersOf(['proc.taskMech', 'proc.taskLlm', 'proc.taskHuman', 'journey.step', 'other.x'], processes), ['proc']);
+  assert.deepEqual(processConsumersOf(['proc.taskHuman', 'journey.step', 'other.x', 'proc', 'proc.unknownTask'], processes), []);
+  assert.deepEqual(processConsumersOf(['proc.taskMech'], []), []);
+  assert.deepEqual(processConsumersOf(['b.t', 'a.t'], [
+    { processId: 'a', tasks: [{ taskId: 't', kind: 'llm' }] },
+    { processId: 'b', tasks: [{ taskId: 't', kind: 'mechanical' }] },
+  ]), ['a', 'b']);
 });

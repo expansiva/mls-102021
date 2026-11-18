@@ -839,7 +839,12 @@ void test('a call outside the catalog, a missing catalog and an unresolved consu
   assert.equal(problems.some(item => item.code === 'OPERATION_NOT_IN_CATALOG'), true);
   assert.equal(problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), true);
   assert.equal(problems.some(item => item.code === 'OPERATION_NOT_CALL'), true);
-  assert.equal(problems.some(item => item.code === 'CONNECTION_CONSUMER_UNRESOLVED' && item.severity === 'review'), true);
+  assert.equal(problems.some(item => item.code === 'CONNECTION_CONSUMER_UNRESOLVED' && item.severity === 'review'), false);
+  // The unresolved consumer is an error (d1_195): a call that nothing consumes is never silent.
+  const noConsumer = problems.filter(item => item.code === 'EXTERNAL_CALL_WITHOUT_CONSUMER');
+  assert.equal(noConsumer.length, 1, JSON.stringify(problems));
+  assert.equal(noConsumer[0].severity, 'error');
+  assert.equal(noConsumer[0].path, 'cm.simulateAgent');
 });
 
 const OTHER_CALL = [{ operationId: 'ping', direction: 'call' }];

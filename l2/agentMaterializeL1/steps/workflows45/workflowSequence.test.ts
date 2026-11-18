@@ -479,3 +479,35 @@ test('a focused function keeps the llm section and the ontologies it touches', a
   assert.match(mdmCall.human, /## The platform MDM/);
   assert.equal(other.human.includes('## The platform MDM'), false);
 });
+
+test('d1_195: the prompt of a process carries the gateway section of the calls whose consumer is the process', async () => {
+  const tasks = [{ taskId: 'cotar', kind: 'mechanical', title: 'Cotar', next: ['end'], functionRef: 'registrarPedido' }];
+  const functions = [{ functionId: 'registrarPedido', description: 'Chama a conexao e segue.' }];
+  const outbound = (consumer: string): M12Unit => {
+    const data = { connections: [{ connectionId: 'cm', operationId: 'listAgents', consumer }] };
+    return {
+      unitId: 'outbound',
+      definition: { artifactType: 'integrationOutbound', artifactId: 'outbound', moduleName: MODULE, dependencies: [], data },
+      declared: { data },
+      outputRef: '',
+    } as unknown as M12Unit;
+  };
+  const catalogSource = readFileSync(fileURLToPath(new URL('../../../../../mls-102034/l4/ontology/connections/cm.defs.ts', import.meta.url)), 'utf8');
+  const withCall = (consumer: string) => {
+    const built = focusedUnit(tasks, functions, []);
+    const read = built.ctx.read;
+    built.ctx.read = async (ref: string) => ref === '/_102034_/l4/ontology/connections/cm.defs.ts' ? catalogSource : read(ref);
+    built.ctx.units.push(outbound(consumer));
+    return built;
+  };
+
+  const served = withCall(PROCESS);
+  const text = (await loadWorkflowContext(served.ctx, served.unit)).human;
+  assert.match(text, /## Connection gateways/);
+  assert.match(text, /resolveRepository<CmGateway>\(ctx, 'CmGateway'\)/);
+  assert.match(text, /listAgents\(input: /);
+
+  // A call whose consumer is another function or process is not in this prompt.
+  const other = withCall('outroProcesso');
+  assert.equal((await loadWorkflowContext(other.ctx, other.unit)).human.includes('## Connection gateways'), false);
+});

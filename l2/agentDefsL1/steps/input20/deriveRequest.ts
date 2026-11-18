@@ -304,6 +304,10 @@ function pageShape(ctx: Context, key: string, list: readonly Member[], parent: D
   if (!open && output && output.key === key) {
     for (const [name, role] of [...roles].sort((left, right) => pagingOrder(left[1], right[1]))) setPaging(output, role, name);
     ctx.listIds.set(output, key);
+  } else if (!open && output && output.key.startsWith(`${key}.`) && !output.parent) {
+    // The items are a record of entity members (`{ agent?: AgentCard; draft?: DraftCard }`): no output is the list itself.
+    // The first member output carries the list id, so the paging inputs find the list; the paging names stay out of it.
+    ctx.listIds.set(output, key);
   }
   return true;
 }
@@ -536,7 +540,7 @@ function pageParams(ctx: Context, input: readonly Member[]): D1RequestParam[] {
       const key = ask(ctx, path, 'pageParam', stem === ''
         ? `Page input ${member.name} pages one of ${found.length} lists; the types do not say which.`
         : `Page input ${member.name} names list ${stem}, and no list output has that key.`, [...ctx.pageKeys]);
-      target = key ? lists.find(output => output.key === key) : undefined;
+      target = key ? lists.find(output => output.key === key || ctx.listIds.get(output) === key) : undefined;
       // The chosen list is not derived as a list: the input stays a gap.
       if (key && !target) gap(ctx, path, 'pageParam', `Page input ${member.name}: list ${key} is not derived.`, [...ctx.pageKeys]);
     }

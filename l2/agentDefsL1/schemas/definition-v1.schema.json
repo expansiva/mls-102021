@@ -303,6 +303,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["route", "kind", "uses", "transaction", "output", "params", "rules"],
+      "if": { "required": ["serves"] },
+      "then": { "properties": { "params": { "items": { "$ref": "#/$defs/serveParam" } } } },
       "properties": {
         "route": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "enum": ["qry", "cmd"] },
@@ -313,6 +315,17 @@
         "rules": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "serves": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$" },
         "doc": { "$ref": "#/$defs/serviceDoc" }
+      }
+    },
+    "serveParam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "target"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "target": { "type": "string" },
+        "field": { "type": "string", "minLength": 1 },
+        "pages": { "type": "string", "minLength": 1 }
       }
     },
     "serviceOutputNode": {

@@ -157,7 +157,9 @@ function sealRoute(
     if (usecase && !entities.includes(usecase.entity)) entities.push(usecase.entity);
   }
   const ownerless = row.output.flatMap(node => node.kind === 'computed' && !node.entity ? [node.path] : []);
-  const routeGrants = ownerless.length ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
+  // A route with no entity of its own takes the grants its L2 contract declares, each checked against the L4 access
+  // artifact and the actors of the page (L4 stays the source): never an open route.
+  const routeGrants = ownerless.length || (entities.length === 0 && !row.serves) ? routeGrantIds(request, contract?.source || '', path, page, problems) : [];
   // A serve route has no L2 contract. Its grant is the connection actor on the pseudo-page.
   const serves = Boolean(row.serves);
   const matched: string[] = [];
@@ -195,7 +197,7 @@ function sealRoute(
     // No entity to cover: the authority is the route grants checked above.
   } else if (!kept.preserved) {
     const uncovered = entities.filter(entity => matchingGrants(page.actors, entity, request.grants).length === 0);
-    const missing = entities.length === 0 ? [path] : uncovered;
+    const missing = entities.length === 0 ? (kept.grantIds.length ? [] : [path]) : uncovered;
     for (const entity of missing) {
       review(problems, 'AUTHORITY_REQUIRED', path, `Operation ${entity} on ${path} has no authority. No permissive fallback was applied.`);
     }
@@ -225,6 +227,8 @@ function sealRoute(
   if (routeGaps.length) {
     const reason = routeGaps.map(item => item.message.startsWith(item.code) ? item.message : `${item.code}: ${item.message}`).join(' ');
     row.output = [{ kind: 'unresolved', path: row.route, reason }];
+    // The route would not exist in the controller: that is lost functionality, not a warning (d1_195).
+    error(problems, 'ROUTE_WITHOUT_HANDLER', path, `ROUTE_WITHOUT_HANDLER: ${path} has no handler and the controller would not serve it. ${reason}`);
   }
   const sealed: SealedRoute = { grantIds: kept.grantIds, preserved: kept.preserved, projected: routeGaps.length ? [] : projected };
   sealedRoute.set(row, sealed);

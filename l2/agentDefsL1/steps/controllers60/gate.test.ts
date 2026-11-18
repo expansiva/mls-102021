@@ -19,6 +19,21 @@ function errors(build: D1ControllerBuild): string {
   return build.problems.filter(item => item.severity === 'error').map(item => item.message).join('; ');
 }
 
+/**
+ * The routes the controller would not serve: each is an ERROR `ROUTE_WITHOUT_HANDLER` (d1_195) and keeps the review
+ * (`AUTHORITY_REQUIRED` here) that says why. Nothing else is an error in these builds.
+ */
+function droppedRoutes(build: D1ControllerBuild): string[] {
+  const dropped = build.problems.filter(item => item.code === 'ROUTE_WITHOUT_HANDLER' && item.severity === 'error').map(item => item.path);
+  for (const route of dropped) {
+    assert.equal(build.problems.some(item => item.code === 'AUTHORITY_REQUIRED' && item.severity === 'review' && item.path === route), true, route);
+    assert.equal(build.controllers.flatMap(item => item.handlers).some(item => item.route === route), false, route);
+  }
+  assert.equal(build.problems.filter(item => item.severity === 'error').every(item => item.code === 'ROUTE_WITHOUT_HANDLER'), true, errors(build));
+  assert.equal(build.ok, dropped.length === 0, errors(build));
+  return dropped;
+}
+
 /** A page with one query and one command, and the entity the query projects. */
 function pageWithQueryAndCommand(request: D1ControllerRequest): { pageId: string; query: string; command: string; entity: string } {
   for (const page of request.pages) {
@@ -83,7 +98,10 @@ void test('a disclosed field the page grant does not allow is not fixed by a gra
   assert.deepEqual(bound.grantIds, [`${actor}Narrow`]);
   assert.deepEqual(grantUnionIssues(page.actors, ['otherActorFull'], request.grants), ['otherActorFull']);
   assert.equal(build.problems.some(item => item.code === 'DISCLOSURE' && item.severity === 'review' && item.path === query && item.message.includes(hidden)), true, errors(build));
-  assert.equal(build.ok, true, errors(build));
+  // The grant of the entity was replaced: the routes of the other pages that lose their authority are dropped, not the routes of this page.
+  const lost = droppedRoutes(build);
+  assert.equal(lost.length > 0 && !lost.includes(query), true, lost.join(','));
+  assert.equal(build.ok, false);
   assert.equal(bound.projection.fields.includes(hidden), false);
   assert.equal(JSON.stringify(build.services.find(item => item.pageId === pageId)?.requests.find(item => item.route === query)?.output).includes(`"field":"${hidden}"`), false);
 });
@@ -118,7 +136,9 @@ void test('fieldsOnly covers a branch and its descendants, not its parent or a s
   if (leaf.length > 1) {
     assert.equal(cut.some(item => item.message.includes(leaf[1])), true, errors(partial));
     assert.equal(cut.every(item => item.severity === 'review'), true);
-    assert.equal(partial.ok, true, errors(partial));
+    // The disclosure is a review; the build only fails for the routes of other pages left without authority by the replaced grant.
+    const lost = droppedRoutes(partial);
+    assert.equal(lost.length > 0 && !lost.includes(query), true, lost.join(','));
   }
   assert.equal(cut.some(item => item.message.includes(leaf[0])), false);
 
@@ -230,7 +250,9 @@ void test('negatives: stale file, unreadable file, no authority', () => {
     assert.equal(row?.output[0].kind, 'unresolved');
     assert.equal(row?.output[0].kind === 'unresolved' && row.output[0].path, route);
   }
-  assert.equal(unauthorised.ok, true, errors(unauthorised));
+  // Every route of the page without actors is dropped, with its review, and that is an error.
+  assert.deepEqual(droppedRoutes(unauthorised).sort(), [...routes].sort());
+  assert.equal(unauthorised.ok, false);
 
   const noGrant = seed();
   noGrant.grants = [];
@@ -367,7 +389,9 @@ void test('d1_63: a calculated value leaves only under fullRecord; otherwise COM
   assert.equal(closed.problems.some(item => item.code === 'COMPUTED_NOT_DISCLOSED' && item.path === query && item.message === `COMPUTED_NOT_DISCLOSED: ${query} ${calculated}`), true, errors(closed));
   assert.equal(closed.problems.some(item => item.code === 'DISCLOSURE' && item.path === query), false, errors(closed));
   assert.equal(closed.problems.find(item => item.code === 'COMPUTED_NOT_DISCLOSED')?.severity, 'review');
-  assert.equal(closed.ok, true, errors(closed));
+  const lost = droppedRoutes(closed);
+  assert.equal(lost.length > 0 && !lost.includes(query), true, lost.join(','));
+  assert.equal(closed.ok, false);
   const closedRow = closed.services.flatMap(item => item.requests).find(item => item.route === query);
   assert.equal(closedRow?.output.some(node => node.kind === 'computed' && node.path.endsWith(calculated)), false);
   assert.equal(closedRow?.output.some(node => node.kind === 'unresolved' && node.reason.includes(calculated)), true);

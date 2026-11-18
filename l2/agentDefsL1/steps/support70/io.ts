@@ -9,7 +9,7 @@ import { artifactFile, renderDefinition } from '/_102021_/l2/agentDefsL1/helpers
 import { entityPath, inputPaths, journeyPath, type D1InputSnapshot, type D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { resolveAllowedFields } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { sourceIdentityHash } from '/_102021_/l2/helpers/l1Defs/identity.js';
-import { externalCallsOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
+import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
@@ -733,7 +733,10 @@ async function effectsOf(
     const callRows = arrayOf(integration.connections);
     const catalogs = await connectionCatalogs(callRows);
     const journeys = await connectionJourneys(project, moduleName, callRows);
-    operations.push(...connectionOperations(callRows, selected, catalogs, journeys));
+    const workflowsText = await readLogical(project, inputPaths(moduleName).workflows);
+    const workflows = workflowsText ? parseD1Source(workflowsText, 'defs') : null;
+    const processes = isRecord(workflows) ? arrayOf(workflows.processes) : [];
+    operations.push(...connectionOperations(callRows, selected, catalogs, journeys, processes));
   }
   return { outbound, operations };
 }
@@ -770,6 +773,7 @@ export function connectionOperations(
   selected: readonly D1SelectedUsecase[],
   catalogs: Readonly<Record<string, readonly D1CatalogOperation[] | null>>,
   journeys: Record<string, unknown> = {},
+  processes: readonly unknown[] = [],
 ): D1EffectOperation[] {
   const matches = externalCallsOf({ journeys, connections: rows, usecases: selected, entityKind: new Map(), allEntities: true });
   const out: D1EffectOperation[] = [];
@@ -781,7 +785,7 @@ export function connectionOperations(
     const effect = typeof row.effect === 'string' ? connectionEffect(row.effect) : undefined;
     const entityRefs = stringList(row.entityRefs);
     // One call can serve the steps of several usecases (the same `updateAgent` for three entities): one line per consumer.
-    const consumers = callConsumers(connectionId, operationId, stringList(row.usedBy), selected, matches, journeys);
+    const consumers = callConsumers(connectionId, operationId, stringList(row.usedBy), selected, matches, journeys, processes);
     for (const consumer of consumers) {
       out.push({
         id: `${connectionId}.${operationId}`,
@@ -801,7 +805,7 @@ export function connectionOperations(
   return out;
 }
 
-/** Every usecase whose steps the call serves (`externalCallsOf`), then the one `connectionConsumer` names; `['']` when none. */
+/** Every usecase whose steps the call serves (`externalCallsOf`), the processes whose tasks it serves, then the one `connectionConsumer` names; `['']` when none. */
 function callConsumers(
   connectionId: string,
   operationId: string,
@@ -809,6 +813,7 @@ function callConsumers(
   selected: readonly D1SelectedUsecase[],
   matches: readonly D1ExternalCallMatch[],
   journeys: Record<string, unknown>,
+  processes: readonly unknown[],
 ): string[] {
   const own = matches
     .filter(match => match.calls.some(call => call.connectionId === connectionId && call.operationId === operationId))
@@ -816,7 +821,7 @@ function callConsumers(
       const usecase = selected.find(item => item.usecaseId === match.usecaseId);
       return usecase ? usecase.identity || usecase.usecaseId : '';
     });
-  const consumers = [...new Set([...own, connectionConsumer(usedBy, selected, matches, journeys)].filter(Boolean))].sort();
+  const consumers = [...new Set([...own, ...processConsumersOf(usedBy, processes), connectionConsumer(usedBy, selected, matches, journeys)].filter(Boolean))].sort();
   return consumers.length ? consumers : [''];
 }
 

@@ -1048,11 +1048,11 @@ function acceptedConnectionRows(
     }
     if (!operation.consumer) {
       if (problems) {
-        review(
+        error(
           problems,
-          'CONNECTION_CONSUMER_UNRESOLVED',
+          'EXTERNAL_CALL_WITHOUT_CONSUMER',
           label,
-          `Connection ${label} names no selected usecase. No consumer was invented.`,
+          `Call ${label} has no consumer: no usecase serves a step that cites it in usedBy, and no process task does. An omitted call is never silent.`,
         );
       }
       continue;
