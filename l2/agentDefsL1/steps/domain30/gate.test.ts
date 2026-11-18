@@ -545,7 +545,7 @@ void test('d1_197: catalogInfo reads the connection catalog only at the path of 
   assert.deepEqual(catalogInfo(real), { project: 102034, level: 1, folder: 'server/layer_1_external/connections/catalogs', shortName: 'cm', extension: '.ts' });
   assert.equal(catalogInfo('/_102034_/l1/server/layer_1_external/connections/catalogs/Cm.ts'), null);
   assert.equal(catalogInfo('/_102034_/l1/other/catalogs/cm.ts'), null);
-  assert.equal(catalogInfo('/_102034_/l4/ontology/connections/cm.defs.ts')?.extension, '.defs.ts');
+  assert.equal(catalogInfo('/_102034_/l4/ontology/mdm.defs.ts')?.extension, '.defs.ts');
 });
 
 void test('an object of a platform type keeps of; a name that is not of the platform is dropped', () => {
