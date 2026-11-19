@@ -9,6 +9,8 @@ export const M12_AGENT_NAME = 'agentMaterializeL1' as const;
  */
 export const M12_BUILD = 'm12-2026-10-21.48 (an import the Studio could not fetch (a project it has not loaded, no GitHub session) leaves the unit unproven, not failed; the Studio compile is back on: the imports are loaded first and the worker is warmed once with a long deadline before any compile, and a timeout turns the breaker on for the run instead of a 60s wait per file; an import the compiler did not load in time leaves the unit unproven, not failed; a request service waits for the workflow of the processes its routes reach; a readonly output member is set when the object is built; the input validator applies a required path to each item of a list, and a test runs it; a request never types a repository of its own; a child a route writes with its parent, matched by its fields to a 1:N relationship of the l4, gets its port methods and a request section; the workflow transition gate reads each call by its brackets, so a record built inside the call is judged too; a collection of objects is a list in the entity and the usecase signature and is stored whole at its path; a workflow transition must write the state it leads to on the record; a port and its adapter carry the methods a process applies through them and no usecase brings (an operation with no usecase, a system transition); the workflow prompt carries every entity its prose names; the workflow service (§11): a workflows45 phase writes one function per process function from the l4 prose, over a mechanical Task adapter, and a module tick for the scheduled ones; a request whose usecase is a process operation calls the process; own scope read per entity, a direct step is a column and a longer chain a join; a caller needs one grant of the route, own applies only to the grants held and is set before the validation; a contract route the controller def leaves out gets its handler from the contract access; the usecase def carries only its intent (§10): its function, port, selector, transition payload, rules and unique keys follow from the operation, the entity, the table and the l4; an MDM entity no usecase owns is read and written by the request through ctx.mdm, the own-scope anchor being the session actor; MDM links go with their compact keys; no inline or unknown repository; entities are type aliases, so they fit Record-based usecase outputs; tests60 back on, with the code model; a usecase reads only the input it declares, a sequence number is calculated; a transition writes the state it leads to; null from the MDM is absent, never an error; a request takes its contract input type and the controller passes it uncast; the request def goes compact, under the prompt limit; list filters are optional in the scaffold; platform MDM rules belong to the engine; an absent optional output field is left out; compile errors carry line, column and code; l4 collections are lists and MDM entities follow l4 optionality; no input casts in requests; an MDM usecase gets the flat engine shape and the ctx.mdm types; node: means an import, not a local named node; a text or day search is not an exact filter; a rule about a parent record obliges reading it; a rule handed to a usecase in a comment must be in that usecase; a list applies every filter its input declares; the usecase prompt says what each context section decides; a usecase never reads a derived field from a record the repository returned; a stored record comes back with every declared object, even empty; a write keeps the version it read: the repository increments it; usecase context sends the entities its rules name, by title and relationship; repository types only from ports; controller input opens named contract interfaces; requests typed by the contract outputs; no as-unknown/as-any; usecases (input, ctx) only; whole-module registration; controllers after request services; l1 proven by worker diagnostics only, breaker on a silent worker; briefing §2.1: def fields are hints; recipes first; usecases and request services always to the model; prompts declare modelType)' as const;
 export const M12_DOMAIN_AGENT_NAME = 'agentM12Domain' as const;
+export const M12_EXTERNAL_AGENT_NAME = 'agentM12External' as const;
+export const M12_EXTERNAL_UNIT_AGENT_NAME = 'agentM12ExternalUnit' as const;
 export const M12_PERSISTENCE_AGENT_NAME = 'agentM12Persistence' as const;
 export const M12_SEED_ROWS_AGENT_NAME = 'agentM12SeedRows' as const;
 export const M12_SEED_ROW_UNIT_AGENT_NAME = 'agentM12SeedRowUnit' as const;
@@ -32,14 +34,16 @@ export const M12_FINALIZE_AGENT_NAME = 'agentM12Finalize' as const;
  * leave a stale copy with the same agent name in the Studio stor, which loads the last file it finds.
  */
 // The workflow service (§11) calls the usecases and is called by the request services: between the two.
-export const M12_LAYERS = ['domain', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
+// d1_208: the declaration of a system outside the app comes before the gateways (persistence) and the routes (requests) that read its types.
+export const M12_LAYERS = ['domain', 'external', 'persistence', 'seedRows', 'usecases', 'workflows', 'requests', 'controllers', 'tests'] as const;
 export type M12Layer = typeof M12_LAYERS[number];
 
-export const M12_STEP_IDS = ['domain10', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
+export const M12_STEP_IDS = ['domain10', 'external15', 'persistence20', 'seedRows25', 'usecases40', 'workflows45', 'requests50', 'controllers30', 'tests60', 'register70', 'finalize80'] as const;
 export type M12StepId = typeof M12_STEP_IDS[number];
 
 const LAYER_STEP: Record<M12Layer, M12StepId> = {
   domain: 'domain10',
+  external: 'external15',
   persistence: 'persistence20',
   seedRows: 'seedRows25',
   usecases: 'usecases40',
@@ -51,6 +55,7 @@ const LAYER_STEP: Record<M12Layer, M12StepId> = {
 
 const STEP_AGENT: Record<M12StepId, string> = {
   domain10: M12_DOMAIN_AGENT_NAME,
+  external15: M12_EXTERNAL_AGENT_NAME,
   persistence20: M12_PERSISTENCE_AGENT_NAME,
   seedRows25: M12_SEED_ROWS_AGENT_NAME,
   usecases40: M12_USECASES_AGENT_NAME,
@@ -64,6 +69,7 @@ const STEP_AGENT: Record<M12StepId, string> = {
 
 const STEP_TITLE: Record<M12StepId, string> = {
   domain10: 'Materialize domain',
+  external15: 'Materialize the declarations of the outside systems',
   persistence20: 'Materialize persistence',
   seedRows25: 'Materialize reference seed rows',
   usecases40: 'Materialize usecases',
@@ -89,6 +95,7 @@ export const LAYER_OF_TYPE: Readonly<Record<string, M12Layer>> = {
   integrationOutbound: 'persistence',
   usecase: 'usecases',
   workflowProcess: 'workflows',
+  externalConnection: 'external',
   requestService: 'requests',
   httpController: 'controllers',
 };

@@ -6,6 +6,8 @@ import { addM12Step, m12Result, updateM12Status } from '/_102021_/l2/agentMateri
 import { loadModuleUnits, registersModule, requestModules, selectUnits, selectedLayers, storEntries, type M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { unitNeedsLlm } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import '/_102021_/l2/agentMaterializeL1/steps/domain10/agentM12Domain.js';
+import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12External.js';
+import '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12ExternalUnit.js';
 import '/_102021_/l2/agentMaterializeL1/steps/persistence20/agentM12Persistence.js';
 import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRows.js';
 import '/_102021_/l2/agentMaterializeL1/steps/seedRows25/agentM12SeedRowUnit.js';

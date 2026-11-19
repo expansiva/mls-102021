@@ -43,13 +43,13 @@ export async function recordM12ArgsRefusal(raw: string, layer: M12Layer, diagnos
 }
 
 export function workerPlanId(layer: M12Layer, args: M12WorkerArgs): string {
-  const phase = layer === 'usecases' ? 'usecases40' : layer === 'workflows' ? 'workflows45' : layer === 'requests' ? 'requests50' : 'tests60';
+  const phase = layer === 'external' ? 'external15' : layer === 'usecases' ? 'usecases40' : layer === 'workflows' ? 'workflows45' : layer === 'requests' ? 'requests50' : 'tests60';
   const step = args.phase ? `-${args.phase}` : '';
   return `${phase}-${args.module}-${args.unitId}${step}-${args.attempt}`;
 }
 
 export function workerTitle(layer: M12Layer, args: M12WorkerArgs): string {
-  const what = layer === 'usecases' ? `Usecase ${args.unitId}` : layer === 'workflows' ? `Workflow ${args.unitId}` : layer === 'requests' ? `Request service ${args.unitId}` : `Monitor tests ${args.unitId}`;
+  const what = layer === 'external' ? `Declaration ${args.unitId}` : layer === 'usecases' ? `Usecase ${args.unitId}` : layer === 'workflows' ? `Workflow ${args.unitId}` : layer === 'requests' ? `Request service ${args.unitId}` : `Monitor tests ${args.unitId}`;
   const step = args.phase ? ` [${args.phase}]` : '';
   return args.attempt > 1 ? `${what}${step} (repair ${args.attempt - 1})` : `${what}${step}`;
 }

@@ -25,6 +25,24 @@
       "goal": "Emit each unit with its copied recipe, write it to the stor (createStorFile / localStor.setContent, as agentDefsL1), run the gates, record its status."
     },
     {
+      "planId": "external15-<module>",
+      "agentName": "agentM12External",
+      "llm": "always (every externalConnection, one per system the module declares)",
+      "types": [
+        "externalConnection"
+      ],
+      "goal": "The declaration of each system outside the app (l1/<module>/layer_1_external/connections/<systemId>.ts, d1_208): code writes what the L4 says (id, title, description, settings, the operations with direction and description) and the model analyses hosts, kinds, the exported types, methods, what each call uses and how a serve is verified. It comes before the gateways and the routes that read its types.",
+      "worker": {
+        "agentName": "agentM12ExternalUnit",
+        "planIdPattern": "external15-<module>-<systemId>-<attempt>",
+        "prompt": "steps/external15/prompt.md",
+        "context": "the L4 system and the connections lines that use it (source), the part code wrote, the type and the validator of the runtime (source)",
+        "tool": "writeExternalDeclaration { code }",
+        "gate": "the runtime validator (validateExternalSystemDeclaration), every L4 operation and no more, the same settings and texts, every inputType and outputType exported, only the type import, then the Studio compile",
+        "repairBudget": 2
+      }
+    },
+    {
       "planId": "persistence20-<module>",
       "agentName": "agentM12Persistence",
       "llm": false,

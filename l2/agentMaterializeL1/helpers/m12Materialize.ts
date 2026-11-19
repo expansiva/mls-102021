@@ -3,6 +3,7 @@
 // One deterministic unit: emit from the def with the copied recipes, gate, write, compile in the Studio, check
 // the rules, record the status. The LLM usecase worker reuses the write/compile/record half.
 
+import { DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { auditImports, emitController, emitValueObject, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { behaviorNeedsLlm, emitBehavior } from '/_102021_/l2/agentMaterializeL1/emitters/emitBehavior.js';
@@ -73,7 +74,7 @@ export function createContext(run: M12RunArgs, units: readonly M12Unit[], appEnv
  * recipe cannot bind) and request services (outputs it cannot project) are written by the model, with the
  * recipe's attempt as a draft; every other type is a recipe.
  */
-export const MODEL_TYPES: ReadonlySet<string> = new Set(['usecase', 'requestService', 'workflowProcess']);
+export const MODEL_TYPES: ReadonlySet<string> = new Set(['usecase', 'requestService', 'workflowProcess', 'externalConnection']);
 
 export function unitNeedsLlm(unit: M12Unit): boolean {
   return MODEL_TYPES.has(unit.definition.artifactType);
@@ -88,6 +89,7 @@ export function recipeWouldAskModel(unit: M12Unit): boolean {
 export async function recipeDraft(ctx: M12Context, unit: M12Unit): Promise<{ source: string } | { refusal: string }> {
   if (recipeWouldAskModel(unit)) return { refusal: 'NEEDS_LLM: the copied routing (behaviorNeedsLlm) does not derive this usecase.' };
   if (unit.definition.artifactType === 'workflowProcess') return { refusal: 'NO_RECIPE: the workflow service is written from the l4 prose of its functions (§11).' };
+  if (unit.definition.artifactType === 'externalConnection') return { refusal: 'NO_RECIPE: the declaration of a system is written from the l4 text of the system (hosts, kinds, types, methods and verify are analysis).' };
   try {
     const emitted = await emitUnit(ctx, unit);
     if ('code' in emitted) return { refusal: `${emitted.code}: ${emitted.detail}` };
@@ -214,6 +216,8 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
     }
   }
   if (unit.definition.artifactType === 'usecase') parts.push((await readOptional(rulesFile(ctx.run.project, ctx.run.module))) ?? '');
+  // The declaration is read against the type and the validator of the runtime: a change there is a change of its input (d1_208).
+  if (unit.definition.artifactType === 'externalConnection') parts.push((await ctx.read(DECLARATION_TYPES_REF)) ?? '<absent>');
   // A port and its adapter also carry the methods the workflow processes apply through them (§11).
   if (unit.definition.artifactType === 'repositoryPort' || unit.definition.artifactType === 'repositoryAdapter') {
     parts.push(JSON.stringify(ctx.units.filter(item => item.definition.artifactType === 'repositoryPort').map(item => item.definition.data.methods)));

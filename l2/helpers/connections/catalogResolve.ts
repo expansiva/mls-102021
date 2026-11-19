@@ -109,6 +109,10 @@ export function siblingDeclarationMissing(connectionId: string, moduleName: stri
   return `Connection ${connectionId} is a system declared by module ${moduleName}, and its declaration is not generated. Generate module ${moduleName} first (agentMaterializeL1), then this one.`;
 }
 
+/** The type file of the runtime (the declaration type and its validator): an input of every declaration. No import here, on purpose. */
+export const DECLARATION_TYPES_REF = '_102034_/l1/server/layer_1_external/connections/external/types.ts';
+export const DECLARATION_TYPES_IMPORT = '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+
 /** The project registry the NS5 keeps: the list of the modules of the project (`l5/config.json` lists none). */
 export const REGISTRY_LOGICAL_PATH = 'l4/organization/registry.defs.ts';
 

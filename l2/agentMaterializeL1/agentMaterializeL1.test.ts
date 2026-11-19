@@ -365,7 +365,7 @@ void test('the request gate holds the contract routes, the atomic command and th
 void test('every prompt declares a model type the Collab LLM proxy knows (no default "cost" alias)', () => {
   const steps = path.join(HERE, 'steps');
   const prompts = readdirSync(steps).map(step => path.join(steps, step, 'prompt.md')).filter(file => existsSync(file));
-  assert.equal(prompts.length, 5, 'usecases40, workflows45, requests50, tests60 and seedRows25 call the model');
+  assert.equal(prompts.length, 6, 'external15, usecases40, workflows45, requests50, tests60 and seedRows25 call the model');
   for (const file of prompts) {
     const second = readFileSync(file, 'utf8').split('\n')[1] ?? '';
     assert.match(second, /^<!-- modelType: (code|design|reasoning) -->$/u, `${path.relative(HERE, file)} line 2`);

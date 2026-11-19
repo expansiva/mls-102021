@@ -58,7 +58,7 @@ export interface M12ModelLayerSpec {
   normalize?(ctx: M12Context, unit: M12Unit, code: string): Promise<string>;
   /** When set, the worker grows one file across phases. Layers without it keep a single call. */
   sequence?: M12SequenceSpec;
-  layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests'>;
+  layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests' | 'external'>;
   /** Module-wide files the layer's units import, written before any worker is dispatched; the trace lines. */
   prepare?(ctx: M12Context, units: readonly M12Unit[]): Promise<string[]>;
   workerAgentName: string;

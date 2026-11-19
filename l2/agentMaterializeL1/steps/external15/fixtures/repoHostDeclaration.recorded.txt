@@ -1,0 +1,67 @@
+/// <mls fileReference="_102099_/l1/codeReview/layer_1_external/connections/repoHost.ts" enhancement="_blank"/>
+
+import type { ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+
+export interface RepoHostChange {
+  id: string;
+  message: string;
+  author: string;
+}
+
+export interface RepoHostListChangesInput {
+  limit?: number;
+}
+
+export interface RepoHostListChangesOutput {
+  changes: RepoHostChange[];
+}
+
+export interface RepoHostChangePushedInput {
+  change: RepoHostChange;
+}
+
+export interface RepoHostChangePushedOutput {
+  accepted: boolean;
+}
+
+const declaration: ExternalSystemDeclaration = {
+  "schemaVersion": "external-system-v1",
+  "systemId": "repoHost",
+  "title": "Repository host",
+  "description": "Where the code of a project lives; the module reads its changes and is told when one is pushed.",
+  "hosts": [{ "fromSetting": "repositoryAddress" }],
+  "settings": [
+    { "id": "repositoryAddress", "secret": false },
+    { "id": "accessKey", "secret": true }
+  ],
+  "operations": [
+    {
+      "operationId": "listChanges",
+      "direction": "call",
+      "kind": "query",
+      "description": "The latest changes of the repository.",
+      "inputType": "RepoHostListChangesInput",
+      "outputType": "RepoHostListChangesOutput",
+      "methods": ["GET"],
+      "uses": { "settings": ["repositoryAddress"], "secrets": ["accessKey"] },
+      "reply": "now"
+    },
+    {
+      "operationId": "changePushed",
+      "direction": "serve",
+      "kind": "command",
+      "description": "A change was pushed to the repository.",
+      "inputType": "RepoHostChangePushedInput",
+      "outputType": "RepoHostChangePushedOutput",
+      "verify": {
+        "scheme": "hmac",
+        "algorithm": "sha256",
+        "secret": "accessKey",
+        "signature": { "header": "x-signature", "prefix": "sha256=", "encoding": "hex" },
+        "signed": ["body"]
+      }
+    }
+  ]
+};
+
+export default declaration;
