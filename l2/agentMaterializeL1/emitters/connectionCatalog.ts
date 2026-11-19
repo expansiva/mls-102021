@@ -83,6 +83,23 @@ function declarationObjectStart(source: string): number {
   return direct ? direct.index + direct[0].length - 1 : -1;
 }
 
+/**
+ * Where the object body of a type declared in a catalog or a declaration file opens: `export interface <name> { … }` or the alias of an
+ * object literal, `export type <name> = { … }` (d1_215: the model writes either). The index of the `{`, or -1.
+ */
+export function typeObjectOpen(source: string, name: string): number {
+  if (!ident(name)) return -1;
+  const declared = source.indexOf(`export interface ${name} `);
+  if (declared >= 0) return source.indexOf('{', declared);
+  const alias = new RegExp(`export\\s+type\\s+${name}\\s*=\\s*\\{`, 'u').exec(source);
+  return alias ? alias.index + alias[0].length - 1 : -1;
+}
+
+/** True when `<name>` is declared as a type alias whose right side is not an object literal (a union, an intersection, another name). */
+export function isNonObjectAlias(source: string, name: string): boolean {
+  return ident(name) && typeObjectOpen(source, name) < 0 && new RegExp(`export\\s+type\\s+${name}\\s*=`, 'u').test(source);
+}
+
 export function catalogOperations(source: string): CatalogOperation[] | null {
   const parsed = parseCatalogObject(source);
   if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
@@ -125,8 +142,7 @@ function literalUnion(typeText: string): string[] {
  */
 export function catalogFieldUnion(source: string, typeName: string, field: string): string[] {
   if (!ident(typeName) || !ident(field)) return [];
-  const at = source.indexOf(`export interface ${typeName} `);
-  const open = at < 0 ? -1 : source.indexOf('{', at);
+  const open = typeObjectOpen(source, typeName);
   if (open < 0) return [];
   let depth = 0;
   let body = '';
@@ -158,8 +174,7 @@ export interface CatalogField {
 export function catalogTypeFields(source: string, typeName: string): CatalogField[] | null {
   if (!ident(typeName)) return null;
   if (new RegExp(`export\\s+type\\s+${typeName}\\s*=\\s*Record<string,\\s*never>\\s*;`, 'u').test(source)) return [];
-  const at = source.indexOf(`export interface ${typeName} `);
-  const open = at < 0 ? -1 : source.indexOf('{', at);
+  const open = typeObjectOpen(source, typeName);
   if (open < 0) return null;
   const fields: CatalogField[] = [];
   let depth = 0;

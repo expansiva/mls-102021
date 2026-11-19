@@ -8,7 +8,7 @@ import of a file that does not exist.
  */
 
 import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
-import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
+import { catalogOperations, isNonObjectAlias, typeObjectOpen } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
   isRecord,
@@ -634,6 +634,7 @@ async function resolveServeRoute(
   if (!operation) return { code: 'CONNECTION_OPERATION_UNLISTED', detail: `${connectionId}.${operationId} is not in the catalog.` };
   if (operation.direction !== 'serve') return { code: 'CONNECTION_NOT_SERVE', detail: `${connectionId}.${operationId} is not a serve operation.` };
   const members = membersOfType(catalog, operation.inputType);
+  if (!members && isNonObjectAlias(catalog, operation.inputType)) return { code: 'CATALOG_INPUT_NOT_OBJECT', detail: `${operation.inputType} is declared in ${catalogRef} as a type alias that is not an object literal (a union, an intersection or another name): declare it as an interface or as \`export type ${operation.inputType} = { … }\`.` };
   if (!members) return { code: 'CATALOG_INPUT_UNREAD', detail: `${operation.inputType} could not be read from ${catalogRef}.` };
   const closed = unopenedNamedMembers(catalog, operation.inputType, members.allowedPaths);
   if (closed.length) return { code: 'CONTRACT_INPUT_UNOPENED', detail: `${route} input has members typed by a contract interface that were not opened: ${closed.join(', ')}.` };
@@ -1380,13 +1381,12 @@ export function unopenedNamedMembers(source: string, typeText: string, allowedPa
   const out: string[] = [];
   const text = typeText.trim();
   const body = text.startsWith('{') ? text : (() => {
-    const at = source.indexOf(`export interface ${text} `);
-    const open = at < 0 ? -1 : source.indexOf('{', at);
+    const open = typeObjectOpen(source, text);
     return open < 0 ? '' : source.slice(open);
   })();
   for (const match of body.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\??\s*:\s*([A-Z][A-Za-z0-9_]*)(?:\[\])?\s*(?:\|\s*null\s*)?[;}\n]/gu)) {
     const [_, member, typeName] = match;
-    if (!source.includes(`export interface ${typeName} `)) continue;
+    if (typeObjectOpen(source, typeName) < 0) continue;
     if (!allowedPaths.some(path => path === member || path.endsWith(`.${member}`))) continue;
     const opened = allowedPaths.some(path => path.startsWith(`${member}.`) || path.includes(`.${member}.`));
     if (!opened) out.push(`${member}: ${typeName}`);
@@ -1471,10 +1471,8 @@ function addInlineMembers(
 }
 
 function readMembers(source: string, name: string, seen: ReadonlySet<string> = new Set()): { requiredFields: string[]; allowedFields: string[]; allowedPaths: string[]; nullablePaths: string[]; unions: ClosedUnion[] } | null {
-  const tokenText = `export interface ${name} `;
-  const at = source.indexOf(tokenText);
-  if (at < 0) return null;
-  const open = source.indexOf('{', at);
+  // `export interface X { … }` or `export type X = { … }` (d1_215): the same members either way.
+  const open = typeObjectOpen(source, name);
   if (open < 0) return null;
   let depth = 0;
   let end = -1;
@@ -1520,7 +1518,7 @@ function readMembers(source: string, name: string, seen: ReadonlySet<string> = n
         // agentMaterializeL1: a member typed with a named interface of the same contract (also `T[]`, `T | null`)
         // is opened, recursively; its paths sit under this member. A cycle stops at the interface already open.
         const named = namedMemberType(declared);
-        if (named && !seen.has(named) && source.includes(`export interface ${named} `)) {
+        if (named && !seen.has(named) && typeObjectOpen(source, named) >= 0) {
           const inner = readMembers(source, named, new Set([...seen, name, named]));
           if (inner) {
             for (const child of inner.allowedPaths) allowedPaths.push(`${path}.${child}`);

@@ -1,0 +1,210 @@
+/// <mls fileReference="_102047_/l1/repoHost/layer_1_external/connections/github.ts" enhancement="_blank"/>
+import type { ExternalSystemDeclaration } from '/_102034_/l1/server/layer_1_external/connections/external/types.js';
+
+export type ListContentsInput = {
+  /** Path of the folder inside the repository. Empty for the root. */
+  path: string;
+};
+
+export type RepositoryEntry = {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+  sha: string;
+  size: number;
+};
+
+export type ListContentsOutput = {
+  entries: RepositoryEntry[];
+};
+
+export type ReadFileInput = {
+  /** Path of the file inside the repository. */
+  path: string;
+};
+
+export type ReadFileOutput = {
+  path: string;
+  name: string;
+  sha: string;
+  size: number;
+  /** File content, encoded as stated in `encoding`. */
+  content: string;
+  encoding: 'base64' | 'utf-8';
+};
+
+export type WriteFileInput = {
+  /** Path of the file inside the repository. */
+  path: string;
+  /** New content of the file, in plain text. */
+  content: string;
+  /** Log message of the change. */
+  message: string;
+  /** Sha of the current file, when the file already exists and is being changed. */
+  sha?: string;
+};
+
+export type WriteFileOutput = {
+  path: string;
+  /** Sha of the file written. */
+  sha: string;
+  /** Sha of the commit created. */
+  commitSha: string;
+  commitMessage: string;
+};
+
+export type RepositoryChangedInput = {
+  /** Repository the notice is about. */
+  repository: { fullName: string };
+  /** Branch reference changed, e.g. refs/heads/main. */
+  ref: string;
+  /** Sha of the head after the change. */
+  after: string;
+  commits: {
+    id: string;
+    message: string;
+    author: { name: string; email?: string; username?: string };
+    added: string[];
+    modified: string[];
+    removed: string[];
+  }[];
+  headCommit?: {
+    id: string;
+    message: string;
+    author: { name: string; email?: string; username?: string };
+  };
+  pusher?: { name: string; email?: string };
+};
+
+export type RepositoryChangedOutput = {
+  received: boolean;
+};
+
+const declaration: ExternalSystemDeclaration = {
+  "schemaVersion": "external-system-v1",
+  "systemId": "github",
+  "title": "GitHub",
+  "description": "Serviço que hospeda o repositório de conteúdo da empresa. O módulo o usa para listar pastas e arquivos, ler um arquivo, gravar um arquivo novo ou alterado com mensagem de registro e receber o aviso quando o repositório muda.",
+  "hosts": [
+    {
+      "host": "api.github.com"
+    }
+  ],
+  "settings": [
+    {
+      "id": "repositorio",
+      "title": "Repositório",
+      "description": "Qual é o repositório de conteúdo da empresa no GitHub (dono e nome do repositório).",
+      "secret": false
+    },
+    {
+      "id": "ramo",
+      "title": "Ramo",
+      "description": "Ramo do repositório usado para ler e gravar o conteúdo.",
+      "secret": false
+    },
+    {
+      "id": "chaveAcesso",
+      "title": "Chave de acesso",
+      "description": "Chave que dá ao módulo acesso de leitura e gravação ao repositório.",
+      "secret": true
+    },
+    {
+      "id": "segredoAviso",
+      "title": "Segredo dos avisos",
+      "description": "Segredo combinado com o GitHub para conferir que o aviso de mudança realmente vem dele.",
+      "secret": true
+    }
+  ],
+  "operations": [
+    {
+      "operationId": "listContents",
+      "direction": "call",
+      "description": "Pede a lista das pastas e dos arquivos de um caminho do repositório.",
+      "kind": "query",
+      "inputType": "ListContentsInput",
+      "outputType": "ListContentsOutput",
+      "methods": [
+        "GET"
+      ],
+      "uses": {
+        "settings": [
+          "repositorio",
+          "ramo"
+        ],
+        "secrets": [
+          "chaveAcesso"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "readFile",
+      "direction": "call",
+      "description": "Pede o conteúdo de um arquivo do repositório.",
+      "kind": "query",
+      "inputType": "ReadFileInput",
+      "outputType": "ReadFileOutput",
+      "methods": [
+        "GET"
+      ],
+      "uses": {
+        "settings": [
+          "repositorio",
+          "ramo"
+        ],
+        "secrets": [
+          "chaveAcesso"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "writeFile",
+      "direction": "call",
+      "description": "Grava um arquivo novo ou alterado no repositório com uma mensagem de registro.",
+      "kind": "command",
+      "inputType": "WriteFileInput",
+      "outputType": "WriteFileOutput",
+      "methods": [
+        "PUT"
+      ],
+      "uses": {
+        "settings": [
+          "repositorio",
+          "ramo"
+        ],
+        "secrets": [
+          "chaveAcesso"
+        ]
+      },
+      "reply": "now"
+    },
+    {
+      "operationId": "repositoryChanged",
+      "direction": "serve",
+      "description": "O GitHub avisa que o repositório mudou, com os arquivos alterados, o autor e a mensagem de registro.",
+      "kind": "command",
+      "inputType": "RepositoryChangedInput",
+      "outputType": "RepositoryChangedOutput",
+      "verify": {
+        "scheme": "hmac",
+        "algorithm": "sha256",
+        "secret": "segredoAviso",
+        "signature": {
+          "header": "X-Hub-Signature-256",
+          "prefix": "sha256=",
+          "encoding": "hex"
+        },
+        "signed": [
+          "body"
+        ]
+      },
+      "noticeId": {
+        "header": "X-GitHub-Delivery"
+      }
+    }
+  ]
+};
+
+export default declaration;
