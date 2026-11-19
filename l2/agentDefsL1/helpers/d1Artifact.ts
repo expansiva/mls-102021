@@ -436,6 +436,7 @@ function dataIssues(artifactType: D1ArtifactType, data: Record<string, unknown>,
     case 'persistenceSeeds': return seedScenarioIssues(data);
     case 'integrationOutbound': return integrationShapeIssues(data);
     case 'workflowProcess': return workflowProcessIssues(data);
+    case 'externalConnection': return externalConnectionIssues(data);
     default: return [`definition.artifactType is unknown.`];
   }
 }
@@ -871,6 +872,47 @@ function triggerIssues(value: unknown, issues: string[]): void {
   const found = needString(value, field, path, issues);
   if (field === 'actorRef') tokenAt(found, `${path}.actorRef`, issues);
   if (field === 'event' && found && !QUALIFIED.test(found)) issues.push(`${path}.event is invalid.`);
+}
+
+export function externalConnectionIssues(data: unknown): string[] {
+  if (!isRecord(data)) return ['Missing field data.'];
+  const issues: string[] = [];
+  unknownKeys(data, dataAllowList('externalConnection'), 'data', issues);
+  tokenAt(needString(data, 'systemId', 'data', issues), 'data.systemId', issues);
+  needString(data, 'title', 'data', issues);
+  needString(data, 'description', 'data', issues);
+  if (!Array.isArray(data.settings)) issues.push('Missing field data.settings.');
+  else {
+    const seen = new Set<string>();
+    data.settings.forEach((row, index) => {
+      const path = `data.settings.${index}`;
+      if (!isRecord(row)) { issues.push(`Missing field ${path}.`); return; }
+      unknownKeys(row, ['id', 'title', 'description', 'secret'], path, issues);
+      const id = needString(row, 'id', path, issues);
+      tokenAt(id, `${path}.id`, issues);
+      if (id && seen.has(id)) issues.push(`Duplicate ${path}.id ${id}.`);
+      seen.add(id);
+      needString(row, 'title', path, issues);
+      needString(row, 'description', path, issues);
+      needBoolean(row, 'secret', path, issues);
+    });
+  }
+  if (!Array.isArray(data.operations) || data.operations.length === 0) issues.push('Missing field data.operations.');
+  else {
+    const seen = new Set<string>();
+    data.operations.forEach((row, index) => {
+      const path = `data.operations.${index}`;
+      if (!isRecord(row)) { issues.push(`Missing field ${path}.`); return; }
+      unknownKeys(row, ['operationId', 'direction', 'description'], path, issues);
+      const id = needString(row, 'operationId', path, issues);
+      tokenAt(id, `${path}.operationId`, issues);
+      if (id && seen.has(id)) issues.push(`Duplicate ${path}.operationId ${id}.`);
+      seen.add(id);
+      if (row.direction !== 'call' && row.direction !== 'serve') issues.push(`${path}.direction must be call or serve.`);
+      needString(row, 'description', path, issues);
+    });
+  }
+  return issues;
 }
 
 export function workflowProcessIssues(data: unknown): string[] {

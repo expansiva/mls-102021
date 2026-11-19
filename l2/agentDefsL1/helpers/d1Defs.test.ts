@@ -7,6 +7,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
+import { definitionsByType } from '/_102021_/l2/agentMaterializeL1/fixtures/cases.js';
+import type { M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { fileKey, installStudio } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
 import {
   D1_ARTIFACT_TYPES,
@@ -450,4 +452,19 @@ void test('a duplicate def path writes nothing', async () => {
     const parsed = parseRendered(host.files[fileKey(sample)]?.content || '');
     assert.deepEqual(parsed?.definition, definition);
   }
+});
+
+void test('d1_208: externalConnection accepts the copy of an L4 system and refuses a duplicate, a direction or a key outside the def', () => {
+  const base = definitionsByType.externalConnection;
+  assert.deepEqual(definitionIssues(base), []);
+  const withData = (patch: Record<string, unknown>): M1Definition => ({ ...base, data: { ...base.data, ...patch } });
+  const operation = { operationId: 'listChanges', direction: 'call', description: 'The latest changes.' };
+  const setting = { id: 'accessKey', title: 'Access key', description: 'Reads the repository.', secret: true };
+  assert.deepEqual(definitionIssues(withData({ settings: [], operations: [operation] })), [], 'no setting is valid');
+  assert.equal(definitionIssues(withData({ operations: [] })).length > 0, true, 'a system with no operation is refused');
+  assert.equal(definitionIssues(withData({ operations: [operation, operation] })).some(item => item.includes('Duplicate')), true);
+  assert.equal(definitionIssues(withData({ settings: [setting, setting] })).some(item => item.includes('Duplicate')), true);
+  assert.equal(definitionIssues(withData({ operations: [{ ...operation, direction: 'push' }] })).some(item => item.includes('direction')), true);
+  assert.equal(definitionIssues(withData({ settings: [{ ...setting, secret: 'yes' }] })).length > 0, true);
+  assert.equal(definitionIssues(withData({ hosts: [{ host: 'example.test' }] })).some(item => item.includes('Unknown field')), true, 'hosts are born in the declaration, not here');
 });

@@ -13,6 +13,14 @@ import { readText, writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js'
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import {
+  REGISTRY_LOGICAL_PATH,
+  declaredSystemsOf,
+  integrationLogicalPath,
+  siblingModuleNames,
+  type ConnectionScope,
+  type SiblingSystems,
+} from '/_102021_/l2/helpers/connections/catalogResolve.js';
+import {
   D1_INPUT_VERSION,
   contractPath,
   entityPath,
@@ -66,14 +74,14 @@ export async function assembleD1Input(
   answers: ReadonlyMap<string, readonly D1RequestGapAnswer[]> = new Map(),
 ): Promise<D1InputSnapshot> {
   const previous = await readD1Input(project, moduleName);
-  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs } = await loadInputSources(project, moduleName);
-  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, [], []);
+  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope } = await loadInputSources(project, moduleName);
+  const artifacts = artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, [], []);
   const draft = seal(buildD1InputSnapshot({ project, moduleName }, artifacts, previous, answers));
   const writerReceipts = await readWriterReceipts(project, moduleName);
   const present = await readPresent(project, draft.files.map(file => file.defPath), writerReceipts);
   const sealed = seal(buildD1InputSnapshot(
     { project, moduleName },
-    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, present, writerReceipts),
+    artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, present, writerReceipts),
     previous,
     answers,
   ));
@@ -86,8 +94,8 @@ export async function assembleD1Input(
  * the snapshot `sources` to know it reads what input20 sealed (d1_62).
  */
 export async function readD1InputArtifacts(project: number, moduleName: string): Promise<D1InputArtifacts> {
-  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs } = await loadInputSources(project, moduleName);
-  return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, [], []);
+  const { known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope } = await loadInputSources(project, moduleName);
+  return artifactsFrom(moduleName, known, loaded, parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope, [], []);
 }
 
 /**
@@ -131,6 +139,7 @@ async function loadInputSources(project: number, moduleName: string): Promise<{
   contractTexts: Record<string, string>;
   catalogTexts: Record<string, string>;
   catalogs: Loaded[];
+  connectionScope: ConnectionScope;
 }> {
   const fixed = await Promise.all(fixedPaths(moduleName).map(path => loadOne(project, path)));
   const byPath = new Map(fixed.map(item => [item.path, item]));
@@ -161,8 +170,8 @@ async function loadInputSources(project: number, moduleName: string): Promise<{
     contractMap[contract.pageId] = contract.loaded.parsed as D1ContractAst | null;
     if (contract.loaded.text != null) contractTexts[contract.pageId] = contract.loaded.text;
   }
-  const { catalogTexts, catalogs } = await loadServeCatalogs(parsed.get(paths.integration));
-  return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts, catalogTexts, catalogs };
+  const { catalogTexts, catalogs, connectionScope } = await loadServeCatalogs(project, moduleName, parsed.get(paths.integration));
+  return { known, loaded: contracts.map(item => item.loaded), parsed, contractMap, contractTexts, catalogTexts, catalogs, connectionScope };
 }
 
 export async function persistD1Input(project: number, moduleName: string, snapshot: D1InputSnapshot): Promise<{ reused: boolean }> {
@@ -225,6 +234,7 @@ function artifactsFrom(
   contractTexts: Record<string, string>,
   catalogTexts: Record<string, string>,
   catalogs: Loaded[],
+  connectionScope: ConnectionScope,
   presentDefs: D1PresentDef[],
   writerReceipts: ReadonlyArray<{ defPath: string; desiredHash: string }>,
 ): D1InputArtifacts {
@@ -261,6 +271,7 @@ function artifactsFrom(
     contracts: contractMap,
     contractTexts,
     catalogTexts,
+    ...(connectionScope.own.length || connectionScope.siblings.length ? { connectionScope } : {}),
     presentDefs,
     writerReceipts,
   };
@@ -284,21 +295,61 @@ function fixedPaths(moduleName: string): string[] {
   ];
 }
 
-/** Catalog text of each `serve` connection. A missing file stays out of `catalogTexts` and is a `missing` digest. */
-async function loadServeCatalogs(integration: unknown): Promise<{ catalogTexts: Record<string, string>; catalogs: Loaded[] }> {
+/**
+ * Catalog text of each `serve` connection of the platform, and the systems the L4 declares (d1_208): this module's, then a
+ * sibling's. A missing platform file stays out of `catalogTexts` and is a `missing` digest, unless a declared system owns the id
+ * (a declared system has no catalog file). The sibling L4 and the project registry are sealed in the sources only when a connection
+ * is neither on the platform nor this module's: a module with platform connections only reads what it read before.
+ */
+async function loadServeCatalogs(project: number, moduleName: string, integration: unknown): Promise<{
+  catalogTexts: Record<string, string>;
+  catalogs: Loaded[];
+  connectionScope: ConnectionScope;
+}> {
   const catalogTexts: Record<string, string> = {};
   const catalogs: Loaded[] = [];
-  const seen = new Set<string>();
+  const own = declaredSystemsOf(integration);
+  const ownIds = new Set(own.map(system => system.id));
+  const platformPresent = new Map<string, boolean>();
+  const platformCatalog = async (connectionId: string): Promise<string | null> => {
+    const path = catalogFilePath(connectionId);
+    const info = path ? catalogInfo(path) : null;
+    const body = info ? await readText(info) : null;
+    platformPresent.set(connectionId, Boolean(body));
+    return body;
+  };
+  const serveIds: string[] = [];
+  const otherIds: string[] = [];
   for (const row of rows(rec(integration).connections)) {
-    if (text(row.direction) !== 'serve') continue;
     const connectionId = text(row.connectionId);
-    if (!isSafeToken(connectionId) || seen.has(connectionId)) continue;
-    seen.add(connectionId);
+    if (!isSafeToken(connectionId) || serveIds.includes(connectionId) || otherIds.includes(connectionId)) continue;
+    (text(row.direction) === 'serve' ? serveIds : otherIds).push(connectionId);
+  }
+  const bodies = new Map<string, string | null>();
+  for (const connectionId of serveIds) bodies.set(connectionId, await platformCatalog(connectionId));
+  for (const connectionId of otherIds) if (!ownIds.has(connectionId)) await platformCatalog(connectionId);
+  // Neither the platform nor this module: a sibling may declare it.
+  const unresolved = [...serveIds, ...otherIds].filter(id => !platformPresent.get(id) && !ownIds.has(id));
+  const siblings: SiblingSystems[] = [];
+  if (unresolved.length) {
+    const registry = await loadOne(project, REGISTRY_LOGICAL_PATH);
+    catalogs.push(registry);
+    for (const sibling of siblingModuleNames(registry.parsed, moduleName)) {
+      const loadedSibling = await loadOne(project, integrationLogicalPath(sibling));
+      const systems = declaredSystemsOf(loadedSibling.parsed);
+      if (systems.some(system => unresolved.includes(system.id))) {
+        catalogs.push(loadedSibling);
+        siblings.push({ moduleName: sibling, systems });
+      }
+    }
+  }
+  for (const connectionId of serveIds) {
+    const body = bodies.get(connectionId) ?? null;
     const path = catalogFilePath(connectionId);
     if (!path) continue;
-    const info = catalogInfo(path);
-    const body = info ? await readText(info) : null;
     if (body) catalogTexts[connectionId] = body;
+    // A declared system has no catalog file: no digest of a file that is not meant to exist.
+    if (!body && (ownIds.has(connectionId) || siblings.some(item => item.systems.some(system => system.id === connectionId)))) continue;
     const sha256 = body ? await sha256Text(body) : '';
     catalogs.push({
       path,
@@ -313,7 +364,7 @@ async function loadServeCatalogs(integration: unknown): Promise<{ catalogTexts: 
       },
     });
   }
-  return { catalogTexts, catalogs };
+  return { catalogTexts, catalogs, connectionScope: { moduleName, own, siblings } };
 }
 
 function rows(value: unknown): Array<Record<string, unknown>> {

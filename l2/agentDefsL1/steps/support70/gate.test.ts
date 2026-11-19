@@ -23,8 +23,9 @@ import { fileKey, installStudio, seed } from '/_102021_/l2/agentDefsL1/helpers/d
 import type { D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { fileInfoFromDisplay, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { adapterPipelineId, agendaSeedRequest, coreSupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/fixtures/cases.js';
-import { assembleD1Support, catalogOperationsOf, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
-import { buildD1Support, emitEffects, emitRegistry, emitScope, emitSeeds } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
+import { assembleD1Support, catalogOperationsOf, connectionCatalogs, inboundOperation } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
+import { parseD1Source as parseSource } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
+import { buildD1Support, emitEffects, emitExternalConnections, emitRegistry, emitScope, emitSeeds } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import { supportFilesToRemove } from '/_102021_/l2/agentDefsL1/steps/support70/io.js';
 import { fixtureLogicalRel } from '/_102021_/l2/helpers/l1Fixtures/fixtureDisk.js';
 import type { D1EffectOperation, D1SupportEmit, D1SupportProblem, D1SupportRequest } from '/_102021_/l2/agentDefsL1/steps/support70/contracts.js';
@@ -1465,4 +1466,87 @@ void test('a support receipt matches the identity hash of the bytes on disk', as
   if (!('build' in drifted)) return;
   assert.notEqual(await sourceIdentityHash(changed), contentHash);
   assert.equal(drifted.build.problems.some(item => item.code === 'RECEIPT_MISMATCH' && item.path === logical), true);
+});
+
+void test('d1_208: one externalConnection def per declared system, a copy of what the L4 says', () => {
+  const request = connectionRequest([]);
+  request.externalSystems = [{
+    id: 'repoHost',
+    title: 'Repository host',
+    description: 'Where the code lives.',
+    settings: [{ id: 'accessKey', title: 'Access key', description: 'Reads the repository.', secret: true }],
+    operations: [{ operationId: 'listChanges', direction: 'call', description: 'The latest changes.' }, { operationId: 'changePushed', direction: 'serve', description: 'A change was pushed.' }],
+  }];
+  const problems: D1SupportProblem[] = [];
+  const { emit } = emitExternalConnections(request, problems);
+  assert.deepEqual(problems, []);
+  assert.equal(emit.length, 1);
+  const part = emit[0];
+  assert.equal(part.definition.artifactType, 'externalConnection');
+  assert.equal(part.definition.artifactId, 'repoHost');
+  assert.equal(part.pipeline[0].defPath, qualifyDefPath(102021, 'l1/inicio/layer_1_external/connections/repoHost.defs.ts'));
+  assert.equal(part.pipeline[0].outputPath.endsWith('/connections/repoHost.ts'), true);
+  assert.deepEqual(part.definition.data, {
+    systemId: 'repoHost',
+    title: 'Repository host',
+    description: 'Where the code lives.',
+    settings: [{ id: 'accessKey', title: 'Access key', description: 'Reads the repository.', secret: true }],
+    operations: [{ operationId: 'listChanges', direction: 'call', description: 'The latest changes.' }, { operationId: 'changePushed', direction: 'serve', description: 'A change was pushed.' }],
+  });
+  assert.equal('issues' in renderDefinition(part.definition, part.pipeline[0].defPath), false);
+  // A module with no declared system writes none, and a def the inventory did not plan is not emitted.
+  assert.deepEqual(emitExternalConnections(connectionRequest([]), []).emit, []);
+  const unplanned = connectionRequest([]);
+  unplanned.externalSystems = request.externalSystems;
+  unplanned.files = [{ defPath: 'l1/inicio/layer_2_application/ports/xRepository.defs.ts', artifactType: 'repositoryPort', action: 'create' } as never];
+  assert.deepEqual(emitExternalConnections(unplanned, []).emit, []);
+});
+
+void test('d1_208: a call of a system a sibling declares whose declaration is not generated is refused naming the module', () => {
+  const request = connectionRequest([connectionOp({
+    connectionId: 'zipLookup',
+    operationId: 'findAddress',
+    consumer: 'registrarAtendimento',
+    catalogOps: [{ operationId: 'findAddress', direction: 'call' }],
+    catalogProblem: { code: 'SIBLING_DECLARATION_MISSING', detail: 'Generate module integrations first.' },
+  })]);
+  const problems: D1SupportProblem[] = [];
+  const { emit } = emitEffects(request, problems);
+  assert.equal(emit.some(item => item.definition.artifactType === 'integrationOutbound'), false);
+  const found = problems.filter(item => item.code === 'SIBLING_DECLARATION_MISSING');
+  assert.equal(found.length, 1);
+  assert.match(found[0].message, /integrations/u);
+  assert.equal(problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), false);
+});
+
+void test('d1_208: the catalog of a call resolves on the platform, in this module and in a sibling; a sibling needs its declaration', async () => {
+  const project = 102047;
+  const host = installStudio(project);
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
+  const info = (display: string, projectId = project) => fileInfoFromDisplay(projectId, display)!;
+  const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../helpers/connections/fixtures');
+  const recorded = (name: string) => readFileSync(path.join(fixtures, `${name}.integration.recorded.txt`), 'utf8');
+  seed(host, info('l1/server/layer_1_external/connections/catalogs/cm.ts', 102034), readFileSync(path.join(root, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8'));
+  seed(host, info('l4/organization/registry.defs.ts'), 'export const solutionRegistry = {"modules":[{"moduleName":"codeReview"},{"moduleName":"customers"},{"moduleName":"integrations"}]} as const;');
+  seed(host, info('l4/integrations/integration.defs.ts'), recorded('integrationModule'));
+  const own = parseSource(recorded('repoInsideModule'), 'defs');
+  const rows = [
+    { connectionId: 'cm', operationId: 'listAgents', direction: 'call' },
+    { connectionId: 'repoHost', operationId: 'listChanges', direction: 'call' },
+    { connectionId: 'zipLookup', operationId: 'findAddress', direction: 'call' },
+    { connectionId: 'nowhere', operationId: 'x', direction: 'call' },
+  ];
+  const first = await connectionCatalogs(project, 'codeReview', rows, own);
+  assert.equal(first.catalogs.cm?.some(item => item.operationId === 'listAgents'), true, 'the platform file');
+  assert.deepEqual(first.catalogs.repoHost, [{ operationId: 'listChanges', direction: 'call' }, { operationId: 'changePushed', direction: 'serve' }], 'this module L4');
+  assert.deepEqual(first.catalogs.zipLookup?.map(item => item.operationId), ['findAddress', 'addressFound'], 'the sibling L4');
+  assert.equal(first.catalogs.nowhere, null);
+  assert.equal(first.problems.zipLookup?.code, 'SIBLING_DECLARATION_MISSING');
+  assert.match(first.problems.zipLookup?.detail ?? '', /Generate module integrations first/u);
+  assert.equal(first.problems.repoHost, undefined);
+  assert.equal(first.problems.nowhere, undefined);
+  // Once the sibling is generated, the same call is clean.
+  seed(host, info('l1/integrations/layer_1_external/connections/zipLookup.ts'), 'export default {};');
+  const second = await connectionCatalogs(project, 'codeReview', rows, own);
+  assert.equal(second.problems.zipLookup, undefined);
 });

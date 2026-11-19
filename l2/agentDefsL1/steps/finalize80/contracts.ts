@@ -33,6 +33,7 @@ export const PHASE_OF_TYPE: Record<D1ArtifactType, D1StepId> = {
   persistenceSeeds: 'support70',
   integrationOutbound: 'support70',
   workflowProcess: 'support70',
+  externalConnection: 'support70',
 };
 
 export const CHAIN_STEP_IDS = ['entry10', 'input20', 'resolve25', 'domain30', 'persistence40', 'usecases50', 'controllers60', 'support70'] as const;

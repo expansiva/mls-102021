@@ -13,6 +13,15 @@ import { externalCallsOf, processConsumersOf, type D1ExternalCallMatch } from '/
 import { parseD1Source, readD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { catalogInfo } from '/_102021_/l2/agentDefsL1/steps/domain30/io.js';
 import { catalogFilePath } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import {
+  REGISTRY_LOGICAL_PATH,
+  declaredSystemsOf,
+  declarationFilePath,
+  integrationLogicalPath,
+  siblingDeclarationMissing,
+  siblingModuleNames,
+  type DeclaredSystem,
+} from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { D1_CONTROLLER_VERSION } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 import { serveControllerGrants } from '/_102021_/l2/agentDefsL1/steps/controllers60/serveGrants.js';
 import { D1_DOMAIN_VERSION } from '/_102021_/l2/agentDefsL1/steps/domain30/contracts.js';
@@ -38,7 +47,7 @@ import {
 import { buildD1Support } from '/_102021_/l2/agentDefsL1/steps/support70/gate.js';
 import type { D1ControllerGrant, D1ControllerProblem, D1ControllerRelationship, D1ScopeGrantPlan } from '/_102021_/l2/agentDefsL1/steps/controllers60/contracts.js';
 
-const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound', 'workflowProcess']);
+const SUPPORT_TYPES = new Set(['accessScope', 'authorityMap', 'repositoryRegistration', 'persistenceSeeds', 'integrationOutbound', 'workflowProcess', 'externalConnection']);
 
 export async function assembleD1Support(
   project: number,
@@ -111,6 +120,7 @@ export async function assembleD1Support(
     operationUsecases,
     operations: linked.operations,
     processes,
+    externalSystems: await ownSystemsOf(project, moduleName),
     enumSnapshot: await enumSnapshotOf(project, moduleName, snapshot),
   };
   const testSupport = await testSupportOf(project, snapshot, paths.backend);
@@ -733,12 +743,12 @@ async function effectsOf(
       });
     }
     const callRows = arrayOf(integration.connections);
-    const catalogs = await connectionCatalogs(callRows);
+    const { catalogs, problems: catalogProblems } = await connectionCatalogs(project, moduleName, callRows, integration);
     const journeys = await connectionJourneys(project, moduleName, callRows);
     const workflowsText = await readLogical(project, inputPaths(moduleName).workflows);
     const workflows = workflowsText ? parseD1Source(workflowsText, 'defs') : null;
     const processes = isRecord(workflows) ? arrayOf(workflows.processes) : [];
-    operations.push(...connectionOperations(callRows, selected, catalogs, journeys, processes));
+    operations.push(...connectionOperations(callRows, selected, catalogs, journeys, processes, catalogProblems));
   }
   return { outbound, operations };
 }
@@ -776,6 +786,7 @@ export function connectionOperations(
   catalogs: Readonly<Record<string, readonly D1CatalogOperation[] | null>>,
   journeys: Record<string, unknown> = {},
   processes: readonly unknown[] = [],
+  catalogProblems: Readonly<Record<string, { code: string; detail: string }>> = {},
 ): D1EffectOperation[] {
   const matches = externalCallsOf({ journeys, connections: rows, usecases: selected, entityKind: new Map(), allEntities: true });
   const out: D1EffectOperation[] = [];
@@ -801,6 +812,7 @@ export function connectionOperations(
         ...(entityRefs.length ? { entityRefs } : {}),
         ...(effect ? { effect } : {}),
         catalogOps: Object.hasOwn(catalogs, connectionId) ? catalogs[connectionId] : null,
+        ...(catalogProblems[connectionId] ? { catalogProblem: catalogProblems[connectionId] } : {}),
       });
     }
   }
@@ -862,20 +874,67 @@ function journeyListsStep(journeys: Record<string, unknown>, ref: string): boole
   return rows.some(step => isRecord(step) && step.stepId === stepId);
 }
 
-async function connectionCatalogs(rows: readonly unknown[]): Promise<Record<string, readonly D1CatalogOperation[] | null>> {
+/** The systems this module declares in its L4 `externalSystems`. */
+async function ownSystemsOf(project: number, moduleName: string): Promise<DeclaredSystem[]> {
+  const text = await readLogical(project, inputPaths(moduleName).integration);
+  return declaredSystemsOf(text ? parseD1Source(text, 'defs') : null);
+}
+
+/**
+ * The operations of the catalog of each connection a `call` line names (d1_208): the platform file first; then a system this module
+ * declares (its L4 operations: the types do not exist yet, they are born in the declaration); then a system a sibling module
+ * declares, which also needs the sibling declaration generated: a missing one is `SIBLING_DECLARATION_MISSING`, naming the module.
+ */
+export async function connectionCatalogs(
+  project: number,
+  moduleName: string,
+  rows: readonly unknown[],
+  integration: unknown,
+): Promise<{ catalogs: Record<string, readonly D1CatalogOperation[] | null>; problems: Record<string, { code: string; detail: string }> }> {
   const catalogs: Record<string, readonly D1CatalogOperation[] | null> = {};
+  const problems: Record<string, { code: string; detail: string }> = {};
+  const own = declaredSystemsOf(integration);
+  let siblings: Array<{ moduleName: string; systems: DeclaredSystem[] }> | null = null;
+  const loadSiblings = async () => {
+    if (siblings) return siblings;
+    siblings = [];
+    const registryText = await readLogical(project, REGISTRY_LOGICAL_PATH);
+    const registry = registryText ? parseD1Source(registryText, 'defs') : null;
+    for (const sibling of siblingModuleNames(registry, moduleName)) {
+      const text = await readLogical(project, integrationLogicalPath(sibling));
+      const systems = declaredSystemsOf(text ? parseD1Source(text, 'defs') : null);
+      if (systems.length) siblings.push({ moduleName: sibling, systems });
+    }
+    return siblings;
+  };
+  const operationsOf = (system: DeclaredSystem): D1CatalogOperation[] => system.operations.map(item => ({ operationId: item.operationId, direction: item.direction }));
   for (const row of rows) {
     if (!isRecord(row) || row.direction !== 'call' || typeof row.connectionId !== 'string' || !row.connectionId) continue;
-    if (Object.hasOwn(catalogs, row.connectionId)) continue;
-    const info = catalogInfo(catalogFilePath(row.connectionId));
-    if (!info) {
-      catalogs[row.connectionId] = null;
+    const connectionId = row.connectionId;
+    if (Object.hasOwn(catalogs, connectionId)) continue;
+    const info = catalogInfo(catalogFilePath(connectionId));
+    const platformText = info ? await readText(info) : null;
+    if (platformText) {
+      catalogs[connectionId] = await catalogOperationsOf(platformText);
       continue;
     }
-    const text = await readText(info);
-    catalogs[row.connectionId] = text ? await catalogOperationsOf(text) : null;
+    const mine = own.find(system => system.id === connectionId);
+    if (mine) {
+      catalogs[connectionId] = operationsOf(mine);
+      continue;
+    }
+    const sibling = (await loadSiblings()).find(item => item.systems.some(system => system.id === connectionId));
+    const declared = sibling?.systems.find(system => system.id === connectionId);
+    if (!sibling || !declared) {
+      catalogs[connectionId] = null;
+      continue;
+    }
+    catalogs[connectionId] = operationsOf(declared);
+    if (!(await readLogical(project, declarationFilePath(sibling.moduleName, connectionId)))) {
+      problems[connectionId] = { code: 'SIBLING_DECLARATION_MISSING', detail: siblingDeclarationMissing(connectionId, sibling.moduleName) };
+    }
   }
-  return catalogs;
+  return { catalogs, problems };
 }
 
 /** Journeys cited by a call `usedBy`, with every step (`act`, `locate`, `inspect`). */

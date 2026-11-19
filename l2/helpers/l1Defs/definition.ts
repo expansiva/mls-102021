@@ -32,6 +32,7 @@ export const M1_ARTIFACT_TYPES = [
   'persistenceSeeds',
   'integrationOutbound',
   'workflowProcess',
+  'externalConnection',
 ] as const;
 export type M1ArtifactType = typeof M1_ARTIFACT_TYPES[number];
 
@@ -92,6 +93,12 @@ const DATA_KEYS: Record<M1ArtifactType, { required: readonly string[]; optional:
     required: ['processId', 'trigger', 'functions', 'operations'],
     optional: ['occurrence'],
     nonempty: [],
+  },
+  // d1_208: what the L4 says of a system outside the app (a copy of `externalSystems`). The generated declaration is born later.
+  externalConnection: {
+    required: ['systemId', 'title', 'description', 'settings', 'operations'],
+    optional: [],
+    nonempty: ['operations'],
   },
 };
 

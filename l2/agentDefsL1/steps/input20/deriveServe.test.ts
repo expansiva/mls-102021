@@ -195,3 +195,53 @@ void test('d1_206: only an event trigger counts; a manual process or a workflows
   assert.equal(processTriggerServes({ processes: [{ processId: 'x', trigger: { kind: 'manual', event: 'cm.record' } }] }).size, 0);
   assert.equal(processTriggerServes({}).size, 0);
 });
+
+void test('d1_208: a serve of a system this module declares takes no catalog: it is a command with no input fields yet', () => {
+  const problems: D1InputProblem[] = [];
+  const requests = deriveServeRequests({
+    moduleName: MODULE,
+    lines: [{ connectionId: 'repoHost', operationId: 'changePushed' }],
+    catalogTexts: {},
+    usecases: [],
+    problems,
+    entities: {},
+    plannedIds: new Map(),
+    removedIds: new Set(),
+    declaredSystems: { repoHost: [{ operationId: 'listChanges', direction: 'call' }, { operationId: 'changePushed', direction: 'serve' }] },
+  });
+  assert.deepEqual(problems, []);
+  assert.equal(requests.length, 1);
+  assert.deepEqual([requests[0].route, requests[0].serves, requests[0].kind, requests[0].params, requests[0].uses], [`${MODULE}.repoHost.changePushed`, 'repoHost.changePushed', 'cmd', [], []]);
+});
+
+void test('d1_208: a serve line of a declared system names an operation the L4 declares, and as a serve', () => {
+  const declaredSystems = { repoHost: [{ operationId: 'listChanges', direction: 'call' }, { operationId: 'changePushed', direction: 'serve' }] };
+  const base = { moduleName: MODULE, catalogTexts: {}, usecases: [], entities: {}, plannedIds: new Map(), removedIds: new Set(), declaredSystems };
+  const missing: D1InputProblem[] = [];
+  deriveServeRequests({ ...base, lines: [{ connectionId: 'repoHost', operationId: 'nothing' }], problems: missing });
+  assert.equal(missing.some(item => item.code === 'OPERATION_NOT_IN_CATALOG'), true);
+  const wrong: D1InputProblem[] = [];
+  deriveServeRequests({ ...base, lines: [{ connectionId: 'repoHost', operationId: 'listChanges' }], problems: wrong });
+  assert.equal(wrong.some(item => item.code === 'OPERATION_NOT_SERVE'), true);
+  // An id no catalog and no declared system owns keeps the refusal it always had.
+  const unknown: D1InputProblem[] = [];
+  deriveServeRequests({ ...base, lines: [{ connectionId: 'nowhere', operationId: 'x' }], problems: unknown });
+  assert.equal(unknown.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), true);
+});
+
+void test('d1_208: a platform catalog wins over a declared system of the same id', () => {
+  const problems: D1InputProblem[] = [];
+  const requests = deriveServeRequests({
+    moduleName: MODULE,
+    lines: [{ connectionId: 'cm', operationId: 'record', entityRefs: [ENTITY], effect: 'create' }],
+    catalogTexts: { cm: catalogText },
+    usecases: [],
+    problems,
+    entities: { [ENTITY]: { entityId: ENTITY } },
+    plannedIds: new Map(),
+    removedIds: new Set(),
+    declaredSystems: { cm: [{ operationId: 'record', direction: 'serve' }] },
+  });
+  assert.deepEqual(problems.filter(item => item.severity === 'error'), []);
+  assert.notDeepEqual(requests[0]?.params, [], 'the params still come from the catalog file');
+});

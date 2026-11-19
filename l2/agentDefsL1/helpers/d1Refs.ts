@@ -42,6 +42,7 @@ export const DEPENDS_ALLOWED: Record<D1ArtifactType, readonly D1ArtifactType[]> 
   persistenceSeeds: ['table'],
   integrationOutbound: ['usecase'],
   workflowProcess: ['usecase'],
+  externalConnection: [],
 };
 
 export interface D1PipelineItem {
@@ -143,7 +144,7 @@ export function futureOutputPath(defPath: string): string {
 
 export function skillPaths(type: string): string[] {
   // No skill file of its own. Support types that have one still name it.
-  if (type === 'workflowProcess') return [];
+  if (type === 'workflowProcess' || type === 'externalConnection') return [];
   const names = ['architecture.md'];
   if (type !== 'usecase') names.push(`${type}.md`);
   return names.map(name => `_102021_/l2/agentDefsL1/skills/${name}`);
@@ -758,6 +759,18 @@ export const D1_FIELD_READERS = {
   'workflowProcess.operations': 'workflowProcessIssues',
   'workflowProcess.operations.operation': 'workflowProcessIssues',
   'workflowProcess.operations.steps': 'workflowProcessIssues',
+  'externalConnection.systemId': 'externalConnectionIssues',
+  'externalConnection.title': 'externalConnectionIssues',
+  'externalConnection.description': 'externalConnectionIssues',
+  'externalConnection.settings': 'externalConnectionIssues',
+  'externalConnection.settings.id': 'externalConnectionIssues',
+  'externalConnection.settings.title': 'externalConnectionIssues',
+  'externalConnection.settings.description': 'externalConnectionIssues',
+  'externalConnection.settings.secret': 'externalConnectionIssues',
+  'externalConnection.operations': 'externalConnectionIssues',
+  'externalConnection.operations.operationId': 'externalConnectionIssues',
+  'externalConnection.operations.direction': 'externalConnectionIssues',
+  'externalConnection.operations.description': 'externalConnectionIssues',
   'pipelineItem.id': 'pipelineItemIssues',
   'pipelineItem.type': 'pipelineItemIssues',
   'pipelineItem.defPath': 'resolveCatalogRefs',

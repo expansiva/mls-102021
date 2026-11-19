@@ -49,6 +49,8 @@ const STRUCTURE: Record<M1ArtifactType, MaterializeHandler> = {
   persistenceSeeds: handler('persistence.persistenceSeeds', 'persistenceSeeds', 'structure', ['tableDefinition']),
   integrationOutbound: handler('persistence.integrationOutbound', 'integrationOutbound', 'structure', []),
   workflowProcess: handler('structure.workflowProcess', 'workflowProcess', 'structure', []),
+  // d1_208: written by the declaration phase (d1_208 s2), not by a structure recipe.
+  externalConnection: handler('structure.externalConnection', 'externalConnection', 'structure', []),
 };
 
 /** Implement recipes. Null is a written absence: no fallback onto the structure scaffolder. */
@@ -67,6 +69,7 @@ export const M1_IMPLEMENT_HANDLERS: Record<M1ArtifactType, MaterializeHandler | 
   persistenceSeeds: null,
   integrationOutbound: handler('implement.integrationOutbound', 'integrationOutbound', 'implement', ['requestContext']),
   workflowProcess: null,
+  externalConnection: null,
 };
 
 export const M1_STRUCTURE_HANDLERS: Readonly<Record<M1ArtifactType, MaterializeHandler>> = STRUCTURE;

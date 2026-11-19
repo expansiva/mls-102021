@@ -10,7 +10,7 @@ import { inputFile, plannerPipelineFile, type D1FileInfo } from '/_102021_/l2/ag
 import { progressFile } from '/_102021_/l2/agentDefsL1/helpers/d1Receipt.js';
 import { writeJson } from '/_102021_/l2/agentDefsL1/helpers/d1Stor.js';
 import { fileKey, installStudio, seed, type TestHost } from '/_102021_/l2/agentDefsL1/helpers/d1TestHost.js';
-import { loadD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
+import { loadD1Fixture, seedD1Fixture } from '/_102021_/l2/agentDefsL1/fixtures/readFixture.js';
 import { assembleD1Input, fileInfoFromDisplay, persistD1Input, sha256Text } from '/_102021_/l2/agentDefsL1/steps/input20/io.js';
 import { readContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
@@ -434,4 +434,69 @@ void test('a testSupport-only change moves the hash and leaves the functional pl
   assert.notEqual(after.sources.find(source => source.path === STOCK_BACKEND)?.sha256, before.sources.find(source => source.path === STOCK_BACKEND)?.sha256);
   assert.deepEqual(after.selection, before.selection);
   assert.deepEqual(after.files, before.files);
+});
+
+/** The frozen L4 of a module with the d1_208 additions: v4, a system the module declares (a serve and a call) and a call to a sibling system. */
+function withExternalSystems(source: string, extra: { sibling: boolean }): string {
+  const match = /(export const \w+ = )(\{[\s\S]*\})( as const[^;]*;)/u.exec(source);
+  assert.ok(match);
+  const body = JSON.parse(match[2]) as Record<string, unknown> & { connections?: unknown[] };
+  body.schemaVersion = '2026-11-19-ns5-integration-v4';
+  body.connections = [
+    ...(body.connections ?? []),
+    { connectionId: 'repoHost', operationId: 'changePushed', direction: 'serve', usedBy: ['Starts the review of the change that arrived.'], description: 'A change was pushed.' },
+    { connectionId: 'repoHost', operationId: 'listChanges', direction: 'call', usedBy: ['reviewChanges.pickProject'], description: 'Reads the latest changes.' },
+    ...(extra.sibling ? [{ connectionId: 'zipLookup', operationId: 'findAddress', direction: 'call', usedBy: ['registerCustomer.typeZipCode'], description: 'Fills the address.' }] : []),
+  ];
+  body.externalSystems = [{
+    id: 'repoHost',
+    title: 'Repository host',
+    description: 'Where the code lives.',
+    settings: [{ id: 'accessKey', title: 'Access key', description: 'Reads the repository.', secret: true }],
+    operations: [
+      { operationId: 'listChanges', direction: 'call', description: 'The latest changes.' },
+      { operationId: 'changePushed', direction: 'serve', description: 'A change was pushed.' },
+    ],
+  }];
+  return `${source.slice(0, match.index)}${match[1]}${JSON.stringify(body, null, 2)}${match[3]}${source.slice(match.index + match[0].length)}`;
+}
+
+void test('d1_208: a v4 L4 with a system of its own is read: a def per system, a serve without a catalog file, no missing digest', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+  const original = host.files[fileKey(info)].content;
+  seed(host, info, withExternalSystems(original, { sibling: false }));
+  const snapshot = await assembleD1Input(PROJECT, 'controleEstoque');
+  // The v4 version is accepted: nothing on the integration source is refused.
+  assert.deepEqual(snapshot.problems.filter(item => item.path === 'l4/controleEstoque/integration.defs.ts' && item.severity === 'error'), []);
+  assert.equal(snapshot.problems.some(item => item.code === 'CONNECTION_CATALOG_MISSING'), false);
+  const route = snapshot.selection.requests.find(item => item.serves === 'repoHost.changePushed');
+  assert.ok(route, 'the serve of the declared system is a route');
+  assert.deepEqual([route.route, route.pageId, route.kind, route.params, route.uses], ['controleEstoque.repoHost.changePushed', 'repoHost', 'cmd', [], []]);
+  const planned = snapshot.files.find(file => file.artifactType === 'externalConnection');
+  assert.equal(planned?.defPath, 'l1/controleEstoque/layer_1_external/connections/repoHost.defs.ts');
+  assert.equal(snapshot.files.filter(file => file.artifactType === 'externalConnection').length, 1);
+  assert.equal(snapshot.sources.some(item => item.state === 'missing' && item.path.includes('repoHost')), false);
+  assert.equal(snapshot.sources.some(item => item.path.includes('organization/registry')), false, 'no sibling is read when nothing needs one');
+});
+
+void test('d1_208: a connection no platform file and no own system owns seals the sibling L4 and the project registry in the sources', async () => {
+  const host = installStudio(PROJECT);
+  seedD1Fixture(host, 'controleEstoque-39a5166', PROJECT);
+  const info = fileInfoFromDisplay(PROJECT, 'l4/controleEstoque/integration.defs.ts')!;
+  seed(host, info, withExternalSystems(host.files[fileKey(info)].content, { sibling: true }));
+  seed(host, fileInfoFromDisplay(PROJECT, 'l4/organization/registry.defs.ts')!, 'export const solutionRegistry = {"modules":[{"moduleName":"controleEstoque"},{"moduleName":"integrations"}]} as const;');
+  const integrations = readFileSync(path.join(HERE, '../../../helpers/connections/fixtures/integrationModule.integration.recorded.txt'), 'utf8');
+  seed(host, fileInfoFromDisplay(PROJECT, 'l4/integrations/integration.defs.ts')!, integrations);
+  const withSibling = await assembleD1Input(PROJECT, 'controleEstoque');
+  const paths = withSibling.sources.map(item => item.path);
+  assert.equal(paths.includes('l4/organization/registry.defs.ts'), true);
+  assert.equal(paths.includes('l4/integrations/integration.defs.ts'), true);
+  // A change in the sibling L4 moves the snapshot: the source key sees the sibling side.
+  const changed = integrations.replace('The address of one zip code.', 'The full address of one zip code.');
+  assert.notEqual(changed, integrations);
+  seed(host, fileInfoFromDisplay(PROJECT, 'l4/integrations/integration.defs.ts')!, changed);
+  const after = await assembleD1Input(PROJECT, 'controleEstoque');
+  assert.notEqual(after.snapshotHash, withSibling.snapshotHash);
 });

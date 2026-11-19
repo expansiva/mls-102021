@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/contracts.ts" enhancement="_blank"/>
 
+import type { DeclaredSystem } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import type { D1_MEASURED_PUBLISH, D1Definition } from '/_102021_/l2/agentDefsL1/helpers/d1Artifact.js';
 import type { D1PipelineItem } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import type {
@@ -318,6 +319,8 @@ export interface D1EffectOperation {
   effect?: 'list' | 'read' | 'create' | 'update' | 'remove';
   /** `null` when the catalog file was not read. Set only for `kind: 'connection'`. */
   catalogOps?: readonly D1CatalogOperation[] | null;
+  /** Why the catalog of this connection is not usable, when it is more than "not read" (a sibling system whose declaration is not generated; d1_208). */
+  catalogProblem?: { code: string; detail: string };
 }
 
 /** One workflow process read from the L4. `occurrence` is empty when the initial stage does not name an entity. */
@@ -409,6 +412,8 @@ export interface D1SupportRequest {
   operations: D1EffectOperation[];
   /** One plan per L4 process. The def is not emitted here. */
   processes: D1ProcessPlan[];
+  /** The systems this module declares in its L4 (d1_208): one `externalConnection` def each. Absent: none. */
+  externalSystems?: readonly DeclaredSystem[];
 }
 
 export interface D1SupportEmit {

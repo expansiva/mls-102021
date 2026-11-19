@@ -47,6 +47,12 @@ export interface DeriveServeInput {
    * That serve hands the message to the process; it takes no usecase from its `effect` (d1_206).
    */
   processTriggers?: ReadonlySet<string>;
+  /**
+   * The systems this module declares in its L4 (`externalSystems`), by id (d1_208). A system has no catalog file: its types are born
+   * in the generated declaration, after this step. A serve of such a system carries no input fields here (`params: []`) and is a
+   * command, because a message that arrives is something the module acts on; the materializer reads the types from the declaration.
+   */
+  declaredSystems?: Readonly<Record<string, ReadonlyArray<{ operationId: string; direction: string }>>>;
 }
 
 interface CatalogOperation {
@@ -156,24 +162,42 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
   const path = contractPath(input.moduleName, connectionId);
   const serves = `${connectionId}.${operationId}`;
   const source = input.catalogTexts[connectionId];
-  if (!source) {
-    problem(input.problems, 'error', 'CONNECTION_CATALOG_MISSING', path, `Connection ${connectionId} has no catalog text.`, route);
-    return null;
-  }
-  const operations = catalogOperations(source);
-  const operation = operations?.find(item => item.operationId === operationId) ?? null;
-  if (!operations || !operation) {
-    problem(input.problems, 'error', 'OPERATION_NOT_IN_CATALOG', path, `Operation ${serves} is not in the connection catalog.`, route);
-    return null;
-  }
-  if (operation.direction !== 'serve') {
-    problem(input.problems, 'error', 'OPERATION_NOT_SERVE', path, `Operation ${serves} is not a serve operation.`, route);
-    return null;
-  }
-  const kind = operation.kind === 'command' ? 'cmd' : operation.kind === 'query' ? 'qry' : '';
-  if (!kind) {
-    problem(input.problems, 'error', 'OPERATION_NOT_IN_CATALOG', path, `Operation ${serves} has no query or command kind.`, route);
-    return null;
+  const declared = input.declaredSystems?.[connectionId];
+  let kind: 'cmd' | 'qry' | '';
+  let params: D1RequestParam[];
+  if (!source && declared) {
+    const declaredOperation = declared.find(item => item.operationId === operationId);
+    if (!declaredOperation) {
+      problem(input.problems, 'error', 'OPERATION_NOT_IN_CATALOG', path, `Operation ${serves} is not in the L4 systems of this module.`, route);
+      return null;
+    }
+    if (declaredOperation.direction !== 'serve') {
+      problem(input.problems, 'error', 'OPERATION_NOT_SERVE', path, `Operation ${serves} is not a serve operation.`, route);
+      return null;
+    }
+    kind = 'cmd';
+    params = [];
+  } else {
+    if (!source) {
+      problem(input.problems, 'error', 'CONNECTION_CATALOG_MISSING', path, `Connection ${connectionId} has no catalog text.`, route);
+      return null;
+    }
+    const operations = catalogOperations(source);
+    const operation = operations?.find(item => item.operationId === operationId) ?? null;
+    if (!operations || !operation) {
+      problem(input.problems, 'error', 'OPERATION_NOT_IN_CATALOG', path, `Operation ${serves} is not in the connection catalog.`, route);
+      return null;
+    }
+    if (operation.direction !== 'serve') {
+      problem(input.problems, 'error', 'OPERATION_NOT_SERVE', path, `Operation ${serves} is not a serve operation.`, route);
+      return null;
+    }
+    kind = operation.kind === 'command' ? 'cmd' : operation.kind === 'query' ? 'qry' : '';
+    if (!kind) {
+      problem(input.problems, 'error', 'OPERATION_NOT_IN_CATALOG', path, `Operation ${serves} has no query or command kind.`, route);
+      return null;
+    }
+    params = topParams(source, operation.inputType);
   }
   const entity = line.entityRefs?.[0] || '';
   const effect = line.effect || '';
@@ -200,7 +224,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
     kind,
     writes,
     outputs: [],
-    params: topParams(source, operation.inputType),
+    params,
     uses,
     serves,
   };

@@ -32,6 +32,7 @@ export function defPathOf(type: M1ArtifactType, artifactId: string): string {
     case 'persistenceSeeds': return `${P}/l1/${MODULE}/layer_1_external/adapters/persistence/${artifactId}.defs.ts`;
     case 'integrationOutbound': return `${P}/l1/${MODULE}/layer_1_external/integration/${artifactId}.defs.ts`;
     case 'workflowProcess': return `${P}/l1/${MODULE}/layer_2_application/workflows/${artifactId}.defs.ts`;
+    case 'externalConnection': return `${P}/l1/${MODULE}/layer_1_external/connections/${artifactId}.defs.ts`;
   }
 }
 
@@ -250,6 +251,13 @@ export const definitionsByType: Record<M1ArtifactType, M1Definition> = {
     trigger: { kind: 'manual', actorRef: 'membroEquipe' },
     functions: [],
     operations: [],
+  }),
+  externalConnection: envelope('externalConnection', 'repoHost', 'pending', [], {
+    systemId: 'repoHost',
+    title: 'Repository host',
+    description: 'Where the code of a project lives.',
+    settings: [{ id: 'accessKey', title: 'Access key', description: 'Lets the module read the repository.', secret: true }],
+    operations: [{ operationId: 'listChanges', direction: 'call', description: 'The latest changes of the repository.' }],
   }),
 };
 

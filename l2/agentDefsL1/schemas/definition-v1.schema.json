@@ -22,7 +22,8 @@
         "repositoryRegistration",
         "persistenceSeeds",
         "integrationOutbound",
-        "workflowProcess"
+        "workflowProcess",
+        "externalConnection"
       ]
     },
     "artifactId": { "type": "string", "minLength": 1 },
@@ -530,6 +531,39 @@
         "occurrence": { "$ref": "#/$defs/workflowOccurrence" },
         "functions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "operations": { "type": "array", "items": { "$ref": "#/$defs/workflowOperation" } }
+      }
+    },
+    "externalConnection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["systemId", "title", "description", "settings", "operations"],
+      "properties": {
+        "systemId": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "settings": { "type": "array", "items": { "$ref": "#/$defs/externalSetting" } },
+        "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/externalOperation" } }
+      }
+    },
+    "externalSetting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "description", "secret"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "secret": { "type": "boolean" }
+      }
+    },
+    "externalOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operationId", "direction", "description"],
+      "properties": {
+        "operationId": { "type": "string", "minLength": 1 },
+        "direction": { "type": "string", "enum": ["call", "serve"] },
+        "description": { "type": "string", "minLength": 1 }
       }
     },
     "workflowTrigger": {

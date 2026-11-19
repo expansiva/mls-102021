@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/support70/gate.ts" enhancement="_blank"/>
 
+import { declarationDefPath } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import {
   D1_MEASURED_PUBLISH,
   definitionIssues,
@@ -85,11 +86,12 @@ export function buildD1Support(request: D1SupportRequest): D1SupportBuild {
   const seeds = emitSeeds(request, problems, normalizations);
   const effects = emitEffects(request, problems);
   const processes = emitProcesses(request, problems);
+  const externals = emitExternalConnections(request, problems);
   noteInverted(request, scope.emit, registry.emit, problems);
-  noteDag(request, scope.emit, registry.emit, seeds.emit, [...effects.emit, ...processes.emit], registry.live, problems);
+  noteDag(request, scope.emit, registry.emit, seeds.emit, [...effects.emit, ...processes.emit, ...externals.emit], registry.live, problems);
 
   const errored = problems.some(problem => problem.severity === 'error');
-  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit, ...processes.emit];
+  const emit = errored ? [] : [...scope.emit, ...registry.emit, ...seeds.emit, ...effects.emit, ...processes.emit, ...externals.emit];
   for (const part of emit) {
     const item = part.pipeline[0];
     part.definition = stampDefinition(part.definition, item?.defPath || '', item?.dependsFiles || []);
@@ -1033,6 +1035,10 @@ function acceptedConnectionRows(
     const connectionId = operation.connectionId || '';
     const operationId = operation.operationId || '';
     const label = `${connectionId}.${operationId}`;
+    if (operation.catalogProblem) {
+      if (problems) error(problems, operation.catalogProblem.code, label, operation.catalogProblem.detail);
+      continue;
+    }
     if (operation.catalogOps == null) {
       if (problems) error(problems, 'CONNECTION_CATALOG_MISSING', label, `Connection catalog ${connectionId} was not read.`);
       continue;
@@ -1167,6 +1173,50 @@ export function emitProcesses(
     pushDefinition(emit, definition, processPipeline(request, plan.processId, logical, usecaseIds), logical, problems);
   }
   return { emit };
+}
+
+/**
+ * One externalConnection def per system the L4 declares (d1_208). It is a copy of what the L4 says, written by code: the id, the title,
+ * the description, the settings and the operations with their direction and description. The generated declaration (hosts, kinds,
+ * types, methods, verify) is born later, in the materializer, because it is analysis and not derivation.
+ */
+export function emitExternalConnections(
+  request: D1SupportRequest,
+  problems: D1SupportProblem[],
+): { emit: D1SupportEmit[] } {
+  const emit: D1SupportEmit[] = [];
+  for (const system of [...(request.externalSystems ?? [])].sort((left, right) => left.id.localeCompare(right.id))) {
+    const logical = declarationDefPath(request.moduleName, system.id);
+    // An inventoried run emits only a file input20 planned. Otherwise finalize80 reports EXTRA_FILE.
+    const listed = request.files.some(item => item.artifactType === 'externalConnection' && item.defPath === logical);
+    if (request.files.length > 0 && !listed) continue;
+    if (!writableAt(request, logical, problems)) continue;
+    const data: Record<string, unknown> = {
+      systemId: system.id,
+      title: system.title,
+      description: system.description,
+      settings: system.settings.map(item => ({ id: item.id, title: item.title, description: item.description, secret: item.secret })),
+      operations: system.operations.map(item => ({ operationId: item.operationId, direction: item.direction, description: item.description })),
+    };
+    const definition = definitionFor(request, 'externalConnection', system.id, data, 'pending');
+    definition.dependencies = [qualifyDefPath(request.project, `l4/${request.moduleName}/integration.defs.ts`)];
+    pushDefinition(emit, definition, externalPipeline(request, system.id, logical), logical, problems);
+  }
+  return { emit };
+}
+
+function externalPipeline(request: D1SupportRequest, systemId: string, defPath: string): D1PipelineItem {
+  const qualified = qualifyDefPath(request.project, defPath);
+  return {
+    id: pipelineId(request.project, request.moduleName, 'externalConnection', systemId),
+    type: 'externalConnection',
+    defPath: qualified,
+    outputPath: futureOutputPath(qualified),
+    outputAvailability: 'future',
+    dependsFiles: [],
+    dependsOn: [],
+    skills: skillPaths('externalConnection'),
+  };
 }
 
 function triggerOf(

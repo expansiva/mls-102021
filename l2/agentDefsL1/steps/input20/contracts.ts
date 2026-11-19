@@ -3,6 +3,7 @@
 import type { D1ContractAst } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 import { L1_OPERATIONS } from '/_102021_/l2/helpers/l1Defs/operations.js';
 import { catalogFilePath, externalConnectionId } from '/_102020_/l2/helpers/connections/catalogPath.js';
+import type { ConnectionScope } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 
 export const D1_INPUT_VERSION = '2026-10-01-d1-input-v2' as const;
 
@@ -16,8 +17,9 @@ export const D1_SOURCE_SCHEMAS = {
   rules: '2026-09-16-ns5-rules-v2',
   workflows: '2026-09-17-ns5-workflows-v3',
   access: '2026-09-12-ns5-access-v3',
-  // v2 (recorded modules) and v3 (adds `connections`). A value import of the W1 constant would leave this agent's graph.
-  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3'],
+  // v2 (recorded modules), v3 (adds `connections`) and v4 (adds `externalSystems`, only when the module has one; d1_208).
+  // A value import of the W1 constant would leave this agent's graph.
+  integration: ['2026-09-12-ns5-integration-v2', '2026-11-17-ns5-integration-v3', '2026-11-19-ns5-integration-v4'],
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
   backend: '2026-09-21-p1-backend-v1.2',
@@ -81,6 +83,11 @@ export interface D1InputArtifacts {
   contractTexts?: Record<string, string>;
   /** Connection id → catalog source (`catalogFilePath(<id>)`). Snapshot input, not a def field. */
   catalogTexts?: Record<string, string>;
+  /**
+   * The systems the L4 of this module and of its siblings declare (d1_208). Snapshot input, not a def field. Absent: no declared
+   * system (a module with only platform connections reads as before).
+   */
+  connectionScope?: ConnectionScope;
   presentDefs: D1PresentDef[];
   /**
    * Done write rows from the progress file of the step that wrote the def.

@@ -1,5 +1,6 @@
 /// <mls fileReference="_102021_/l2/agentDefsL1/steps/input20/gate.ts" enhancement="_blank"/>
 
+import { declarationDefPath } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 import {
@@ -316,6 +317,7 @@ export function buildD1InputSnapshot(
     plannedIds: planned.ids,
     removedIds: planned.removed,
     processTriggers: processTriggerServes(workflows),
+    declaredSystems: Object.fromEntries((artifacts.connectionScope?.own ?? []).map(system => [system.id, system.operations])),
   }));
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);
@@ -356,6 +358,7 @@ export function buildD1InputSnapshot(
     outbound,
     hasEffects,
     workflows,
+    externalSystems: artifacts.connectionScope?.own ?? [],
     journeys: artifacts.journeys,
     grants: qualifyingGrants(access, entityClosure.ids),
     present,
@@ -411,6 +414,8 @@ function planFiles(input: {
   outbound: Array<{ id: string; on: string }>;
   hasEffects: boolean;
   workflows: Record<string, unknown>;
+  /** The systems this module declares in its L4 (d1_208): one `externalConnection` def each. */
+  externalSystems: ReadonlyArray<{ id: string }>;
   journeys: Record<string, unknown>;
   grants: string[];
   present: Map<string, string>;
@@ -639,6 +644,19 @@ function planFiles(input: {
       identity: process.processId,
       ownerRefs: [`process:${process.processId}`],
       dependsOn: process.dependsOn,
+    });
+  }
+  for (const system of input.externalSystems) {
+    if (!isSafeToken(system.id)) continue;
+    const defPath = declarationDefPath(moduleName, system.id);
+    add({
+      id: `external:${system.id}`,
+      artifactType: 'externalConnection',
+      defPath,
+      action: actionFor('toCreate', defPath, input.present, input.previous, input.receipts, input.problems, `external:${system.id}`),
+      identity: system.id,
+      ownerRefs: [`external:${system.id}`],
+      dependsOn: [],
     });
   }
 
