@@ -94,7 +94,8 @@ test('updateAgent requires expectVersion and readAgent stays unchanged', async (
   if ('code' in emitted) return;
   const readBody = emitted.source.split('async readAgent')[1]?.split('async updateAgent')[0] ?? '';
   assert.equal(readBody.includes('expectVersion'), false);
-  assert.match(readBody, /callConnection\("cm", "readAgent", input, \{ actorMdmId: ctx\.sessionContext\.person\?\.mdmId \}, opts\)/);
+  // d1_214: the options go merged with the id of the request; a read still has no expectVersion.
+  assert.match(readBody, /callConnection\("cm", "readAgent", input, \{ actorMdmId: ctx\.sessionContext\.person\?\.mdmId \}, callOptions\)/);
   assert.match(emitted.source, /if \(opts\?\.expectVersion === undefined\) throw new AppError\('invalid', "updateAgent requires expectVersion\.", 400\)/);
   const types = checkTypes(emitted.source);
   assert.equal(types.clean, '');
