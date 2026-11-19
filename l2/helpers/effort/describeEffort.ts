@@ -649,7 +649,7 @@ function notForecast(item: string, reason = NOT_FORECAST): EffortAnswer {
 }
 
 /** The unit of a system outside the app: its def, which writes the declaration and the adapter (d1_208, d1_209). */
-const EXTERNAL_UNIT_KIND = 'externalConnection' as unknown as EffortUnitRef['kind'];
+const EXTERNAL_UNIT_KIND: EffortUnitRef['kind'] = 'externalConnection';
 
 function rowOf(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
