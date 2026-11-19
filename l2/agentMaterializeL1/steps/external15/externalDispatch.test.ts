@@ -8,6 +8,8 @@ import { M12_EXTERNAL_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers
 import { modelDispatcherAgent } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { EXTERNAL_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/external15/agentM12ExternalUnit.js';
+import { ADAPTER_SPEC } from '/_102021_/l2/agentMaterializeL1/steps/adapter17/agentM12AdapterUnit.js';
+import { M12_ADAPTER_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
 const PROJECT = 102099;
@@ -87,4 +89,33 @@ void test('d1_213: the same system with a secret setting is dispatched to the mo
   const workers = intents.filter(item => item.type === 'add-step');
   assert.equal(workers.length, 1);
   assert.equal((workers[0].step as { agentName?: string }).agentName, 'agentM12ExternalUnit');
+});
+
+async function dispatchAdapter(withDeclaration: boolean): Promise<{ intents: Array<Record<string, unknown>>; files: Record<string, FakeFile> }> {
+  const files: Record<string, FakeFile> = {};
+  install(files);
+  put(files, PROJECT, FOLDER, 'repoHost', '.defs.ts', def(true));
+  if (withDeclaration) put(files, PROJECT, FOLDER, 'repoHost', '.ts', 'export default {};');
+  const agent = modelDispatcherAgent(M12_ADAPTER_AGENT_NAME, 'test', ADAPTER_SPEC);
+  const intents = await agent.beforePromptStep!(
+    { agentName: 'x', agentDescription: 'x', visibility: 'private' } as IAgentMeta,
+    { message: { orderAt: 'm', threadId: 't', content: '' }, task: { PK: 'task' } } as mls.msg.ExecutionContext,
+    { stepId: 1 } as mls.msg.AIAgentStep,
+    { stepId: 2, prompt: '' } as mls.msg.AIAgentStep,
+    0,
+    JSON.stringify({ project: PROJECT, module: MODULE, scope: MODULE, target: '', force: false }),
+  ) as Array<Record<string, unknown>>;
+  return { intents, files };
+}
+
+void test('d1_209: the adapter phase dispatches the adapter unit of a system once its declaration exists, and blocks it before', async () => {
+  const ready = await dispatchAdapter(true);
+  const workers = ready.intents.filter(item => item.type === 'add-step');
+  assert.equal(workers.length, 1, 'the adapter unit is a unit of the adapter layer');
+  assert.equal((workers[0].step as { agentName?: string }).agentName, 'agentM12AdapterUnit');
+  assert.equal((workers[0].step as { planning?: { planId?: string } }).planning?.planId, `adapter17-${MODULE}-repoHostAdapter-1`);
+  const early = await dispatchAdapter(false);
+  assert.equal(early.intents.some(item => item.type === 'add-step'), false);
+  const receipt = Object.values(early.files).find(item => item.extension === '.json' && item.shortName === 'repoHostAdapter');
+  assert.equal(JSON.parse(receipt?.content ?? '{}').status, 'blocked');
 });

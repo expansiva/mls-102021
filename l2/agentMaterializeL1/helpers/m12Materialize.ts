@@ -374,7 +374,8 @@ export async function materializeUnit(ctx: M12Context, unit: M12Unit): Promise<M
 
 /** The selected units of one layer, dependencies first. */
 export function layerUnits(selected: readonly M12Unit[], layer: M12Layer): M12Unit[] {
-  return selected.filter(unit => unit.layer === layer && LAYER_OF_TYPE[unit.definition.artifactType] === layer);
+  // The adapter of a system is a second unit of the same def (d1_209): its layer is not the one its type maps to.
+  return selected.filter(unit => unit.layer === layer && (LAYER_OF_TYPE[unit.definition.artifactType] === layer || layer === 'adapter'));
 }
 
 export type { M12FileInfo };
