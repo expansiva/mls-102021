@@ -261,3 +261,43 @@ void test('d1_206: the serve a process starts on carries the workflow service of
     (globalThis as { mls: unknown }).mls = previous;
   }
 });
+
+const L4_REF = `_${PROJECT}_/l4/${MODULE}/integration.defs.ts`;
+const L4_RECORDED = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures/agentsIntegrationL4.recorded.txt'), 'utf8');
+
+void test('d1_207: the prompt of a serve route shows the l4 line of the route as source, and nothing when the l4 has no text for it', async () => {
+  const platform = unit('requestService', 'platform', {
+    pageId: 'platform',
+    requests: [{ route: `${MODULE}.platform.releaseCatalogChanged`, serves: 'platform.releaseCatalogChanged', uses: ['updateTool'] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/platform.ts`);
+  const norm = (ref: string) => ref.replace(/^\//u, '');
+  const readWith = (l4: string | null) => async (ref: string) => (norm(ref) === norm(PLATFORM_CATALOG_REF) ? PLATFORM_CATALOG : norm(ref) === norm(L4_REF) ? l4 : null);
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform], read: readWith(L4_RECORDED) } as never, platform);
+  assert.match(loaded.human, /## What the module does with the message of these routes \(l4 _102099_\/l4\/agents\/integration\.defs\.ts, source\)/u);
+  assert.match(loaded.human, /- usedBy: Rebuilds the tool catalog when a module is created or a new release arrives/u);
+  assert.match(loaded.human, /- description: The release routine delivers the actions of every module[\s\S]*?A tool without its own description uses its title\./u);
+  // The section is the source and a generic title: the prompt text does not name the rule, the connection or the module.
+  const sectionText = /## What the module does with the message[\s\S]*?(?=\n## )/u.exec(loaded.human)?.[0] ?? '';
+  assert.equal(/assistant|included|filter/iu.test(sectionText.split('Route ')[0]), false);
+  // No l4 file, or a serve line without usedBy and description: no section and no error.
+  const none = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform], read: readWith(null) } as never, platform);
+  assert.equal(none.human.includes('What the module does with the message'), false);
+  const bare = L4_RECORDED.replace(/"usedBy": \[\s*"Rebuilds[^\]]*\]/u, '"usedBy": []').replace(/"description": "The release routine[^"]*"/u, '"description": ""');
+  assert.notEqual(bare, L4_RECORDED);
+  const empty = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform], read: readWith(bare) } as never, platform);
+  assert.equal(empty.human.includes('What the module does with the message'), false);
+});
+
+void test('d1_207: the recorded route that applies the l4 rule (filters the assistant actions, describes by the title) passes the gate of the route', async () => {
+  const P47 = 102047;
+  const dir = path.dirname(new URL(import.meta.url).pathname);
+  const recorded = readFileSync(path.join(dir, 'fixtures/agentsPlatformRequestRule.recorded.txt'), 'utf8');
+  const platform = unit('requestService', 'platform', { pageId: 'platform', requests: [{ route: `${MODULE}.platform.releaseCatalogChanged`, serves: 'platform.releaseCatalogChanged', uses: [] }] }, `_${P47}_/l1/${MODULE}/layer_2_application/requests/platform.ts`);
+  const process = unit('workflowProcess', 'toolCatalogRefresh', { processId: 'toolCatalogRefresh', trigger: { kind: 'event', event: 'platform.releaseCatalogChanged' }, functions: ['applyReleaseCatalog'] }, `_${P47}_/l1/${MODULE}/layer_2_application/workflows/toolCatalogRefresh.ts`);
+  const read = async (ref: string) => (ref.replace(/^\//u, '') === PLATFORM_CATALOG_REF.replace(/^\//u, '') ? PLATFORM_CATALOG : null);
+  const loaded = await loadRequestContext({ run: { project: P47, module: MODULE }, units: [platform, process], read } as never, platform);
+  const header = recorded.split('\n')[0];
+  const gate = { header, contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: P47, moduleName: MODULE, pageId: 'platform', waived: new Set<string>(), catalogSpecifiers: loaded.catalogSpecifiers };
+  assert.deepEqual(requestGate(recorded, gate), []);
+  assert.match(recorded, /action\.assistant !== 'included'/u);
+});

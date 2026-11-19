@@ -22,6 +22,7 @@ import { readNotApplicable, type M12Repair } from '/_102021_/l2/agentMaterialize
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { MDM_FACADE_REF, MDM_MODULE_REF, MDM_ONTOLOGY_REF, exportSignatures, mdmContextSection, mdmPlatformApiSection, ruleTexts, sessionCompanyAnchor } from '/_102021_/l2/agentMaterializeL1/steps/usecases40/context.js';
 import { contractRoutes, type M12ContractRoute } from '/_102021_/l2/agentMaterializeL1/steps/tests60/context.js';
+import { serveSourceOf } from '/_102021_/l2/agentMaterializeL1/steps/requests50/serveSource.js';
 import { REGISTRATION_REF, onboardingModuleId, registrationAccessSection } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
 import { enumMapProblems, enumMapSection, externalEnumPairs, unpairedProblems, type ExternalEnumPair } from '/_102021_/l2/agentMaterializeL1/helpers/externalEnums.js';
@@ -550,6 +551,22 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     '`ctx.requestMeta.connection` describes the call that reached this route: `connectionId`, `operationId`, `context` (the person is `context.actorMdmId`) and an optional `idempotencyKey`. The type is `requestMeta.connection` on `RequestContext` (`/_102034_/l1/server/layer_2_controllers/contracts.js`). The engine already sets `context.actorMdmId`.',
   ].join('\n')));
   parts.push(section('Connection catalog', catalogSections.join('\n\n')));
+  const l4Ref = `_${project}_/l4/${moduleName}/integration.defs.ts`;
+  const l4Source = await ctx.read(l4Ref);
+  const l4Lines = marks.flatMap(mark => {
+    const source = serveSourceOf(l4Source, mark.connectionId, mark.operationId);
+    return source ? [{ route: String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`), source }] : [];
+  });
+  if (l4Lines.length) {
+    parts.push(section(`What the module does with the message of these routes (l4 ${l4Ref}, source)`, [
+      'The l4 states, for each route, what the module does with the message. The route applies what touches the fields of its input and output.',
+      ...l4Lines.map(item => [
+        `Route ${item.route}:`,
+        ...item.source.usedBy.map(text => `- usedBy: ${text}`),
+        item.source.description ? `- description: ${item.source.description}` : '',
+      ].filter(Boolean).join('\n')),
+    ].join('\n\n')));
+  }
   const serveUses = marks.map(mark => ({
     route: String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`),
     uses: Array.isArray(mark.row.uses) ? mark.row.uses.map(String).filter(Boolean) : [],

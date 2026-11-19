@@ -1,0 +1,51 @@
+/// <mls fileReference="_102047_/l1/agents/layer_2_application/requests/platform.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type {
+  PlatformReleaseCatalogChangedInput,
+  PlatformReleaseCatalogChangedOutput,
+  PlatformModuleCatalog,
+  PlatformCatalogAction,
+} from '/_102034_/l1/server/layer_1_external/connections/catalogs/platform.js';
+import { applyReleaseCatalog } from '/_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.js';
+import type { ReleaseCatalogAction } from '/_102047_/l1/agents/layer_2_application/workflows/toolCatalogRefresh.js';
+
+function toCatalogAction(catalog: PlatformModuleCatalog, action: PlatformCatalogAction): ReleaseCatalogAction {
+  return {
+    toolKey: action.route,
+    moduleName: action.module,
+    subject: action.subject,
+    name: action.title,
+    moduleTitle: action.moduleTitle ?? catalog.title ?? catalog.module,
+    subjectTitle: action.subjectTitle ?? action.subject,
+    description: action.purpose ?? action.title,
+  };
+}
+
+export const requests: { 'agents.platform.releaseCatalogChanged': (input: PlatformReleaseCatalogChangedInput, ctx: RequestContext) => Promise<PlatformReleaseCatalogChangedOutput> } = {
+  'agents.platform.releaseCatalogChanged': async function (input, ctx) {
+    if (typeof input.releaseId !== 'string' || input.releaseId === '') {
+      throw new Error('platform.releaseCatalogChanged: releaseId is required');
+    }
+    if (typeof input.hash !== 'string' || input.hash === '') {
+      throw new Error('platform.releaseCatalogChanged: hash is required (release ' + input.releaseId + ')');
+    }
+    if (!Array.isArray(input.catalogs)) {
+      throw new Error('platform.releaseCatalogChanged: catalogs must be a list (release ' + input.releaseId + ')');
+    }
+
+    const catalog: ReleaseCatalogAction[] = [];
+    for (const moduleCatalog of input.catalogs) {
+      for (const action of [...moduleCatalog.commands, ...moduleCatalog.queries]) {
+        if (action.assistant !== 'included') continue;
+        catalog.push(toCatalogAction(moduleCatalog, action));
+      }
+    }
+
+    await ctx.data.moduleData.runInTransaction(async (tx) => {
+      const bound: RequestContext = { ...ctx, data: { ...ctx.data, moduleData: tx } };
+      await applyReleaseCatalog({ releaseLabel: input.releaseId, catalog }, bound);
+    });
+
+    return {};
+  },
+};
