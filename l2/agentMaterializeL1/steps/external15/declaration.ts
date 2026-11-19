@@ -190,7 +190,7 @@ export function declarationProblems(code: string, facts: ExternalFacts, header: 
   if (value.title !== facts.title) problems.push('title must be the title of the L4 system, as written.');
   if (value.description !== facts.description) problems.push('description must be the description of the L4 system, as written.');
   const settings = list(value.settings);
-  const key = (item: { id: unknown; secret: unknown; title?: unknown; description?: unknown }) => `${text(item.id)}:${item.secret === true}:${text(item.title)}:${text(item.description)}`;
+  const key = (item: Record<string, unknown>) => `${text(item.id)}:${item.secret === true}:${text(item.title)}:${text(item.description)}`;
   const wanted = settingsOf(facts).map(key);
   const given = settings.map(key);
   if (!sameSet(given, wanted)) problems.push(`settings must be exactly those of the L4, with the same secret flag and the same title and description: ${wanted.join(', ') || '(none)'}. Found: ${given.join(', ') || '(none)'}.`);
