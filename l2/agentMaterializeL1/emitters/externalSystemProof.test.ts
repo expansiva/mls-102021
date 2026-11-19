@@ -8,7 +8,10 @@ import test from 'node:test';
 import { emitController } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { emitPersistence } from '/_102021_/l2/agentMaterializeL1/emitters/emitPersistence.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
-import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { usecaseGate } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
+import { requestGate } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { workflowGate } from '/_102021_/l2/agentMaterializeL1/steps/workflows45/context.js';
 import { M1_DEFINITION_SCHEMA, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -156,4 +159,39 @@ void test('d1_208 s3: the controller of a serve of a system of this module takes
   if ('code' in controller) return;
   assert.match(controller.source, /RepoHostChangePushedInput/u);
   assert.match(controller.source, new RegExp(`/_${PROJECT}_/l1/${OWN_MODULE}/layer_1_external/connections/repoHost\\.js`, 'u'));
+});
+
+const USES_L4 = readFileSync(path.join(FIXTURES, 'usesSiblingSystem.integration.recorded.txt'), 'utf8');
+
+void test('d1_208 s3: an import may name the declaration of the sibling system a connections line names, and no other file of the sibling', async () => {
+  const read = filesOf({
+    [`_${PROJECT}_/l4/${USER_MODULE}/integration.defs.ts`]: USES_L4,
+    [`_${PROJECT}_/l1/${SIBLING_MODULE}/layer_1_external/connections/zipLookup.ts`]: SIBLING_DECLARATION,
+  });
+  const allowed = await siblingDeclarationImports(read, PROJECT, USER_MODULE);
+  const declaration = `/_${PROJECT}_/l1/${SIBLING_MODULE}/layer_1_external/connections/zipLookup.js`;
+  assert.deepEqual(allowed, [declaration]);
+  assert.deepEqual(await siblingDeclarationImports(read, PROJECT, OWN_MODULE), [], 'a system of the module itself is not a sibling import');
+  const other = `/_${PROJECT}_/l1/${SIBLING_MODULE}/layer_2_application/usecases/findAddress.js`;
+  const elsewhere = `/_${PROJECT}_/l1/${SIBLING_MODULE}/layer_1_external/connections/otherSystem.js`;
+  const outside = (problems: string[]) => problems.filter(item => item.includes('is outside the platform'));
+  const body = (specifier: string) => `/// <mls fileReference="x" enhancement="_blank"/>\nimport type { ZipFindAddressInput } from '${specifier}';\nexport async function findAddress(input: ZipFindAddressInput, ctx: unknown) { return input; }\n`;
+
+  const usecase = (specifier: string, siblingImports?: readonly string[]) => outside(usecaseGate(body(specifier), { header: '/// <mls fileReference="x" enhancement="_blank"/>', functionName: 'findAddress', project: PROJECT, moduleName: USER_MODULE, ruleIds: [], ...(siblingImports ? { siblingImports } : {}) }));
+  assert.deepEqual(usecase(declaration, allowed), [], 'the named declaration is accepted');
+  assert.equal(usecase(other, allowed).length, 1, 'any other file of the sibling stays refused');
+  assert.equal(usecase(elsewhere, allowed).length, 1, 'the declaration of a system no line names stays refused');
+  assert.equal(usecase(declaration).length, 1, 'without the line the declaration is refused as before');
+
+  const routeInput = { header: '/// <mls fileReference="x" enhancement="_blank"/>', contractsInterface: '', routes: [], project: PROJECT, moduleName: USER_MODULE, pageId: 'p', waived: new Set<string>() };
+  const request = (specifier: string, siblingImports?: readonly string[]) => outside(requestGate(body(specifier), { ...routeInput, ...(siblingImports ? { siblingImports } : {}) }));
+  assert.deepEqual(request(declaration, allowed), []);
+  assert.equal(request(other, allowed).length, 1);
+  assert.equal(request(declaration).length, 1);
+
+  const facts = { processId: 'p', trigger: { kind: 'manual' }, functions: [], operations: [] } as never;
+  const flow = (specifier: string, siblingImports?: readonly string[]) => outside(workflowGate(body(specifier), { header: routeInput.header, facts, project: PROJECT, moduleName: USER_MODULE, ports: [], ...(siblingImports ? { siblingImports } : {}) }));
+  assert.deepEqual(flow(declaration, allowed), []);
+  assert.equal(flow(other, allowed).length, 1);
+  assert.equal(flow(declaration).length, 1);
 });

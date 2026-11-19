@@ -66,3 +66,20 @@ export async function connectionCatalogSource(read: CatalogRead, project: number
   }
   return platform;
 }
+
+/**
+ * The declarations of sibling systems a generated file may import (d1_208 decision of the planner): the declaration of the system a
+ * `connections[]` line of this module names, and of no other sibling. Any other file of a sibling stays refused by the import gates.
+ */
+export async function siblingDeclarationImports(read: CatalogRead, project: number, moduleName: string): Promise<string[]> {
+  const root = integrationOf(await read(`_${project}_/${integrationLogicalPath(moduleName)}`));
+  const rows = root !== null && typeof root === 'object' && Array.isArray((root as { connections?: unknown }).connections) ? (root as { connections: unknown[] }).connections : [];
+  const ids = [...new Set(rows.map(row => (row !== null && typeof row === 'object' ? (row as { connectionId?: unknown }).connectionId : undefined)).filter((id): id is string => typeof id === 'string' && id !== ''))].sort();
+  const imports: string[] = [];
+  for (const connectionId of ids) {
+    const found = await connectionCatalogSource(read, project, moduleName, connectionId);
+    if (found.origin === 'sibling') imports.push(found.importPath);
+  }
+  return imports;
+}
+

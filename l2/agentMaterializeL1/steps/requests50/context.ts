@@ -4,7 +4,7 @@
 // rules, access), the request-service def, the recipe attempt, the generated usecases it may call, the rule
 // texts and the platform signatures.
 
-import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
@@ -859,6 +859,8 @@ export function serveUsecaseProblems(code: string, routes: ReadonlyArray<{ route
 
 /** Problems of a model-written request service. Empty = the gate passes. */
 export function requestGate(code: string, input: {
+  /** Declarations of sibling systems this module's connections name (d1_208). */
+  siblingImports?: readonly string[];
   header: string;
   /** The page `…Contracts` interface; '' skips the typing check (unit tests of other rules). */
   contractsInterface?: string;
@@ -908,7 +910,7 @@ export function requestGate(code: string, input: {
   const ownContracts = `/_${input.project}_/l2/${input.moduleName}/web/contracts/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts)) {
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !specifier.startsWith(ownContracts) && !(input.siblingImports ?? []).includes(specifier)) {
       problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/), this module (${ownL1}) and its contracts (${ownContracts}).`);
     }
   }
@@ -956,7 +958,7 @@ export async function requestAnswerProblems(ctx: M12Context, unit: M12Unit, code
   const readUsecase = (name: string): Promise<string | null> => ctx.read(`_${ctx.run.project}_/l1/${ctx.run.module}/layer_2_application/usecases/${name}.ts`);
   return [
     ...waived.problems,
-    ...requestGate(code, { header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses }),
+    ...requestGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, ctx.run.project, ctx.run.module), header: data.header, contractsInterface: data.contractsInterface, routes: data.routes, project: ctx.run.project, moduleName: ctx.run.module, pageId: data.pageId, waived: waivedIds, externalEnums: data.externalEnums, serveUses: data.serveUses }),
     ...mdmInputProblems(code, data.mdmInputs),
     ...workflowRouteProblems(code, data.workflowRoutes),
     // A repository the file types for itself compiles and has no such method at run time (minhas_tarefas declared

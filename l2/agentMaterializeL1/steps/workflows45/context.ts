@@ -5,7 +5,7 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
-import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
+import { connectionCatalogSource, siblingDeclarationImports } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
@@ -682,7 +682,7 @@ export function workflowTransitionProblems(code: string, targets: ReadonlyMap<st
 }
 
 /** Problems of a model-written workflow service. Empty = the gate passes. */
-export function workflowGate(code: string, input: { header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; gateways?: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
+export function workflowGate(code: string, input: { siblingImports?: readonly string[]; header: string; facts: M12WorkflowFacts; project: number; moduleName: string; ports: readonly string[]; gateways?: readonly string[]; targets?: ReadonlyMap<string, string>; llmExports?: readonly string[] }): string[] {
   const problems: string[] = [];
   if (input.targets) problems.push(...workflowTransitionProblems(code, input.targets));
   if ((code.split('\n')[0]?.trim() ?? '') !== input.header) problems.push(`The first line must be exactly: ${input.header}`);
@@ -705,7 +705,7 @@ export function workflowGate(code: string, input: { header: string; facts: M12Wo
   const ownL1 = `/_${input.project}_/l1/${input.moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !(input.siblingImports ?? []).includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
   }
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
@@ -748,7 +748,7 @@ export async function workflowAnswerProblems(ctx: M12Context, unit: M12Unit, cod
   const l4Ref = unit.definition.dependencies.find(ref => ref.endsWith(`/l4/${moduleName}/workflows.defs.ts`)) ?? `_${project}_/l4/${moduleName}/workflows.defs.ts`;
   const llmExports = workflowLlmExportNames(facts.processId, workflowProcessSteps(l4Process(await ctx.read(l4Ref), facts.processId)));
   return [
-    ...workflowGate(code, { header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
+    ...workflowGate(code, { siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName), header, facts, project, moduleName, ports, gateways, targets: transitionTargets(ctx.units), llmExports }),
     ...await missingImports(ctx, code),
     ...stepCallProblems(code, await stepCallsFor(ctx, facts.processId)),
   ];
@@ -820,14 +820,14 @@ function exportHeader(source: string, name: string): string | null {
   }
 }
 
-function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>): string[] {
+function functionTextProblems(code: string, project: number, moduleName: string, targets: ReadonlyMap<string, string>, siblingImports: readonly string[] = []): string[] {
   const problems: string[] = [];
   problems.push(...workflowTransitionProblems(code, targets));
   if (/\bas\s+unknown\s+as\b/u.test(code) || /\bas\s+any\b/u.test(code)) problems.push('No `as unknown as` and no `as any`.');
   const ownL1 = `/_${project}_/l1/${moduleName}/`;
   for (const specifier of importSpecifiers(code)) {
     if (!specifier.startsWith('/') || !specifier.endsWith('.js')) { problems.push(`Import "${specifier}" must start with / and end with .js.`); continue; }
-    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
+    if (!specifier.startsWith('/_102034_/l1/') && !specifier.startsWith(ownL1) && !siblingImports.includes(specifier)) problems.push(`Import "${specifier}" is outside the platform (/_102034_/l1/) and this module (${ownL1}).`);
   }
   if (usesNodeBuiltin(code)) problems.push('No node: import.');
   if (/\bfetch\s*\(/u.test(code)) problems.push('No fetch().');
@@ -907,6 +907,7 @@ export const workflowSequence: M12SequenceSpec = {
     const steps = workflowProcessSteps(processJson);
     if (phase === 'skeleton') {
       const problems = workflowGate(completeEngineImports(code, engine), {
+        siblingImports: await siblingDeclarationImports(ctx.read, project, moduleName),
         header, facts, project, moduleName,
         ports: moduleGatewayNames(ctx.units),
         gateways: moduleGatewayNames(ctx.units),
@@ -935,7 +936,7 @@ export const workflowSequence: M12SequenceSpec = {
       if (!/export\s+async\s+function\s+onTick\s*\(/u.test(code)) problems.push('A scheduled process exports `onTick(ctx: RequestContext, now: Date): Promise<void>`.');
       if (!/\bevaluateSchedule\s*\(/u.test(code)) problems.push('`onTick` asks `evaluateSchedule(schedule, now, lastRun)` whether an occurrence is due: never a hard-coded hour.');
     }
-    problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units)));
+    problems.push(...functionTextProblems(snippet, project, moduleName, transitionTargets(ctx.units), await siblingDeclarationImports(ctx.read, project, moduleName)));
     if (problems.length) return { source: assembled, problems };
     try {
       const merged = completeEngineImports(replaceFunction(addHelpers(mergeImports(assembled, importLines), helpers), name, code.endsWith('\n') ? code : `${code}\n`), engine);
