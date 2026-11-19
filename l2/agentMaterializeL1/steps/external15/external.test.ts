@@ -8,7 +8,7 @@ import test from 'node:test';
 import { declaredSystemsOf, DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { declarationLiteral, externalFacts, fixedPart, withFixedSettings } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { declarationLiteral, externalFacts, fixedPart, serveWithoutSecret, withFixedSettings } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 import { externalAnswerProblems, loadExternalContext } from '/_102021_/l2/agentMaterializeL1/steps/external15/context.js';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -164,4 +164,38 @@ void test('d1_211 s1: the title and the description of each setting come from th
   // A setting the L4 gives no text keeps only id and secret.
   const bare = { ...facts, settings: [{ id: 'x', title: '', description: '', secret: false }] };
   assert.deepEqual(fixedPart(bare).settings, [{ id: 'x', secret: false }]);
+});
+
+void test('d1_213: a serve with a verify passes, a serve without one is refused naming the system and the operation', async () => {
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), ANSWER), []);
+  const token = mutated(d => { d.operations[1].verify = { scheme: 'token', secret: 'accessKey', header: 'x-token' }; });
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), token), [], 'a token check is a verify too');
+  const without = mutated(d => { delete d.operations[1].verify; });
+  const problems = await externalAnswerProblems(ctx, unit(), without);
+  assert.equal(problems.length, 1, JSON.stringify(problems));
+  assert.match(problems[0], /Operation changePushed of system repoHost is a serve and has no verify/u);
+  // The secret of the check is a secret setting: the runtime validator keeps saying so.
+  const open = mutated(d => { d.operations[1].verify = { scheme: 'token', secret: 'repositoryAddress', header: 'x-token' }; });
+  assert.ok((await externalAnswerProblems(ctx, unit(), open)).some(item => item.startsWith('Declaration:')));
+  // A call needs no verify; noticeId stays optional.
+  const noNotice = mutated(d => { delete d.operations[1].noticeId; });
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), noNotice), []);
+});
+
+void test('d1_213: a system with a serve and no secret setting in the L4 is a distinct problem, said before the model; a call-only system is not', () => {
+  const facts = externalFacts(unit().definition.data);
+  assert.equal(serveWithoutSecret(facts), null);
+  const noSecret = { ...facts, settings: facts.settings.map(item => ({ ...item, secret: false })) };
+  const message = serveWithoutSecret(noSecret);
+  assert.match(message ?? '', /System repoHost: operation changePushed is a serve, and the L4 of the system declares no setting with secret: true/u);
+  assert.match(message ?? '', /the L4 must declare the secret/u);
+  assert.equal(serveWithoutSecret({ ...noSecret, operations: noSecret.operations.filter(item => item.direction === 'call') }), null);
+  assert.equal(serveWithoutSecret({ ...noSecret, settings: [] }) === null, false, 'no setting at all is the same problem');
+});
+
+void test('d1_213: the prompt says every serve has a verify', () => {
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /\*\*For a `serve`\*\*: always a `verify`/u);
+  assert.equal(/does not sign has no `verify`/u.test(prompt), false);
+  assert.match(prompt, /every `serve` with a `verify`/u);
 });

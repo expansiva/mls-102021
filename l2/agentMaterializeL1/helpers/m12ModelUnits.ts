@@ -59,6 +59,8 @@ export interface M12ModelLayerSpec {
   /** When set, the worker grows one file across phases. Layers without it keep a single call. */
   sequence?: M12SequenceSpec;
   layer: Extract<M12Layer, 'usecases' | 'workflows' | 'requests' | 'external' | 'adapter'>;
+  /** A problem no answer of the model can fix (the def or its L4 lacks something): the unit stops `blocked` with this code, the model is not called. */
+  preflight?(ctx: M12Context, unit: M12Unit): Promise<{ code: string; detail: string } | null>;
   /** Module-wide files the layer's units import, written before any worker is dispatched; the trace lines. */
   prepare?(ctx: M12Context, units: readonly M12Unit[]): Promise<string[]>;
   workerAgentName: string;
@@ -122,6 +124,12 @@ export function modelDispatcherAgent(agentName: string, description: string, spe
       if (spec.prepare && layerOf.length) lines.push(...await spec.prepare(ctx, layerOf));
       for (const unit of layerOf) {
         const base = { layer: spec.layer, unitId: unit.unitId, defRef: unit.defRef, attempt: 0 };
+        const stop = spec.preflight ? await spec.preflight(ctx, unit) : null;
+        if (stop) {
+          await writeUnitStatus(run.project, run.module, { ...base, status: 'blocked', code: stop.code, diagnostic: stop.detail, inputHash: '', outputs: {} });
+          lines.push(`${unit.unitId}: blocked, ${clip(stop.detail, 300)}`);
+          continue;
+        }
         const waiting = await blockingDependencies(ctx, unit);
         if (waiting.length) {
           const diagnostic = `BLOCKED_BY: ${waiting.join(', ')}`;

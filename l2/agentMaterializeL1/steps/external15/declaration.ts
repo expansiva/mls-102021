@@ -42,6 +42,16 @@ export function externalFacts(data: Record<string, unknown>): ExternalFacts {
   };
 }
 
+/**
+ * A system with a `serve` and no secret setting in the L4 (d1_213): every notice that comes in is checked with a secret, so no answer of
+ * the model can make this declaration valid. Code says it before the model is called; the L4 must declare the secret. Null when fine.
+ */
+export function serveWithoutSecret(facts: ExternalFacts): string | null {
+  const serves = facts.operations.filter(item => item.direction === 'serve').map(item => item.operationId);
+  if (serves.length === 0 || facts.settings.some(item => item.secret)) return null;
+  return `System ${facts.systemId}: operation ${serves.join(', ')} is a serve, and the L4 of the system declares no setting with secret: true. Every notice that comes in is checked with a secret (hmac or token), so the L4 must declare the secret of the check.`;
+}
+
 /** The part code writes: the whole declaration the model must keep, with the parts it analyses left out. */
 export function fixedPart(facts: ExternalFacts): Record<string, unknown> {
   return {
@@ -205,6 +215,9 @@ export function declarationProblems(code: string, facts: ExternalFacts, header: 
     if (!found) continue;
     if (found.direction !== operation.direction) problems.push(`Operation ${operation.operationId} is a ${operation.direction} in the L4.`);
     if (found.description !== operation.description) problems.push(`Operation ${operation.operationId}: description must be the one of the L4, as written.`);
+  }
+  for (const operation of operations) {
+    if (operation.direction === 'serve' && operation.verify === undefined) problems.push(`Operation ${text(operation.operationId)} of system ${facts.systemId} is a serve and has no verify: every notice is checked (hmac or token) with a secret setting of the L4.`);
   }
   const exported = exportedNames(code);
   for (const operation of operations) {

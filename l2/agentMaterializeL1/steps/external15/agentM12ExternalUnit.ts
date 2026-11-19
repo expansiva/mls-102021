@@ -3,7 +3,7 @@
 import type { IAgentAsync } from '/_102027_/l2/aiAgentBase.js';
 import { M12_EXTERNAL_UNIT_AGENT_NAME } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { modelWorkerAgent, type M12ModelLayerSpec } from '/_102021_/l2/agentMaterializeL1/helpers/m12ModelUnits.js';
-import { withFixedSettings, externalFacts } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { withFixedSettings, externalFacts, serveWithoutSecret } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 import { M12_EXTERNAL_TOOL, M12_EXTERNAL_TOOL_DESCRIPTION, externalAnswerProblems, loadExternalContext } from '/_102021_/l2/agentMaterializeL1/steps/external15/context.js';
 
 export const EXTERNAL_SPEC: M12ModelLayerSpec = {
@@ -13,6 +13,11 @@ export const EXTERNAL_SPEC: M12ModelLayerSpec = {
   toolName: M12_EXTERNAL_TOOL,
   toolDescription: M12_EXTERNAL_TOOL_DESCRIPTION,
   context: loadExternalContext,
+  // A serve with no secret in the L4 is the L4's to fix: no repair of the model can (d1_213).
+  preflight: async (_ctx, unit) => {
+    const detail = serveWithoutSecret(externalFacts(unit.definition.data));
+    return detail ? { code: 'EXTERNAL_SERVE_WITHOUT_SECRET', detail } : null;
+  },
   // What the L4 says of each setting is copied by code, not retyped by the model (d1_211).
   normalize: async (_ctx, unit, code) => withFixedSettings(code, externalFacts(unit.definition.data)),
   gate: externalAnswerProblems,
