@@ -648,9 +648,129 @@ function notForecast(item: string, reason = NOT_FORECAST): EffortAnswer {
   return computed(item, []);
 }
 
+/** The unit of a system outside the app: its def, which writes the declaration and the adapter (d1_208, d1_209). */
+const EXTERNAL_UNIT_KIND = 'externalConnection' as unknown as EffortUnitRef['kind'];
+
+function rowOf(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function textOf(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function listOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+/** The usecase `usecaseId` as a unit; null when no def has it. */
+function usecaseUnit(defs: Record<string, string>, usecaseId: string): EffortUnitRef | null {
+  if (!usecaseId) return null;
+  let found: EffortUnitRef | null = null;
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType === 'usecase' && !found && data.usecaseId === usecaseId) found = { kind: 'usecase', id: usecaseId, path: defPath };
+  });
+  return found;
+}
+
+/** The rows of `connections` or `plugins` the outbound defs carry, with the consumer each names. */
+function outboundRows(defs: Record<string, string>, key: 'connections' | 'plugins'): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (const def of grantDefs(defs)) {
+    if (def.artifactType !== 'integrationOutbound') continue;
+    const list = def.data[key];
+    if (Array.isArray(list)) for (const row of list) if (isRecord(row)) rows.push(row);
+  }
+  return rows;
+}
+
+/** The request services whose route `serves` a connection operation that `match` accepts. */
+function serveRequestUnits(defs: Record<string, string>, match: (serves: string) => boolean): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType !== 'requestService' || !Array.isArray(data.requests)) return;
+    if (!data.requests.some(request => isRecord(request) && typeof request.serves === 'string' && match(request.serves))) return;
+    const pageId = textOf(data.pageId);
+    if (pageId) units.push({ kind: 'request', id: pageId, path: defPath });
+  });
+  return units;
+}
+
+/** The processes an event serve starts (`trigger.event`), and those a `usedBy` of `<processId>.<taskId>` names. */
+function processUnitsOf(defs: Record<string, string>, events: ReadonlySet<string>, processIds: ReadonlySet<string>): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType !== 'workflowProcess') return;
+    const trigger = rowOf(data.trigger);
+    const processId = textOf(data.processId);
+    if (processId && (processIds.has(processId) || (trigger.kind === 'event' && events.has(textOf(trigger.event))))) units.push({ kind: 'workflow', id: processId, path: defPath });
+  });
+  return units;
+}
+
+function externalUnits(defs: Record<string, string>, systemId: string): EffortUnitRef[] {
+  const units: EffortUnitRef[] = [];
+  eachDefinition(defs, (defPath, artifactType, data) => {
+    if (artifactType === 'externalConnection' && data.systemId === systemId) units.push({ kind: EXTERNAL_UNIT_KIND, id: systemId, path: defPath });
+  });
+  return units;
+}
+
+/**
+ * `connection`, `plugin` and `externalSystem` items (d1_210). The units come from the defs, never from a list of services:
+ * a connection line touches the outbound def (the gateway) and whoever consumes it (a usecase, a process or the route that `serves` it);
+ * a plugin touches the outbound def and its consumer; a system touches its own def (declaration and adapter) and, when it changes or goes,
+ * whoever calls its operations.
+ */
+function connectionEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
+  const item = input.item;
+  if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
+  const row = rowOf(item.op === 'removed' ? item.before : item.after);
+  const picked: EffortUnitRef[] = [];
+  const seen = new Set<string>();
+  const take = (unit: EffortUnitRef | null): void => { if (unit) remember(picked, seen, unit); };
+  if (item.kind === 'connection') {
+    const connectionId = textOf(row.connectionId);
+    const operationId = textOf(row.operationId);
+    const key = `${connectionId}.${operationId}`;
+    for (const unit of eventDefUnits(defs)) take(unit);
+    for (const outbound of outboundRows(defs, 'connections')) if (outbound.connectionId === connectionId && outbound.operationId === operationId) take(usecaseUnit(defs, textOf(outbound.consumer)));
+    for (const unit of serveRequestUnits(defs, serves => serves === key)) take(unit);
+    const usedBy = listOf(row.usedBy);
+    for (const unit of processUnitsOf(defs, new Set([key]), new Set(usedBy.map(ref => ref.split('.')[0] ?? '').filter(Boolean)))) take(unit);
+    const units = sortUnits(picked);
+    return computed(item.changeId, units, units);
+  }
+  if (item.kind === 'plugin') {
+    const pluginId = textOf(row.pluginId);
+    for (const unit of eventDefUnits(defs)) take(unit);
+    for (const outbound of outboundRows(defs, 'plugins')) if (outbound.pluginId === pluginId || outbound.id === pluginId) take(usecaseUnit(defs, textOf(outbound.consumer)));
+    for (const unit of processUnitsOf(defs, new Set(), new Set(listOf(row.usedBy).map(ref => ref.split('.')[0] ?? '').filter(Boolean)))) take(unit);
+    const units = sortUnits(picked);
+    return computed(item.changeId, units, units);
+  }
+  if (item.kind === 'externalSystem') {
+    const systemId = idAfter(item.changeId, 'externalSystem:') || textOf(row.id);
+    const own = externalUnits(defs, systemId);
+    if (item.op === 'added') {
+      const created = own.length ? [] : [{ kind: EXTERNAL_UNIT_KIND, id: systemId, path: `l1/${input.module}/layer_1_external/connections/${systemId}.defs.ts` }];
+      return computed(item.changeId, own, own, [], created);
+    }
+    if (item.op === 'removed') return computed(item.changeId, [], [], own);
+    for (const unit of own) take(unit);
+    for (const outbound of outboundRows(defs, 'connections')) if (outbound.connectionId === systemId) take(usecaseUnit(defs, textOf(outbound.consumer)));
+    for (const unit of serveRequestUnits(defs, serves => serves.startsWith(`${systemId}.`))) take(unit);
+    const units = sortUnits(picked);
+    return computed(item.changeId, units, units);
+  }
+  return null;
+}
+
 function integrationEffort(input: EffortInput, defs: Record<string, string>): EffortAnswer | null {
   const item = input.item;
   if (item.kind === 'inbound') return notForecast(item.changeId);
+  const external = connectionEffort(input, defs);
+  if (external) return external;
   if (item.kind !== 'outbound') return null;
   if (item.op !== 'added' && item.op !== 'removed' && item.op !== 'changed') return null;
   const eventId = idAfter(item.changeId, 'outbound:');

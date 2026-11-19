@@ -1394,3 +1394,104 @@ void test('unreadable L2 contract is logged and the model path continues', () =>
     error.mock.restore();
   }
 });
+
+// ---- d1_210: connection, plugin and externalSystem items (the rehearsal of l4_p4_118 s2: a module that declares a system and uses it) ----
+
+const CODE_REVIEW = 'codeReview';
+
+function codeReviewDefs(): Record<string, string> {
+  const folder = `l1/${CODE_REVIEW}`;
+  const def = (artifactType: string, artifactId: string, data: Record<string, unknown>): string => {
+    const definition = { schemaVersion: '2026-09-24-d1-definition-v2', artifactType, artifactId, moduleName: CODE_REVIEW, status: 'pending', dependencies: [], data };
+    return `export const definition = ${JSON.stringify(definition, null, 2)} as const;\n\nexport default definition;\n`;
+  };
+  return {
+    [`${folder}/layer_1_external/adapters/integration/outbound.defs.ts`]: def('integrationOutbound', 'outbound', {
+      integrationId: 'outbound',
+      events: [],
+      connections: [{ connectionId: 'repoHost', operationId: 'listChanges', consumer: 'pickProject' }],
+      plugins: [{ pluginId: 'cardPayments', consumer: 'chargeReview' }],
+    }),
+    [`${folder}/layer_2_application/usecases/pickProject.defs.ts`]: def('usecase', 'pickProject', { usecaseId: 'pickProject', entityId: 'Review', operation: 'custom' }),
+    [`${folder}/layer_2_application/usecases/chargeReview.defs.ts`]: def('usecase', 'chargeReview', { usecaseId: 'chargeReview', entityId: 'Review', operation: 'custom' }),
+    [`${folder}/layer_2_application/workflows/reviewChanges.defs.ts`]: def('workflowProcess', 'reviewChanges', {
+      processId: 'reviewChanges', trigger: { kind: 'event', event: 'repoHost.changePushed' }, functions: [], operations: [],
+    }),
+    [`${folder}/layer_2_application/requests/repoHost.defs.ts`]: def('requestService', 'repoHost', {
+      pageId: 'repoHost', requests: [{ route: `${CODE_REVIEW}.repoHost.changePushed`, serves: 'repoHost.changePushed', uses: [] }],
+    }),
+    [`${folder}/layer_1_external/connections/repoHost.defs.ts`]: def('externalConnection', 'repoHost', {
+      systemId: 'repoHost', title: 'Repository host', description: 'Where the code lives.', settings: [],
+      operations: [{ operationId: 'listChanges', direction: 'call', description: 'The latest changes.' }, { operationId: 'changePushed', direction: 'serve', description: 'A change was pushed.' }],
+    }),
+  };
+}
+
+function integrationItem(changeId: string, kind: L4DiffItem['kind'], op: L4DiffItem['op'], before?: unknown, after?: unknown): EffortInput {
+  const item: L4DiffItem = { changeId, kind, op, entity: '', source: 'integration.defs.ts' };
+  if (before !== undefined) item.before = before;
+  if (after !== undefined) item.after = after;
+  return input(item, CODE_REVIEW);
+}
+
+const unitKeys = (units: Array<{ kind: string; id: string }>): string[] => units.map(unit => `${unit.kind}:${unit.id}`).sort();
+
+void test('d1_210: a connection line touches the outbound def and its consumer; a serve touches the route and the process it starts', () => {
+  const defs = codeReviewDefs();
+  const call = { connectionId: 'repoHost', operationId: 'listChanges', direction: 'call', usedBy: ['reviewChanges.pickProject'], description: 'Reads the changes.' };
+  const changed = describeEffortFrom(integrationItem('connection:repoHost.listChanges', 'connection', 'changed', { ...call, usedBy: ['other.step'] }, call), defs);
+  assert.equal(changed.status, 'computed');
+  assert.deepEqual(unitKeys(changed.materialize), ['events:outbound', 'usecase:pickProject', 'workflow:reviewChanges']);
+  assert.deepEqual(unitKeys(changed.regenerateDefs), unitKeys(changed.materialize));
+  const removed = describeEffortFrom(integrationItem('connection:repoHost.listChanges', 'connection', 'removed', call), defs);
+  assert.deepEqual(unitKeys(removed.materialize), ['events:outbound', 'usecase:pickProject', 'workflow:reviewChanges']);
+  const added = describeEffortFrom(integrationItem('connection:repoHost.listChanges', 'connection', 'added', undefined, call), defs);
+  assert.deepEqual(unitKeys(added.materialize), ['events:outbound', 'usecase:pickProject', 'workflow:reviewChanges']);
+  const serve = { connectionId: 'repoHost', operationId: 'changePushed', direction: 'serve', usedBy: ['Starts the review.'], description: 'A change was pushed.' };
+  const served = describeEffortFrom(integrationItem('connection:repoHost.changePushed', 'connection', 'changed', { ...serve, description: 'Arrives.', usedBy: ['x'] }, serve), defs);
+  assert.deepEqual(unitKeys(served.materialize), ['events:outbound', 'request:repoHost', 'workflow:reviewChanges']);
+});
+
+void test('d1_210: a plugin touches the outbound def and its consumer', () => {
+  const defs = codeReviewDefs();
+  const plugin = { pluginId: 'cardPayments', usedBy: ['reviewChanges.charge'], description: 'Cards.' };
+  for (const op of ['added', 'changed', 'removed'] as const) {
+    const answer = describeEffortFrom(integrationItem('plugin:cardPayments', 'plugin', op, op === 'added' ? undefined : { ...plugin, usedBy: [] }, op === 'removed' ? undefined : plugin), defs);
+    assert.equal(answer.status, 'computed', op);
+    assert.deepEqual(unitKeys(answer.materialize), op === 'removed' ? ['events:outbound', 'usecase:chargeReview'] : ['events:outbound', 'usecase:chargeReview', 'workflow:reviewChanges'], op);
+  }
+});
+
+void test('d1_210: a system touches its own unit; a change or a removal also reaches whoever calls its operations', () => {
+  const defs = codeReviewDefs();
+  const system = { id: 'repoHost', title: 'Repository host', description: 'Where the code lives.', settings: [], operations: [] };
+  const added = describeEffortFrom(integrationItem('externalSystem:repoHost', 'externalSystem', 'added', undefined, system), {});
+  assert.equal(added.status, 'abend', 'a module with no defs is the old abend');
+  const addedNew = describeEffortFrom(integrationItem('externalSystem:newSystem', 'externalSystem', 'added', undefined, { ...system, id: 'newSystem' }), defs);
+  assert.deepEqual(addedNew.create.map(unit => [unit.kind, unit.id, unit.path]), [['externalConnection', 'newSystem', `l1/${CODE_REVIEW}/layer_1_external/connections/newSystem.defs.ts`]]);
+  assert.deepEqual(addedNew.materialize, []);
+  const changed = describeEffortFrom(integrationItem('externalSystem:repoHost', 'externalSystem', 'changed', { ...system, settings: [{ id: 'accessKey' }] }, system), defs);
+  assert.deepEqual(unitKeys(changed.materialize), ['externalConnection:repoHost', 'request:repoHost', 'usecase:pickProject']);
+  assert.deepEqual(unitKeys(changed.regenerateDefs), unitKeys(changed.materialize));
+  const removed = describeEffortFrom(integrationItem('externalSystem:repoHost', 'externalSystem', 'removed', system), defs);
+  assert.deepEqual(unitKeys(removed.remove), ['externalConnection:repoHost']);
+  assert.deepEqual(removed.materialize, []);
+  const existing = describeEffortFrom(integrationItem('externalSystem:repoHost', 'externalSystem', 'added', undefined, system), defs);
+  assert.deepEqual(existing.create, []);
+  assert.deepEqual(unitKeys(existing.materialize), ['externalConnection:repoHost']);
+});
+
+void test('d1_210: the three kinds never fall on the empty forecast, and inbound and outbound stay as they were', () => {
+  const defs = codeReviewDefs();
+  const info = mock.method(console, 'info', () => undefined);
+  try {
+    describeEffortFrom(integrationItem('connection:repoHost.listChanges', 'connection', 'changed', { connectionId: 'repoHost', operationId: 'listChanges', usedBy: ['a'] }, { connectionId: 'repoHost', operationId: 'listChanges', usedBy: ['b'] }), defs);
+    describeEffortFrom(integrationItem('plugin:cardPayments', 'plugin', 'changed', { pluginId: 'cardPayments', usedBy: ['a'] }, { pluginId: 'cardPayments', usedBy: ['b'] }), defs);
+    describeEffortFrom(integrationItem('externalSystem:repoHost', 'externalSystem', 'changed', { id: 'repoHost', settings: [] }, { id: 'repoHost', settings: [{}] }), defs);
+    assert.equal(info.mock.calls.length, 0, 'no `not forecast` note');
+  } finally {
+    info.mock.restore();
+  }
+  const inbound = describeEffortFrom(integrationItem('inbound:x', 'inbound', 'changed', {}, {}), defs);
+  assert.deepEqual([inbound.materialize, inbound.regenerateDefs], [[], []]);
+});

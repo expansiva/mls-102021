@@ -370,11 +370,13 @@ async function stageCopies(
     const source = row.rel.replace(/\.defs\.ts$/u, '.ts');
     wanted.add(source);
     if (row.rel.includes('/controllers/')) wanted.add(source.replace(/\.ts$/u, '.test.ts'));
+    // The def of a system outside the app writes two files, the declaration and the adapter (d1_208, d1_209): both come back with it.
+    if (row.kind === EXTERNAL_KIND) wanted.add(adapterOf(source));
     const name = row.rel.split('/').pop()?.replace(/\.defs\.ts$/u, '') || '';
     for (const file of oldFiles) {
       if (!file.rel.startsWith('pipeline/agentMaterializeL1/')) continue;
       if (isSharedMaterialize(file.rel)) continue;
-      if (namesUnit(file.rel, name)) wanted.add(file.rel);
+      if (namesUnit(file.rel, name) || (row.kind === EXTERNAL_KIND && namesUnit(file.rel, `${name}Adapter`))) wanted.add(file.rel);
     }
   }
   if (allEqual) {
@@ -406,6 +408,7 @@ function dropsOf(
     const base = row.rel.replace(/\.defs\.ts$/u, '');
     for (const file of freshFiles) {
       if (file.rel === `${base}.ts` || file.rel === `${base}.test.ts`) drops.push(file.info);
+      if (row.kind === EXTERNAL_KIND && file.rel === adapterOf(`${base}.ts`)) drops.push(file.info);
     }
   }
   const oldRels = new Set(oldFiles.map(file => file.rel));
@@ -414,6 +417,13 @@ function dropsOf(
     if (!engineBack || !oldRels.has(file.rel)) drops.push(file.info);
   }
   return drops;
+}
+
+const EXTERNAL_KIND = 'externalConnection';
+
+/** `<systemId>.ts` → `<systemId>Adapter.ts`. */
+function adapterOf(declaration: string): string {
+  return declaration.replace(/\.ts$/u, 'Adapter.ts');
 }
 
 function namesUnit(rel: string, unit: string): boolean {

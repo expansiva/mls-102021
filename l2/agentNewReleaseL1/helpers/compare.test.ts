@@ -295,6 +295,73 @@ test('a changed rule drops the source, a new def stays, a removed def leaves', a
   assert.equal(Object.keys(texts).some(path => path.includes('_old')), false);
 });
 
+/** A system outside the app (d1_208): its def writes the declaration and the adapter. */
+const repoHost = {
+  schemaVersion: '2026-09-24-d1-definition-v2',
+  artifactType: 'externalConnection',
+  artifactId: 'repoHost',
+  moduleName: 'tarefas',
+  status: 'pending',
+  dependencies: ['_102047_/l4/tarefas/integration.defs.ts'],
+  data: {
+    systemId: 'repoHost',
+    title: 'Repository host',
+    description: 'Where the code lives.',
+    settings: [{ id: 'accessKey', title: 'Access key', description: 'Reads it.', secret: true }],
+    operations: [{ operationId: 'listChanges', direction: 'call', description: 'The latest changes.' }],
+  },
+};
+
+test('d1_210: an equal system def brings back the declaration, the adapter and both receipts', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const next = structuredClone(repoHost) as typeof repoHost & { data: { doc?: { plan: string } } };
+  next.data.doc = { plan: 'prose' };
+  const folder = 'layer_1_external/connections';
+  stor.add(1, `tarefas_old/${folder}`, 'repoHost', '.defs.ts', defText(repoHost));
+  stor.add(1, `tarefas_old/${folder}`, 'repoHost', '.ts', 'OLD_DECLARATION\n');
+  stor.add(1, `tarefas_old/${folder}`, 'repoHostAdapter', '.ts', 'OLD_ADAPTER\n');
+  stor.add(1, 'tarefas_old/pipeline/agentMaterializeL1/external', 'repoHost', '.json', '{"receipt":"declaration"}\n');
+  stor.add(1, 'tarefas_old/pipeline/agentMaterializeL1/adapter', 'repoHostAdapter', '.json', '{"receipt":"adapter"}\n');
+  stor.add(1, `tarefas/${folder}`, 'repoHost', '.defs.ts', defText(next));
+  stor.add(1, `tarefas/${folder}`, 'repoHost', '.ts', 'NEW_DECLARATION\n');
+  stor.add(1, `tarefas/${folder}`, 'repoHostAdapter', '.ts', 'NEW_ADAPTER\n');
+  const result = await run();
+  assert.match(result, /externalConnection repoHost: igual /);
+  const texts = stor.texts();
+  assert.equal(texts[`l1/tarefas/${folder}/repoHost.ts`], 'OLD_DECLARATION\n');
+  assert.equal(texts[`l1/tarefas/${folder}/repoHostAdapter.ts`], 'OLD_ADAPTER\n');
+  assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/external/repoHost.json'], '{"receipt":"declaration"}\n');
+  assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/adapter/repoHostAdapter.json'], '{"receipt":"adapter"}\n');
+  assert.equal(Object.keys(texts).some(path => path.includes('_old')), false);
+});
+
+test('d1_210: a changed system def drops the declaration and the adapter so both are generated again', async (t) => {
+  const stor = installStor();
+  t.after(() => stor.restore());
+  seedPlan(stor.add);
+  completeReport(stor.add);
+  const changed = structuredClone(repoHost);
+  changed.data.settings = [...changed.data.settings, { id: 'repositoryAddress', title: 'Repository address', description: 'The repository.', secret: false }];
+  const folder = 'layer_1_external/connections';
+  stor.add(1, `tarefas_old/${folder}`, 'repoHost', '.defs.ts', defText(repoHost));
+  stor.add(1, `tarefas_old/${folder}`, 'repoHost', '.ts', 'OLD_DECLARATION\n');
+  stor.add(1, `tarefas_old/${folder}`, 'repoHostAdapter', '.ts', 'OLD_ADAPTER\n');
+  stor.add(1, 'tarefas_old/pipeline/agentMaterializeL1/adapter', 'repoHostAdapter', '.json', '{"receipt":"adapter"}\n');
+  stor.add(1, `tarefas/${folder}`, 'repoHost', '.defs.ts', defText(changed));
+  stor.add(1, `tarefas/${folder}`, 'repoHost', '.ts', 'NEW_DECLARATION\n');
+  stor.add(1, `tarefas/${folder}`, 'repoHostAdapter', '.ts', 'NEW_ADAPTER\n');
+  const result = await run();
+  assert.match(result, /externalConnection repoHost: mudou /);
+  const texts = stor.texts();
+  assert.equal(texts[`l1/tarefas/${folder}/repoHost.defs.ts`], defText(changed));
+  assert.equal(texts[`l1/tarefas/${folder}/repoHost.ts`], undefined);
+  assert.equal(texts[`l1/tarefas/${folder}/repoHostAdapter.ts`], undefined);
+  assert.equal(texts['l1/tarefas/pipeline/agentMaterializeL1/adapter/repoHostAdapter.json'], undefined);
+});
+
 test('when every def is equal, registration and materialization come back', async (t) => {
   const stor = installStor();
   t.after(() => stor.restore());
