@@ -7,7 +7,7 @@ import test from 'node:test';
 import { unitInputHash } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import { maskCode, requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
-import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
+import { loadRequestContext, normalizeRequestsTyping, requestGate, serveUsecaseProblems, workflowRouteProblems } from '/_102021_/l2/agentMaterializeL1/steps/requests50/context.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../../../..');
 const CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts'), 'utf8');
@@ -207,4 +207,57 @@ void test('d1_202: the scanner masks comments and strings and finds the requests
   assert.deepEqual([...requestsObjectBodies(code).keys()], ['k']);
   assert.equal(maskCode('a // b\n"c\\"d" /* e */ f').includes('b'), false);
   assert.equal(maskCode('a "xyz"').length, 'a "xyz"'.length);
+});
+
+const PLATFORM_CATALOG_REF = '/_102034_/l1/server/layer_1_external/connections/catalogs/platform.ts';
+const PLATFORM_CATALOG = readFileSync(path.join(ROOT, 'mls-102034/l1/server/layer_1_external/connections/catalogs/platform.ts'), 'utf8');
+
+void test('d1_206: the serve a process starts on carries the workflow service of the process, and the gate wants its import', async () => {
+  const previous = globalThis.mls;
+  const platform = unit('requestService', 'platform', {
+    pageId: 'platform',
+    requests: [{ route: `${MODULE}.platform.releaseCatalogChanged`, serves: 'platform.releaseCatalogChanged', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/platform.ts`);
+  const process = unit('workflowProcess', 'toolCatalogRefresh', {
+    processId: 'toolCatalogRefresh',
+    trigger: { kind: 'event', event: 'platform.releaseCatalogChanged' },
+    functions: ['applyReleaseCatalog'],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/toolCatalogRefresh.ts`);
+  const manual = unit('workflowProcess', 'creation', { processId: 'creation', trigger: { kind: 'manual', actorRef: 'companyAdmin' }, functions: ['open'] }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/creation.ts`);
+  const service = [
+    'export interface ApplyReleaseCatalogInput { releaseLabel?: string; catalog: unknown[] }',
+    'export async function applyReleaseCatalog(input: ApplyReleaseCatalogInput, ctx: RequestContext): Promise<{ added: number }> { return { added: input.catalog.length }; }',
+  ].join('\n');
+  const serviceInfo = { project: PROJECT, level: 1, folder: `${MODULE}/layer_2_application/workflows`, shortName: 'toolCatalogRefresh', extension: '.ts' };
+  (globalThis as { mls: unknown }).mls = {
+    actualProject: PROJECT,
+    stor: {
+      files: { [keyOf(serviceInfo)]: { ...serviceInfo, status: 'changed', getContent: async () => service, getValueInfo: async () => ({ content: service }) } },
+      getKeyToFile: keyOf,
+    },
+  };
+  const read = async (ref: string) => (ref.replace(/^\//u, '') === PLATFORM_CATALOG_REF.replace(/^\//u, '') ? PLATFORM_CATALOG : null);
+  try {
+    const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform, process, manual], read } as never, platform);
+    const specifier = `/_${PROJECT}_/l1/${MODULE}/layer_2_application/workflows/toolCatalogRefresh.js`;
+    assert.deepEqual(loaded.workflowRoutes.map(item => [item.route, item.processId, item.specifier]), [[`${MODULE}.platform.releaseCatalogChanged`, 'toolCatalogRefresh', specifier]]);
+    assert.match(loaded.human, /## Workflow service of process toolCatalogRefresh \(the message of these routes starts it\)/u);
+    assert.match(loaded.human, /export async function applyReleaseCatalog\(input: ApplyReleaseCatalogInput/u);
+    assert.match(loaded.human, /builds the input of the entry function of the process/u);
+    assert.equal(loaded.human.includes('Workflow service of process creation'), false, 'a manual process is not the trigger of the serve');
+    assert.equal(loaded.human.includes('## Usecases of the routes'), false);
+    // The recorded file of the agents module (copy in fixtures/, 102047 f1c77478) calls the usecase and never the process: refused. A file that imports the service passes.
+    const recorded = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures/agentsPlatformRequest.recorded.txt'), 'utf8');
+    const refused = workflowRouteProblems(recorded, loaded.workflowRoutes);
+    assert.equal(refused.length, 1);
+    assert.match(refused[0], /reach the process toolCatalogRefresh: call its function from/u);
+    const draft = `import { applyReleaseCatalog } from '${specifier}';\nexport const requests = { '${MODULE}.platform.releaseCatalogChanged': async (input, ctx) => applyReleaseCatalog({ releaseLabel: input.releaseId, catalog: input.catalogs.flatMap(item => item.actions) }, ctx) };\n`;
+    assert.deepEqual(workflowRouteProblems(draft, loaded.workflowRoutes), []);
+    // A serve no process starts on: no workflow section and no route to the gate.
+    const plain = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [platform, manual], read } as never, platform);
+    assert.deepEqual(plain.workflowRoutes, []);
+    assert.equal(plain.human.includes('Workflow service of process'), false);
+  } finally {
+    (globalThis as { mls: unknown }).mls = previous;
+  }
 });

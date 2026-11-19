@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { exampleCatalog } from '/_102034_/testing/connections/connectionFixtures.js';
 import type { D1InputProblem, D1SelectedUsecase } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
-import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const catalogPath = path.resolve(here, '../../../../../mls-102034/l1/server/layer_1_external/connections/catalogs/cm.ts');
@@ -17,7 +17,7 @@ const catalogText = readFileSync(catalogPath, 'utf8');
 const MODULE = 'desk';
 const ENTITY = 'AgentExecution';
 
-function run(lines: D1ServeLine[], usecases: D1SelectedUsecase[] = []): { requests: ReturnType<typeof deriveServeRequests>; problems: D1InputProblem[]; usecases: D1SelectedUsecase[] } {
+function run(lines: D1ServeLine[], usecases: D1SelectedUsecase[] = [], processTriggers?: ReadonlySet<string>): { requests: ReturnType<typeof deriveServeRequests>; problems: D1InputProblem[]; usecases: D1SelectedUsecase[] } {
   const problems: D1InputProblem[] = [];
   const requests = deriveServeRequests({
     moduleName: MODULE,
@@ -28,6 +28,7 @@ function run(lines: D1ServeLine[], usecases: D1SelectedUsecase[] = []): { reques
     entities: { [ENTITY]: { entityId: ENTITY } },
     plannedIds: new Map(usecases.map(item => [item.usecaseId, `${item.entity}.${item.operation}`])),
     removedIds: new Set(),
+    ...(processTriggers ? { processTriggers } : {}),
   });
   return { requests, problems, usecases };
 }
@@ -159,4 +160,38 @@ void test('takeUsecase: a single usecase, with or without a call, still matches 
   const named = take([behaviorUsecase('updateAgentBehavior', 'cm.updateAgent')], ['cm.undoAgentChange']);
   assert.deepEqual(named.problems, []);
   assert.deepEqual(named.uses, ['updateAgentBehavior']);
+});
+
+// The triggers of the L4 processes of a module (copy of the shape of `agents/workflows.defs.ts`): one by event, one by actor.
+const WORKFLOWS = {
+  processes: [
+    { processId: 'creation', trigger: { kind: 'manual', actorRef: 'companyAdmin' } },
+    { processId: 'catalogRefresh', trigger: { kind: 'event', event: 'cm.record' } },
+    { processId: 'noEvent', trigger: { kind: 'event' } },
+  ],
+};
+
+void test('d1_206: the serve a process starts on takes no usecase from its effect', () => {
+  const triggers = processTriggerServes(WORKFLOWS);
+  assert.deepEqual([...triggers], ['cm.record']);
+  const { requests, problems, usecases } = run([
+    { connectionId: 'cm', operationId: 'record', entityRefs: [ENTITY], effect: 'create' },
+  ], [], triggers);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(requests[0]?.uses, []);
+  assert.equal(requests[0]?.serves, 'cm.record');
+  assert.equal(usecases.length, 0);
+});
+
+void test('d1_206: a serve no process starts on keeps the usecase of its effect', () => {
+  const { requests, usecases } = run([
+    { connectionId: 'cm', operationId: 'agentDraftReady', entityRefs: [ENTITY], effect: 'update' },
+  ], [], processTriggerServes(WORKFLOWS));
+  assert.deepEqual(requests[0]?.uses, ['updateAgentExecution']);
+  assert.equal(usecases.length, 1);
+});
+
+void test('d1_206: only an event trigger counts; a manual process or a workflows source without processes starts no serve', () => {
+  assert.equal(processTriggerServes({ processes: [{ processId: 'x', trigger: { kind: 'manual', event: 'cm.record' } }] }).size, 0);
+  assert.equal(processTriggerServes({}).size, 0);
 });

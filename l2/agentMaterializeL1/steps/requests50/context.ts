@@ -376,6 +376,24 @@ export function workflowRoutes(units: readonly M12Unit[], requestDef: Record<str
   return out;
 }
 
+/**
+ * The serve routes whose message starts a process (d1_206): the L4 trigger `{ kind: 'event', event }` of a process equals the
+ * `serves` mark of the route (`<connectionId>.<operationId>`). The route hands the message to the process instead of a
+ * usecase, so it reaches the workflow service the same way a route of a page does.
+ */
+export function eventWorkflowRoutes(units: readonly M12Unit[], serves: readonly { route: string; serves: string }[], project: number, moduleName: string): M12WorkflowRoute[] {
+  const out: M12WorkflowRoute[] = [];
+  for (const process of units.filter(unit => unit.definition.artifactType === 'workflowProcess')) {
+    const trigger = process.definition.data.trigger;
+    if (!isRecord(trigger) || trigger.kind !== 'event' || typeof trigger.event !== 'string' || !trigger.event) continue;
+    const processId = String(process.definition.data.processId ?? process.unitId);
+    for (const item of serves.filter(row => row.serves === trigger.event)) {
+      out.push({ route: item.route, processId, operation: `event ${trigger.event}`, specifier: moduleSpecifier(workflowFile(project, moduleName, processId)) });
+    }
+  }
+  return out;
+}
+
 /** A page whose routes reach a process and a file that never imports its workflow service. */
 export function workflowRouteProblems(code: string, routes: readonly M12WorkflowRoute[]): string[] {
   const missing = new Map<string, M12WorkflowRoute[]>();
@@ -547,9 +565,26 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       if (shown) parts.push(shown);
     }
   }
+  const flows = eventWorkflowRoutes(ctx.units, marks.map(mark => ({
+    route: String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`),
+    serves: `${mark.connectionId}.${mark.operationId}`,
+  })), project, moduleName);
+  for (const specifier of [...new Set(flows.map(item => item.specifier))]) {
+    const items = flows.filter(item => item.specifier === specifier);
+    const info = infoOfRef(specifier, project);
+    const generated = info ? await readOptional(info) : null;
+    parts.push(section(`Workflow service of process ${items[0].processId} (the message of these routes starts it)`, [
+      ...items.map(item => `- ${item.route}: ${item.operation}`),
+      '',
+      `Import from \`${specifier}\`. The route does not call a usecase for this message: it checks the catalog input as above, builds the input of the entry function of the process (the one that opens the occurrence, chosen by its signature and by the l4 prose) from the message, calls it with \`ctx\`, and returns the catalog output. The function owns the occurrence and the writes; the route does not repeat them.`,
+      generated ? fence('ts', exportSignatures(generated)) : '(the workflow service was not generated: the phase before this one failed for it)',
+    ].join('\n')));
+  }
   for (const mark of marks) {
     const target = entityOfServe(mark.row);
     if (target.effect !== 'create' || !target.entityId) continue;
+    // The process the message starts owns the write and its repeat: no repeat path of the route.
+    if (flows.some(flow => flow.route === String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`))) continue;
     const port = ctx.units.find(item => item.definition.artifactType === 'repositoryPort' && String(item.definition.data.entityId ?? '') === target.entityId);
     if (!port || !portReadsById(port)) {
       throw new Error(`SERVE_READ_BY_ID_MISSING: the port of ${target.entityId} has no get by id, so a creating serve route has no repeat path.`);
@@ -581,7 +616,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     routes,
     contractRef: connectionCatalogRef(marks[0]?.connectionId ?? pageId),
     mdmInputs: [],
-    workflowRoutes: [],
+    workflowRoutes: flows,
     externalEnums: [],
     serveUses,
     human: parts.join('\n'),

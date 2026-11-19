@@ -42,6 +42,11 @@ export interface DeriveServeInput {
   /** usecaseId → `entity.operation` already in the plan, every status. */
   plannedIds: ReadonlyMap<string, string>;
   removedIds: ReadonlySet<string>;
+  /**
+   * `<connectionId>.<operationId>` of every serve an L4 process starts on (`trigger.kind: 'event'`, `trigger.event`).
+   * That serve hands the message to the process; it takes no usecase from its `effect` (d1_206).
+   */
+  processTriggers?: ReadonlySet<string>;
 }
 
 interface CatalogOperation {
@@ -49,6 +54,18 @@ interface CatalogOperation {
   direction: string;
   kind: string;
   inputType: string;
+}
+
+/** The serves the processes of the L4 `workflows` start on: `trigger.event` of each `kind: 'event'` process. */
+export function processTriggerServes(workflows: Readonly<Record<string, unknown>>): Set<string> {
+  const events = new Set<string>();
+  const processes: unknown = workflows.processes;
+  if (!Array.isArray(processes)) return events;
+  for (const process of processes) {
+    const trigger = isRecord(process) ? process.trigger : undefined;
+    if (isRecord(trigger) && trigger.kind === 'event' && typeof trigger.event === 'string' && trigger.event) events.add(trigger.event);
+  }
+  return events;
 }
 
 /**
@@ -163,7 +180,7 @@ function oneServe(input: DeriveServeInput, line: D1ServeLine): D1SelectedRequest
   const writes = entity && effect ? `${entity}.${effect}` : '';
   const uses: string[] = [];
   const operationName = entity && effect ? OPERATION_OF_EFFECT[effect] : '';
-  if (entity && effect && operationName) {
+  if (entity && effect && operationName && !input.processTriggers?.has(serves)) {
     takeUsecase({
       problems: input.problems,
       path,

@@ -33,7 +33,7 @@ import {
 } from '/_102021_/l2/agentDefsL1/steps/input20/contracts.js';
 import { requestServiceDefPath } from '/_102021_/l2/agentDefsL1/helpers/d1Refs.js';
 import { applyResolutions } from '/_102021_/l2/agentDefsL1/steps/input20/deriveRequest.js';
-import { deriveServeRequests, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
+import { deriveServeRequests, processTriggerServes, takeUsecase, type D1ServeLine } from '/_102021_/l2/agentDefsL1/steps/input20/deriveServe.js';
 import { externalCallsOf, routeCallsOf, splitExternalUsecases } from '/_102021_/l2/agentDefsL1/steps/input20/externalCalls.js';
 import type {
   PoolBackendEndpoint,
@@ -315,6 +315,7 @@ export function buildD1InputSnapshot(
     entities: artifacts.entities,
     plannedIds: planned.ids,
     removedIds: planned.removed,
+    processTriggers: processTriggerServes(workflows),
   }));
   for (const usecase of selectedUsecases) {
     usecase.routes = requests.filter(request => request.uses.includes(usecase.usecaseId)).map(request => request.route);

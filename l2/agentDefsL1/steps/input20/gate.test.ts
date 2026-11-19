@@ -691,6 +691,24 @@ void test('a serve that creates plans the connection controller, the request ser
   assert.equal(snapshot.problems.some(problem => problem.code === 'CONNECTION_CATALOG_MISSING'), false);
 });
 
+void test('d1_206: the serve a process starts on (L4 trigger event) plans no usecase from its effect; the same serve with no process does', () => {
+  const free = withServe('record', 'create', 'MovimentacaoEstoque');
+  free.catalogTexts = { cm: catalogText };
+  const freeRequest = build(free).selection.requests.find(item => item.serves === 'cm.record');
+  assert.deepEqual(freeRequest?.uses, ['createMovimentacaoEstoque']);
+
+  const started = withServe('record', 'create', 'MovimentacaoEstoque');
+  started.catalogTexts = { cm: catalogText };
+  const workflows = started.workflows as { processes: Array<Record<string, unknown>> };
+  workflows.processes = [...(workflows.processes ?? []), { processId: 'recordIntake', trigger: { kind: 'event', event: 'cm.record' }, tasks: [] }];
+  const snapshot = build(started);
+  const request = snapshot.selection.requests.find(item => item.serves === 'cm.record');
+  assert.ok(request);
+  assert.deepEqual(request.uses, []);
+  assert.equal(request.route, `${MODULE}.cm.record`);
+  assert.equal(snapshot.problems.some(problem => problem.code === 'USECASE_FROM_CONTRACT' && problem.ownerRef === 'createMovimentacaoEstoque'), false);
+});
+
 void test('a connection id that matches a page is refused and is not merged into that page', () => {
   const artifacts = withServe('describe', undefined, undefined);
   const integration = artifacts.integration as { connections: Array<Record<string, unknown>> };
