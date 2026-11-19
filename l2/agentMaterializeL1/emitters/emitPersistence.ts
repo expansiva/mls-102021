@@ -499,7 +499,10 @@ function gatewayMethod(connectionId: string, item: CatalogOperation): string {
     lines.push(`      if (opts?.expectVersion === undefined) throw new AppError('invalid', ${JSON.stringify(`${item.operationId} requires expectVersion.`)}, 400);`);
   }
   lines.push(
-    `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, opts);`,
+    // d1_214: the id of the request the app is serving ties the call record to it. An id the caller passed wins; the other keys stay.
+    '      const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;',
+    '      const callOptions = requestId === undefined ? opts : { ...opts, requestId };',
+    `      const result = await callConnection(${JSON.stringify(connectionId)}, ${JSON.stringify(item.operationId)}, input, { actorMdmId: ctx.sessionContext.person?.mdmId }, callOptions);`,
     '      if (!result.ok) throw new AppError(result.code, result.message, STATUS[result.code]);',
     `      return result.output as ${item.outputType};`,
     '    },',

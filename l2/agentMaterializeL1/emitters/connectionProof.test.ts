@@ -301,3 +301,43 @@ test('one operation cited by two consumers emits one gateway method', async () =
   if ('code' in outbound) return;
   assert.equal(outbound.source.split('  updateAgent(input: CmUpdateAgentInput, ctx: RequestContext').length - 1, 1);
 });
+
+test('d1_214: the emitted gateway ties the call to the request being served, and keeps what the caller passed', async () => {
+  const outbound = await emitPersistence('persistence.integrationOutbound', envelope({
+    artifactType: 'integrationOutbound',
+    artifactId: 'outbound',
+    dependencies: [],
+    data: { integrationId: 'outbound', events: [], connections: CONNECTIONS },
+  }), OUTBOUND_DEF.replace(/\.defs\.ts$/, '.ts'), async ref => ref === CM_DEFS ? CM_SOURCE : null);
+  assert.equal('code' in outbound, false);
+  if ('code' in outbound) return;
+  // The text: one rule for every method of every connection.
+  const methods = outbound.source.split('\n').filter(line => line.includes('await callConnection('));
+  assert.equal(methods.length > 1, true);
+  assert.equal(methods.every(line => line.endsWith(', callOptions);')), true, 'every call goes with the merged options');
+  assert.equal(outbound.source.split("const requestId = opts?.requestId ?? ctx.requestMeta?.requestId;").length - 1, methods.length);
+
+  const fake = createFakeCallConnection({
+    'cm.listAgents': { output: { agents: [] } },
+    'cm.updateAgent': { output: {} },
+  });
+  const loaded = await loadOutbound(outbound.source, fake);
+  const withMeta = { sessionContext: { person: { mdmId: 'person-1' } }, requestMeta: { requestId: 'req-1' } } as unknown as RequestContext;
+  const withoutMeta = { sessionContext: { person: { mdmId: 'person-1' } } } as RequestContext;
+  const gateway = (ctx: RequestContext) => loaded.createCmGateway(ctx) as unknown as Record<string, (input: unknown, ctx: RequestContext, opts?: Record<string, unknown>) => Promise<unknown>>;
+
+  await gateway(withMeta).listAgents({}, withMeta);
+  assert.deepEqual(fake.calls[0]?.opts, { requestId: 'req-1' }, 'the id of the request goes in opts');
+  assert.deepEqual(fake.calls[0]?.context, { actorMdmId: 'person-1' }, 'and never in the context that goes to the cm');
+
+  await gateway(withMeta).updateAgent({}, withMeta, { expectVersion: 3, idempotencyKey: 'k1' });
+  assert.deepEqual(fake.calls[1]?.opts, { expectVersion: 3, idempotencyKey: 'k1', requestId: 'req-1' }, 'what the caller passed stays');
+
+  await gateway(withMeta).listAgents({}, withMeta, { requestId: 'explicit' });
+  assert.equal((fake.calls[2]?.opts as { requestId?: string }).requestId, 'explicit', 'an id the caller passed wins');
+
+  await gateway(withoutMeta).listAgents({}, withoutMeta);
+  assert.equal('requestId' in (fake.calls[3]?.opts ?? {}), false, 'a routine or a tick has no request: the id is absent, no error');
+  await gateway(withoutMeta).updateAgent({}, withoutMeta, { expectVersion: 4 });
+  assert.deepEqual(fake.calls[4]?.opts, { expectVersion: 4 });
+});

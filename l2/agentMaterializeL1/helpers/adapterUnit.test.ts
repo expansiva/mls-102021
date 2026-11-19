@@ -6,7 +6,7 @@ import test from 'node:test';
 import { M1_DEFINITION_SCHEMA, renderDefinition, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { M12_LAYERS, buildM12PlannedSteps } from '/_102021_/l2/agentMaterializeL1/helpers/m12Core.js';
 import { blockingDependencies, createContext, unitNeedsLlm, unitInputHash } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
-import { loadModuleUnits, selectUnits, selectedLayers, storEntries, type M12StorEntry } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
+import { loadModuleUnits, registersModule, selectUnits, selectedLayers, storEntries, type M12StorEntry } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
 import type { M12FileInfo } from '/_102021_/l2/agentMaterializeL1/helpers/m12Names.js';
 
 const PROJECT = 102099;
@@ -84,4 +84,32 @@ void test('d1_209: the adapter waits for its declaration and hashes it', async (
   const before = await unitInputHash(ctx, adapter);
   put(files, FOLDER, 'repoHost', '.ts', 'export default { changed: true };');
   assert.notEqual(await unitInputHash(ctx, adapter), before, 'a new declaration is a new input of the adapter');
+});
+
+void test('d1_214: a target on the outbound def redoes only the gateway: one unit, the persistence phase, no registration', async () => {
+  const files = install();
+  const outbound: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA, artifactType: 'integrationOutbound', artifactId: 'outbound', moduleName: MODULE, status: 'pending', dependencies: [],
+    data: { integrationId: 'outbound', events: [], connections: [{ connectionId: 'repoHost', operationId: 'listChanges', consumer: 'pickProject' }] },
+  };
+  const usecase: M1Definition = {
+    schemaVersion: M1_DEFINITION_SCHEMA, artifactType: 'usecase', artifactId: 'pickProject', moduleName: MODULE, status: 'pending', dependencies: [],
+    data: { usecaseId: 'pickProject', entityId: 'Review', operation: 'custom', rulesApplied: [], effects: [] },
+  };
+  const render = (definition: M1Definition, folder: string) => {
+    const rendered = renderDefinition(definition, `_${PROJECT}_/l1/${MODULE}/${folder}/${definition.artifactId}.defs.ts`);
+    assert.ok('source' in rendered);
+    return rendered.source;
+  };
+  put(files, `${MODULE}/layer_1_external/adapters/integration`, 'outbound', '.defs.ts', render(outbound, 'layer_1_external/adapters/integration'));
+  put(files, `${MODULE}/layer_2_application/usecases`, 'pickProject', '.defs.ts', render(usecase, 'layer_2_application/usecases'));
+  put(files, FOLDER, 'repoHost', '.defs.ts', defText());
+  const loaded = await loadModuleUnits(PROJECT, MODULE, storEntries());
+  const run = { project: PROJECT, module: MODULE, scope: '', target: `_${PROJECT}_/l1/${MODULE}/layer_1_external/adapters/integration/outbound.defs.ts`, force: false };
+  const selected = selectUnits(PROJECT, MODULE, loaded.units, run);
+  assert.deepEqual(selected.map(unit => [unit.layer, unit.unitId]), [['persistence', 'outbound']]);
+  assert.equal(selected.every(unit => !unitNeedsLlm(unit)), true, 'the gateway is written by code: no model');
+  assert.equal(registersModule(run, MODULE), false);
+  const steps = buildM12PlannedSteps(PROJECT, run, [{ module: MODULE, layers: selectedLayers(selected), register: registersModule(run, MODULE) }]);
+  assert.deepEqual(steps.map(step => step.stepTitle), [`Materialize persistence (${MODULE})`, `Materialize reference seed rows (${MODULE})`, `Materialization report (${MODULE})`]);
 });
