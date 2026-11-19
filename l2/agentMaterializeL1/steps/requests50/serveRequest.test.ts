@@ -329,3 +329,26 @@ void test('d1_208 s3: a serve of a system this module declares is typed by the g
     /DECLARATION_NOT_GENERATED/u,
   );
 });
+
+void test('d1_211 s2: the recorded route of a serve of an outside system takes the message as the declaration types it, passes the gate and never checks the notice', async () => {
+  const dir = path.dirname(new URL(import.meta.url).pathname);
+  const l4 = readFileSync(path.join(dir, '../../../helpers/connections/fixtures/repoInsideModule.integration.recorded.txt'), 'utf8');
+  const declaration = readFileSync(path.join(dir, '../external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
+  const route = readFileSync(path.join(dir, 'fixtures/repoHostServeRoute.recorded.txt'), 'utf8');
+  const service = unit('requestService', 'repoHost', {
+    pageId: 'repoHost',
+    requests: [{ route: `${MODULE}.repoHost.changePushed`, serves: 'repoHost.changePushed', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/repoHost.ts`);
+  const read = async (ref: string) => {
+    const key = ref.replace(/^\//u, '');
+    if (key === `_${PROJECT}_/l4/${MODULE}/integration.defs.ts`) return l4;
+    if (key === `_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/repoHost.ts`) return declaration;
+    return null;
+  };
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service], read } as never, service);
+  assert.equal(loaded.contractsInterface.includes('RepoHostChangePushedInput'), true, 'the input is the inputType of the declaration');
+  const gate = { header: route.split('\n')[0], contractsInterface: loaded.contractsInterface, routes: loaded.routes, project: PROJECT, moduleName: MODULE, pageId: 'repoHost', waived: new Set<string>(), catalogSpecifiers: loaded.catalogSpecifiers };
+  assert.deepEqual(requestGate(route, gate), []);
+  // The notice is checked by the platform hook before the route: no primitive, no secret, no header read here.
+  assert.equal(/verifyExternalNotice|\.secret|secret|signature|headers/iu.test(route.replace(/^\/\/.*$/gmu, '')), false);
+});

@@ -1,0 +1,10 @@
+/// <mls fileReference="_102099_/l1/agents/layer_2_application/requests/repoHost.ts" enhancement="_blank"/>
+import type { RequestContext } from '/_102034_/l1/server/layer_2_controllers/contracts.js';
+import type { RepoHostChangePushedInput, RepoHostChangePushedOutput } from '/_102099_/l1/agents/layer_1_external/connections/repoHost.js';
+
+// The platform already checked the signature and dropped a repeated notice: this route only acts on the message.
+export const requests: { 'agents.repoHost.changePushed': (input: RepoHostChangePushedInput, ctx: RequestContext) => Promise<RepoHostChangePushedOutput> } = {
+  'agents.repoHost.changePushed': async function (input, ctx) {
+    return await ctx.data.moduleData.runInTransaction(async () => ({ accepted: input.change.id !== '' }));
+  },
+};

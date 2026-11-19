@@ -49,9 +49,19 @@ export function fixedPart(facts: ExternalFacts): Record<string, unknown> {
     systemId: facts.systemId,
     title: facts.title,
     description: facts.description,
-    settings: facts.settings.map(item => ({ id: item.id, secret: item.secret })),
+    settings: settingsOf(facts),
     operations: facts.operations.map(item => ({ operationId: item.operationId, direction: item.direction, description: item.description })),
   };
+}
+
+/** The settings of the declaration, as code writes them: id, secret flag and the texts of the L4 (d1_211; a text the L4 does not have is left out). */
+export function settingsOf(facts: ExternalFacts): Array<Record<string, unknown>> {
+  return facts.settings.map(item => ({
+    id: item.id,
+    ...(item.title ? { title: item.title } : {}),
+    ...(item.description ? { description: item.description } : {}),
+    secret: item.secret,
+  }));
 }
 
 /** The lines of `connections[]` of the L4 that name the system: what each operation is used for. Empty when the file is not readable. */
@@ -87,6 +97,42 @@ export function defaultObjectStart(code: string): number {
   }
   const direct = /export\s+default\s*\{/u.exec(code);
   return direct ? direct.index + direct[0].length - 1 : -1;
+}
+
+/** Where the declaration object starts and ends (the closing brace included) in the file; null when it is not a closed object. */
+export function declarationRange(code: string): { start: number; end: number } | null {
+  const start = defaultObjectStart(code);
+  if (start < 0) return null;
+  let depth = 0;
+  let quote = '';
+  for (let at = start; at < code.length; at += 1) {
+    const char = code[at];
+    if (quote) {
+      if (char === '\\') at += 1;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char;
+    else if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return { start, end: at + 1 };
+    }
+  }
+  return null;
+}
+
+/**
+ * Copies the settings of the L4 into the answer by code: the model analyses the rest of the declaration, and what the L4 already says
+ * (id, secret flag, title, description) is never its to retype (d1_211). An answer whose object cannot be read is returned as it came:
+ * the gate refuses it with its own message.
+ */
+export function withFixedSettings(code: string, facts: ExternalFacts): string {
+  const range = declarationRange(code);
+  const literal = declarationLiteral(code);
+  if (!range || 'problem' in literal || !isRecord(literal.value)) return code;
+  const value = { ...literal.value, settings: settingsOf(facts) };
+  return `${code.slice(0, range.start)}${JSON.stringify(value, null, 2)}${code.slice(range.end)}`;
 }
 
 export function declarationLiteral(code: string): { value: unknown } | { problem: string } {
@@ -144,9 +190,10 @@ export function declarationProblems(code: string, facts: ExternalFacts, header: 
   if (value.title !== facts.title) problems.push('title must be the title of the L4 system, as written.');
   if (value.description !== facts.description) problems.push('description must be the description of the L4 system, as written.');
   const settings = list(value.settings);
-  const wanted = facts.settings.map(item => `${item.id}:${item.secret}`);
-  const given = settings.map(item => `${text(item.id)}:${item.secret === true}`);
-  if (!sameSet(given, wanted)) problems.push(`settings must be exactly those of the L4, with the same secret flag: ${wanted.join(', ') || '(none)'}. Found: ${given.join(', ') || '(none)'}.`);
+  const key = (item: { id: unknown; secret: unknown; title?: unknown; description?: unknown }) => `${text(item.id)}:${item.secret === true}:${text(item.title)}:${text(item.description)}`;
+  const wanted = settingsOf(facts).map(key);
+  const given = settings.map(key);
+  if (!sameSet(given, wanted)) problems.push(`settings must be exactly those of the L4, with the same secret flag and the same title and description: ${wanted.join(', ') || '(none)'}. Found: ${given.join(', ') || '(none)'}.`);
   const operations = list(value.operations);
   const operationIds = operations.map(item => text(item.operationId));
   const missing = facts.operations.filter(item => !operationIds.includes(item.operationId));

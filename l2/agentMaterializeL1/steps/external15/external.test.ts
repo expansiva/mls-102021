@@ -8,7 +8,7 @@ import test from 'node:test';
 import { declaredSystemsOf, DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { parseD1Source } from '/_102021_/l2/agentDefsL1/steps/input20/source.js';
 import type { M12Unit } from '/_102021_/l2/agentMaterializeL1/helpers/m12Units.js';
-import { declarationLiteral, externalFacts, fixedPart } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
+import { declarationLiteral, externalFacts, fixedPart, withFixedSettings } from '/_102021_/l2/agentMaterializeL1/steps/external15/declaration.js';
 import { externalAnswerProblems, loadExternalContext } from '/_102021_/l2/agentMaterializeL1/steps/external15/context.js';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
@@ -83,7 +83,10 @@ void test('d1_208 s2: no fixed text of the phase names a service, a module or a 
 void test('d1_208 s2: the part code writes is the L4 and nothing the model decides', () => {
   const fixed = fixedPart(externalFacts(unit().definition.data));
   assert.deepEqual(Object.keys(fixed), ['schemaVersion', 'systemId', 'title', 'description', 'settings', 'operations']);
-  assert.deepEqual(fixed.settings, [{ id: 'repositoryAddress', secret: false }, { id: 'accessKey', secret: true }]);
+  assert.deepEqual(fixed.settings, [
+    { id: 'repositoryAddress', title: 'Repository address', description: 'The repository the project lives in.', secret: false },
+    { id: 'accessKey', title: 'Access key', description: 'Lets the module read the repository.', secret: true },
+  ]);
   assert.deepEqual((fixed.operations as Array<{ operationId: string }>).map(item => item.operationId), ['listChanges', 'changePushed']);
 });
 
@@ -124,4 +127,41 @@ void test('d1_208 s2: the file is data: another import, a call that reaches out 
   assert.match(await problems(ANSWER.replace('"schemaVersion"', 'schemaVersion')), /JSON syntax/u);
   assert.match(await problems(ANSWER.replace('export default declaration;', '')), /default-export the declaration/u);
   assert.match(await problems(ANSWER.replace(/^[^\n]*\n/u, '')), /must start with the line/u);
+});
+
+void test('d1_211 s1: the recorded declaration with a verify and a noticeId passes; a serve with no noticeId passes too; a noticeId of a wrong shape is refused', async () => {
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), ANSWER), []);
+  assert.match(ANSWER, /"noticeId": \{ "header": "x-change-id" \}/u);
+  const without = mutated(d => { delete d.operations[1].noticeId; });
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), without), [], 'a notice with no identifier is accepted: the platform does not deduplicate it');
+  const pointer = mutated(d => { d.operations[1].noticeId = { jsonPointer: '/data/id' }; });
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), pointer), []);
+  const refused = async (noticeId: unknown) => (await externalAnswerProblems(ctx, unit(), mutated(d => { d.operations[1].noticeId = noticeId; }))).filter(item => item.startsWith('Declaration:'));
+  assert.match((await refused({ cookie: 'a' })).join('\n'), /must be \{ header \} or \{ jsonPointer \}/u);
+  assert.match((await refused({ header: 'a', jsonPointer: '/b' })).join('\n'), /must be \{ header \} or \{ jsonPointer \}/u);
+  assert.match((await refused({ jsonPointer: 'data/id' })).join('\n'), /must start with \//u);
+  assert.match((await refused('x-change-id')).join('\n'), /noticeId is not an object/u);
+});
+
+void test('d1_211 s1: the title and the description of each setting come from the L4 by code, whatever the model wrote', async () => {
+  // The model dropped the texts and retyped one: the code puts the L4 ones back before the gate.
+  const model = mutated(d => { d.settings = [{ id: 'repositoryAddress', secret: false }, { id: 'accessKey', title: 'Chave', description: 'outra', secret: true }]; });
+  const facts = externalFacts(unit().definition.data);
+  assert.ok((await externalAnswerProblems(ctx, unit(), model)).some(item => item.startsWith('settings must be exactly those of the L4')));
+  const copied = withFixedSettings(model, facts);
+  assert.deepEqual(await externalAnswerProblems(ctx, unit(), copied), []);
+  const literal = declarationLiteral(copied);
+  assert.ok('value' in literal);
+  assert.deepEqual((literal.value as { settings: unknown }).settings, fixedPart(facts).settings);
+  assert.match(copied, /Lets the module read the repository\./u);
+  // Everything the model analysed stays: hosts, kinds, types, methods, verify and the notice id.
+  assert.deepEqual((literal.value as { operations: unknown }).operations, (declarationLiteral(ANSWER) as { value: { operations: unknown } }).value.operations);
+  assert.equal(copied.startsWith(ANSWER.slice(0, ANSWER.indexOf('const declaration'))), true, 'the types before the object are untouched');
+  assert.equal(copied.endsWith('export default declaration;\n'), true);
+  // An answer whose object cannot be read is returned as it came: the gate refuses it with its own message.
+  const broken = ANSWER.replace('"schemaVersion"', 'schemaVersion');
+  assert.equal(withFixedSettings(broken, facts), broken);
+  // A setting the L4 gives no text keeps only id and secret.
+  const bare = { ...facts, settings: [{ id: 'x', title: '', description: '', secret: false }] };
+  assert.deepEqual(fixedPart(bare).settings, [{ id: 'x', secret: false }]);
 });
