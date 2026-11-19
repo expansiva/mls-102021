@@ -113,6 +113,13 @@ export function siblingDeclarationMissing(connectionId: string, moduleName: stri
 export const DECLARATION_TYPES_REF = '_102034_/l1/server/layer_1_external/connections/external/types.ts';
 export const DECLARATION_TYPES_IMPORT = '/_102034_/l1/server/layer_1_external/connections/external/types.js';
 
+/** The object of an L4 integration artifact (`export const x = { ... } as const ...;`, JSON keys), read without evaluating it. Null when it is not one. */
+export function integrationOf(source: string | null): unknown {
+  const match = source ? /=\s*(\{[\s\S]*\})\s*(?:as const)?\s*(?:satisfies[^;]*)?;/u.exec(source) : null;
+  if (!match) return null;
+  try { return JSON.parse(match[1]) as unknown; } catch { return null; }
+}
+
 /** The project registry the NS5 keeps: the list of the modules of the project (`l5/config.json` lists none). */
 export const REGISTRY_LOGICAL_PATH = 'l4/organization/registry.defs.ts';
 

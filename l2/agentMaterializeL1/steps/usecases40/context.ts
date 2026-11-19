@@ -4,6 +4,7 @@
 // the text of every rule of the module) and the def as the intent (entity, operation, transition, rulesApplied, effects:
 // materializadorL1.md §10), plus the recipe attempt and platform signatures.
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { emitUsecase, emittedValueExports, ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
@@ -265,7 +266,7 @@ export async function connectionGatewaySection(ctx: M12Context, functionName: st
   }
   for (const connectionId of [...byConnection.keys()].sort()) {
     const gateway = gatewayNameOf(connectionId);
-    const catalogSource = await ctx.read(catalogFilePath(connectionId));
+    const catalogSource = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, connectionId)).source;
     const catalog = (catalogSource ? catalogOperations(catalogSource) : null) ?? [];
     const lines = (byConnection.get(connectionId) ?? []).map(row => {
       const operation = catalog.find(item => item.operationId === row.operationId);

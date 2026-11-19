@@ -3,6 +3,7 @@
 // One deterministic unit: emit from the def with the copied recipes, gate, write, compile in the Studio, check
 // the rules, record the status. The LLM usecase worker reuses the write/compile/record half.
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { DECLARATION_TYPES_REF } from '/_102021_/l2/helpers/connections/catalogResolve.js';
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { auditImports, emitController, emitValueObject, type EmitFailure, type EmitResult } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
@@ -206,8 +207,8 @@ export async function unitInputHash(ctx: M12Context, unit: M12Unit, extra: reado
     if (connectionIds.length) {
       // A serve request is derived from the connection catalog. A page request still hashes only its page contract.
       for (const connectionId of connectionIds) {
-        const ref = catalogFilePath(connectionId);
-        parts.push(ref, (await ctx.read(ref)) ?? '<absent>');
+        const found = await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, connectionId);
+        parts.push(found.ref, found.source ?? '<absent>');
       }
     } else {
       // The page contract is the source of truth of a request service: its routes, JSDoc and types.

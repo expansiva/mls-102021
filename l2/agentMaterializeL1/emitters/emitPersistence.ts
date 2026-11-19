@@ -7,6 +7,7 @@
  * destructive step is a block, never a DROP. The plan is not an applied migration.
  */
 
+import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { catalogOperations, type CatalogOperation } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { withProcessMethods } from '/_102021_/l2/agentMaterializeL1/emitters/processPorts.js';
 import {
@@ -442,17 +443,20 @@ async function renderConnectionGateways(output: string, rows: readonly Connectio
   const blocks: string[] = [];
   const imports = [APP_CONTRACTS, CALL_CONNECTION];
   for (const connectionId of [...byConnection.keys()].sort()) {
-    const catalogRef = catalogFilePath(connectionId);
-    const source = await read(catalogRef);
+    // The platform file, or the declaration of a system this module or a sibling declares (d1_208).
+    const owner = l1OwnerOfRef(output);
+    const found = owner ? await connectionCatalogSource(read, owner.project, owner.moduleName, connectionId) : null;
+    const catalogRef = found?.ref ?? catalogFilePath(connectionId);
+    const source = found ? found.source : await read(catalogRef);
     const operations = source ? catalogOperations(source) : null;
-    if (!operations) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} was not read. No gateway was written.` };
+    if (!operations) return { code: found?.problem?.code ?? 'CONNECTION_CATALOG_MISSING', detail: `${found?.problem?.detail ?? `${catalogRef} was not read.`} No gateway was written.` };
     const used: CatalogOperation[] = [];
     for (const row of byConnection.get(connectionId) ?? []) {
       const operation = operations.find(item => item.operationId === row.operationId);
       if (!operation) return { code: 'OPERATION_NOT_IN_CATALOG', detail: `${connectionId}.${row.operationId} is not in the catalog. No gateway was written.` };
       used.push(operation);
     }
-    const specifier = catalogImportPath(connectionId);
+    const specifier = found?.importPath ?? catalogImportPath(connectionId);
     imports.push(specifier);
     const typeNames = [...new Set(used.flatMap(item => [item.inputType, item.outputType]))].sort();
     const gateway = `${connectionId.charAt(0).toUpperCase()}${connectionId.slice(1)}Gateway`;

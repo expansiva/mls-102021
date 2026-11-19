@@ -5,6 +5,7 @@
 // the occurrence entity and its port, the module engine, the runtime engine signatures and the record-id rule.
 // And the gate of its answer.
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { PLATFORM_FILES } from '/_102021_/l2/agentMaterializeL1/emitters/context.js';
 import { ontologyRef } from '/_102021_/l2/agentMaterializeL1/emitters/emit.js';
@@ -715,7 +716,7 @@ export function workflowGate(code: string, input: { header: string; facts: M12Wo
 
 /** The catalog input type of a call, resolved (d1_200). Null when the catalog or the operation is not readable. */
 async function catalogInputOf(ctx: M12Context, call: { connectionId: string; operationId: string }): Promise<{ type: string; text: string } | null> {
-  const source = await ctx.read(catalogFilePath(call.connectionId));
+  const source = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, call.connectionId)).source;
   const operation = source ? catalogOperations(source)?.find(item => item.operationId === call.operationId) : undefined;
   if (!source || !operation) return null;
   const resolved = await resolveInputType({ entry: source, typeName: operation.inputType, readImport: async specifier => (specifier.startsWith('/_') ? ctx.read(specifier.replace(/\.js$/u, '.ts')) : null) });

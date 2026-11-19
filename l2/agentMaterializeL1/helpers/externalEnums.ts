@@ -6,6 +6,7 @@
 // the model: an equal count asks for a typed map, a different count fails the unit. The pair of each value is the
 // model's choice, by meaning. The gate checks that the map is complete and one to one.
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { catalogFieldUnion, catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { connectionRowsOf, externalEntityIds } from '/_102021_/l2/agentMaterializeL1/helpers/m12Gates.js';
 import type { M12Context } from '/_102021_/l2/agentMaterializeL1/helpers/m12Materialize.js';
@@ -63,7 +64,7 @@ export async function externalEnumPairs(ctx: M12Context, usecases: readonly M12U
     if (!external.has(entityId)) continue;
     const row = rows.find(item => item.consumer === usecaseId || item.consumer === unit.unitId);
     if (!row) continue;
-    const catalog = await ctx.read(catalogFilePath(row.connectionId));
+    const catalog = (await connectionCatalogSource(ctx.read, ctx.run.project, ctx.run.module, row.connectionId)).source;
     const operation = catalog ? catalogOperations(catalog)?.find(item => item.operationId === row.operationId) : undefined;
     if (!catalog || !operation) continue;
     const ontology = await ctx.read(`_${ctx.run.project}_/l4/${ctx.run.module}/ontology/${entityId}.defs.ts`);

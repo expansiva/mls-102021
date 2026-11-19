@@ -4,6 +4,7 @@
 // rules, access), the request-service def, the recipe attempt, the generated usecases it may call, the rule
 // texts and the platform signatures.
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { systemIdentity } from '/_102021_/l2/helpers/l1Defs/disclosure.js';
 import { requestsObjectBodies } from '/_102021_/l2/agentMaterializeL1/helpers/codeScan.js';
@@ -505,12 +506,15 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
   const pageId = String(unit.definition.data.pageId ?? unit.unitId);
   const marks = serveMarks(unit.definition.data);
   const header = `/// <mls fileReference="${unit.outputRef}" enhancement="_blank"/>`;
+  // The platform file, or the declaration of a system this module (or a sibling) declares and generated (d1_208).
   const byConnection = new Map<string, string>();
+  const catalogRefs = new Map<string, { ref: string; importPath: string }>();
   for (const mark of marks) {
     if (byConnection.has(mark.connectionId)) continue;
-    const text = await ctx.read(connectionCatalogRef(mark.connectionId));
-    if (!text) throw new Error(`CONNECTION_CATALOG_MISSING: ${connectionCatalogRef(mark.connectionId)}`);
-    byConnection.set(mark.connectionId, text);
+    const found = await connectionCatalogSource(ctx.read, project, moduleName, mark.connectionId);
+    if (!found.source) throw new Error(`${found.problem?.code ?? 'CONNECTION_CATALOG_MISSING'}: ${found.problem?.detail ?? found.ref}`);
+    byConnection.set(mark.connectionId, found.source);
+    catalogRefs.set(mark.connectionId, { ref: found.ref, importPath: found.importPath });
   }
   const typed: { route: string; inputType: string; outputType: string; specifier: string }[] = [];
   const catalogSections: string[] = [];
@@ -523,7 +527,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
       throw new Error(`OPERATION_NOT_IN_CATALOG: ${mark.connectionId}.${mark.operationId} is not a serve operation of the connection catalog.`);
     }
     const route = String(mark.row.route ?? `${moduleName}.${mark.connectionId}.${mark.operationId}`);
-    const specifier = catalogImportPath(mark.connectionId);
+    const specifier = catalogRefs.get(mark.connectionId)?.importPath ?? catalogImportPath(mark.connectionId);
     typed.push({ route, inputType: operation.inputType, outputType: operation.outputType, specifier });
     routes.push({ route, kind: operation.kind === 'command' ? 'cmd' : 'qry', inputFields: [], actors: [], rules: [] });
     const flags = [
@@ -631,7 +635,7 @@ async function loadServeRequestContext(ctx: M12Context, unit: M12Unit, repair?: 
     contractSpecifier: catalogSpecifiers[0] ?? '',
     header,
     routes,
-    contractRef: connectionCatalogRef(marks[0]?.connectionId ?? pageId),
+    contractRef: catalogRefs.get(marks[0]?.connectionId ?? '')?.ref ?? connectionCatalogRef(marks[0]?.connectionId ?? pageId),
     mdmInputs: [],
     workflowRoutes: flows,
     externalEnums: [],

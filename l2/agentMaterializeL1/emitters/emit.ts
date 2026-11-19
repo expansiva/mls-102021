@@ -3,9 +3,11 @@
 /**
  * Renders one structure file from a v2 def. Imports are only platform files,
  * an existing l2 contract, or the output of a dependency. A missing source
- * is a named failure, not an import of a file that does not exist.
+ * is a named failure, not an import
+import of a file that does not exist.
  */
 
+import { connectionCatalogSource } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { catalogOperations } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { parseDefinitionExport, usecasePlan } from '/_102021_/l2/agentMaterializeL1/emitters/usecaseIntent.js';
 import {
@@ -620,9 +622,12 @@ async function resolveServeRoute(
   if (!mark) return { code: 'SERVES_MARK', detail: `${route} serves mark is not <connectionId>.<operationId>.` };
   const connectionId = mark[1];
   const operationId = mark[2];
-  const catalogRef = catalogFilePath(connectionId);
-  const catalog = await read(catalogRef);
-  if (catalog === null) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} could not be read.` };
+  // The platform file, or the declaration of a system this module or a sibling declares (d1_208). The project is the one of its defs.
+  const project = Number(/^\/?_(\d+)_\//u.exec(definition.dependencies.find(ref => /^\/?_\d+_\//u.test(ref)) ?? '')?.[1] ?? 0);
+  const found = project ? await connectionCatalogSource(read, project, definition.moduleName, connectionId) : null;
+  const catalogRef = found?.ref ?? catalogFilePath(connectionId);
+  const catalog = found ? found.source : await read(catalogRef);
+  if (catalog === null) return { code: found?.problem?.code ?? 'CONNECTION_CATALOG_MISSING', detail: found?.problem?.detail ?? `${catalogRef} could not be read.` };
   const operations = catalogOperations(catalog);
   if (!operations) return { code: 'CONNECTION_CATALOG_MISSING', detail: `${catalogRef} has no operation list.` };
   const operation = operations.find(item => item.operationId === operationId);
@@ -633,7 +638,7 @@ async function resolveServeRoute(
   const closed = unopenedNamedMembers(catalog, operation.inputType, members.allowedPaths);
   if (closed.length) return { code: 'CONTRACT_INPUT_UNOPENED', detail: `${route} input has members typed by a contract interface that were not opened: ${closed.join(', ')}.` };
   return {
-    specifier: catalogImportPath(connectionId),
+    specifier: found?.importPath ?? catalogImportPath(connectionId),
     route: {
       route,
       fn: functionName(route),

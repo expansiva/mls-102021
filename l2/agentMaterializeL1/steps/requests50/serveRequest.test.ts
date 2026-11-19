@@ -301,3 +301,31 @@ void test('d1_207: the recorded route that applies the l4 rule (filters the assi
   assert.deepEqual(requestGate(recorded, gate), []);
   assert.match(recorded, /action\.assistant !== 'included'/u);
 });
+
+void test('d1_208 s3: a serve of a system this module declares is typed by the generated declaration, and a missing declaration is a distinct refusal', async () => {
+  const fixtures = path.join(path.dirname(new URL(import.meta.url).pathname), '../../../helpers/connections/fixtures');
+  const l4 = readFileSync(path.join(fixtures, 'repoInsideModule.integration.recorded.txt'), 'utf8');
+  const declaration = readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../external15/fixtures/repoHostDeclaration.recorded.txt'), 'utf8');
+  const service = unit('requestService', 'repoHost', {
+    pageId: 'repoHost',
+    requests: [{ route: `${MODULE}.repoHost.changePushed`, serves: 'repoHost.changePushed', uses: [] }],
+  }, `_${PROJECT}_/l1/${MODULE}/layer_2_application/requests/repoHost.ts`);
+  const declarationRef = `_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/repoHost.ts`;
+  const readWith = (withDeclaration: boolean) => async (ref: string) => {
+    const key = ref.replace(/^\//u, '');
+    if (key === `_${PROJECT}_/l4/${MODULE}/integration.defs.ts`) return l4;
+    if (withDeclaration && key === declarationRef) return declaration;
+    return null;
+  };
+  const loaded = await loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service], read: readWith(true) } as never, service);
+  const specifier = `/_${PROJECT}_/l1/${MODULE}/layer_1_external/connections/repoHost.js`;
+  assert.equal(loaded.contractSpecifier, specifier);
+  assert.equal(loaded.contractsInterface.includes('RepoHostChangePushedInput'), true);
+  assert.equal(loaded.contractsInterface.includes('RepoHostChangePushedOutput'), true);
+  assert.match(loaded.human, /export interface RepoHostChangePushedInput/u);
+  assert.match(loaded.human, /import type \{ RepoHostChangePushedInput, RepoHostChangePushedOutput \} from '\/_102099_\/l1\/agents\/layer_1_external\/connections\/repoHost\.js'/u);
+  await assert.rejects(
+    () => loadRequestContext({ run: { project: PROJECT, module: MODULE }, units: [service], read: readWith(false) } as never, service),
+    /DECLARATION_NOT_GENERATED/u,
+  );
+});

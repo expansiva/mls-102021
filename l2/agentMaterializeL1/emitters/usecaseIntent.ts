@@ -6,6 +6,7 @@
 // follows from the operation, the entity def, the table def and the l4, as the D1 derived it before. This is the one
 // place that derives it; the declared def stays as it came (prompt and input hash).
 
+import { connectionCatalogSource, l1OwnerOfRef } from '/_102021_/l2/agentMaterializeL1/helpers/catalogSource.js';
 import { isRecord, type M1Definition } from '/_102021_/l2/helpers/l1Defs/definition.js';
 import { catalogOperations, catalogTypeFields } from '/_102021_/l2/agentMaterializeL1/emitters/connectionCatalog.js';
 import { catalogFilePath, catalogImportPath } from '/_102020_/l2/helpers/connections/catalogPath.js';
@@ -82,10 +83,12 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
   }
   const connectionId = text(row.connectionId);
   const operationId = text(row.operationId);
-  const catalogRef = catalogFilePath(connectionId);
-  const catalogSource = await read(catalogRef);
+  const owner = l1OwnerOfRef(outboundRef);
+  const found = owner ? await connectionCatalogSource(read, owner.project, owner.moduleName, connectionId) : null;
+  const catalogRef = found?.ref ?? catalogFilePath(connectionId);
+  const catalogSource = found ? found.source : await read(catalogRef);
   const operation = (catalogSource ? catalogOperations(catalogSource) : null)?.find(item => item.operationId === operationId);
-  if (!catalogSource || !operation) return { definition, detail: `${connectionId}.${operationId} is not in ${catalogRef}.` };
+  if (!catalogSource || !operation) return { definition, detail: found?.problem?.detail ?? `${connectionId}.${operationId} is not in ${catalogRef}.` };
   const inputFields = catalogTypeFields(catalogSource, operation.inputType);
   const outputFields = catalogTypeFields(catalogSource, operation.outputType);
   if (!inputFields || !outputFields) return { definition, detail: `${operation.inputType} or ${operation.outputType} is not declared in ${catalogRef}.` };
@@ -104,7 +107,7 @@ async function externalPlan(definition: M1Definition, entityDep: string, read: R
           inputType: operation.inputType,
           outputType: operation.outputType,
           expectsVersion: operation.expectsVersion,
-          catalogSpecifier: catalogImportPath(connectionId),
+          catalogSpecifier: found?.importPath ?? catalogImportPath(connectionId),
         },
         ports: [],
         portCalls: [],

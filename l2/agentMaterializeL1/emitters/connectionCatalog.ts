@@ -39,7 +39,8 @@ export interface CatalogOperation {
  */
 function parseCatalogObject(source: string): unknown {
   const assignment = source.search(/export\s+const\s+[A-Za-z_$][A-Za-z0-9_$]*(?:\s*:\s*[A-Za-z_$][\w$.<>, ]*)?\s*=/);
-  const start = assignment < 0 ? -1 : source.indexOf('{', source.indexOf('=', assignment));
+  let start = assignment < 0 ? -1 : source.indexOf('{', source.indexOf('=', assignment));
+  if (start < 0) start = declarationObjectStart(source);
   if (start < 0) return null;
   let depth = 0;
   let inString = false;
@@ -68,6 +69,20 @@ function parseCatalogObject(source: string): unknown {
   return null;
 }
 
+/**
+ * The declaration of a system a module generated (d1_208) is not a catalog file: it default-exports the object, directly or by
+ * the name of a `const`. Same keys for what the readers need (`operations` with `kind`, `inputType`, `outputType`, `direction`).
+ */
+function declarationObjectStart(source: string): number {
+  const named = /export\s+default\s+([A-Za-z_$][\w$]*)\s*;/u.exec(source);
+  if (named) {
+    const declaration = new RegExp(`(?:const|let|var)\\s+${named[1]}\\s*(?::\\s*[A-Za-z_$][\\w$.]*)?\\s*=\\s*\\{`, 'u').exec(source);
+    return declaration ? declaration.index + declaration[0].length - 1 : -1;
+  }
+  const direct = /export\s+default\s*\{/u.exec(source);
+  return direct ? direct.index + direct[0].length - 1 : -1;
+}
+
 export function catalogOperations(source: string): CatalogOperation[] | null {
   const parsed = parseCatalogObject(source);
   if (!isRecord(parsed) || !Array.isArray(parsed.operations)) return null;
@@ -81,7 +96,8 @@ export function catalogOperations(source: string): CatalogOperation[] | null {
       direction: text(row.direction),
       kind: text(row.kind),
       description: text(row.description),
-      reply: text(row.reply),
+      // A declaration has no `reply`: a call answers now (the runtime validator fixes it), a serve has none.
+      reply: text(row.reply) || (text(row.direction) === 'call' && !('reply' in row) ? 'now' : ''),
       resultOperation: text(row.resultOperation),
       noRowLimit: row.noRowLimit === true,
       hiddenFromAgents: row.hiddenFromAgents === true,
